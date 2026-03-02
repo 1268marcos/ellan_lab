@@ -1,0 +1,63 @@
+# Router: /internal/orders/{id}/payment-confirm (com X-Internal-Token)
+# Nota importante: para KIOSK você pode preferir status = PAID_PENDING_PICKUP 
+# e só virar PICKED_UP quando tiver o evento “gaveta fechou”. Como hoje é 
+# simulado, eu deixei um caminho simples. Se você quiser o mais correto, eu ajusto para “2 fases”.
+from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.core.db import get_db
+from app.core.internal_auth import require_internal_token
+from app.models.order import Order, OrderChannel, OrderStatus
+from app.models.allocation import Allocation, AllocationState
+from app.schemas.internal import PaymentConfirmIn
+from app.services import backend_client
+
+router = APIRouter(prefix="/internal", tags=["internal"])
+
+PICKUP_WINDOW_HOURS = 2
+
+@router.post("/orders/{order_id}/payment-confirm")
+def payment_confirm(order_id: str, payload: PaymentConfirmIn, _=Depends(require_internal_token), db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="order not found")
+    if order.status != OrderStatus.PAYMENT_PENDING:
+        raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
+
+    allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
+    if not allocation:
+        raise HTTPException(status_code=500, detail="allocation not found")
+
+    now = datetime.now(timezone.utc)
+    order.gateway_transaction_id = payload.gateway_transaction_id
+    order.paid_at = now
+
+    if order.channel == OrderChannel.ONLINE:
+        deadline = now + timedelta(hours=PICKUP_WINDOW_HOURS)
+        order.pickup_deadline_at = deadline
+        order.status = OrderStatus.PAID_PENDING_PICKUP
+
+        allocation.state = AllocationState.RESERVED_PAID_PENDING_PICKUP
+        allocation.locked_until = deadline.replace(tzinfo=None)  # se seu DB estiver naive; ajuste conforme seu setup
+
+        # commit com locked_until
+        backend_client.locker_commit(order.region, allocation.id, deadline.isoformat())
+
+    else:
+        # KIOSK: abre imediatamente
+        order.pickup_deadline_at = None
+        order.status = OrderStatus.PICKED_UP  # ou mantenha PAID_PENDING_PICKUP + evento de sensor (se preferir)
+        allocation.state = AllocationState.OPENED_FOR_PICKUP
+
+        backend_client.locker_commit(order.region, allocation.id, None)
+        backend_client.locker_light_on(order.region, allocation.slot)
+        backend_client.locker_open(order.region, allocation.slot)
+
+    db.commit()
+    return {
+        "ok": True,
+        "order_id": order.id,
+        "status": order.status.value,
+        "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
+    }

@@ -1,0 +1,8 @@
+fastapi
+uvicorn
+requests
+pydantic
+redis
+paho-mqtt
+psycopg2-binary
+python-dotenv

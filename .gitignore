@@ -1,0 +1,46 @@
+# Dados e volumes do Docker
+03_data/
+data/
+*.rdb
+dump.rdb
+*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# Diretórios de dependências
+node_modules/
+vendor/
+venv/
+env/
+.venv/
+__pycache__/
+*.pyc
+
+# Arquivos de ambiente
+.env
+.env.local
+.env.*.local
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Arquivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build e distribuição
+dist/
+build/
+*.tgz
+*.zip
+
+# Docker
+docker-compose.override.yml

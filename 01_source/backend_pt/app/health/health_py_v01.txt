@@ -1,0 +1,21 @@
+from fastapi import APIRouter, Response
+from datetime import datetime
+from app.core.version import get_app_info
+
+router = APIRouter()
+
+@router.get("/health")
+async def health_check():
+    """
+    Healthcheck público - retorna status básico da aplicação.
+    Não requer autenticação.
+    """
+    app_info = get_app_info()
+    app_info["timestamp"] = datetime.utcnow().isoformat()
+    app_info["status"] = "healthy"
+    
+    return Response(
+        content=app_info,
+        status_code=200,
+        media_type="application/json"
+    )

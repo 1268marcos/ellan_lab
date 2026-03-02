@@ -1,0 +1,87 @@
+from app.routers.audit_snapshot import router as audit_snapshot_router
+from app.routers.audit_self_check import router as audit_self_check_router
+from app.core.db import init_db
+from app.routers.audit import router as audit_router
+from app.routers.debug import router as debug_router
+from app.routers import catalog
+from app.routers import locker_state
+from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI
+from app.routers import locker_state
+import os
+# import psycopg2
+import redis
+from app.core.db import get_conn
+
+app = FastAPI(
+    title="ELLAN Backend SP (01_source/backend_sp/app/main.py)",
+    version="1.0.0",
+)
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+app.include_router(audit_router)
+
+app.include_router(debug_router)
+
+app.include_router(audit_snapshot_router)
+
+app.include_router(audit_self_check_router)
+
+app.include_router(catalog.router)
+
+app.include_router(locker_state.router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+DB_HOST = os.getenv("DB_HOST", "postgres_sp")
+DB_NAME = os.getenv("DB_NAME", "locker_sp")
+DB_USER = os.getenv("DB_USER", "admin")
+DB_PASS = os.getenv("DB_PASS", "admin123")
+
+@app.get("/")
+def root():
+    return {"message": "Locker SP Backend Running"}
+
+@app.get("/health")
+def health():
+    try:
+        # conn = psycopg2.connect(
+        #     host=DB_HOST,
+        #     database=DB_NAME,
+        #     user=DB_USER,
+        #     password=DB_PASS
+        # )
+        # conn.close()
+        # return {"status": "connected to postgres"}
+        #
+        # Testa SQLite (Log Engine)
+        conn = get_conn()
+        conn.execute("SELECT 1;")
+        return {"status": "ok", "db": "sqlite"}
+
+    except Exception as e:
+        # return {"error": str(e)}
+        return {"status": "error", "detail": str(e)}
+
+class Pagamento(BaseModel):
+    metodo: str
+    valor: float
+
+@app.post("/pagamento/")
+def processar_pagamento(pagamento: Pagamento):
+    return {
+        "regiao": "SP",
+        "metodo": pagamento.metodo,
+        "valor": pagamento.valor,
+        "status": "aprovado"
+    }

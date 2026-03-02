@@ -1,0 +1,319 @@
+# docker-compose.yml (Compose V2 - sem version)
+# Arquitetura CENTRAL:
+# - Postgres CENTRAL (fonte da verdade)
+# - Redis CENTRAL (cache/locks/fila leve)
+# - Backends SP/PT usam o Postgres CENTRAL (com REGION para separar regras e dados)
+# - Payment Gateway mantém SQLite local (resiliência) + escreve/audita no CENTRAL
+# - Simuladores SP/PT via MQTT
+
+# =========================
+# REDE COMPARTILHADA (adicionar)
+# =========================
+networks:
+  locker-network:
+    name: locker_network
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+          gateway: 172.20.0.1
+
+services:
+
+  # =========================
+  # POSTGRES CENTRAL
+  # =========================
+  postgres_central:
+    image: postgres:15
+    container_name: postgres_central
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      TZ: Europe/Lisbon
+    ports:
+      - "5435:5432"
+    volumes:
+      - ../03_data/postgres_central:/var/lib/postgresql/data
+      - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d locker_central"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - locker-network
+
+  # =========================
+  # REDIS CENTRAL
+  # =========================
+  redis_central:
+    image: redis:7
+    container_name: redis_central
+    restart: unless-stopped  # always    unless-stopped oferece mais controle em ambiente de produção
+    ports:
+      - "6382:6379"
+    volumes:
+      - ../03_data/redis_central:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - locker-network
+
+  # =========================
+  # MQTT BROKER
+  # =========================
+  mqtt:
+    image: eclipse-mosquitto:2
+    container_name: mqtt_broker
+    restart: unless-stopped  # always # unless-stopped oferece mais controle em ambiente de produção
+    ports:
+      - "1884:1883"
+    volumes:
+      - ../03_data/mqtt:/mosquitto/data
+      # (opcional) se tiver config custom:
+      # - ./02_docker/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "5"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - locker-network
+
+  # =========================
+  # BACKEND SP (DB CENTRAL)
+  # =========================
+  backend_sp:
+    build:
+      context: ../01_source/backend_sp
+    container_name: backend_sp
+    restart: unless-stopped
+    ports:
+      - "8201:8000"   # 🔥 ALTERADO: 8101 → 8201
+    environment:
+      DB_HOST: postgres_central
+      DB_NAME: locker_central
+      DB_USER: admin
+      DB_PASS: admin123
+
+      REDIS_HOST: redis_central
+      REGION: SP
+      TZ: America/Sao_Paulo
+
+      HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
+      PORT: 8000
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================
+  # BACKEND PT (DB CENTRAL)
+  # =========================
+  backend_pt:
+    build:
+      context: ../01_source/backend_pt
+    container_name: backend_pt
+    restart: unless-stopped
+    ports:
+      - "8202:8000"
+    environment:
+      DB_HOST: postgres_central
+      DB_NAME: locker_central
+      DB_USER: admin
+      DB_PASS: admin123
+
+      REDIS_HOST: redis_central
+      REGION: PT
+      TZ: Europe/Lisbon
+
+      HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
+      PORT: 8000
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================
+  # PAYMENT GATEWAY
+  # =========================
+  payment_gateway:
+    build:
+      context: ../01_source/payment_gateway
+      # context: /home/marcos/ellan_lab/01_source/payment_gateway  # Caminho ABSOLUTO
+      dockerfile: Dockerfile  # Opcional, se o nome for diferente
+    container_name: payment_gateway
+    restart: unless-stopped # mais controle em ambiente de produção     futuro usar always
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # chama backends por região
+      - BACKEND_SP=http://backend_sp:8000
+      - BACKEND_PT=http://backend_pt:8000
+
+      # URLs completas para debug (opcional)
+      - BACKEND_SP_FULL=http://backend_sp:8000/pagamento
+      - BACKEND_PT_FULL=http://backend_pt:8000/pagamento
+
+      # redis central
+      - REDIS_HOST=redis_central
+      - GATEWAY_REDIS_HOST=redis_central
+
+      # mqtt
+      - MQTT_HOST=mqtt_broker
+
+      # timezone do container (não é referência de timestamp; no código use epoch UTC)
+      - TZ=America/Sao_Paulo
+
+      # sqlite local (resiliência) - SQLite persistente no host
+      - GATEWAY_SQLITE_PATH=/data/sqlite/gateway/events.db
+
+      # Postgres central (auditoria/eventos/pedidos online quando aplicável)
+      - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
+
+      # antifraude (pepper versionado) - valores vêm do .env (via .env)
+      - ANTIFRAUD_ACTIVE_PEPPER_VERSION=${ANTIFRAUD_ACTIVE_PEPPER_VERSION}
+      - ANTIFRAUD_PEPPER_V1=${ANTIFRAUD_PEPPER_V1}
+      - ANTIFRAUD_PEPPER_V2=${ANTIFRAUD_PEPPER_V2}
+
+      - IDEMPOTENCY_TTL_SEC=86400
+      - DEVICE_FP_VERSION=v1_web
+      - LOG_HASH_SALT=${LOG_HASH_SALT}
+      - ANTIFRAUD_PEPPER=${ANTIFRAUD_PEPPER}
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+      - ../04_logs:/logs
+      - ../05_backups:/backups
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s  # 40s  # 🔥 AUMENTAR para 60s dar tempo de inicialização
+
+  # =========================
+  # ORDER PICKUP SERVICE
+  # =========================
+  order_pickup_service:
+    build:
+      context: ../01_source/order_pickup_service
+    container_name: order_pickup_service
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - TZ=America/Sao_Paulo
+
+      # chama backends por região
+      - BACKEND_SP_BASE=http://backend_sp:8000
+      - BACKEND_PT_BASE=http://backend_pt:8000
+
+      # endpoint de preço
+      - BACKEND_PRICE_PATH_TEMPLATE=/catalog/skus/{sku_id}
+
+      # internal token
+      - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
+
+      # DB do serviço (mantido como você está hoje)
+      - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
+
+      # (opcional) se esse serviço precisar consultar central:
+      - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      backend_sp:
+        condition: service_healthy
+      backend_pt:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+  # =========================
+  # SIMULATOR SP (24 doors)
+  # =========================
+  simulator_sp:
+    build:
+      context: ../01_source/simulator
+    container_name: simulator_sp
+    restart: unless-stopped  # always # unless-stopped oferece mais controle em ambiente de produção
+    environment:
+      MQTT_HOST: mqtt_broker
+      REGION: SP
+      LOCKER_ID: LOCKER_SP_01
+      FAILURE_RATE: "0.12"
+      TZ: America/Sao_Paulo
+    depends_on:
+      mqtt:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+  # =========================
+  # SIMULATOR PT (24 doors)
+  # =========================
+  simulator_pt:
+    build:
+      context: ../01_source/simulator
+    container_name: simulator_pt
+    restart: unless-stopped
+    environment:
+      MQTT_HOST: mqtt_broker
+      REGION: PT
+      LOCKER_ID: LOCKER_PT_01
+      FAILURE_RATE: "0.10"
+      TZ: Europe/Lisbon
+    depends_on:
+      mqtt:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+# Rede padrão do Compose V2 (opcional, mas recomendado para clareza)
+# Melhora visibilidade e isolamento da rede explícita
+# networks:
+#  default:
+#    name: locker_network
+#    driver: bridge
+
+# Adicionados healthcheck em postgres, redis e mqtt
+# Garante que depends_on aguarde serviços prontos docs.docker.com

@@ -1,0 +1,123 @@
+{
+  "created_at": 1772055866,
+  "date": "2026-02-24",
+  "events_sample": {
+    "ALLOW": [
+      {
+        "audit_event_id": "ae_57512cc4074849579e728e36bfe750b7",
+        "created_at": 1771969334,
+        "decision": "ALLOW",
+        "event_type": "PAYMENT_CREATE",
+        "id": "re_18d15a5109504f7f9643bc179f3ca748",
+        "locker_id": "CACIFO-SP-001",
+        "policy_id": "risk_sp_default_v3",
+        "porta": 1,
+        "reason_codes": [
+          "DEVICE_NEW"
+        ],
+        "reasons_parse_ok": true,
+        "region": "SP",
+        "request_id": "1",
+        "score": 15
+      },
+      {
+        "audit_event_id": "ae_ffdceee311c744b5a8d9980e07de917b",
+        "created_at": 1771971749,
+        "decision": "ALLOW",
+        "event_type": "PAYMENT_CREATE",
+        "id": "re_61f7f44244894820a8eee9347c2c30df",
+        "locker_id": "CACIFO-SP-001",
+        "policy_id": "risk_sp_default_v3",
+        "porta": 1,
+        "reason_codes": [
+          "DEVICE_NEW"
+        ],
+        "reasons_parse_ok": true,
+        "region": "SP",
+        "request_id": "p0",
+        "score": 15
+      },
+      {
+        "audit_event_id": "ae_12b7bdb24a294a6395336b07726fbe85",
+        "created_at": 1771971861,
+        "decision": "ALLOW",
+        "event_type": "PAYMENT_CREATE",
+        "id": "re_bb1c4931a52c406f9a026c28a138597e",
+        "locker_id": "CACIFO-PT-001",
+        "policy_id": "risk_pt_default_v3",
+        "porta": 4,
+        "reason_codes": [
+          "DEVICE_NEW",
+          "PAYMENT_METHOD_CARD"
+        ],
+        "reasons_parse_ok": true,
+        "region": "PT",
+        "request_id": "98a",
+        "score": 25
+      }
+    ],
+    "BLOCK": [],
+    "CHALLENGE": [],
+    "UNKNOWN": []
+  },
+  "fingerprints": {
+    "config_fingerprint": "sha256:b88088fb2fb02f83d3ff53c75ca0720c33afe4a97e4cf1d70f92170110b7d381",
+    "pepper_fingerprint": "sha256:fb0a7c8f93e52340fcc7a425b55601b69f72e0527f496fd27761425bcd1a246c",
+    "salt_fingerprint": "sha256:4940ac6e9702eeec6d3d6179592e95933da26fabda70e6b8f0f4c7af125b58c1"
+  },
+  "integrity": {
+    "reasons_json_parse": {
+      "fail": 0,
+      "fail_rate": 0.0,
+      "ok": 7
+    },
+    "total_events": 7
+  },
+  "log_anchor": {
+    "checked": 0,
+    "last_hash": null,
+    "log_date": "2026-02-24",
+    "log_ok": true,
+    "log_path": "/logs/gateway/gateway_events_2026-02-24.jsonl",
+    "status": "missing_file"
+  },
+  "policy_ids_used": [
+    {
+      "count": 5,
+      "policy_id": "risk_pt_default_v3"
+    },
+    {
+      "count": 2,
+      "policy_id": "risk_sp_default_v3"
+    }
+  ],
+  "service": "payment_gateway",
+  "snapshot_hash": "sha256:482acf4673ad41b3985ebe7899333e2630eb88f9abda73c006ab61ae1d15aa30",
+  "snapshot_type": "GATEWAY_DAILY",
+  "stats": {
+    "decisions": {
+      "ALLOW": 7,
+      "BLOCK": 0,
+      "CHALLENGE": 0,
+      "UNKNOWN": 0
+    },
+    "top_reasons": [
+      {
+        "code": "DEVICE_NEW",
+        "count": 7
+      },
+      {
+        "code": "PAYMENT_METHOD_CARD",
+        "count": 2
+      }
+    ],
+    "totals": {
+      "events": 7
+    },
+    "window": {
+      "end_epoch": 1771988399,
+      "inclusive": true,
+      "start_epoch": 1771902000
+    }
+  }
+}

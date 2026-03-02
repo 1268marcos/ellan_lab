@@ -1,0 +1,91 @@
+# app/core/config.py
+import os
+from typing import Dict, Optional
+
+# Configurações básicas
+class Settings:
+    # Backends regionais
+    BACKEND_SP: str = os.getenv("BACKEND_SP", "http://backend_sp:8000")
+    BACKEND_PT: str = os.getenv("BACKEND_PT", "http://backend_pt:8000")
+    
+    # Paths dos endpoints regionais
+    BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "/pagamento")
+    BACKEND_PT_PATH: str = os.getenv("BACKEND_PT_PATH", "/pagamento")
+    
+    # Redis
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "redis_sp")
+    REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
+    
+    # MQTT
+    MQTT_HOST: str = os.getenv("MQTT_HOST", "mqtt_broker")
+    MQTT_PORT: int = int(os.getenv("MQTT_PORT", "1883"))
+    
+    # SQLite
+    SQLITE_PATH: str = os.getenv("GATEWAY_SQLITE_PATH", "/data/sqlite/gateway/events.db")
+    
+    # Anti-fraude
+    ANTIFRAUD_ACTIVE_PEPPER_VERSION: str = os.getenv("ANTIFRAUD_ACTIVE_PEPPER_VERSION", "v1")
+    ANTIFRAUD_PEPPER_V1: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V1")
+    ANTIFRAUD_PEPPER_V2: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V2")
+    LOG_HASH_SALT: Optional[str] = os.getenv("LOG_HASH_SALT")
+    
+    # Idempotência
+    IDEMPOTENCY_TTL_SEC: int = int(os.getenv("IDEMPOTENCY_TTL_SEC", "86400"))
+    
+    # Device fingerprint
+    DEVICE_FP_VERSION: str = os.getenv("DEVICE_FP_VERSION", "v1_web")
+    
+    # 🔥 PROPRIEDADES FALTANDO (adicione estas linhas)
+    GATEWAY_ID: str = os.getenv("GATEWAY_ID", "payment_gateway_01")
+    GATEWAY_LOG_DIR: str = os.getenv("GATEWAY_LOG_DIR", "/logs")
+
+    @property
+    def REGIONAL_BACKENDS(self) -> Dict[str, str]:
+        """Retorna dicionário com backends por região"""
+        return {
+            "SP": self.BACKEND_SP,
+            "PT": self.BACKEND_PT,
+        }
+    
+    @property
+    def REGIONAL_PATHS(self) -> Dict[str, str]:
+        """Retorna dicionário com paths por região"""
+        return {
+            "SP": self.BACKEND_SP_PATH,
+            "PT": self.BACKEND_PT_PATH,
+        }
+    
+    def get_regional_url(self, region: str) -> str:
+        """Retorna URL completa para o backend regional"""
+        base = self.REGIONAL_BACKENDS.get(region)
+        path = self.REGIONAL_PATHS.get(region, "/pagamento")
+        
+        if not base:
+            raise ValueError(f"Região {region} não configurada")
+            
+        # 🔥 CORREÇÃO: Não adicionar barra extra se o path já tem
+        if path.startswith('/'):
+            return f"{base}{path}"
+        else:
+            return f"{base}/{path}"
+
+# Instância global das configurações
+settings = Settings()
+
+# 🔥 VARIÁVEIS DE COMPATIBILIDADE (para imports antigos)
+SQLITE_PATH = settings.SQLITE_PATH
+IDEMPOTENCY_TTL_SEC = settings.IDEMPOTENCY_TTL_SEC
+DEVICE_FP_VERSION = settings.DEVICE_FP_VERSION
+GATEWAY_ID = settings.GATEWAY_ID
+GATEWAY_LOG_DIR = settings.GATEWAY_LOG_DIR
+LOG_HASH_SALT = settings.LOG_HASH_SALT
+
+# Para compatibilidade com imports antigos
+BACKEND_SP = settings.BACKEND_SP
+BACKEND_PT = settings.BACKEND_PT
+REGIONAL_BACKENDS = settings.REGIONAL_BACKENDS
+REDIS_HOST = settings.REDIS_HOST
+MQTT_HOST = settings.MQTT_HOST
+ANTIFRAUD_ACTIVE_PEPPER_VERSION = settings.ANTIFRAUD_ACTIVE_PEPPER_VERSION
+ANTIFRAUD_PEPPER_V1 = settings.ANTIFRAUD_PEPPER_V1
+ANTIFRAUD_PEPPER_V2 = settings.ANTIFRAUD_PEPPER_V2

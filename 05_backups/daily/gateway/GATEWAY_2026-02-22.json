@@ -1,0 +1,37 @@
+{
+  "created_at": 1772045487,
+  "date": "2026-02-22",
+  "fingerprints": {
+    "config_fingerprint": "sha256:b88088fb2fb02f83d3ff53c75ca0720c33afe4a97e4cf1d70f92170110b7d381",
+    "pepper_fingerprint": "sha256:fb0a7c8f93e52340fcc7a425b55601b69f72e0527f496fd27761425bcd1a246c",
+    "salt_fingerprint": "sha256:4940ac6e9702eeec6d3d6179592e95933da26fabda70e6b8f0f4c7af125b58c1"
+  },
+  "log_anchor": {
+    "checked": 0,
+    "last_hash": null,
+    "log_date": "2026-02-22",
+    "log_ok": true,
+    "log_path": "/logs/gateway/gateway_events_2026-02-22.jsonl",
+    "status": "missing_file"
+  },
+  "service": "payment_gateway",
+  "snapshot_hash": "sha256:1cf28f47ec00ef2f96404cca5f9bf07f18ab26de56b5f5384fc5b20c095c2886",
+  "snapshot_type": "GATEWAY_DAILY",
+  "stats": {
+    "decisions": {
+      "ALLOW": 0,
+      "BLOCK": 0,
+      "CHALLENGE": 0
+    },
+    "top_reasons": [],
+    "totals": {
+      "events": 0
+    },
+    "window": {
+      "end_epoch": 1771815599,
+      "inclusive": true,
+      "start_epoch": 1771729200
+    }
+  },
+  "top_reasons": []
+}

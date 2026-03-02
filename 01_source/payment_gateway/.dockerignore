@@ -1,0 +1,15 @@
+# .dockerignore
+# **/*.txt
+**/*.pyc
+**/__pycache__
+**/.git
+**/.env
+**/*.log
+**/*.bak
+**/*.backup
+**/*_v01.*
+**/*_old.*
+**/backup_*
+**/test_*
+**/*.md
+**/Dockerfile.bak

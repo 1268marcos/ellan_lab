@@ -1,0 +1,12 @@
+fastapi               # Framework web principal
+uvicorn               # Servidor ASGI para desenvolvimento
+requests
+pydantic[email]              # Validação de dados e schemas
+# psycopg               # Driver PostgreSQL puro (recomendado)
+psycopg2-binary     # Alternativa: driver PostgreSQL (usar apenas em desenvolvimento)
+sqlalchemy            # ORM para banco de dados
+alembic               # Migrações de banco de dados
+python-jose           # Geração e validação de tokens JWT
+passlib               # Hashing de senhas
+bcrypt                # Dependência do passlib (geralmente necessária)
+python-multipart      # Suporte para formulários (upload de arquivos, form data)
