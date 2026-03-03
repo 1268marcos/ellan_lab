@@ -108,8 +108,16 @@ services:
       REGION: SP
       TZ: America/Sao_Paulo
 
+      MQTT_HOST: mqtt_broker
+      LOCKER_ID: LOCKER_SP_01
+      MACHINE_ID: CACIFO-SP-001
+
       HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
       PORT: 8000
+    env_file:
+      - ./configs/backend_sp.env
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -144,8 +152,16 @@ services:
       REGION: PT
       TZ: Europe/Lisbon
 
+      MQTT_HOST: mqtt_broker
+      LOCKER_ID: LOCKER_PT_01
+      MACHINE_ID: CACIFO-PT-001
+
       HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
       PORT: 8000
+    env_file:
+      - ./configs/backend_pt.env
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -178,10 +194,6 @@ services:
       # chama backends por região
       - BACKEND_SP=http://backend_sp:8000
       - BACKEND_PT=http://backend_pt:8000
-
-      # URLs completas para debug (opcional)
-      - BACKEND_SP_FULL=http://backend_sp:8000/pagamento
-      - BACKEND_PT_FULL=http://backend_pt:8000/pagamento
 
       # redis central
       - REDIS_HOST=redis_central
@@ -280,7 +292,9 @@ services:
       MQTT_HOST: mqtt_broker
       REGION: SP
       LOCKER_ID: LOCKER_SP_01
+      MACHINE_ID: CACIFO-SP-001
       FAILURE_RATE: "0.12"
+      PAYMENT_TRIGGERS_OPEN: "false"
       TZ: America/Sao_Paulo
     depends_on:
       mqtt:
@@ -300,7 +314,9 @@ services:
       MQTT_HOST: mqtt_broker
       REGION: PT
       LOCKER_ID: LOCKER_PT_01
+      MACHINE_ID: CACIFO-PT-001
       FAILURE_RATE: "0.10"
+      PAYMENT_TRIGGERS_OPEN: "false"
       TZ: Europe/Lisbon
     depends_on:
       mqtt:

@@ -28,6 +28,10 @@ STATE_POWER_FAIL = "POWER_FAIL"
 
 FAIL_STATES = [STATE_JAMMED, STATE_SENSOR_ERROR, STATE_POWER_FAIL]
 
+PAYMENT_TRIGGERS_OPEN = os.getenv("PAYMENT_TRIGGERS_OPEN", "false").lower() == "true"
+DOOR_CMD_TOPIC = f"locker/{REGION}/doors/cmd"
+LIGHT_CMD_TOPIC = f"locker/{REGION}/doors/light/cmd"
+
 @dataclass
 class Door:
     door_id: int
@@ -172,6 +176,10 @@ def random_faults_loop(client):
 def on_connect(client, userdata, flags, rc):
     print(f"[{REGION}] MQTT conectado rc={rc}. Subscrito em: {PAY_TOPIC}")
     client.subscribe(PAY_TOPIC)
+    client.subscribe(DOOR_CMD_TOPIC)
+    client.subscribe(LIGHT_CMD_TOPIC)
+    if PAYMENT_TRIGGERS_OPEN:
+        client.subscribe(PAY_TOPIC)
 
 def on_message(client, userdata, msg):
     try:
@@ -179,21 +187,64 @@ def on_message(client, userdata, msg):
     except Exception:
         payload = {"raw": msg.payload.decode(errors="ignore")}
 
-    # Só reage a pagamento aprovado pelo gateway/backends
-    status = payload.get("status") or payload.get("gateway_status")
-    if status not in ["aprovado", "aprovado_antifraude", "approved", "Aprovado", "aprovado"]:
+    # --- OPEN command ---
+    if msg.topic == DOOR_CMD_TOPIC:
+        cmd = (payload.get("command") or "").upper()
+        door_id = payload.get("door_id")
+        if cmd != "OPEN" or not door_id:
+            return
+
+        door = doors.get(int(door_id))
+        if not door:
+            publish(client, DOOR_EVENTS_TOPIC, {
+                "ts": now_ms(),
+                "locker_id": LOCKER_ID,
+                "region": REGION,
+                "event": "UNKNOWN_DOOR",
+                "door_id": int(door_id),
+            })
+            return
+
+        t = threading.Thread(target=do_open_cycle, args=(client, door, payload), daemon=True)
+        t.start()
         return
 
-    door = choose_free_door()
-    if not door:
+    # --- LIGHT_ON command (simulado) ---
+    if msg.topic == LIGHT_CMD_TOPIC:
+        cmd = (payload.get("command") or "").upper()
+        door_id = payload.get("door_id")
+        if cmd != "LIGHT_ON" or not door_id:
+            return
+
         publish(client, DOOR_EVENTS_TOPIC, {
             "ts": now_ms(),
             "locker_id": LOCKER_ID,
             "region": REGION,
-            "event": "NO_FREE_DOOR",
-            "detail": "Sem portas livres"
+            "door_id": int(door_id),
+            "event": "LIGHT_ON",
+            "state": doors.get(int(door_id), Door(int(door_id))).state,
+            "detail": "Luz ligada (simulado)",
+            "cmd": payload,
         })
         return
+
+    # --- PAYMENT fallback (desligado por padrão) ---
+    if msg.topic == PAY_TOPIC and PAYMENT_TRIGGERS_OPEN:
+        status = payload.get("status") or payload.get("gateway_status")
+        if status not in ["approved", "aprovado", "Aprovado", "aprovado_antifraude"]:
+            return
+
+        porta = payload.get("porta") or payload.get("door_id")
+        door = doors.get(int(porta)) if porta else choose_free_door()
+        if not door:
+            publish(client, DOOR_EVENTS_TOPIC, {
+                "ts": now_ms(),
+                "locker_id": LOCKER_ID,
+                "region": REGION,
+                "event": "NO_FREE_DOOR",
+                "detail": "Sem portas livres"
+            })
+            return
 
     # dispara ciclo em thread para não travar o MQTT
     t = threading.Thread(target=do_open_cycle, args=(client, door, payload), daemon=True)

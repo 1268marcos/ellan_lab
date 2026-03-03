@@ -1,4 +1,4 @@
-# app/services/payment_service.py
+# 01_source/payment_gateway/app/services/payment_service.py
 import json
 import time
 import uuid
@@ -16,6 +16,7 @@ from app.core.risk_engine import evaluate_risk
 from app.services.sqlite_service import SQLiteService
 from app.services.idempotency_service import IdempotencyService
 from app.services.device_registry_service import DeviceRegistryService
+from app.services.locker_backend_client import LockerBackendClient
 from app.core.event_log import GatewayEventLogger
 from app.core.policies import get_policy_by_region
 
@@ -133,7 +134,10 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
     metodo = data.metodo.upper()
     valor = float(data.valor)
     porta = int(data.porta)
-    currencyISO = data.currency.upper()
+
+    REGION_CURRENCY = {"SP": "BRL", "PT": "EUR"}
+    currencyISO = (data.currency or REGION_CURRENCY.get(region, "BRL")).upper()
+
 
     endpoint = "/gateway/pagamento"
     req_id = request_id or _gen_request_id()
@@ -416,18 +420,17 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         resp["audit"]["chain"] = chain
         return resp
 
-    # --- ALLOW: chama backend regional ---
-    # 🔥 Usar settings.get_regional_url() para obter a URL completa
+    # --- ALLOW: chama backend regional para atualizar estado ---
     backend_url = settings.get_regional_url(region)
+    client = LockerBackendClient(backend_url, timeout_sec=5)
     
     try:
-        resp_backend = requests.post(
-            f"{backend_url}/",  # A URL já inclui o path completo
-            json={"metodo": metodo, "valor": valor},
-            timeout=5
-        )
-        resp_backend.raise_for_status()
-        backend_json = resp_backend.json()
+        # Pagamento aprovado: porta fica reservada para retirada
+        # XX  backend_resp = client.set_state(porta=porta, state="PAID_PENDING_PICKUP")
+        # XX  backend_json = {"status": "ok", "locker": backend_resp}
+        locker_effect = client.set_state(porta=porta, state="PAID_PENDING_PICKUP")
+        backend_json = {"status": "ok", "locker": locker_effect}
+
     except Exception as e:
         # responde em JSON rico (sem derrubar)
         audit_event_id = _gen_audit_event_id()
@@ -463,10 +466,6 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         _persist_and_publish(region, resp)
         return resp
 
-    try:
-        backend_json = resp_backend.json()
-    except Exception:
-        backend_json = {"status": "aprovado"}  # fallback controlado
 
     result = {
         "request_id": req_id,
@@ -483,7 +482,8 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             "valor": valor,
             "currency": currencyISO,
             "porta": porta,
-            "backend": {"url": f"{backend_url}/", "timeout_sec": 5},
+            "backend": {"url": backend_url, "timeout_sec": 5},
+            "locker_effect": backend_json.get("locker"),
             "transaction_id": backend_json.get("transaction_id", f"tx_{region}_{uuid.uuid4().hex[:12]}")
         },
 

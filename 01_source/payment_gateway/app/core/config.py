@@ -9,8 +9,8 @@ class Settings:
     BACKEND_PT: str = os.getenv("BACKEND_PT", "http://backend_pt:8000")
     
     # Paths dos endpoints regionais
-    BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "/pagamento")
-    BACKEND_PT_PATH: str = os.getenv("BACKEND_PT_PATH", "/pagamento")
+    BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "")
+    BACKEND_PT_PATH: str = os.getenv("BACKEND_PT_PATH", "")
     
     # Redis
     REDIS_HOST: str = os.getenv("REDIS_HOST", "redis_sp")
@@ -56,18 +56,12 @@ class Settings:
         }
     
     def get_regional_url(self, region: str) -> str:
-        """Retorna URL completa para o backend regional"""
-        base = self.REGIONAL_BACKENDS.get(region)
-        path = self.REGIONAL_PATHS.get(region, "/pagamento")
-        
-        if not base:
-            raise ValueError(f"Região {region} não configurada")
-            
-        # 🔥 CORREÇÃO: Não adicionar barra extra se o path já tem
-        if path.startswith('/'):
-            return f"{base}{path}"
-        else:
-            return f"{base}/{path}"
+        reg = (region or "").upper()
+        if reg == "SP":
+            return self.BACKEND_SP.rstrip("/")
+        if reg == "PT":
+            return self.BACKEND_PT.rstrip("/")
+        raise ValueError(f"Unknown region: {region}")
 
 # Instância global das configurações
 settings = Settings()

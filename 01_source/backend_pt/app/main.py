@@ -9,10 +9,15 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI
 from app.routers import locker_state
+from app.routers import allocations
+from app.routers import hardware
 import os
 # import psycopg2
 import redis
 from app.core.db import get_conn
+from app.services.mqtt_listener import start as start_mqtt_listener
+
+start_mqtt_listener()
 
 app = FastAPI(
     title="ELLAN Backend PT (01_source/backend_pt/app/main.py)",
@@ -34,6 +39,10 @@ app.include_router(audit_self_check_router)
 app.include_router(catalog.router)
 
 app.include_router(locker_state.router)
+
+app.include_router(allocations.router)
+
+app.include_router(hardware.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -77,7 +86,7 @@ class Pagamento(BaseModel):
     metodo: str
     valor: float
 
-@app.post("/pagamento/")
+@app.post("/debug/pagamento-mock")  # "/pagamento/" isso era errado
 def processar_pagamento(pagamento: Pagamento):
     return {
         "regiao": "PT",

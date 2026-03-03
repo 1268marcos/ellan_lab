@@ -1,3 +1,4 @@
+# 01_source/backend_pt/app/core/db.py
 import os
 import sqlite3
 from pathlib import Path
@@ -76,5 +77,37 @@ def init_db() -> None:
         );
         """
     )
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS allocations (
+            allocation_id TEXT PRIMARY KEY,
+            machine_id TEXT NOT NULL,
+            door_id INTEGER NOT NULL,
+            state TEXT NOT NULL, -- RESERVED | COMMITTED | RELEASED | EXPIRED
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            sale_id TEXT,
+            request_id TEXT,
+            UNIQUE(machine_id, door_id)
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_allocations_machine_state
+        ON allocations(machine_id, state, expires_at);
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_allocations_machine_door
+        ON allocations(machine_id, door_id);
+        """
+    )
+  
+
 
     conn.commit()
