@@ -7,7 +7,7 @@ from app.routers import catalog
 from app.routers import locker_state
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from app.routers import locker_state
 from app.routers import allocations
 from app.routers import hardware
@@ -16,6 +16,7 @@ import os
 import redis
 from app.core.db import get_conn
 from app.services.mqtt_listener import start as start_mqtt_listener
+from app.core.errors import http_exception_handler, unhandled_exception_handler
 
 start_mqtt_listener()
 
@@ -23,6 +24,9 @@ app = FastAPI(
     title="ELLAN Backend PT (01_source/backend_pt/app/main.py)",
     version="1.0.0",
 )
+
+app.add_exception_handler(HTTPException, http_exception_handler)
+app.add_exception_handler(Exception, unhandled_exception_handler)
 
 @app.on_event("startup")
 def startup():

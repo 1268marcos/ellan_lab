@@ -48,3 +48,7 @@ docker-compose.override.yml
 # Pastas para ignorar
 04_logs/
 05_backups/
+06_exports/
+07_tests/
+minha_chave
+minha_chave.pub

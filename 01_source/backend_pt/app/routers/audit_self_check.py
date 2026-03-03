@@ -1,15 +1,25 @@
 import os
-import sqlite3
 import json
-from pathlib import Path
-from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Query, Request
+import hashlib
+from datetime import datetime, timezone
+from fastapi import APIRouter, Query, Request, Header, HTTPException
 
 from app.core.db import get_conn
-from app.core.event_log import _sha256
 from app.core.antifraud_snapshot_verify import verify_snapshot_file
 
 router = APIRouter(prefix="/audit", tags=["audit"])
+
+INTERNAL_TOKEN = os.getenv("INTERNAL_TOKEN")  # opcional
+DEFAULT_MACHINE_ID = os.getenv("MACHINE_ID", "CACIFO-XX-001")
+REGION = os.getenv("REGION", "XX").upper()
+
+
+def _require_internal_token(x_internal_token: str | None):
+    if INTERNAL_TOKEN and x_internal_token != INTERNAL_TOKEN:
+        raise HTTPException(
+            status_code=401,
+            detail={"type": "UNAUTHORIZED", "message": "invalid internal token", "retryable": False},
+        )
 
 
 def _utc_now_iso() -> str:
@@ -20,134 +30,38 @@ def _utc_date_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 
-def _default_machine_id(request: Request) -> str:
-    env_mid = os.getenv("MACHINE_ID")
-    if env_mid:
-        return env_mid
-
-    port = request.url.port if request.url else None
-    if port == 8101:
-        return "CACIFO-SP-001"
-    if port == 8102:
-        return "CACIFO-PT-001"
-
-    return "CACIFO-PT-001"
+def _sha256_hex(s: str) -> str:
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
-# Fingerprint atual
-def _config_fingerprint_current(machine_id: str) -> dict:
-    salt = os.getenv("LOG_HASH_SALT", "")
-    events_db_path = os.getenv("EVENTS_DB_PATH")
-
-    salt_fp = _sha256(salt) if salt else None
-
-    payload = json.dumps(
-        {
-            "machine_id": machine_id,
-            "events_db_path": events_db_path,
-            "salt_fingerprint": salt_fp,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-
-    cfg_fp = _sha256(payload)
-
-    return {
-        "machine_id": machine_id,
-        "events_db_path": events_db_path,
-        "salt_fingerprint": salt_fp,
-        "config_fingerprint": cfg_fp,
-    }
+def _sha256_prefixed(s: str) -> str:
+    return "sha256:" + _sha256_hex(s)
 
 
-# Caminho do snapshot do dia
-def _snapshot_path_for_date(machine_id: str, date_utc: str) -> str:
-    home = str(Path.home())
-    root = f"{home}/ellan_lab"
-    return str(Path(root) / "05_backups" / "daily" / "antifraud" / f"{machine_id}_{date_utc}.json")
+def _normalize_hash(h: str | None) -> str | None:
+    if h is None:
+        return None
+    h = str(h)
+    if h.startswith("sha256:"):
+        return h
+    if len(h) == 64:
+        return "sha256:" + h
+    return h
 
 
-# Ler config_fingerprint do snapshot (sem depender do verify)
-def _read_snapshot_config_fingerprint(machine_id: str, date_utc: str) -> dict:
-    path = _snapshot_path_for_date(machine_id, date_utc)
-    p = Path(path)
-    if not p.exists():
-        return {"ok": False, "reason": "snapshot_file_not_found", "path": path}
-
-    try:
-        data = json.loads(p.read_text(encoding="utf-8"))
-    except Exception as e:
-        return {"ok": False, "reason": "snapshot_invalid_json", "path": path, "detail": str(e)}
-
-    cfg = data.get("config_fingerprint")
-    if not cfg:
-        return {"ok": False, "reason": "snapshot_config_fingerprint_missing", "path": path}
-
-    return {"ok": True, "path": path, "config_fingerprint": cfg}
-
-
-def _calc_severity(chain_ok: bool, snapshot_ok: bool):
-    """
-    GREEN  = ambos ok
-    YELLOW = 1 falha
-    RED    = ambos falham
-    """
-    if chain_ok and snapshot_ok:
-        return ("GREEN", 0)
-    if (chain_ok and not snapshot_ok) or (not chain_ok and snapshot_ok):
-        return ("YELLOW", 1)
-    return ("RED", 2)
-
-
-def _build_summary(chain: dict, snap: dict) -> str:
-    """
-    Texto curto (ideal pra dashboard/heartbeat).
-    Prioriza o problema mais crítico.
-    """
-    chain_ok = bool(chain.get("ok"))
-    snap_ok = bool(snap.get("ok"))
-
-    if chain_ok and snap_ok:
-        return "ok"
-
-    parts = []
-    if not chain_ok:
-        # ex.: hash_mismatch / prev_hash_mismatch
-        reason = chain.get("reason") or "invalid"
-        at_id = chain.get("at_event_id")
-        if at_id is not None:
-            parts.append(f"event_chain {reason} at_event_id={at_id}")
-        else:
-            parts.append(f"event_chain {reason}")
-
-    if not snap_ok:
-        reason = snap.get("reason") or ("tampered" if snap.get("tampered") else "invalid")
-        if reason == "file_not_found":
-            parts.append("snapshot missing")
-        elif reason == "LOG_HASH_SALT_not_set":
-            parts.append("snapshot verify no_salt")
-        elif snap.get("tampered") is True:
-            parts.append("snapshot tampered")
-        else:
-            parts.append(f"snapshot {reason}")
-
-    return " | ".join(parts)
+def _canonical_json(obj: dict) -> str:
+    return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def _get_events_db_path() -> str | None:
-    # prioridade: ENV (mais correto)
     env_path = os.getenv("EVENTS_DB_PATH")
     if env_path:
         return env_path
 
-    # fallback: tenta inferir do objeto connection (nem sempre existe)
     try:
         conn = get_conn()
-        # pragma database_list retorna o caminho do arquivo principal (SQLite)
         row = conn.execute("PRAGMA database_list;").fetchone()
         if row and len(row) >= 3:
-            # row = (seq, name, file)
             return row[2]
     except Exception:
         pass
@@ -159,8 +73,62 @@ def _salt_fingerprint() -> str | None:
     salt = os.getenv("LOG_HASH_SALT", "")
     if not salt:
         return None
-    # fingerprint sem expor o salt (sha256 do salt)
-    return _sha256(salt)
+    return _sha256_prefixed(salt)
+
+
+def _config_fingerprint_current(machine_id: str) -> dict:
+    salt = os.getenv("LOG_HASH_SALT", "")
+    events_db_path = _get_events_db_path()
+
+    salt_fp = _sha256_prefixed(salt) if salt else None
+
+    payload = _canonical_json(
+        {
+            "machine_id": machine_id,
+            "events_db_path": events_db_path,
+            "salt_fingerprint": salt_fp,
+        }
+    )
+    cfg_fp = _sha256_prefixed(payload)
+
+    return {
+        "machine_id": machine_id,
+        "events_db_path": events_db_path,
+        "salt_fingerprint": salt_fp,
+        "config_fingerprint": cfg_fp,
+    }
+
+
+def _read_snapshot_config_fingerprint(machine_id: str, date_utc: str) -> dict:
+    """
+    Lê o config_fingerprint diretamente do arquivo de snapshot via BACKUPS_DIR (ou /backups).
+    Evita hardcode de ~/ellan_lab.
+    """
+    # Reaproveita o resolvedor do verify_snapshot_file: chamamos ele com verify_previous=False para obter path.
+    probe = verify_snapshot_file(
+        machine_id=machine_id,
+        date_utc=date_utc,
+        verify_previous=False,
+        verify_against_events_db=False,
+    )
+    path = probe.get("path")
+    if not path:
+        return {"ok": False, "reason": "snapshot_path_unknown"}
+
+    if probe.get("reason") == "file_not_found":
+        return {"ok": False, "reason": "snapshot_file_not_found", "path": path}
+
+    try:
+        raw = open(path, "r", encoding="utf-8").read()
+        data = json.loads(raw)
+    except Exception as e:
+        return {"ok": False, "reason": "snapshot_invalid_json", "path": path, "detail": str(e)}
+
+    cfg = data.get("config_fingerprint")
+    if not cfg:
+        return {"ok": False, "reason": "snapshot_config_fingerprint_missing", "path": path}
+
+    return {"ok": True, "path": path, "config_fingerprint": cfg}
 
 
 def _events_stats(machine_id: str) -> dict:
@@ -172,30 +140,39 @@ def _events_stats(machine_id: str) -> dict:
     ).fetchone()[0]
 
     first = conn.execute(
-        "SELECT id, ts FROM events WHERE machine_id = ? ORDER BY id ASC LIMIT 1;",
+        "SELECT id, ts, hash FROM events WHERE machine_id = ? ORDER BY id ASC LIMIT 1;",
         (machine_id,),
     ).fetchone()
 
     last = conn.execute(
-        "SELECT id, ts FROM events WHERE machine_id = ? ORDER BY id DESC LIMIT 1;",
+        "SELECT id, ts, hash FROM events WHERE machine_id = ? ORDER BY id DESC LIMIT 1;",
         (machine_id,),
     ).fetchone()
 
     return {
         "events_total": int(total),
-        "first_event": {"id": first[0], "ts": first[1]} if first else None,
-        "last_event": {"id": last[0], "ts": last[1]} if last else None,
+        "first_event": {"id": first[0], "ts": first[1], "hash": _normalize_hash(first[2])} if first else None,
+        "last_event": {"id": last[0], "ts": last[1], "hash": _normalize_hash(last[2])} if last else None,
         "bootstrap": (int(total) == 0),
     }
 
 
-def _verify_event_chain(machine_id: str, max_events: int):
+def _verify_event_chain(machine_id: str, max_events: int, strict_salt: bool = True) -> dict:
     """
-    Verificador interno do event log (equivalente ao /audit/verify).
-    Retorna dict detalhado.
+    Verificador interno do event log (similar ao /audit/verify),
+    compatível com hashes 'sha256:<hex>' e legacy.
     """
     conn = get_conn()
     salt = os.getenv("LOG_HASH_SALT", "")
+
+    if strict_salt and not salt:
+        return {
+            "ok": False,
+            "reason": "salt_not_set",
+            "detail": "LOG_HASH_SALT is not set (strict mode)",
+            "events_checked": 0,
+            "max_events": max_events,
+        }
 
     cur = conn.execute(
         """
@@ -210,21 +187,27 @@ def _verify_event_chain(machine_id: str, max_events: int):
     )
     rows = cur.fetchall()
 
-    prev = None
+    prev_norm = None
     checked = 0
+
     for r in rows:
         (
-            _id, ts, mid, door_id, event_type, severity, correlation_id,
+            event_id, ts, mid, door_id, event_type, severity, correlation_id,
             sale_id, command_id, old_state, new_state, payload_json, prev_hash, h
         ) = r
 
-        if prev_hash != prev:
+        prev_hash_norm = _normalize_hash(prev_hash)
+        h_norm = _normalize_hash(h)
+
+        if prev_hash_norm != prev_norm:
             return {
                 "ok": False,
                 "reason": "prev_hash_mismatch",
-                "at_event_id": _id,
+                "at_event_id": event_id,
                 "events_checked": checked,
                 "max_events": max_events,
+                "expected_prev_hash": prev_norm,
+                "got_prev_hash": prev_hash_norm,
             }
 
         base = "|".join(
@@ -239,77 +222,115 @@ def _verify_event_chain(machine_id: str, max_events: int):
                 command_id or "",
                 old_state or "",
                 new_state or "",
-                payload_json,
-                prev_hash or "",
-                salt,  # se salt vazio, ainda valida de forma consistente (mas fraco)
+                payload_json or "{}",
+                (prev_hash_norm or "").replace("sha256:", ""),  # compat
+                salt,
             ]
         )
-        expected = _sha256(base)
+        expected_norm = _sha256_prefixed(base)
 
-        if expected != h:
+        if h_norm != expected_norm:
             return {
                 "ok": False,
                 "reason": "hash_mismatch",
-                "at_event_id": _id,
+                "at_event_id": event_id,
                 "events_checked": checked,
                 "max_events": max_events,
+                "expected_hash": expected_norm,
+                "got_hash": h_norm,
             }
 
-        prev = h
+        prev_norm = h_norm
         checked += 1
-
-    # pega último id/hash para referência rápida
-    last = None
-    cur_last = conn.execute(
-        "SELECT id, ts, hash FROM events WHERE machine_id = ? ORDER BY id DESC LIMIT 1;",
-        (machine_id,),
-    )
-    row_last = cur_last.fetchone()
-    if row_last:
-        last = {"id": row_last[0], "ts": row_last[1], "hash": row_last[2]}
 
     return {
         "ok": True,
         "events_checked": checked,
         "max_events": max_events,
         "salt_used": bool(salt),
-        "last_event": last,
+        "last_hash": prev_norm,
     }
 
 
-# endpoint
+def _calc_severity(chain_ok: bool, snapshot_ok: bool, cfg_ok: bool) -> tuple[str, int]:
+    """
+    GREEN  = tudo ok
+    YELLOW = 1 falha
+    RED    = 2+ falhas
+    """
+    fails = 0
+    if not chain_ok:
+        fails += 1
+    if not snapshot_ok:
+        fails += 1
+    if not cfg_ok:
+        fails += 1
+
+    if fails == 0:
+        return ("GREEN", 0)
+    if fails == 1:
+        return ("YELLOW", 1)
+    return ("RED", 2)
+
+
+def _build_summary(chain: dict, snap: dict, cfg_ok: bool, cfg_reason: str | None) -> str:
+    if chain.get("ok") and snap.get("ok") and cfg_ok:
+        return "ok"
+
+    parts = []
+    if not chain.get("ok"):
+        parts.append(f"event_chain {chain.get('reason')}")
+    if not snap.get("ok"):
+        reason = snap.get("reason") or ("tampered" if snap.get("tampered") else "invalid")
+        parts.append(f"snapshot {reason}")
+    if not cfg_ok:
+        parts.append(f"config {cfg_reason or 'mismatch'}")
+
+    return " | ".join(parts)
+
+
 @router.api_route("/self_check", methods=["GET", "POST"])
 def self_check(
     request: Request,
-    machine_id: str = Query(None),
-    date_utc: str = Query(None, description="YYYY-MM-DD (UTC). Se vazio, usa hoje."),
-    max_events: int = Query(20000, ge=1, le=200000),
+    machine_id: str = Query(default=None),
+    date_utc: str = Query(default=None, description="YYYY-MM-DD (UTC). Se vazio, usa hoje."),
+    max_events: int = Query(20000, ge=1, le=50000),
+    strict_salt: bool = Query(default=True),
+    x_internal_token: str | None = Header(default=None),
 ):
     """
-    Heartbeat antifraude (profissional):
-    - verifica integridade do event chain (logs)
-    - verifica integridade do snapshot do dia (arquivo)
-    - retorna status geral + recomendações
+    Heartbeat antifraude (nível máximo):
+    - verifica integridade do event chain (hash chain)
+    - verifica integridade do snapshot do dia (arquivo + encadeamento + as-of date)
+    - verifica coerência de config_fingerprint (ambiente)
     """
-    mid = machine_id or _default_machine_id(request)
+    _require_internal_token(x_internal_token)
+
+    mid = machine_id or DEFAULT_MACHINE_ID
     date = date_utc or _utc_date_str()
 
     started_at = _utc_now_iso()
 
     # Check 1: Event chain
-    chain = _verify_event_chain(mid, max_events=max_events)
+    chain = _verify_event_chain(mid, max_events=max_events, strict_salt=strict_salt)
 
-    # Check 2: Snapshot file integrity
-    snap = verify_snapshot_file(machine_id=mid, date_utc=date)
+    # Check 2: Snapshot file integrity (histórico “as-of date”)
+    snap = verify_snapshot_file(
+        machine_id=mid,
+        date_utc=date,
+        verify_previous=True,
+        verify_against_events_db=True,
+    )
 
+    # Check 3: config fingerprint
     cfg_current = _config_fingerprint_current(mid)
     cfg_from_snapshot = _read_snapshot_config_fingerprint(mid, date)
 
-    cfg_match = False
+    cfg_ok = False
     cfg_reason = None
     if cfg_from_snapshot.get("ok"):
-        cfg_match = (cfg_current["config_fingerprint"] == cfg_from_snapshot["config_fingerprint"])
-        if not cfg_match:
+        cfg_ok = (cfg_current["config_fingerprint"] == cfg_from_snapshot["config_fingerprint"])
+        if not cfg_ok:
             cfg_reason = "mismatch"
     else:
         cfg_reason = cfg_from_snapshot.get("reason")
@@ -317,53 +338,33 @@ def self_check(
     chain_ok = bool(chain.get("ok"))
     snap_ok = bool(snap.get("ok"))
 
-    severity, severity_code = _calc_severity(chain_ok, snap_ok)
-    summary = _build_summary(chain, snap)
+    severity, severity_code = _calc_severity(chain_ok, snap_ok, cfg_ok)
+    summary = _build_summary(chain, snap, cfg_ok, cfg_reason)
 
-    # Se a config não bate com o snapshot do dia, eleva severidade e melhora summary
-    if cfg_match is False:
-        if severity_code == 0:
-            severity, severity_code = ("YELLOW", 1)
-        if summary == "ok":
-            summary = "config mismatch with snapshot"
-        else:
-            summary = summary + " | config mismatch with snapshot"
+    checks_ok = chain_ok and snap_ok and cfg_ok
 
-    # status global continua sendo o "ambos ok"
-    # checks_ok = chain_ok and snap_ok
-
-    # Status global
-    # checks_ok = bool(chain.get("ok")) and bool(snap.get("ok"))
-
-    # status global (ambos ok) vers.2 ELIMINAR ACIMA
-    checks_ok = chain_ok and snap_ok
-
-    # Recomendações automáticas (úteis pra operação)
     recommendations = []
-    if not os.getenv("LOG_HASH_SALT"):
-        recommendations.append("Definir LOG_HASH_SALT (obrigatório para segurança antifraude).")
-    if not os.getenv("MACHINE_ID"):
-        recommendations.append("Definir MACHINE_ID por serviço para evitar fallback por porta.")
-    if chain.get("ok") is False:
+    if strict_salt and not os.getenv("LOG_HASH_SALT"):
+        recommendations.append("Definir LOG_HASH_SALT (obrigatório para verificação forte).")
+    if DEFAULT_MACHINE_ID == "CACIFO-XX-001":
+        recommendations.append("Definir MACHINE_ID por serviço (evitar CACIFO-XX-001).")
+    if chain_ok is False:
         recommendations.append("ALERTA: Event chain inválido. Rodar /audit/verify detalhado e verificar DB.")
-    if snap.get("ok") is False:
+    if snap_ok is False:
         reason = snap.get("reason")
         if reason == "file_not_found":
             recommendations.append("Snapshot do dia não encontrado. Gerar via /audit/snapshot e configurar cron diário.")
         elif reason == "LOG_HASH_SALT_not_set":
             recommendations.append("Snapshot verify falhou por falta de LOG_HASH_SALT.")
         else:
-            recommendations.append("Snapshot inválido ou adulterado. Checar arquivos em 05_backups/daily/antifraud.")
+            recommendations.append("Snapshot inválido/adulterado. Checar arquivos em /backups/daily/antifraud.")
+    if cfg_ok is False:
+        recommendations.append("Config fingerprint não bate com snapshot: verificar EVENT_DB_PATH/BACKUPS_DIR/LOGS_DIR/LOG_HASH_SALT.")
 
     ended_at = _utc_now_iso()
-
     stats = _events_stats(mid)
     db_path = _get_events_db_path()
 
-    salt_fp = _salt_fingerprint()
-    salt_cfg = bool(os.getenv("LOG_HASH_SALT"))
-
-    # Payload profissional e completo
     return {
         "ok": checks_ok,
         "severity": severity,
@@ -371,7 +372,7 @@ def self_check(
         "summary": summary,
         "service": {
             "machine_id": mid,
-            "port": request.url.port if request.url else None,
+            "region": REGION,
             "date_utc": date,
         },
         "timestamps": {
@@ -381,29 +382,32 @@ def self_check(
         "checks": {
             "event_chain": chain,
             "snapshot_file": snap,
+            "config_fingerprint": {
+                "current": cfg_current,
+                "snapshot": cfg_from_snapshot,
+                "match": cfg_ok,
+                "reason": cfg_reason,
+            },
         },
         "storage": {
             "events_db_path": db_path,
+            "backups_dir": os.getenv("BACKUPS_DIR") or ("/backups" if os.path.exists("/backups") else None),
+            "logs_dir": os.getenv("LOGS_DIR") or ("/logs" if os.path.exists("/logs") else None),
         },
-        "stats": {
-            **stats
-        },
+        "stats": stats,
         "environment": {
-            "salt_configured": salt_cfg,
-            "salt_fingerprint": salt_fp,  # NÃO expõe o salt
+            "salt_configured": bool(os.getenv("LOG_HASH_SALT")),
+            "salt_fingerprint": _salt_fingerprint(),
             "machine_id_configured": bool(os.getenv("MACHINE_ID")),
             "events_db_path_configured": bool(os.getenv("EVENTS_DB_PATH")),
-        },
-        "config": {
-            "current": cfg_current,
-            "snapshot": cfg_from_snapshot,
-            "match": cfg_match,
-            "reason": cfg_reason,
         },
         "recommendations": recommendations,
         "links": {
             "verify_event_chain": f"/audit/verify?machine_id={mid}&max_events={max_events}",
+            "list_events": f"/audit/events?machine_id={mid}&limit=200",
             "snapshot_generate": f"/audit/snapshot?machine_id={mid}",
             "snapshot_verify_file": f"/audit/snapshot/verify_file?machine_id={mid}&date_utc={date}",
+            "snapshot_verify_latest": f"/audit/snapshot/verify_latest?machine_id={mid}&days=7",
+            "snapshot_create_latest": f"/audit/snapshot/create_latest?machine_id={mid}&days=7",
         },
     }

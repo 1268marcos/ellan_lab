@@ -111,6 +111,11 @@ services:
       MQTT_HOST: mqtt_broker
       LOCKER_ID: LOCKER_SP_01
       MACHINE_ID: CACIFO-SP-001
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
 
       HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
       PORT: 8000
@@ -155,6 +160,11 @@ services:
       MQTT_HOST: mqtt_broker
       LOCKER_ID: LOCKER_PT_01
       MACHINE_ID: CACIFO-PT-001
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
 
       HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
       PORT: 8000

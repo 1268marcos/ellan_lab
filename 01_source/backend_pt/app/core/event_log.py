@@ -4,7 +4,6 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, Union
 
-# from .db import get_conn
 from app.core.db import get_conn
 from .event_types import EventType, Severity
 
@@ -17,7 +16,7 @@ def _canonical_json(payload: Dict[str, Any]) -> str:
     # JSON estável (ordem fixa) para hash consistente
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
-
+# def _sha256_hex(s: str) -> str:
 def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
@@ -43,20 +42,21 @@ def log_event(
     old_state: Optional[str] = None,
     new_state: Optional[str] = None,
     payload: Optional[Dict[str, Any]] = None,
+    # bônus: permite batching transacional (opcional, não quebra)
+    conn=None,
 ) -> Dict[str, Any]:
     """
     Escreve evento IMUTÁVEL na tabela events (append-only) com hash encadeado.
+    Retorna também event_id (SQLite AUTOINCREMENT) para debug/auditoria.
     """
-    conn = get_conn()
+    conn = conn or get_conn()
     ts = utc_now_iso()
     payload = payload or {}
 
-
-    # Normaliza e valida Enum/str (para compatibilidade sem perder padronização)
+    # Normaliza e valida Enum/str
     if isinstance(event_type, EventType):
         event_type_value = event_type.value
     elif isinstance(event_type, str):
-        # valida se string é um valor permitido do Enum
         try:
             event_type_value = EventType(event_type).value
         except Exception:
@@ -74,11 +74,9 @@ def log_event(
     else:
         raise TypeError(f"severity must be Severity or str, got: {type(severity)}")
 
-
     payload_json = _canonical_json(payload)
     prev_hash = _get_last_hash(conn, machine_id)
 
-    # opcional: SALT para reforçar (não é assinatura ainda)
     salt = os.getenv("LOG_HASH_SALT", "")
 
     base = "|".join(
@@ -98,9 +96,10 @@ def log_event(
             salt,
         ]
     )
-    event_hash = _sha256(base)
+    # event_hash = "sha256:" + _sha256_hex(base)
+    event_hash = "sha256:" + _sha256(base)
 
-    conn.execute(
+    cur = conn.execute(
         """
         INSERT INTO events
         (ts, machine_id, door_id, event_type, severity, correlation_id, sale_id,
@@ -125,7 +124,10 @@ def log_event(
     )
     conn.commit()
 
+    event_id = cur.lastrowid  # ✅ nível máximo: id real do SQLite
+
     return {
+        "event_id": event_id,
         "ts": ts,
         "machine_id": machine_id,
         "door_id": door_id,
@@ -137,6 +139,7 @@ def log_event(
         "old_state": old_state,
         "new_state": new_state,
         "payload": payload,
+        "payload_json": payload_json,  # útil para comparação exata
         "prev_hash": prev_hash,
         "hash": event_hash,
     }

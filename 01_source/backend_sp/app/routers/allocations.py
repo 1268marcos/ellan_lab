@@ -1,5 +1,4 @@
-# /home/marcos/ellan_lab/01_source/backend_sp/app/routers/allocations.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -8,7 +7,6 @@ import os
 
 from app.core.db import get_conn
 
-# router = APIRouter(prefix="/locker", tags=["locker-allocations"])
 router = APIRouter(prefix="/locker", tags=["locker"])
 
 # --------- helpers ---------
@@ -20,12 +18,25 @@ def _now_iso() -> str:
     return _now().isoformat()
 
 def _machine_id() -> str:
-    # defina MACHINE_ID=CACIFO-SP-001 / CACIFO-PT-001 no docker-compose
-    return os.getenv("MACHINE_ID", "CACIFO-XX-001")
+    return os.getenv("MACHINE_ID", "CACIFO-SP-001")
+
+def _raise(status: int, *, err_type: str, message: str, retryable: bool, **extra):
+    detail = {"type": err_type, "message": message, "retryable": retryable}
+    if extra:
+        detail.update(extra)
+    raise HTTPException(status_code=status, detail=detail)
 
 def _ensure_slot_range(slot: int) -> None:
     if slot < 1 or slot > 24:
-        raise HTTPException(status_code=400, detail="slot must be 1..24")
+        _raise(
+            400,
+            err_type="INVALID_SLOT",
+            message="slot must be 1..24",
+            retryable=False,
+            slot=slot,
+            min_slot=1,
+            max_slot=24,
+        )
 
 def _door_state_get(conn, machine_id: str, door_id: int) -> Optional[str]:
     cur = conn.execute(
@@ -47,7 +58,6 @@ def _door_state_upsert(conn, machine_id: str, door_id: int, state: str, product_
     )
 
 def _bootstrap_24(conn, machine_id: str) -> None:
-    # garante as 24 portas existirem
     for i in range(1, 25):
         cur = conn.execute(
             "SELECT 1 FROM door_state WHERE machine_id=? AND door_id=?",
@@ -58,10 +68,6 @@ def _bootstrap_24(conn, machine_id: str) -> None:
     conn.commit()
 
 def _expire_old_allocations(conn, machine_id: str) -> int:
-    """
-    Marca como EXPIRED o que venceu e solta a porta (volta AVAILABLE),
-    mas só se a porta ainda estiver RESERVED (não mexe em PAID_PENDING_PICKUP etc.)
-    """
     now_iso = _now_iso()
     cur = conn.execute(
         """
@@ -74,7 +80,6 @@ def _expire_old_allocations(conn, machine_id: str) -> int:
     rows = cur.fetchall()
     expired = 0
     for allocation_id, door_id in rows:
-        # libera porta se ainda estiver RESERVED
         st = _door_state_get(conn, machine_id, int(door_id))
         if st == "RESERVED":
             _door_state_upsert(conn, machine_id, int(door_id), "AVAILABLE", None)
@@ -91,7 +96,6 @@ def _expire_old_allocations(conn, machine_id: str) -> int:
 # --------- models ---------
 
 class AllocateIn(BaseModel):
-    # opcional, para quando você tiver SKU/bolo diferente
     product_id: Optional[str] = None
     ttl_sec: int = 120
     request_id: Optional[str] = None
@@ -113,178 +117,298 @@ class ReleaseIn(BaseModel):
 # --------- endpoints ---------
 
 @router.post("/allocate", response_model=AllocateOut)
-def allocate(payload: AllocateIn):
-    conn = get_conn()
+def allocate(payload: AllocateIn, request: Request):
     machine_id = _machine_id()
-
-    _bootstrap_24(conn, machine_id)
-    _expire_old_allocations(conn, machine_id)
-
-    ttl = int(payload.ttl_sec)
-    ttl = max(30, min(ttl, 600))
-
-    # ✅ IDPOTÊNCIA: se o mesmo request_id repetir, devolve a mesma allocation ativa
-    if payload.request_id:
-        cur = conn.execute(
-            """
-            SELECT allocation_id, door_id, state, expires_at
-            FROM allocations
-            WHERE machine_id=? AND request_id=? AND state IN ('RESERVED','COMMITTED')
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            (machine_id, payload.request_id),
-        )
-        existing = cur.fetchone()
-        if existing:
-            allocation_id, door_id, st, expires_at = existing
-            return AllocateOut(
-                allocation_id=allocation_id,
-                machine_id=machine_id,
-                door_id=int(door_id),
-                state=st,
-                expires_at=expires_at,
-            )
-
-    # escolhe a primeira porta AVAILABLE
-    cur = conn.execute(
-        """
-        SELECT door_id
-        FROM door_state
-        WHERE machine_id=? AND state='AVAILABLE'
-        ORDER BY door_id
-        LIMIT 1
-        """,
-        (machine_id,),
-    )
-    row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=409, detail="no AVAILABLE slots")
-
-    door_id = int(row[0])
-
-    # claim atômico: só reserva se ainda estava AVAILABLE
-    updated_at = _now_iso()
-    res = conn.execute(
-        """
-        UPDATE door_state
-        SET state='RESERVED', product_id=?, updated_at=?
-        WHERE machine_id=? AND door_id=? AND state='AVAILABLE'
-        """,
-        (payload.product_id, updated_at, machine_id, door_id),
-    )
-    if res.rowcount == 0:
-        conn.rollback()
-        raise HTTPException(status_code=409, detail="slot was taken, retry")
-
-    allocation_id = f"al_{uuid.uuid4().hex}"
-    expires_at = (_now() + timedelta(seconds=ttl)).isoformat()
 
     try:
-        conn.execute(
+        conn = get_conn()
+        _bootstrap_24(conn, machine_id)
+        _expire_old_allocations(conn, machine_id)
+
+        ttl = int(payload.ttl_sec)
+        ttl = max(30, min(ttl, 600))
+
+        # idempotência por request_id
+        if payload.request_id:
+            cur = conn.execute(
+                """
+                SELECT allocation_id, door_id, state, expires_at
+                FROM allocations
+                WHERE machine_id=? AND request_id=? AND state IN ('RESERVED','COMMITTED')
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                (machine_id, payload.request_id),
+            )
+            existing = cur.fetchone()
+            if existing:
+                allocation_id, door_id, st, expires_at = existing
+                return AllocateOut(
+                    allocation_id=allocation_id,
+                    machine_id=machine_id,
+                    door_id=int(door_id),
+                    state=st,
+                    expires_at=expires_at,
+                )
+
+        # escolhe a primeira porta AVAILABLE
+        cur = conn.execute(
             """
-            INSERT INTO allocations(allocation_id, machine_id, door_id, state, created_at, expires_at, sale_id, request_id)
-            VALUES (?, ?, ?, 'RESERVED', ?, ?, NULL, ?)
+            SELECT door_id
+            FROM door_state
+            WHERE machine_id=? AND state='AVAILABLE'
+            ORDER BY door_id
+            LIMIT 1
             """,
-            (allocation_id, machine_id, door_id, _now_iso(), expires_at, payload.request_id),
+            (machine_id,),
         )
-    except Exception as e:
-        # rollback de segurança: desfaz a reserva no door_state
-        # (só se ainda RESERVED)
-        st = _door_state_get(conn, machine_id, door_id)
-        if st == "RESERVED":
-            _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+        row = cur.fetchone()
+        if not row:
+            _raise(
+                409,
+                err_type="NO_AVAILABLE_SLOTS",
+                message="no AVAILABLE slots",
+                retryable=True,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+            )
+
+        door_id = int(row[0])
+
+        # claim atômico
+        updated_at = _now_iso()
+        res = conn.execute(
+            """
+            UPDATE door_state
+            SET state='RESERVED', product_id=?, updated_at=?
+            WHERE machine_id=? AND door_id=? AND state='AVAILABLE'
+            """,
+            (payload.product_id, updated_at, machine_id, door_id),
+        )
+        if res.rowcount == 0:
+            conn.rollback()
+            _raise(
+                409,
+                err_type="SLOT_TAKEN",
+                message="slot was taken, retry",
+                retryable=True,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                door_id=door_id,
+            )
+
+        allocation_id = f"al_{uuid.uuid4().hex}"
+        expires_at = (_now() + timedelta(seconds=ttl)).isoformat()
+
+        try:
+            conn.execute(
+                """
+                INSERT INTO allocations(allocation_id, machine_id, door_id, state, created_at, expires_at, sale_id, request_id)
+                VALUES (?, ?, ?, 'RESERVED', ?, ?, NULL, ?)
+                """,
+                (allocation_id, machine_id, door_id, _now_iso(), expires_at, payload.request_id),
+            )
+        except Exception as e:
+            # desfaz reserva se insert falhar
+            st = _door_state_get(conn, machine_id, door_id)
+            if st == "RESERVED":
+                _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+            conn.commit()
+            _raise(
+                409,
+                err_type="RESOURCE_ALLOCATION_CONFLICT",
+                message="allocation insert failed",
+                retryable=True,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                door_id=door_id,
+                allocation_id=allocation_id,
+                db_error=str(e),
+            )
+
         conn.commit()
-        raise HTTPException(status_code=409, detail=f"allocation insert failed: {str(e)}")
 
-    conn.commit()
+        return AllocateOut(
+            allocation_id=allocation_id,
+            machine_id=machine_id,
+            door_id=door_id,
+            state="RESERVED",
+            expires_at=expires_at,
+        )
 
-    return AllocateOut(
-        allocation_id=allocation_id,
-        machine_id=machine_id,
-        door_id=door_id,
-        state="RESERVED",
-        expires_at=expires_at,
-    )
+    except HTTPException:
+        raise
+    except Exception as e:
+        _raise(
+            500,
+            err_type="DB_OPERATION_FAILED",
+            message=str(e),
+            retryable=True,
+            machine_id=machine_id,
+            endpoint=str(request.url.path),
+        )
 
 @router.post("/allocations/{allocation_id}/commit")
-def commit(allocation_id: str, payload: CommitIn):
-    conn = get_conn()
+def commit(allocation_id: str, payload: CommitIn, request: Request):
     machine_id = _machine_id()
 
-    _expire_old_allocations(conn, machine_id)
+    try:
+        conn = get_conn()
+        _expire_old_allocations(conn, machine_id)
 
-    cur = conn.execute(
-        """
-        SELECT door_id, state, expires_at
-        FROM allocations
-        WHERE allocation_id=? AND machine_id=?
-        """,
-        (allocation_id, machine_id),
-    )
-    row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="allocation not found")
+        cur = conn.execute(
+            """
+            SELECT door_id, state, expires_at
+            FROM allocations
+            WHERE allocation_id=? AND machine_id=?
+            """,
+            (allocation_id, machine_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            _raise(
+                404,
+                err_type="ALLOCATION_NOT_FOUND",
+                message="allocation not found",
+                retryable=False,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                allocation_id=allocation_id,
+            )
 
-    door_id, st, expires_at = int(row[0]), row[1], row[2]
-    if st in ("RELEASED", "EXPIRED"):
-        raise HTTPException(status_code=409, detail=f"allocation not active (state={st})")
+        door_id, st, expires_at = int(row[0]), row[1], row[2]
 
-    # se expirou, trata como expired
-    if expires_at < _now_iso():
-        conn.execute("UPDATE allocations SET state='EXPIRED' WHERE allocation_id=?", (allocation_id,))
-        # libera porta se ainda RESERVED
-        if _door_state_get(conn, machine_id, door_id) == "RESERVED":
-            _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+        if st in ("RELEASED", "EXPIRED"):
+            _raise(
+                409,
+                err_type="ALLOCATION_NOT_ACTIVE",
+                message=f"allocation not active (state={st})",
+                retryable=False,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                allocation_id=allocation_id,
+                door_id=door_id,
+                state=st,
+            )
+
+        if expires_at < _now_iso():
+            conn.execute("UPDATE allocations SET state='EXPIRED' WHERE allocation_id=?", (allocation_id,))
+            if _door_state_get(conn, machine_id, door_id) == "RESERVED":
+                _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+            conn.commit()
+            _raise(
+                409,
+                err_type="ALLOCATION_EXPIRED",
+                message="allocation expired",
+                retryable=False,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                allocation_id=allocation_id,
+                door_id=door_id,
+            )
+
+        conn.execute(
+            """
+            UPDATE allocations
+            SET state='COMMITTED', sale_id=?, request_id=?
+            WHERE allocation_id=? AND machine_id=?
+            """,
+            (payload.sale_id, payload.request_id, allocation_id, machine_id),
+        )
         conn.commit()
-        raise HTTPException(status_code=409, detail="allocation expired")
 
-    # Commit mantém a porta RESERVED; o pagamento depois vira PAID_PENDING_PICKUP via set-state
-    conn.execute(
-        """
-        UPDATE allocations
-        SET state='COMMITTED', sale_id=?, request_id=?
-        WHERE allocation_id=? AND machine_id=?
-        """,
-        (payload.sale_id, payload.request_id, allocation_id, machine_id),
-    )
-    conn.commit()
+        return {
+            "ok": True,
+            "machine_id": machine_id,
+            "endpoint": str(request.url.path),
+            "allocation_id": allocation_id,
+            "door_id": door_id,
+            "state": "COMMITTED",
+        }
 
-    return {"ok": True, "allocation_id": allocation_id, "machine_id": machine_id, "door_id": door_id, "state": "COMMITTED"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        _raise(
+            500,
+            err_type="DB_OPERATION_FAILED",
+            message=str(e),
+            retryable=True,
+            machine_id=machine_id,
+            endpoint=str(request.url.path),
+            allocation_id=allocation_id,
+        )
 
 @router.post("/allocations/{allocation_id}/release")
-def release(allocation_id: str, payload: ReleaseIn):
-    conn = get_conn()
+def release(allocation_id: str, payload: ReleaseIn, request: Request):
     machine_id = _machine_id()
 
-    cur = conn.execute(
-        """
-        SELECT door_id, state
-        FROM allocations
-        WHERE allocation_id=? AND machine_id=?
-        """,
-        (allocation_id, machine_id),
-    )
-    row = cur.fetchone()
-    if not row:
-        raise HTTPException(status_code=404, detail="allocation not found")
+    try:
+        conn = get_conn()
 
-    door_id, st = int(row[0]), row[1]
-    if st in ("RELEASED", "EXPIRED"):
-        return {"ok": True, "allocation_id": allocation_id, "state": st, "door_id": door_id}
+        cur = conn.execute(
+            """
+            SELECT door_id, state
+            FROM allocations
+            WHERE allocation_id=? AND machine_id=?
+            """,
+            (allocation_id, machine_id),
+        )
+        row = cur.fetchone()
+        if not row:
+            _raise(
+                404,
+                err_type="ALLOCATION_NOT_FOUND",
+                message="allocation not found",
+                retryable=False,
+                machine_id=machine_id,
+                endpoint=str(request.url.path),
+                allocation_id=allocation_id,
+            )
 
-    # libera porta se estiver RESERVED (não mexe se já pagou/retirou)
-    if _door_state_get(conn, machine_id, door_id) == "RESERVED":
-        _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+        door_id, st = int(row[0]), row[1]
 
-    conn.execute(
-        """
-        UPDATE allocations
-        SET state='RELEASED', request_id=?
-        WHERE allocation_id=? AND machine_id=?
-        """,
-        (payload.request_id, allocation_id, machine_id),
-    )
-    conn.commit()
+        if st in ("RELEASED", "EXPIRED"):
+            return {
+                "ok": True,
+                "machine_id": machine_id,
+                "endpoint": str(request.url.path),
+                "allocation_id": allocation_id,
+                "door_id": door_id,
+                "state": st,
+            }
 
-    return {"ok": True, "allocation_id": allocation_id, "machine_id": machine_id, "door_id": door_id, "state": "RELEASED"}
+        if _door_state_get(conn, machine_id, door_id) == "RESERVED":
+            _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
+
+        conn.execute(
+            """
+            UPDATE allocations
+            SET state='RELEASED', request_id=?
+            WHERE allocation_id=? AND machine_id=?
+            """,
+            (payload.request_id, allocation_id, machine_id),
+        )
+        conn.commit()
+
+        return {
+            "ok": True,
+            "machine_id": machine_id,
+            "endpoint": str(request.url.path),
+            "allocation_id": allocation_id,
+            "door_id": door_id,
+            "state": "RELEASED",
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        _raise(
+            500,
+            err_type="DB_OPERATION_FAILED",
+            message=str(e),
+            retryable=True,
+            machine_id=machine_id,
+            endpoint=str(request.url.path),
+            allocation_id=allocation_id,
+        )
