@@ -44,3 +44,7 @@ build/
 
 # Docker
 docker-compose.override.yml
+
+# Pastas para ignorar
+04_logs/
+05_backups/
