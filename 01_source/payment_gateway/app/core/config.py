@@ -5,8 +5,8 @@ from typing import Dict, Optional
 # Configurações básicas
 class Settings:
     # Backends regionais
-    BACKEND_SP: str = os.getenv("BACKEND_SP", "http://backend_sp:8000")
-    BACKEND_PT: str = os.getenv("BACKEND_PT", "http://backend_pt:8000")
+    BACKEND_SP: str = os.getenv("BACKEND_SP", "http://backend_sp:8000") # intenal
+    BACKEND_PT: str = os.getenv("BACKEND_PT", "http://backend_pt:8000") # internal
     
     # Paths dos endpoints regionais
     BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "")

@@ -59,8 +59,8 @@ export default function App() {
 
     // 🔥 MAPA DE ENDPOINTS POR REGIÃO
     // const endpoints = {
-    //   SP: "http://localhost:8101/gateway/pagamento",
-    //   PT: "http://localhost:8102/gateway/pagamento"
+    //   SP: "http://localhost:8201/gateway/pagamento",
+    //   PT: "http://localhost:8202/gateway/pagamento"
     // };
     // const url = endpoints[region];
 
@@ -140,7 +140,7 @@ export default function App() {
           borderRadius: 4,
           border: '1px solid #ddd'
         }}>
-          <strong>🌍 Região ativa:</strong> {region === 'SP' ? '🇧🇷 Carapicuíba (porta 8101)' : '🇵🇹 Maia (porta 8102)'}
+          <strong>🌍 Região ativa:</strong> {region === 'SP' ? '🇧🇷 Carapicuíba (porta 8201)' : '🇵🇹 Maia (porta 8202)'}
         </div>
         <select 
           value={region} 

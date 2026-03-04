@@ -8,7 +8,7 @@ class Settings(BaseModel):
     service_name: str = os.getenv("SERVICE_NAME", "order_pickup_service")
 
     # (PROPOSTO) endpoints dos totens
-    backend_sp_base: str = os.getenv("BACKEND_SP_BASE", "http://backend_sp:8101")
-    backend_pt_base: str = os.getenv("BACKEND_PT_BASE", "http://backend_pt:8102")
+    backend_sp_internal: str = os.getenv("BACKEND_SP_INTERNAL", "http://backend_sp:8000") # porta interna para rodar no docker - 8201 é porta publicada/externo e funciona ex. em http://localhost:8201/docs
+    backend_pt_internal: str = os.getenv("BACKEND_PT_INTERNAL", "http://backend_pt:8000") # porta interna para rodar no docker - 8202 é porta publicada/externo e funciona ex. em http://localhost:8202/docs
 
 settings = Settings()

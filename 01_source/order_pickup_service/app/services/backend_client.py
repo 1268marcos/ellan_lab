@@ -3,8 +3,8 @@ import os
 import requests
 from typing import Dict, Any
 
-BACKEND_SP_BASE = os.getenv("BACKEND_SP_BASE", "http://localhost:8201")
-BACKEND_PT_BASE = os.getenv("BACKEND_PT_BASE", "http://localhost:8202")
+BACKEND_SP_EXTERNAL = os.getenv("BACKEND_SP_EXTERNAL", "http://localhost:8201") # TROCA de _BASE para _EXTERNAL
+BACKEND_PT_EXTERNAL = os.getenv("BACKEND_PT_EXTERNAL", "http://localhost:8202")
 
 PRICE_PATH_TEMPLATE = os.getenv("BACKEND_PRICE_PATH_TEMPLATE", "/catalog/skus/{sku_id}")
 
@@ -12,9 +12,9 @@ DEFAULT_TIMEOUT = (2.0, 3.0)  # connect timeout, read timeout
 
 def _base(region: str) -> str:
     if region == "SP":
-        return BACKEND_SP_BASE
+        return BACKEND_SP_EXTERNAL
     if region == "PT":
-        return BACKEND_PT_BASE
+        return BACKEND_PT_EXTERNAL
     raise ValueError("region must be SP or PT")
 
 def get_sku_pricing(region: str, sku_id: str) -> Dict[str, Any]:
@@ -82,7 +82,7 @@ def locker_set_state(region: str, slot: int, state: str) -> Dict[str, Any]:
 # 02-03-2026
 def pickup_verify(region: str, order_id: str, step_index: int, expires_at: int, signature: str,
                   locker_id: str, porta: int, gateway_id: str):
-    base = os.getenv("BACKEND_PT_BASE") if region == "PT" else os.getenv("BACKEND_SP_BASE")
+    base = os.getenv("BACKEND_PT_EXTERNAL") if region == "PT" else os.getenv("BACKEND_SP_EXTERNAL")
     url = f"{base}/internal/pickup/verify"  # endpoint no backend (não no pickup_service)
     headers = {"X-Internal-Token": os.getenv("INTERNAL_TOKEN", "")}
 

@@ -3,7 +3,7 @@ import requests
 from app.core.config import settings
 
 def _base_for_region(region: str) -> str:
-    return settings.backend_sp_base if region == "SP" else settings.backend_pt_base
+    return settings.backend_sp_internal if region == "SP" else settings.backend_pt_internal
 
 def allocate_slot(region: str, sku_id: str, ttl_sec: int, request_id: str) -> dict:
     """
