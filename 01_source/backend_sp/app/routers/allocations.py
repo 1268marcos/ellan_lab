@@ -18,7 +18,7 @@ def _now_iso() -> str:
     return _now().isoformat()
 
 def _machine_id() -> str:
-    return os.getenv("MACHINE_ID", "CACIFO-SP-001")
+    return os.getenv("MACHINE_ID", "CACIFO-PT-001")
 
 def _raise(status: int, *, err_type: str, message: str, retryable: bool, **extra):
     detail = {"type": err_type, "message": message, "retryable": retryable}
@@ -96,14 +96,19 @@ def _expire_old_allocations(conn, machine_id: str) -> int:
 # --------- models ---------
 
 class AllocateIn(BaseModel):
+    # CONTRATO NOVO (order_pickup_service)
+    sku_id: Optional[str] = None
+
+    # COMPAT LEGADO (se algum caller antigo mandar)
     product_id: Optional[str] = None
+
     ttl_sec: int = 120
     request_id: Optional[str] = None
 
 class AllocateOut(BaseModel):
     allocation_id: str
+    slot: int
     machine_id: str
-    door_id: int
     state: str
     expires_at: str
 
@@ -119,6 +124,18 @@ class ReleaseIn(BaseModel):
 @router.post("/allocate", response_model=AllocateOut)
 def allocate(payload: AllocateIn, request: Request):
     machine_id = _machine_id()
+
+    # normaliza o identificador do item (preferindo sku_id)
+    prod = payload.sku_id or payload.product_id
+    if not prod:
+        _raise(
+            400,
+            err_type="MISSING_SKU_ID",
+            message="sku_id is required (or product_id for legacy callers)",
+            retryable=False,
+            machine_id=machine_id,
+            endpoint=str(request.url.path),
+        )
 
     try:
         conn = get_conn()
@@ -146,7 +163,7 @@ def allocate(payload: AllocateIn, request: Request):
                 return AllocateOut(
                     allocation_id=allocation_id,
                     machine_id=machine_id,
-                    door_id=int(door_id),
+                    slot=int(door_id),
                     state=st,
                     expires_at=expires_at,
                 )
@@ -183,7 +200,7 @@ def allocate(payload: AllocateIn, request: Request):
             SET state='RESERVED', product_id=?, updated_at=?
             WHERE machine_id=? AND door_id=? AND state='AVAILABLE'
             """,
-            (payload.product_id, updated_at, machine_id, door_id),
+            (prod, updated_at, machine_id, door_id),
         )
         if res.rowcount == 0:
             conn.rollback()
@@ -194,7 +211,7 @@ def allocate(payload: AllocateIn, request: Request):
                 retryable=True,
                 machine_id=machine_id,
                 endpoint=str(request.url.path),
-                door_id=door_id,
+                slot=door_id,
             )
 
         allocation_id = f"al_{uuid.uuid4().hex}"
@@ -221,7 +238,7 @@ def allocate(payload: AllocateIn, request: Request):
                 retryable=True,
                 machine_id=machine_id,
                 endpoint=str(request.url.path),
-                door_id=door_id,
+                slot=door_id,
                 allocation_id=allocation_id,
                 db_error=str(e),
             )
@@ -231,7 +248,7 @@ def allocate(payload: AllocateIn, request: Request):
         return AllocateOut(
             allocation_id=allocation_id,
             machine_id=machine_id,
-            door_id=door_id,
+            slot=door_id,
             state="RESERVED",
             expires_at=expires_at,
         )
@@ -287,7 +304,7 @@ def commit(allocation_id: str, payload: CommitIn, request: Request):
                 machine_id=machine_id,
                 endpoint=str(request.url.path),
                 allocation_id=allocation_id,
-                door_id=door_id,
+                slot=door_id,
                 state=st,
             )
 
@@ -304,7 +321,7 @@ def commit(allocation_id: str, payload: CommitIn, request: Request):
                 machine_id=machine_id,
                 endpoint=str(request.url.path),
                 allocation_id=allocation_id,
-                door_id=door_id,
+                slot=door_id,
             )
 
         conn.execute(
@@ -322,7 +339,8 @@ def commit(allocation_id: str, payload: CommitIn, request: Request):
             "machine_id": machine_id,
             "endpoint": str(request.url.path),
             "allocation_id": allocation_id,
-            "door_id": door_id,
+            "door_id": door_id,  # legado
+            "slot": door_id,     # contrato “amigável”
             "state": "COMMITTED",
         }
 
@@ -374,7 +392,8 @@ def release(allocation_id: str, payload: ReleaseIn, request: Request):
                 "machine_id": machine_id,
                 "endpoint": str(request.url.path),
                 "allocation_id": allocation_id,
-                "door_id": door_id,
+                "door_id": door_id,  # legado
+                "slot": door_id,     # contrato “amigável”
                 "state": st,
             }
 
@@ -396,7 +415,8 @@ def release(allocation_id: str, payload: ReleaseIn, request: Request):
             "machine_id": machine_id,
             "endpoint": str(request.url.path),
             "allocation_id": allocation_id,
-            "door_id": door_id,
+            "door_id": door_id,  # legado
+            "slot": door_id,     # contrato “amigável”
             "state": "RELEASED",
         }
 

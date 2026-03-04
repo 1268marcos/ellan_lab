@@ -1,4 +1,3 @@
-# 01_source/backend_sp/app/core/db.py
 import os
 import sqlite3
 from pathlib import Path
@@ -21,8 +20,110 @@ def get_conn() -> sqlite3.Connection:
     return _conn
 
 
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (name,),
+    )
+    return cur.fetchone() is not None
+
+
+def _index_exists(conn: sqlite3.Connection, name: str) -> bool:
+    cur = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name=?",
+        (name,),
+    )
+    return cur.fetchone() is not None
+
+
+def _allocations_has_bad_unique(conn: sqlite3.Connection) -> bool:
+    """
+    Detecta o schema antigo:
+      UNIQUE(machine_id, door_id) dentro da tabela allocations.
+    Isso costuma aparecer no SQL do sqlite_master.
+    """
+    cur = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='allocations'"
+    )
+    row = cur.fetchone()
+    if not row or not row[0]:
+        return False
+    sql = row[0].upper().replace(" ", "")
+    return "UNIQUE(MACHINE_ID,DOOR_ID)" in sql
+
+
+def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
+    """
+    Migração idempotente:
+    - recria allocations sem UNIQUE(machine_id, door_id)
+    - mantém os dados
+    - cria índice único parcial para ativos (RESERVED/COMMITTED)
+    """
+    conn.execute("BEGIN;")
+    try:
+        # 1) cria tabela nova (sem UNIQUE)
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS allocations_new (
+                allocation_id TEXT PRIMARY KEY,
+                machine_id TEXT NOT NULL,
+                door_id INTEGER NOT NULL,
+                state TEXT NOT NULL, -- RESERVED | COMMITTED | RELEASED | EXPIRED
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                sale_id TEXT,
+                request_id TEXT
+            );
+            """
+        )
+
+        # 2) copia dados antigos
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO allocations_new
+            (allocation_id, machine_id, door_id, state, created_at, expires_at, sale_id, request_id)
+            SELECT allocation_id, machine_id, door_id, state, created_at, expires_at, sale_id, request_id
+            FROM allocations;
+            """
+        )
+
+        # 3) troca tabela
+        conn.execute("DROP TABLE allocations;")
+        conn.execute("ALTER TABLE allocations_new RENAME TO allocations;")
+
+        # 4) recria índices “normais”
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_allocations_machine_state
+            ON allocations(machine_id, state, expires_at);
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_allocations_machine_door
+            ON allocations(machine_id, door_id);
+            """
+        )
+
+        # 5) índice único parcial (só para alocações ativas)
+        # Permite histórico (RELEASED/EXPIRED) sem travar novas reservas.
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_alloc_active
+            ON allocations(machine_id, door_id)
+            WHERE state IN ('RESERVED','COMMITTED');
+            """
+        )
+
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
 def init_db() -> None:
     conn = get_conn()
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS events (
@@ -78,6 +179,7 @@ def init_db() -> None:
         """
     )
 
+    # Tabela allocations: se não existir, cria já no formato novo (sem UNIQUE ruim)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS allocations (
@@ -88,8 +190,7 @@ def init_db() -> None:
             created_at TEXT NOT NULL,
             expires_at TEXT NOT NULL,
             sale_id TEXT,
-            request_id TEXT,
-            UNIQUE(machine_id, door_id)
+            request_id TEXT
         );
         """
     )
@@ -108,6 +209,18 @@ def init_db() -> None:
         """
     )
 
-
+    # Índice único parcial para impedir duas reservas ativas na mesma porta,
+    # mas permitir histórico de RELEASED/EXPIRED.
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_alloc_active
+        ON allocations(machine_id, door_id)
+        WHERE state IN ('RESERVED','COMMITTED');
+        """
+    )
 
     conn.commit()
+
+    # Se a tabela foi criada lá atrás com UNIQUE(machine_id, door_id), migra.
+    if _table_exists(conn, "allocations") and _allocations_has_bad_unique(conn):
+        _migrate_allocations_drop_bad_unique(conn)

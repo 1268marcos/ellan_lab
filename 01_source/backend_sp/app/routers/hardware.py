@@ -1,4 +1,3 @@
-# /home/marcos/ellan_lab/01_source/backend_pt/app/routers/hardware.py
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -10,11 +9,22 @@ from app.core.db import get_conn
 
 router = APIRouter(prefix="/locker", tags=["locker-hardware"])
 
-# Recomendo usar o service name "mqtt" (Compose) como host
-MQTT_HOST = os.getenv("MQTT_HOST", "mqtt")
+# =========================
+# MQTT / Identidade
+# =========================
+# No seu docker-compose, o broker tem container_name: mqtt_broker
+MQTT_HOST = os.getenv("MQTT_HOST", "mqtt_broker")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
-REGION = os.getenv("REGION", "SP")
+# REGION deve vir do compose (backend_sp: SP, backend_pt: PT).
+# Fallback inteligente só para rodar fora do compose.
+def _default_region() -> str:
+    tz = os.getenv("TZ", "").lower()
+    if "lisbon" in tz or "portugal" in tz:
+        return "PT"
+    return "SP"
+
+REGION = os.getenv("REGION", _default_region())
 LOCKER_ID = os.getenv("LOCKER_ID", f"LOCKER_{REGION}_01")
 MACHINE_ID = os.getenv("MACHINE_ID", f"CACIFO-{REGION}-001")
 LOG_HASH_SALT = os.getenv("LOG_HASH_SALT", "")  # opcional
@@ -107,8 +117,7 @@ def _insert_event(
     )
 
 
-@router.post("/slots/{slot}/open", response_model=CmdOut)
-def open_slot(slot: int, request: Request):
+def _publish_with_audit(*, topic: str, slot: int, command: str, request: Request) -> CmdOut:
     _ensure_slot_range(slot)
 
     command_id = f"cmd_{uuid.uuid4().hex}"
@@ -119,19 +128,23 @@ def open_slot(slot: int, request: Request):
         "locker_id": LOCKER_ID,
         "region": REGION,
         "door_id": slot,
-        "command": "OPEN",
+        "command": command,
         "command_id": command_id,
         "origin": "backend",
     }
 
     conn = get_conn()
 
+    requested_type = f"DOOR_{command}_COMMAND_REQUESTED"
+    published_type = f"DOOR_{command}_COMMAND_PUBLISHED"
+    failed_type = f"DOOR_{command}_COMMAND_FAILED"
+
     # 1) Log REQUESTED (DB)
     try:
         _insert_event(
             conn,
             door_id=slot,
-            event_type="DOOR_OPEN_COMMAND_REQUESTED",
+            event_type=requested_type,
             severity="INFO",
             correlation_id=command_id,
             command_id=command_id,
@@ -139,7 +152,7 @@ def open_slot(slot: int, request: Request):
                 "endpoint": str(request.url.path),
                 "region": REGION,
                 "locker_id": LOCKER_ID,
-                "topic": DOOR_CMD_TOPIC,
+                "topic": topic,
                 "cmd": cmd_payload,
             },
         )
@@ -161,7 +174,7 @@ def open_slot(slot: int, request: Request):
     # 2) Publish MQTT
     try:
         publish.single(
-            DOOR_CMD_TOPIC,
+            topic,
             json.dumps(cmd_payload, ensure_ascii=False),
             hostname=MQTT_HOST,
             port=MQTT_PORT,
@@ -174,7 +187,7 @@ def open_slot(slot: int, request: Request):
             _insert_event(
                 conn,
                 door_id=slot,
-                event_type="DOOR_OPEN_COMMAND_FAILED",
+                event_type=failed_type,
                 severity="HIGH",
                 correlation_id=command_id,
                 command_id=command_id,
@@ -184,7 +197,7 @@ def open_slot(slot: int, request: Request):
                     "locker_id": LOCKER_ID,
                     "error": str(e),
                     "trace": tb,
-                    "topic": DOOR_CMD_TOPIC,
+                    "topic": topic,
                     "cmd": cmd_payload,
                 },
             )
@@ -200,7 +213,7 @@ def open_slot(slot: int, request: Request):
                 "retryable": True,
                 "region": REGION,
                 "endpoint": str(request.url.path),
-                "mqtt": {"host": MQTT_HOST, "port": MQTT_PORT, "topic": DOOR_CMD_TOPIC},
+                "mqtt": {"host": MQTT_HOST, "port": MQTT_PORT, "topic": topic},
                 "slot": slot,
                 "command_id": command_id,
             },
@@ -211,7 +224,7 @@ def open_slot(slot: int, request: Request):
         _insert_event(
             conn,
             door_id=slot,
-            event_type="DOOR_OPEN_COMMAND_PUBLISHED",
+            event_type=published_type,
             severity="INFO",
             correlation_id=command_id,
             command_id=command_id,
@@ -219,7 +232,7 @@ def open_slot(slot: int, request: Request):
                 "endpoint": str(request.url.path),
                 "region": REGION,
                 "locker_id": LOCKER_ID,
-                "topic": DOOR_CMD_TOPIC,
+                "topic": topic,
                 "cmd": cmd_payload,
             },
         )
@@ -234,138 +247,16 @@ def open_slot(slot: int, request: Request):
         locker_id=LOCKER_ID,
         slot=slot,
         command_id=command_id,
-        topic=DOOR_CMD_TOPIC,
+        topic=topic,
         created_at=created_at,
     )
+
+
+@router.post("/slots/{slot}/open", response_model=CmdOut)
+def open_slot(slot: int, request: Request):
+    return _publish_with_audit(topic=DOOR_CMD_TOPIC, slot=slot, command="OPEN", request=request)
 
 
 @router.post("/slots/{slot}/light/on", response_model=CmdOut)
 def light_on(slot: int, request: Request):
-    _ensure_slot_range(slot)
-
-    command_id = f"cmd_{uuid.uuid4().hex}"
-    created_at = _now_iso()
-
-    cmd_payload = {
-        "ts": int(datetime.now(timezone.utc).timestamp() * 1000),
-        "locker_id": LOCKER_ID,
-        "region": REGION,
-        "door_id": slot,
-        "command": "LIGHT_ON",
-        "command_id": command_id,
-        "origin": "backend",
-    }
-
-    conn = get_conn()
-
-    # 1) Log REQUESTED (DB)
-    try:
-        _insert_event(
-            conn,
-            door_id=slot,
-            event_type="DOOR_LIGHT_ON_COMMAND_REQUESTED",
-            severity="INFO",
-            correlation_id=command_id,
-            command_id=command_id,
-            payload={
-                "endpoint": str(request.url.path),
-                "region": REGION,
-                "locker_id": LOCKER_ID,
-                "topic": LIGHT_CMD_TOPIC,
-                "cmd": cmd_payload,
-            },
-        )
-        conn.commit()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "DB_EVENT_LOG_FAILED",
-                "message": str(e),
-                "retryable": True,
-                "region": REGION,
-                "endpoint": str(request.url.path),
-                "slot": slot,
-                "command_id": command_id,
-            },
-        )
-
-    # 2) Publish MQTT
-    try:
-        publish.single(
-            LIGHT_CMD_TOPIC,
-            json.dumps(cmd_payload, ensure_ascii=False),
-            hostname=MQTT_HOST,
-            port=MQTT_PORT,
-        )
-    except Exception as e:
-        tb = traceback.format_exc(limit=4)
-
-        # tenta logar a falha
-        try:
-            _insert_event(
-                conn,
-                door_id=slot,
-                event_type="DOOR_LIGHT_ON_COMMAND_FAILED",
-                severity="HIGH",
-                correlation_id=command_id,
-                command_id=command_id,
-                payload={
-                    "endpoint": str(request.url.path),
-                    "region": REGION,
-                    "locker_id": LOCKER_ID,
-                    "error": str(e),
-                    "trace": tb,
-                    "topic": LIGHT_CMD_TOPIC,
-                    "cmd": cmd_payload,
-                },
-            )
-            conn.commit()
-        except Exception:
-            pass
-
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "MQTT_PUBLISH_FAILED",
-                "message": str(e),
-                "retryable": True,
-                "region": REGION,
-                "endpoint": str(request.url.path),
-                "mqtt": {"host": MQTT_HOST, "port": MQTT_PORT, "topic": LIGHT_CMD_TOPIC},
-                "slot": slot,
-                "command_id": command_id,
-            },
-        )
-
-    # 3) Log PUBLISHED (DB) - não derruba se falhar
-    try:
-        _insert_event(
-            conn,
-            door_id=slot,
-            event_type="DOOR_LIGHT_ON_COMMAND_PUBLISHED",
-            severity="INFO",
-            correlation_id=command_id,
-            command_id=command_id,
-            payload={
-                "endpoint": str(request.url.path),
-                "region": REGION,
-                "locker_id": LOCKER_ID,
-                "topic": LIGHT_CMD_TOPIC,
-                "cmd": cmd_payload,
-            },
-        )
-        conn.commit()
-    except Exception:
-        pass
-
-    return CmdOut(
-        ok=True,
-        machine_id=MACHINE_ID,
-        region=REGION,
-        locker_id=LOCKER_ID,
-        slot=slot,
-        command_id=command_id,
-        topic=LIGHT_CMD_TOPIC,
-        created_at=created_at,
-    )
+    return _publish_with_audit(topic=LIGHT_CMD_TOPIC, slot=slot, command="LIGHT_ON", request=request)

@@ -251,7 +251,7 @@ services:
       start_period: 60s  # 40s  # 🔥 AUMENTAR para 60s dar tempo de inicialização
 
   # =========================
-  # ORDER PICKUP SERVICE
+  # ORDER PICKUP SERVICE - não tem healthcheck: ...
   # =========================
   order_pickup_service:
     build:
@@ -300,12 +300,14 @@ services:
     restart: unless-stopped  # always # unless-stopped oferece mais controle em ambiente de produção
     environment:
       MQTT_HOST: mqtt_broker
+      MQTT_PORT: "1883"
       REGION: SP
       LOCKER_ID: LOCKER_SP_01
       MACHINE_ID: CACIFO-SP-001
       FAILURE_RATE: "0.12"
       PAYMENT_TRIGGERS_OPEN: "false"
       TZ: America/Sao_Paulo
+      DEUBG_LOGS: "true"
     depends_on:
       mqtt:
         condition: service_healthy
@@ -322,12 +324,14 @@ services:
     restart: unless-stopped
     environment:
       MQTT_HOST: mqtt_broker
+      MQTT_PORT: "1883"
       REGION: PT
       LOCKER_ID: LOCKER_PT_01
       MACHINE_ID: CACIFO-PT-001
       FAILURE_RATE: "0.10"
       PAYMENT_TRIGGERS_OPEN: "false"
       TZ: Europe/Lisbon
+      DEBUG_LOGS: "true"
     depends_on:
       mqtt:
         condition: service_healthy

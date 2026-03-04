@@ -7,14 +7,21 @@ from dataclasses import dataclass
 import paho.mqtt.client as mqtt
 
 MQTT_HOST = os.getenv("MQTT_HOST", "mqtt_broker")
+MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
+
 REGION = os.getenv("REGION", "SP")  # SP ou PT
 LOCKER_ID = os.getenv("LOCKER_ID", f"LOCKER_{REGION}_01")
 FAILURE_RATE = float(os.getenv("FAILURE_RATE", "0.12"))  # 12%
+
+PAYMENT_TRIGGERS_OPEN = os.getenv("PAYMENT_TRIGGERS_OPEN", "false").lower() == "true"
+DEBUG_LOGS = os.getenv("DEBUG_LOGS", "true").lower() == "true"
 
 # Tópicos
 PAY_TOPIC = f"locker/{REGION}/pagamento"
 DOOR_EVENTS_TOPIC = f"locker/{REGION}/doors/events"
 DOOR_HEARTBEAT_TOPIC = f"locker/{REGION}/doors/heartbeat"
+DOOR_CMD_TOPIC = f"locker/{REGION}/doors/cmd"
+LIGHT_CMD_TOPIC = f"locker/{REGION}/doors/light/cmd"
 
 # Estados possíveis (simples e úteis)
 STATE_IDLE = "IDLE"
@@ -28,9 +35,6 @@ STATE_POWER_FAIL = "POWER_FAIL"
 
 FAIL_STATES = [STATE_JAMMED, STATE_SENSOR_ERROR, STATE_POWER_FAIL]
 
-PAYMENT_TRIGGERS_OPEN = os.getenv("PAYMENT_TRIGGERS_OPEN", "false").lower() == "true"
-DOOR_CMD_TOPIC = f"locker/{REGION}/doors/cmd"
-LIGHT_CMD_TOPIC = f"locker/{REGION}/doors/light/cmd"
 
 @dataclass
 class Door:
@@ -39,21 +43,40 @@ class Door:
     last_event: str = "BOOT"
     cycles: int = 0
 
+
 doors = {i: Door(i) for i in range(1, 25)}
+
+
+def log(msg: str):
+    if DEBUG_LOGS:
+        print(msg, flush=True)
+
 
 def publish(client, topic, payload):
     client.publish(topic, json.dumps(payload), qos=0, retain=False)
 
+
 def now_ms():
     return int(time.time() * 1000)
+
+
+def valid_door_id(door_id) -> bool:
+    try:
+        n = int(door_id)
+        return 1 <= n <= 24
+    except Exception:
+        return False
+
 
 def choose_free_door():
     # Porta livre = IDLE ou CLOSED (pronta para novo ciclo)
     free = [d for d in doors.values() if d.state in [STATE_IDLE, STATE_CLOSED]]
     return random.choice(free) if free else None
 
+
 def maybe_fail():
     return random.random() < FAILURE_RATE
+
 
 def do_open_cycle(client, door: Door, payment_payload: dict):
     # 1) Abrindo
@@ -145,6 +168,7 @@ def do_open_cycle(client, door: Door, payment_payload: dict):
         "cycles": door.cycles
     })
 
+
 def heartbeat_loop(client):
     while True:
         snapshot = [{"door_id": d.door_id, "state": d.state, "cycles": d.cycles} for d in doors.values()]
@@ -155,6 +179,7 @@ def heartbeat_loop(client):
             "doors": snapshot
         })
         time.sleep(10)
+
 
 def random_faults_loop(client):
     while True:
@@ -173,25 +198,49 @@ def random_faults_loop(client):
                 "detail": "Falha randômica injetada"
             })
 
+
 def on_connect(client, userdata, flags, rc):
-    print(f"[{REGION}] MQTT conectado rc={rc}. Subscrito em: {PAY_TOPIC}")
-    client.subscribe(PAY_TOPIC)
-    client.subscribe(DOOR_CMD_TOPIC)
-    client.subscribe(LIGHT_CMD_TOPIC)
+    # Subscrições sem duplicação
+    topics = [DOOR_CMD_TOPIC, LIGHT_CMD_TOPIC]
     if PAYMENT_TRIGGERS_OPEN:
-        client.subscribe(PAY_TOPIC)
+        topics.append(PAY_TOPIC)
+
+    for t in topics:
+        client.subscribe(t)
+
+    log(f"[{REGION}] MQTT conectado rc={rc}. Subscrito em: {topics}")
+
 
 def on_message(client, userdata, msg):
+    raw = msg.payload.decode(errors="ignore")
+
     try:
-        payload = json.loads(msg.payload.decode())
+        payload = json.loads(raw) if raw else {}
     except Exception:
-        payload = {"raw": msg.payload.decode(errors="ignore")}
+        payload = {"raw": raw}
+
+    # Log de debug (um-liner)
+    log(f"[{REGION}] RX topic={msg.topic} payload={payload}")
 
     # --- OPEN command ---
     if msg.topic == DOOR_CMD_TOPIC:
         cmd = (payload.get("command") or "").upper()
         door_id = payload.get("door_id")
-        if cmd != "OPEN" or not door_id:
+
+        if cmd != "OPEN":
+            log(f"[{REGION}] Ignorado (cmd != OPEN): {payload}")
+            return
+
+        if not valid_door_id(door_id):
+            publish(client, DOOR_EVENTS_TOPIC, {
+                "ts": now_ms(),
+                "locker_id": LOCKER_ID,
+                "region": REGION,
+                "event": "INVALID_DOOR_ID",
+                "door_id": door_id,
+                "detail": "door_id must be 1..24",
+                "cmd": payload,
+            })
             return
 
         door = doors.get(int(door_id))
@@ -202,6 +251,7 @@ def on_message(client, userdata, msg):
                 "region": REGION,
                 "event": "UNKNOWN_DOOR",
                 "door_id": int(door_id),
+                "cmd": payload,
             })
             return
 
@@ -213,7 +263,21 @@ def on_message(client, userdata, msg):
     if msg.topic == LIGHT_CMD_TOPIC:
         cmd = (payload.get("command") or "").upper()
         door_id = payload.get("door_id")
-        if cmd != "LIGHT_ON" or not door_id:
+
+        if cmd != "LIGHT_ON":
+            log(f"[{REGION}] Ignorado (cmd != LIGHT_ON): {payload}")
+            return
+
+        if not valid_door_id(door_id):
+            publish(client, DOOR_EVENTS_TOPIC, {
+                "ts": now_ms(),
+                "locker_id": LOCKER_ID,
+                "region": REGION,
+                "event": "INVALID_DOOR_ID",
+                "door_id": door_id,
+                "detail": "door_id must be 1..24",
+                "cmd": payload,
+            })
             return
 
         publish(client, DOOR_EVENTS_TOPIC, {
@@ -232,10 +296,11 @@ def on_message(client, userdata, msg):
     if msg.topic == PAY_TOPIC and PAYMENT_TRIGGERS_OPEN:
         status = payload.get("status") or payload.get("gateway_status")
         if status not in ["approved", "aprovado", "Aprovado", "aprovado_antifraude"]:
+            log(f"[{REGION}] Pagamento ignorado (status={status})")
             return
 
         porta = payload.get("porta") or payload.get("door_id")
-        door = doors.get(int(porta)) if porta else choose_free_door()
+        door = doors.get(int(porta)) if porta and valid_door_id(porta) else choose_free_door()
         if not door:
             publish(client, DOOR_EVENTS_TOPIC, {
                 "ts": now_ms(),
@@ -246,22 +311,31 @@ def on_message(client, userdata, msg):
             })
             return
 
-    # dispara ciclo em thread para não travar o MQTT
-    t = threading.Thread(target=do_open_cycle, args=(client, door, payload), daemon=True)
-    t.start()
+        # dispara ciclo em thread para não travar o MQTT
+        t = threading.Thread(target=do_open_cycle, args=(client, door, payload), daemon=True)
+        t.start()
+        return
+
+    # tópico desconhecido (não deve acontecer)
+    log(f"[{REGION}] Ignorado (tópico não tratado): {msg.topic}")
+
 
 def main():
     client = mqtt.Client()
     client.on_connect = on_connect
     client.on_message = on_message
 
-    client.connect(MQTT_HOST, 1883, 60)
+    client.connect(MQTT_HOST, MQTT_PORT, 60)
 
     threading.Thread(target=heartbeat_loop, args=(client,), daemon=True).start()
     threading.Thread(target=random_faults_loop, args=(client,), daemon=True).start()
 
     client.loop_forever()
 
+
 if __name__ == "__main__":
-    print(f"Simulador 24 portas iniciado: region={REGION} locker={LOCKER_ID} failure_rate={FAILURE_RATE}")
+    print(
+        f"Simulador 24 portas iniciado: region={REGION} locker={LOCKER_ID} "
+        f"failure_rate={FAILURE_RATE} payment_triggers_open={PAYMENT_TRIGGERS_OPEN} debug_logs={DEBUG_LOGS}"
+    )
     main()
