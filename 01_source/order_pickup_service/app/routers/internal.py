@@ -218,7 +218,21 @@ def payment_confirm(
         order.status = OrderStatus.PICKED_UP
         allocation.state = AllocationState.OPENED_FOR_PICKUP
 
-        backend_client.locker_commit(order.region, allocation.id, None)
+        try:
+            backend_client.locker_commit(order.region, allocation.id, None)
+        except requests.HTTPError as e:
+            status = getattr(e.response, "status_code", None)
+            if status == 409:
+                # allocation expirou -> realoca e tenta commit de novo
+                allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
+
+                allocation.state = AllocationState.OPENED_FOR_PICKUP  # kiosk abre já
+                allocation.locked_until = None
+
+                backend_client.locker_commit(order.region, allocation.id, None)
+            else:
+                raise
+
         backend_client.locker_light_on(order.region, allocation.slot)
         backend_client.locker_open(order.region, allocation.slot)
 

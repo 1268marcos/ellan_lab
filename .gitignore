@@ -50,5 +50,6 @@ docker-compose.override.yml
 05_backups/
 06_exports/
 07_tests/
+docs/
 minha_chave
 minha_chave.pub
