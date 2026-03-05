@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 
 /**
  * Estados das gavetas (use os mesmos nomes do backend)
@@ -436,6 +437,7 @@ export default function LockerDashboard({ region = "PT" }) {
         <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", padding: 14, display: "grid", gap: 12, alignContent: "start" }}>
           {/* Simular pagamento */}
           <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.18)", padding: 12, display: "grid", gap: 10 }}>
+            <PickupQRCodePanel region={region} selectedSlot={selectedSlot} />
             <div style={{ fontWeight: 800 }}>Simular pagamento (Gateway)</div>
 
             <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -444,25 +446,36 @@ export default function LockerDashboard({ region = "PT" }) {
 
             <label style={label}>
               Método
-              <select value={payMethod} onChange={(e) => setPayMethod(e.target.value)} style={select}>
+
+              <select 
+                value={payMethod} 
+                onChange={(e) => setPayMethod(e.target.value)} 
+                style={{
+                  ...select,
+                  color: 'white',
+                  backgroundColor: '#2d2d3a', // Fundo mais claro para contraste
+                }}
+              >
                 <option value="PIX">PIX</option>
                 <option value="CARTAO">CARTÃO</option>
                 <option value="MBWAY">MBWAY</option>
                 <option value="NFC">NFC</option>
               </select>
             </label>
-
+            
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label style={label}>
                 Gaveta
-                <input type="number" min="1" max="24" value={paySlot} onChange={(e) => setPaySlot(e.target.value)} style={input} />
-                <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>(auto preenche a selecionada)</div>
+                <input type="number" min="1" max="24" value={paySlot} onChange={(e) => setPaySlot(e.target.value)} style={{...input, width: "60%"}} />
               </label>
 
               <label style={label}>
                 Valor
-                <input type="number" min="1" step="1" value={payValue} onChange={(e) => setPayValue(e.target.value)} style={input} />
+                <input type="number" min="1" step="1" value={payValue} onChange={(e) => setPayValue(e.target.value)} style={{...input, width: "60%"}} />
               </label>
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+              ⓘ Auto preenche com a gaveta selecionada
             </div>
 
             <button

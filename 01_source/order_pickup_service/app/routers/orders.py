@@ -1,25 +1,33 @@
 # Router: /orders (ONLINE)
 import uuid
-from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.auth_dep import get_current_user
+from app.core.auth_dev import get_current_user_or_dev
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.allocation import Allocation, AllocationState
 from app.services import backend_client
 from app.schemas.orders import CreateOrderIn, OrderOut
 
+from requests import HTTPError
+import os
+
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 ALLOC_TTL_SEC = 120
-PICKUP_WINDOW_HOURS = 2
 
 @router.post("", response_model=OrderOut)
-def create_order(payload: CreateOrderIn, db: Session = Depends(get_db), user=Depends(get_current_user)):
+def create_order(payload: CreateOrderIn, db: Session = Depends(get_db), user=Depends(get_current_user_or_dev)):
     # 1) preço no backend (fonte de verdade)
-    pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
+    # pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
+    try:
+        pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
+    except HTTPError as e:
+        if e.response is not None and e.response.status_code == 404 and os.getenv("DEV_ALLOW_UNKNOWN_SKU", "false").lower() == "true":
+            pricing = {"amount_cents": int(os.getenv("DEV_DEFAULT_PRICE_CENTS", "1000"))}
+        else:
+            raise
 
     amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
     if amount_cents is None:
@@ -32,6 +40,7 @@ def create_order(payload: CreateOrderIn, db: Session = Depends(get_db), user=Dep
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
     ttl_sec = alloc.get("ttl_sec", ALLOC_TTL_SEC)
+
     if not allocation_id or not slot:
         raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
 

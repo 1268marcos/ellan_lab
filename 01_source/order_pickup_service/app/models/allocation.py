@@ -1,7 +1,10 @@
 import enum
 from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey
 from datetime import datetime
-from app.models.base import Base
+# from app.models.base import Base
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class AllocationState(str, enum.Enum):
     RESERVED_PENDING_PAYMENT = "RESERVED_PENDING_PAYMENT"

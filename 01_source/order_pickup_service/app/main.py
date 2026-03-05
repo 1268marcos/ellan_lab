@@ -14,11 +14,13 @@ from app.health.internal import router as internal_router
 from app.core.version import get_version
 
 from app.core.db import SessionLocal
+from app.core.db import init_db
 from app.jobs.expiry import run_expiry_once
 from app.routers import orders, kiosk, pickup, internal
 
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, DateTime, Float, Boolean
 import datetime
+
 logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger("order_pickup_service")
@@ -114,6 +116,8 @@ expiry_task: asyncio.Task | None = None
 @app.on_event("startup")
 async def startup():
     # asyncio.create_task(expiry_loop())
+
+    init_db()
 
     required_modules = ["app.schemas.kiosk"]
     for module in required_modules:

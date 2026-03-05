@@ -273,6 +273,18 @@ services:
       # internal token
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
 
+      # QRCode
+      - PICKUP_QR_SECRET=${PICKUP_QR_SECRET}
+      - QR_ROTATE_SEC=${QR_ROTATE_SEC}      
+
+      # “modo DEV” para bypass de auth (só local)
+      - DEV_BYPASS_AUTH=${DEV_BYPASS_AUTH}
+      - DEV_USER_ID=${DEV_USER_ID}      
+
+      # order (para um pedido fake para implementar QR/pickup/totem antes do catálogo real ficar pronto)
+      - DEV_ALLOW_UNKNOWN_SKU=true
+      - DEV_DEFAULT_PRICE_CENTS=1000      
+
       # DB do serviço (mantido como você está hoje)
       - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
 

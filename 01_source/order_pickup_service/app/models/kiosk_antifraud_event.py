@@ -1,7 +1,10 @@
 # 01_source/order_pickup_service/app/models/kiosk_antifraud_event.py
 import uuid
 from sqlalchemy import Column, String, DateTime
-from app.models.base import Base
+# from app.models.base import Base
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class KioskAntifraudEvent(Base):
     __tablename__ = "kiosk_antifraud_events"

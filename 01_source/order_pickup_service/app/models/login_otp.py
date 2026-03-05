@@ -1,7 +1,10 @@
 import enum
 from sqlalchemy import Column, String, DateTime, Integer, Enum, Index
 from datetime import datetime
-from app.models.base import Base
+# from app.models.base import Base
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class OTPChannel(str, enum.Enum):
     EMAIL = "EMAIL"

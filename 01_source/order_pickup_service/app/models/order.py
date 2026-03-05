@@ -1,8 +1,11 @@
 # orders (pedido) - padrão "ledger"
 from sqlalchemy import Column, String, Integer, DateTime, Enum
-from app.models.base import Base
+# from app.models.base import Base
 import enum
 from datetime import datetime
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class OrderStatus(str, enum.Enum):
     PAYMENT_PENDING = "PAYMENT_PENDING"

@@ -1,5 +1,8 @@
 from sqlalchemy import Column, String, Integer, Boolean
-from app.models.base import Base
+# from app.models.base import Base
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class User(Base):
     __tablename__ = "users"

@@ -1,7 +1,10 @@
 # pickup_tokens (QR) - Armazenar hash, uso único
 from sqlalchemy import Column, String, DateTime, ForeignKey, Index
 from datetime import datetime
-from app.models.base import Base
+# from app.models.base import Base
+
+from sqlalchemy.orm import Mapped, mapped_column
+from app.core.db import Base
 
 class PickupToken(Base):
     __tablename__ = "pickup_tokens"

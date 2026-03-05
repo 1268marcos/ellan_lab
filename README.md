@@ -1,5 +1,76 @@
 
-04/03/2026
+========================
+04/03/2026 - 17:35
+========================
+
+Padrão de Proxy no Vite (evitar CORS)
+
+Quando o frontend (Vite, ex.: localhost:5173) chama APIs em outras portas (8000, 8201, 8202), o browser pode bloquear por CORS. A forma mais “blindada” é usar proxy do Vite, fazendo o frontend chamar rotas na mesma origem (/api/...) e o Vite encaminha para os serviços reais.
+
+1) vite.config.js (proxy)
+
+Crie/edite 01_source/frontend/vite.config.js:
+
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    proxy: {
+      // Gateway (host:8000) -> /api/gw/...
+      "/api/gw": {
+        target: "http://localhost:8000",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/gw/, ""),
+      },
+
+      // Backend SP (host:8201) -> /api/sp/...
+      "/api/sp": {
+        target: "http://localhost:8201",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/sp/, ""),
+      },
+
+      // Backend PT (host:8202) -> /api/pt/...
+      "/api/pt": {
+        target: "http://localhost:8202",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pt/, ""),
+      },
+    },
+  },
+});
+2) Como usar no código (sem portas “hardcoded”)
+
+Em vez de chamar http://localhost:8000/... ou http://localhost:8202/..., use caminhos relativos:
+
+Gateway:
+
+fetch("/api/gw/gateway/pagamento", ...)
+
+Backend SP:
+
+fetch("/api/sp/locker/slots")
+
+Backend PT:
+
+fetch("/api/pt/locker/slots")
+
+3) Testes rápidos do proxy
+
+Com o frontend rodando (npm run dev):
+
+curl -sS http://localhost:5173/api/pt/locker/slots | head
+curl -sS -X POST http://localhost:5173/api/gw/gateway/pagamento \
+  -H "Content-Type: application/json" \
+  -d '{"regiao":"PT","metodo":"PIX","valor":100,"porta":1}'
+
+Se responder, o proxy está funcionando e o frontend fica imune a CORS.
+
+=====================
+04/03/2026 - 09:00
+=====================
 
 Convenções de Rede e Portas (Padrão “Blindado”)
 
