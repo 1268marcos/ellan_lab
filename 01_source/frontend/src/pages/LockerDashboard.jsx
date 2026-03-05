@@ -437,7 +437,7 @@ export default function LockerDashboard({ region = "PT" }) {
         <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", padding: 14, display: "grid", gap: 12, alignContent: "start" }}>
           {/* Simular pagamento */}
           <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.18)", padding: 12, display: "grid", gap: 10 }}>
-            <PickupQRCodePanel region={region} selectedSlot={selectedSlot} />
+            <PickupQRCodePanel region={region} pickupId={"fac241cc-6652-44a8-9d99-e305595224b8"} apiBase="http://localhost:8003" />
             <div style={{ fontWeight: 800 }}>Simular pagamento (Gateway)</div>
 
             <div style={{ fontSize: 12, opacity: 0.75 }}>

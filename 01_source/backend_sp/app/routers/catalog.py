@@ -9,6 +9,8 @@ SKU_CATALOG = {
     "bolo_laranja": {"name": "Bolo de Laranja", "amount_cents": 4500, "currency": "BRL", "is_active": True},
     "bolo_cenoura": {"name": "Bolo de Cenoura", "amount_cents": 4800, "currency": "BRL", "is_active": True},
     "mini_bolo_iogurte": {"name": "Mini Bolo de Iogurte", "amount_cents": 2100, "currency": "BRL", "is_active": True},
+    "bolo_canetinha": {"name": "Bolo Canetinha", "amount_cents": 37, "currency": "BRL", "is_active": True},
+    "bolo_nozes": {"name": "Bolo de Nozes", "amount_cents": 55, "currency": "BRL", "is_active": True},
 }
 
 @router.get("/skus/{sku_id}")
