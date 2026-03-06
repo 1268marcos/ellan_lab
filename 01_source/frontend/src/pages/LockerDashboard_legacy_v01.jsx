@@ -14,7 +14,7 @@ const SLOT_STATES = [
 ];
 
 /**
- * Cores por estado da gaveta
+ * Cores por estado
  */
 const STATE_STYLE = {
   AVAILABLE: { bg: "#1f7a3f", fg: "white", label: "Disponível" },
@@ -22,45 +22,6 @@ const STATE_STYLE = {
   PAID_PENDING_PICKUP: { bg: "#1b5883", fg: "white", label: "Pago (aguardando)" },
   PICKED_UP: { bg: "#6b6b6b", fg: "white", label: "Retirado" },
   OUT_OF_STOCK: { bg: "#b3261e", fg: "white", label: "Indisponível" },
-};
-
-const ORDER_STATUS_META = {
-  PAYMENT_PENDING: {
-    label: "Pagamento pendente",
-    tone: "warning",
-    bg: "linear-gradient(135deg, rgba(199,146,0,0.22), rgba(199,146,0,0.10))",
-    border: "rgba(199,146,0,0.42)",
-  },
-  PAID_PENDING_PICKUP: {
-    label: "Pago / aguardando retirada",
-    tone: "info",
-    bg: "linear-gradient(135deg, rgba(27,88,131,0.28), rgba(27,88,131,0.12))",
-    border: "rgba(27,88,131,0.45)",
-  },
-  PICKED_UP: {
-    label: "Retirado",
-    tone: "neutral",
-    bg: "linear-gradient(135deg, rgba(107,107,107,0.24), rgba(107,107,107,0.10))",
-    border: "rgba(107,107,107,0.40)",
-  },
-  EXPIRED: {
-    label: "Expirado",
-    tone: "danger",
-    bg: "linear-gradient(135deg, rgba(179,38,30,0.26), rgba(179,38,30,0.12))",
-    border: "rgba(179,38,30,0.42)",
-  },
-  EXPIRED_CREDIT_50: {
-    label: "Expirado / crédito 50%",
-    tone: "danger",
-    bg: "linear-gradient(135deg, rgba(179,38,30,0.26), rgba(179,38,30,0.12))",
-    border: "rgba(179,38,30,0.42)",
-  },
-  SEM_PEDIDO: {
-    label: "Sem pedido",
-    tone: "neutral",
-    bg: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
-    border: "rgba(255,255,255,0.14)",
-  },
 };
 
 function clamp(n, min, max) {
@@ -156,111 +117,6 @@ function formatDateTime(value) {
   }
 }
 
-function useMediaQuery(query) {
-  const getMatches = () =>
-    typeof window !== "undefined" ? window.matchMedia(query).matches : false;
-
-  const [matches, setMatches] = useState(getMatches);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const listener = () => setMatches(media.matches);
-    listener();
-    media.addEventListener("change", listener);
-    return () => media.removeEventListener("change", listener);
-  }, [query]);
-
-  return matches;
-}
-
-function statusBadgeStyle(status) {
-  const map = {
-    PAYMENT_PENDING: { bg: "rgba(199,146,0,0.22)", border: "rgba(199,146,0,0.45)" },
-    PAID_PENDING_PICKUP: { bg: "rgba(27,88,131,0.22)", border: "rgba(27,88,131,0.45)" },
-    PICKED_UP: { bg: "rgba(107,107,107,0.22)", border: "rgba(107,107,107,0.45)" },
-    EXPIRED: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
-    EXPIRED_CREDIT_50: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
-    SEM_PEDIDO: { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" },
-  };
-  const m = map[status] || { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" };
-  return {
-    padding: "4px 8px",
-    borderRadius: 999,
-    border: `1px solid ${m.border}`,
-    background: m.bg,
-    fontSize: 11,
-    fontWeight: 700,
-  };
-}
-
-function softInfoBox(kind = "normal") {
-  const backgrounds = {
-    normal: "rgba(255,255,255,0.04)",
-    warning: "rgba(179,38,30,0.18)",
-    info: "rgba(27,88,131,0.22)",
-  };
-
-  return {
-    fontSize: 12,
-    opacity: 0.95,
-    padding: 9,
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: backgrounds[kind] || backgrounds.normal,
-  };
-}
-
-function getCurrentOrderMeta(status) {
-  return ORDER_STATUS_META[status] || ORDER_STATUS_META.SEM_PEDIDO;
-}
-
-function buildCurrentOrderFromListItem(item) {
-  if (!item) return null;
-
-  return {
-    order_id: item.order_id,
-    channel: item.channel,
-    status: item.status,
-    amount_cents: item.amount_cents,
-    pickup_id: item.pickup_id,
-    token_id: item.token_id,
-    manual_code: item.manual_code,
-    paid_at: item.paid_at,
-    created_at: item.created_at,
-    pickup_deadline_at: item.pickup_deadline_at,
-    allocation: {
-      allocation_id: item.allocation_id,
-      slot: item.slot,
-    },
-  };
-}
-
-function focusOrderFromListItem(item, setters) {
-  const {
-    setCurrentOrder,
-    setSelectedSlot,
-    setPaySlot,
-    setActiveGroup,
-    setSlotSelectionExpiresAt,
-    setOrderError,
-    setPayResp,
-    setPickupResp,
-  } = setters;
-
-  if (item?.slot) {
-    const slotNum = Number(item.slot);
-    setSelectedSlot(slotNum);
-    setPaySlot(slotNum);
-    setActiveGroup(groupIndexFromSlot(slotNum));
-  }
-
-  setSlotSelectionExpiresAt(null);
-  setOrderError("");
-  setPayResp("");
-  setPickupResp("");
-  setCurrentOrder(buildCurrentOrderFromListItem(item));
-}
-
 function SlotCard({ slot, state, selected, onClick }) {
   const st = STATE_STYLE[state] || { bg: "#333", fg: "white", label: state };
 
@@ -291,7 +147,7 @@ function SlotCard({ slot, state, selected, onClick }) {
 
 function Carousel({ pages, activeIndex, onPrev, onNext, onGo }) {
   return (
-    <div style={{ display: "grid", gap: 8 }}>
+    <div style={{ display: "grid", gap: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={onPrev} style={btnSmall}>
           ◀
@@ -325,81 +181,8 @@ function Carousel({ pages, activeIndex, onPrev, onNext, onGo }) {
   );
 }
 
-function InfoRow({ label, value }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 8 }}>
-      <div style={{ opacity: 0.7 }}>{label}:</div>
-      <div style={{ fontWeight: 600, wordBreak: "break-all" }}>{value}</div>
-    </div>
-  );
-}
-
-function OrdersCardList({
-  ordersData,
-  ordersLoading,
-  currentOrder,
-  onSelectOrder,
-}) {
-  if (ordersLoading) {
-    return <div style={{ fontSize: 12, opacity: 0.75 }}>Carregando pedidos...</div>;
-  }
-
-  if (!ordersData.length) {
-    return <div style={{ fontSize: 12, opacity: 0.75 }}>Nenhum pedido encontrado.</div>;
-  }
-
-  return (
-    <div style={{ display: "grid", gap: 8 }}>
-      {ordersData.map((item) => (
-        <button
-          key={item.order_id}
-          onClick={() => onSelectOrder(item)}
-          style={{
-            textAlign: "left",
-            padding: 10,
-            borderRadius: 12,
-            border:
-              currentOrder?.order_id === item.order_id
-                ? "1px solid rgba(255,255,255,0.38)"
-                : "1px solid rgba(255,255,255,0.12)",
-            background:
-              currentOrder?.order_id === item.order_id
-                ? "rgba(27,88,131,0.28)"
-                : "rgba(255,255,255,0.03)",
-            color: "white",
-            cursor: "pointer",
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 700 }}>{item.order_id}</div>
-            <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-          </div>
-
-          <div style={{ fontSize: 12, opacity: 0.85 }}>
-            Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
-          </div>
-
-          <div style={{ fontSize: 12, opacity: 0.72 }}>
-            SKU: {item.sku_id}
-          </div>
-
-          <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Criado: {formatDateTime(item.created_at)}
-          </div>
-
-          <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Pago: {formatDateTime(item.paid_at)} • Deadline: {formatDateTime(item.pickup_deadline_at)}
-          </div>
-        </button>
-      ))}
-    </div>
-  );
-}
-
 const btnSmall = {
-  padding: "7px 10px",
+  padding: "8px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.2)",
   background: "rgba(255,255,255,0.08)",
@@ -418,9 +201,6 @@ export default function LockerDashboard({ region = "PT" }) {
   const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
   const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
 
-  const isNarrow = useMediaQuery("(max-width: 1280px)");
-  const isVeryNarrow = useMediaQuery("(max-width: 980px)");
-
   const [slots, setSlots] = useState(() => slotsListToMap([]));
   const [cakes, setCakes] = useState(() => buildInitialCakes());
 
@@ -428,7 +208,6 @@ export default function LockerDashboard({ region = "PT" }) {
   const [activeGroup, setActiveGroup] = useState(0);
   const [slotSelectionExpiresAt, setSlotSelectionExpiresAt] = useState(null);
   const [slotSelectionTick, setSlotSelectionTick] = useState(0);
-  const [showCakesPanel, setShowCakesPanel] = useState(false);
 
   const slotSelectionRemainingSec = slotSelectionExpiresAt
     ? Math.max(0, Math.ceil((slotSelectionExpiresAt - Date.now()) / 1000))
@@ -457,59 +236,26 @@ export default function LockerDashboard({ region = "PT" }) {
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
   const [ordersData, setOrdersData] = useState([]);
 
-  const currentOrderMeta = getCurrentOrderMeta(currentOrder?.status || "SEM_PEDIDO");
-
   const isOrderAlreadyPaid =
     currentOrder?.status === "PAID_PENDING_PICKUP" || currentOrder?.status === "PICKED_UP";
 
   const canRegenerateManualCode =
     currentOrder?.status === "PAID_PENDING_PICKUP" && !!currentOrder?.order_id;
 
-  const hasActiveSlotSelection =
-    !!selectedSlot &&
-    !currentOrder &&
-    !!slotSelectionExpiresAt &&
-    slotSelectionRemainingSec > 0;
-
-  const selectedSlotState = selectedSlot ? slots[selectedSlot]?.state || "AVAILABLE" : null;
-
-  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
-
   useEffect(() => {
     setPaySlot(selectedSlot || 1);
   }, [selectedSlot]);
 
-  useEffect(() => {
-    if (isNarrow) {
-      setShowCakesPanel(false);
-    }
-  }, [isNarrow]);
+  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
 
   function selectSlot(slot) {
     setSelectedSlot(slot);
     setActiveGroup(groupIndexFromSlot(slot));
-    setCurrentOrder(null);
-    setOrderError("");
-    setPayResp("");
-    setPickupResp("");
     setSlotSelectionExpiresAt(Date.now() + 45_000);
   }
 
   function updateCake(slot, patch) {
     setCakes((prev) => ({ ...prev, [slot]: { ...prev[slot], ...patch } }));
-  }
-
-  function handleSelectOrder(item) {
-    focusOrderFromListItem(item, {
-      setCurrentOrder,
-      setSelectedSlot,
-      setPaySlot,
-      setActiveGroup,
-      setSlotSelectionExpiresAt,
-      setOrderError,
-      setPayResp,
-      setPickupResp,
-    });
   }
 
   async function fetchSlotsOnce() {
@@ -584,6 +330,7 @@ export default function LockerDashboard({ region = "PT" }) {
   }, [region]);
 
   useEffect(() => {
+    // quando mudar apenas o filtro, atualiza a lista sob demanda local
     fetchOrdersOnce();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ordersFilterStatus]);
@@ -639,8 +386,9 @@ export default function LockerDashboard({ region = "PT" }) {
 
       setSyncStatus({ ok: true, msg: `set-state OK (${slot} → ${nextState})` });
 
+      // Se a mudança de estado afeta pedidos (ex: PICKED_UP), recarregue
       if (nextState === "PICKED_UP" || nextState === "PAID_PENDING_PICKUP") {
-        fetchOrdersOnce();
+        fetchOrdersOnce(); // <-- ADICIONAR AQUI
       }
     } catch (e) {
       setSyncStatus({ ok: false, msg: `set-state erro: ${String(e?.message || e)}` });
@@ -688,7 +436,6 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const data = JSON.parse(text);
       setCurrentOrder(data);
-      setSlotSelectionExpiresAt(null);
 
       if (data?.allocation?.slot) {
         const allocatedSlot = Number(data.allocation.slot);
@@ -944,7 +691,7 @@ export default function LockerDashboard({ region = "PT" }) {
   const legendItems = Object.entries(STATE_STYLE);
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f1115", color: "white", padding: 16, fontFamily: "system-ui" }}>
+    <div style={{ minHeight: "100vh", background: "#0f1115", color: "white", padding: 18, fontFamily: "system-ui" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <h1 style={{ margin: 0, fontSize: 22 }}>ELLAN • Locker Dashboard</h1>
 
@@ -953,19 +700,13 @@ export default function LockerDashboard({ region = "PT" }) {
             Região: <b>{region}</b> • Backend: <code>{backendBase}</code>
           </div>
 
-          <button
-            onClick={() => {
-              fetchSlotsOnce();
-              fetchOrdersOnce();
-            }}
-            style={btnSmall}
-          >
+          <button onClick={() => { fetchSlotsOnce(); fetchOrdersOnce(); }} style={btnSmall}>
             Atualizar tudo
           </button>
 
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, opacity: 0.9 }}>
             <input type="checkbox" checked={syncEnabled} onChange={(e) => setSyncEnabled(e.target.checked)} />
-            Polling gavetas (3s)
+            Polling (3s)
           </label>
 
           <div style={{ fontSize: 12, opacity: syncStatus.ok ? 0.75 : 1, color: syncStatus.ok ? "white" : "#ffb4b4" }}>
@@ -974,31 +715,18 @@ export default function LockerDashboard({ region = "PT" }) {
         </div>
       </div>
 
-      <div
-        style={{
-          marginTop: 12,
-          display: "grid",
-          gridTemplateColumns: isVeryNarrow ? "1fr" : "1.2fr 0.95fr",
-          gap: 12,
-          alignItems: "start",
-        }}
-      >
+      <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1.25fr 0.95fr", gap: 14, alignItems: "start" }}>
         {/* COLUNA ESQUERDA */}
-        <div style={{ display: "grid", gap: 12 }}>
-          <section style={panelStyleCompact}>
+        <div style={{ display: "grid", gap: 14 }}>
+          <section style={panelStyle}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <div style={{ fontWeight: 800 }}>Gavetas (1–24)</div>
               <div style={{ fontSize: 12, opacity: 0.75 }}>
                 Selecionada: <b>{selectedSlot ?? "—"}</b>
-                {selectedSlot ? (
-                  <>
-                    {" "}• Estado: <b>{STATE_STYLE[selectedSlotState]?.label || selectedSlotState || "-"}</b>
-                  </>
-                ) : null}
               </div>
             </div>
 
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
               {legendItems.map(([key, meta]) => (
                 <div
                   key={key}
@@ -1006,11 +734,11 @@ export default function LockerDashboard({ region = "PT" }) {
                     display: "flex",
                     gap: 6,
                     alignItems: "center",
-                    padding: "5px 8px",
+                    padding: "6px 8px",
                     borderRadius: 999,
                     border: "1px solid rgba(255,255,255,0.14)",
                     background: "rgba(0,0,0,0.18)",
-                    fontSize: 11,
+                    fontSize: 12,
                   }}
                 >
                   <span style={{ width: 10, height: 10, borderRadius: 999, background: meta.bg, display: "inline-block" }} />
@@ -1019,7 +747,7 @@ export default function LockerDashboard({ region = "PT" }) {
               ))}
             </div>
 
-            <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
+            <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
               {Array.from({ length: 24 }).map((_, idx) => {
                 const slot = idx + 1;
                 const st = slots[slot]?.state || "AVAILABLE";
@@ -1035,7 +763,7 @@ export default function LockerDashboard({ region = "PT" }) {
               })}
             </div>
 
-            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Alterar estado da gaveta {selectedSlot ?? "—"}:
               </div>
@@ -1044,7 +772,7 @@ export default function LockerDashboard({ region = "PT" }) {
                   key={s}
                   onClick={() => selectedSlot && setStateOnBackend(selectedSlot, s)}
                   style={{
-                    padding: "7px 10px",
+                    padding: "8px 10px",
                     borderRadius: 10,
                     border: "1px solid rgba(255,255,255,0.18)",
                     background: "rgba(255,255,255,0.06)",
@@ -1059,15 +787,15 @@ export default function LockerDashboard({ region = "PT" }) {
             </div>
           </section>
 
-          <section style={panelStyleCompact}>
+          <section style={panelStyle}>
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>Pedidos online</div>
+
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800 }}>Pedidos online</div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>
+                Região atual: <b>{region}</b> • Total carregado: <b>{ordersData.length}</b>
+              </div>
 
-              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  Região: <b>{region}</b> • Total: <b>{ordersData.length}</b>
-                </div>
-
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <select
                   value={ordersFilterStatus}
                   onChange={(e) => setOrdersFilterStatus(e.target.value)}
@@ -1087,113 +815,94 @@ export default function LockerDashboard({ region = "PT" }) {
               </div>
             </div>
 
-            {ordersError ? <pre style={errorPre}>{ordersError}</pre> : null}
+            {ordersError ? (
+              <pre style={errorPre}>{ordersError}</pre>
+            ) : null}
 
-            {isNarrow ? (
-              <div style={{ marginTop: 10 }}>
-                <OrdersCardList
-                  ordersData={ordersData}
-                  ordersLoading={ordersLoading}
-                  currentOrder={currentOrder}
-                  onSelectOrder={handleSelectOrder}
-                />
-              </div>
-            ) : (
-              <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.10)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 980 }}>
-                  <thead>
-                    <tr style={{ background: "rgba(255,255,255,0.06)" }}>
-                      <th style={thStyle}>Order</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Slot</th>
-                      <th style={thStyle}>Allocation</th>
-                      <th style={thStyle}>SKU</th>
-                      <th style={thStyle}>Valor</th>
-                      <th style={thStyle}>Criado em</th>
-                      <th style={thStyle}>Pago em</th>
-                      <th style={thStyle}>Deadline</th>
+            <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.10)" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 980 }}>
+                <thead>
+                  <tr style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <th style={thStyle}>Order</th>
+                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Slot</th>
+                    <th style={thStyle}>Allocation</th>
+                    <th style={thStyle}>SKU</th>
+                    <th style={thStyle}>Valor</th>
+                    <th style={thStyle}>Criado em</th>
+                    <th style={thStyle}>Pago em</th>
+                    <th style={thStyle}>Deadline</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ordersLoading ? (
+                    <tr>
+                      <td style={tdStyle} colSpan={9}>Carregando pedidos...</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {ordersLoading ? (
-                      <tr>
-                        <td style={tdStyle} colSpan={9}>
-                          Carregando pedidos...
-                        </td>
+                  ) : ordersData.length === 0 ? (
+                    <tr>
+                      <td style={tdStyle} colSpan={9}>Nenhum pedido encontrado.</td>
+                    </tr>
+                  ) : (
+                    ordersData.map((item) => (
+                      <tr
+                        key={item.order_id}
+                        onClick={() => {
+                          if (item.slot) {
+                            setSelectedSlot(Number(item.slot));
+                            setPaySlot(Number(item.slot));
+                            setActiveGroup(groupIndexFromSlot(Number(item.slot)));
+                          }
+                          setCurrentOrder({
+                            order_id: item.order_id,
+                            channel: item.channel,
+                            status: item.status,
+                            amount_cents: item.amount_cents,
+                            allocation: {
+                              allocation_id: item.allocation_id,
+                              slot: item.slot,
+                            },
+                            pickup_deadline_at: item.pickup_deadline_at,
+                          });
+                        }}
+                        style={{
+                          cursor: "pointer",
+                          background: currentOrder?.order_id === item.order_id ? "rgba(27,88,131,0.35)" : "transparent",
+                        }}
+                      >
+                        <td style={tdStyle}>{item.order_id}</td>
+                        <td style={tdStyle}>{item.status}</td>
+                        <td style={tdStyle}>{item.slot ?? "-"}</td>
+                        <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
+                        <td style={tdStyle}>{item.sku_id}</td>
+                        <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
+                        <td style={tdStyle}>{formatDateTime(item.created_at)}</td>
+                        <td style={tdStyle}>{formatDateTime(item.paid_at)}</td>
+                        <td style={tdStyle}>{formatDateTime(item.pickup_deadline_at)}</td>
                       </tr>
-                    ) : ordersData.length === 0 ? (
-                      <tr>
-                        <td style={tdStyle} colSpan={9}>
-                          Nenhum pedido encontrado.
-                        </td>
-                      </tr>
-                    ) : (
-                      ordersData.map((item) => (
-                        <tr
-                          key={item.order_id}
-                          onClick={() => handleSelectOrder(item)}
-                          style={{
-                            cursor: "pointer",
-                            background:
-                              currentOrder?.order_id === item.order_id ? "rgba(27,88,131,0.35)" : "transparent",
-                          }}
-                        >
-                          <td style={tdStyle}>{item.order_id}</td>
-                          <td style={tdStyle}>
-                            <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-                          </td>
-                          <td style={tdStyle}>{item.slot ?? "-"}</td>
-                          <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
-                          <td style={tdStyle}>{item.sku_id}</td>
-                          <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.created_at)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.paid_at)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.pickup_deadline_at)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-            <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
-              Pedidos online não entram no polling automático. Atualize pelo botão.
+            <div style={{ fontSize: 11, opacity: 0.65, marginTop: 8 }}>
+              Clique em uma linha para destacar a gaveta correspondente e carregar o pedido no painel.
             </div>
           </section>
         </div>
 
         {/* COLUNA DIREITA */}
-        <div style={{ display: "grid", gap: 12 }}>
-          <section
-            style={{
-              ...panelStyleCompact,
-              border: `1px solid ${currentOrderMeta.border}`,
-              boxShadow: currentOrder ? `0 0 0 1px rgba(255,255,255,0.03), inset 0 0 0 1px rgba(255,255,255,0.04)` : "none",
-              background: currentOrderMeta.bg,
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800 }}>Pedido atual</div>
-              <span style={statusBadgeStyle(currentOrder?.status || "SEM_PEDIDO")}>
-                {currentOrder?.status || "SEM_PEDIDO"}
-              </span>
-            </div>
+        <div style={{ display: "grid", gap: 14 }}>
+          <section style={panelStyle}>
+            <div style={{ fontWeight: 800 }}>Pedido atual</div>
 
-            {currentOrder ? (
-              <div style={softInfoBox(currentOrderMeta.tone === "danger" ? "warning" : currentOrderMeta.tone === "info" ? "info" : "normal")}>
-                <b>{currentOrderMeta.label}</b>
-                {currentOrder?.allocation?.slot ? (
-                  <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
-                ) : null}
-              </div>
-            ) : hasActiveSlotSelection ? (
+            {selectedSlot ? (
               <div style={softInfoBox(slotSelectionRemainingSec > 10 ? "normal" : "warning")}>
-                Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante para criar o pedido:{" "}
-                <b>{slotSelectionRemainingSec}s</b>
+                Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante para criar o pedido: <b>{slotSelectionRemainingSec}s</b>
               </div>
             ) : (
-              <div style={{ fontSize: 12, opacity: 0.82 }}>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
                 Selecione uma gaveta disponível para iniciar a criação do pedido.
               </div>
             )}
@@ -1202,8 +911,8 @@ export default function LockerDashboard({ region = "PT" }) {
               onClick={createOnlineOrder}
               disabled={orderLoading || payLoading}
               style={{
-                ...actionBtnCompact,
-                background: orderLoading ? "rgba(255,255,255,0.10)" : "#7a5f1f",
+                ...actionBtn,
+                background: orderLoading ? "rgba(255,255,255,0.08)" : "#7a5f1f",
                 cursor: orderLoading || payLoading ? "not-allowed" : "pointer",
               }}
             >
@@ -1215,7 +924,7 @@ export default function LockerDashboard({ region = "PT" }) {
             </button>
 
             {currentOrder ? (
-              <div style={infoCardStyleCompact}>
+              <div style={infoCardStyle}>
                 <InfoRow label="order_id" value={currentOrder.order_id} />
                 <InfoRow label="status" value={currentOrder.status} />
                 <InfoRow label="slot" value={currentOrder?.allocation?.slot ?? "-"} />
@@ -1225,31 +934,35 @@ export default function LockerDashboard({ region = "PT" }) {
                 {currentOrder?.manual_code ? <InfoRow label="manual_code atual" value={currentOrder.manual_code} /> : null}
               </div>
             ) : (
-              <div style={{ fontSize: 12, opacity: 0.78 }}>Nenhum pedido criado ou selecionado.</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Nenhum pedido criado ou selecionado.</div>
             )}
 
             {orderError ? <pre style={errorPre}>{orderError}</pre> : null}
           </section>
 
-          <section style={panelStyleCompact}>
+          <section style={panelStyle}>
             <div style={{ fontWeight: 800 }}>Pagamento do pedido</div>
 
-            <div style={{ fontSize: 12, opacity: 0.72 }}>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Orders API: <code>{ORDER_PICKUP_BASE}/orders</code>
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
               Gateway: <code>{gatewayUrl}</code>
             </div>
 
             {currentOrder?.status === "PAID_PENDING_PICKUP" ? (
               <div style={softInfoBox("info")}>
-                ⚠️ Pedido já pago. Para recuperar o código, use <b>Gerar/Atualizar</b> ou <b>Regenerar código manual</b>.
+                ⚠️ Este pedido já está pago e aguardando retirada. Para recuperar o código manual, use <b>“Gerar/Atualizar”</b>
+                no painel de retirada ou o botão <b>“Regenerar código manual”</b>.
               </div>
             ) : null}
 
-            <label style={labelCompact}>
+            <label style={label}>
               Método
               <select
                 value={payMethod}
                 onChange={(e) => setPayMethod(e.target.value)}
-                style={{ ...selectCompact, backgroundColor: "#2d2d3a" }}
+                style={{ ...select, backgroundColor: "#2d2d3a" }}
               >
                 <option value="PIX">PIX</option>
                 <option value="CARTAO">CARTÃO</option>
@@ -1258,8 +971,8 @@ export default function LockerDashboard({ region = "PT" }) {
               </select>
             </label>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <label style={labelCompact}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label style={label}>
                 Gaveta
                 <input
                   type="number"
@@ -1267,11 +980,11 @@ export default function LockerDashboard({ region = "PT" }) {
                   max="24"
                   value={paySlot}
                   onChange={(e) => setPaySlot(e.target.value)}
-                  style={inputCompact}
+                  style={{ ...input, width: "100%" }}
                 />
               </label>
 
-              <label style={labelCompact}>
+              <label style={label}>
                 Valor
                 <input
                   type="number"
@@ -1279,7 +992,7 @@ export default function LockerDashboard({ region = "PT" }) {
                   step="0.01"
                   value={payValue}
                   onChange={(e) => setPayValue(e.target.value)}
-                  style={inputCompact}
+                  style={{ ...input, width: "100%" }}
                 />
               </label>
             </div>
@@ -1288,15 +1001,9 @@ export default function LockerDashboard({ region = "PT" }) {
               onClick={simulatePayment}
               disabled={payLoading || orderLoading || isOrderAlreadyPaid}
               style={{
-                ...actionBtnCompact,
-                background:
-                  payLoading || orderLoading || isOrderAlreadyPaid
-                    ? "rgba(255,255,255,0.08)"
-                    : "#2d8a4a",
-                cursor:
-                  payLoading || orderLoading || isOrderAlreadyPaid
-                    ? "not-allowed"
-                    : "pointer",
+                ...actionBtn,
+                background: payLoading || orderLoading || isOrderAlreadyPaid ? "rgba(255,255,255,0.08)" : "#2d8a4a",
+                cursor: payLoading || orderLoading || isOrderAlreadyPaid ? "not-allowed" : "pointer",
               }}
             >
               {payLoading
@@ -1308,17 +1015,17 @@ export default function LockerDashboard({ region = "PT" }) {
                     : "Pagar pedido atual"}
             </button>
 
-            {payResp ? <pre style={resultPreCompact}>{payResp}</pre> : null}
+            {payResp ? <pre style={resultPre}>{payResp}</pre> : null}
           </section>
 
-          <section style={panelStyleCompact}>
+          <section style={panelStyle}>
             <div style={{ fontWeight: 800 }}>Retirada do pedido</div>
 
             <button
               onClick={regenerateManualCode}
               disabled={!canRegenerateManualCode || regenCodeLoading || payLoading || orderLoading}
               style={{
-                ...actionBtnCompact,
+                ...actionBtn,
                 background:
                   !canRegenerateManualCode || regenCodeLoading || payLoading || orderLoading
                     ? "rgba(255,255,255,0.08)"
@@ -1334,7 +1041,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
             <PickupQRCodePanel
               region={region}
-              pickupId={currentOrder?.pickup_id || ""}
+              pickupId={currentOrder?.order_id || ""}
               apiBase={ORDER_PICKUP_BASE}
             />
 
@@ -1344,120 +1051,85 @@ export default function LockerDashboard({ region = "PT" }) {
               onRedeemed={handleManualRedeemed}
             />
 
-            {pickupResp ? <pre style={resultPreCompact}>{pickupResp}</pre> : null}
+            {pickupResp ? <pre style={resultPre}>{pickupResp}</pre> : null}
           </section>
 
-          <section style={panelStyleCompact}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-              <div style={{ fontWeight: 800 }}>Bolos por grupo</div>
-              <button onClick={() => setShowCakesPanel((v) => !v)} style={btnSmall}>
-                {showCakesPanel ? "Ocultar" : "Mostrar"}
-              </button>
+          <section style={panelStyle}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Bolos por grupo (secundário)</div>
+
+            <Carousel
+              pages={6}
+              activeIndex={activeGroup}
+              onPrev={() => setActiveGroup((g) => (g - 1 + 6) % 6)}
+              onNext={() => setActiveGroup((g) => (g + 1) % 6)}
+              onGo={(i) => setActiveGroup(clamp(i, 0, 5))}
+            />
+
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Grupo atual: gavetas <b>{groupSlotsList.join(", ")}</b>
             </div>
 
-            {!showCakesPanel ? (
-              <div style={{ fontSize: 12, opacity: 0.65 }}>
-                Painel secundário oculto para reduzir ruído visual.
-              </div>
-            ) : (
-              <>
-                <Carousel
-                  pages={6}
-                  activeIndex={activeGroup}
-                  onPrev={() => setActiveGroup((g) => (g - 1 + 6) % 6)}
-                  onNext={() => setActiveGroup((g) => (g + 1) % 6)}
-                  onGo={(i) => setActiveGroup(clamp(i, 0, 5))}
-                />
+            <div style={{ display: "grid", gap: 10 }}>
+              {groupSlotsList.map((slot) => {
+                const st = slots[slot]?.state || "AVAILABLE";
+                const meta = STATE_STYLE[st] || { bg: "#333", fg: "white", label: st };
+                const cake = cakes[slot];
 
-                <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  Grupo atual: gavetas <b>{groupSlotsList.join(", ")}</b>
-                </div>
+                return (
+                  <div key={slot} style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.18)", padding: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <button onClick={() => selectSlot(slot)} style={{ ...btnSmall, padding: "6px 10px", fontWeight: 700 }}>
+                        Gaveta {slot}
+                      </button>
 
-                <div style={{ display: "grid", gap: 8 }}>
-                  {groupSlotsList.map((slot) => {
-                    const st = slots[slot]?.state || "AVAILABLE";
-                    const meta = STATE_STYLE[st] || { bg: "#333", fg: "white", label: st };
-                    const cake = cakes[slot];
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: meta.bg, color: meta.fg, fontSize: 11, fontWeight: 700 }}>
+                        {meta.label}
+                      </span>
+                    </div>
 
-                    return (
-                      <div
-                        key={slot}
-                        style={{
-                          borderRadius: 12,
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          background: "rgba(0,0,0,0.18)",
-                          padding: 9,
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <button onClick={() => selectSlot(slot)} style={{ ...btnSmall, padding: "6px 10px", fontWeight: 700 }}>
-                            Gaveta {slot}
-                          </button>
+                    <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                      <label style={label}>
+                        Nome do bolo
+                        <input
+                          value={cake?.name || ""}
+                          onChange={(e) => updateCake(slot, { name: e.target.value })}
+                          placeholder="ex.: Bolo de Cenoura"
+                          style={input}
+                        />
+                      </label>
 
-                          <span
-                            style={{
-                              padding: "4px 8px",
-                              borderRadius: 999,
-                              background: meta.bg,
-                              color: meta.fg,
-                              fontSize: 11,
-                              fontWeight: 700,
-                            }}
-                          >
-                            {meta.label}
-                          </span>
-                        </div>
+                      <label style={label}>
+                        Observações
+                        <input
+                          value={cake?.notes || ""}
+                          onChange={(e) => updateCake(slot, { notes: e.target.value })}
+                          placeholder="ex.: sem lactose / promoção / etc."
+                          style={input}
+                        />
+                      </label>
 
-                        <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
-                          <label style={labelCompact}>
-                            Nome do bolo
-                            <input
-                              value={cake?.name || ""}
-                              onChange={(e) => updateCake(slot, { name: e.target.value })}
-                              placeholder="ex.: Bolo de Cenoura"
-                              style={inputCompact}
-                            />
-                          </label>
+                      <label style={label}>
+                        URL da imagem (opcional)
+                        <input
+                          value={cake?.imageUrl || ""}
+                          onChange={(e) => updateCake(slot, { imageUrl: e.target.value })}
+                          placeholder="https://..."
+                          style={input}
+                        />
+                      </label>
 
-                          <label style={labelCompact}>
-                            Observações
-                            <input
-                              value={cake?.notes || ""}
-                              onChange={(e) => updateCake(slot, { notes: e.target.value })}
-                              placeholder="ex.: sem lactose / promoção / etc."
-                              style={inputCompact}
-                            />
-                          </label>
-
-                          <label style={labelCompact}>
-                            URL da imagem (opcional)
-                            <input
-                              value={cake?.imageUrl || ""}
-                              onChange={(e) => updateCake(slot, { imageUrl: e.target.value })}
-                              placeholder="https://..."
-                              style={inputCompact}
-                            />
-                          </label>
-
-                          {cake?.imageUrl ? (
-                            <img
-                              alt={`Bolo da gaveta ${slot}`}
-                              src={cake.imageUrl}
-                              style={{
-                                width: "100%",
-                                borderRadius: 10,
-                                border: "1px solid rgba(255,255,255,0.12)",
-                                marginTop: 4,
-                              }}
-                            />
-                          ) : null}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+                      {cake?.imageUrl ? (
+                        <img
+                          alt={`Bolo da gaveta ${slot}`}
+                          src={cake.imageUrl}
+                          style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", marginTop: 6 }}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
         </div>
       </div>
@@ -1465,43 +1137,69 @@ export default function LockerDashboard({ region = "PT" }) {
   );
 }
 
-const panelStyleCompact = {
+function InfoRow({ label, value }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 8 }}>
+      <div style={{ opacity: 0.7 }}>{label}:</div>
+      <div style={{ fontWeight: 600, wordBreak: "break-all" }}>{value}</div>
+    </div>
+  );
+}
+
+function softInfoBox(kind = "normal") {
+  const backgrounds = {
+    normal: "rgba(255,255,255,0.04)",
+    warning: "rgba(179,38,30,0.18)",
+    info: "rgba(27,88,131,0.22)",
+  };
+
+  return {
+    fontSize: 12,
+    opacity: 0.95,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: backgrounds[kind] || backgrounds.normal,
+  };
+}
+
+const panelStyle = {
   borderRadius: 14,
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.04)",
-  padding: 12,
+  padding: 14,
   display: "grid",
-  gap: 8,
+  gap: 10,
 };
 
-const infoCardStyleCompact = {
+const infoCardStyle = {
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.05)",
+  background: "rgba(255,255,255,0.04)",
   padding: 10,
   display: "grid",
-  gap: 5,
+  gap: 6,
   fontSize: 12,
 };
 
-const actionBtnCompact = {
-  padding: "9px 12px",
+const actionBtn = {
+  padding: "10px 12px",
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.18)",
   color: "white",
   fontWeight: 800,
 };
 
-const labelCompact = {
+const label = {
   fontSize: 12,
   opacity: 0.9,
   display: "grid",
-  gap: 5,
+  gap: 6,
 };
 
-const inputCompact = {
+const input = {
   width: "100%",
-  padding: "9px 10px",
+  padding: "10px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(255,255,255,0.06)",
@@ -1509,9 +1207,9 @@ const inputCompact = {
   outline: "none",
 };
 
-const selectCompact = {
+const select = {
   width: "100%",
-  padding: "9px 10px",
+  padding: "10px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(255,255,255,0.06)",
@@ -1541,11 +1239,11 @@ const errorPre = {
   background: "#2b1d1d",
   color: "#ffb4b4",
   overflow: "auto",
-  maxHeight: 160,
+  maxHeight: 180,
   fontSize: 12,
 };
 
-const resultPreCompact = {
+const resultPre = {
   margin: 0,
   padding: 10,
   borderRadius: 12,
@@ -1553,16 +1251,6 @@ const resultPreCompact = {
   background: "#0b0d10",
   color: "white",
   overflow: "auto",
-  maxHeight: 190,
+  maxHeight: 260,
   fontSize: 12,
-};
-
-const select = {
-  width: "100%",
-  padding: "10px 10px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.16)",
-  background: "rgba(255,255,255,0.06)",
-  color: "white",
-  outline: "none",
 };

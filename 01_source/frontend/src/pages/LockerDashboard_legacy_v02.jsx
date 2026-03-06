@@ -14,7 +14,7 @@ const SLOT_STATES = [
 ];
 
 /**
- * Cores por estado da gaveta
+ * Cores por estado
  */
 const STATE_STYLE = {
   AVAILABLE: { bg: "#1f7a3f", fg: "white", label: "Disponível" },
@@ -22,45 +22,6 @@ const STATE_STYLE = {
   PAID_PENDING_PICKUP: { bg: "#1b5883", fg: "white", label: "Pago (aguardando)" },
   PICKED_UP: { bg: "#6b6b6b", fg: "white", label: "Retirado" },
   OUT_OF_STOCK: { bg: "#b3261e", fg: "white", label: "Indisponível" },
-};
-
-const ORDER_STATUS_META = {
-  PAYMENT_PENDING: {
-    label: "Pagamento pendente",
-    tone: "warning",
-    bg: "linear-gradient(135deg, rgba(199,146,0,0.22), rgba(199,146,0,0.10))",
-    border: "rgba(199,146,0,0.42)",
-  },
-  PAID_PENDING_PICKUP: {
-    label: "Pago / aguardando retirada",
-    tone: "info",
-    bg: "linear-gradient(135deg, rgba(27,88,131,0.28), rgba(27,88,131,0.12))",
-    border: "rgba(27,88,131,0.45)",
-  },
-  PICKED_UP: {
-    label: "Retirado",
-    tone: "neutral",
-    bg: "linear-gradient(135deg, rgba(107,107,107,0.24), rgba(107,107,107,0.10))",
-    border: "rgba(107,107,107,0.40)",
-  },
-  EXPIRED: {
-    label: "Expirado",
-    tone: "danger",
-    bg: "linear-gradient(135deg, rgba(179,38,30,0.26), rgba(179,38,30,0.12))",
-    border: "rgba(179,38,30,0.42)",
-  },
-  EXPIRED_CREDIT_50: {
-    label: "Expirado / crédito 50%",
-    tone: "danger",
-    bg: "linear-gradient(135deg, rgba(179,38,30,0.26), rgba(179,38,30,0.12))",
-    border: "rgba(179,38,30,0.42)",
-  },
-  SEM_PEDIDO: {
-    label: "Sem pedido",
-    tone: "neutral",
-    bg: "linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02))",
-    border: "rgba(255,255,255,0.14)",
-  },
 };
 
 function clamp(n, min, max) {
@@ -173,94 +134,6 @@ function useMediaQuery(query) {
   return matches;
 }
 
-function statusBadgeStyle(status) {
-  const map = {
-    PAYMENT_PENDING: { bg: "rgba(199,146,0,0.22)", border: "rgba(199,146,0,0.45)" },
-    PAID_PENDING_PICKUP: { bg: "rgba(27,88,131,0.22)", border: "rgba(27,88,131,0.45)" },
-    PICKED_UP: { bg: "rgba(107,107,107,0.22)", border: "rgba(107,107,107,0.45)" },
-    EXPIRED: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
-    EXPIRED_CREDIT_50: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
-    SEM_PEDIDO: { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" },
-  };
-  const m = map[status] || { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" };
-  return {
-    padding: "4px 8px",
-    borderRadius: 999,
-    border: `1px solid ${m.border}`,
-    background: m.bg,
-    fontSize: 11,
-    fontWeight: 700,
-  };
-}
-
-function softInfoBox(kind = "normal") {
-  const backgrounds = {
-    normal: "rgba(255,255,255,0.04)",
-    warning: "rgba(179,38,30,0.18)",
-    info: "rgba(27,88,131,0.22)",
-  };
-
-  return {
-    fontSize: 12,
-    opacity: 0.95,
-    padding: 9,
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: backgrounds[kind] || backgrounds.normal,
-  };
-}
-
-function getCurrentOrderMeta(status) {
-  return ORDER_STATUS_META[status] || ORDER_STATUS_META.SEM_PEDIDO;
-}
-
-function buildCurrentOrderFromListItem(item) {
-  if (!item) return null;
-
-  return {
-    order_id: item.order_id,
-    channel: item.channel,
-    status: item.status,
-    amount_cents: item.amount_cents,
-    pickup_id: item.pickup_id,
-    token_id: item.token_id,
-    manual_code: item.manual_code,
-    paid_at: item.paid_at,
-    created_at: item.created_at,
-    pickup_deadline_at: item.pickup_deadline_at,
-    allocation: {
-      allocation_id: item.allocation_id,
-      slot: item.slot,
-    },
-  };
-}
-
-function focusOrderFromListItem(item, setters) {
-  const {
-    setCurrentOrder,
-    setSelectedSlot,
-    setPaySlot,
-    setActiveGroup,
-    setSlotSelectionExpiresAt,
-    setOrderError,
-    setPayResp,
-    setPickupResp,
-  } = setters;
-
-  if (item?.slot) {
-    const slotNum = Number(item.slot);
-    setSelectedSlot(slotNum);
-    setPaySlot(slotNum);
-    setActiveGroup(groupIndexFromSlot(slotNum));
-  }
-
-  setSlotSelectionExpiresAt(null);
-  setOrderError("");
-  setPayResp("");
-  setPickupResp("");
-  setCurrentOrder(buildCurrentOrderFromListItem(item));
-}
-
 function SlotCard({ slot, state, selected, onClick }) {
   const st = STATE_STYLE[state] || { bg: "#333", fg: "white", label: state };
 
@@ -338,7 +211,10 @@ function OrdersCardList({
   ordersData,
   ordersLoading,
   currentOrder,
-  onSelectOrder,
+  setCurrentOrder,
+  setSelectedSlot,
+  setPaySlot,
+  setActiveGroup,
 }) {
   if (ordersLoading) {
     return <div style={{ fontSize: 12, opacity: 0.75 }}>Carregando pedidos...</div>;
@@ -353,7 +229,24 @@ function OrdersCardList({
       {ordersData.map((item) => (
         <button
           key={item.order_id}
-          onClick={() => onSelectOrder(item)}
+          onClick={() => {
+            if (item.slot) {
+              setSelectedSlot(Number(item.slot));
+              setPaySlot(Number(item.slot));
+              setActiveGroup(groupIndexFromSlot(Number(item.slot)));
+            }
+            setCurrentOrder({
+              order_id: item.order_id,
+              channel: item.channel,
+              status: item.status,
+              amount_cents: item.amount_cents,
+              allocation: {
+                allocation_id: item.allocation_id,
+                slot: item.slot,
+              },
+              pickup_deadline_at: item.pickup_deadline_at,
+            });
+          }}
           style={{
             textAlign: "left",
             padding: 10,
@@ -396,6 +289,42 @@ function OrdersCardList({
       ))}
     </div>
   );
+}
+
+function statusBadgeStyle(status) {
+  const map = {
+    PAYMENT_PENDING: { bg: "rgba(199,146,0,0.22)", border: "rgba(199,146,0,0.45)" },
+    PAID_PENDING_PICKUP: { bg: "rgba(27,88,131,0.22)", border: "rgba(27,88,131,0.45)" },
+    PICKED_UP: { bg: "rgba(107,107,107,0.22)", border: "rgba(107,107,107,0.45)" },
+    EXPIRED: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
+    EXPIRED_CREDIT_50: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
+  };
+  const m = map[status] || { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" };
+  return {
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: `1px solid ${m.border}`,
+    background: m.bg,
+    fontSize: 11,
+    fontWeight: 700,
+  };
+}
+
+function softInfoBox(kind = "normal") {
+  const backgrounds = {
+    normal: "rgba(255,255,255,0.04)",
+    warning: "rgba(179,38,30,0.18)",
+    info: "rgba(27,88,131,0.22)",
+  };
+
+  return {
+    fontSize: 12,
+    opacity: 0.95,
+    padding: 9,
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: backgrounds[kind] || backgrounds.normal,
+  };
 }
 
 const btnSmall = {
@@ -457,23 +386,18 @@ export default function LockerDashboard({ region = "PT" }) {
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
   const [ordersData, setOrdersData] = useState([]);
 
-  const currentOrderMeta = getCurrentOrderMeta(currentOrder?.status || "SEM_PEDIDO");
-
   const isOrderAlreadyPaid =
     currentOrder?.status === "PAID_PENDING_PICKUP" || currentOrder?.status === "PICKED_UP";
 
   const canRegenerateManualCode =
     currentOrder?.status === "PAID_PENDING_PICKUP" && !!currentOrder?.order_id;
 
-  const hasActiveSlotSelection =
-    !!selectedSlot &&
-    !currentOrder &&
-    !!slotSelectionExpiresAt &&
-    slotSelectionRemainingSec > 0;
-
-  const selectedSlotState = selectedSlot ? slots[selectedSlot]?.state || "AVAILABLE" : null;
-
-  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
+  const currentOrderStatusMeta =
+    STATE_STYLE[currentOrder?.status] || {
+      bg: "rgba(255,255,255,0.05)",
+      fg: "white",
+      label: currentOrder?.status || "Sem pedido",
+    };
 
   useEffect(() => {
     setPaySlot(selectedSlot || 1);
@@ -485,31 +409,16 @@ export default function LockerDashboard({ region = "PT" }) {
     }
   }, [isNarrow]);
 
+  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
+
   function selectSlot(slot) {
     setSelectedSlot(slot);
     setActiveGroup(groupIndexFromSlot(slot));
-    setCurrentOrder(null);
-    setOrderError("");
-    setPayResp("");
-    setPickupResp("");
     setSlotSelectionExpiresAt(Date.now() + 45_000);
   }
 
   function updateCake(slot, patch) {
     setCakes((prev) => ({ ...prev, [slot]: { ...prev[slot], ...patch } }));
-  }
-
-  function handleSelectOrder(item) {
-    focusOrderFromListItem(item, {
-      setCurrentOrder,
-      setSelectedSlot,
-      setPaySlot,
-      setActiveGroup,
-      setSlotSelectionExpiresAt,
-      setOrderError,
-      setPayResp,
-      setPickupResp,
-    });
   }
 
   async function fetchSlotsOnce() {
@@ -688,7 +597,6 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const data = JSON.parse(text);
       setCurrentOrder(data);
-      setSlotSelectionExpiresAt(null);
 
       if (data?.allocation?.slot) {
         const allocatedSlot = Number(data.allocation.slot);
@@ -990,11 +898,6 @@ export default function LockerDashboard({ region = "PT" }) {
               <div style={{ fontWeight: 800 }}>Gavetas (1–24)</div>
               <div style={{ fontSize: 12, opacity: 0.75 }}>
                 Selecionada: <b>{selectedSlot ?? "—"}</b>
-                {selectedSlot ? (
-                  <>
-                    {" "}• Estado: <b>{STATE_STYLE[selectedSlotState]?.label || selectedSlotState || "-"}</b>
-                  </>
-                ) : null}
               </div>
             </div>
 
@@ -1095,7 +998,10 @@ export default function LockerDashboard({ region = "PT" }) {
                   ordersData={ordersData}
                   ordersLoading={ordersLoading}
                   currentOrder={currentOrder}
-                  onSelectOrder={handleSelectOrder}
+                  setCurrentOrder={setCurrentOrder}
+                  setSelectedSlot={setSelectedSlot}
+                  setPaySlot={setPaySlot}
+                  setActiveGroup={setActiveGroup}
                 />
               </div>
             ) : (
@@ -1131,7 +1037,24 @@ export default function LockerDashboard({ region = "PT" }) {
                       ordersData.map((item) => (
                         <tr
                           key={item.order_id}
-                          onClick={() => handleSelectOrder(item)}
+                          onClick={() => {
+                            if (item.slot) {
+                              setSelectedSlot(Number(item.slot));
+                              setPaySlot(Number(item.slot));
+                              setActiveGroup(groupIndexFromSlot(Number(item.slot)));
+                            }
+                            setCurrentOrder({
+                              order_id: item.order_id,
+                              channel: item.channel,
+                              status: item.status,
+                              amount_cents: item.amount_cents,
+                              allocation: {
+                                allocation_id: item.allocation_id,
+                                slot: item.slot,
+                              },
+                              pickup_deadline_at: item.pickup_deadline_at,
+                            });
+                          }}
                           style={{
                             cursor: "pointer",
                             background:
@@ -1139,9 +1062,7 @@ export default function LockerDashboard({ region = "PT" }) {
                           }}
                         >
                           <td style={tdStyle}>{item.order_id}</td>
-                          <td style={tdStyle}>
-                            <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-                          </td>
+                          <td style={tdStyle}>{item.status}</td>
                           <td style={tdStyle}>{item.slot ?? "-"}</td>
                           <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
                           <td style={tdStyle}>{item.sku_id}</td>
@@ -1168,26 +1089,28 @@ export default function LockerDashboard({ region = "PT" }) {
           <section
             style={{
               ...panelStyleCompact,
-              border: `1px solid ${currentOrderMeta.border}`,
-              boxShadow: currentOrder ? `0 0 0 1px rgba(255,255,255,0.03), inset 0 0 0 1px rgba(255,255,255,0.04)` : "none",
-              background: currentOrderMeta.bg,
+              border: `1px solid ${currentOrder?.status ? "rgba(255,255,255,0.20)" : "rgba(255,255,255,0.12)"}`,
+              boxShadow: currentOrder?.status ? `inset 0 0 0 1px rgba(255,255,255,0.06)` : "none",
+              background: currentOrder?.status
+                ? currentOrderStatusMeta.bg
+                : "rgba(255,255,255,0.04)",
+              color: currentOrder?.status ? currentOrderStatusMeta.fg : "white",
             }}
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ fontWeight: 800 }}>Pedido atual</div>
-              <span style={statusBadgeStyle(currentOrder?.status || "SEM_PEDIDO")}>
+              <span
+                style={{
+                  ...statusBadgeStyle(currentOrder?.status || "SEM_PEDIDO"),
+                  background: currentOrder?.status ? "rgba(255,255,255,0.14)" : "rgba(255,255,255,0.08)",
+                  border: "1px solid rgba(255,255,255,0.18)",
+                }}
+              >
                 {currentOrder?.status || "SEM_PEDIDO"}
               </span>
             </div>
 
-            {currentOrder ? (
-              <div style={softInfoBox(currentOrderMeta.tone === "danger" ? "warning" : currentOrderMeta.tone === "info" ? "info" : "normal")}>
-                <b>{currentOrderMeta.label}</b>
-                {currentOrder?.allocation?.slot ? (
-                  <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
-                ) : null}
-              </div>
-            ) : hasActiveSlotSelection ? (
+            {selectedSlot ? (
               <div style={softInfoBox(slotSelectionRemainingSec > 10 ? "normal" : "warning")}>
                 Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante para criar o pedido:{" "}
                 <b>{slotSelectionRemainingSec}s</b>
@@ -1334,7 +1257,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
             <PickupQRCodePanel
               region={region}
-              pickupId={currentOrder?.pickup_id || ""}
+              pickupId={currentOrder?.order_id || ""}
               apiBase={ORDER_PICKUP_BASE}
             />
 
