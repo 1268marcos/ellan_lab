@@ -104,6 +104,7 @@ class AllocateIn(BaseModel):
 
     ttl_sec: int = 120
     request_id: Optional[str] = None
+    desired_slot: Optional[int] = None
 
 class AllocateOut(BaseModel):
     allocation_id: str
@@ -168,29 +169,55 @@ def allocate(payload: AllocateIn, request: Request):
                     expires_at=expires_at,
                 )
 
-        # escolhe a primeira porta AVAILABLE
-        cur = conn.execute(
-            """
-            SELECT door_id
-            FROM door_state
-            WHERE machine_id=? AND state='AVAILABLE'
-            ORDER BY door_id
-            LIMIT 1
-            """,
-            (machine_id,),
-        )
-        row = cur.fetchone()
-        if not row:
-            _raise(
-                409,
-                err_type="NO_AVAILABLE_SLOTS",
-                message="no AVAILABLE slots",
-                retryable=True,
-                machine_id=machine_id,
-                endpoint=str(request.url.path),
-            )
+        # escolhe slot desejado ou a primeira AVAILABLE
+        if payload.desired_slot is not None:
+            desired_slot = int(payload.desired_slot)
+            _ensure_slot_range(desired_slot)
 
-        door_id = int(row[0])
+            cur = conn.execute(
+                """
+                SELECT door_id
+                FROM door_state
+                WHERE machine_id=? AND door_id=? AND state='AVAILABLE'
+                LIMIT 1
+                """,
+                (machine_id, desired_slot),
+            )
+            row = cur.fetchone()
+            if not row:
+                _raise(
+                    409,
+                    err_type="DESIRED_SLOT_UNAVAILABLE",
+                    message="desired slot is not AVAILABLE",
+                    retryable=True,
+                    machine_id=machine_id,
+                    endpoint=str(request.url.path),
+                    slot=desired_slot,
+                )
+            door_id = desired_slot
+        else:
+            cur = conn.execute(
+                """
+                SELECT door_id
+                FROM door_state
+                WHERE machine_id=? AND state='AVAILABLE'
+                ORDER BY door_id
+                LIMIT 1
+                """,
+                (machine_id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                _raise(
+                    409,
+                    err_type="NO_AVAILABLE_SLOTS",
+                    message="no AVAILABLE slots",
+                    retryable=True,
+                    machine_id=machine_id,
+                    endpoint=str(request.url.path),
+                )
+
+            door_id = int(row[0])
 
         # claim atômico
         updated_at = _now_iso()

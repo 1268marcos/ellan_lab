@@ -65,7 +65,7 @@ const input = {
 
 export default function PickupQRCodePanel({
   region = "PT",
-  pickupId, // (MVP: order_id)
+  pickupId, // MVP atual: usamos order_id real como pickup_id
   apiBase = "http://localhost:8003",
 }) {
   const [qrResp, setQrResp] = useState(null); // { qr, refresh_in_sec }
@@ -256,7 +256,7 @@ export default function PickupQRCodePanel({
       <div style={{ fontSize: 12, opacity: 0.8 }}>
         {pickupId ? (
           <>
-            Pedido: <b>{pickupId}</b> • Região: <b>{region}</b>
+            Pickup/Order ID: <b>{pickupId}</b> • Região: <b>{region}</b>
           </>
         ) : (
           <span style={{ color: "#ffb4b4" }}>⚠️ Selecione/Informe um pickupId (order_id) para gerar QR.</span>

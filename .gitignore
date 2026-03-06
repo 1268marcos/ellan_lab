@@ -24,6 +24,7 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+.txt
 
 # Arquivos de sistema
 .DS_Store
@@ -51,5 +52,6 @@ docker-compose.override.yml
 06_exports/
 07_tests/
 docs/
+secrets/
 minha_chave
 minha_chave.pub

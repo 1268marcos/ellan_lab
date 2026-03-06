@@ -41,11 +41,17 @@ def get_sku_pricing(region: str, sku_id: str) -> dict:
             }
         raise
 
-
-def locker_allocate(region: str, sku_id: str, ttl_sec: int, request_id: str) -> dict:
+def locker_allocate(region: str, sku_id: str, ttl_sec: int, request_id: str, desired_slot: int | None = None) -> dict:
     base = _base(region).rstrip("/")
     url = f"{base}/locker/allocate"
-    payload = {"sku_id": sku_id, "ttl_sec": int(ttl_sec), "request_id": request_id}
+    payload = {
+        "sku_id": sku_id,
+        "ttl_sec": int(ttl_sec),
+        "request_id": request_id,
+    }
+    if desired_slot is not None:
+        payload["desired_slot"] = int(desired_slot)
+
     r = requests.post(url, json=payload, timeout=5)
     r.raise_for_status()
     return r.json()

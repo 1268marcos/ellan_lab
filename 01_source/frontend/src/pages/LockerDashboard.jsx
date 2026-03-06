@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
+import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
 /**
  * Estados das gavetas (use os mesmos nomes do backend)
@@ -79,8 +80,37 @@ function getOrCreateDeviceFingerprint() {
   }
   return fp;
 }
+
 function generateIdempotencyKey() {
   return crypto.randomUUID();
+}
+
+function generateClientTransactionId() {
+  return `txn_${crypto.randomUUID()}`;
+}
+
+function buildTotemId(region) {
+  return region === "SP" ? "CACIFO-SP-001" : "CACIFO-PT-001";
+}
+
+function buildDefaultSkuId(region, slot) {
+  const cakeName = "";
+  const normalized = String(cakeName).trim().toUpperCase().replace(/\s+/g, "_");
+  if (normalized) return normalized;
+  return region === "SP" ? `BOLO_SLOT_${slot}_SP` : `BOLO_SLOT_${slot}_PT`;
+}
+
+function pickGatewayTransactionId(respObj) {
+  if (!respObj || typeof respObj !== "object") return generateClientTransactionId();
+
+  return (
+    respObj.transaction_id ||
+    respObj.sale_id ||
+    respObj.payment_id ||
+    respObj.id ||
+    respObj.request_id ||
+    generateClientTransactionId()
+  );
 }
 
 /**
@@ -171,18 +201,44 @@ export default function LockerDashboard({ region = "PT" }) {
   const GATEWAY_BASE = import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
   const gatewayUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, [GATEWAY_BASE]);
 
+  const ORDER_PICKUP_BASE =
+    import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+
+  const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
+
   // ==== slots / cakes ====
   const [slots, setSlots] = useState(() => slotsListToMap([]));
   const [cakes, setCakes] = useState(() => buildInitialCakes());
 
-  const [selectedSlot, setSelectedSlot] = useState(1);
+  const [selectedSlot, setSelectedSlot] = useState(null);
   const [activeGroup, setActiveGroup] = useState(0);
+  const [slotSelectionExpiresAt, setSlotSelectionExpiresAt] = useState(null);
+  const [slotSelectionTick, setSlotSelectionTick] = useState(0);
+
+  // calcular segundos restantes após a escolha do slot gaveta
+  // ⚠️ IMPORTANTE: Calcular slotSelectionRemainingSec AQUI, antes de ser usado
+  const slotSelectionRemainingSec = slotSelectionExpiresAt
+    ? Math.max(0, Math.ceil((slotSelectionExpiresAt - Date.now()) / 1000))
+    : 0;
 
   // ==== backend sync UI ====
-  const [syncEnabled, setSyncEnabled] = useState(true); // polling on/off
+  const [syncEnabled, setSyncEnabled] = useState(true);
   const [syncStatus, setSyncStatus] = useState({ ok: true, msg: "—" });
   const pollTimerRef = useRef(null);
   const abortRef = useRef(null);
+
+  // ==== pedido online dinâmico ====
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderError, setOrderError] = useState("");
+  const [currentOrder, setCurrentOrder] = useState(null);
+  // shape esperada:
+  // {
+  //   order_id,
+  //   channel,
+  //   status,
+  //   amount_cents,
+  //   allocation: { allocation_id, slot, ttl_sec }
+  // }
 
   // ==== pagamento (gateway) ====
   const [payMethod, setPayMethod] = useState("PIX");
@@ -195,19 +251,44 @@ export default function LockerDashboard({ region = "PT" }) {
     setPaySlot(selectedSlot);
   }, [selectedSlot]);
 
+  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
+
+  /**
+   * Refresh após a retirada com o Código do QRCode (manual_code)
+   */
+  function handleManualRedeemed(data) {
+    if (data?.slot) {
+      setSelectedSlot(Number(data.slot));
+      setActiveGroup(groupIndexFromSlot(Number(data.slot)));
+    }
+
+    setCurrentOrder(null);
+    setSlotSelectionExpiresAt(null);
+    setPayResp(
+      JSON.stringify(
+        {
+          step: "manual_redeem_success",
+          response: data,
+        },
+        null,
+        2
+      )
+    );
+
+    fetchSlotsOnce();
+  }
+
   function selectSlot(slot) {
     setSelectedSlot(slot);
     setActiveGroup(groupIndexFromSlot(slot));
+    setSlotSelectionExpiresAt(Date.now() + 45_000);
   }
-
-  const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
 
   function updateCake(slot, patch) {
     setCakes((prev) => ({ ...prev, [slot]: { ...prev[slot], ...patch } }));
   }
 
   async function fetchSlotsOnce() {
-    // cancela request anterior
     if (abortRef.current) abortRef.current.abort();
     const ac = new AbortController();
     abortRef.current = ac;
@@ -228,12 +309,9 @@ export default function LockerDashboard({ region = "PT" }) {
     }
   }
 
-  // polling
   useEffect(() => {
-    // ao mudar região, faz fetch imediato
     fetchSlotsOnce();
 
-    // limpa timer antigo
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
 
     if (syncEnabled) {
@@ -249,10 +327,38 @@ export default function LockerDashboard({ region = "PT" }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backendBase, syncEnabled]);
 
+  // resetar ao trocar região
+  useEffect(() => {
+    setSelectedSlot(null);
+    setActiveGroup(0);
+    setPaySlot(1);
+    setCurrentOrder(null);
+    setOrderError("");
+    setPayResp("");
+    setSlotSelectionExpiresAt(null);
+  }, [region]);
+
+  // relógio de 1s para a seleção
+  useEffect(() => {
+    const t = setInterval(() => {
+      setSlotSelectionTick((x) => x + 1);
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // expirar seleção automaticamente
+  useEffect(() => {
+    if (!slotSelectionExpiresAt) return;
+    if (Date.now() < slotSelectionExpiresAt) return;
+
+    setSelectedSlot(null);
+    setPaySlot(1);
+    setSlotSelectionExpiresAt(null);
+  }, [slotSelectionExpiresAt, slotSelectionTick]);
+  
   async function setStateOnBackend(slot, nextState) {
     const payload = { state: nextState, product_id: slots[slot]?.product_id ?? null };
 
-    // otimista (UI muda na hora)
     setSlots((prev) => ({
       ...prev,
       [slot]: { ...prev[slot], state: nextState },
@@ -267,13 +373,11 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const text = await res.text();
       if (!res.ok) {
-        // rollback soft: refetch
         setSyncStatus({ ok: false, msg: `set-state falhou HTTP ${res.status}: ${text}` });
         await fetchSlotsOnce();
         return;
       }
 
-      // backend retorna JSON (ok:true etc)
       setSyncStatus({ ok: true, msg: `set-state OK (${slot} → ${nextState})` });
     } catch (e) {
       setSyncStatus({ ok: false, msg: `set-state erro: ${String(e?.message || e)}` });
@@ -281,8 +385,119 @@ export default function LockerDashboard({ region = "PT" }) {
     }
   }
 
+  async function createOnlineOrder() {
+    if (!selectedSlot) {
+      setOrderError("Selecione uma gaveta antes de criar o pedido.");
+      return;
+    }
+
+    if (slotSelectionRemainingSec <= 0) {
+      setOrderError("A seleção da gaveta expirou. Escolha novamente.");
+      return;
+    }
+
+    const slotNum = Number(selectedSlot);
+    const skuId = buildDefaultSkuId(region, slotNum);
+    const totemId = buildTotemId(region);
+
+    setOrderLoading(true);
+    setOrderError("");
+    setPayResp("");
+
+    try {
+      const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          region,
+          sku_id: skuId,
+          totem_id: totemId,
+          desired_slot: slotNum,
+        }),
+      });
+
+      const text = await res.text();
+      if (!res.ok) {
+        setOrderError(`HTTP ${res.status}: ${text}`);
+        return;
+      }
+
+      const data = JSON.parse(text);
+      setCurrentOrder(data);
+
+      if (data?.allocation?.slot) {
+        const allocatedSlot = Number(data.allocation.slot);
+        setSelectedSlot(allocatedSlot);
+        setPaySlot(allocatedSlot);
+        setActiveGroup(groupIndexFromSlot(allocatedSlot));
+      }
+
+      if (typeof data?.amount_cents === "number") {
+        setPayValue(Number(data.amount_cents) / 100);
+      }
+
+      setPayResp(JSON.stringify({ step: "order_created", response: data }, null, 2));
+    } catch (e) {
+      setOrderError(String(e?.message || e));
+    } finally {
+      setOrderLoading(false);
+    }
+  }
+
+  async function confirmPaymentInternally(orderId, transactionId) {
+    if (!INTERNAL_TOKEN) {
+      throw new Error(
+        "VITE_INTERNAL_TOKEN não configurado no frontend. Configure para usar /internal/orders/{order_id}/payment-confirm em DEV."
+      );
+    }
+
+    if (!currentOrder) {
+      throw new Error("Nenhum pedido atual carregado para confirmação interna.");
+    }
+
+    const totemId = buildTotemId(region);
+    const amountCents =
+      typeof currentOrder.amount_cents === "number"
+        ? currentOrder.amount_cents
+        : Math.round(Number(payValue) * 100);
+
+    const payload = {
+      order_id: orderId,
+      region,
+      totem_id: totemId,
+      channel: "ONLINE",
+      provider: payMethod,
+      transaction_id: transactionId,
+      amount_cents: amountCents,
+    };
+
+    const res = await fetch(
+      `${ORDER_PICKUP_BASE}/internal/orders/${encodeURIComponent(orderId)}/payment-confirm`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Token": INTERNAL_TOKEN,
+        },
+        body: JSON.stringify(payload),
+      }
+    );
+
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`payment-confirm HTTP ${res.status}: ${text}`);
+    }
+
+    return JSON.parse(text);
+  }
+
   async function simulatePayment() {
-    const slotNum = Number(paySlot);
+    if (!currentOrder?.order_id) {
+      setPayResp("❌ Antes de pagar, clique em “Criar pedido online”.");
+      return;
+    }
+
+    const slotNum = Number(currentOrder?.allocation?.slot || paySlot);
     const valNum = Number(payValue);
 
     if (!slotNum || slotNum < 1 || slotNum > 24) {
@@ -301,7 +516,7 @@ export default function LockerDashboard({ region = "PT" }) {
     setPayResp("");
 
     try {
-      const res = await fetch(gatewayUrl, {
+      const gatewayRes = await fetch(gatewayUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -316,25 +531,52 @@ export default function LockerDashboard({ region = "PT" }) {
         }),
       });
 
-      const text = await res.text();
-      if (!res.ok) {
-        setPayResp(`❌ HTTP ${res.status}\n${text}\n\nURL: ${gatewayUrl}`);
+      const gatewayText = await gatewayRes.text();
+      if (!gatewayRes.ok) {
+        setPayResp(`❌ Gateway HTTP ${gatewayRes.status}\n${gatewayText}\n\nURL: ${gatewayUrl}`);
         return;
       }
 
+      let gatewayData;
       try {
-        setPayResp(JSON.stringify(JSON.parse(text), null, 2));
+        gatewayData = JSON.parse(gatewayText);
       } catch {
-        setPayResp(text);
+        gatewayData = { raw: gatewayText };
       }
 
-      // opcional: atualizar estado no backend logo após pagamento (pra simular fluxo)
-      // Se você NÃO quiser esse efeito, comente a linha abaixo.
-      await setStateOnBackend(slotNum, "PAID_PENDING_PICKUP");
+      const transactionId = pickGatewayTransactionId(gatewayData);
 
-      setSelectedSlot(slotNum);
+      const confirmData = await confirmPaymentInternally(currentOrder.order_id, transactionId);
+
+      setCurrentOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: confirmData?.status || prev.status,
+              pickup_id: confirmData?.pickup_id || prev.pickup_id,
+              token_id: confirmData?.token_id || prev.token_id,
+              manual_code: confirmData?.manual_code || prev.manual_code,
+              pickup_deadline_at: confirmData?.pickup_deadline_at || prev.pickup_deadline_at,
+            }
+          : prev
+      );
+
+      setPayResp(
+        JSON.stringify(
+          {
+            step: "payment_confirmed",
+            order_id: currentOrder.order_id,
+            gateway_response: gatewayData,
+            payment_confirm_response: confirmData,
+          },
+          null,
+          2
+        )
+      );
+
+      await fetchSlotsOnce();
     } catch (e) {
-      setPayResp(`❌ Falha ao chamar gateway\n${String(e?.message || e)}\n\nURL: ${gatewayUrl}`);
+      setPayResp(`❌ Falha no fluxo de pagamento\n${String(e?.message || e)}`);
     } finally {
       setPayLoading(false);
     }
@@ -373,11 +615,10 @@ export default function LockerDashboard({ region = "PT" }) {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
             <div style={{ fontWeight: 800 }}>Gavetas (1–24)</div>
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Selecionada: <b>{selectedSlot}</b>
+              Selecionada: <b>{selectedSlot ?? "—"}</b>
             </div>
           </div>
 
-          {/* legenda */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
             {legendItems.map(([key, meta]) => (
               <div
@@ -399,7 +640,6 @@ export default function LockerDashboard({ region = "PT" }) {
             ))}
           </div>
 
-          {/* grid 24 */}
           <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 }}>
             {Array.from({ length: 24 }).map((_, idx) => {
               const slot = idx + 1;
@@ -410,13 +650,12 @@ export default function LockerDashboard({ region = "PT" }) {
             })}
           </div>
 
-          {/* state changer (agora salva no backend) */}
           <div style={{ marginTop: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>Alterar estado da gaveta {selectedSlot} (salva no backend):</div>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>Alterar estado da gaveta {selectedSlot ?? "—"} (salva no backend):</div>
             {SLOT_STATES.map((s) => (
               <button
                 key={s}
-                onClick={() => setStateOnBackend(selectedSlot, s)}
+                onClick={() => selectedSlot && setStateOnBackend(selectedSlot, s)}
                 style={{
                   padding: "8px 10px",
                   borderRadius: 10,
@@ -435,25 +674,129 @@ export default function LockerDashboard({ region = "PT" }) {
 
         {/* (2) PAINEL LATERAL */}
         <div style={{ borderRadius: 14, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.04)", padding: 14, display: "grid", gap: 12, alignContent: "start" }}>
-          {/* Simular pagamento */}
+          {/* Pedido + pagamento */}
           <div style={{ borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.18)", padding: 12, display: "grid", gap: 10 }}>
-            <PickupQRCodePanel region={region} pickupId={"fac241cc-6652-44a8-9d99-e305595224b8"} apiBase="http://localhost:8003" />
-            <div style={{ fontWeight: 800 }}>Simular pagamento (Gateway)</div>
+            <PickupQRCodePanel
+              region={region}
+              pickupId={currentOrder?.order_id || ""}
+              apiBase={ORDER_PICKUP_BASE}
+            />
+
+            <ManualPickupPanel
+              region={region}
+              apiBase={ORDER_PICKUP_BASE}
+              onRedeemed={handleManualRedeemed}
+            />
+
+            <div style={{ fontWeight: 800 }}>Pedido online + pagamento</div>
 
             <div style={{ fontSize: 12, opacity: 0.75 }}>
-              Endpoint: <code style={{ opacity: 0.9 }}>{gatewayUrl}</code>
+              Orders API: <code style={{ opacity: 0.9 }}>{ORDER_PICKUP_BASE}/orders</code>
             </div>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Gateway: <code style={{ opacity: 0.9 }}>{gatewayUrl}</code>
+            </div>
+
+            {selectedSlot ? (
+              <div
+                style={{
+                  fontSize: 12,
+                  opacity: 0.9,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: slotSelectionRemainingSec > 10 ? "rgba(255,255,255,0.04)" : "rgba(179,38,30,0.18)",
+                }}
+              >
+                Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante para criar o pedido:{" "}
+                <b>{slotSelectionRemainingSec}s</b>
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                Selecione uma gaveta disponível para iniciar a criação do pedido.
+              </div>
+            )}
+                        
+            <button
+              onClick={createOnlineOrder}
+              disabled={orderLoading || payLoading}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: orderLoading ? "rgba(255,255,255,0.08)" : "#7a5f1f",
+                color: "white",
+                cursor: orderLoading || payLoading ? "not-allowed" : "pointer",
+                fontWeight: 800,
+              }}
+            >
+              {orderLoading
+                ? "Criando pedido..."
+                : selectedSlot
+                  ? `Criar pedido online — gaveta ${selectedSlot}`
+                  : "Criar pedido online"}
+
+            </button>
+
+            {currentOrder ? (
+              <div
+                style={{
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 10,
+                  display: "grid",
+                  gap: 6,
+                  fontSize: 12,
+                }}
+              >
+                <div>
+                  <b>order_id:</b> {currentOrder.order_id}
+                </div>
+                <div>
+                  <b>status:</b> {currentOrder.status}
+                </div>
+                <div>
+                  <b>slot:</b> {currentOrder?.allocation?.slot ?? "-"}
+                </div>
+                <div>
+                  <b>allocation_id:</b> {currentOrder?.allocation?.allocation_id ?? "-"}
+                </div>
+                <div>
+                  <b>amount_cents:</b> {currentOrder?.amount_cents ?? "-"}
+                </div>
+                {currentOrder?.pickup_deadline_at ? (
+                  <div>
+                    <b>pickup_deadline_at:</b> {currentOrder.pickup_deadline_at}
+                  </div>
+                ) : null}
+                {currentOrder?.manual_code ? (
+                  <div>
+                    <b>manual_code:</b> {currentOrder.manual_code}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                Nenhum pedido criado ainda.
+              </div>
+            )}
+
+            {orderError ? (
+              <pre style={{ margin: 0, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "#2b1d1d", color: "#ffb4b4", overflow: "auto", maxHeight: 180, fontSize: 12 }}>
+                {orderError}
+              </pre>
+            ) : null}
 
             <label style={label}>
               Método
-
-              <select 
-                value={payMethod} 
-                onChange={(e) => setPayMethod(e.target.value)} 
+              <select
+                value={payMethod}
+                onChange={(e) => setPayMethod(e.target.value)}
                 style={{
                   ...select,
-                  color: 'white',
-                  backgroundColor: '#2d2d3a', // Fundo mais claro para contraste
+                  color: "white",
+                  backgroundColor: "#2d2d3a",
                 }}
               >
                 <option value="PIX">PIX</option>
@@ -462,40 +805,55 @@ export default function LockerDashboard({ region = "PT" }) {
                 <option value="NFC">NFC</option>
               </select>
             </label>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
               <label style={label}>
                 Gaveta
-                <input type="number" min="1" max="24" value={paySlot} onChange={(e) => setPaySlot(e.target.value)} style={{...input, width: "60%"}} />
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  value={paySlot}
+                  onChange={(e) => setPaySlot(e.target.value)}
+                  style={{ ...input, width: "60%" }}
+                />
               </label>
 
               <label style={label}>
                 Valor
-                <input type="number" min="1" step="1" value={payValue} onChange={(e) => setPayValue(e.target.value)} style={{...input, width: "60%"}} />
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={payValue}
+                  onChange={(e) => setPayValue(e.target.value)}
+                  style={{ ...input, width: "60%" }}
+                />
               </label>
             </div>
+
             <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
-              ⓘ Auto preenche com a gaveta selecionada
+              ⓘ O pedido criado define o order_id real. A gaveta/valor são preenchidos a partir da alocação/preço retornados.
             </div>
 
             <button
               onClick={simulatePayment}
-              disabled={payLoading}
+              disabled={payLoading || orderLoading}
               style={{
                 padding: "10px 12px",
                 borderRadius: 12,
                 border: "1px solid rgba(255,255,255,0.18)",
                 background: payLoading ? "rgba(255,255,255,0.08)" : "#2d8a4a",
                 color: "white",
-                cursor: payLoading ? "not-allowed" : "pointer",
+                cursor: payLoading || orderLoading ? "not-allowed" : "pointer",
                 fontWeight: 800,
               }}
             >
-              {payLoading ? "Enviando..." : "Enviar pagamento"}
+              {payLoading ? "Enviando..." : "Pagar pedido atual"}
             </button>
 
             {payResp ? (
-              <pre style={{ margin: 0, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "#0b0d10", color: "white", overflow: "auto", maxHeight: 220, fontSize: 12 }}>
+              <pre style={{ margin: 0, padding: 10, borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", background: "#0b0d10", color: "white", overflow: "auto", maxHeight: 260, fontSize: 12 }}>
                 {payResp}
               </pre>
             ) : null}
@@ -504,7 +862,13 @@ export default function LockerDashboard({ region = "PT" }) {
           {/* Carrossel */}
           <div style={{ fontWeight: 800, marginTop: 4 }}>Bolos por grupo (4 gavetas)</div>
 
-          <Carousel pages={6} activeIndex={activeGroup} onPrev={() => setActiveGroup((g) => (g - 1 + 6) % 6)} onNext={() => setActiveGroup((g) => (g + 1) % 6)} onGo={(i) => setActiveGroup(clamp(i, 0, 5))} />
+          <Carousel
+            pages={6}
+            activeIndex={activeGroup}
+            onPrev={() => setActiveGroup((g) => (g - 1 + 6) % 6)}
+            onNext={() => setActiveGroup((g) => (g + 1) % 6)}
+            onGo={(i) => setActiveGroup(clamp(i, 0, 5))}
+          />
 
           <div style={{ fontSize: 12, opacity: 0.75 }}>
             Grupo atual: gavetas <b>{groupSlotsList.join(", ")}</b>
@@ -531,21 +895,40 @@ export default function LockerDashboard({ region = "PT" }) {
                   <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
                     <label style={label}>
                       Nome do bolo
-                      <input value={cake?.name || ""} onChange={(e) => updateCake(slot, { name: e.target.value })} placeholder="ex.: Bolo de Cenoura" style={input} />
+                      <input
+                        value={cake?.name || ""}
+                        onChange={(e) => updateCake(slot, { name: e.target.value })}
+                        placeholder="ex.: Bolo de Cenoura"
+                        style={input}
+                      />
                     </label>
 
                     <label style={label}>
                       Observações
-                      <input value={cake?.notes || ""} onChange={(e) => updateCake(slot, { notes: e.target.value })} placeholder="ex.: sem lactose / promoção / etc." style={input} />
+                      <input
+                        value={cake?.notes || ""}
+                        onChange={(e) => updateCake(slot, { notes: e.target.value })}
+                        placeholder="ex.: sem lactose / promoção / etc."
+                        style={input}
+                      />
                     </label>
 
                     <label style={label}>
                       URL da imagem (opcional)
-                      <input value={cake?.imageUrl || ""} onChange={(e) => updateCake(slot, { imageUrl: e.target.value })} placeholder="https://..." style={input} />
+                      <input
+                        value={cake?.imageUrl || ""}
+                        onChange={(e) => updateCake(slot, { imageUrl: e.target.value })}
+                        placeholder="https://..."
+                        style={input}
+                      />
                     </label>
 
                     {cake?.imageUrl ? (
-                      <img alt={`Bolo da gaveta ${slot}`} src={cake.imageUrl} style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", marginTop: 6 }} />
+                      <img
+                        alt={`Bolo da gaveta ${slot}`}
+                        src={cake.imageUrl}
+                        style={{ width: "100%", borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", marginTop: 6 }}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -554,7 +937,7 @@ export default function LockerDashboard({ region = "PT" }) {
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.6 }}>
-            Estados agora vêm do backend (GET /locker/slots) e set-state atualiza no backend.
+            Estados vêm do backend. Pedido online agora usa <b>order_id real</b>, não hardcoded.
           </div>
         </div>
       </div>

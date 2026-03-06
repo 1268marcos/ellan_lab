@@ -17,75 +17,25 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 ALLOC_TTL_SEC = 120
 
-
 @router.post("", response_model=OrderOut)
-def create_order(
-    payload: CreateOrderIn,
-    db: Session = Depends(get_db),
-    user=Depends(get_current_user_or_dev),
-):
+def create_order(payload: CreateOrderIn, db: Session = Depends(get_db), user=Depends(get_current_user_or_dev)):
     # 1) preço no backend (fonte de verdade)
+    # pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
     try:
         pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
     except HTTPError as e:
-        if (
-            e.response is not None
-            and e.response.status_code == 404
-            and os.getenv("DEV_ALLOW_UNKNOWN_SKU", "false").lower() == "true"
-        ):
+        if e.response is not None and e.response.status_code == 404 and os.getenv("DEV_ALLOW_UNKNOWN_SKU", "false").lower() == "true":
             pricing = {"amount_cents": int(os.getenv("DEV_DEFAULT_PRICE_CENTS", "1000"))}
         else:
             raise
 
     amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
     if amount_cents is None:
-        raise HTTPException(
-            status_code=502,
-            detail="pricing missing amount_cents/price_cents from backend",
-        )
+        raise HTTPException(status_code=502, detail="pricing missing amount_cents/price_cents from backend")
 
     # 2) allocate
     request_id = str(uuid.uuid4())
-
-    try:
-        alloc = backend_client.locker_allocate(
-            payload.region,
-            payload.sku_id,
-            ALLOC_TTL_SEC,
-            request_id,
-            payload.desired_slot,
-        )
-    except HTTPError as e:
-        status = e.response.status_code if e.response is not None else 502
-
-        # tenta aproveitar o detalhe real vindo do backend
-        backend_detail = None
-        if e.response is not None:
-            try:
-                backend_detail = e.response.json()
-            except Exception:
-                backend_detail = e.response.text
-
-        if status == 409:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": "DESIRED_SLOT_UNAVAILABLE",
-                    "message": "A gaveta escolhida não está disponível para reserva.",
-                    "desired_slot": payload.desired_slot,
-                    "backend_detail": backend_detail,
-                },
-            )
-
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "type": "LOCKER_ALLOCATE_FAILED",
-                "message": "Falha ao alocar gaveta no backend.",
-                "backend_status": status,
-                "backend_detail": backend_detail,
-            },
-        )
+    alloc = backend_client.locker_allocate(payload.region, payload.sku_id, ALLOC_TTL_SEC, request_id, payload.desired_slot,)
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
@@ -123,9 +73,5 @@ def create_order(
         channel=order.channel.value,
         status=order.status.value,
         amount_cents=order.amount_cents,
-        allocation={
-            "allocation_id": allocation.id,
-            "slot": allocation.slot,
-            "ttl_sec": ttl_sec,
-        },
+        allocation={"allocation_id": allocation.id, "slot": allocation.slot, "ttl_sec": ttl_sec},
     )
