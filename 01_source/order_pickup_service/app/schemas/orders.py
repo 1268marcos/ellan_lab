@@ -47,3 +47,7 @@ class OrderListItemOut(BaseModel):
 class OrderListOut(BaseModel):
     items: List[OrderListItemOut]
     total: int
+    page: int
+    page_size: int
+    has_next: bool
+    has_prev: bool

@@ -147,15 +147,17 @@ def list_orders(
     region: str | None = None,
     status: str | None = None,
     channel: str | None = None,
-    limit: int = 50,
+    page: int = 1,
+    page_size: int = 10,
     db: Session = Depends(get_db),
     user=Depends(get_current_user_or_dev),
 ):
     """
-    Lista pedidos para o dashboard operacional.
-    Em DEV, usamos o usuário atual/dev para filtrar pedidos do contexto.
+    Lista pedidos para o dashboard operacional com paginação real.
     """
-    limit = max(1, min(limit, 200))
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+    offset = (page - 1) * page_size
 
     q = db.query(Order, Allocation).outerjoin(Allocation, Allocation.order_id == Order.id)
 
@@ -179,7 +181,14 @@ def list_orders(
         except Exception:
             raise HTTPException(status_code=400, detail=f"invalid channel: {channel}")
 
-    rows = q.order_by(Order.created_at.desc()).limit(limit).all()
+    total = q.count()
+
+    rows = (
+        q.order_by(Order.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+        .all()
+    )
 
     items = []
     for order, allocation in rows:
@@ -206,4 +215,14 @@ def list_orders(
             )
         )
 
-    return OrderListOut(items=items, total=len(items))
+    has_prev = page > 1
+    has_next = offset + len(items) < total
+
+    return OrderListOut(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        has_next=has_next,
+        has_prev=has_prev,
+    )

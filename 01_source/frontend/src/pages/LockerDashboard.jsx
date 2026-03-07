@@ -408,7 +408,6 @@ function OrdersCardList({
           <div style={{ fontSize: 11, opacity: 0.62 }}>
             Deadline: {formatDateTime(item.pickup_deadline_at)}
           </div>
-
         </button>
       ))}
     </div>
@@ -475,6 +474,11 @@ export default function LockerDashboard({ region = "PT" }) {
   const [ordersData, setOrdersData] = useState([]);
   const [showOrdersPanel, setShowOrdersPanel] = useState(true);
   const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersPageSize, setOrdersPageSize] = useState(10);
+  const [ordersTotal, setOrdersTotal] = useState(0);
+  const [ordersHasNext, setOrdersHasNext] = useState(false);
+  const [ordersHasPrev, setOrdersHasPrev] = useState(false);
+  const [ordersTableDensity, setOrdersTableDensity] = useState("10");
 
   const currentOrderMeta = getCurrentOrderMeta(currentOrder?.status || "SEM_PEDIDO");
 
@@ -494,18 +498,13 @@ export default function LockerDashboard({ region = "PT" }) {
 
   const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
 
-  const ORDERS_PAGE_SIZE = 10;
-
-  const totalOrdersPages = Math.max(1, Math.ceil(ordersData.length / ORDERS_PAGE_SIZE));
-
-  const paginatedOrdersData = useMemo(() => {
-    const start = (ordersPage - 1) * ORDERS_PAGE_SIZE;
-    const end = start + ORDERS_PAGE_SIZE;
-    return ordersData.slice(start, end);
-  }, [ordersData, ordersPage]);
-
-  const visibleOrdersFrom = ordersData.length === 0 ? 0 : (ordersPage - 1) * ORDERS_PAGE_SIZE + 1;
-  const visibleOrdersTo = Math.min(ordersPage * ORDERS_PAGE_SIZE, ordersData.length);
+  const totalOrdersPages = Math.max(1, Math.ceil(ordersTotal / ordersPageSize));
+  const visibleOrdersFrom = ordersTotal === 0 ? 0 : (ordersPage - 1) * ordersPageSize + 1;
+  const visibleOrdersTo = Math.min(ordersPage * ordersPageSize, ordersTotal);
+  const ordersTableHeight =
+    ordersTableDensity === "3"
+      ? 3 * 44 + 44
+      : 10 * 44 + 44;
 
   useEffect(() => {
     setPaySlot(selectedSlot || 1);
@@ -567,14 +566,15 @@ export default function LockerDashboard({ region = "PT" }) {
     }
   }
 
-  async function fetchOrdersOnce() {
+  async function fetchOrdersOnce(targetPage = ordersPage, targetPageSize = ordersPageSize) {
     setOrdersLoading(true);
     setOrdersError("");
 
     try {
       const params = new URLSearchParams();
       params.set("region", region);
-      params.set("limit", "50");
+      params.set("page", String(targetPage));
+      params.set("page_size", String(targetPageSize));
       if (ordersFilterStatus) params.set("status", ordersFilterStatus);
 
       const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`);
@@ -586,7 +586,28 @@ export default function LockerDashboard({ region = "PT" }) {
       }
 
       const data = JSON.parse(text);
-      setOrdersData(Array.isArray(data?.items) ? data.items : []);
+
+      const items = Array.isArray(data?.items) ? data.items : [];
+      const total = Number(data?.total ?? items.length);
+      const resolvedPage = Number(data?.page ?? targetPage);
+      const resolvedPageSize = Number(data?.page_size ?? targetPageSize);
+
+      const resolvedHasPrev =
+        typeof data?.has_prev === "boolean"
+          ? data.has_prev
+          : resolvedPage > 1;
+
+      const resolvedHasNext =
+        typeof data?.has_next === "boolean"
+          ? data.has_next
+          : resolvedPage * resolvedPageSize < total;
+
+      setOrdersData(items);
+      setOrdersTotal(total);
+      setOrdersHasNext(resolvedHasNext);
+      setOrdersHasPrev(resolvedHasPrev);
+      setOrdersPage(resolvedPage);
+      setOrdersPageSize(resolvedPageSize);
     } catch (e) {
       setOrdersError(String(e?.message || e));
     } finally {
@@ -613,13 +634,12 @@ export default function LockerDashboard({ region = "PT" }) {
   }, [backendBase, syncEnabled]);
 
   useEffect(() => {
-    fetchOrdersOnce();
+    fetchOrdersOnce(1, ordersPageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [region]);
 
   useEffect(() => {
-    setOrdersPage(1);
-    fetchOrdersOnce();
+    fetchOrdersOnce(1, ordersPageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ordersFilterStatus]);
 
@@ -634,12 +654,6 @@ export default function LockerDashboard({ region = "PT" }) {
     setSlotSelectionExpiresAt(null);
     setOrdersPage(1);
   }, [region]);
-
-  useEffect(() => {
-    if (ordersPage > totalOrdersPages) {
-      setOrdersPage(totalOrdersPages);
-    }
-  }, [ordersPage, totalOrdersPages]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -682,7 +696,7 @@ export default function LockerDashboard({ region = "PT" }) {
       setSyncStatus({ ok: true, msg: `set-state OK (${slot} → ${nextState})` });
 
       if (nextState === "PICKED_UP" || nextState === "PAID_PENDING_PICKUP") {
-        fetchOrdersOnce();
+        fetchOrdersOnce(ordersPage, ordersPageSize);
       }
     } catch (e) {
       setSyncStatus({ ok: false, msg: `set-state erro: ${String(e?.message || e)}` });
@@ -749,7 +763,7 @@ export default function LockerDashboard({ region = "PT" }) {
       }
 
       setPayResp(JSON.stringify({ step: "order_created", response: data }, null, 2));
-      fetchOrdersOnce();
+      fetchOrdersOnce(1, ordersPageSize);
     } catch (e) {
       setOrderError(String(e?.message || e));
     } finally {
@@ -856,7 +870,7 @@ export default function LockerDashboard({ region = "PT" }) {
           2
         )
       );
-      fetchOrdersOnce();
+      fetchOrdersOnce(ordersPage, ordersPageSize);
     } catch (e) {
       setPickupResp(`❌ Erro ao regenerar código manual\n${String(e?.message || e)}`);
     } finally {
@@ -959,7 +973,7 @@ export default function LockerDashboard({ region = "PT" }) {
       );
 
       await fetchSlotsOnce();
-      await fetchOrdersOnce();
+      await fetchOrdersOnce(ordersPage, ordersPageSize);
     } catch (e) {
       setPayResp(`❌ Falha no fluxo de pagamento\n${String(e?.message || e)}`);
     } finally {
@@ -987,7 +1001,7 @@ export default function LockerDashboard({ region = "PT" }) {
     );
 
     fetchSlotsOnce();
-    fetchOrdersOnce();
+    fetchOrdersOnce(ordersPage, ordersPageSize);
   }
 
   const legendItems = Object.entries(STATE_STYLE);
@@ -1005,7 +1019,7 @@ export default function LockerDashboard({ region = "PT" }) {
           <button
             onClick={() => {
               fetchSlotsOnce();
-              fetchOrdersOnce();
+              fetchOrdersOnce(ordersPage, ordersPageSize);
             }}
             style={btnSmall}
           >
@@ -1119,7 +1133,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  Região: <b>{region}</b> • Total: <b>{ordersData.length}</b>
+                  Região: <b>{region}</b> • Total: <b>{ordersTotal}</b>
                   {showOrdersPanel ? (
                     <>
                       {" "}• Exibindo: <b>{visibleOrdersFrom}-{visibleOrdersTo}</b>
@@ -1140,7 +1154,29 @@ export default function LockerDashboard({ region = "PT" }) {
                   <option value="EXPIRED_CREDIT_50">EXPIRED_CREDIT_50</option>
                 </select>
 
-                <button onClick={fetchOrdersOnce} style={btnSmall}>
+                <select
+                  value={ordersPageSize}
+                  onChange={(e) => {
+                    const nextSize = Number(e.target.value);
+                    setOrdersPageSize(nextSize);
+                    fetchOrdersOnce(1, nextSize);
+                  }}
+                  style={{ ...select, width: 130, backgroundColor: "#2d2d3a" }}
+                >
+                  <option value={10}>10 por página</option>
+                  <option value={3}>3 por página</option>
+                </select>
+
+                <select
+                  value={ordersTableDensity}
+                  onChange={(e) => setOrdersTableDensity(e.target.value)}
+                  style={{ ...select, width: 140, backgroundColor: "#2d2d3a" }}
+                >
+                  <option value="10">Altura 10 itens</option>
+                  <option value="3">Altura 3 itens</option>
+                </select>
+
+                <button onClick={() => fetchOrdersOnce(ordersPage, ordersPageSize)} style={btnSmall}>
                   Atualizar pedidos
                 </button>
               </div>
@@ -1153,14 +1189,23 @@ export default function LockerDashboard({ region = "PT" }) {
                 {isNarrow ? (
                   <div style={{ marginTop: 10 }}>
                     <OrdersCardList
-                      ordersData={paginatedOrdersData}
+                      ordersData={ordersData}
                       ordersLoading={ordersLoading}
                       currentOrder={currentOrder}
                       onSelectOrder={handleSelectOrder}
                     />
                   </div>
                 ) : (
-                  <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.10)" }}>
+                  <div
+                    style={{
+                      marginTop: 10,
+                      overflowX: "auto",
+                      overflowY: "auto",
+                      maxHeight: ordersTableHeight,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                  >
                     <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1240 }}>
                       <thead>
                         <tr style={{ background: "rgba(255,255,255,0.06)" }}>
@@ -1184,14 +1229,14 @@ export default function LockerDashboard({ region = "PT" }) {
                               Carregando pedidos...
                             </td>
                           </tr>
-                        ) : paginatedOrdersData.length === 0 ? (
+                        ) : ordersData.length === 0 ? (
                           <tr>
                             <td style={tdStyle} colSpan={11}>
                               Nenhum pedido encontrado.
                             </td>
                           </tr>
                         ) : (
-                          paginatedOrdersData.map((item) => (
+                          ordersData.map((item) => (
                             <tr
                               key={item.order_id}
                               onClick={() => handleSelectOrder(item)}
@@ -1238,12 +1283,12 @@ export default function LockerDashboard({ region = "PT" }) {
 
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                     <button
-                      onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
-                      disabled={ordersPage <= 1}
+                      onClick={() => fetchOrdersOnce(Math.max(1, ordersPage - 1), ordersPageSize)}
+                      disabled={!ordersHasPrev}
                       style={{
                         ...btnSmall,
-                        opacity: ordersPage <= 1 ? 0.45 : 1,
-                        cursor: ordersPage <= 1 ? "not-allowed" : "pointer",
+                        opacity: !ordersHasPrev ? 0.45 : 1,
+                        cursor: !ordersHasPrev ? "not-allowed" : "pointer",
                       }}
                     >
                       Anterior
@@ -1254,12 +1299,12 @@ export default function LockerDashboard({ region = "PT" }) {
                     </div>
 
                     <button
-                      onClick={() => setOrdersPage((p) => Math.min(totalOrdersPages, p + 1))}
-                      disabled={ordersPage >= totalOrdersPages}
+                      onClick={() => fetchOrdersOnce(ordersPage + 1, ordersPageSize)}
+                      disabled={!ordersHasNext}
                       style={{
                         ...btnSmall,
-                        opacity: ordersPage >= totalOrdersPages ? 0.45 : 1,
-                        cursor: ordersPage >= totalOrdersPages ? "not-allowed" : "pointer",
+                        opacity: !ordersHasNext ? 0.45 : 1,
+                        cursor: !ordersHasNext ? "not-allowed" : "pointer",
                       }}
                     >
                       Próxima
@@ -1272,7 +1317,6 @@ export default function LockerDashboard({ region = "PT" }) {
                 Painel de pedidos oculto para reduzir ruído visual.
               </div>
             )}
-
           </section>
         </div>
 
