@@ -222,12 +222,14 @@ function buildCurrentOrderFromListItem(item) {
     channel: item.channel,
     status: item.status,
     amount_cents: item.amount_cents,
+    payment_method: item.payment_method,
     pickup_id: item.pickup_id,
     token_id: item.token_id,
     manual_code: item.manual_code,
     paid_at: item.paid_at,
     created_at: item.created_at,
     pickup_deadline_at: item.pickup_deadline_at,
+    picked_up_at: item.picked_up_at,
     allocation: {
       allocation_id: item.allocation_id,
       slot: item.slot,
@@ -245,7 +247,17 @@ function focusOrderFromListItem(item, setters) {
     setOrderError,
     setPayResp,
     setPickupResp,
+    setPayMethod,
+    setPayValue,
   } = setters;
+
+  if (item?.payment_method) {
+    setPayMethod(item.payment_method);
+  }
+
+  if (typeof item?.amount_cents === "number") {
+    setPayValue(Number(item.amount_cents) / 100);
+  }
 
   if (item?.slot) {
     const slotNum = Number(item.slot);
@@ -382,7 +394,7 @@ function OrdersCardList({
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.72 }}>
-            SKU: {item.sku_id}
+            Método: <b>{item.payment_method || "-"}</b> • SKU: {item.sku_id}
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
@@ -390,8 +402,13 @@ function OrdersCardList({
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Pago: {formatDateTime(item.paid_at)} • Deadline: {formatDateTime(item.pickup_deadline_at)}
+            Pago: {formatDateTime(item.paid_at)} • Retirado: {formatDateTime(item.picked_up_at)}
           </div>
+
+          <div style={{ fontSize: 11, opacity: 0.62 }}>
+            Deadline: {formatDateTime(item.pickup_deadline_at)}
+          </div>
+
         </button>
       ))}
     </div>
@@ -456,6 +473,8 @@ export default function LockerDashboard({ region = "PT" }) {
   const [ordersError, setOrdersError] = useState("");
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
   const [ordersData, setOrdersData] = useState([]);
+  const [showOrdersPanel, setShowOrdersPanel] = useState(true);
+  const [ordersPage, setOrdersPage] = useState(1);
 
   const currentOrderMeta = getCurrentOrderMeta(currentOrder?.status || "SEM_PEDIDO");
 
@@ -474,6 +493,19 @@ export default function LockerDashboard({ region = "PT" }) {
   const selectedSlotState = selectedSlot ? slots[selectedSlot]?.state || "AVAILABLE" : null;
 
   const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
+
+  const ORDERS_PAGE_SIZE = 10;
+
+  const totalOrdersPages = Math.max(1, Math.ceil(ordersData.length / ORDERS_PAGE_SIZE));
+
+  const paginatedOrdersData = useMemo(() => {
+    const start = (ordersPage - 1) * ORDERS_PAGE_SIZE;
+    const end = start + ORDERS_PAGE_SIZE;
+    return ordersData.slice(start, end);
+  }, [ordersData, ordersPage]);
+
+  const visibleOrdersFrom = ordersData.length === 0 ? 0 : (ordersPage - 1) * ORDERS_PAGE_SIZE + 1;
+  const visibleOrdersTo = Math.min(ordersPage * ORDERS_PAGE_SIZE, ordersData.length);
 
   useEffect(() => {
     setPaySlot(selectedSlot || 1);
@@ -509,6 +541,8 @@ export default function LockerDashboard({ region = "PT" }) {
       setOrderError,
       setPayResp,
       setPickupResp,
+      setPayMethod,
+      setPayValue,
     });
   }
 
@@ -584,6 +618,7 @@ export default function LockerDashboard({ region = "PT" }) {
   }, [region]);
 
   useEffect(() => {
+    setOrdersPage(1);
     fetchOrdersOnce();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ordersFilterStatus]);
@@ -597,7 +632,14 @@ export default function LockerDashboard({ region = "PT" }) {
     setPayResp("");
     setPickupResp("");
     setSlotSelectionExpiresAt(null);
+    setOrdersPage(1);
   }, [region]);
+
+  useEffect(() => {
+    if (ordersPage > totalOrdersPages) {
+      setOrdersPage(totalOrdersPages);
+    }
+  }, [ordersPage, totalOrdersPages]);
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -677,6 +719,7 @@ export default function LockerDashboard({ region = "PT" }) {
           sku_id: skuId,
           totem_id: totemId,
           desired_slot: slotNum,
+          amount_cents: Math.round(Number(payValue) * 100),
         }),
       });
 
@@ -699,6 +742,10 @@ export default function LockerDashboard({ region = "PT" }) {
 
       if (typeof data?.amount_cents === "number") {
         setPayValue(Number(data.amount_cents) / 100);
+      }
+
+      if (data?.payment_method) {
+        setPayMethod(data.payment_method);
       }
 
       setPayResp(JSON.stringify({ step: "order_created", response: data }, null, 2));
@@ -888,6 +935,8 @@ export default function LockerDashboard({ region = "PT" }) {
           ? {
               ...prev,
               status: confirmData?.status || prev.status,
+              payment_method: confirmData?.payment_method || prev.payment_method,
+              picked_up_at: confirmData?.picked_up_at || prev.picked_up_at,
               pickup_id: confirmData?.pickup_id || prev.pickup_id,
               token_id: confirmData?.token_id || prev.token_id,
               manual_code: confirmData?.manual_code || prev.manual_code,
@@ -1061,11 +1110,21 @@ export default function LockerDashboard({ region = "PT" }) {
 
           <section style={panelStyleCompact}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-              <div style={{ fontWeight: 800 }}>Pedidos online</div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ fontWeight: 800 }}>Pedidos online</div>
+                <button onClick={() => setShowOrdersPanel((v) => !v)} style={btnSmall}>
+                  {showOrdersPanel ? "Ocultar" : "Mostrar"}
+                </button>
+              </div>
 
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
                   Região: <b>{region}</b> • Total: <b>{ordersData.length}</b>
+                  {showOrdersPanel ? (
+                    <>
+                      {" "}• Exibindo: <b>{visibleOrdersFrom}-{visibleOrdersTo}</b>
+                    </>
+                  ) : null}
                 </div>
 
                 <select
@@ -1087,79 +1146,133 @@ export default function LockerDashboard({ region = "PT" }) {
               </div>
             </div>
 
-            {ordersError ? <pre style={errorPre}>{ordersError}</pre> : null}
+            {showOrdersPanel ? (
+              <>
+                {ordersError ? <pre style={errorPre}>{ordersError}</pre> : null}
 
-            {isNarrow ? (
-              <div style={{ marginTop: 10 }}>
-                <OrdersCardList
-                  ordersData={ordersData}
-                  ordersLoading={ordersLoading}
-                  currentOrder={currentOrder}
-                  onSelectOrder={handleSelectOrder}
-                />
-              </div>
-            ) : (
-              <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.10)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 980 }}>
-                  <thead>
-                    <tr style={{ background: "rgba(255,255,255,0.06)" }}>
-                      <th style={thStyle}>Order</th>
-                      <th style={thStyle}>Status</th>
-                      <th style={thStyle}>Slot</th>
-                      <th style={thStyle}>Allocation</th>
-                      <th style={thStyle}>SKU</th>
-                      <th style={thStyle}>Valor</th>
-                      <th style={thStyle}>Criado em</th>
-                      <th style={thStyle}>Pago em</th>
-                      <th style={thStyle}>Deadline</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ordersLoading ? (
-                      <tr>
-                        <td style={tdStyle} colSpan={9}>
-                          Carregando pedidos...
-                        </td>
-                      </tr>
-                    ) : ordersData.length === 0 ? (
-                      <tr>
-                        <td style={tdStyle} colSpan={9}>
-                          Nenhum pedido encontrado.
-                        </td>
-                      </tr>
-                    ) : (
-                      ordersData.map((item) => (
-                        <tr
-                          key={item.order_id}
-                          onClick={() => handleSelectOrder(item)}
-                          style={{
-                            cursor: "pointer",
-                            background:
-                              currentOrder?.order_id === item.order_id ? "rgba(27,88,131,0.35)" : "transparent",
-                          }}
-                        >
-                          <td style={tdStyle}>{item.order_id}</td>
-                          <td style={tdStyle}>
-                            <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-                          </td>
-                          <td style={tdStyle}>{item.slot ?? "-"}</td>
-                          <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
-                          <td style={tdStyle}>{item.sku_id}</td>
-                          <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.created_at)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.paid_at)}</td>
-                          <td style={tdStyle}>{formatDateTime(item.pickup_deadline_at)}</td>
+                {isNarrow ? (
+                  <div style={{ marginTop: 10 }}>
+                    <OrdersCardList
+                      ordersData={paginatedOrdersData}
+                      ordersLoading={ordersLoading}
+                      currentOrder={currentOrder}
+                      onSelectOrder={handleSelectOrder}
+                    />
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 10, overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.10)" }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1240 }}>
+                      <thead>
+                        <tr style={{ background: "rgba(255,255,255,0.06)" }}>
+                          <th style={thStyle}>Order</th>
+                          <th style={thStyle}>Status</th>
+                          <th style={thStyle}>Método</th>
+                          <th style={thStyle}>Slot</th>
+                          <th style={thStyle}>Allocation</th>
+                          <th style={thStyle}>SKU</th>
+                          <th style={thStyle}>Valor</th>
+                          <th style={thStyle}>Criado em</th>
+                          <th style={thStyle}>Pago em</th>
+                          <th style={thStyle}>Retirado em</th>
+                          <th style={thStyle}>Deadline</th>
                         </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+                      </thead>
+                      <tbody>
+                        {ordersLoading ? (
+                          <tr>
+                            <td style={tdStyle} colSpan={11}>
+                              Carregando pedidos...
+                            </td>
+                          </tr>
+                        ) : paginatedOrdersData.length === 0 ? (
+                          <tr>
+                            <td style={tdStyle} colSpan={11}>
+                              Nenhum pedido encontrado.
+                            </td>
+                          </tr>
+                        ) : (
+                          paginatedOrdersData.map((item) => (
+                            <tr
+                              key={item.order_id}
+                              onClick={() => handleSelectOrder(item)}
+                              style={{
+                                cursor: "pointer",
+                                background:
+                                  currentOrder?.order_id === item.order_id ? "rgba(27,88,131,0.35)" : "transparent",
+                              }}
+                            >
+                              <td style={tdStyle}>{item.order_id}</td>
+                              <td style={tdStyle}>
+                                <span style={statusBadgeStyle(item.status)}>{item.status}</span>
+                              </td>
+                              <td style={tdStyle}>{item.payment_method || "-"}</td>
+                              <td style={tdStyle}>{item.slot ?? "-"}</td>
+                              <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
+                              <td style={tdStyle}>{item.sku_id}</td>
+                              <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.created_at)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.paid_at)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.picked_up_at)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.pickup_deadline_at)}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 11, opacity: 0.65 }}>
+                    Pedidos online não entram no polling automático. Atualize pelo botão.
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <button
+                      onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                      disabled={ordersPage <= 1}
+                      style={{
+                        ...btnSmall,
+                        opacity: ordersPage <= 1 ? 0.45 : 1,
+                        cursor: ordersPage <= 1 ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      Anterior
+                    </button>
+
+                    <div style={{ fontSize: 12, opacity: 0.85 }}>
+                      Página <b>{ordersPage}</b> de <b>{totalOrdersPages}</b>
+                    </div>
+
+                    <button
+                      onClick={() => setOrdersPage((p) => Math.min(totalOrdersPages, p + 1))}
+                      disabled={ordersPage >= totalOrdersPages}
+                      style={{
+                        ...btnSmall,
+                        opacity: ordersPage >= totalOrdersPages ? 0.45 : 1,
+                        cursor: ordersPage >= totalOrdersPages ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      Próxima
+                    </button>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12, opacity: 0.65, marginTop: 4 }}>
+                Painel de pedidos oculto para reduzir ruído visual.
               </div>
             )}
 
-            <div style={{ fontSize: 11, opacity: 0.65, marginTop: 6 }}>
-              Pedidos online não entram no polling automático. Atualize pelo botão.
-            </div>
           </section>
         </div>
 
@@ -1185,6 +1298,9 @@ export default function LockerDashboard({ region = "PT" }) {
                 <b>{currentOrderMeta.label}</b>
                 {currentOrder?.allocation?.slot ? (
                   <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
+                ) : null}
+                {currentOrder?.payment_method ? (
+                  <> • Método <b>{currentOrder.payment_method}</b></>
                 ) : null}
               </div>
             ) : hasActiveSlotSelection ? (
@@ -1218,10 +1334,12 @@ export default function LockerDashboard({ region = "PT" }) {
               <div style={infoCardStyleCompact}>
                 <InfoRow label="order_id" value={currentOrder.order_id} />
                 <InfoRow label="status" value={currentOrder.status} />
+                <InfoRow label="payment_method" value={currentOrder.payment_method || "-"} />
                 <InfoRow label="slot" value={currentOrder?.allocation?.slot ?? "-"} />
                 <InfoRow label="allocation_id" value={currentOrder?.allocation?.allocation_id ?? "-"} />
                 <InfoRow label="amount_cents" value={currentOrder?.amount_cents ?? "-"} />
                 <InfoRow label="pickup_deadline_at" value={currentOrder?.pickup_deadline_at || "-"} />
+                <InfoRow label="picked_up_at" value={currentOrder?.picked_up_at || "-"} />
                 {currentOrder?.manual_code ? <InfoRow label="manual_code atual" value={currentOrder.manual_code} /> : null}
               </div>
             ) : (
