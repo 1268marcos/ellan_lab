@@ -4,7 +4,7 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
@@ -31,6 +31,20 @@ router = APIRouter(tags=["pickup"])
 QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))  # 10 min
 PICKUP_QR_SECRET = os.getenv("PICKUP_QR_SECRET", "dev-secreto-mudar").encode("utf-8")
 
+# localizado em /01_source/order_pickup_service/.env
+MANUAL_REDEEM_MAX_ATTEMPTS = int(os.getenv("MANUAL_REDEEM_MAX_ATTEMPTS", "5"))
+MANUAL_REDEEM_WINDOW_SEC = int(os.getenv("MANUAL_REDEEM_WINDOW_SEC", "120"))
+MANUAL_REDEEM_BLOCK_SEC = int(os.getenv("MANUAL_REDEEM_BLOCK_SEC", "300"))
+
+# Estrutura simples em memória:
+# {
+#   "key": {
+#       "fails": [epoch1, epoch2, ...],
+#       "blocked_until": epoch_or_none,
+#   }
+# }
+_manual_redeem_attempts = {}
+
 
 # -----------------------------
 # helpers
@@ -46,6 +60,69 @@ def _epoch(dt: datetime) -> int:
 
 def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+def _client_ip(request: Request) -> str:
+    xfwd = request.headers.get("x-forwarded-for")
+    if xfwd:
+        return xfwd.split(",")[0].strip()
+    if getattr(request, "client", None) and request.client:
+        return request.client.host or "unknown"
+    return "unknown"
+
+# def _manual_redeem_key(region: str, request: Request) -> str:
+#     return f"{region}:{_client_ip(request)}"
+def _manual_redeem_key(region: str, manual_code: str, request: Request) -> str:
+    return f"{region}:{manual_code}:{_client_ip(request)}"
+
+# def _check_manual_redeem_block(region: str, request: Request) -> None:
+#     key = _manual_redeem_key(region, request)
+def _check_manual_redeem_block(region: str, manual_code: str, request: Request) -> None:
+    key = _manual_redeem_key(region, manual_code, request)
+    now = int(_utcnow().timestamp())
+    entry = _manual_redeem_attempts.get(key)
+
+    if not entry:
+        return
+
+    blocked_until = entry.get("blocked_until")
+    if blocked_until and now < blocked_until:
+        retry_after = blocked_until - now
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "type": "TOO_MANY_MANUAL_CODE_ATTEMPTS",
+                "message": "too many invalid manual code attempts; try again later",
+                "retryable": True,
+                "retry_after_sec": retry_after,
+            },
+        )
+
+# def _register_manual_redeem_failure(region: str, request: Request) -> None:
+#     key = _manual_redeem_key(region, request)
+def _register_manual_redeem_failure(region: str, manual_code: str, request: Request) -> None:
+    key = _manual_redeem_key(region, manual_code, request)
+    now = int(_utcnow().timestamp())
+    entry = _manual_redeem_attempts.get(key, {"fails": [], "blocked_until": None})
+
+    # mantém só falhas dentro da janela
+    fails = [ts for ts in entry.get("fails", []) if now - ts <= MANUAL_REDEEM_WINDOW_SEC]
+    fails.append(now)
+
+    blocked_until = None
+    if len(fails) >= MANUAL_REDEEM_MAX_ATTEMPTS:
+        blocked_until = now + MANUAL_REDEEM_BLOCK_SEC
+
+    _manual_redeem_attempts[key] = {
+        "fails": fails,
+        "blocked_until": blocked_until,
+    }
+
+# def _clear_manual_redeem_failures(region: str, request: Request) -> None:
+#     key = _manual_redeem_key(region, request)
+def _clear_manual_redeem_failures(region: str, manual_code: str, request: Request) -> None:
+    key = _manual_redeem_key(region, manual_code, request)
+    if key in _manual_redeem_attempts:
+        del _manual_redeem_attempts[key]
 
 def _generate_manual_code() -> str:
     # 6 dígitos
@@ -369,9 +446,12 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
 # Totem: redeem manual (fallback sem QR)
 # -----------------------------
 @router.post("/totem/pickups/redeem-manual", response_model=TotemRedeemOut)
-def totem_redeem_manual(payload: TotemRedeemManualIn, db: Session = Depends(get_db)):
+def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Session = Depends(get_db)):
     now = _utcnow()
     token_hash = _sha256(payload.manual_code)
+
+    # _check_manual_redeem_block(payload.region, request)
+    _check_manual_redeem_block(payload.region, payload.manual_code, request)
 
     tok = (
         db.query(PickupToken)
@@ -383,14 +463,32 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, db: Session = Depends(get_
         .first()
     )
     if not tok:
-        raise HTTPException(status_code=401, detail={"type": "INVALID_OR_EXPIRED_CODE", "message": "invalid or expired manual code", "retryable": False})
+        # _register_manual_redeem_failure(payload.region, request)
+        _register_manual_redeem_failure(payload.region, payload.manual_code, request)
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "INVALID_OR_EXPIRED_CODE",
+                "message": "invalid or expired manual code",
+                "retryable": False,
+            },
+        )
 
     order = db.query(Order).filter(Order.id == tok.order_id, Order.channel == OrderChannel.ONLINE).first()
     if not order:
         raise HTTPException(status_code=404, detail={"type": "ORDER_NOT_FOUND", "message": "order not found", "retryable": False})
 
     if getattr(order, "region", None) != payload.region:
-        raise HTTPException(status_code=403, detail={"type": "WRONG_REGION", "message": "code not valid for this region", "retryable": False})
+        # _register_manual_redeem_failure(payload.region, request)
+        _register_manual_redeem_failure(payload.region, payload.manual_code, request)
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "WRONG_REGION",
+                "message": "code not valid for this region",
+                "retryable": False,
+            },
+        )
 
     _ensure_pickup_window(order)
 
@@ -412,6 +510,9 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, db: Session = Depends(get_
     exp_dt = order.pickup_deadline_at
     if exp_dt.tzinfo is None:
         exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+
+    # _clear_manual_redeem_failures(payload.region, request)
+    _clear_manual_redeem_failures(payload.region, payload.manual_code, request)
 
     return TotemRedeemOut(
         pickup_id=order.id,
