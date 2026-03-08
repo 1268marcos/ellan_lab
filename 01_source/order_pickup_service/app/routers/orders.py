@@ -208,6 +208,9 @@ def list_orders(
                 slot=allocation.slot if allocation else None,
                 allocation_state=allocation.state.value if allocation and allocation.state else None,
 
+                pickup_id=order.id if order.channel == OrderChannel.ONLINE else None,
+                expires_at=order.pickup_deadline_at,
+
                 created_at=order.created_at,
                 paid_at=order.paid_at,
                 pickup_deadline_at=order.pickup_deadline_at,

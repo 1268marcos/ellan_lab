@@ -425,7 +425,8 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
     backend_client.locker_open(order.region, allocation.slot)
     backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
 
-    order.status = OrderStatus.PICKED_UP
+    # order.status = OrderStatus.PICKED_UP
+    order.mark_as_picked_up()
     allocation.state = AllocationState.OPENED_FOR_PICKUP
 
     db.commit()
@@ -502,7 +503,8 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Sess
     backend_client.locker_open(order.region, allocation.slot)
     backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
 
-    order.status = OrderStatus.PICKED_UP
+    # order.status = OrderStatus.PICKED_UP
+    order.mark_as_picked_up()
     allocation.state = AllocationState.OPENED_FOR_PICKUP
 
     db.commit()

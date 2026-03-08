@@ -147,10 +147,16 @@ function formatMoney(cents) {
   return (cents / 100).toFixed(2);
 }
 
-function formatDateTime(value) {
+function regionTimeZone(region) {
+  return region === "SP" ? "America/Sao_Paulo" : "Europe/Lisbon";
+}
+
+function formatDateTime(value, region = "PT") {
   if (!value) return "-";
   try {
-    return new Date(value).toLocaleString();
+    return new Date(value).toLocaleString("pt-BR", {
+      timeZone: regionTimeZone(region),
+    });
   } catch {
     return String(value);
   }
@@ -228,6 +234,7 @@ function buildCurrentOrderFromListItem(item) {
     manual_code: item.manual_code,
     paid_at: item.paid_at,
     created_at: item.created_at,
+    expires_at: item.expires_at,
     pickup_deadline_at: item.pickup_deadline_at,
     picked_up_at: item.picked_up_at,
     allocation: {
@@ -394,19 +401,19 @@ function OrdersCardList({
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.72 }}>
-            Método: <b>{item.payment_method || "-"}</b> • SKU: {item.sku_id}
+            Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Criado: {formatDateTime(item.created_at)}
+            Criado: {formatDateTime(item.created_at, item.region)}
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Pago: {formatDateTime(item.paid_at)} • Retirado: {formatDateTime(item.picked_up_at)}
+            Pago: {formatDateTime(item.paid_at, item.regiao)} • Retirado: {formatDateTime(item.picked_up_at, item.regiao)}
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Deadline: {formatDateTime(item.pickup_deadline_at)}
+            Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.regiao)}
           </div>
         </button>
       ))}
@@ -854,6 +861,7 @@ export default function LockerDashboard({ region = "PT" }) {
               manual_code: data?.manual_code || prev.manual_code,
               pickup_id: data?.pickup_id || prev.pickup_id,
               token_id: data?.token_id || prev.token_id,
+              expires_at: data?.expires_at || prev.expires_at,
               pickup_deadline_at: data?.expires_at || prev.pickup_deadline_at,
             }
           : prev
@@ -954,6 +962,7 @@ export default function LockerDashboard({ region = "PT" }) {
               pickup_id: confirmData?.pickup_id || prev.pickup_id,
               token_id: confirmData?.token_id || prev.token_id,
               manual_code: confirmData?.manual_code || prev.manual_code,
+              expires_at: confirmData?.pickup_deadline_at || prev.expires_at,
               pickup_deadline_at: confirmData?.pickup_deadline_at || prev.pickup_deadline_at,
             }
           : prev
@@ -1206,12 +1215,13 @@ export default function LockerDashboard({ region = "PT" }) {
                       border: "1px solid rgba(255,255,255,0.10)",
                     }}
                   >
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1240 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1360 }}>
                       <thead>
                         <tr style={{ background: "rgba(255,255,255,0.06)" }}>
                           <th style={thStyle}>Order</th>
                           <th style={thStyle}>Status</th>
                           <th style={thStyle}>Método</th>
+                          <th style={thStyle}>Pickup</th>
                           <th style={thStyle}>Slot</th>
                           <th style={thStyle}>Allocation</th>
                           <th style={thStyle}>SKU</th>
@@ -1219,19 +1229,19 @@ export default function LockerDashboard({ region = "PT" }) {
                           <th style={thStyle}>Criado em</th>
                           <th style={thStyle}>Pago em</th>
                           <th style={thStyle}>Retirado em</th>
-                          <th style={thStyle}>Deadline</th>
+                          <th style={thStyle}>Expira em</th>
                         </tr>
                       </thead>
                       <tbody>
                         {ordersLoading ? (
                           <tr>
-                            <td style={tdStyle} colSpan={11}>
+                            <td style={tdStyle} colSpan={12}>
                               Carregando pedidos...
                             </td>
                           </tr>
                         ) : ordersData.length === 0 ? (
                           <tr>
-                            <td style={tdStyle} colSpan={11}>
+                            <td style={tdStyle} colSpan={12}>
                               Nenhum pedido encontrado.
                             </td>
                           </tr>
@@ -1251,14 +1261,15 @@ export default function LockerDashboard({ region = "PT" }) {
                                 <span style={statusBadgeStyle(item.status)}>{item.status}</span>
                               </td>
                               <td style={tdStyle}>{item.payment_method || "-"}</td>
+                              <td style={tdStyle}>{item.pickup_id || "-"}</td>
                               <td style={tdStyle}>{item.slot ?? "-"}</td>
                               <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
                               <td style={tdStyle}>{item.sku_id}</td>
                               <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.created_at)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.paid_at)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.picked_up_at)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.pickup_deadline_at)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.created_at, item.regiao)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.paid_at, item.regiao)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.picked_up_at, item.regiao)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.expires_at || item.pickup_deadline_at, item.regiao)}</td>
                             </tr>
                           ))
                         )}
@@ -1346,6 +1357,9 @@ export default function LockerDashboard({ region = "PT" }) {
                 {currentOrder?.payment_method ? (
                   <> • Método <b>{currentOrder.payment_method}</b></>
                 ) : null}
+                {currentOrder?.pickup_id ? (
+                  <> • Pickup <b>{currentOrder.pickup_id}</b></>
+                ) : null}
               </div>
             ) : hasActiveSlotSelection ? (
               <div style={softInfoBox(slotSelectionRemainingSec > 10 ? "normal" : "warning")}>
@@ -1378,12 +1392,23 @@ export default function LockerDashboard({ region = "PT" }) {
               <div style={infoCardStyleCompact}>
                 <InfoRow label="order_id" value={currentOrder.order_id} />
                 <InfoRow label="status" value={currentOrder.status} />
+                <InfoRow label="pickup_id" value={currentOrder.pickup_id || "-"} />
                 <InfoRow label="payment_method" value={currentOrder.payment_method || "-"} />
                 <InfoRow label="slot" value={currentOrder?.allocation?.slot ?? "-"} />
                 <InfoRow label="allocation_id" value={currentOrder?.allocation?.allocation_id ?? "-"} />
                 <InfoRow label="amount_cents" value={currentOrder?.amount_cents ?? "-"} />
-                <InfoRow label="pickup_deadline_at" value={currentOrder?.pickup_deadline_at || "-"} />
-                <InfoRow label="picked_up_at" value={currentOrder?.picked_up_at || "-"} />
+                <InfoRow
+                  label="expires_at"
+                  value={formatDateTime(currentOrder?.expires_at || currentOrder?.pickup_deadline_at, region)}
+                />
+                <InfoRow
+                  label="pickup_deadline_at"
+                  value={formatDateTime(currentOrder?.pickup_deadline_at, region)}
+                />
+                <InfoRow
+                  label="picked_up_at"
+                  value={formatDateTime(currentOrder?.picked_up_at, region)}
+                />
                 {currentOrder?.manual_code ? <InfoRow label="manual_code atual" value={currentOrder.manual_code} /> : null}
               </div>
             ) : (

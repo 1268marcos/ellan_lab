@@ -38,6 +38,9 @@ class OrderListItemOut(BaseModel):
     slot: Optional[int] = None
     allocation_state: Optional[str] = None
 
+    pickup_id: Optional[str] = None
+    expires_at: Optional[datetime] = None
+
     created_at: Optional[datetime] = None
     paid_at: Optional[datetime] = None
     pickup_deadline_at: Optional[datetime] = None
