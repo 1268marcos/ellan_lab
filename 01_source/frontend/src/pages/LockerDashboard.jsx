@@ -143,8 +143,9 @@ function pickGatewayTransactionId(respObj) {
 }
 
 function formatMoney(cents) {
-  if (typeof cents !== "number") return "-";
-  return (cents / 100).toFixed(2);
+  const value = Number(cents);
+  if (!Number.isFinite(value)) return "-";
+  return (value / 100).toFixed(2);
 }
 
 function regionTimeZone(region) {
@@ -153,9 +154,25 @@ function regionTimeZone(region) {
 
 function formatDateTime(value, region = "PT") {
   if (!value) return "-";
+
   try {
-    return new Date(value).toLocaleString("pt-BR", {
+    const raw = String(value).trim();
+
+    // Se veio sem timezone explícito, tratar como UTC
+    const normalized =
+      /(?:Z|[+-]\d{2}:\d{2})$/.test(raw)
+        ? raw
+        : `${raw}Z`;
+
+    const dt = new Date(normalized);
+
+    if (Number.isNaN(dt.getTime())) {
+      return String(value);
+    }
+
+    return dt.toLocaleString("pt-BR", {
       timeZone: regionTimeZone(region),
+      hour12: false,
     });
   } catch {
     return String(value);
@@ -409,11 +426,11 @@ function OrdersCardList({
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Pago: {formatDateTime(item.paid_at, item.regiao)} • Retirado: {formatDateTime(item.picked_up_at, item.regiao)}
+            Pago: {formatDateTime(item.paid_at, item.region)} • Retirado: {formatDateTime(item.picked_up_at, item.region)}
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.regiao)}
+            Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}
           </div>
         </button>
       ))}
@@ -903,13 +920,18 @@ export default function LockerDashboard({ region = "PT" }) {
     }
 
     const slotNum = Number(currentOrder?.allocation?.slot || paySlot);
-    const valNum = Number(payValue);
+    const orderAmountCents =
+      typeof currentOrder?.amount_cents === "number"
+        ? currentOrder.amount_cents
+        : Math.round(Number(payValue) * 100);
+
+    const valNum = Number(orderAmountCents) / 100;
 
     if (!slotNum || slotNum < 1 || slotNum > 24) {
       setPayResp("❌ Gaveta inválida (1..24)");
       return;
     }
-    if (!valNum || valNum <= 0) {
+    if (!Number.isFinite(valNum) || valNum <= 0) {
       setPayResp("❌ Valor inválido (>0)");
       return;
     }
@@ -1266,10 +1288,10 @@ export default function LockerDashboard({ region = "PT" }) {
                               <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
                               <td style={tdStyle}>{item.sku_id}</td>
                               <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.created_at, item.regiao)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.paid_at, item.regiao)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.picked_up_at, item.regiao)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.expires_at || item.pickup_deadline_at, item.regiao)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.created_at, item.region)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.paid_at, item.region)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.picked_up_at, item.region)}</td>
+                              <td style={tdStyle}>{formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}</td>
                             </tr>
                           ))
                         )}
@@ -1466,9 +1488,21 @@ export default function LockerDashboard({ region = "PT" }) {
                   step="0.01"
                   value={payValue}
                   onChange={(e) => setPayValue(e.target.value)}
-                  style={inputCompact}
+                  disabled={!!currentOrder?.order_id}
+                  style={{
+                    ...inputCompact,
+                    opacity: currentOrder?.order_id ? 0.7 : 1,
+                    cursor: currentOrder?.order_id ? "not-allowed" : "text",
+                  }}
                 />
               </label>
+
+              {currentOrder?.order_id ? (
+                <div style={softInfoBox("normal")}>
+                  Valor congelado no pedido atual: <b>{formatMoney(currentOrder.amount_cents)}</b>
+                </div>
+              ) : null}
+
             </div>
 
             <button

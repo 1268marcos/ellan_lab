@@ -135,9 +135,17 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
     valor = float(data.valor)
     porta = int(data.porta)
 
-    REGION_CURRENCY = {"SP": "BRL", "PT": "EUR"}
-    currencyISO = (data.currency or REGION_CURRENCY.get(region, "BRL")).upper()
+    REGION_CURRENCY = {
+        "SP": "BRL",
+        "PT": "EUR",
+    }
 
+    expected_currency = REGION_CURRENCY.get(region, "BRL")
+    incoming_currency = (getattr(data, "currency", None) or "").upper().strip()
+
+    # Regra de domínio:
+    # a moeda é definida pela região, não pelo cliente/frontend.
+    currencyISO = expected_currency
 
     endpoint = "/gateway/pagamento"
     req_id = request_id or _gen_request_id()
@@ -153,6 +161,8 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "metodo": metodo,
                 "valor": valor,
                 "currency": currencyISO,
+                "incoming_currency": incoming_currency or None,
+                "currency_mismatch": bool(incoming_currency and incoming_currency != expected_currency),
                 "idempotency_key": idempotency_key,
             },
         }

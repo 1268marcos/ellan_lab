@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.allocation import Allocation, AllocationState
+from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,20 @@ CREDIT_RATIO = float(os.getenv("EXPIRY_CREDIT_RATIO", "0.50"))  # 50%
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """
+    Normaliza datetime para naive UTC, para comparar com colunas DateTime
+    salvas sem timezone explícito.
+    """
+    if dt is None:
+        return None
+
+    if dt.tzinfo is None:
+        return dt
+
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _try_import_credit():
@@ -41,12 +56,13 @@ def run_expiry_once(db: Session) -> int:
     """
     Expira pedidos ONLINE que passaram do pickup_deadline_at:
       - Order: PAID_PENDING_PICKUP -> EXPIRED
+      - Pickup: ACTIVE -> EXPIRED
       - Allocation: RESERVED_PAID_PENDING_PICKUP -> EXPIRED
       - Slot no backend: OUT_OF_STOCK (cinza, aguardando reposição)
       - Backend allocation: locker_release(allocation_id) (best-effort)
       - Crédito 50% (opcional)
     """
-    now = _utc_now()
+    now = _as_naive_utc(_utc_now())
     changed = 0
 
     expired_orders = (
@@ -55,7 +71,7 @@ def run_expiry_once(db: Session) -> int:
             Order.channel == OrderChannel.ONLINE,
             Order.status == OrderStatus.PAID_PENDING_PICKUP,
             Order.pickup_deadline_at.isnot(None),
-            Order.pickup_deadline_at <= now.replace(tzinfo=None),
+            Order.pickup_deadline_at <= now,
         )
         .limit(BATCH_SIZE)
         .all()
@@ -98,7 +114,18 @@ def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str]
         return None
 
     region = getattr(order, "region", None) or "PT"
-    allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
+
+    allocation = (
+        db.query(Allocation)
+        .filter(Allocation.order_id == order.id)
+        .first()
+    )
+
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .first()
+    )
 
     # 1) Crédito 50% (opcional)
     if ENABLE_CREDIT:
@@ -120,19 +147,42 @@ def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str]
             except Exception as e:
                 logger.warning(f"[expiry] falha ao criar crédito order={order.id}: {e}")
 
-    # 2) Atualiza estados internos
+    # 2) Atualiza Order
     order.status = OrderStatus.EXPIRED
 
+    # 3) Atualiza Pickup
+    pickup_id = None
+    if pickup:
+        pickup_id = pickup.id
+
+        if pickup.status == PickupStatus.ACTIVE:
+            pickup.status = PickupStatus.EXPIRED
+
+        # Mantém coerência temporal com o deadline do pedido
+        if order.pickup_deadline_at:
+            pickup.expires_at = order.pickup_deadline_at
+
+    # 4) Atualiza Allocation
     alloc_id = None
     slot = None
     if allocation:
         alloc_id = allocation.id
         slot = allocation.slot
 
-        allocation.state = AllocationState.EXPIRED
+        if allocation.state in (
+            AllocationState.RESERVED_PENDING_PAYMENT,
+            AllocationState.RESERVED_PAID_PENDING_PICKUP,
+        ):
+            allocation.state = AllocationState.EXPIRED
+
         allocation.locked_until = None
 
-    logger.info(f"[expiry] order={order.id} -> EXPIRED; alloc={alloc_id} slot={slot}")
+    logger.info(
+        f"[expiry] order={order.id} -> EXPIRED; "
+        f"pickup={pickup_id} -> {pickup.status.value if pickup else 'NONE'}; "
+        f"alloc={alloc_id} slot={slot}"
+    )
+
     return (order.id, alloc_id, slot, region)
 
 

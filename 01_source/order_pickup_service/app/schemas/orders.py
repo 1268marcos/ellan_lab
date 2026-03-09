@@ -39,6 +39,7 @@ class OrderListItemOut(BaseModel):
     allocation_state: Optional[str] = None
 
     pickup_id: Optional[str] = None
+    pickup_status: Optional[str] = None
     expires_at: Optional[datetime] = None
 
     created_at: Optional[datetime] = None
