@@ -63,6 +63,67 @@ const ORDER_STATUS_META = {
   },
 };
 
+const PICKUP_STATUS_META = {
+  ACTIVE: {
+    label: "Pickup ativo",
+    bg: "rgba(27,88,131,0.22)",
+    border: "rgba(27,88,131,0.45)",
+  },
+  REDEEMED: {
+    label: "Pickup retirado",
+    bg: "rgba(31,122,63,0.22)",
+    border: "rgba(31,122,63,0.45)",
+  },
+  EXPIRED: {
+    label: "Pickup expirado",
+    bg: "rgba(179,38,30,0.20)",
+    border: "rgba(179,38,30,0.45)",
+  },
+  CANCELLED: {
+    label: "Pickup cancelado",
+    bg: "rgba(107,107,107,0.22)",
+    border: "rgba(107,107,107,0.45)",
+  },
+};
+
+const ALLOCATION_STATUS_META = {
+  RESERVED_PENDING_PAYMENT: {
+    label: "Reserva pendente",
+    bg: "rgba(199,146,0,0.22)",
+    border: "rgba(199,146,0,0.45)",
+  },
+  RESERVED_PAID_PENDING_PICKUP: {
+    label: "Reservado / pago",
+    bg: "rgba(27,88,131,0.22)",
+    border: "rgba(27,88,131,0.45)",
+  },
+  OPENED_FOR_PICKUP: {
+    label: "Aberto para retirada",
+    bg: "rgba(95,61,196,0.22)",
+    border: "rgba(95,61,196,0.45)",
+  },
+  PICKED_UP: {
+    label: "Retirada concluída",
+    bg: "rgba(31,122,63,0.22)",
+    border: "rgba(31,122,63,0.45)",
+  },
+  EXPIRED: {
+    label: "Alocação expirada",
+    bg: "rgba(179,38,30,0.20)",
+    border: "rgba(179,38,30,0.45)",
+  },
+  RELEASED: {
+    label: "Alocação liberada",
+    bg: "rgba(107,107,107,0.22)",
+    border: "rgba(107,107,107,0.45)",
+  },
+  CANCELLED: {
+    label: "Alocação cancelada",
+    bg: "rgba(107,107,107,0.22)",
+    border: "rgba(107,107,107,0.45)",
+  },
+};
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -216,6 +277,22 @@ function statusBadgeStyle(status) {
   };
 }
 
+function genericBadgeStyle(meta) {
+  const m = meta || { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" };
+  return {
+    padding: "4px 8px",
+    borderRadius: 999,
+    border: `1px solid ${m.border}`,
+    background: m.bg,
+    fontSize: 11,
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    whiteSpace: "nowrap",
+  };
+}
+
 function softInfoBox(kind = "normal") {
   const backgrounds = {
     normal: "rgba(255,255,255,0.04)",
@@ -247,6 +324,7 @@ function buildCurrentOrderFromListItem(item) {
     amount_cents: item.amount_cents,
     payment_method: item.payment_method,
     pickup_id: item.pickup_id,
+    pickup_status: item.pickup_status,
     token_id: item.token_id,
     manual_code: item.manual_code,
     paid_at: item.paid_at,
@@ -257,8 +335,156 @@ function buildCurrentOrderFromListItem(item) {
     allocation: {
       allocation_id: item.allocation_id,
       slot: item.slot,
+      state: item.allocation_state,
     },
   };
+}
+
+
+function tryParseJson(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function extractBackendDetailFromErrorMessage(message) {
+  if (!message || typeof message !== "string") return null;
+
+  const match = message.match(/payment-confirm HTTP \d+:\s*(.*)$/s);
+  if (!match?.[1]) return null;
+
+  return tryParseJson(match[1]);
+}
+
+function extractOperationalErrorType(err) {
+  const rawMessage = String(err?.message || err || "");
+  const parsed = extractBackendDetailFromErrorMessage(rawMessage);
+
+  const detail = parsed?.detail;
+  if (detail && typeof detail === "object" && detail.type) {
+    return detail.type;
+  }
+
+  return null;
+}
+
+function extractOperationalErrorMessage(err) {
+  const rawMessage = String(err?.message || err || "");
+  const parsed = extractBackendDetailFromErrorMessage(rawMessage);
+  const detail = parsed?.detail;
+
+  if (detail && typeof detail === "object") {
+    if (detail.message) return detail.message;
+    if (detail.type) return detail.type;
+  }
+
+  return rawMessage;
+}
+
+function isStaleCurrentOrderErrorType(type) {
+  return [
+    "REALLOCATE_CONFLICT",
+    "LOCKER_COMMIT_FAILED",
+    "COMMIT_AFTER_REALLOCATE_FAILED",
+  ].includes(type);
+}
+
+function buildPaymentSummary({ gatewayData, confirmData, region, currentOrderId }) {
+  const lines = [];
+
+  lines.push("✅ Pagamento confirmado com sucesso");
+
+  if (currentOrderId) {
+    lines.push(`Pedido: ${currentOrderId}`);
+  }
+
+  if (confirmData?.slot) {
+    lines.push(`Gaveta: ${confirmData.slot}`);
+  }
+
+  if (confirmData?.payment_method) {
+    lines.push(`Método: ${confirmData.payment_method}`);
+  }
+
+  if (confirmData?.pickup_id) {
+    lines.push(`Pickup: ${confirmData.pickup_id}`);
+  }
+
+  if (confirmData?.manual_code) {
+    lines.push(`Código manual atual: ${confirmData.manual_code}`);
+  }
+
+  if (confirmData?.pickup_deadline_at || confirmData?.pickup_expires_at) {
+    lines.push(
+      `Expira em: ${formatDateTime(
+        confirmData?.pickup_expires_at || confirmData?.pickup_deadline_at,
+        region
+      )}`
+    );
+  }
+
+  if (gatewayData?.payment?.currency) {
+    lines.push(`Moeda: ${gatewayData.payment.currency}`);
+  }
+
+  return lines.join("\n");
+}
+
+function buildManualCodeSummary(data, region) {
+  const lines = [];
+
+  lines.push("✅ Código manual regenerado com sucesso");
+
+  if (data?.order_id) {
+    lines.push(`Pedido: ${data.order_id}`);
+  }
+
+  if (data?.pickup_id) {
+    lines.push(`Pickup: ${data.pickup_id}`);
+  }
+
+  if (data?.manual_code) {
+    lines.push(`Novo código: ${data.manual_code}`);
+  }
+
+  if (data?.expires_at) {
+    lines.push(`Expira em: ${formatDateTime(data.expires_at, region)}`);
+  }
+
+  lines.push("Códigos anteriores foram invalidados.");
+
+  return lines.join("\n");
+}
+
+function buildRedeemSummary(data, region, mode = "manual") {
+  const lines = [];
+
+  lines.push(
+    mode === "manual"
+      ? "✅ Retirada manual concluída com sucesso"
+      : "✅ Retirada por QR concluída com sucesso"
+  );
+
+  if (data?.order_id) {
+    lines.push(`Pedido: ${data.order_id}`);
+  }
+
+  if (data?.pickup_id) {
+    lines.push(`Pickup: ${data.pickup_id}`);
+  }
+
+  if (data?.slot) {
+    lines.push(`Gaveta: ${data.slot}`);
+  }
+
+  if (data?.expires_at) {
+    lines.push(`Janela original: ${formatDateTime(data.expires_at, region)}`);
+  }
+
+  return lines.join("\n");
 }
 
 function focusOrderFromListItem(item, setters) {
@@ -401,7 +627,11 @@ function OrdersCardList({
             background:
               currentOrder?.order_id === item.order_id
                 ? "rgba(27,88,131,0.28)"
-                : "rgba(255,255,255,0.03)",
+                : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
+                  ? "rgba(179,38,30,0.10)"
+                  : item.status === "PICKED_UP"
+                    ? "rgba(31,122,63,0.08)"
+                    : "rgba(255,255,255,0.03)",
             color: "white",
             cursor: "pointer",
             display: "grid",
@@ -417,8 +647,22 @@ function OrdersCardList({
             Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
           </div>
 
-          <div style={{ fontSize: 12, opacity: 0.72 }}>
-            Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ fontSize: 12, opacity: 0.72 }}>
+              Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
+            </div>
+
+            {item.pickup_status ? (
+              <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
+                {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
+              </span>
+            ) : null}
+
+            {item.allocation_state ? (
+              <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
+                {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
+              </span>
+            ) : null}
           </div>
 
           <div style={{ fontSize: 11, opacity: 0.62 }}>
@@ -506,6 +750,21 @@ export default function LockerDashboard({ region = "PT" }) {
 
   const currentOrderMeta = getCurrentOrderMeta(currentOrder?.status || "SEM_PEDIDO");
 
+  const currentPickupMeta = currentOrder?.pickup_status
+    ? PICKUP_STATUS_META[currentOrder.pickup_status]
+    : null;
+
+  const currentAllocationMeta = currentOrder?.allocation?.state
+    ? ALLOCATION_STATUS_META[currentOrder.allocation.state]
+    : null;
+
+  const currentOrderWarning =
+    currentOrder?.status === "EXPIRED" || currentOrder?.status === "EXPIRED_CREDIT_50"
+      ? "Este pedido expirou. Não tente pagar ou retirar. Crie um novo pedido."
+      : currentOrder?.status === "PICKED_UP"
+        ? "Este pedido já foi retirado. Não tente pagar novamente."
+        : null;
+
   const isOrderAlreadyPaid =
     currentOrder?.status === "PAID_PENDING_PICKUP" || currentOrder?.status === "PICKED_UP";
 
@@ -567,6 +826,18 @@ export default function LockerDashboard({ region = "PT" }) {
       setPayMethod,
       setPayValue,
     });
+  }
+
+  function clearCurrentOrderForRecovery(message) {
+    setCurrentOrder(null);
+    setSelectedSlot(null);
+    setPaySlot(1);
+    setSlotSelectionExpiresAt(null);
+    setPickupResp("");
+    setOrderError("");
+    setPayResp(
+      `⚠️ ${message}\n\nAção recomendada: selecione uma gaveta disponível e crie um novo pedido.`
+    );
   }
 
   async function fetchSlotsOnce() {
@@ -834,20 +1105,30 @@ export default function LockerDashboard({ region = "PT" }) {
 
     const text = await res.text();
     if (!res.ok) {
-      throw new Error(`payment-confirm HTTP ${res.status}: ${text}`);
+      const parsed = tryParseJson(text);
+      const detailType =
+        parsed?.detail && typeof parsed.detail === "object" ? parsed.detail.type : null;
+
+      const suffix = detailType ? ` [${detailType}]` : "";
+      throw new Error(`payment-confirm HTTP ${res.status}${suffix}: ${text}`);
     }
 
     return JSON.parse(text);
+
   }
 
   async function regenerateManualCode() {
     if (!currentOrder?.order_id) {
-      setPickupResp("❌ Nenhum pedido selecionado para regenerar código.");
+      setPickupResp(
+        "❌ Nenhum pedido selecionado para regenerar código.\n\nAção recomendada: selecione um pedido pago aguardando retirada."
+      );
       return;
     }
 
     if (currentOrder?.status !== "PAID_PENDING_PICKUP") {
-      setPickupResp("❌ Só é possível regenerar código para pedido em PAID_PENDING_PICKUP.");
+      setPickupResp(
+        "❌ Só é possível regenerar código para pedido em PAID_PENDING_PICKUP.\n\nVerifique o status do pedido atual."
+      );
       return;
     }
 
@@ -884,8 +1165,10 @@ export default function LockerDashboard({ region = "PT" }) {
           : prev
       );
 
+      const summary = buildManualCodeSummary(data, region);
+
       setPickupResp(
-        JSON.stringify(
+        `${summary}\n\n--- JSON bruto ---\n${JSON.stringify(
           {
             step: "manual_code_regenerated",
             response: data,
@@ -893,7 +1176,7 @@ export default function LockerDashboard({ region = "PT" }) {
           },
           null,
           2
-        )
+        )}`
       );
       fetchOrdersOnce(ordersPage, ordersPageSize);
     } catch (e) {
@@ -905,17 +1188,23 @@ export default function LockerDashboard({ region = "PT" }) {
 
   async function simulatePayment() {
     if (!currentOrder?.order_id) {
-      setPayResp("❌ Antes de pagar, clique em “Criar pedido online”.");
+      setPayResp(
+        "❌ Nenhum pedido atual carregado.\n\nAção recomendada: selecione uma gaveta disponível e clique em “Criar pedido online”."
+      );
       return;
     }
 
     if (currentOrder?.status === "PAID_PENDING_PICKUP") {
-      setPayResp("⚠️ Pedido já pago. Use “Gerar/Atualizar” ou “Regenerar código manual”.");
+      setPayResp(
+        "⚠️ Este pedido já está pago.\n\nAção recomendada: use o painel de retirada, gere/atualize o QR ou regenere o código manual."
+      );
       return;
     }
 
     if (currentOrder?.status === "PICKED_UP") {
-      setPayResp("⚠️ Pedido já retirado. Não é possível pagar novamente.");
+      setPayResp(
+        "⚠️ Este pedido já foi retirado.\n\nNenhuma ação de pagamento adicional é necessária."
+      );
       return;
     }
 
@@ -960,7 +1249,9 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const gatewayText = await gatewayRes.text();
       if (!gatewayRes.ok) {
-        setPayResp(`❌ Gateway HTTP ${gatewayRes.status}\n${gatewayText}\n\nURL: ${gatewayUrl}`);
+        setPayResp(
+          `❌ Falha no gateway de pagamento\nStatus HTTP: ${gatewayRes.status}\nURL: ${gatewayUrl}\n\n--- Resposta bruta ---\n${gatewayText}`
+        );
         return;
       }
 
@@ -982,16 +1273,30 @@ export default function LockerDashboard({ region = "PT" }) {
               payment_method: confirmData?.payment_method || prev.payment_method,
               picked_up_at: confirmData?.picked_up_at || prev.picked_up_at,
               pickup_id: confirmData?.pickup_id || prev.pickup_id,
+              pickup_status: confirmData?.pickup_status || prev.pickup_status,
               token_id: confirmData?.token_id || prev.token_id,
               manual_code: confirmData?.manual_code || prev.manual_code,
-              expires_at: confirmData?.pickup_deadline_at || prev.expires_at,
+              expires_at: confirmData?.pickup_expires_at || confirmData?.pickup_deadline_at || prev.expires_at,
               pickup_deadline_at: confirmData?.pickup_deadline_at || prev.pickup_deadline_at,
+              allocation: {
+                ...(prev?.allocation || {}),
+                allocation_id: confirmData?.allocation_id || prev?.allocation?.allocation_id,
+                slot: confirmData?.slot || prev?.allocation?.slot,
+                state: "RESERVED_PAID_PENDING_PICKUP",
+              },
             }
           : prev
       );
 
+      const summary = buildPaymentSummary({
+        gatewayData,
+        confirmData,
+        region,
+        currentOrderId: currentOrder.order_id,
+      });
+
       setPayResp(
-        JSON.stringify(
+        `${summary}\n\n--- JSON bruto ---\n${JSON.stringify(
           {
             step: "payment_confirmed",
             order_id: currentOrder.order_id,
@@ -1000,13 +1305,22 @@ export default function LockerDashboard({ region = "PT" }) {
           },
           null,
           2
-        )
+        )}`
       );
 
       await fetchSlotsOnce();
       await fetchOrdersOnce(ordersPage, ordersPageSize);
     } catch (e) {
-      setPayResp(`❌ Falha no fluxo de pagamento\n${String(e?.message || e)}`);
+      const errorType = extractOperationalErrorType(e);
+      const errorMessage = extractOperationalErrorMessage(e);
+
+      if (isStaleCurrentOrderErrorType(errorType)) {
+        clearCurrentOrderForRecovery(
+          errorMessage || "A reserva do pedido expirou ou ficou inconsistente durante o pagamento."
+        );
+      } else {
+        setPayResp(`❌ Falha no fluxo de pagamento\n${String(e?.message || e)}`);
+      }
     } finally {
       setPayLoading(false);
     }
@@ -1020,15 +1334,18 @@ export default function LockerDashboard({ region = "PT" }) {
 
     setCurrentOrder(null);
     setSlotSelectionExpiresAt(null);
+
+    const summary = buildRedeemSummary(data, region, "manual");
+
     setPickupResp(
-      JSON.stringify(
+      `${summary}\n\n--- JSON bruto ---\n${JSON.stringify(
         {
           step: "manual_redeem_success",
           response: data,
         },
         null,
         2
-      )
+      )}`
     );
 
     fetchSlotsOnce();
@@ -1244,8 +1561,10 @@ export default function LockerDashboard({ region = "PT" }) {
                           <th style={thStyle}>Status</th>
                           <th style={thStyle}>Método</th>
                           <th style={thStyle}>Pickup</th>
+                          <th style={thStyle}>Pickup status</th>
                           <th style={thStyle}>Slot</th>
                           <th style={thStyle}>Allocation</th>
+                          <th style={thStyle}>Allocation status</th>
                           <th style={thStyle}>SKU</th>
                           <th style={thStyle}>Valor</th>
                           <th style={thStyle}>Criado em</th>
@@ -1257,13 +1576,13 @@ export default function LockerDashboard({ region = "PT" }) {
                       <tbody>
                         {ordersLoading ? (
                           <tr>
-                            <td style={tdStyle} colSpan={12}>
+                            <td style={tdStyle} colSpan={14}>
                               Carregando pedidos...
                             </td>
                           </tr>
                         ) : ordersData.length === 0 ? (
                           <tr>
-                            <td style={tdStyle} colSpan={12}>
+                            <td style={tdStyle} colSpan={14}>
                               Nenhum pedido encontrado.
                             </td>
                           </tr>
@@ -1275,7 +1594,13 @@ export default function LockerDashboard({ region = "PT" }) {
                               style={{
                                 cursor: "pointer",
                                 background:
-                                  currentOrder?.order_id === item.order_id ? "rgba(27,88,131,0.35)" : "transparent",
+                                  currentOrder?.order_id === item.order_id
+                                    ? "rgba(27,88,131,0.35)"
+                                    : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
+                                      ? "rgba(179,38,30,0.10)"
+                                      : item.status === "PICKED_UP"
+                                        ? "rgba(31,122,63,0.08)"
+                                        : "transparent",
                               }}
                             >
                               <td style={tdStyle}>{item.order_id}</td>
@@ -1284,8 +1609,22 @@ export default function LockerDashboard({ region = "PT" }) {
                               </td>
                               <td style={tdStyle}>{item.payment_method || "-"}</td>
                               <td style={tdStyle}>{item.pickup_id || "-"}</td>
+                              <td style={tdStyle}>
+                                {item.pickup_status ? (
+                                  <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
+                                    {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
+                                  </span>
+                                ) : "-"}
+                              </td>
                               <td style={tdStyle}>{item.slot ?? "-"}</td>
                               <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
+                              <td style={tdStyle}>
+                                {item.allocation_state ? (
+                                  <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
+                                    {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
+                                  </span>
+                                ) : "-"}
+                              </td>
                               <td style={tdStyle}>{item.sku_id}</td>
                               <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
                               <td style={tdStyle}>{formatDateTime(item.created_at, item.region)}</td>
@@ -1372,15 +1711,39 @@ export default function LockerDashboard({ region = "PT" }) {
 
             {currentOrder ? (
               <div style={softInfoBox(currentOrderMeta.tone === "danger" ? "warning" : currentOrderMeta.tone === "info" ? "info" : "normal")}>
-                <b>{currentOrderMeta.label}</b>
-                {currentOrder?.allocation?.slot ? (
-                  <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
+                <div>
+                  <b>{currentOrderMeta.label}</b>
+                  {currentOrder?.allocation?.slot ? (
+                    <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
+                  ) : null}
+                  {currentOrder?.payment_method ? (
+                    <> • Método <b>{currentOrder.payment_method}</b></>
+                  ) : null}
+                  {currentOrder?.pickup_id ? (
+                    <> • Pickup <b>{currentOrder.pickup_id}</b></>
+                  ) : null}
+                </div>
+
+                {(currentPickupMeta || currentAllocationMeta) ? (
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                    {currentPickupMeta ? (
+                      <span style={genericBadgeStyle(currentPickupMeta)}>
+                        {currentPickupMeta.label}
+                      </span>
+                    ) : null}
+
+                    {currentAllocationMeta ? (
+                      <span style={genericBadgeStyle(currentAllocationMeta)}>
+                        {currentAllocationMeta.label}
+                      </span>
+                    ) : null}
+                  </div>
                 ) : null}
-                {currentOrder?.payment_method ? (
-                  <> • Método <b>{currentOrder.payment_method}</b></>
-                ) : null}
-                {currentOrder?.pickup_id ? (
-                  <> • Pickup <b>{currentOrder.pickup_id}</b></>
+
+                {currentOrderWarning ? (
+                  <div style={{ marginTop: 8, fontWeight: 700 }}>
+                    ⚠️ {currentOrderWarning}
+                  </div>
                 ) : null}
               </div>
             ) : hasActiveSlotSelection ? (
@@ -1415,9 +1778,11 @@ export default function LockerDashboard({ region = "PT" }) {
                 <InfoRow label="order_id" value={currentOrder.order_id} />
                 <InfoRow label="status" value={currentOrder.status} />
                 <InfoRow label="pickup_id" value={currentOrder.pickup_id || "-"} />
+                <InfoRow label="pickup_status" value={currentOrder.pickup_status || "-"} />
                 <InfoRow label="payment_method" value={currentOrder.payment_method || "-"} />
                 <InfoRow label="slot" value={currentOrder?.allocation?.slot ?? "-"} />
                 <InfoRow label="allocation_id" value={currentOrder?.allocation?.allocation_id ?? "-"} />
+                <InfoRow label="allocation_state" value={currentOrder?.allocation?.state ?? "-"} />
                 <InfoRow label="amount_cents" value={currentOrder?.amount_cents ?? "-"} />
                 <InfoRow
                   label="expires_at"
@@ -1434,7 +1799,9 @@ export default function LockerDashboard({ region = "PT" }) {
                 {currentOrder?.manual_code ? <InfoRow label="manual_code atual" value={currentOrder.manual_code} /> : null}
               </div>
             ) : (
-              <div style={{ fontSize: 12, opacity: 0.78 }}>Nenhum pedido criado ou selecionado.</div>
+              <div style={{ fontSize: 12, opacity: 0.78 }}>
+                Nenhum pedido criado ou selecionado. Se houver falha operacional no pagamento, selecione uma gaveta e crie um novo pedido.
+              </div>
             )}
 
             {orderError ? <pre style={errorPre}>{orderError}</pre> : null}
@@ -1768,14 +2135,17 @@ const errorPre = {
 
 const resultPreCompact = {
   margin: 0,
-  padding: 10,
+  padding: 12,
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.12)",
   background: "#0b0d10",
   color: "white",
   overflow: "auto",
-  maxHeight: 190,
+  maxHeight: 240,
   fontSize: 12,
+  lineHeight: 1.5,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
 };
 
 const select = {
