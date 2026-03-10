@@ -135,6 +135,20 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
     valor = float(data.valor)
     porta = int(data.porta)
 
+    # 🔥 Obter locker_id do request ou usar fallback
+    # Prioridade: 1. Campo no request, 2. Variável de ambiente, 3. Formato antigo (fallback)
+    locker_id = getattr(data, "locker_id", None)
+    if not locker_id:
+        # Tentar obter de variável de ambiente específica para a região
+        env_var_name = f"LOCKER_ID_{region}"
+        locker_id = getattr(settings, env_var_name, None) or getattr(settings, "DEFAULT_LOCKER_ID", None)
+    
+    if not locker_id:
+        # Fallback para o formato antigo (para compatibilidade)
+        locker_id = f"CACIFO-{region}-001"
+        # 🔥 Log de warning para identificar chamadas antigas
+        print(f"WARNING: locker_id não fornecido para região {region}, usando fallback: {locker_id}")
+
     REGION_CURRENCY = {
         "SP": "BRL",
         "PT": "EUR",
@@ -164,6 +178,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "incoming_currency": incoming_currency or None,
                 "currency_mismatch": bool(incoming_currency and incoming_currency != expected_currency),
                 "idempotency_key": idempotency_key,
+                "locker_id": locker_id,  # 🔥 Adicionar locker_id ao log
             },
         }
     )
@@ -345,7 +360,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             "score": risk["score"],
             "policy_id": risk["policy"]["policy_id"],
             "region": region,
-            "locker_id": f"CACIFO-{region}-001",
+            "locker_id": locker_id,  # 🔥 Alterado de hardcoded para variável. Antes f"CACIFO-{region}-001",
             "porta": porta,
             "created_at": _epoch(),
             "reasons": risk["reasons"],
@@ -404,7 +419,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             "score": risk["score"],
             "policy_id": risk["policy"]["policy_id"],
             "region": region,
-            "locker_id": f"CACIFO-{region}-001",
+            "locker_id": locker_id, # 🔥 Alterado de hardcoded para variável. Antes f"CACIFO-{region}-001",
             "porta": porta,
             "created_at": _epoch(),
             "reasons": risk["reasons"],
@@ -524,7 +539,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         "score": risk["score"],
         "policy_id": risk["policy"]["policy_id"],
         "region": region,
-        "locker_id": f"CACIFO-{region}-001",
+        "locker_id": locker_id, # 🔥 Alterado de hardcoded para variável. Antes f"CACIFO-{region}-001",
         "porta": porta,
         "created_at": _epoch(),
         "reasons": risk["reasons"],

@@ -6,11 +6,11 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 # MVP: tabela em memória (depois você troca por Postgres)
 # PT (EUR) e SP (BRL) podem ter mapas diferentes por instância.
 SKU_CATALOG = {
-    "bolo_laranja": {"name": "Bolo de Laranja", "amount_cents": 850, "currency": "EUR", "is_active": True},
-    "bolo_cenoura": {"name": "Bolo de Cenoura", "amount_cents": 990, "currency": "EUR", "is_active": True},
-    "mini_bolo_milho": {"name": "Mini Bolo de Milho (Fubá)", "amount_cents": 490, "currency": "EUR", "is_active": True},
-    "bolo_rei": {"name": "Bolo Rei", "amount_cents": 88, "currency": "EUR", "is_active": True},
-    "bolo_rainha": {"name": "Bolo Rainha", "amount_cents": 89, "currency": "EUR", "is_active": True},
+    "bolo_laranja_algarve": {"name": "Bolo de Laranja do Algarve", "amount_cents": 850, "currency": "EUR", "is_active": True},
+    "bolo_cenoura_alentejo": {"name": "Bolo de Cenoura do Alentejo", "amount_cents": 990, "currency": "EUR", "is_active": True},
+    "mini_bolo_milho": {"name": "Mini Bolo de Milho (Fubá)", "amount_cents": 495, "currency": "EUR", "is_active": True},
+    "bolo_rei": {"name": "Bolo Rei", "amount_cents": 889, "currency": "EUR", "is_active": True},
+    "bolo_rainha": {"name": "Bolo Rainha", "amount_cents": 1099, "currency": "EUR", "is_active": True},
 }
 
 @router.get("/skus/{sku_id}")

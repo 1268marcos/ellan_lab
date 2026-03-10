@@ -63,6 +63,25 @@ class Settings:
             return self.BACKEND_PT.rstrip("/")
         raise ValueError(f"Unknown region: {region}")
 
+    # 🔥 Configurações para lockers por região - Diferentes lockers por região
+    DEFAULT_LOCKER_ID: str = None  # Locker fallback se não especificado
+    
+    # Lockers específicos por região (podem ser definidos via env)
+    # Exemplo: LOCKER_ID_SP="CACIFO-SP-042", LOCKER_ID_PT="CACIFO-PT-015"
+    @property
+    def locker_id_sp(self) -> str | None:
+        return os.getenv("LOCKER_ID_SP")
+    
+    @property
+    def locker_id_pt(self) -> str | None:
+        return os.getenv("LOCKER_ID_PT")
+    
+    # Método helper para obter locker_id por região
+    def get_locker_id(self, region: str) -> str | None:
+        """Retorna locker_id configurado para a região ou None"""
+        env_var = f"LOCKER_ID_{region.upper()}"
+        return os.getenv(env_var)
+
 # Instância global das configurações
 settings = Settings()
 

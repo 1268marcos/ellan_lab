@@ -260,6 +260,8 @@ services:
     restart: unless-stopped
     ports:
       - "8003:8003"
+    env_file:
+      - .env.${NODE_ENV:-development}  # Carrega variáveis comuns do ambiente
     environment:
       - TZ=America/Sao_Paulo
 
@@ -278,18 +280,21 @@ services:
       - QR_ROTATE_SEC=${QR_ROTATE_SEC}      
 
       # “modo DEV” para bypass de auth (só local)
-      - DEV_BYPASS_AUTH=${DEV_BYPASS_AUTH}
-      - DEV_USER_ID=${DEV_USER_ID}      
+      # - DEV_BYPASS_AUTH=${DEV_BYPASS_AUTH}
+      # - DEV_USER_ID=${DEV_USER_ID}      
 
       # order (para um pedido fake para implementar QR/pickup/totem antes do catálogo real ficar pronto)
-      - DEV_ALLOW_UNKNOWN_SKU=true
-      - DEV_DEFAULT_PRICE_CENTS=1000      
+      # - DEV_ALLOW_UNKNOWN_SKU=true
+      # - DEV_DEFAULT_PRICE_CENTS=1000      
 
       # DB do serviço (mantido como você está hoje)
       - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
 
       # (opcional) se esse serviço precisar consultar central:
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
+
+      # NODE_ENV para controle de ambiente
+      - NODE_ENV=${NODE_ENV:-development}
     volumes:
       - ../03_data/sqlite:/data/sqlite
     depends_on:
