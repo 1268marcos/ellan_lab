@@ -4,7 +4,7 @@ from pathlib import Path
 
 DEFAULT_DB_PATH = os.getenv(
     "EVENTS_DB_PATH",
-    str(Path.home() / "ellan_lab" / "03_data" / "sqlite" / "backend_pt" / "events.db")
+    str(Path.home() / "ellan_lab" / "03_data" / "sqlite" / "backend_pt" / "events.db"),
 )
 
 _conn = None
@@ -15,10 +15,15 @@ def get_conn() -> sqlite3.Connection:
     if _conn is None:
         Path(DEFAULT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
         _conn = sqlite3.connect(DEFAULT_DB_PATH, check_same_thread=False)
+        _conn.row_factory = sqlite3.Row
         _conn.execute("PRAGMA journal_mode=WAL;")
         _conn.execute("PRAGMA synchronous=NORMAL;")
     return _conn
 
+
+# =========================================================
+# Helpers de inspeção de schema
+# =========================================================
 
 def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
     cur = conn.execute(
@@ -38,30 +43,34 @@ def _index_exists(conn: sqlite3.Connection, name: str) -> bool:
 
 def _allocations_has_bad_unique(conn: sqlite3.Connection) -> bool:
     """
-    Detecta o schema antigo:
-      UNIQUE(machine_id, door_id) dentro da tabela allocations.
-    Isso costuma aparecer no SQL do sqlite_master.
+    Detecta schema antigo com:
+      UNIQUE(machine_id, door_id)
+    diretamente na tabela allocations.
     """
     cur = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='allocations'"
     )
     row = cur.fetchone()
-    if not row or not row[0]:
+    if not row or not row["sql"]:
         return False
-    sql = row[0].upper().replace(" ", "")
+
+    sql = row["sql"].upper().replace(" ", "")
     return "UNIQUE(MACHINE_ID,DOOR_ID)" in sql
 
+
+# =========================================================
+# Migrations
+# =========================================================
 
 def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
     """
     Migração idempotente:
     - recria allocations sem UNIQUE(machine_id, door_id)
-    - mantém os dados
-    - cria índice único parcial para ativos (RESERVED/COMMITTED)
+    - preserva dados
+    - cria índice único parcial só para estados ativos
     """
     conn.execute("BEGIN;")
     try:
-        # 1) cria tabela nova (sem UNIQUE)
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS allocations_new (
@@ -77,7 +86,6 @@ def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
             """
         )
 
-        # 2) copia dados antigos
         conn.execute(
             """
             INSERT OR IGNORE INTO allocations_new
@@ -87,17 +95,16 @@ def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
             """
         )
 
-        # 3) troca tabela
         conn.execute("DROP TABLE allocations;")
         conn.execute("ALTER TABLE allocations_new RENAME TO allocations;")
 
-        # 4) recria índices “normais”
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_allocations_machine_state
             ON allocations(machine_id, state, expires_at);
             """
         )
+
         conn.execute(
             """
             CREATE INDEX IF NOT EXISTS idx_allocations_machine_door
@@ -105,8 +112,6 @@ def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
             """
         )
 
-        # 5) índice único parcial (só para alocações ativas)
-        # Permite histórico (RELEASED/EXPIRED) sem travar novas reservas.
         conn.execute(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS ux_alloc_active
@@ -121,9 +126,11 @@ def _migrate_allocations_drop_bad_unique(conn: sqlite3.Connection) -> None:
         raise
 
 
-def init_db() -> None:
-    conn = get_conn()
+# =========================================================
+# Criação de tabelas
+# =========================================================
 
+def _create_events_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS events (
@@ -166,6 +173,8 @@ def init_db() -> None:
         """
     )
 
+
+def _create_door_state_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS door_state (
@@ -179,7 +188,8 @@ def init_db() -> None:
         """
     )
 
-    # Tabela allocations: se não existir, cria já no formato novo (sem UNIQUE ruim)
+
+def _create_allocations_table(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS allocations (
@@ -209,8 +219,6 @@ def init_db() -> None:
         """
     )
 
-    # Índice único parcial para impedir duas reservas ativas na mesma porta,
-    # mas permitir histórico de RELEASED/EXPIRED.
     conn.execute(
         """
         CREATE UNIQUE INDEX IF NOT EXISTS ux_alloc_active
@@ -219,8 +227,46 @@ def init_db() -> None:
         """
     )
 
+
+def _create_pending_sync_operations_table(conn: sqlite3.Connection) -> None:
+    """
+    Preparação para futuro modo degradado / sincronização.
+    Ainda não muda seu fluxo atual.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_sync_operations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            operation_type TEXT NOT NULL,
+            aggregate_id TEXT,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            synced INTEGER NOT NULL DEFAULT 0
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_pending_sync_unsynced
+        ON pending_sync_operations(synced, created_at);
+        """
+    )
+
+
+# =========================================================
+# Init principal
+# =========================================================
+
+def init_db() -> None:
+    conn = get_conn()
+
+    _create_events_table(conn)
+    _create_door_state_table(conn)
+    _create_allocations_table(conn)
+    _create_pending_sync_operations_table(conn)
+
     conn.commit()
 
-    # Se a tabela foi criada lá atrás com UNIQUE(machine_id, door_id), migra.
     if _table_exists(conn, "allocations") and _allocations_has_bad_unique(conn):
         _migrate_allocations_drop_bad_unique(conn)
