@@ -1,6 +1,5 @@
 # 01_source/order_pickup_service/app/routers/kiosk.py
 import uuid
-from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 
@@ -34,10 +33,9 @@ def kiosk_create_order(
     PRESENCIAL:
     - Guest por padrão
     - Reserva slot por 120s (tempo do pagamento)
-    - Retorna slot e amount_cents para UI do totem seguir para pagamento no gateway
+    - Retorna slot e amount_cents para UI do totem seguir para pagamento
     """
 
-    # 0) antifraude leve (rate limit)
     check_kiosk_antifraud(
         db=db,
         request=request,
@@ -46,34 +44,34 @@ def kiosk_create_order(
         device_fingerprint=x_device_fingerprint,
     )
 
-    # 1) preço vem do backend (fonte de verdade)
     pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
     amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
     if amount_cents is None:
         raise HTTPException(status_code=502, detail="pricing missing amount_cents/price_cents from backend")
 
-    # 2) allocate no backend do totem
     request_id = str(uuid.uuid4())
     alloc = backend_client.locker_allocate(payload.region, payload.sku_id, ALLOC_TTL_SEC, request_id)
+
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
     ttl_sec = int(alloc.get("ttl_sec", ALLOC_TTL_SEC))
+
     if not allocation_id or slot is None:
         raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
 
-    # 3) persiste order + allocation
     order = Order(
         id=str(uuid.uuid4()),
-        user_id=None,  # guest
+        user_id=None,
         channel=OrderChannel.KIOSK,
         region=payload.region,
         totem_id=payload.totem_id,
         sku_id=payload.sku_id,
         amount_cents=int(amount_cents),
         status=OrderStatus.PAYMENT_PENDING,
+        payment_method=payload.payment_method.value,
         guest_phone=None,
         guest_email=None,
-        pickup_deadline_at=None,  # presencial não tem janela 2h
+        pickup_deadline_at=None,
     )
     db.add(order)
     db.flush()
@@ -93,7 +91,10 @@ def kiosk_create_order(
         status=order.status.value,
         slot=allocation.slot,
         amount_cents=order.amount_cents,
-        message=f"Reserva criada. Conclua o pagamento para liberar a gaveta {allocation.slot}. (TTL {ttl_sec}s)",
+        payment_method=order.payment_method,
+        allocation_id=allocation.id,
+        ttl_sec=ttl_sec,
+        message=f"Reserva criada. Conclua o pagamento para liberar a gaveta {allocation.slot}.",
     )
 
 
@@ -103,8 +104,13 @@ def kiosk_payment_approved(
     db: Session = Depends(get_db),
 ):
     """
-    CHAMADO APÓS O PAGAMENTO SER APROVADO (no totem).
-    Aqui é o “dispense”: acende, abre, marca OUT_OF_STOCK.
+    CHAMADO APÓS O PAGAMENTO SER APROVADO NO KIOSK.
+    Fluxo KIOSK:
+    - confirma alocação
+    - liga led
+    - abre gaveta
+    - marca slot como OUT_OF_STOCK
+    - pedido vira DISPENSED
     """
 
     order = db.query(Order).filter(Order.id == order_id, Order.channel == OrderChannel.KIOSK).first()
@@ -118,24 +124,23 @@ def kiosk_payment_approved(
     if not allocation:
         raise HTTPException(status_code=500, detail="allocation not found")
 
-    # 1) commit (confirma alocação no backend do totem)
     backend_client.locker_commit(order.region, allocation.id, locked_until_iso=None)
-
-    # 2) abre + led + marca out_of_stock
     backend_client.locker_light_on(order.region, allocation.slot)
     backend_client.locker_open(order.region, allocation.slot)
     backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
 
-    # 3) atualiza status interno
     order.status = OrderStatus.DISPENSED
     allocation.state = AllocationState.OPENED_FOR_PICKUP
+    allocation.locked_until = None
     db.commit()
 
     return KioskPaymentApprovedOut(
         order_id=order.id,
         slot=allocation.slot,
         status=order.status.value,
-        message=f"Espere a porta abrir e pegue o seu bolo na gaveta {allocation.slot}.",
+        allocation_id=allocation.id,
+        payment_method=order.payment_method,
+        message=f"Pagamento aprovado. Retire o produto na gaveta {allocation.slot}.",
     )
 
 
@@ -145,25 +150,28 @@ def kiosk_identify_customer(
     db: Session = Depends(get_db),
 ):
     """
-    “Upgrade” do Guest:
-    Depois do pagamento, a UI pode perguntar:
-    'Quer recibo e benefícios?'
-    Se sim, chama aqui com phone/email (opcional).
+    Upgrade opcional do guest após pagamento:
+    registrar contato para recibo/benefícios.
     """
     order = db.query(Order).filter(Order.id == payload.order_id, Order.channel == OrderChannel.KIOSK).first()
     if not order:
         raise HTTPException(status_code=404, detail="order not found")
 
-    # regra simples: permitir identificar após pagar (ou dispense)
-    if order.status not in (OrderStatus.PAID_PENDING_PICKUP, OrderStatus.DISPENSED, OrderStatus.PICKED_UP):
+    if order.status not in (OrderStatus.DISPENSED, OrderStatus.PICKED_UP):
         raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
-    # grava contato (opcional)
     if payload.phone:
         order.guest_phone = payload.phone.strip()
+        order.receipt_phone = payload.phone.strip()
+
     if payload.email:
-        order.guest_email = str(payload.email).strip().lower()
+        normalized_email = str(payload.email).strip().lower()
+        order.guest_email = normalized_email
+        order.receipt_email = normalized_email
 
     db.commit()
 
-    return KioskIdentifyOut(ok=True, message="Dados registrados. Recibo/benefícios poderão ser associados a este pedido.")
+    return KioskIdentifyOut(
+        ok=True,
+        message="Dados registrados. Recibo/benefícios poderão ser associados a este pedido.",
+    )

@@ -300,7 +300,7 @@ def payment_confirm(
 
     else:
         order.pickup_deadline_at = None
-        order.mark_as_picked_up()
+        order.status = OrderStatus.DISPENSED
 
         allocation.state = AllocationState.OPENED_FOR_PICKUP
         allocation.locked_until = None
@@ -309,13 +309,56 @@ def payment_confirm(
             backend_client.locker_commit(order.region, allocation.id, None)
         except requests.HTTPError as e:
             status = getattr(e.response, "status_code", None)
+
             if status == 409:
                 allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
                 allocation.state = AllocationState.OPENED_FOR_PICKUP
                 allocation.locked_until = None
-                backend_client.locker_commit(order.region, allocation.id, None)
+
+                try:
+                    backend_client.locker_commit(order.region, allocation.id, None)
+                except requests.HTTPError as e2:
+                    status2 = getattr(e2.response, "status_code", None)
+
+                    backend_detail = None
+                    if e2.response is not None:
+                        try:
+                            backend_detail = e2.response.json()
+                        except Exception:
+                            backend_detail = e2.response.text
+
+                    raise HTTPException(
+                        status_code=409 if status2 == 409 else 502,
+                        detail={
+                            "type": "COMMIT_AFTER_REALLOCATE_FAILED",
+                            "message": "A gaveta foi realocada no fluxo KIOSK, mas o commit final falhou.",
+                            "order_id": order.id,
+                            "allocation_id": allocation.id,
+                            "region": order.region,
+                            "backend_status": status2,
+                            "backend_detail": backend_detail,
+                        },
+                    )
             else:
-                raise
+                backend_detail = None
+                if e.response is not None:
+                    try:
+                        backend_detail = e.response.json()
+                    except Exception:
+                        backend_detail = e.response.text
+
+                raise HTTPException(
+                    status_code=409 if status == 409 else 502,
+                    detail={
+                        "type": "LOCKER_COMMIT_FAILED",
+                        "message": "Falha ao confirmar a reserva da gaveta no fluxo KIOSK.",
+                        "order_id": order.id,
+                        "allocation_id": allocation.id,
+                        "region": order.region,
+                        "backend_status": status,
+                        "backend_detail": backend_detail,
+                    },
+                )
 
         backend_client.locker_light_on(order.region, allocation.slot)
         backend_client.locker_open(order.region, allocation.slot)

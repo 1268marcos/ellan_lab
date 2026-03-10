@@ -1,34 +1,73 @@
-# Cliente HTTP para falar com backend SP/PT (PROPOSTO) - Aqui é onde você vai validar nomes de rotas.
-import requests
-from app.core.config import settings
+# 01_source/order_pickup_service/app/services/locker_client.py
+"""
+Compat layer para integração com backend regional do locker.
 
-def _base_for_region(region: str) -> str:
-    return settings.backend_sp_internal if region == "SP" else settings.backend_pt_internal
+Fonte oficial:
+- app.services.backend_client
 
-def allocate_slot(region: str, sku_id: str, ttl_sec: int, request_id: str) -> dict:
-    """
-    (PROPOSTO) POST /locker/allocate
-    """
-    url = _base_for_region(region) + "/locker/allocate"
-    r = requests.post(url, json={"sku_id": sku_id, "ttl_sec": ttl_sec, "request_id": request_id}, timeout=5)
-    r.raise_for_status()
-    return r.json()
+Regra:
+- novos fluxos devem usar backend_client diretamente
+- este arquivo existe apenas para evitar divergência e imports legados
+"""
 
-def commit_allocation(region: str, allocation_id: str, order_id: str, pickup_deadline_at_iso: str) -> dict:
-    """
-    (PROPOSTO) POST /locker/allocations/{id}/commit
-    """
-    url = _base_for_region(region) + f"/locker/allocations/{allocation_id}/commit"
-    r = requests.post(url, json={"order_id": order_id, "pickup_deadline_at": pickup_deadline_at_iso}, timeout=5)
-    r.raise_for_status()
-    return r.json()
+from app.services import backend_client
 
-def open_and_light(region: str, slot: int) -> None:
-    """
-    (PROPOSTO) POST /locker/slots/{slot}/open and /light/on
-    """
-    base = _base_for_region(region)
-    requests.post(base + f"/locker/slots/{slot}/open", timeout=5).raise_for_status()
-    requests.post(base + f"/locker/slots/{slot}/light/on", timeout=5).raise_for_status()
-    
-# acima (trecho)
+
+def allocate_slot(region: str, sku_id: str, ttl_sec: int, request_id: str, desired_slot: int | None = None) -> dict:
+    return backend_client.locker_allocate(
+        region=region,
+        sku_id=sku_id,
+        ttl_sec=ttl_sec,
+        request_id=request_id,
+        desired_slot=desired_slot,
+    )
+
+
+def commit_allocation(region: str, allocation_id: str, locked_until_iso: str | None = None) -> dict:
+    return backend_client.locker_commit(
+        region=region,
+        allocation_id=allocation_id,
+        locked_until_iso=locked_until_iso,
+    )
+
+
+def release_allocation(region: str, allocation_id: str) -> dict:
+    return backend_client.locker_release(
+        region=region,
+        allocation_id=allocation_id,
+    )
+
+
+def open_slot(region: str, slot: int) -> dict:
+    return backend_client.locker_open(
+        region=region,
+        slot=slot,
+    )
+
+
+def light_on(region: str, slot: int) -> dict:
+    return backend_client.locker_light_on(
+        region=region,
+        slot=slot,
+    )
+
+
+def set_slot_state(region: str, slot: int, state: str, product_id: str | None = None) -> dict:
+    return backend_client.locker_set_state(
+        region=region,
+        slot=slot,
+        state=state,
+        product_id=product_id,
+    )
+
+
+def open_and_light(region: str, slot: int) -> dict:
+    light_resp = backend_client.locker_light_on(region=region, slot=slot)
+    open_resp = backend_client.locker_open(region=region, slot=slot)
+    return {
+        "ok": True,
+        "region": region,
+        "slot": int(slot),
+        "light": light_resp,
+        "open": open_resp,
+    }

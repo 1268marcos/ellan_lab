@@ -16,7 +16,7 @@ def _base(region: str) -> str:
         return BACKEND_SP_INTERNAL
     if r == "PT":
         return BACKEND_PT_INTERNAL
-    return BACKEND_PT_INTERNAL
+    raise ValueError(f"unsupported region: {region}")
 
 
 def get_sku_pricing(region: str, sku_id: str) -> dict:
@@ -93,7 +93,11 @@ def locker_light_on(region: str, slot: int) -> dict:
 def locker_set_state(region: str, slot: int, state: str, product_id: str | None = None) -> dict:
     base = _base(region).rstrip("/")
     url = f"{base}/locker/slots/{int(slot)}/set-state"
-    payload = {"state": state, "product_id": product_id}
+
+    payload = {"state": state}
+    if product_id is not None:
+        payload["product_id"] = product_id
+
     r = requests.post(url, json=payload, timeout=5)
     r.raise_for_status()
     return r.json()
