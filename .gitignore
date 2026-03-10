@@ -1,57 +1,242 @@
-# Dados e volumes do Docker
-03_data/
-data/
-*.rdb
-dump.rdb
-*.db
-*.sqlite3
+# ==============================================================
+# ELLAN LAB — .gitignore
+# Última revisão: Março 2026
+# ==============================================================
 
-# Logs
-*.log
-logs/
-npm-debug.log*
 
-# Diretórios de dependências
-node_modules/
-vendor/
-venv/
-env/
-.venv/
-__pycache__/
-*.pyc
+# ==============================================================
+# [1] SEGREDOS E VARIÁVEIS DE AMBIENTE
+# Nunca devem entrar no repositório.
+# Se qualquer um destes vazar, rotate imediatamente.
+# ==============================================================
 
-# Arquivos de ambiente
+# Arquivos .env em qualquer nível do projeto
 .env
 .env.local
-.env.*.local
-.txt
+.env.production
+.env.staging
+.env.*
+*.env
 
-# Arquivos de sistema
+# Configs de ambiente dos backends regionais
+# (contêm DB_PASS, REDIS_PASS, INTERNAL_TOKEN, LOG_HASH_SALT, etc.)
+02_docker/configs/backend_sp.env
+02_docker/configs/backend_pt.env
+02_docker/configs/*.env
+
+# Chaves SSH e certificados
+minha_chave
+minha_chave.pub
+**/minha_chave
+**/minha_chave.pub
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+
+# Diretório de segredos explícito
+secrets/
+**/secrets/
+
+
+# ==============================================================
+# [2] BACKUPS GERADOS PELO bootstrap_safe.sh
+# O script cria *.bak.TIMESTAMP dentro de 01_source/
+# Exemplo: 01_source/payment_gateway.bak.20260310_143022/
+# Podem ser grandes e não têm valor no histórico do git.
+# ==============================================================
+
+*.bak
+*.bak.*
+**/*.bak
+**/*.bak.*
+
+
+# ==============================================================
+# [3] ARTEFATOS DO BOOTSTRAP E MIGRAÇÃO
+# Logs e relatórios gerados pelo bootstrap_safe.sh
+# Podem conter diff da árvore de arquivos do projeto.
+# ==============================================================
+
+migration_logs/
+**/migration_logs/
+
+
+# ==============================================================
+# [4] DADOS, VOLUMES E PERSISTÊNCIA
+# Gerados em tempo de execução — não são código.
+# ==============================================================
+
+# Volumes e dados do Docker
+03_data/
+data/
+
+# SQLite (databases locais de cada serviço)
+*.db
+*.sqlite
+*.sqlite3
+
+# Redis
+*.rdb
+dump.rdb
+
+# Logs de aplicação
+04_logs/
+logs/
+*.log
+npm-debug.log*
+pip-log.txt
+
+
+# ==============================================================
+# [5] BACKUPS E EXPORTAÇÕES OPERACIONAIS
+# ==============================================================
+
+05_backups/
+06_exports/
+
+
+# ==============================================================
+# [6] PYTHON — ARTEFATOS DE RUNTIME E BUILD
+# ==============================================================
+
+# Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+ENV/
+*.venv
+
+# Distribuição e empacotamento
+dist/
+build/
+*.egg-info/
+*.egg
+MANIFEST
+*.whl
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+
+# Ruff / linters
+.ruff_cache/
+
+
+# ==============================================================
+# [7] TESTES — APENAS RESULTADOS, NUNCA O CÓDIGO
+# O código de teste (07_tests/) DEVE estar no repositório.
+# O que se ignora aqui são artefatos gerados pelos testes.
+# ==============================================================
+
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+nosetests.xml
+test-results/
+pytest-results/
+
+
+# ==============================================================
+# [8] NODE / FRONTEND
+# ==============================================================
+
+node_modules/
+vendor/
+.npm/
+.yarn/
+*.tgz
+
+
+# ==============================================================
+# [9] DOCKER
+# Override local não deve entrar — cada dev tem o seu.
+# ==============================================================
+
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+
+# ==============================================================
+# [10] SISTEMA OPERATIVO
+# ==============================================================
+
+# macOS
 .DS_Store
-Thumbs.db
-desktop.ini
+.AppleDouble
+.LSOverride
+._*
 
-# Arquivos de IDE
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.fuse_hidden*
+.Trash-*
+
+
+# ==============================================================
+# [11] IDEs E EDITORES
+# ==============================================================
+
 .vscode/
 .idea/
 *.swp
 *.swo
+*.suo
+*.user
+.project
+.classpath
+*.sublime-workspace
 
-# Build e distribuição
-dist/
-build/
-*.tgz
+
+# ==============================================================
+# [12] BUILD E DISTRIBUIÇÃO GERAL
+# ==============================================================
+
 *.zip
+*.tar.gz
+*.tar.bz2
 
-# Docker
-docker-compose.override.yml
 
-# Pastas para ignorar
-04_logs/
-05_backups/
-06_exports/
-07_tests/
-docs/
-secrets/
-minha_chave
-minha_chave.pub
+# ==============================================================
+# [13] HARDWARE — FICHEIROS COM DADOS LOCAIS
+# O locker_hw.py pode conter IPs hardcoded ou tokens locais.
+# Versione-o com variáveis de ambiente, nunca com valores reais.
+# ==============================================================
+
+*.pid
+*.pid.lock
+
+
+# ==============================================================
+# NOTA SOBRE FICHEIROS QUE DEVEM ESTAR NO REPOSITÓRIO
+# (para evitar ignorar por engano)
+# ==============================================================
+# requirements.txt        — deve estar no git
+# pyproject.toml          — deve estar no git
+# README.md, *.md         — devem estar no git
+# 07_tests/               — código de teste DEVE estar no git
+# docs/                   — documentação DEVE estar no git
+# docker-compose.yml      — deve estar no git (sem o .override)
+# 01_source/**/*.py       — todo código Python deve estar no git
+# ==============================================================
