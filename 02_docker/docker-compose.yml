@@ -46,6 +46,7 @@ services:
     networks:
       - locker-network
 
+
   # =========================
   # REDIS CENTRAL
   # =========================
@@ -306,6 +307,62 @@ services:
         condition: service_healthy
     networks:
       - locker-network
+
+
+  # =========================
+  # ORDER LIFECYCLE SERVICE
+  # =========================
+  order_lifecycle_service:
+    build:
+      context: ../01_source/backend/order_lifecycle_service
+    container_name: order_lifecycle_service
+    environment:
+      SERVICE_NAME: order_lifecycle_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      HOST: 0.0.0.0
+      PORT: 8010
+      POSTGRES_HOST: postgres_central
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      PREPAYMENT_TIMEOUT_SECONDS: 900
+      WORKER_POLL_INTERVAL_SECONDS: 5
+    ports:
+      - "8010:8010"
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+
+  # =========================
+  # ORDER LIFECYCLE WORKER
+  # =========================
+  order_lifecycle_worker:
+    build:
+      context: ../01_source/backend/order_lifecycle_service
+    container_name: order_lifecycle_worker
+    command: ["python", "-m", "app.workers.prepayment_timeout_worker"]
+    environment:
+      SERVICE_NAME: order_lifecycle_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      POSTGRES_HOST: postgres_central
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      PREPAYMENT_TIMEOUT_SECONDS: 900
+      WORKER_POLL_INTERVAL_SECONDS: 5
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
 
   # =========================
   # SIMULATOR SP (24 doors)
