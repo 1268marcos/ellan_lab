@@ -86,3 +86,114 @@ Efeitos KIOSK:
 QR contém apenas:
 ```json
 { "v": 1, "pickup_id": "order_id", "token_id": "...", "ctr": 0, "exp": 1234567890, "sig": "..." }
+
+
+
+
+
+# HANDOFF — ELLAN Lab Locker — Abertura do `order_lifecycle_service`
+
+**Data de referência:** 11/03/2026
+
+## 1. Objetivo
+
+Abrir uma nova frente de infraestrutura séria para lifecycle operacional e analítico de pedidos, separando:
+
+- timeout pré-pagamento
+- expiração pós-pagamento
+- compensações operacionais
+- eventos de domínio
+
+do serviço transacional atual `order_pickup_service`.
+
+---
+
+## 2. Decisão arquitetural consolidada
+
+### Não seguir por abordagem MVP/remendo
+
+Não usar como solução principal:
+
+- timeout pré-pagamento concentrado em `expiry.py`
+- motivo analítico espalhado em colunas soltas de `orders`
+- scan oportunista em tabela transacional como arquitetura principal
+- SQLite como banco principal dessa trilha
+
+### Direção escolhida
+
+Criar novo serviço dedicado:
+
+- `order_lifecycle_service`
+
+### Papel do serviço
+
+`order_lifecycle_service` será o dono de:
+
+- deadlines de pedido
+- timeout pré-pagamento
+- expiração pós-pagamento
+- compensações operacionais
+- publicação/registro de eventos de domínio
+- projeções analíticas/operacionais básicas
+
+---
+
+## 3. Fronteira entre serviços
+
+### `order_pickup_service` continua dono de
+
+- criação de pedido online
+- criação de pedido kiosk
+- confirmação de pagamento
+- pickup / token / retirada
+- regras de fluxo transacional do pedido
+
+### `order_lifecycle_service` passa a ser dono de
+
+- agenda de deadlines
+- worker de vencimentos
+- transição automática por timeout
+- release automático de allocation
+- reconciliação de lifecycle
+- fatos/eventos para analytics operacional
+
+### `backend_sp` / `backend_pt` continuam donos de
+
+- estado físico/lógico das gavetas
+- allocate / commit / release
+- hardware / MQTT
+
+### `shared_kernel` deve centralizar progressivamente
+
+- contratos de evento
+- `correlation_id` / `request_id`
+- idempotência
+- helpers de auditoria
+
+---
+
+## 4. Objetivo da primeira entrega
+
+### FASE A — Timeout pré-pagamento profissional
+
+Quando um pedido ficar em `PAYMENT_PENDING` além do TTL, o sistema deve:
+
+- detectar deadline vencido
+- marcar pedido como abandonado
+- liberar allocation
+- devolver slot a `AVAILABLE`
+- registrar evento de domínio
+- alimentar base para métricas analíticas
+
+### Importante
+
+Isso deve ocorrer **sem depender de job oportunista dentro do `order_pickup_service`**.
+
+---
+
+## 5. Encaixe na árvore atual
+
+Criar novo diretório em `01_source/`:
+
+```text
+01_source/order_lifecycle_service/

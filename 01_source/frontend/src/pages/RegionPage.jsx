@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -40,7 +40,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const [catalogSlots, setCatalogSlots] = useState([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogRefreshing, setCatalogRefreshing] = useState(false);
   const [catalogError, setCatalogError] = useState("");
+  const pollRef = useRef(null);
 
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [selectedCatalogItem, setSelectedCatalogItem] = useState(null);
@@ -77,12 +79,40 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setErr(null);
   }, [region]);
 
+  // polling automática da vitrine
   useEffect(() => {
     fetchCatalogSlots();
+
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
+
+    pollRef.current = setInterval(() => {
+      fetchCatalogSlots(true);
+    }, 3000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        fetchCatalogSlots(true);
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [catalogSlotsUrl]);
 
-  async function fetchCatalogSlots() {
-    setCatalogLoading(true);
+  async function fetchCatalogSlots(silent = false) {
+    if (silent) {
+      setCatalogRefreshing(true);
+    } else {
+      setCatalogLoading(true);
+    }
     setCatalogError("");
 
     try {
@@ -143,7 +173,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     } catch (e) {
       setCatalogError(String(e?.message || e));
     } finally {
-      setCatalogLoading(false);
+      if (silent) {
+        setCatalogRefreshing(false);
+      } else {
+        setCatalogLoading(false);
+      }
     }
   }
 
@@ -189,6 +223,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       }
 
       setCreateResp(data);
+      await fetchCatalogSlots(true);
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -222,6 +257,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       }
 
       setPaymentResp(data);
+      await fetchCatalogSlots(true);
     } catch (e) {
       setErr(String(e?.message || e));
     } finally {
@@ -287,7 +323,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         <div style={infoGridStyle}>
           <div><b>Região:</b> {region}</div>
           <div><b>Backend catálogo:</b> {backendBase}</div>
-          <div><b>Endpoint:</b> {catalogSlotsUrl}</div>
+          <div><b>Endpoint catálogo:</b> {catalogSlotsUrl}</div>
+          <div><b>Polling vitrine:</b> 3s {catalogRefreshing ? "• sincronizando..." : "• ativo"}</div>
         </div>
 
         {catalogError ? <pre style={errorBoxStyle}>{catalogError}</pre> : null}
