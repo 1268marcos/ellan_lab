@@ -143,6 +143,7 @@ def list_orders(
     region: str | None = None,
     status: str | None = None,
     channel: str | None = None,
+    scope: str | None = None,
     page: int = 1,
     page_size: int = 10,
     db: Session = Depends(get_db),
@@ -154,7 +155,7 @@ def list_orders(
 
     q = db.query(Order)
 
-    if getattr(user, "id", None):
+    if scope != "ops" and getattr(user, "id", None):
         q = q.filter(Order.user_id == user.id)
 
     if region:
@@ -237,82 +238,5 @@ def list_orders(
         has_next=has_next,
         has_prev=has_prev,
     )
-    page = max(1, page)
-    page_size = max(1, min(page_size, 100))
-    offset = (page - 1) * page_size
 
-    q = (
-        db.query(Order, Allocation, Pickup)
-        .outerjoin(Allocation, Allocation.order_id == Order.id)
-        .outerjoin(Pickup, Pickup.order_id == Order.id)
-    )
-
-    if getattr(user, "id", None):
-        q = q.filter(Order.user_id == user.id)
-
-    if region:
-        q = q.filter(Order.region == region)
-
-    if status:
-        try:
-            status_enum = OrderStatus(status)
-            q = q.filter(Order.status == status_enum)
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"invalid status: {status}")
-
-    if channel:
-        try:
-            channel_enum = OrderChannel(channel)
-            q = q.filter(Order.channel == channel_enum)
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"invalid channel: {channel}")
-
-    total = q.count()
-
-    rows = (
-        q.order_by(Order.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
-
-    items = []
-    for order, allocation, pickup in rows:
-        items.append(
-            OrderListItemOut(
-                order_id=order.id,
-                user_id=order.user_id,
-                region=order.region,
-                channel=order.channel.value,
-                status=order.status.value,
-                sku_id=order.sku_id,
-                totem_id=order.totem_id,
-                amount_cents=order.amount_cents,
-                payment_method=order.payment_method,
-
-                allocation_id=allocation.id if allocation else None,
-                slot=allocation.slot if allocation else None,
-                allocation_state=allocation.state.value if allocation and allocation.state else None,
-
-                pickup_id=pickup.id if pickup else None,
-                pickup_status=pickup.status.value if pickup and pickup.status else None,
-                expires_at=pickup.expires_at if pickup else None,
-
-                created_at=order.created_at,
-                paid_at=order.paid_at,
-                pickup_deadline_at=order.pickup_deadline_at,
-                picked_up_at=order.picked_up_at,
-            )
-        )
-
-    has_prev = page > 1
-    has_next = offset + len(items) < total
-
-    return OrderListOut(
-        items=items,
-        total=total,
-        page=page,
-        page_size=page_size,
-        has_next=has_next,
-        has_prev=has_prev,
-    )
+    

@@ -3,6 +3,9 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request, Header
 from sqlalchemy.orm import Session
 
+from requests import HTTPError
+from datetime import datetime, timezone
+
 from app.core.db import get_db
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.allocation import Allocation, AllocationState
@@ -50,7 +53,50 @@ def kiosk_create_order(
         raise HTTPException(status_code=502, detail="pricing missing amount_cents/price_cents from backend")
 
     request_id = str(uuid.uuid4())
-    alloc = backend_client.locker_allocate(payload.region, payload.sku_id, ALLOC_TTL_SEC, request_id)
+    
+    try:
+        alloc = backend_client.locker_allocate(
+            payload.region,
+            payload.sku_id,
+            ALLOC_TTL_SEC,
+            request_id,
+            payload.desired_slot,
+        )
+    except HTTPError as e:
+        status = e.response.status_code if e.response is not None else 502
+
+        backend_detail = None
+        if e.response is not None:
+            try:
+                backend_detail = e.response.json()
+            except Exception:
+                backend_detail = e.response.text
+
+        if status == 409:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "DESIRED_SLOT_UNAVAILABLE",
+                    "message": "A gaveta escolhida não está disponível no momento.",
+                    "desired_slot": payload.desired_slot,
+                    "sku_id": payload.sku_id,
+                    "region": payload.region,
+                    "backend_detail": backend_detail,
+                },
+            )
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "LOCKER_ALLOCATE_FAILED",
+                "message": "Falha ao alocar gaveta no backend regional.",
+                "desired_slot": payload.desired_slot,
+                "sku_id": payload.sku_id,
+                "region": payload.region,
+                "backend_status": status,
+                "backend_detail": backend_detail,
+            },
+        )
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
@@ -129,6 +175,7 @@ def kiosk_payment_approved(
     backend_client.locker_open(order.region, allocation.slot)
     backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
 
+    order.paid_at = datetime.now(timezone.utc).replace(tzinfo=None)
     order.status = OrderStatus.DISPENSED
     allocation.state = AllocationState.OPENED_FOR_PICKUP
     allocation.locked_until = None

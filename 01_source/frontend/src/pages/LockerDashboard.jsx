@@ -124,6 +124,40 @@ const ALLOCATION_STATUS_META = {
   },
 };
 
+const CHANNEL_META = {
+  ONLINE: {
+    label: "ONLINE",
+    bg: "rgba(27,88,131,0.22)",
+    border: "rgba(27,88,131,0.45)",
+  },
+  KIOSK: {
+    label: "KIOSK",
+    bg: "rgba(95,61,196,0.22)",
+    border: "rgba(95,61,196,0.45)",
+  },
+};
+
+const OPERATIONAL_HIGHLIGHT_LEGEND = [
+  {
+    key: "KIOSK_DISPENSED",
+    label: "KIOSK • DISPENSED",
+    bg: "linear-gradient(135deg, rgba(95,61,196,0.18), rgba(95,61,196,0.06))",
+    border: "rgba(95,61,196,0.70)",
+  },
+  {
+    key: "ONLINE_PENDING_PICKUP",
+    label: "ONLINE • PAID_PENDING_PICKUP",
+    bg: "linear-gradient(135deg, rgba(27,88,131,0.22), rgba(27,88,131,0.08))",
+    border: "rgba(27,88,131,0.70)",
+  },
+  {
+    key: "ONLINE_PICKED_UP",
+    label: "ONLINE • PICKED_UP",
+    bg: "linear-gradient(135deg, rgba(31,122,63,0.18), rgba(31,122,63,0.06))",
+    border: "rgba(31,122,63,0.70)",
+  },
+];
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -312,6 +346,41 @@ function softInfoBox(kind = "normal") {
 
 function getCurrentOrderMeta(status) {
   return ORDER_STATUS_META[status] || ORDER_STATUS_META.SEM_PEDIDO;
+}
+
+function getOperationalRowHighlight(item) {
+  if (!item) {
+    return {
+      bg: "transparent",
+      borderLeft: "4px solid transparent",
+    };
+  }
+
+  if (item.channel === "KIOSK" && item.status === "DISPENSED") {
+    return {
+      bg: "linear-gradient(135deg, rgba(95,61,196,0.18), rgba(95,61,196,0.06))",
+      borderLeft: "4px solid rgba(95,61,196,0.70)",
+    };
+  }
+
+  if (item.channel === "ONLINE" && item.status === "PAID_PENDING_PICKUP") {
+    return {
+      bg: "linear-gradient(135deg, rgba(27,88,131,0.22), rgba(27,88,131,0.08))",
+      borderLeft: "4px solid rgba(27,88,131,0.70)",
+    };
+  }
+
+  if (item.channel === "ONLINE" && item.status === "PICKED_UP") {
+    return {
+      bg: "linear-gradient(135deg, rgba(31,122,63,0.18), rgba(31,122,63,0.06))",
+      borderLeft: "4px solid rgba(31,122,63,0.70)",
+    };
+  }
+
+  return {
+    bg: "transparent",
+    borderLeft: "4px solid transparent",
+  };
 }
 
 function buildCurrentOrderFromListItem(item) {
@@ -612,72 +681,86 @@ function OrdersCardList({
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      {ordersData.map((item) => (
-        <button
-          key={item.order_id}
-          onClick={() => onSelectOrder(item)}
-          style={{
-            textAlign: "left",
-            padding: 10,
-            borderRadius: 12,
-            border:
-              currentOrder?.order_id === item.order_id
-                ? "1px solid rgba(255,255,255,0.38)"
-                : "1px solid rgba(255,255,255,0.12)",
-            background:
-              currentOrder?.order_id === item.order_id
-                ? "rgba(27,88,131,0.28)"
-                : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
-                  ? "rgba(179,38,30,0.10)"
-                  : item.status === "PICKED_UP"
-                    ? "rgba(31,122,63,0.08)"
-                    : "rgba(255,255,255,0.03)",
-            color: "white",
-            cursor: "pointer",
-            display: "grid",
-            gap: 6,
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 700 }}>{item.order_id}</div>
-            <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-          </div>
+      {ordersData.map((item) => {
+        const highlight = getOperationalRowHighlight(item);
 
-          <div style={{ fontSize: 12, opacity: 0.85 }}>
-            Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
-          </div>
+        return (
+          <button
+            key={item.order_id}
+            onClick={() => onSelectOrder(item)}
+            style={{
+              textAlign: "left",
+              padding: 10,
+              borderRadius: 12,
+              border:
+                currentOrder?.order_id === item.order_id
+                  ? "1px solid rgba(255,255,255,0.38)"
+                  : "1px solid rgba(255,255,255,0.12)",
+              borderLeft: highlight.borderLeft,
+              background:
+                currentOrder?.order_id === item.order_id
+                  ? "rgba(27,88,131,0.28)"
+                  : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
+                    ? "rgba(179,38,30,0.10)"
+                    : highlight.bg !== "transparent"
+                      ? highlight.bg
+                      : "rgba(255,255,255,0.03)",
+              color: "white",
+              cursor: "pointer",
+              display: "grid",
+              gap: 6,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700 }}>{item.order_id}</div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <div style={{ fontSize: 12, opacity: 0.72 }}>
-              Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                {item.channel ? (
+                  <span style={genericBadgeStyle(CHANNEL_META[item.channel])}>
+                    {CHANNEL_META[item.channel]?.label || item.channel}
+                  </span>
+                ) : null}
+
+                <span style={statusBadgeStyle(item.status)}>{item.status}</span>
+              </div>
             </div>
 
-            {item.pickup_status ? (
-              <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
-                {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
-              </span>
-            ) : null}
+            <div style={{ fontSize: 12, opacity: 0.85 }}>
+              Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
+            </div>
 
-            {item.allocation_state ? (
-              <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
-                {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
-              </span>
-            ) : null}
-          </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontSize: 12, opacity: 0.72 }}>
+                Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
+              </div>
 
-          <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Criado: {formatDateTime(item.created_at, item.region)}
-          </div>
+              {item.pickup_status ? (
+                <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
+                  {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
+                </span>
+              ) : null}
 
-          <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Pago: {formatDateTime(item.paid_at, item.region)} • Retirado: {formatDateTime(item.picked_up_at, item.region)}
-          </div>
+              {item.allocation_state ? (
+                <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
+                  {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
+                </span>
+              ) : null}
+            </div>
 
-          <div style={{ fontSize: 11, opacity: 0.62 }}>
-            Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}
-          </div>
-        </button>
-      ))}
+            <div style={{ fontSize: 11, opacity: 0.62 }}>
+              Criado: {formatDateTime(item.created_at, item.region)}
+            </div>
+
+            <div style={{ fontSize: 11, opacity: 0.62 }}>
+              Pago: {formatDateTime(item.paid_at, item.region)} • Retirado: {formatDateTime(item.picked_up_at, item.region)}
+            </div>
+
+            <div style={{ fontSize: 11, opacity: 0.62 }}>
+              Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}
+            </div>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -739,6 +822,7 @@ export default function LockerDashboard({ region = "PT" }) {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState("");
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
+  const [ordersFilterChannel, setOrdersFilterChannel] = useState("");
   const [ordersData, setOrdersData] = useState([]);
   const [showOrdersPanel, setShowOrdersPanel] = useState(true);
   const [ordersPage, setOrdersPage] = useState(1);
@@ -868,9 +952,11 @@ export default function LockerDashboard({ region = "PT" }) {
     try {
       const params = new URLSearchParams();
       params.set("region", region);
+      params.set("scope", "ops");
       params.set("page", String(targetPage));
       params.set("page_size", String(targetPageSize));
       if (ordersFilterStatus) params.set("status", ordersFilterStatus);
+      if (ordersFilterChannel) params.set("channel", ordersFilterChannel);
 
       const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`);
       const text = await res.text();
@@ -936,7 +1022,7 @@ export default function LockerDashboard({ region = "PT" }) {
   useEffect(() => {
     fetchOrdersOnce(1, ordersPageSize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ordersFilterStatus]);
+  }, [ordersFilterStatus, ordersFilterChannel]);
 
   useEffect(() => {
     setSelectedSlot(null);
@@ -1473,11 +1559,51 @@ export default function LockerDashboard({ region = "PT" }) {
           <section style={panelStyleCompact}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ fontWeight: 800 }}>Pedidos online</div>
+                <div style={{ fontWeight: 800 }}>Pedidos operacionais</div>
                 <button onClick={() => setShowOrdersPanel((v) => !v)} style={btnSmall}>
                   {showOrdersPanel ? "Ocultar" : "Mostrar"}
                 </button>
               </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  marginTop: 8,
+                }}
+              >
+                {OPERATIONAL_HIGHLIGHT_LEGEND.map((item) => (
+                  <div
+                    key={item.key}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: `1px solid ${item.border}`,
+                      background: item.bg,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: item.border,
+                        display: "inline-block",
+                      }}
+                    />
+                    <span>{item.label}</span>
+                  </div>
+                ))}
+              </div>
+
 
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -1500,6 +1626,16 @@ export default function LockerDashboard({ region = "PT" }) {
                   <option value="PICKED_UP">PICKED_UP</option>
                   <option value="EXPIRED">EXPIRED</option>
                   <option value="EXPIRED_CREDIT_50">EXPIRED_CREDIT_50</option>
+                </select>
+
+                <select
+                  value={ordersFilterChannel}
+                  onChange={(e) => setOrdersFilterChannel(e.target.value)}
+                  style={{ ...select, width: 150, backgroundColor: "#2d2d3a" }}
+                >
+                  <option value="">Todas as origens</option>
+                  <option value="ONLINE">ONLINE</option>
+                  <option value="KIOSK">KIOSK</option>
                 </select>
 
                 <select
@@ -1558,6 +1694,7 @@ export default function LockerDashboard({ region = "PT" }) {
                       <thead>
                         <tr style={{ background: "rgba(255,255,255,0.06)" }}>
                           <th style={thStyle}>Order</th>
+                          <th style={thStyle}>Origem</th>
                           <th style={thStyle}>Status</th>
                           <th style={thStyle}>Método</th>
                           <th style={thStyle}>Pickup</th>
@@ -1576,63 +1713,84 @@ export default function LockerDashboard({ region = "PT" }) {
                       <tbody>
                         {ordersLoading ? (
                           <tr>
-                            <td style={tdStyle} colSpan={14}>
+                            <td style={tdStyle} colSpan={15}>
                               Carregando pedidos...
                             </td>
                           </tr>
                         ) : ordersData.length === 0 ? (
                           <tr>
-                            <td style={tdStyle} colSpan={14}>
+                            <td style={tdStyle} colSpan={15}>
                               Nenhum pedido encontrado.
                             </td>
                           </tr>
                         ) : (
-                          ordersData.map((item) => (
-                            <tr
-                              key={item.order_id}
-                              onClick={() => handleSelectOrder(item)}
-                              style={{
-                                cursor: "pointer",
-                                background:
-                                  currentOrder?.order_id === item.order_id
-                                    ? "rgba(27,88,131,0.35)"
-                                    : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
-                                      ? "rgba(179,38,30,0.10)"
-                                      : item.status === "PICKED_UP"
-                                        ? "rgba(31,122,63,0.08)"
-                                        : "transparent",
-                              }}
-                            >
-                              <td style={tdStyle}>{item.order_id}</td>
-                              <td style={tdStyle}>
-                                <span style={statusBadgeStyle(item.status)}>{item.status}</span>
-                              </td>
-                              <td style={tdStyle}>{item.payment_method || "-"}</td>
-                              <td style={tdStyle}>{item.pickup_id || "-"}</td>
-                              <td style={tdStyle}>
-                                {item.pickup_status ? (
-                                  <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
-                                    {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
-                                  </span>
-                                ) : "-"}
-                              </td>
-                              <td style={tdStyle}>{item.slot ?? "-"}</td>
-                              <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
-                              <td style={tdStyle}>
-                                {item.allocation_state ? (
-                                  <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
-                                    {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
-                                  </span>
-                                ) : "-"}
-                              </td>
-                              <td style={tdStyle}>{item.sku_id}</td>
-                              <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.created_at, item.region)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.paid_at, item.region)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.picked_up_at, item.region)}</td>
-                              <td style={tdStyle}>{formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}</td>
-                            </tr>
-                          ))
+                          ordersData.map((item) => {
+                            const highlight = getOperationalRowHighlight(item);
+                              return (
+                                <tr
+                                  key={item.order_id}
+                                  onClick={() => handleSelectOrder(item)}
+                                  style={{
+                                    cursor: "pointer",
+                                    background:
+                                      currentOrder?.order_id === item.order_id
+                                        ? "rgba(27,88,131,0.35)"
+                                        : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
+                                          ? "rgba(179,38,30,0.10)"
+                                          : highlight.bg !== "transparent"
+                                            ? highlight.bg
+                                            : "transparent",
+                                  }}
+                                >
+                                <td
+                                  style={{
+                                    ...tdStyle,
+                                    borderLeft: highlight.borderLeft,
+                                    fontWeight:
+                                      item.channel === "KIOSK" && item.status === "DISPENSED"
+                                        ? 700
+                                        : tdStyle.fontWeight,
+                                  }}
+                                >
+                                  {item.order_id}
+                                </td>
+                                <td style={tdStyle}>
+                                  {item.channel ? (
+                                    <span style={genericBadgeStyle(CHANNEL_META[item.channel])}>
+                                      {CHANNEL_META[item.channel]?.label || item.channel}
+                                    </span>
+                                  ) : "-"}
+                                </td>
+                                <td style={tdStyle}>
+                                  <span style={statusBadgeStyle(item.status)}>{item.status}</span>
+                                </td>
+                                <td style={tdStyle}>{item.payment_method || "-"}</td>
+                                <td style={tdStyle}>{item.pickup_id || "-"}</td>
+                                <td style={tdStyle}>
+                                  {item.pickup_status ? (
+                                    <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
+                                      {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
+                                    </span>
+                                  ) : "-"}
+                                </td>
+                                <td style={tdStyle}>{item.slot ?? "-"}</td>
+                                <td style={tdStyle}>{item.allocation_id ?? "-"}</td>
+                                <td style={tdStyle}>
+                                  {item.allocation_state ? (
+                                    <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
+                                      {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
+                                    </span>
+                                  ) : "-"}
+                                </td>
+                                <td style={tdStyle}>{item.sku_id}</td>
+                                <td style={tdStyle}>{formatMoney(item.amount_cents)}</td>
+                                <td style={tdStyle}>{formatDateTime(item.created_at, item.region)}</td>
+                                <td style={tdStyle}>{formatDateTime(item.paid_at, item.region)}</td>
+                                <td style={tdStyle}>{formatDateTime(item.picked_up_at, item.region)}</td>
+                                <td style={tdStyle}>{formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}</td>
+                              </tr>
+                            );
+                          })
                         )}
                       </tbody>
                     </table>
@@ -1650,7 +1808,7 @@ export default function LockerDashboard({ region = "PT" }) {
                   }}
                 >
                   <div style={{ fontSize: 11, opacity: 0.65 }}>
-                    Pedidos online não entram no polling automático. Atualize pelo botão.
+                    Pedidos operacionais não entram no polling automático. Atualize pelo botão.
                   </div>
 
                   <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

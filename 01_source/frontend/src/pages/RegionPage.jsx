@@ -1,16 +1,49 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
-const API_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const ORDER_PICKUP_BASE =
+  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+
+const BACKEND_SP =
+  import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
+
+const BACKEND_PT =
+  import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
 
 const initialIdentify = {
   phone: "",
   email: "",
 };
 
+function formatMoney(cents, currency) {
+  const value = Number(cents);
+  if (!Number.isFinite(value)) return "-";
+
+  const amount = value / 100;
+
+  try {
+    return new Intl.NumberFormat(currency === "BRL" ? "pt-BR" : "pt-PT", {
+      style: "currency",
+      currency: currency || "EUR",
+    }).format(amount);
+  } catch {
+    return `${amount.toFixed(2)} ${currency || ""}`.trim();
+  }
+}
+
+function buildTotemId(region) {
+  return region === "SP" ? "CACIFO-SP-001" : "CACIFO-PT-001";
+}
+
 export default function RegionPage({ region, mode = "kiosk" }) {
   const [paymentMethod, setPaymentMethod] = useState(region === "PT" ? "MBWAY" : "PIX");
-  const [skuId, setSkuId] = useState("BOLO_LARANJA");
-  const [totemId, setTotemId] = useState(region === "PT" ? "CACIFO-PT-001" : "CACIFO-SP-001");
+  const [totemId, setTotemId] = useState(buildTotemId(region));
+
+  const [catalogSlots, setCatalogSlots] = useState([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState("");
+
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [selectedCatalogItem, setSelectedCatalogItem] = useState(null);
 
   const [createResp, setCreateResp] = useState(null);
   const [paymentResp, setPaymentResp] = useState(null);
@@ -24,12 +57,111 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const [err, setErr] = useState(null);
 
-  const createUrl = useMemo(() => `${API_BASE}/kiosk/orders`, []);
-  const identifyUrl = useMemo(() => `${API_BASE}/kiosk/identify`, []);
+  const backendBase = region === "SP" ? BACKEND_SP : BACKEND_PT;
+
+  const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
+  const identifyUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/identify`, []);
+  const catalogSlotsUrl = useMemo(() => `${backendBase}/catalog/slots`, [backendBase]);
+  const lockerSlotsUrl = useMemo(() => `${backendBase}/locker/slots`, [backendBase]);
 
   const currentOrderId = createResp?.order_id || null;
 
+  useEffect(() => {
+    setTotemId(buildTotemId(region));
+    setSelectedSlot(null);
+    setSelectedCatalogItem(null);
+    setCreateResp(null);
+    setPaymentResp(null);
+    setIdentifyResp(null);
+    setIdentifyForm(initialIdentify);
+    setErr(null);
+  }, [region]);
+
+  useEffect(() => {
+    fetchCatalogSlots();
+  }, [catalogSlotsUrl]);
+
+  async function fetchCatalogSlots() {
+    setCatalogLoading(true);
+    setCatalogError("");
+
+    try {
+      const [catalogRes, lockerRes] = await Promise.all([
+        fetch(catalogSlotsUrl),
+        fetch(lockerSlotsUrl),
+      ]);
+
+      const catalogData = await catalogRes.json().catch(() => []);
+      const lockerData = await lockerRes.json().catch(() => []);
+
+      if (!catalogRes.ok) {
+        throw new Error(
+          typeof catalogData?.detail !== "undefined"
+            ? JSON.stringify(catalogData.detail)
+            : JSON.stringify(catalogData)
+        );
+      }
+
+      if (!lockerRes.ok) {
+        throw new Error(
+          typeof lockerData?.detail !== "undefined"
+            ? JSON.stringify(lockerData.detail)
+            : JSON.stringify(lockerData)
+        );
+      }
+
+      const lockerMap = {};
+      for (const item of Array.isArray(lockerData) ? lockerData : []) {
+        lockerMap[Number(item.slot)] = {
+          state: item.state || "AVAILABLE",
+          product_id: item.product_id ?? null,
+          updated_at: item.updated_at ?? null,
+        };
+      }
+
+      const normalized = (Array.isArray(catalogData) ? catalogData : [])
+        .map((item) => {
+          const slot = Number(item.slot);
+          const lockerState = lockerMap[slot]?.state || "AVAILABLE";
+          const isOperationallyAvailable = lockerState === "AVAILABLE";
+
+          return {
+            slot,
+            sku_id: item.sku_id || null,
+            name: item.name || "",
+            amount_cents: item.amount_cents ?? null,
+            currency: item.currency || (region === "SP" ? "BRL" : "EUR"),
+            imageURL: item.imageURL || "",
+            is_active: Boolean(item.is_active),
+            locker_state: lockerState,
+            is_operationally_available: isOperationallyAvailable,
+          };
+        })
+        .sort((a, b) => a.slot - b.slot);
+
+      setCatalogSlots(normalized);
+    } catch (e) {
+      setCatalogError(String(e?.message || e));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  function handleSelectCatalogItem(item) {
+    setSelectedSlot(item.slot);
+    setSelectedCatalogItem(item);
+    setCreateResp(null);
+    setPaymentResp(null);
+    setIdentifyResp(null);
+    setErr(null);
+  }
+
   async function createKioskOrder() {
+    if (!selectedCatalogItem?.sku_id || !selectedCatalogItem?.slot) {
+      setErr("Selecione uma gaveta/produto antes de criar o pedido KIOSK.");
+      return;
+    }
+
     setErr(null);
     setCreateResp(null);
     setPaymentResp(null);
@@ -45,7 +177,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         body: JSON.stringify({
           region,
           totem_id: totemId,
-          sku_id: skuId,
+          sku_id: selectedCatalogItem.sku_id,
+          desired_slot: Number(selectedCatalogItem.slot),
           payment_method: paymentMethod,
         }),
       });
@@ -74,7 +207,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     setLoadingPayment(true);
     try {
-      const url = `${API_BASE}/kiosk/orders/${currentOrderId}/payment-approved`;
+      const url = `${ORDER_PICKUP_BASE}/kiosk/orders/${currentOrderId}/payment-approved`;
 
       const res = await fetch(url, {
         method: "POST",
@@ -135,17 +268,93 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   return (
     <div style={pageStyle}>
       <div style={headerCardStyle}>
-        <h1 style={{ margin: 0 }}>
-          Simulador KIOSK — {region}
-        </h1>
+        <h1 style={{ margin: 0 }}>Simulador KIOSK — {region}</h1>
         <div style={subtleStyle}>
-          Fluxo separado do dashboard online. Nesta tela você cria pedido KIOSK, aprova pagamento e registra identificação opcional.
+          Vitrine de 24 gavetas. O cliente escolhe a gaveta/produto e o pedido KIOSK nasce com
+          <code> desired_slot </code>
+          + <code> sku_id </code>.
         </div>
       </div>
 
+      <section style={cardStyle}>
+        <div style={sectionHeaderStyle}>
+          <h2 style={h2Style}>1. Vitrine KIOSK — 24 gavetas</h2>
+          <button onClick={fetchCatalogSlots} disabled={catalogLoading} style={buttonSecondaryStyle}>
+            {catalogLoading ? "Atualizando..." : "Atualizar vitrine"}
+          </button>
+        </div>
+
+        <div style={infoGridStyle}>
+          <div><b>Região:</b> {region}</div>
+          <div><b>Backend catálogo:</b> {backendBase}</div>
+          <div><b>Endpoint:</b> {catalogSlotsUrl}</div>
+        </div>
+
+        {catalogError ? <pre style={errorBoxStyle}>{catalogError}</pre> : null}
+
+        {catalogLoading ? (
+          <div style={subtleStyle}>Carregando gavetas...</div>
+        ) : (
+          <div style={slotsGridStyle}>
+            {catalogSlots.map((item) => {
+              const isSelected = selectedSlot === item.slot;
+              const isDisabled =
+                !item.is_active ||
+                !item.sku_id ||
+                !item.is_operationally_available;
+
+              return (
+                <button
+                  key={item.slot}
+                  type="button"
+                  onClick={() => !isDisabled && handleSelectCatalogItem(item)}
+                  disabled={isDisabled}
+                  style={{
+                    ...slotCardStyle,
+                    border: isSelected
+                      ? "2px solid rgba(255,255,255,0.85)"
+                      : "1px solid rgba(255,255,255,0.12)",
+                    background: isSelected
+                      ? "linear-gradient(135deg, rgba(27,88,131,0.35), rgba(27,88,131,0.18))"
+                      : isDisabled
+                        ? "rgba(255,255,255,0.03)"
+                        : "rgba(255,255,255,0.05)",
+                    opacity: isDisabled ? 0.55 : 1,
+                    cursor: isDisabled ? "not-allowed" : "pointer",
+                  }}
+                >
+                  <div style={slotTopRowStyle}>
+                    <span style={slotBadgeStyle}>Gaveta {item.slot}</span>
+                    <span
+                      style={miniStatusStyle(item.is_active && item.is_operationally_available)}
+                    >
+                      {item.is_active
+                        ? item.is_operationally_available
+                          ? "Disponível"
+                          : item.locker_state || "Indisponível"
+                        : "Inativa"}
+                    </span>
+                  </div>
+
+                  <div style={slotNameStyle}>{item.name || "Sem produto"}</div>
+
+                  <div style={slotMetaStyle}>
+                    <div><b>SKU:</b> {item.sku_id || "-"}</div>
+                    <div><b>Preço:</b> {formatMoney(item.amount_cents, item.currency)}</div>
+                    <div><b>Moeda:</b> {item.currency || "-"}</div>
+                    <div><b>Estado real:</b> {item.locker_state || "-"}</div>
+                  </div>
+                  
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <div style={gridStyle}>
         <section style={cardStyle}>
-          <h2 style={h2Style}>1. Criar pedido KIOSK</h2>
+          <h2 style={h2Style}>2. Criar pedido KIOSK</h2>
 
           <div style={fieldGridStyle}>
             <label style={labelStyle}>
@@ -163,11 +372,46 @@ export default function RegionPage({ region, mode = "kiosk" }) {
             </label>
 
             <label style={labelStyle}>
-              SKU
+              Gaveta escolhida
               <input
-                value={skuId}
-                onChange={(e) => setSkuId(e.target.value)}
-                style={inputStyle}
+                value={selectedCatalogItem?.slot ?? ""}
+                disabled
+                style={inputStyleDisabled}
+                placeholder="Selecione na vitrine"
+              />
+            </label>
+
+            <label style={labelStyle}>
+              SKU escolhido
+              <input
+                value={selectedCatalogItem?.sku_id ?? ""}
+                disabled
+                style={inputStyleDisabled}
+                placeholder="Selecione na vitrine"
+              />
+            </label>
+
+            <label style={labelStyle}>
+              Produto
+              <input
+                value={selectedCatalogItem?.name ?? ""}
+                disabled
+                style={inputStyleDisabled}
+                placeholder="Selecione na vitrine"
+              />
+            </label>
+
+            <label style={labelStyle}>
+              Preço
+              <input
+                value={
+                  selectedCatalogItem
+                    ? formatMoney(selectedCatalogItem.amount_cents, selectedCatalogItem.currency)
+                    : ""
+                }
+                disabled
+                style={inputStyleDisabled}
+                placeholder="Selecione na vitrine"
               />
             </label>
 
@@ -208,10 +452,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         </section>
 
         <section style={cardStyle}>
-          <h2 style={h2Style}>2. Aprovar pagamento KIOSK</h2>
+          <h2 style={h2Style}>3. Aprovar pagamento KIOSK</h2>
 
           <div style={subtleStyle}>
-            Usa o endpoint operacional do KIOSK para commitar a allocation, ligar luz, abrir gaveta e marcar o pedido como <code>DISPENSED</code>.
+            Confirma a allocation, liga a luz, abre a gaveta e marca o pedido como
+            <code> DISPENSED </code>.
           </div>
 
           <div style={{ marginTop: 12 }}>
@@ -242,7 +487,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         </section>
 
         <section style={cardStyle}>
-          <h2 style={h2Style}>3. Identificação opcional</h2>
+          <h2 style={h2Style}>4. Identificação opcional</h2>
 
           <div style={fieldGridStyle}>
             <label style={labelStyle}>
@@ -291,24 +536,22 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         <h2 style={h2Style}>Configuração desta tela</h2>
         <div style={summaryListStyle}>
           <div><b>mode:</b> {mode}</div>
-          <div><b>API_BASE:</b> {API_BASE}</div>
+          <div><b>ORDER_PICKUP_BASE:</b> {ORDER_PICKUP_BASE}</div>
+          <div><b>backendBase:</b> {backendBase}</div>
+          <div><b>catalogSlotsUrl:</b> {catalogSlotsUrl}</div>
           <div><b>createUrl:</b> {createUrl}</div>
           <div><b>identifyUrl:</b> {identifyUrl}</div>
         </div>
       </section>
 
-      {err && (
-        <pre style={errorBoxStyle}>
-          {err}
-        </pre>
-      )}
+      {err && <pre style={errorBoxStyle}>{err}</pre>}
     </div>
   );
 }
 
 const pageStyle = {
   padding: 24,
-  maxWidth: 1100,
+  maxWidth: 1200,
   margin: "0 auto",
   fontFamily: "system-ui, sans-serif",
   color: "#f5f7fa",
@@ -322,6 +565,72 @@ const gridStyle = {
   marginBottom: 16,
 };
 
+const infoGridStyle = {
+  display: "grid",
+  gap: 8,
+  fontSize: 13,
+  marginBottom: 14,
+  opacity: 0.88,
+};
+
+const slotsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 12,
+};
+
+const slotCardStyle = {
+  borderRadius: 14,
+  padding: 12,
+  textAlign: "left",
+  color: "#f5f7fa",
+  minHeight: 150,
+};
+
+const slotTopRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  marginBottom: 10,
+};
+
+const slotBadgeStyle = {
+  display: "inline-flex",
+  padding: "4px 8px",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.10)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+function miniStatusStyle(active) {
+  return {
+    display: "inline-flex",
+    padding: "4px 8px",
+    borderRadius: 999,
+    background: active ? "rgba(31,122,63,0.18)" : "rgba(179,38,30,0.18)",
+    border: active ? "1px solid rgba(31,122,63,0.38)" : "1px solid rgba(179,38,30,0.38)",
+    fontSize: 11,
+    fontWeight: 700,
+  };
+}
+
+const slotNameStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+  marginBottom: 10,
+  lineHeight: 1.3,
+};
+
+const slotMetaStyle = {
+  display: "grid",
+  gap: 6,
+  fontSize: 13,
+  opacity: 0.92,
+};
+
 const cardStyle = {
   background: "#11161c",
   border: "1px solid rgba(255,255,255,0.10)",
@@ -333,6 +642,14 @@ const cardStyle = {
 const headerCardStyle = {
   ...cardStyle,
   marginBottom: 16,
+};
+
+const sectionHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+  flexWrap: "wrap",
 };
 
 const h2Style = {

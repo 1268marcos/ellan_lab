@@ -14,8 +14,9 @@ class KioskPaymentMethod(str, Enum):
 class KioskOrderCreateIn(BaseModel):
     region: str = Field(..., example="PT")
     totem_id: str = Field(..., example="CACIFO-PT-001")
-    sku_id: str = Field(..., example="BOLO_LARANJA")
+    sku_id: str = Field(..., example="bolo_laranja_algarve")
     payment_method: KioskPaymentMethod
+    desired_slot: int | None = Field(default=None, ge=1, le=24)
 
 
 class KioskCustomerIdentifyIn(BaseModel):
