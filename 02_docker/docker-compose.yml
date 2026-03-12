@@ -305,6 +305,8 @@ services:
         condition: service_healthy
       backend_pt:
         condition: service_healthy
+      order_lifecycle_service:
+        condition: service_healthy
     networks:
       - locker-network
 
@@ -322,6 +324,7 @@ services:
       LOG_LEVEL: INFO
       HOST: 0.0.0.0
       PORT: 8010
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
@@ -336,6 +339,13 @@ services:
         condition: service_healthy
     networks:
       - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
 
 
   # =========================
@@ -350,6 +360,7 @@ services:
       SERVICE_NAME: order_lifecycle_service
       APP_ENV: dev
       LOG_LEVEL: INFO
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central

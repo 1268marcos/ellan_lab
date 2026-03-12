@@ -1,4 +1,6 @@
+# 01_source/order_pickup_service/app/routers/orders.py
 # Router: /orders (ONLINE)
+# Aqui faz pedido ONLINE
 import os
 import uuid
 
@@ -8,11 +10,13 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
 from app.core.db import get_db
+from app.core.lifecycle_client import LifecycleClientError
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup
 from app.schemas.orders import CreateOrderIn, OrderListItemOut, OrderListOut, OrderOut
 from app.services import backend_client
+from app.services.lifecycle_integration import register_prepayment_timeout_deadline
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
@@ -95,7 +99,7 @@ def create_order(
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
-    ttl_sec = alloc.get("ttl_sec", ALLOC_TTL_SEC)
+    ttl_sec = int(alloc.get("ttl_sec", ALLOC_TTL_SEC))
 
     if not allocation_id or slot is None:
         raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
@@ -123,6 +127,29 @@ def create_order(
     )
     db.add(allocation)
     db.commit()
+    db.refresh(order)
+    db.refresh(allocation)
+
+    try:
+        register_prepayment_timeout_deadline(
+            order_id=order.id,
+            order_channel=order.channel.value,
+            region_code=order.region,
+            slot_id=str(allocation.slot),
+            machine_id=order.totem_id,
+            created_at=order.created_at,
+        )
+    except LifecycleClientError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED",
+                "message": "Pedido criado localmente, mas falhou ao registrar o deadline de pré-pagamento.",
+                "order_id": order.id,
+                "channel": order.channel.value,
+                "region": order.region,
+            },
+        )
 
     return OrderOut(
         order_id=order.id,
@@ -131,9 +158,9 @@ def create_order(
         amount_cents=order.amount_cents,
         payment_method=order.payment_method,
         allocation={
-          "allocation_id": allocation.id,
-          "slot": allocation.slot,
-          "ttl_sec": ttl_sec,
+            "allocation_id": allocation.id,
+            "slot": allocation.slot,
+            "ttl_sec": ttl_sec,
         },
     )
 
@@ -211,15 +238,12 @@ def list_orders(
                 totem_id=order.totem_id,
                 amount_cents=order.amount_cents,
                 payment_method=order.payment_method,
-
                 allocation_id=allocation.id if allocation else None,
                 slot=allocation.slot if allocation else None,
                 allocation_state=allocation.state.value if allocation and allocation.state else None,
-
                 pickup_id=pickup.id if pickup else None,
                 pickup_status=pickup.status.value if pickup and pickup.status else None,
                 expires_at=pickup.expires_at if pickup else None,
-
                 created_at=order.created_at,
                 paid_at=order.paid_at,
                 pickup_deadline_at=order.pickup_deadline_at,
@@ -238,5 +262,3 @@ def list_orders(
         has_next=has_next,
         has_prev=has_prev,
     )
-
-    

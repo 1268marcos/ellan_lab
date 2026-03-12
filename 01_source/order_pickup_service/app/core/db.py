@@ -1,6 +1,7 @@
 import os
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/sqlite/order_pickup/orders.db")
 
@@ -30,15 +31,13 @@ def init_db():
     IMPORTANTE: precisa importar os models antes do create_all,
     para que eles sejam registrados no Base.metadata.
     """
-    # imports “side-effect” (registram tabelas)
-    from app.models import order  # noqa: F401
     from app.models import allocation  # noqa: F401
-    from app.models import pickup_token  # noqa: F401
-    
-    # acrescimo do MARCOS ao ver a pasta models
     from app.models import credit  # noqa: F401
     from app.models import kiosk_antifraud_event  # noqa: F401
     from app.models import login_otp  # noqa: F401
+    from app.models import order  # noqa: F401
+    from app.models import pickup  # noqa: F401
+    from app.models import pickup_token  # noqa: F401
     from app.models import user  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

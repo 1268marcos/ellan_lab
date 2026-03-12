@@ -1,14 +1,66 @@
-from pydantic import BaseModel
-import os
+from functools import lru_cache
 
-class Settings(BaseModel):
-    database_url: str = os.getenv("DATABASE_URL", "sqlite:///./data/orders.db")
-    pickup_window_sec: int = int(os.getenv("PICKUP_WINDOW_SEC", "7200"))  # 2h
-    pickup_token_ttl_sec: int = int(os.getenv("PICKUP_TOKEN_TTL_SEC", "600"))  # 10min
-    service_name: str = os.getenv("SERVICE_NAME", "order_pickup_service")
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-    # (PROPOSTO) endpoints dos totens
-    backend_sp_internal: str = os.getenv("BACKEND_SP_INTERNAL", "http://backend_sp:8000") # porta interna para rodar no docker - 8201 é porta publicada/externo e funciona ex. em http://localhost:8201/docs
-    backend_pt_internal: str = os.getenv("BACKEND_PT_INTERNAL", "http://backend_pt:8000") # porta interna para rodar no docker - 8202 é porta publicada/externo e funciona ex. em http://localhost:8202/docs
 
-settings = Settings()
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
+
+    database_url: str = Field(
+        default="sqlite:////data/sqlite/order_pickup/orders.db", # anteriormente "sqlite:///./data/orders.db",  
+        alias="DATABASE_URL",
+    )
+
+    pickup_window_sec: int = Field(
+        default=7200,
+        alias="PICKUP_WINDOW_SEC",
+    )
+
+    pickup_token_ttl_sec: int = Field(
+        default=600,
+        alias="PICKUP_TOKEN_TTL_SEC",
+    )
+
+    prepayment_timeout_seconds: int = Field(
+        default=900,
+        alias="PREPAYMENT_TIMEOUT_SECONDS",
+    )
+
+    service_name: str = Field(
+        default="order_pickup_service",
+        alias="SERVICE_NAME",
+    )
+
+    backend_sp_internal: str = Field(
+        default="http://backend_sp:8000",
+        alias="BACKEND_SP_INTERNAL",
+    )
+
+    backend_pt_internal: str = Field(
+        default="http://backend_pt:8000",
+        alias="BACKEND_PT_INTERNAL",
+    )
+
+    lifecycle_base_url: str = Field(
+        default="http://order_lifecycle_service:8010",
+        alias="ORDER_LIFECYCLE_BASE_URL",
+    )
+
+    internal_token: str = Field(
+        default="dev-internal-token",
+        alias="INTERNAL_TOKEN",
+    )
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+settings = get_settings()

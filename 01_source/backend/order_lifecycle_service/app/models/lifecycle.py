@@ -57,6 +57,7 @@ class DomainEvent(Base):
     __table_args__ = (
         UniqueConstraint("event_key", name="uq_domain_events_event_key"),
         Index("ix_domain_events_aggregate_id", "aggregate_id"),
+        Index("ix_domain_events_status_created_at", "status", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -77,6 +78,7 @@ class AnalyticsFact(Base):
     __table_args__ = (
         UniqueConstraint("fact_key", name="uq_analytics_facts_fact_key"),
         Index("ix_analytics_facts_fact_name_occurred_at", "fact_name", "occurred_at"),
+        Index("ix_analytics_facts_order_id", "order_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

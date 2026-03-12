@@ -21,6 +21,8 @@ from app.models.pickup import Pickup, PickupStatus
 
 from app.schemas.internal import InternalPaymentApprovedIn as PaymentConfirmIn
 from app.services import backend_client
+from app.services.lifecycle_integration import cancel_prepayment_timeout_deadline
+from app.core.lifecycle_client import LifecycleClientError
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -183,14 +185,42 @@ def payment_confirm(
 ):
     order = _ensure_order(db, order_id)
 
-    if order.status != OrderStatus.PAYMENT_PENDING:
-        raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
-
     if getattr(payload, "region", None) and order.region != payload.region:
         raise HTTPException(
             status_code=409,
             detail=f"region mismatch: order={order.region} payload={payload.region}",
         )
+
+    # Idempotência: se o pagamento já foi confirmado antes, devolve sucesso
+    if order.status in (
+        OrderStatus.PAID_PENDING_PICKUP,
+        OrderStatus.DISPENSED,
+        OrderStatus.PICKED_UP,
+    ):
+        allocation = _ensure_allocation(db, order.id)
+        pickup = _get_latest_pickup_by_order(db, order.id)
+
+        return {
+            "ok": True,
+            "idempotent": True,
+            "order_id": order.id,
+            "channel": order.channel.value,
+            "status": order.status.value,
+            "slot": allocation.slot,
+            "allocation_id": allocation.id,
+            "payment_method": order.payment_method,
+            "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
+            "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
+            "pickup_id": pickup.id if pickup else None,
+            "pickup_status": pickup.status.value if pickup else None,
+            "pickup_expires_at": pickup.expires_at.isoformat() if pickup and pickup.expires_at else None,
+            "token_id": pickup.current_token_id if pickup else None,
+            "manual_code": None,
+            "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
+        }
+
+    if order.status != OrderStatus.PAYMENT_PENDING:
+        raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
     allocation = _ensure_allocation(db, order.id)
     now = _utc_now()
@@ -368,6 +398,20 @@ def payment_confirm(
     db.refresh(allocation)
     if pickup is not None:
         db.refresh(pickup)
+
+    try:
+        cancel_prepayment_timeout_deadline(order_id=order.id)
+    except LifecycleClientError:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "type": "LIFECYCLE_DEADLINE_CANCEL_FAILED",
+                "message": "Pagamento confirmado localmente, mas falhou ao cancelar o deadline de pré-pagamento.",
+                "order_id": order.id,
+                "channel": order.channel.value,
+                "region": order.region,
+            },
+        )
 
     return {
         "ok": True,

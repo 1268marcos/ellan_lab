@@ -15,12 +15,13 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8010, alias="PORT")
+    internal_token: str = Field(default="dev-internal-token", alias="INTERNAL_TOKEN")
 
-    postgres_host: str = Field(default="postgres_core", alias="POSTGRES_HOST")
+    postgres_host: str = Field(default="postgres_central", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")
-    postgres_db: str = Field(default="ellan_core", alias="POSTGRES_DB")
-    postgres_user: str = Field(default="ellan", alias="POSTGRES_USER")
-    postgres_password: str = Field(default="ellan_dev_password", alias="POSTGRES_PASSWORD")
+    postgres_db: str = Field(default="locker_central", alias="POSTGRES_DB")
+    postgres_user: str = Field(default="admin", alias="POSTGRES_USER")
+    postgres_password: str = Field(default="admin123", alias="POSTGRES_PASSWORD")
 
     db_pool_size: int = Field(default=10, alias="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=20, alias="DB_MAX_OVERFLOW")

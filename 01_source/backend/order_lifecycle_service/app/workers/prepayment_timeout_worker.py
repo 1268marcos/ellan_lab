@@ -47,22 +47,38 @@ def run_once() -> None:
         deadlines = claim_due_deadlines(db)
         db.commit()
 
-        processed = 0
-        for deadline in deadlines:
-            try:
-                with SessionLocal() as tx:
-                    current = tx.get(LifecycleDeadline, deadline.id)
-                    if current is None:
-                        continue
-                    execute_prepayment_timeout(tx, current)
-                    publish_pending_events(tx)
-                    tx.commit()
-                    processed += 1
-            except Exception:
-                logger.exception("deadline_execution_failed", extra={"deadline_id": str(deadline.id)})
+    processed = 0
 
-        if processed:
-            logger.info("worker_cycle_processed", extra={"processed": processed})
+    for deadline in deadlines:
+        try:
+            with SessionLocal() as tx:
+                current = tx.get(LifecycleDeadline, deadline.id)
+                if current is None:
+                    continue
+
+                if current.status != DeadlineStatus.EXECUTING:
+                    continue
+
+                execute_prepayment_timeout(tx, current)
+                publish_pending_events(tx)
+                tx.commit()
+                processed += 1
+
+        except Exception:
+            logger.exception(
+                "deadline_execution_failed",
+                extra={"deadline_id": str(deadline.id)},
+            )
+            with SessionLocal() as err_tx:
+                current = err_tx.get(LifecycleDeadline, deadline.id)
+                if current is not None and current.status == DeadlineStatus.EXECUTING:
+                    current.status = DeadlineStatus.FAILED
+                    current.failure_count += 1
+                    current.updated_at = utc_now()
+                    err_tx.commit()
+
+    if processed:
+        logger.info("worker_cycle_processed", extra={"processed": processed})
 
 
 def main():

@@ -18,7 +18,7 @@ def utc_now():
 def execute_prepayment_timeout(db: Session, deadline: LifecycleDeadline) -> None:
     now = utc_now()
 
-    if deadline.status not in {DeadlineStatus.PENDING, DeadlineStatus.EXECUTING}:
+    if deadline.status != DeadlineStatus.EXECUTING:
         return
 
     deadline.status = DeadlineStatus.EXECUTED
