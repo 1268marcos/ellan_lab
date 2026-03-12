@@ -1,6 +1,7 @@
 import logging
 import time
 from datetime import datetime, timezone
+from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,7 +21,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def claim_due_deadlines(db: Session, batch_size: int = 100) -> list[LifecycleDeadline]:
+def claim_due_deadline_ids(db: Session, batch_size: int = 100) -> list[UUID]:
     stmt = (
         select(LifecycleDeadline)
         .where(LifecycleDeadline.deadline_type == DeadlineType.PREPAYMENT_TIMEOUT)
@@ -34,25 +35,28 @@ def claim_due_deadlines(db: Session, batch_size: int = 100) -> list[LifecycleDea
     rows = db.execute(stmt).scalars().all()
 
     now = utc_now()
+    ids: list[UUID] = []
+
     for row in rows:
         row.status = DeadlineStatus.EXECUTING
         row.locked_at = now
         row.updated_at = now
+        ids.append(row.id)
 
-    return rows
+    return ids
 
 
 def run_once() -> None:
     with SessionLocal() as db:
-        deadlines = claim_due_deadlines(db)
+        deadline_ids = claim_due_deadline_ids(db)
         db.commit()
 
     processed = 0
 
-    for deadline in deadlines:
+    for deadline_id in deadline_ids:
         try:
             with SessionLocal() as tx:
-                current = tx.get(LifecycleDeadline, deadline.id)
+                current = tx.get(LifecycleDeadline, deadline_id)
                 if current is None:
                     continue
 
@@ -67,10 +71,10 @@ def run_once() -> None:
         except Exception:
             logger.exception(
                 "deadline_execution_failed",
-                extra={"deadline_id": str(deadline.id)},
+                extra={"deadline_id": str(deadline_id)},
             )
             with SessionLocal() as err_tx:
-                current = err_tx.get(LifecycleDeadline, deadline.id)
+                current = err_tx.get(LifecycleDeadline, deadline_id)
                 if current is not None and current.status == DeadlineStatus.EXECUTING:
                     current.status = DeadlineStatus.FAILED
                     current.failure_count += 1

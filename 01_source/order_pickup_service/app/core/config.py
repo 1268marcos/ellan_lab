@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     )
 
     prepayment_timeout_seconds: int = Field(
-        default=900,
+        default=90, # 1 minuto e 30 segundos
         alias="PREPAYMENT_TIMEOUT_SECONDS",
     )
 

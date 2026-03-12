@@ -306,7 +306,7 @@ services:
       backend_pt:
         condition: service_healthy
       order_lifecycle_service:
-        condition: service_healthy
+        condition: service_started
     networks:
       - locker-network
 
@@ -330,7 +330,7 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      PREPAYMENT_TIMEOUT_SECONDS: 900
+      PREPAYMENT_TIMEOUT_SECONDS: 90  # 1 minuto e 30 seguntos
       WORKER_POLL_INTERVAL_SECONDS: 5
     ports:
       - "8010:8010"
@@ -339,13 +339,6 @@ services:
         condition: service_healthy
     networks:
       - locker-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
-
 
 
   # =========================
@@ -366,7 +359,7 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      PREPAYMENT_TIMEOUT_SECONDS: 900
+      PREPAYMENT_TIMEOUT_SECONDS: 90 # 1 minutos e 30 segundos
       WORKER_POLL_INTERVAL_SECONDS: 5
     depends_on:
       postgres_central:

@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     db_max_overflow: int = Field(default=20, alias="DB_MAX_OVERFLOW")
     db_pool_pre_ping: bool = Field(default=True, alias="DB_POOL_PRE_PING")
 
-    prepayment_timeout_seconds: int = Field(default=900, alias="PREPAYMENT_TIMEOUT_SECONDS")
+    prepayment_timeout_seconds: int = Field(default=90, alias="PREPAYMENT_TIMEOUT_SECONDS")
     worker_poll_interval_seconds: int = Field(default=5, alias="WORKER_POLL_INTERVAL_SECONDS")
 
     @property
