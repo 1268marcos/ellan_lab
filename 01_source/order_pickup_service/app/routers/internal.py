@@ -79,6 +79,7 @@ def _reallocate_if_needed(db: Session, *, order: Order, allocation: Allocation) 
             order.sku_id,
             ttl_sec=120,
             request_id=request_id,
+            locker_id=order.totem_id,
         )
     except requests.HTTPError as e:
         status = getattr(e.response, "status_code", None)
@@ -98,6 +99,7 @@ def _reallocate_if_needed(db: Session, *, order: Order, allocation: Allocation) 
                     "message": "A reserva original expirou e não foi possível realocar uma nova gaveta.",
                     "order_id": order.id,
                     "region": order.region,
+                    "locker_id": order.totem_id,
                     "sku_id": order.sku_id,
                     "retryable": True,
                     "action": "create_new_order",
@@ -112,6 +114,7 @@ def _reallocate_if_needed(db: Session, *, order: Order, allocation: Allocation) 
                 "message": "Falha ao tentar realocar gaveta no backend.",
                 "order_id": order.id,
                 "region": order.region,
+                "locker_id": order.totem_id,
                 "sku_id": order.sku_id,
                 "backend_status": status,
                 "backend_detail": backend_detail,
@@ -191,7 +194,6 @@ def payment_confirm(
             detail=f"region mismatch: order={order.region} payload={payload.region}",
         )
 
-    # Idempotência: se o pagamento já foi confirmado antes, devolve sucesso
     if order.status in (
         OrderStatus.PAID_PENDING_PICKUP,
         OrderStatus.DISPENSED,
@@ -208,7 +210,7 @@ def payment_confirm(
             "status": order.status.value,
             "slot": allocation.slot,
             "allocation_id": allocation.id,
-            "payment_method": order.payment_method,
+            "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
             "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
             "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
             "pickup_id": pickup.id if pickup else None,
@@ -217,6 +219,7 @@ def payment_confirm(
             "token_id": pickup.current_token_id if pickup else None,
             "manual_code": None,
             "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
+            "totem_id": order.totem_id,
         }
 
     if order.status != OrderStatus.PAYMENT_PENDING:
@@ -226,7 +229,9 @@ def payment_confirm(
     now = _utc_now()
 
     order.gateway_transaction_id = payload.transaction_id
-    order.payment_method = getattr(payload, "provider", None)
+    provider_value = getattr(payload, "provider", None)
+    if provider_value:
+        order.payment_method = provider_value
     order.paid_at = now
 
     token_id: Optional[str] = None
@@ -243,7 +248,12 @@ def payment_confirm(
         allocation.locked_until = deadline.replace(tzinfo=None)
 
         try:
-            backend_client.locker_commit(order.region, allocation.id, deadline.isoformat())
+            backend_client.locker_commit(
+                order.region,
+                allocation.id,
+                deadline.isoformat(),
+                locker_id=order.totem_id,
+            )
         except requests.HTTPError as e:
             status = getattr(e.response, "status_code", None)
 
@@ -253,7 +263,12 @@ def payment_confirm(
                 allocation.locked_until = deadline.replace(tzinfo=None)
 
                 try:
-                    backend_client.locker_commit(order.region, allocation.id, deadline.isoformat())
+                    backend_client.locker_commit(
+                        order.region,
+                        allocation.id,
+                        deadline.isoformat(),
+                        locker_id=order.totem_id,
+                    )
                 except requests.HTTPError as e2:
                     status2 = getattr(e2.response, "status_code", None)
 
@@ -272,6 +287,7 @@ def payment_confirm(
                             "order_id": order.id,
                             "allocation_id": allocation.id,
                             "region": order.region,
+                            "locker_id": order.totem_id,
                             "backend_status": status2,
                             "backend_detail": backend_detail,
                         },
@@ -292,12 +308,18 @@ def payment_confirm(
                         "order_id": order.id,
                         "allocation_id": allocation.id,
                         "region": order.region,
+                        "locker_id": order.totem_id,
                         "backend_status": status,
                         "backend_detail": backend_detail,
                     },
                 )
 
-        backend_client.locker_set_state(order.region, allocation.slot, "PAID_PENDING_PICKUP")
+        backend_client.locker_set_state(
+            order.region,
+            allocation.slot,
+            "PAID_PENDING_PICKUP",
+            locker_id=order.totem_id,
+        )
 
         existing_pickup = _get_active_pickup_by_order(db, order.id)
 
@@ -336,7 +358,12 @@ def payment_confirm(
         allocation.locked_until = None
 
         try:
-            backend_client.locker_commit(order.region, allocation.id, None)
+            backend_client.locker_commit(
+                order.region,
+                allocation.id,
+                None,
+                locker_id=order.totem_id,
+            )
         except requests.HTTPError as e:
             status = getattr(e.response, "status_code", None)
 
@@ -346,7 +373,12 @@ def payment_confirm(
                 allocation.locked_until = None
 
                 try:
-                    backend_client.locker_commit(order.region, allocation.id, None)
+                    backend_client.locker_commit(
+                        order.region,
+                        allocation.id,
+                        None,
+                        locker_id=order.totem_id,
+                    )
                 except requests.HTTPError as e2:
                     status2 = getattr(e2.response, "status_code", None)
 
@@ -365,6 +397,7 @@ def payment_confirm(
                             "order_id": order.id,
                             "allocation_id": allocation.id,
                             "region": order.region,
+                            "locker_id": order.totem_id,
                             "backend_status": status2,
                             "backend_detail": backend_detail,
                         },
@@ -385,13 +418,22 @@ def payment_confirm(
                         "order_id": order.id,
                         "allocation_id": allocation.id,
                         "region": order.region,
+                        "locker_id": order.totem_id,
                         "backend_status": status,
                         "backend_detail": backend_detail,
                     },
                 )
 
-        backend_client.locker_light_on(order.region, allocation.slot)
-        backend_client.locker_open(order.region, allocation.slot)
+        backend_client.locker_light_on(
+            order.region,
+            allocation.slot,
+            locker_id=order.totem_id,
+        )
+        backend_client.locker_open(
+            order.region,
+            allocation.slot,
+            locker_id=order.totem_id,
+        )
 
     db.commit()
     db.refresh(order)
@@ -420,7 +462,7 @@ def payment_confirm(
         "status": order.status.value,
         "slot": allocation.slot,
         "allocation_id": allocation.id,
-        "payment_method": order.payment_method,
+        "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
         "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
         "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
         "pickup_id": pickup.id if pickup else None,
@@ -429,6 +471,7 @@ def payment_confirm(
         "token_id": token_id,
         "manual_code": manual_code,
         "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
+        "totem_id": order.totem_id,
     }
 
 
@@ -446,7 +489,11 @@ def release_order(
         raise HTTPException(status_code=409, detail=f"cannot release in state: {order.status.value}")
 
     try:
-        backend_client.locker_release(order.region, allocation.id)
+        backend_client.locker_release(
+            order.region,
+            allocation.id,
+            locker_id=order.totem_id,
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"backend release failed: {str(e)}")
 
@@ -467,6 +514,7 @@ def release_order(
         "reason": reason,
         "pickup_id": pickup.id if pickup else None,
         "pickup_status": pickup.status.value if pickup else None,
+        "totem_id": order.totem_id,
     }
 
 
@@ -475,21 +523,30 @@ def internal_set_slot_state(
     slot: int,
     state: str,
     region: str,
+    totem_id: str,
     _=Depends(require_internal_token),
 ):
     if slot < 1 or slot > 24:
         raise HTTPException(status_code=400, detail="slot must be between 1 and 24")
     if region not in ("SP", "PT"):
         raise HTTPException(status_code=400, detail="region must be SP or PT")
+    if not totem_id or not str(totem_id).strip():
+        raise HTTPException(status_code=400, detail="totem_id is required")
 
     try:
-        resp = backend_client.locker_set_state(region, slot, state)
+        resp = backend_client.locker_set_state(
+            region,
+            slot,
+            state,
+            locker_id=totem_id,
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"backend set-state failed: {str(e)}")
 
     return {
         "ok": True,
         "region": region,
+        "totem_id": totem_id,
         "slot": slot,
         "state": state,
         "backend_response": resp,
@@ -516,7 +573,7 @@ def internal_order_status(
             "sku_id": getattr(order, "sku_id", None),
             "status": order.status.value,
             "amount_cents": getattr(order, "amount_cents", None),
-            "payment_method": getattr(order, "payment_method", None),
+            "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
             "paid_at": order.paid_at.isoformat() if getattr(order, "paid_at", None) else None,
             "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
             "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,

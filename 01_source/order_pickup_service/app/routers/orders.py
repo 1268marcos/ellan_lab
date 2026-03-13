@@ -38,7 +38,11 @@ def create_order(
 
     if amount_cents is None:
         try:
-            pricing = backend_client.get_sku_pricing(payload.region, payload.sku_id)
+            pricing = backend_client.get_sku_pricing(
+                payload.region,
+                payload.sku_id,
+                locker_id=payload.totem_id,
+            )
         except HTTPError as e:
             if (
                 e.response is not None
@@ -65,6 +69,7 @@ def create_order(
             ALLOC_TTL_SEC,
             request_id,
             payload.desired_slot,
+            locker_id=payload.totem_id,
         )
     except HTTPError as e:
         status = e.response.status_code if e.response is not None else 502
@@ -83,6 +88,8 @@ def create_order(
                     "type": "DESIRED_SLOT_UNAVAILABLE",
                     "message": "A gaveta escolhida não está disponível para reserva.",
                     "desired_slot": payload.desired_slot,
+                    "region": payload.region,
+                    "locker_id": payload.totem_id,
                     "backend_detail": backend_detail,
                 },
             )
@@ -92,6 +99,8 @@ def create_order(
             detail={
                 "type": "LOCKER_ALLOCATE_FAILED",
                 "message": "Falha ao alocar gaveta no backend.",
+                "region": payload.region,
+                "locker_id": payload.totem_id,
                 "backend_status": status,
                 "backend_detail": backend_detail,
             },
@@ -156,7 +165,7 @@ def create_order(
         channel=order.channel.value,
         status=order.status.value,
         amount_cents=order.amount_cents,
-        payment_method=order.payment_method,
+        payment_method=order.payment_method.value if order.payment_method else None,
         allocation={
             "allocation_id": allocation.id,
             "slot": allocation.slot,
@@ -204,12 +213,7 @@ def list_orders(
 
     total = q.count()
 
-    orders = (
-        q.order_by(Order.created_at.desc())
-        .offset(offset)
-        .limit(page_size)
-        .all()
-    )
+    orders = q.order_by(Order.created_at.desc()).offset(offset).limit(page_size).all()
 
     items = []
     for order in orders:
@@ -237,7 +241,7 @@ def list_orders(
                 sku_id=order.sku_id,
                 totem_id=order.totem_id,
                 amount_cents=order.amount_cents,
-                payment_method=order.payment_method,
+                payment_method=order.payment_method.value if order.payment_method else None,
                 allocation_id=allocation.id if allocation else None,
                 slot=allocation.slot if allocation else None,
                 allocation_state=allocation.state.value if allocation and allocation.state else None,

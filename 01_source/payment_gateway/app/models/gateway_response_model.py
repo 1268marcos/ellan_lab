@@ -1,10 +1,18 @@
 from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, Field, ConfigDict
+
+from pydantic import BaseModel, ConfigDict, Field
 
 
 Severity = Literal["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
 Decision = Literal["ALLOW", "CHALLENGE", "BLOCK"]
-Result = Literal["approved", "requires_confirmation", "rejected"]
+Result = Literal[
+    "approved",
+    "requires_confirmation",
+    "rejected",
+    "pending_customer_action",
+    "pending_provider_confirmation",
+    "awaiting_integration",
+]
 
 
 class RiskReason(BaseModel):
@@ -19,6 +27,11 @@ class RiskPolicy(BaseModel):
 
 
 class RiskSignals(BaseModel):
+    region: Optional[str] = None
+    channel: Optional[str] = None
+    payment_method: Optional[str] = None
+    card_type: Optional[str] = None
+    integration_status: Optional[str] = None
     device_hash: Optional[str] = None
     ip_hash: Optional[str] = None
     velocity: Dict[str, int] = Field(default_factory=dict)
@@ -34,9 +47,9 @@ class RiskAssessment(BaseModel):
 
 
 class AntiReplay(BaseModel):
-    status: Literal["new", "replayed", "payload_mismatch"]
+    status: Literal["new", "replayed", "payload_mismatch", "not_evaluated"]
     idempotency_key: str
-    payload_hash: str
+    payload_hash: Optional[str] = None
     original_payload_hash: Optional[str] = None
 
 
@@ -49,6 +62,31 @@ class AuditChain(BaseModel):
 class AuditInfo(BaseModel):
     audit_event_id: str
     chain: AuditChain = Field(default_factory=AuditChain)
+    log_event_id: Optional[str] = None
+
+
+class LockerAddressInfo(BaseModel):
+    address: Optional[str] = None
+    number: Optional[str] = None
+    additional_information: Optional[str] = None
+    locality: Optional[str] = None
+    city: Optional[str] = None
+    federative_unit: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+
+
+class LockerInfo(BaseModel):
+    locker_id: str
+    region: str
+    site_id: str
+    display_name: str
+    backend_region: str
+    slots: int
+    channels: List[str] = Field(default_factory=list)
+    payment_methods: List[str] = Field(default_factory=list)
+    active: bool
+    address: LockerAddressInfo
 
 
 class PaymentInfo(BaseModel):
@@ -58,8 +96,12 @@ class PaymentInfo(BaseModel):
     valor: float
     currency: str = "BRL"
     porta: int
+    card_type: Optional[str] = None
     backend: Optional[Dict[str, Any]] = None
+    locker_effect: Optional[Dict[str, Any]] = None
     transaction_id: Optional[str] = None
+    instruction_type: Optional[str] = None
+    payload: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ErrorInfo(BaseModel):
@@ -69,7 +111,6 @@ class ErrorInfo(BaseModel):
 
 
 class GatewayPaymentResponse(BaseModel):
-    # Permite campos extras sem quebrar (bom pra evolução)
     model_config = ConfigDict(extra="allow")
 
     request_id: str
@@ -84,7 +125,9 @@ class GatewayPaymentResponse(BaseModel):
     error: Optional[ErrorInfo] = None
 
     anti_replay: AntiReplay
-    risk: RiskAssessment
+    risk: Optional[RiskAssessment] = None
+
+    locker: Optional[LockerInfo] = None
 
     severity: Severity
     severity_code: str

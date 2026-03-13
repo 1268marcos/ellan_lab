@@ -14,6 +14,93 @@ const SLOT_STATES = [
 ];
 
 /**
+ * Fallback local apenas para contingência.
+ * Fonte principal agora: GET {GATEWAY_BASE}/lockers?region=...
+ */
+const LOCKER_REGISTRY_FALLBACK = {
+  "SP-OSASCO-CENTRO-LK-001": {
+    region: "SP",
+    site_id: "SP-OSASCO-CENTRO",
+    display_name: "ELLAN Locker Osasco Centro 001",
+    backend_region: "SP",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["PIX", "CARTAO", "NFC"],
+    address: {
+      address: "Rua Primitiva Vianco",
+      number: "77",
+      additional_information: "Sala 21",
+      locality: "Centro",
+      city: "Osasco",
+      federative_unit: "SP",
+      postal_code: "06001-000",
+      country: "BR",
+    },
+    active: true,
+  },
+  "SP-CARAPICUIBA-JDMARILU-LK-001": {
+    region: "SP",
+    site_id: "SP-CARAPICUIBA-JDMARILU",
+    display_name: "ELLAN Locker Carapicuíba Jardim Marilu 001",
+    backend_region: "SP",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["PIX", "CARTAO", "NFC"],
+    address: {
+      address: "Estrada Aldeinha",
+      number: "7509",
+      additional_information: "Apto 45",
+      locality: "Jardim Marilu",
+      city: "Carapicuíba",
+      federative_unit: "SP",
+      postal_code: "06343-040",
+      country: "BR",
+    },
+    active: true,
+  },
+  "PT-MAIA-CENTRO-LK-001": {
+    region: "PT",
+    site_id: "PT-MAIA-CENTRO",
+    display_name: "ELLAN Locker Maia Centro 001",
+    backend_region: "PT",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["CARTAO", "MBWAY", "MULTIBANCO_REFERENCE", "NFC"],
+    address: {
+      address: "Rua Padre Antonio",
+      number: "12",
+      additional_information: "",
+      locality: "Centro",
+      city: "Maia",
+      federative_unit: "Porto",
+      postal_code: "4400-001",
+      country: "PT",
+    },
+    active: true,
+  },
+  "PT-GUIMARAES-AZUREM-LK-001": {
+    region: "PT",
+    site_id: "PT-GUIMARAES-AZUREM",
+    display_name: "ELLAN Locker Guimarães Azurém 001",
+    backend_region: "PT",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["CARTAO", "MBWAY", "MULTIBANCO_REFERENCE", "NFC"],
+    address: {
+      address: "Rua Dona Maria",
+      number: "258",
+      additional_information: "Sub-cave",
+      locality: "Azurém",
+      city: "Guimarães",
+      federative_unit: "Braga",
+      postal_code: "4582-052",
+      country: "PT",
+    },
+    active: true,
+  },
+};
+
+/**
  * Cores por estado da gaveta
  */
 const STATE_STYLE = {
@@ -54,6 +141,12 @@ const ORDER_STATUS_META = {
     tone: "danger",
     bg: "linear-gradient(135deg, rgba(179,38,30,0.26), rgba(179,38,30,0.12))",
     border: "rgba(179,38,30,0.42)",
+  },
+  DISPENSED: {
+    label: "Dispensado no KIOSK",
+    tone: "info",
+    bg: "linear-gradient(135deg, rgba(95,61,196,0.28), rgba(95,61,196,0.10))",
+    border: "rgba(95,61,196,0.42)",
   },
   SEM_PEDIDO: {
     label: "Sem pedido",
@@ -216,18 +309,82 @@ function generateClientTransactionId() {
   return `txn_${crypto.randomUUID()}`;
 }
 
-function buildTotemId(region) {
-  return region === "SP" ? "CACIFO-SP-001" : "CACIFO-PT-001";
+function normalizeLockerItem(locker) {
+  const address =
+    locker?.address && typeof locker.address === "object"
+      ? locker.address
+      : {
+          address: locker?.address || "",
+          number: locker?.number ?? "",
+          additional_information: locker?.additional_information || "",
+          locality: locker?.locality || "",
+          city: locker?.city || "",
+          federative_unit: locker?.federative_unit || "",
+          postal_code: locker?.postal_code || "",
+          country: locker?.country || "",
+        };
+
+  return {
+    locker_id: String(locker?.locker_id || "").trim(),
+    region: String(locker?.region || "").toUpperCase(),
+    site_id: locker?.site_id || "",
+    display_name: locker?.display_name || locker?.locker_id || "",
+    backend_region: String(locker?.backend_region || locker?.region || "").toUpperCase(),
+    slots: Number(locker?.slots || 24),
+    channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
+    payment_methods: Array.isArray(locker?.payment_methods)
+      ? locker.payment_methods.map((m) => String(m).toUpperCase())
+      : [],
+    active: Boolean(locker?.active),
+    address,
+  };
 }
 
-function buildDefaultSkuId(region, slot) {
-  return region === "SP" ? `BOLO_SLOT_${slot}_SP` : `BOLO_SLOT_${slot}_PT`;
+function buildFallbackLockersByRegion(region) {
+  return Object.entries(LOCKER_REGISTRY_FALLBACK)
+    .map(([lockerId, config]) =>
+      normalizeLockerItem({
+        locker_id: lockerId,
+        ...config,
+      })
+    )
+    .filter((item) => item.region === region && item.active)
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
+}
+
+function formatLockerAddress(locker) {
+  if (!locker) return "-";
+  const address = locker.address || {};
+  return [
+    [address.address, address.number].filter(Boolean).join(", "),
+    address.additional_information || "",
+    address.locality || "",
+    [address.city, address.federative_unit].filter(Boolean).join(" / "),
+    address.postal_code || "",
+    address.country || "",
+  ]
+    .map((x) => String(x || "").trim())
+    .filter(Boolean)
+    .join(" • ");
+}
+
+function getDefaultPaymentMethodForLocker(locker, current) {
+  const methods = Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
+  if (current && methods.includes(current)) return current;
+  if (methods.length > 0) return methods[0];
+  return locker?.region === "SP" ? "PIX" : "CARTAO";
+}
+
+function buildDefaultSkuId(region, slot, lockerId) {
+  const safeLocker = String(lockerId || "LOCKER").replace(/[^A-Z0-9_-]/gi, "_");
+  return `${safeLocker}_SLOT_${slot}_${region}`;
 }
 
 function pickGatewayTransactionId(respObj) {
   if (!respObj || typeof respObj !== "object") return generateClientTransactionId();
 
   return (
+    respObj?.payment?.transaction_id ||
     respObj.transaction_id ||
     respObj.sale_id ||
     respObj.payment_id ||
@@ -252,13 +409,7 @@ function formatDateTime(value, region = "PT") {
 
   try {
     const raw = String(value).trim();
-
-    // Se veio sem timezone explícito, tratar como UTC
-    const normalized =
-      /(?:Z|[+-]\d{2}:\d{2})$/.test(raw)
-        ? raw
-        : `${raw}Z`;
-
+    const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(raw) ? raw : `${raw}Z`;
     const dt = new Date(normalized);
 
     if (Number.isNaN(dt.getTime())) {
@@ -298,6 +449,7 @@ function statusBadgeStyle(status) {
     PICKED_UP: { bg: "rgba(107,107,107,0.22)", border: "rgba(107,107,107,0.45)" },
     EXPIRED: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
     EXPIRED_CREDIT_50: { bg: "rgba(179,38,30,0.20)", border: "rgba(179,38,30,0.45)" },
+    DISPENSED: { bg: "rgba(95,61,196,0.22)", border: "rgba(95,61,196,0.45)" },
     SEM_PEDIDO: { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" },
   };
   const m = map[status] || { bg: "rgba(255,255,255,0.08)", border: "rgba(255,255,255,0.18)" };
@@ -401,6 +553,7 @@ function buildCurrentOrderFromListItem(item) {
     expires_at: item.expires_at,
     pickup_deadline_at: item.pickup_deadline_at,
     picked_up_at: item.picked_up_at,
+    totem_id: item.totem_id,
     allocation: {
       allocation_id: item.allocation_id,
       slot: item.slot,
@@ -408,7 +561,6 @@ function buildCurrentOrderFromListItem(item) {
     },
   };
 }
-
 
 function tryParseJson(text) {
   if (!text) return null;
@@ -431,12 +583,10 @@ function extractBackendDetailFromErrorMessage(message) {
 function extractOperationalErrorType(err) {
   const rawMessage = String(err?.message || err || "");
   const parsed = extractBackendDetailFromErrorMessage(rawMessage);
-
   const detail = parsed?.detail;
   if (detail && typeof detail === "object" && detail.type) {
     return detail.type;
   }
-
   return null;
 }
 
@@ -461,30 +611,17 @@ function isStaleCurrentOrderErrorType(type) {
   ].includes(type);
 }
 
-function buildPaymentSummary({ gatewayData, confirmData, region, currentOrderId }) {
+function buildPaymentSummary({ gatewayData, confirmData, region, currentOrderId, lockerId }) {
   const lines = [];
 
   lines.push("✅ Pagamento confirmado com sucesso");
 
-  if (currentOrderId) {
-    lines.push(`Pedido: ${currentOrderId}`);
-  }
-
-  if (confirmData?.slot) {
-    lines.push(`Gaveta: ${confirmData.slot}`);
-  }
-
-  if (confirmData?.payment_method) {
-    lines.push(`Método: ${confirmData.payment_method}`);
-  }
-
-  if (confirmData?.pickup_id) {
-    lines.push(`Pickup: ${confirmData.pickup_id}`);
-  }
-
-  if (confirmData?.manual_code) {
-    lines.push(`Código manual atual: ${confirmData.manual_code}`);
-  }
+  if (currentOrderId) lines.push(`Pedido: ${currentOrderId}`);
+  if (lockerId) lines.push(`Locker: ${lockerId}`);
+  if (confirmData?.slot) lines.push(`Gaveta: ${confirmData.slot}`);
+  if (confirmData?.payment_method) lines.push(`Método: ${confirmData.payment_method}`);
+  if (confirmData?.pickup_id) lines.push(`Pickup: ${confirmData.pickup_id}`);
+  if (confirmData?.manual_code) lines.push(`Código manual atual: ${confirmData.manual_code}`);
 
   if (confirmData?.pickup_deadline_at || confirmData?.pickup_expires_at) {
     lines.push(
@@ -506,23 +643,10 @@ function buildManualCodeSummary(data, region) {
   const lines = [];
 
   lines.push("✅ Código manual regenerado com sucesso");
-
-  if (data?.order_id) {
-    lines.push(`Pedido: ${data.order_id}`);
-  }
-
-  if (data?.pickup_id) {
-    lines.push(`Pickup: ${data.pickup_id}`);
-  }
-
-  if (data?.manual_code) {
-    lines.push(`Novo código: ${data.manual_code}`);
-  }
-
-  if (data?.expires_at) {
-    lines.push(`Expira em: ${formatDateTime(data.expires_at, region)}`);
-  }
-
+  if (data?.order_id) lines.push(`Pedido: ${data.order_id}`);
+  if (data?.pickup_id) lines.push(`Pickup: ${data.pickup_id}`);
+  if (data?.manual_code) lines.push(`Novo código: ${data.manual_code}`);
+  if (data?.expires_at) lines.push(`Expira em: ${formatDateTime(data.expires_at, region)}`);
   lines.push("Códigos anteriores foram invalidados.");
 
   return lines.join("\n");
@@ -537,21 +661,10 @@ function buildRedeemSummary(data, region, mode = "manual") {
       : "✅ Retirada por QR concluída com sucesso"
   );
 
-  if (data?.order_id) {
-    lines.push(`Pedido: ${data.order_id}`);
-  }
-
-  if (data?.pickup_id) {
-    lines.push(`Pickup: ${data.pickup_id}`);
-  }
-
-  if (data?.slot) {
-    lines.push(`Gaveta: ${data.slot}`);
-  }
-
-  if (data?.expires_at) {
-    lines.push(`Janela original: ${formatDateTime(data.expires_at, region)}`);
-  }
+  if (data?.order_id) lines.push(`Pedido: ${data.order_id}`);
+  if (data?.pickup_id) lines.push(`Pickup: ${data.pickup_id}`);
+  if (data?.slot) lines.push(`Gaveta: ${data.slot}`);
+  if (data?.expires_at) lines.push(`Janela original: ${formatDateTime(data.expires_at, region)}`);
 
   return lines.join("\n");
 }
@@ -568,15 +681,12 @@ function focusOrderFromListItem(item, setters) {
     setPickupResp,
     setPayMethod,
     setPayValue,
+    setSelectedLockerId,
   } = setters;
 
-  if (item?.payment_method) {
-    setPayMethod(item.payment_method);
-  }
-
-  if (typeof item?.amount_cents === "number") {
-    setPayValue(Number(item.amount_cents) / 100);
-  }
+  if (item?.payment_method) setPayMethod(item.payment_method);
+  if (typeof item?.amount_cents === "number") setPayValue(Number(item.amount_cents) / 100);
+  if (item?.totem_id) setSelectedLockerId(item.totem_id);
 
   if (item?.slot) {
     const slotNum = Number(item.slot);
@@ -726,7 +836,7 @@ function OrdersCardList({
             </div>
 
             <div style={{ fontSize: 12, opacity: 0.85 }}>
-              Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
+              Locker: <b>{item.totem_id || "-"}</b> • Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -777,16 +887,30 @@ const btnSmall = {
 export default function LockerDashboard({ region = "PT" }) {
   const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
   const BACKEND_PT = import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
-  const backendBase = region === "SP" ? BACKEND_SP : BACKEND_PT;
-
   const GATEWAY_BASE = import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
-  const gatewayUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, [GATEWAY_BASE]);
-
   const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
   const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
 
   const isNarrow = useMediaQuery("(max-width: 1280px)");
   const isVeryNarrow = useMediaQuery("(max-width: 980px)");
+
+  const [lockers, setLockers] = useState([]);
+  const [lockersLoading, setLockersLoading] = useState(false);
+  const [lockersError, setLockersError] = useState("");
+  const [lockersSource, setLockersSource] = useState("loading");
+
+  const [selectedLockerId, setSelectedLockerId] = useState("");
+  const selectedLocker = useMemo(
+    () => lockers.find((x) => x.locker_id === selectedLockerId) || lockers[0] || null,
+    [lockers, selectedLockerId]
+  );
+
+  const backendBase = useMemo(() => {
+    const effectiveRegion = selectedLocker?.backend_region || region;
+    return effectiveRegion === "SP" ? BACKEND_SP : BACKEND_PT;
+  }, [selectedLocker, region, BACKEND_SP, BACKEND_PT]);
+
+  const gatewayUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, [GATEWAY_BASE]);
 
   const [slots, setSlots] = useState(() => slotsListToMap([]));
   const [cakes, setCakes] = useState(() => buildInitialCakes());
@@ -810,11 +934,13 @@ export default function LockerDashboard({ region = "PT" }) {
   const [orderError, setOrderError] = useState("");
   const [currentOrder, setCurrentOrder] = useState(null);
 
-  const [payMethod, setPayMethod] = useState("PIX");
+  const [payMethod, setPayMethod] = useState("CARTAO");
   const [payValue, setPayValue] = useState(100);
   const [paySlot, setPaySlot] = useState(1);
   const [payResp, setPayResp] = useState("");
   const [payLoading, setPayLoading] = useState(false);
+  const [cardType, setCardType] = useState("creditCard");
+  const [customerPhone, setCustomerPhone] = useState("");
 
   const [pickupResp, setPickupResp] = useState("");
   const [regenCodeLoading, setRegenCodeLoading] = useState(false);
@@ -862,16 +988,77 @@ export default function LockerDashboard({ region = "PT" }) {
     slotSelectionRemainingSec > 0;
 
   const selectedSlotState = selectedSlot ? slots[selectedSlot]?.state || "AVAILABLE" : null;
-
   const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
 
   const totalOrdersPages = Math.max(1, Math.ceil(ordersTotal / ordersPageSize));
   const visibleOrdersFrom = ordersTotal === 0 ? 0 : (ordersPage - 1) * ordersPageSize + 1;
   const visibleOrdersTo = Math.min(ordersPage * ordersPageSize, ordersTotal);
-  const ordersTableHeight =
-    ordersTableDensity === "3"
-      ? 3 * 44 + 44
-      : 10 * 44 + 44;
+  const ordersTableHeight = ordersTableDensity === "3" ? 3 * 44 + 44 : 10 * 44 + 44;
+  const availablePaymentMethods = selectedLocker?.payment_methods || [];
+
+  async function fetchLockersOnce() {
+    setLockersLoading(true);
+    setLockersError("");
+
+    try {
+      const res = await fetch(
+        `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
+      );
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+
+      const data = JSON.parse(text);
+      const items = Array.isArray(data?.items) ? data.items.map(normalizeLockerItem) : [];
+
+      if (!items.length) {
+        throw new Error(`Nenhum locker ativo retornado pelo gateway para a região ${region}.`);
+      }
+
+      setLockers(items);
+      setLockersSource("gateway");
+    } catch (e) {
+      const fallbackItems = buildFallbackLockersByRegion(region);
+      setLockers(fallbackItems);
+      setLockersSource("fallback");
+      setLockersError(`Falha ao carregar lockers do gateway: ${String(e?.message || e)}`);
+    } finally {
+      setLockersLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    fetchLockersOnce();
+  }, [region]); // eslint-disable-line
+
+  useEffect(() => {
+    if (!lockers.length) {
+      setSelectedLockerId("");
+      return;
+    }
+
+    setSelectedLockerId((prev) => {
+      if (prev && lockers.some((locker) => locker.locker_id === prev)) {
+        return prev;
+      }
+      return lockers[0].locker_id;
+    });
+  }, [lockers]);
+
+  useEffect(() => {
+    if (!selectedLocker) return;
+    setPayMethod((prev) => getDefaultPaymentMethodForLocker(selectedLocker, prev));
+    setSelectedSlot(null);
+    setPaySlot(1);
+    setCurrentOrder(null);
+    setOrderError("");
+    setPayResp("");
+    setPickupResp("");
+    setSlotSelectionExpiresAt(null);
+    setOrdersPage(1);
+  }, [selectedLockerId, selectedLocker]);
 
   useEffect(() => {
     setPaySlot(selectedSlot || 1);
@@ -882,6 +1069,11 @@ export default function LockerDashboard({ region = "PT" }) {
       setShowCakesPanel(false);
     }
   }, [isNarrow]);
+
+  useEffect(() => {
+    if (payMethod !== "CARTAO") setCardType("creditCard");
+    if (payMethod !== "MBWAY") setCustomerPhone("");
+  }, [payMethod]);
 
   function selectSlot(slot) {
     setSelectedSlot(slot);
@@ -909,6 +1101,7 @@ export default function LockerDashboard({ region = "PT" }) {
       setPickupResp,
       setPayMethod,
       setPayValue,
+      setSelectedLockerId,
     });
   }
 
@@ -925,12 +1118,20 @@ export default function LockerDashboard({ region = "PT" }) {
   }
 
   async function fetchSlotsOnce() {
+    if (!selectedLocker) {
+      setSlots(slotsListToMap([]));
+      return;
+    }
+
     if (abortRef.current) abortRef.current.abort();
     const ac = new AbortController();
     abortRef.current = ac;
 
     try {
-      const res = await fetch(`${backendBase}/locker/slots`, { signal: ac.signal });
+      const res = await fetch(`${backendBase}/locker/slots`, {
+        signal: ac.signal,
+        headers: { "X-Locker-Id": selectedLocker.locker_id },
+      });
       if (!res.ok) {
         const text = await res.text();
         setSyncStatus({ ok: false, msg: `HTTP ${res.status}: ${text}` });
@@ -938,7 +1139,10 @@ export default function LockerDashboard({ region = "PT" }) {
       }
       const data = await res.json();
       setSlots(slotsListToMap(data));
-      setSyncStatus({ ok: true, msg: `Atualizado ${new Date().toLocaleTimeString()}` });
+      setSyncStatus({
+        ok: true,
+        msg: `Atualizado ${new Date().toLocaleTimeString()} • ${selectedLocker.locker_id}`,
+      });
     } catch (e) {
       if (String(e?.name) === "AbortError") return;
       setSyncStatus({ ok: false, msg: String(e?.message || e) });
@@ -967,21 +1171,29 @@ export default function LockerDashboard({ region = "PT" }) {
       }
 
       const data = JSON.parse(text);
+      let items = Array.isArray(data?.items) ? data.items : [];
 
-      const items = Array.isArray(data?.items) ? data.items : [];
-      const total = Number(data?.total ?? items.length);
+      if (selectedLocker?.locker_id) {
+        items = items.filter((item) => item?.totem_id === selectedLocker.locker_id);
+      }
+
+      const total = Number(
+        selectedLocker?.locker_id ? items.length : data?.total ?? items.length
+      );
       const resolvedPage = Number(data?.page ?? targetPage);
       const resolvedPageSize = Number(data?.page_size ?? targetPageSize);
 
       const resolvedHasPrev =
         typeof data?.has_prev === "boolean"
-          ? data.has_prev
+          ? data.has_prev && resolvedPage > 1
           : resolvedPage > 1;
 
       const resolvedHasNext =
-        typeof data?.has_next === "boolean"
-          ? data.has_next
-          : resolvedPage * resolvedPageSize < total;
+        selectedLocker?.locker_id
+          ? false
+          : typeof data?.has_next === "boolean"
+            ? data.has_next
+            : resolvedPage * resolvedPageSize < total;
 
       setOrdersData(items);
       setOrdersTotal(total);
@@ -1011,30 +1223,15 @@ export default function LockerDashboard({ region = "PT" }) {
       if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       if (abortRef.current) abortRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [backendBase, syncEnabled]);
+  }, [backendBase, syncEnabled, selectedLockerId]); // eslint-disable-line
 
   useEffect(() => {
     fetchOrdersOnce(1, ordersPageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [region]);
+  }, [region, selectedLockerId]); // eslint-disable-line
 
   useEffect(() => {
     fetchOrdersOnce(1, ordersPageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ordersFilterStatus, ordersFilterChannel]);
-
-  useEffect(() => {
-    setSelectedSlot(null);
-    setActiveGroup(0);
-    setPaySlot(1);
-    setCurrentOrder(null);
-    setOrderError("");
-    setPayResp("");
-    setPickupResp("");
-    setSlotSelectionExpiresAt(null);
-    setOrdersPage(1);
-  }, [region]);
+  }, [ordersFilterStatus, ordersFilterChannel]); // eslint-disable-line
 
   useEffect(() => {
     const t = setInterval(() => {
@@ -1063,7 +1260,10 @@ export default function LockerDashboard({ region = "PT" }) {
     try {
       const res = await fetch(`${backendBase}/locker/slots/${slot}/set-state`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Locker-Id": selectedLocker?.locker_id || "",
+        },
         body: JSON.stringify(payload),
       });
 
@@ -1074,7 +1274,10 @@ export default function LockerDashboard({ region = "PT" }) {
         return;
       }
 
-      setSyncStatus({ ok: true, msg: `set-state OK (${slot} → ${nextState})` });
+      setSyncStatus({
+        ok: true,
+        msg: `set-state OK (${selectedLocker?.locker_id || "-"} • ${slot} → ${nextState})`,
+      });
 
       if (nextState === "PICKED_UP" || nextState === "PAID_PENDING_PICKUP") {
         fetchOrdersOnce(ordersPage, ordersPageSize);
@@ -1086,6 +1289,11 @@ export default function LockerDashboard({ region = "PT" }) {
   }
 
   async function createOnlineOrder() {
+    if (!selectedLocker) {
+      setOrderError("Selecione um locker antes de criar o pedido.");
+      return;
+    }
+
     if (!selectedSlot) {
       setOrderError("Selecione uma gaveta antes de criar o pedido.");
       return;
@@ -1097,8 +1305,8 @@ export default function LockerDashboard({ region = "PT" }) {
     }
 
     const slotNum = Number(selectedSlot);
-    const skuId = buildDefaultSkuId(region, slotNum);
-    const totemId = buildTotemId(region);
+    const skuId = buildDefaultSkuId(region, slotNum, selectedLocker.locker_id);
+    const totemId = selectedLocker.locker_id;
 
     setOrderLoading(true);
     setOrderError("");
@@ -1125,7 +1333,7 @@ export default function LockerDashboard({ region = "PT" }) {
       }
 
       const data = JSON.parse(text);
-      setCurrentOrder(data);
+      setCurrentOrder({ ...data, totem_id: totemId });
       setSlotSelectionExpiresAt(null);
 
       if (data?.allocation?.slot) {
@@ -1161,7 +1369,7 @@ export default function LockerDashboard({ region = "PT" }) {
       throw new Error("Nenhum pedido atual carregado para confirmação interna.");
     }
 
-    const totemId = buildTotemId(region);
+    const totemId = currentOrder?.totem_id || selectedLocker?.locker_id;
     const amountCents =
       typeof currentOrder.amount_cents === "number"
         ? currentOrder.amount_cents
@@ -1175,6 +1383,7 @@ export default function LockerDashboard({ region = "PT" }) {
       provider: payMethod,
       transaction_id: transactionId,
       amount_cents: amountCents,
+      currency: region === "SP" ? "BRL" : "EUR",
     };
 
     const res = await fetch(
@@ -1200,7 +1409,6 @@ export default function LockerDashboard({ region = "PT" }) {
     }
 
     return JSON.parse(text);
-
   }
 
   async function regenerateManualCode() {
@@ -1273,6 +1481,11 @@ export default function LockerDashboard({ region = "PT" }) {
   }
 
   async function simulatePayment() {
+    if (!selectedLocker) {
+      setPayResp("❌ Nenhum locker selecionado.");
+      return;
+    }
+
     if (!currentOrder?.order_id) {
       setPayResp(
         "❌ Nenhum pedido atual carregado.\n\nAção recomendada: selecione uma gaveta disponível e clique em “Criar pedido online”."
@@ -1310,6 +1523,10 @@ export default function LockerDashboard({ region = "PT" }) {
       setPayResp("❌ Valor inválido (>0)");
       return;
     }
+    if (payMethod === "MBWAY" && !customerPhone.trim()) {
+      setPayResp("❌ customer_phone é obrigatório para MBWAY.");
+      return;
+    }
 
     const deviceFp = getOrCreateDeviceFingerprint();
     const idemKey = generateIdempotencyKey();
@@ -1318,6 +1535,24 @@ export default function LockerDashboard({ region = "PT" }) {
     setPayResp("");
 
     try {
+      const gatewayPayload = {
+        regiao: region,
+        canal: "ONLINE",
+        metodo: payMethod,
+        valor: valNum,
+        porta: slotNum,
+        locker_id: selectedLocker.locker_id,
+        order_id: currentOrder.order_id,
+      };
+
+      if (payMethod === "CARTAO") {
+        gatewayPayload.card_type = cardType;
+      }
+
+      if (payMethod === "MBWAY") {
+        gatewayPayload.customer_phone = customerPhone.trim();
+      }
+
       const gatewayRes = await fetch(gatewayUrl, {
         method: "POST",
         headers: {
@@ -1325,12 +1560,7 @@ export default function LockerDashboard({ region = "PT" }) {
           "Idempotency-Key": idemKey,
           "X-Device-Fingerprint": deviceFp,
         },
-        body: JSON.stringify({
-          regiao: region,
-          metodo: payMethod,
-          valor: valNum,
-          porta: slotNum,
-        }),
+        body: JSON.stringify(gatewayPayload),
       });
 
       const gatewayText = await gatewayRes.text();
@@ -1346,6 +1576,34 @@ export default function LockerDashboard({ region = "PT" }) {
         gatewayData = JSON.parse(gatewayText);
       } catch {
         gatewayData = { raw: gatewayText };
+      }
+
+      const gatewayResult = gatewayData?.result;
+
+      if (
+        gatewayResult === "pending_customer_action" ||
+        gatewayResult === "pending_provider_confirmation" ||
+        gatewayResult === "awaiting_integration"
+      ) {
+        setPayResp(
+          `ℹ️ O gateway respondeu com fluxo não concluído automaticamente.\n\n--- JSON bruto ---\n${JSON.stringify(
+            gatewayData,
+            null,
+            2
+          )}`
+        );
+        return;
+      }
+
+      if (gatewayResult === "rejected") {
+        setPayResp(
+          `❌ Pagamento rejeitado pelo gateway.\n\n--- JSON bruto ---\n${JSON.stringify(
+            gatewayData,
+            null,
+            2
+          )}`
+        );
+        return;
       }
 
       const transactionId = pickGatewayTransactionId(gatewayData);
@@ -1364,6 +1622,7 @@ export default function LockerDashboard({ region = "PT" }) {
               manual_code: confirmData?.manual_code || prev.manual_code,
               expires_at: confirmData?.pickup_expires_at || confirmData?.pickup_deadline_at || prev.expires_at,
               pickup_deadline_at: confirmData?.pickup_deadline_at || prev.pickup_deadline_at,
+              totem_id: confirmData?.totem_id || prev.totem_id,
               allocation: {
                 ...(prev?.allocation || {}),
                 allocation_id: confirmData?.allocation_id || prev?.allocation?.allocation_id,
@@ -1379,6 +1638,7 @@ export default function LockerDashboard({ region = "PT" }) {
         confirmData,
         region,
         currentOrderId: currentOrder.order_id,
+        lockerId: selectedLocker.locker_id,
       });
 
       setPayResp(
@@ -1447,11 +1707,12 @@ export default function LockerDashboard({ region = "PT" }) {
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ opacity: 0.8, fontSize: 12 }}>
-            Região: <b>{region}</b> • Backend: <code>{backendBase}</code>
+            Região: <b>{region}</b> • Locker: <b>{selectedLocker?.locker_id || "-"}</b> • Backend: <code>{backendBase}</code>
           </div>
 
           <button
             onClick={() => {
+              fetchLockersOnce();
               fetchSlotsOnce();
               fetchOrdersOnce(ordersPage, ordersPageSize);
             }}
@@ -1480,8 +1741,47 @@ export default function LockerDashboard({ region = "PT" }) {
           alignItems: "start",
         }}
       >
-        {/* COLUNA ESQUERDA */}
         <div style={{ display: "grid", gap: 12 }}>
+          <section style={panelStyleCompact}>
+            <div style={{ fontWeight: 800 }}>Unidade operacional</div>
+
+            {lockersLoading ? (
+              <div style={softInfoBox("normal")}>Carregando lockers...</div>
+            ) : !lockers.length ? (
+              <div style={softInfoBox("warning")}>
+                Nenhum locker ativo encontrado para a região {region}.
+              </div>
+            ) : (
+              <>
+                <label style={labelCompact}>
+                  Locker
+                  <select
+                    value={selectedLockerId}
+                    onChange={(e) => setSelectedLockerId(e.target.value)}
+                    style={{ ...selectCompact, backgroundColor: "#2d2d3a" }}
+                  >
+                    {lockers.map((locker) => (
+                      <option key={locker.locker_id} value={locker.locker_id}>
+                        {locker.display_name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div style={infoCardStyleCompact}>
+                  <InfoRow label="fonte" value={lockersSource === "gateway" ? "gateway /lockers" : "fallback local"} />
+                  <InfoRow label="locker_id" value={selectedLocker?.locker_id || "-"} />
+                  <InfoRow label="site_id" value={selectedLocker?.site_id || "-"} />
+                  <InfoRow label="backend_region" value={selectedLocker?.backend_region || "-"} />
+                  <InfoRow label="métodos" value={(selectedLocker?.payment_methods || []).join(", ") || "-"} />
+                  <InfoRow label="endereço" value={formatLockerAddress(selectedLocker)} />
+                </div>
+
+                {lockersError ? <pre style={errorPre}>{lockersError}</pre> : null}
+              </>
+            )}
+          </section>
+
           <section style={panelStyleCompact}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
               <div style={{ fontWeight: 800 }}>Gavetas (1–24)</div>
@@ -1604,10 +1904,9 @@ export default function LockerDashboard({ region = "PT" }) {
                 ))}
               </div>
 
-
               <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ fontSize: 12, opacity: 0.75 }}>
-                  Região: <b>{region}</b> • Total: <b>{ordersTotal}</b>
+                  Região: <b>{region}</b> • Locker: <b>{selectedLocker?.locker_id || "-"}</b> • Total: <b>{ordersTotal}</b>
                   {showOrdersPanel ? (
                     <>
                       {" "}• Exibindo: <b>{visibleOrdersFrom}-{visibleOrdersTo}</b>
@@ -1624,6 +1923,7 @@ export default function LockerDashboard({ region = "PT" }) {
                   <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
                   <option value="PAID_PENDING_PICKUP">PAID_PENDING_PICKUP</option>
                   <option value="PICKED_UP">PICKED_UP</option>
+                  <option value="DISPENSED">DISPENSED</option>
                   <option value="EXPIRED">EXPIRED</option>
                   <option value="EXPIRED_CREDIT_50">EXPIRED_CREDIT_50</option>
                 </select>
@@ -1690,10 +1990,11 @@ export default function LockerDashboard({ region = "PT" }) {
                       border: "1px solid rgba(255,255,255,0.10)",
                     }}
                   >
-                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1360 }}>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 1500 }}>
                       <thead>
                         <tr style={{ background: "rgba(255,255,255,0.06)" }}>
                           <th style={thStyle}>Order</th>
+                          <th style={thStyle}>Locker</th>
                           <th style={thStyle}>Origem</th>
                           <th style={thStyle}>Status</th>
                           <th style={thStyle}>Método</th>
@@ -1713,47 +2014,37 @@ export default function LockerDashboard({ region = "PT" }) {
                       <tbody>
                         {ordersLoading ? (
                           <tr>
-                            <td style={tdStyle} colSpan={15}>
+                            <td style={tdStyle} colSpan={16}>
                               Carregando pedidos...
                             </td>
                           </tr>
                         ) : ordersData.length === 0 ? (
                           <tr>
-                            <td style={tdStyle} colSpan={15}>
+                            <td style={tdStyle} colSpan={16}>
                               Nenhum pedido encontrado.
                             </td>
                           </tr>
                         ) : (
                           ordersData.map((item) => {
                             const highlight = getOperationalRowHighlight(item);
-                              return (
-                                <tr
-                                  key={item.order_id}
-                                  onClick={() => handleSelectOrder(item)}
-                                  style={{
-                                    cursor: "pointer",
-                                    background:
-                                      currentOrder?.order_id === item.order_id
-                                        ? "rgba(27,88,131,0.35)"
-                                        : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
-                                          ? "rgba(179,38,30,0.10)"
-                                          : highlight.bg !== "transparent"
-                                            ? highlight.bg
-                                            : "transparent",
-                                  }}
-                                >
-                                <td
-                                  style={{
-                                    ...tdStyle,
-                                    borderLeft: highlight.borderLeft,
-                                    fontWeight:
-                                      item.channel === "KIOSK" && item.status === "DISPENSED"
-                                        ? 700
-                                        : tdStyle.fontWeight,
-                                  }}
-                                >
-                                  {item.order_id}
-                                </td>
+                            return (
+                              <tr
+                                key={item.order_id}
+                                onClick={() => handleSelectOrder(item)}
+                                style={{
+                                  cursor: "pointer",
+                                  background:
+                                    currentOrder?.order_id === item.order_id
+                                      ? "rgba(27,88,131,0.35)"
+                                      : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
+                                        ? "rgba(179,38,30,0.10)"
+                                        : highlight.bg !== "transparent"
+                                          ? highlight.bg
+                                          : "transparent",
+                                }}
+                              >
+                                <td style={{ ...tdStyle, borderLeft: highlight.borderLeft }}>{item.order_id}</td>
+                                <td style={tdStyle}>{item.totem_id || "-"}</td>
                                 <td style={tdStyle}>
                                   {item.channel ? (
                                     <span style={genericBadgeStyle(CHANNEL_META[item.channel])}>
@@ -1850,7 +2141,6 @@ export default function LockerDashboard({ region = "PT" }) {
           </section>
         </div>
 
-        {/* COLUNA DIREITA */}
         <div style={{ display: "grid", gap: 12 }}>
           <section
             style={{
@@ -1871,15 +2161,10 @@ export default function LockerDashboard({ region = "PT" }) {
               <div style={softInfoBox(currentOrderMeta.tone === "danger" ? "warning" : currentOrderMeta.tone === "info" ? "info" : "normal")}>
                 <div>
                   <b>{currentOrderMeta.label}</b>
-                  {currentOrder?.allocation?.slot ? (
-                    <> • Gaveta <b>{currentOrder.allocation.slot}</b></>
-                  ) : null}
-                  {currentOrder?.payment_method ? (
-                    <> • Método <b>{currentOrder.payment_method}</b></>
-                  ) : null}
-                  {currentOrder?.pickup_id ? (
-                    <> • Pickup <b>{currentOrder.pickup_id}</b></>
-                  ) : null}
+                  {currentOrder?.allocation?.slot ? <> • Gaveta <b>{currentOrder.allocation.slot}</b></> : null}
+                  {currentOrder?.payment_method ? <> • Método <b>{currentOrder.payment_method}</b></> : null}
+                  {currentOrder?.pickup_id ? <> • Pickup <b>{currentOrder.pickup_id}</b></> : null}
+                  {currentOrder?.totem_id ? <> • Locker <b>{currentOrder.totem_id}</b></> : null}
                 </div>
 
                 {(currentPickupMeta || currentAllocationMeta) ? (
@@ -1906,22 +2191,21 @@ export default function LockerDashboard({ region = "PT" }) {
               </div>
             ) : hasActiveSlotSelection ? (
               <div style={softInfoBox(slotSelectionRemainingSec > 10 ? "normal" : "warning")}>
-                Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante para criar o pedido:{" "}
-                <b>{slotSelectionRemainingSec}s</b>
+                Locker: <b>{selectedLocker?.locker_id || "-"}</b> • Gaveta selecionada: <b>{selectedSlot}</b> • tempo restante: <b>{slotSelectionRemainingSec}s</b>
               </div>
             ) : (
               <div style={{ fontSize: 12, opacity: 0.82 }}>
-                Selecione uma gaveta disponível para iniciar a criação do pedido.
+                Selecione uma gaveta disponível e um locker para iniciar a criação do pedido.
               </div>
             )}
 
             <button
               onClick={createOnlineOrder}
-              disabled={orderLoading || payLoading}
+              disabled={orderLoading || payLoading || !selectedLocker}
               style={{
                 ...actionBtnCompact,
                 background: orderLoading ? "rgba(255,255,255,0.10)" : "#7a5f1f",
-                cursor: orderLoading || payLoading ? "not-allowed" : "pointer",
+                cursor: orderLoading || payLoading || !selectedLocker ? "not-allowed" : "pointer",
               }}
             >
               {orderLoading
@@ -1934,6 +2218,7 @@ export default function LockerDashboard({ region = "PT" }) {
             {currentOrder ? (
               <div style={infoCardStyleCompact}>
                 <InfoRow label="order_id" value={currentOrder.order_id} />
+                <InfoRow label="locker_id" value={currentOrder?.totem_id || selectedLocker?.locker_id || "-"} />
                 <InfoRow label="status" value={currentOrder.status} />
                 <InfoRow label="pickup_id" value={currentOrder.pickup_id || "-"} />
                 <InfoRow label="pickup_status" value={currentOrder.pickup_status || "-"} />
@@ -1942,18 +2227,9 @@ export default function LockerDashboard({ region = "PT" }) {
                 <InfoRow label="allocation_id" value={currentOrder?.allocation?.allocation_id ?? "-"} />
                 <InfoRow label="allocation_state" value={currentOrder?.allocation?.state ?? "-"} />
                 <InfoRow label="amount_cents" value={currentOrder?.amount_cents ?? "-"} />
-                <InfoRow
-                  label="expires_at"
-                  value={formatDateTime(currentOrder?.expires_at || currentOrder?.pickup_deadline_at, region)}
-                />
-                <InfoRow
-                  label="pickup_deadline_at"
-                  value={formatDateTime(currentOrder?.pickup_deadline_at, region)}
-                />
-                <InfoRow
-                  label="picked_up_at"
-                  value={formatDateTime(currentOrder?.picked_up_at, region)}
-                />
+                <InfoRow label="expires_at" value={formatDateTime(currentOrder?.expires_at || currentOrder?.pickup_deadline_at, region)} />
+                <InfoRow label="pickup_deadline_at" value={formatDateTime(currentOrder?.pickup_deadline_at, region)} />
+                <InfoRow label="picked_up_at" value={formatDateTime(currentOrder?.picked_up_at, region)} />
                 {currentOrder?.manual_code ? <InfoRow label="manual_code atual" value={currentOrder.manual_code} /> : null}
               </div>
             ) : (
@@ -1985,12 +2261,43 @@ export default function LockerDashboard({ region = "PT" }) {
                 onChange={(e) => setPayMethod(e.target.value)}
                 style={{ ...selectCompact, backgroundColor: "#2d2d3a" }}
               >
-                <option value="PIX">PIX</option>
-                <option value="CARTAO">CARTÃO</option>
-                <option value="MBWAY">MBWAY</option>
-                <option value="NFC">NFC</option>
+                {availablePaymentMethods.map((method) => (
+                  <option key={method} value={method}>
+                    {method === "CARTAO"
+                      ? "CARTÃO"
+                      : method === "MULTIBANCO_REFERENCE"
+                        ? "REFERÊNCIA MULTIBANCO"
+                        : method}
+                  </option>
+                ))}
               </select>
             </label>
+
+            {payMethod === "CARTAO" ? (
+              <label style={labelCompact}>
+                Tipo do cartão
+                <select
+                  value={cardType}
+                  onChange={(e) => setCardType(e.target.value)}
+                  style={{ ...selectCompact, backgroundColor: "#2d2d3a" }}
+                >
+                  <option value="creditCard">Crédito</option>
+                  <option value="debitCard">Débito</option>
+                </select>
+              </label>
+            ) : null}
+
+            {payMethod === "MBWAY" ? (
+              <label style={labelCompact}>
+                Telefone MB WAY
+                <input
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  style={inputCompact}
+                  placeholder="+351912345678"
+                />
+              </label>
+            ) : null}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <label style={labelCompact}>
@@ -2027,20 +2334,19 @@ export default function LockerDashboard({ region = "PT" }) {
                   Valor congelado no pedido atual: <b>{formatMoney(currentOrder.amount_cents)}</b>
                 </div>
               ) : null}
-
             </div>
 
             <button
               onClick={simulatePayment}
-              disabled={payLoading || orderLoading || isOrderAlreadyPaid}
+              disabled={payLoading || orderLoading || isOrderAlreadyPaid || !selectedLocker}
               style={{
                 ...actionBtnCompact,
                 background:
-                  payLoading || orderLoading || isOrderAlreadyPaid
+                  payLoading || orderLoading || isOrderAlreadyPaid || !selectedLocker
                     ? "rgba(255,255,255,0.08)"
                     : "#2d8a4a",
                 cursor:
-                  payLoading || orderLoading || isOrderAlreadyPaid
+                  payLoading || orderLoading || isOrderAlreadyPaid || !selectedLocker
                     ? "not-allowed"
                     : "pointer",
               }}

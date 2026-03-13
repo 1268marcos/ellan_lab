@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 Region = Literal["SP", "PT"]
 OrderChannel = Literal["ONLINE", "KIOSK"]
@@ -22,6 +22,18 @@ SlotState = Literal[
     "RESERVED",
     "LOCKED",
     "OUT_OF_STOCK",
+    "PAID_PENDING_PICKUP",
+]
+
+PaymentProvider = Literal[
+    "PIX",
+    "CARTAO",
+    "MBWAY",
+    "MULTIBANCO_REFERENCE",
+    "NFC",
+    "APPLE_PAY",
+    "GOOGLE_PAY",
+    "MERCADO_PAGO_WALLET",
 ]
 
 
@@ -37,6 +49,14 @@ class InternalEvent(BaseModel):
 
     data: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("totem_id")
+    @classmethod
+    def validate_totem_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("totem_id is required")
+        return normalized
+
 
 class InternalPaymentApprovedIn(BaseModel):
     order_id: str
@@ -44,13 +64,48 @@ class InternalPaymentApprovedIn(BaseModel):
     totem_id: str
     channel: OrderChannel
 
-    provider: str = Field(..., description="Ex.: pix, card, mbway")
-    transaction_id: str = Field(..., description="id do provedor")
-    amount_cents: int
+    provider: PaymentProvider = Field(
+        ...,
+        description="Ex.: PIX, CARTAO, MBWAY, MULTIBANCO_REFERENCE",
+    )
+    transaction_id: str = Field(..., description="ID da transação no provedor")
+    amount_cents: int = Field(..., gt=0)
     currency: str = Field(default="BRL", description="Moeda informada pelo chamador")
 
     device_fingerprint: Optional[str] = None
     ip: Optional[str] = None
+
+    @field_validator("totem_id")
+    @classmethod
+    def validate_totem_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("totem_id is required")
+        return normalized
+
+    @field_validator("provider", mode="before")
+    @classmethod
+    def normalize_provider(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if not normalized:
+            raise ValueError("provider is required")
+        return normalized
+
+    @field_validator("transaction_id")
+    @classmethod
+    def validate_transaction_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("transaction_id is required")
+        return normalized
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_currency(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if not normalized:
+            raise ValueError("currency is required")
+        return normalized
 
 
 class InternalPaymentApprovedOut(BaseModel):
@@ -64,8 +119,16 @@ class InternalPaymentApprovedOut(BaseModel):
 class InternalSetSlotStateIn(BaseModel):
     region: Region
     totem_id: str
-    slot: int
+    slot: int = Field(..., ge=1, le=24)
     state: SlotState
+
+    @field_validator("totem_id")
+    @classmethod
+    def validate_totem_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("totem_id is required")
+        return normalized
 
 
 class InternalSetSlotStateOut(BaseModel):
@@ -98,6 +161,22 @@ class PickupVerifyIn(BaseModel):
     porta: int
     qr: QRIn
 
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in {"SP", "PT"}:
+            raise ValueError("region must be SP or PT")
+        return normalized
+
+    @field_validator("locker_id", "gateway_id")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("field is required")
+        return normalized
+
 
 class PickupVerifyOut(BaseModel):
     ok: bool = True
@@ -121,6 +200,22 @@ class PickupConfirmIn(BaseModel):
     porta: int
     door: Optional[DoorInfo] = None
 
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in {"SP", "PT"}:
+            raise ValueError("region must be SP or PT")
+        return normalized
+
+    @field_validator("gateway_id", "locker_id")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("field is required")
+        return normalized
+
 
 class GatewayEventIn(BaseModel):
     event_id: str
@@ -132,8 +227,32 @@ class GatewayEventIn(BaseModel):
     request_id: Optional[str] = None
     payload: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("event_id", "event_type", "locker_id")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("field is required")
+        return normalized
+
 
 class EventsBatchIn(BaseModel):
     gateway_id: str
     region: str
     events: List[GatewayEventIn]
+
+    @field_validator("gateway_id")
+    @classmethod
+    def validate_gateway_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("gateway_id is required")
+        return normalized
+
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in {"SP", "PT"}:
+            raise ValueError("region must be SP or PT")
+        return normalized
