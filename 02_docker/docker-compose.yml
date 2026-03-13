@@ -262,40 +262,47 @@ services:
     ports:
       - "8003:8003"
     env_file:
-      - .env.${NODE_ENV:-development}  # Carrega variáveis comuns do ambiente
+      - .env.${NODE_ENV:-development}
     environment:
       - TZ=America/Sao_Paulo
 
       # chama backends por região
-      - BACKEND_SP_INTERNAL=http://backend_sp:8000 # internal
-      - BACKEND_PT_INTERNAL=http://backend_pt:8000 # internal
+      - BACKEND_SP_INTERNAL=http://backend_sp:8000
+      - BACKEND_PT_INTERNAL=http://backend_pt:8000
 
       # endpoint de preço
       - BACKEND_PRICE_PATH_TEMPLATE=/catalog/skus/{sku_id}
+
+      # gateway registry central
+      - PAYMENT_GATEWAY_INTERNAL=http://payment_gateway:8000
+      - PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE=/lockers/{locker_id}
 
       # internal token
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
 
       # QRCode
       - PICKUP_QR_SECRET=${PICKUP_QR_SECRET}
-      - QR_ROTATE_SEC=${QR_ROTATE_SEC}      
+      - QR_ROTATE_SEC=${QR_ROTATE_SEC}
 
-      # “modo DEV” para bypass de auth (só local)
-      # - DEV_BYPASS_AUTH=${DEV_BYPASS_AUTH}
-      # - DEV_USER_ID=${DEV_USER_ID}      
-
-      # order (para um pedido fake para implementar QR/pickup/totem antes do catálogo real ficar pronto)
-      # - DEV_ALLOW_UNKNOWN_SKU=true
-      # - DEV_DEFAULT_PRICE_CENTS=1000      
-
-      # DB do serviço (mantido como você está hoje)
+      # DB do serviço
       - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
 
-      # (opcional) se esse serviço precisar consultar central:
+      # migração automática controlada por ambiente
+      - RUN_DB_MIGRATIONS_ON_STARTUP=true
+
+      # timeout do backend client
+      - BACKEND_CLIENT_TIMEOUT_SEC=5
+
+      # central (opcional para consultas futuras)
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
 
-      # NODE_ENV para controle de ambiente
+      # ambiente
       - NODE_ENV=${NODE_ENV:-development}
+
+      # jobs internos
+      - EXPIRY_POLL_SEC=60
+      - LIFECYCLE_EVENTS_POLL_SEC=10
+
     volumes:
       - ../03_data/sqlite:/data/sqlite
     depends_on:
@@ -304,6 +311,8 @@ services:
       backend_sp:
         condition: service_healthy
       backend_pt:
+        condition: service_healthy
+      payment_gateway:
         condition: service_healthy
       order_lifecycle_service:
         condition: service_started

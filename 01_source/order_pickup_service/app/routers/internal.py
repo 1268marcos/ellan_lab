@@ -1,28 +1,27 @@
+# 01_source/order_pickup_service/app/routers/internal.py
 # Router: /internal/* (protegido por X-Internal-Token)
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
-import hashlib
-import requests
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
-
-from app.models.order import Order, OrderChannel, OrderStatus
+from app.core.lifecycle_client import LifecycleClientError
 from app.models.allocation import Allocation, AllocationState
-from app.models.pickup_token import PickupToken
+from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
-
+from app.models.pickup_token import PickupToken
 from app.schemas.internal import InternalPaymentApprovedIn as PaymentConfirmIn
 from app.services import backend_client
 from app.services.lifecycle_integration import cancel_prepayment_timeout_deadline
-from app.core.lifecycle_client import LifecycleClientError
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -134,12 +133,12 @@ def _reallocate_if_needed(db: Session, *, order: Order, allocation: Allocation) 
             },
         )
 
-    allocation.state = AllocationState.RELEASED
-    allocation.locked_until = None
+    allocation.mark_released()
 
     new_alloc = Allocation(
         id=new_allocation_id,
         order_id=order.id,
+        locker_id=order.totem_id,
         slot=int(new_slot),
         state=AllocationState.RESERVED_PENDING_PAYMENT,
         locked_until=None,
@@ -233,6 +232,7 @@ def payment_confirm(
     if provider_value:
         order.payment_method = provider_value
     order.paid_at = now
+    order.mark_payment_approved()
 
     token_id: Optional[str] = None
     manual_code: Optional[str] = None
@@ -244,7 +244,7 @@ def payment_confirm(
         order.pickup_deadline_at = deadline
         order.status = OrderStatus.PAID_PENDING_PICKUP
 
-        allocation.state = AllocationState.RESERVED_PAID_PENDING_PICKUP
+        allocation.mark_reserved_paid_pending_pickup()
         allocation.locked_until = deadline.replace(tzinfo=None)
 
         try:
@@ -259,7 +259,7 @@ def payment_confirm(
 
             if status == 409:
                 allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
-                allocation.state = AllocationState.RESERVED_PAID_PENDING_PICKUP
+                allocation.mark_reserved_paid_pending_pickup()
                 allocation.locked_until = deadline.replace(tzinfo=None)
 
                 try:
@@ -354,8 +354,7 @@ def payment_confirm(
         order.pickup_deadline_at = None
         order.status = OrderStatus.DISPENSED
 
-        allocation.state = AllocationState.OPENED_FOR_PICKUP
-        allocation.locked_until = None
+        allocation.mark_opened_for_pickup()
 
         try:
             backend_client.locker_commit(
@@ -369,8 +368,7 @@ def payment_confirm(
 
             if status == 409:
                 allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
-                allocation.state = AllocationState.OPENED_FOR_PICKUP
-                allocation.locked_until = None
+                allocation.mark_opened_for_pickup()
 
                 try:
                     backend_client.locker_commit(
@@ -498,8 +496,8 @@ def release_order(
         raise HTTPException(status_code=502, detail=f"backend release failed: {str(e)}")
 
     order.status = OrderStatus.EXPIRED
-    allocation.state = AllocationState.RELEASED
-    allocation.locked_until = None
+    order.mark_payment_expired()
+    allocation.mark_released()
 
     pickup = _get_active_pickup_by_order(db, order.id)
     if pickup:
@@ -581,6 +579,7 @@ def internal_order_status(
         },
         "allocation": None if not allocation else {
             "id": allocation.id,
+            "locker_id": allocation.locker_id,
             "slot": allocation.slot,
             "state": allocation.state.value,
             "locked_until": allocation.locked_until.isoformat() if allocation.locked_until else None,

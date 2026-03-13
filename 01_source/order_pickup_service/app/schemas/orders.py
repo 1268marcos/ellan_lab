@@ -1,3 +1,4 @@
+# 01_source/order_pickup_service/app/schemas/orders.py
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -22,7 +23,7 @@ class CreateOrderIn(BaseModel):
     @field_validator("totem_id")
     @classmethod
     def validate_totem_id(cls, value: str) -> str:
-        normalized = (value or "").strip()
+        normalized = (value or "").strip().upper()
         if not normalized:
             raise ValueError("totem_id is required")
         return normalized
@@ -56,6 +57,7 @@ class OrderListItemOut(BaseModel):
     status: str
     sku_id: str
     totem_id: str
+    locker_id: Optional[str] = None
     amount_cents: int
     payment_method: Optional[str] = None
 

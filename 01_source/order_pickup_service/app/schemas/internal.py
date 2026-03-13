@@ -25,7 +25,7 @@ SlotState = Literal[
     "PAID_PENDING_PICKUP",
 ]
 
-PaymentProvider = Literal[
+PaymentMethod = Literal[
     "PIX",
     "CARTAO",
     "MBWAY",
@@ -49,12 +49,28 @@ class InternalEvent(BaseModel):
 
     data: Dict[str, Any] = Field(default_factory=dict)
 
+    @field_validator("event_id", "event_type", "order_id")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("field is required")
+        return normalized
+
     @field_validator("totem_id")
     @classmethod
     def validate_totem_id(cls, value: str) -> str:
-        normalized = (value or "").strip()
+        normalized = (value or "").strip().upper()
         if not normalized:
             raise ValueError("totem_id is required")
+        return normalized
+
+    @field_validator("channel", mode="before")
+    @classmethod
+    def normalize_channel(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in {"ONLINE", "KIOSK"}:
+            raise ValueError("channel must be ONLINE or KIOSK")
         return normalized
 
 
@@ -64,9 +80,9 @@ class InternalPaymentApprovedIn(BaseModel):
     totem_id: str
     channel: OrderChannel
 
-    provider: PaymentProvider = Field(
+    provider: PaymentMethod = Field(
         ...,
-        description="Ex.: PIX, CARTAO, MBWAY, MULTIBANCO_REFERENCE",
+        description="Método de pagamento efetivamente aprovado. Ex.: PIX, CARTAO, MBWAY.",
     )
     transaction_id: str = Field(..., description="ID da transação no provedor")
     amount_cents: int = Field(..., gt=0)
@@ -75,12 +91,28 @@ class InternalPaymentApprovedIn(BaseModel):
     device_fingerprint: Optional[str] = None
     ip: Optional[str] = None
 
+    @field_validator("order_id")
+    @classmethod
+    def validate_order_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("order_id is required")
+        return normalized
+
     @field_validator("totem_id")
     @classmethod
     def validate_totem_id(cls, value: str) -> str:
-        normalized = (value or "").strip()
+        normalized = (value or "").strip().upper()
         if not normalized:
             raise ValueError("totem_id is required")
+        return normalized
+
+    @field_validator("channel", mode="before")
+    @classmethod
+    def normalize_channel(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if normalized not in {"ONLINE", "KIOSK"}:
+            raise ValueError("channel must be ONLINE or KIOSK")
         return normalized
 
     @field_validator("provider", mode="before")
@@ -107,6 +139,14 @@ class InternalPaymentApprovedIn(BaseModel):
             raise ValueError("currency is required")
         return normalized
 
+    @field_validator("device_fingerprint", "ip")
+    @classmethod
+    def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
 
 class InternalPaymentApprovedOut(BaseModel):
     ok: bool = True
@@ -125,7 +165,7 @@ class InternalSetSlotStateIn(BaseModel):
     @field_validator("totem_id")
     @classmethod
     def validate_totem_id(cls, value: str) -> str:
-        normalized = (value or "").strip()
+        normalized = (value or "").strip().upper()
         if not normalized:
             raise ValueError("totem_id is required")
         return normalized
@@ -160,6 +200,14 @@ class PickupVerifyIn(BaseModel):
     locker_id: str
     porta: int
     qr: QRIn
+
+    @field_validator("order_id")
+    @classmethod
+    def validate_order_id(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("order_id is required")
+        return normalized
 
     @field_validator("region")
     @classmethod
@@ -234,6 +282,14 @@ class GatewayEventIn(BaseModel):
         if not normalized:
             raise ValueError("field is required")
         return normalized
+
+    @field_validator("order_id", "request_id")
+    @classmethod
+    def normalize_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
 
 class EventsBatchIn(BaseModel):

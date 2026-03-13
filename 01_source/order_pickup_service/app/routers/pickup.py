@@ -1,29 +1,27 @@
-import os
-import hmac
+# 01_source/order_pickup_service/app/routers/pickup.py
 import hashlib
+import hmac
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.core.db import get_db
 from app.core.auth_dev import get_current_user_or_dev
-
+from app.core.db import get_db
+from app.models.allocation import Allocation
 from app.models.order import Order, OrderChannel, OrderStatus
-from app.models.allocation import Allocation, AllocationState
-from app.models.pickup import Pickup, PickupStatus, PickupRedeemVia
+from app.models.pickup import Pickup, PickupRedeemVia, PickupStatus
 from app.models.pickup_token import PickupToken
-
 from app.schemas.pickup import (
-    QrPayloadV1,
     PickupQrOut,
     PickupViewOut,
+    QrPayloadV1,
     TotemRedeemIn,
     TotemRedeemManualIn,
     TotemRedeemOut,
 )
-
 from app.services import backend_client
 
 router = APIRouter(tags=["pickup"])
@@ -221,8 +219,49 @@ def _get_active_token(db: Session, *, pickup_id: str) -> PickupToken:
     return tok
 
 
+def _resolve_locker_id(order: Order, allocation: Allocation | None) -> str | None:
+    if allocation and getattr(allocation, "locker_id", None):
+        return allocation.locker_id
+    if getattr(order, "totem_id", None):
+        return order.totem_id
+    return None
+
+
+def _ensure_expected_locker_id(*, payload_locker_id: str, resolved_locker_id: str | None) -> str:
+    normalized_payload = str(payload_locker_id or "").strip().upper()
+    normalized_resolved = str(resolved_locker_id or "").strip().upper()
+
+    if not normalized_resolved:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "LOCKER_CONTEXT_MISSING",
+                "message": "locker context missing for pickup redeem",
+                "retryable": True,
+            },
+        )
+
+    if normalized_payload != normalized_resolved:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "LOCKER_MISMATCH",
+                "message": "pickup is not valid for this locker",
+                "locker_id": normalized_payload,
+                "expected_locker_id": normalized_resolved,
+                "retryable": False,
+            },
+        )
+
+    return normalized_resolved
+
+
 @router.post("/orders/{order_id}/pickup-token")
-def legacy_generate_manual_code(order_id: str, db: Session = Depends(get_db), user=Depends(get_current_user_or_dev)):
+def legacy_generate_manual_code(
+    order_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
     order = (
         db.query(Order)
         .filter(
@@ -280,7 +319,11 @@ def legacy_generate_manual_code(order_id: str, db: Session = Depends(get_db), us
 
 
 @router.get("/me/pickups/{pickup_id}", response_model=PickupViewOut)
-def me_pickup_view(pickup_id: str, db: Session = Depends(get_db), user=Depends(get_current_user_or_dev)):
+def me_pickup_view(
+    pickup_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
     pickup = _get_pickup(db, pickup_id=pickup_id)
 
     order = (
@@ -295,12 +338,16 @@ def me_pickup_view(pickup_id: str, db: Session = Depends(get_db), user=Depends(g
     if not order:
         raise HTTPException(status_code=404, detail="pickup/order not found")
 
+    expires_at = pickup.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
     return PickupViewOut(
         pickup_id=pickup.id,
         order_id=order.id,
         region=pickup.region,
         status=pickup.status.value,
-        expires_at=pickup.expires_at.replace(tzinfo=timezone.utc) if pickup.expires_at.tzinfo is None else pickup.expires_at,
+        expires_at=expires_at,
         qr_rotate_sec=QR_ROTATE_SEC,
         token_id=pickup.current_token_id,
         manual_code_hint=None,
@@ -308,7 +355,11 @@ def me_pickup_view(pickup_id: str, db: Session = Depends(get_db), user=Depends(g
 
 
 @router.post("/me/pickups/{pickup_id}/qr", response_model=PickupQrOut)
-def me_pickup_qr(pickup_id: str, db: Session = Depends(get_db), user=Depends(get_current_user_or_dev)):
+def me_pickup_qr(
+    pickup_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
     pickup = _get_pickup(db, pickup_id=pickup_id)
 
     order = (
@@ -332,7 +383,7 @@ def me_pickup_qr(pickup_id: str, db: Session = Depends(get_db), user=Depends(get
 
     exp_dt = pickup.expires_at
     if exp_dt.tzinfo is None:
-      exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        exp_dt = exp_dt.replace(tzinfo=timezone.utc)
     exp_epoch = _epoch(exp_dt)
 
     issued_at = _issued_at_for_ctr(order)
@@ -356,10 +407,30 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
     qr = payload.qr
 
     if now.timestamp() > qr.exp:
-        raise HTTPException(status_code=409, detail={"type": "PICKUP_EXPIRED", "message": "pickup window expired", "retryable": False})
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "PICKUP_EXPIRED",
+                "message": "pickup window expired",
+                "retryable": False,
+            },
+        )
 
-    if not _verify_qr(pickup_id=qr.pickup_id, token_id=qr.token_id, ctr=qr.ctr, exp=qr.exp, sig=qr.sig):
-        raise HTTPException(status_code=401, detail={"type": "INVALID_QR_SIGNATURE", "message": "invalid QR signature", "retryable": False})
+    if not _verify_qr(
+        pickup_id=qr.pickup_id,
+        token_id=qr.token_id,
+        ctr=qr.ctr,
+        exp=qr.exp,
+        sig=qr.sig,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "INVALID_QR_SIGNATURE",
+                "message": "invalid QR signature",
+                "retryable": False,
+            },
+        )
 
     tok = (
         db.query(PickupToken)
@@ -371,32 +442,90 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
         .first()
     )
     if not tok or tok.pickup_id != qr.pickup_id:
-        raise HTTPException(status_code=401, detail={"type": "INVALID_OR_EXPIRED_TOKEN", "message": "invalid or expired token", "retryable": False})
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "INVALID_OR_EXPIRED_TOKEN",
+                "message": "invalid or expired token",
+                "retryable": False,
+            },
+        )
 
     pickup = _get_pickup(db, pickup_id=tok.pickup_id)
-    order = db.query(Order).filter(Order.id == pickup.order_id, Order.channel == OrderChannel.ONLINE).first()
+    order = (
+        db.query(Order)
+        .filter(Order.id == pickup.order_id, Order.channel == OrderChannel.ONLINE)
+        .first()
+    )
     if not order:
-        raise HTTPException(status_code=404, detail={"type": "ORDER_NOT_FOUND", "message": "order not found", "retryable": False})
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "order not found",
+                "retryable": False,
+            },
+        )
 
     if pickup.region != payload.region:
-        raise HTTPException(status_code=403, detail={"type": "WRONG_REGION", "message": "QR not valid for this region", "retryable": False})
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "WRONG_REGION",
+                "message": "QR not valid for this region",
+                "retryable": False,
+            },
+        )
 
     _ensure_pickup_window(pickup)
 
     issued_at = _issued_at_for_ctr(order)
     current_ctr = _calc_ctr(issued_at, QR_ROTATE_SEC)
     if qr.ctr not in (current_ctr, max(0, current_ctr - 1)):
-        raise HTTPException(status_code=401, detail={"type": "STALE_QR", "message": "QR is stale; refresh and try again", "retryable": True})
+        raise HTTPException(
+            status_code=401,
+            detail={
+                "type": "STALE_QR",
+                "message": "QR is stale; refresh and try again",
+                "retryable": True,
+            },
+        )
 
     allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
     if not allocation:
-        raise HTTPException(status_code=500, detail={"type": "ALLOCATION_NOT_FOUND", "message": "allocation not found", "retryable": True})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "ALLOCATION_NOT_FOUND",
+                "message": "allocation not found",
+                "retryable": True,
+            },
+        )
+
+    locker_id = _resolve_locker_id(order, allocation)
+    resolved_locker_id = _ensure_expected_locker_id(
+        payload_locker_id=payload.locker_id,
+        resolved_locker_id=locker_id,
+    )
 
     tok.used_at = now.replace(tzinfo=None)
 
-    backend_client.locker_light_on(order.region, allocation.slot)
-    backend_client.locker_open(order.region, allocation.slot)
-    backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
+    backend_client.locker_light_on(
+        order.region,
+        allocation.slot,
+        locker_id=resolved_locker_id,
+    )
+    backend_client.locker_open(
+        order.region,
+        allocation.slot,
+        locker_id=resolved_locker_id,
+    )
+    backend_client.locker_set_state(
+        order.region,
+        allocation.slot,
+        "OUT_OF_STOCK",
+        locker_id=resolved_locker_id,
+    )
 
     pickup.status = PickupStatus.REDEEMED
     pickup.current_token_id = None
@@ -404,8 +533,7 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
     pickup.redeemed_via = PickupRedeemVia.QR
 
     order.mark_as_picked_up()
-    allocation.state = AllocationState.PICKED_UP
-    allocation.locked_until = None
+    allocation.mark_picked_up()
 
     db.commit()
 
@@ -416,13 +544,18 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
     return TotemRedeemOut(
         pickup_id=pickup.id,
         order_id=order.id,
+        locker_id=resolved_locker_id,
         slot=allocation.slot,
         expires_at=exp_dt,
     )
 
 
 @router.post("/totem/pickups/redeem-manual", response_model=TotemRedeemOut)
-def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Session = Depends(get_db)):
+def totem_redeem_manual(
+    payload: TotemRedeemManualIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
     now = _utcnow()
     token_hash = _sha256(payload.manual_code)
 
@@ -449,9 +582,20 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Sess
         )
 
     pickup = _get_pickup(db, pickup_id=tok.pickup_id)
-    order = db.query(Order).filter(Order.id == pickup.order_id, Order.channel == OrderChannel.ONLINE).first()
+    order = (
+        db.query(Order)
+        .filter(Order.id == pickup.order_id, Order.channel == OrderChannel.ONLINE)
+        .first()
+    )
     if not order:
-        raise HTTPException(status_code=404, detail={"type": "ORDER_NOT_FOUND", "message": "order not found", "retryable": False})
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "order not found",
+                "retryable": False,
+            },
+        )
 
     if pickup.region != payload.region:
         _register_manual_redeem_failure(payload.region, payload.manual_code, request)
@@ -468,13 +612,39 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Sess
 
     allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
     if not allocation:
-        raise HTTPException(status_code=500, detail={"type": "ALLOCATION_NOT_FOUND", "message": "allocation not found", "retryable": True})
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "ALLOCATION_NOT_FOUND",
+                "message": "allocation not found",
+                "retryable": True,
+            },
+        )
+
+    locker_id = _resolve_locker_id(order, allocation)
+    resolved_locker_id = _ensure_expected_locker_id(
+        payload_locker_id=payload.locker_id,
+        resolved_locker_id=locker_id,
+    )
 
     tok.used_at = now.replace(tzinfo=None)
 
-    backend_client.locker_light_on(order.region, allocation.slot)
-    backend_client.locker_open(order.region, allocation.slot)
-    backend_client.locker_set_state(order.region, allocation.slot, "OUT_OF_STOCK")
+    backend_client.locker_light_on(
+        order.region,
+        allocation.slot,
+        locker_id=resolved_locker_id,
+    )
+    backend_client.locker_open(
+        order.region,
+        allocation.slot,
+        locker_id=resolved_locker_id,
+    )
+    backend_client.locker_set_state(
+        order.region,
+        allocation.slot,
+        "OUT_OF_STOCK",
+        locker_id=resolved_locker_id,
+    )
 
     pickup.status = PickupStatus.REDEEMED
     pickup.current_token_id = None
@@ -482,8 +652,7 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Sess
     pickup.redeemed_via = PickupRedeemVia.MANUAL
 
     order.mark_as_picked_up()
-    allocation.state = AllocationState.PICKED_UP
-    allocation.locked_until = None
+    allocation.mark_picked_up()
 
     db.commit()
 
@@ -496,6 +665,7 @@ def totem_redeem_manual(payload: TotemRedeemManualIn, request: Request, db: Sess
     return TotemRedeemOut(
         pickup_id=pickup.id,
         order_id=order.id,
+        locker_id=resolved_locker_id,
         slot=allocation.slot,
         expires_at=exp_dt,
     )

@@ -1,4 +1,4 @@
-# app/core/config.py
+# 01_source/payment_gateway/app/core/config.py
 import json
 import os
 from functools import cached_property
@@ -18,7 +18,7 @@ class Settings:
     # ------------------------------------------------------------------
     # Redis
     # ------------------------------------------------------------------
-    REDIS_HOST: str = os.getenv("REDIS_HOST", "redis_sp")
+    REDIS_HOST: str = os.getenv("REDIS_HOST", "redis_central")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
 
     # ------------------------------------------------------------------
@@ -59,9 +59,21 @@ class Settings:
     # ------------------------------------------------------------------
     # Compatibilidade legada
     # ------------------------------------------------------------------
-    DEFAULT_LOCKER_ID: Optional[str] = os.getenv("DEFAULT_LOCKER_ID")
-    LEGACY_LOCKER_ID_SP: Optional[str] = os.getenv("LOCKER_ID_SP")
-    LEGACY_LOCKER_ID_PT: Optional[str] = os.getenv("LOCKER_ID_PT")
+    DEFAULT_LOCKER_ID: Optional[str] = (
+        os.getenv("DEFAULT_LOCKER_ID")
+        or os.getenv("MACHINE_ID")
+        or os.getenv("LOCKER_ID")
+    )
+
+    LEGACY_LOCKER_ID_SP: Optional[str] = (
+        os.getenv("LOCKER_ID_SP")
+        or os.getenv("MACHINE_ID_SP")
+    )
+
+    LEGACY_LOCKER_ID_PT: Optional[str] = (
+        os.getenv("LOCKER_ID_PT")
+        or os.getenv("MACHINE_ID_PT")
+    )
 
     # ------------------------------------------------------------------
     # Multi-locker registry
@@ -118,7 +130,7 @@ class Settings:
 
         normalized: Dict[str, Dict[str, Any]] = {}
         for locker_id, cfg in parsed.items():
-            key = str(locker_id or "").strip()
+            key = str(locker_id or "").strip().upper()
             if not key:
                 raise RuntimeError("LOCKER_REGISTRY_JSON contém locker_id vazio.")
             if not isinstance(cfg, dict):
@@ -128,7 +140,7 @@ class Settings:
         return normalized
 
     def get_locker_config(self, locker_id: str) -> Optional[Dict[str, Any]]:
-        normalized = str(locker_id or "").strip()
+        normalized = str(locker_id or "").strip().upper()
         if not normalized:
             return None
         return self.locker_registry.get(normalized)

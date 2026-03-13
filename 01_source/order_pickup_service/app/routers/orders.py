@@ -130,6 +130,7 @@ def create_order(
     allocation = Allocation(
         id=allocation_id,
         order_id=order.id,
+        locker_id=payload.totem_id,
         slot=int(slot),
         state=AllocationState.RESERVED_PENDING_PAYMENT,
         locked_until=None,
@@ -240,6 +241,7 @@ def list_orders(
                 status=order.status.value,
                 sku_id=order.sku_id,
                 totem_id=order.totem_id,
+                locker_id=allocation.locker_id if allocation and allocation.locker_id else order.totem_id,
                 amount_cents=order.amount_cents,
                 payment_method=order.payment_method.value if order.payment_method else None,
                 allocation_id=allocation.id if allocation else None,

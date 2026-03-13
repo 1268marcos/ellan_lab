@@ -1,3 +1,4 @@
+# 01_source/order_pickup_service/app/jobs/lifecycle_events_consumer.py
 from __future__ import annotations
 
 import logging
@@ -75,6 +76,14 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
     return processed
 
 
+def _resolve_locker_id(*, order: Order, allocation: Allocation | None) -> str | None:
+    if allocation and getattr(allocation, "locker_id", None):
+        return allocation.locker_id
+    if getattr(order, "totem_id", None):
+        return order.totem_id
+    return None
+
+
 def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str, Any]) -> bool:
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -93,14 +102,24 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
     pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
 
     region = payload.get("region_code") or order.region
+    locker_id = _resolve_locker_id(order=order, allocation=allocation)
 
     if allocation and allocation.id:
         try:
-            backend_client.locker_release(region, allocation.id)
+            backend_client.locker_release(
+                region,
+                allocation.id,
+                locker_id=locker_id,
+            )
 
             # Pré-pagamento expirado: slot volta a ficar disponível
             if allocation.slot is not None:
-                backend_client.locker_set_state(region, int(allocation.slot), "AVAILABLE")
+                backend_client.locker_set_state(
+                    region,
+                    int(allocation.slot),
+                    "AVAILABLE",
+                    locker_id=locker_id,
+                )
         except Exception:
             logger.exception(
                 "prepayment_timeout_release_failed",
@@ -109,15 +128,16 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
                     "allocation_id": allocation.id,
                     "slot": allocation.slot,
                     "region": region,
+                    "locker_id": locker_id,
                 },
             )
             raise
 
     order.status = OrderStatus.EXPIRED
+    order.mark_payment_expired()
 
     if allocation:
-        allocation.state = AllocationState.RELEASED
-        allocation.locked_until = None
+        allocation.mark_released()
 
     if pickup and pickup.status == PickupStatus.ACTIVE:
         pickup.status = PickupStatus.CANCELLED
@@ -129,6 +149,7 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         extra={
             "order_id": order.id,
             "region": region,
+            "locker_id": locker_id,
             "allocation_id": allocation.id if allocation else None,
             "slot": allocation.slot if allocation else None,
         },

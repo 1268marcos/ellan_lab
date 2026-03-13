@@ -1,14 +1,15 @@
+# 01_source/order_pickup_service/app/jobs/expiry.py
 from __future__ import annotations
 
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Optional, Tuple
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.allocation import Allocation, AllocationState
+from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
 
@@ -52,6 +53,14 @@ def _try_import_credit():
         return None, None
 
 
+def _resolve_locker_id(*, order: Order, allocation: Allocation | None) -> str | None:
+    if allocation and getattr(allocation, "locker_id", None):
+        return allocation.locker_id
+    if getattr(order, "totem_id", None):
+        return order.totem_id
+    return None
+
+
 def run_expiry_once(db: Session) -> int:
     """
     Expira pedidos ONLINE que passaram do pickup_deadline_at:
@@ -80,10 +89,11 @@ def run_expiry_once(db: Session) -> int:
     if not expired_orders:
         return 0
 
-    logger.info(f"[expiry] encontrados {len(expired_orders)} pedidos expirados (batch={BATCH_SIZE})")
+    logger.info(
+        f"[expiry] encontrados {len(expired_orders)} pedidos expirados (batch={BATCH_SIZE})"
+    )
 
-    processed: list[Tuple[str, Optional[str], Optional[int], str]] = []
-    # (order_id, allocation_id, slot, region)
+    processed: list[dict] = []
 
     for order in expired_orders:
         try:
@@ -99,17 +109,26 @@ def run_expiry_once(db: Session) -> int:
             logger.error(f"[expiry] erro ao processar order={order.id}: {e}", exc_info=True)
 
     # efeitos externos fora da transação
-    for order_id, allocation_id, slot, region in processed:
+    for item in processed:
         try:
-            _external_effects(order_id=order_id, allocation_id=allocation_id, slot=slot, region=region)
+            _external_effects(
+                order_id=item["order_id"],
+                allocation_id=item["allocation_id"],
+                slot=item["slot"],
+                region=item["region"],
+                locker_id=item["locker_id"],
+            )
         except Exception as e:
-            logger.error(f"[expiry] erro efeitos externos order={order_id}: {e}", exc_info=True)
+            logger.error(
+                f"[expiry] erro efeitos externos order={item['order_id']}: {e}",
+                exc_info=True,
+            )
 
     logger.info(f"[expiry] batch finalizado: {changed}/{len(expired_orders)}")
     return changed
 
 
-def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str], Optional[int], str]]:
+def _process_one(db: Session, order: Order) -> Optional[dict]:
     if order.status != OrderStatus.PAID_PENDING_PICKUP:
         return None
 
@@ -126,6 +145,8 @@ def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str]
         .filter(Pickup.order_id == order.id)
         .first()
     )
+
+    locker_id = _resolve_locker_id(order=order, allocation=allocation)
 
     # 1) Crédito 50% (opcional)
     if ENABLE_CREDIT:
@@ -149,6 +170,7 @@ def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str]
 
     # 2) Atualiza Order
     order.status = OrderStatus.EXPIRED
+    order.mark_payment_expired()
 
     # 3) Atualiza Pickup
     pickup_id = None
@@ -173,20 +195,34 @@ def _process_one(db: Session, order: Order) -> Optional[Tuple[str, Optional[str]
             AllocationState.RESERVED_PENDING_PAYMENT,
             AllocationState.RESERVED_PAID_PENDING_PICKUP,
         ):
-            allocation.state = AllocationState.EXPIRED
-
-        allocation.locked_until = None
+            allocation.mark_expired()
+        else:
+            allocation.locked_until = None
 
     logger.info(
         f"[expiry] order={order.id} -> EXPIRED; "
+        f"locker_id={locker_id}; "
         f"pickup={pickup_id} -> {pickup.status.value if pickup else 'NONE'}; "
         f"alloc={alloc_id} slot={slot}"
     )
 
-    return (order.id, alloc_id, slot, region)
+    return {
+        "order_id": order.id,
+        "allocation_id": alloc_id,
+        "slot": slot,
+        "region": region,
+        "locker_id": locker_id,
+    }
 
 
-def _external_effects(*, order_id: str, allocation_id: Optional[str], slot: Optional[int], region: str) -> None:
+def _external_effects(
+    *,
+    order_id: str,
+    allocation_id: Optional[str],
+    slot: Optional[int],
+    region: str,
+    locker_id: Optional[str],
+) -> None:
     """
     Best-effort:
       - marca slot OUT_OF_STOCK (cinza)
@@ -195,24 +231,41 @@ def _external_effects(*, order_id: str, allocation_id: Optional[str], slot: Opti
     if slot is not None:
         for attempt in range(MAX_RETRIES):
             try:
-                backend_client.locker_set_state(region, int(slot), "OUT_OF_STOCK")
+                backend_client.locker_set_state(
+                    region,
+                    int(slot),
+                    "OUT_OF_STOCK",
+                    locker_id=locker_id,
+                )
                 break
             except Exception as e:
                 if attempt == MAX_RETRIES - 1:
-                    logger.error(f"[expiry] set_state falhou order={order_id} slot={slot}: {e}")
+                    logger.error(
+                        f"[expiry] set_state falhou order={order_id} slot={slot} locker_id={locker_id}: {e}"
+                    )
                 else:
-                    logger.warning(f"[expiry] set_state retry {attempt+1} order={order_id}: {e}")
+                    logger.warning(
+                        f"[expiry] set_state retry {attempt+1} order={order_id} locker_id={locker_id}: {e}"
+                    )
 
     if allocation_id:
         for attempt in range(MAX_RETRIES):
             try:
-                backend_client.locker_release(region, allocation_id)
+                backend_client.locker_release(
+                    region,
+                    allocation_id,
+                    locker_id=locker_id,
+                )
                 break
             except Exception as e:
                 if attempt == MAX_RETRIES - 1:
-                    logger.error(f"[expiry] locker_release falhou order={order_id} alloc={allocation_id}: {e}")
+                    logger.error(
+                        f"[expiry] locker_release falhou order={order_id} alloc={allocation_id} locker_id={locker_id}: {e}"
+                    )
                 else:
-                    logger.warning(f"[expiry] locker_release retry {attempt+1} order={order_id}: {e}")
+                    logger.warning(
+                        f"[expiry] locker_release retry {attempt+1} order={order_id} locker_id={locker_id}: {e}"
+                    )
 
 
 def run_expiry(db: Session) -> int:
