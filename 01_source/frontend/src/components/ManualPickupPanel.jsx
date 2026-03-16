@@ -29,6 +29,7 @@ const label = {
 
 export default function ManualPickupPanel({
   region = "PT",
+  lockerId = "",
   apiBase = "/api/op",
   onRedeemed,
 }) {
@@ -43,10 +44,17 @@ export default function ManualPickupPanel({
     setManualCode("");
     setResp("");
     setError("");
-  }, [region]);
+  }, [region, lockerId]);
 
   async function redeemManualCode() {
     const cleanCode = String(manualCode).trim();
+    const cleanLockerId = String(lockerId || "").trim();
+
+    if (!cleanLockerId) {
+      setError("Locker não selecionado.");
+      setResp("");
+      return;
+    }
 
     if (!cleanCode) {
       setError("Digite o código manual.");
@@ -64,6 +72,7 @@ export default function ManualPickupPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           region,
+          locker_id: cleanLockerId,
           manual_code: cleanCode,
         }),
       });
@@ -116,6 +125,10 @@ export default function ManualPickupPanel({
         Região atual: <b>{region}</b>
       </div>
 
+      <div style={{ fontSize: 12, opacity: 0.75 }}>
+        Locker atual: <b>{lockerId || "-"}</b>
+      </div>
+
       <label style={label}>
         Código manual
         <input
@@ -129,11 +142,11 @@ export default function ManualPickupPanel({
 
       <button
         onClick={redeemManualCode}
-        disabled={loading}
+        disabled={loading || !lockerId}
         style={{
           ...btn,
-          background: loading ? "rgba(255,255,255,0.08)" : "#2d8a4a",
-          cursor: loading ? "not-allowed" : "pointer",
+          background: loading || !lockerId ? "rgba(255,255,255,0.08)" : "#2d8a4a",
+          cursor: loading || !lockerId ? "not-allowed" : "pointer",
         }}
       >
         {loading ? "Validando..." : "Retirar com código"}

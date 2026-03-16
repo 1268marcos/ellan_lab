@@ -20,3 +20,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def init_db() -> None:
+    from app.core.db_migrations import run_startup_migrations
+
+    run_startup_migrations(engine)

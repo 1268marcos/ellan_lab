@@ -193,18 +193,17 @@ services:
   payment_gateway:
     build:
       context: ../01_source/payment_gateway
-      # context: /home/marcos/ellan_lab/01_source/payment_gateway  # Caminho ABSOLUTO
-      dockerfile: Dockerfile  # Opcional, se o nome for diferente
+      dockerfile: Dockerfile
     container_name: payment_gateway
-    restart: unless-stopped # mais controle em ambiente de produção     futuro usar always
+    restart: unless-stopped
     ports:
       - "8000:8000"
     env_file:
       - .env
     environment:
       # chama backends por região
-      - BACKEND_SP=http://backend_sp:8000 # internal
-      - BACKEND_PT=http://backend_pt:8000 # internal
+      - BACKEND_SP=http://backend_sp:8000
+      - BACKEND_PT=http://backend_pt:8000
 
       # redis central
       - REDIS_HOST=redis_central
@@ -213,16 +212,24 @@ services:
       # mqtt
       - MQTT_HOST=mqtt_broker
 
-      # timezone do container (não é referência de timestamp; no código use epoch UTC)
+      # timezone do container
       - TZ=America/Sao_Paulo
 
-      # sqlite local (resiliência) - SQLite persistente no host
+      # sqlite local (resiliência)
       - GATEWAY_SQLITE_PATH=/data/sqlite/gateway/events.db
 
-      # Postgres central (auditoria/eventos/pedidos online quando aplicável)
+      # Postgres central
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
 
-      # antifraude (pepper versionado) - valores vêm do .env (via .env)
+      # multi-locker registry central
+      - LOCKER_REGISTRY_JSON=${LOCKER_REGISTRY_JSON:-}
+
+      # compatibilidade legada opcional
+      - DEFAULT_LOCKER_ID=${DEFAULT_LOCKER_ID:-}
+      - LOCKER_ID_SP=${LOCKER_ID_SP:-}
+      - LOCKER_ID_PT=${LOCKER_ID_PT:-}
+
+      # antifraude (pepper versionado)
       - ANTIFRAUD_ACTIVE_PEPPER_VERSION=${ANTIFRAUD_ACTIVE_PEPPER_VERSION}
       - ANTIFRAUD_PEPPER_V1=${ANTIFRAUD_PEPPER_V1}
       - ANTIFRAUD_PEPPER_V2=${ANTIFRAUD_PEPPER_V2}
@@ -249,7 +256,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 60s  # 40s  # 🔥 AUMENTAR para 60s dar tempo de inicialização
+      start_period: 60s
 
   # =========================
   # ORDER PICKUP SERVICE - não tem healthcheck: ...

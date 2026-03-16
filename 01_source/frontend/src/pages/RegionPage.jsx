@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -193,6 +194,123 @@ function formatAddress(locker) {
   return parts.join(" • ");
 }
 
+function nowEpochSec() {
+  return Math.floor(Date.now() / 1000);
+}
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+function formatRemaining(sec) {
+  const safe = Math.max(0, Math.floor(Number(sec || 0)));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+
+  if (h > 0) return `${h}:${pad2(m)}:${pad2(s)}`;
+  return `${m}:${pad2(s)}`;
+}
+
+function formatEpochDateTime(epochSec, region) {
+  if (!epochSec) return "-";
+
+  try {
+    const dt = new Date(Number(epochSec) * 1000);
+    return dt.toLocaleString(region === "SP" ? "pt-BR" : "pt-PT", {
+      timeZone: region === "SP" ? "America/Sao_Paulo" : "Europe/Lisbon",
+      hour12: false,
+    });
+  } catch {
+    return "-";
+  }
+}
+
+function extractPendingPaymentContext(gatewayData) {
+  const payment = gatewayData?.payment || {};
+  const payload = payment?.payload || {};
+
+  return {
+    result: gatewayData?.result || null,
+    status: payment?.status || null,
+    gateway_status: payment?.gateway_status || null,
+    method: payment?.metodo || null,
+    value: payment?.valor ?? null,
+    currency: payment?.currency || null,
+    transaction_id: payment?.transaction_id || null,
+    instruction_type: payment?.instruction_type || null,
+    instruction: payload?.instruction || null,
+    expires_in_sec: payload?.expires_in_sec ?? null,
+    expires_at_epoch: payload?.expires_at_epoch ?? null,
+    qr_code_text: payload?.qr_code_text || null,
+    qr_code_image_base64: payload?.qr_code_image_base64 || null,
+    copy_paste_code: payload?.copy_paste_code || null,
+    customer_phone: payload?.customer_phone || null,
+    amount_cents: payload?.amount_cents ?? null,
+    raw: gatewayData,
+  };
+}
+
+function getOrCreateDeviceFingerprint() {
+  const key = "ellan_device_fp_v1";
+  let fp = localStorage.getItem(key);
+  if (!fp) {
+    fp = crypto.randomUUID();
+    localStorage.setItem(key, fp);
+  }
+  return fp;
+}
+
+function generateIdempotencyKey() {
+  return crypto.randomUUID();
+}
+
+function copyText(text) {
+  return navigator.clipboard.writeText(String(text || ""));
+}
+
+function resolveDisplayedPendingContext(gatewayPendingContext, createResp, paymentMethod) {
+  if (gatewayPendingContext) {
+    return gatewayPendingContext;
+  }
+
+  const preview = createResp?.payment_payload || null;
+  const instructionType = createResp?.payment_instruction_type || null;
+  const paymentStatus = createResp?.payment_status || null;
+
+  if (!preview || !instructionType) {
+    return null;
+  }
+
+  return {
+    result: "local_preview",
+    status: paymentStatus,
+    gateway_status: null,
+    method: paymentMethod || createResp?.payment_method || null,
+    value: null,
+    currency: null,
+    transaction_id: null,
+    instruction_type: instructionType,
+    instruction: preview?.instruction || null,
+    expires_in_sec: preview?.expires_in_sec ?? null,
+    expires_at_epoch: preview?.expires_at_epoch ?? null,
+    qr_code_text: preview?.qr_code_text || null,
+    qr_code_image_base64: preview?.qr_code_image_base64 || null,
+    copy_paste_code: preview?.copy_paste_code || null,
+    customer_phone: preview?.customer_phone || null,
+    amount_cents: preview?.amount_cents ?? null,
+    raw: createResp,
+  };
+}
+
+function isPendingPaymentResult(data) {
+  return (
+    data?.result === "pending_customer_action" ||
+    data?.result === "pending_provider_confirmation" ||
+    data?.result === "awaiting_integration"
+  );
+}
+
 export default function RegionPage({ region, mode = "kiosk" }) {
   const [availableLockers, setAvailableLockers] = useState([]);
   const [lockersLoading, setLockersLoading] = useState(false);
@@ -222,26 +340,49 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const [createResp, setCreateResp] = useState(null);
   const [paymentResp, setPaymentResp] = useState(null);
+  const [gatewayPaymentResp, setGatewayPaymentResp] = useState(null);
+  const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
   const [identifyResp, setIdentifyResp] = useState(null);
 
   const [identifyForm, setIdentifyForm] = useState(initialIdentify);
   const [paymentExtras, setPaymentExtras] = useState(initialPaymentExtras);
 
   const [loadingCreate, setLoadingCreate] = useState(false);
+  const [loadingGatewayPayment, setLoadingGatewayPayment] = useState(false);
   const [loadingPayment, setLoadingPayment] = useState(false);
   const [loadingIdentify, setLoadingIdentify] = useState(false);
 
   const [err, setErr] = useState(null);
+  const [, setTick] = useState(0);
 
   const backendBase = getBackendBaseByRegion(selectedLocker?.backend_region || region);
 
   const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
   const identifyUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/identify`, []);
+  const gatewayPaymentUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, []);
   const catalogSlotsUrl = useMemo(() => `${backendBase}/catalog/slots`, [backendBase]);
   const lockerSlotsUrl = useMemo(() => `${backendBase}/locker/slots`, [backendBase]);
 
   const currentOrderId = createResp?.order_id || null;
   const allowedPaymentMethods = selectedLocker?.payment_methods || [];
+
+  const displayedPendingContext = useMemo(
+    () => resolveDisplayedPendingContext(pendingPaymentContext, createResp, paymentMethod),
+    [pendingPaymentContext, createResp, paymentMethod]
+  );
+
+  const pendingSecondsRemaining = displayedPendingContext?.expires_at_epoch
+    ? Math.max(0, Number(displayedPendingContext.expires_at_epoch) - nowEpochSec())
+    : null;
+
+  const pendingExpired =
+    pendingSecondsRemaining != null && Number(pendingSecondsRemaining) <= 0;
+
+  const hasQrLikeContent = Boolean(
+    displayedPendingContext?.qr_code_text ||
+      displayedPendingContext?.copy_paste_code ||
+      displayedPendingContext?.qr_code_image_base64
+  );
 
   async function fetchLockersOnce() {
     setLockersLoading(true);
@@ -315,6 +456,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setSelectedCatalogItem(null);
     setCreateResp(null);
     setPaymentResp(null);
+    setGatewayPaymentResp(null);
+    setPendingPaymentContext(null);
     setIdentifyResp(null);
     setIdentifyForm(initialIdentify);
     setPaymentExtras(initialPaymentExtras);
@@ -363,6 +506,16 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [catalogSlotsUrl, lockerSlotsUrl, selectedLockerId]);
+
+  useEffect(() => {
+    if (!displayedPendingContext?.expires_at_epoch) return;
+
+    const interval = setInterval(() => {
+      setTick((prev) => prev + 1);
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [displayedPendingContext?.expires_at_epoch]);
 
   async function fetchCatalogSlots(silent = false) {
     if (!selectedLocker) {
@@ -452,6 +605,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setSelectedCatalogItem(item);
     setCreateResp(null);
     setPaymentResp(null);
+    setGatewayPaymentResp(null);
+    setPendingPaymentContext(null);
     setIdentifyResp(null);
     setErr(null);
   }
@@ -485,6 +640,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setErr(null);
     setCreateResp(null);
     setPaymentResp(null);
+    setGatewayPaymentResp(null);
+    setPendingPaymentContext(null);
     setIdentifyResp(null);
 
     setLoadingCreate(true);
@@ -504,6 +661,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-Device-Fingerprint": getOrCreateDeviceFingerprint(),
         },
         body: JSON.stringify(payload),
       });
@@ -519,6 +677,104 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       setErr(String(e?.message || e));
     } finally {
       setLoadingCreate(false);
+    }
+  }
+
+  async function initiateKioskPayment() {
+    if (!currentOrderId) {
+      setErr("Crie primeiro um pedido KIOSK.");
+      return;
+    }
+
+    if (!selectedCatalogItem?.slot) {
+      setErr("Selecione uma gaveta/produto antes de iniciar o pagamento.");
+      return;
+    }
+
+    if (!selectedLocker) {
+      setErr("Selecione um locker antes de iniciar o pagamento.");
+      return;
+    }
+
+    if (paymentMethod === "CARTAO" && !paymentExtras.cardType) {
+      setErr("Escolha se o cartão é crédito ou débito.");
+      return;
+    }
+
+    if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
+      setErr("Informe o telefone para o pagamento MB WAY.");
+      return;
+    }
+
+    setErr(null);
+    setPaymentResp(null);
+    setGatewayPaymentResp(null);
+    setPendingPaymentContext(null);
+
+    setLoadingGatewayPayment(true);
+    try {
+      const payload = {
+        regiao: region,
+        canal: "KIOSK",
+        metodo: paymentMethod,
+        valor: Number((Number(selectedCatalogItem.amount_cents || 0) / 100).toFixed(2)),
+        porta: Number(selectedCatalogItem.slot),
+        locker_id: totemId,
+        order_id: currentOrderId,
+      };
+
+      if (paymentMethod === "CARTAO") {
+        payload.card_type = paymentExtras.cardType;
+      }
+
+      if (paymentMethod === "MBWAY") {
+        payload.customer_phone = paymentExtras.customerPhone.trim();
+      }
+
+      if (paymentMethod === "APPLE_PAY") {
+        payload.wallet_provider = "applePay";
+      }
+
+      if (paymentMethod === "GOOGLE_PAY") {
+        payload.wallet_provider = "googlePay";
+      }
+
+      if (paymentMethod === "MERCADO_PAGO_WALLET") {
+        payload.wallet_provider = "mercadoPago";
+      }
+
+      const deviceFp = getOrCreateDeviceFingerprint();
+      const idemKey = generateIdempotencyKey();
+
+      const res = await fetch(gatewayPaymentUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Idempotency-Key": idemKey,
+          "X-Device-Fingerprint": deviceFp,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
+      }
+
+      setGatewayPaymentResp(data);
+
+      if (isPendingPaymentResult(data)) {
+        setPendingPaymentContext(extractPendingPaymentContext(data));
+        return;
+      }
+
+      if (data?.result === "approved" || data?.payment?.status === "APPROVED") {
+        await approveKioskPayment();
+      }
+    } catch (e) {
+      setErr(String(e?.message || e));
+    } finally {
+      setLoadingGatewayPayment(false);
     }
   }
 
@@ -547,6 +803,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
 
+      setPendingPaymentContext(null);
       setPaymentResp(data);
       await fetchCatalogSlots(true);
     } catch (e) {
@@ -880,24 +1137,275 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         </section>
 
         <section style={cardStyle}>
-          <h2 style={h2Style}>3. Aprovar pagamento KIOSK</h2>
+          <h2 style={h2Style}>3. Pagamento KIOSK</h2>
 
           <div style={subtleStyle}>
-            Continua como ação operacional/simulada. O objetivo desta tela é validar o fluxo de
-            KIOSK e acompanhar o pedido criado.
+            Fluxo operacional:
+            <br />
+            1. criar pedido KIOSK
+            <br />
+            2. iniciar pagamento no gateway
+            <br />
+            3. se ficar pendente, mostrar QR/código
+            <br />
+            4. simular conclusão do pagamento
           </div>
 
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 12, display: "grid", gap: 6 }}>
             <div><b>Pedido atual:</b> {currentOrderId || "nenhum"}</div>
+            <div><b>Método atual:</b> {paymentMethod || "-"}</div>
+            <div><b>Locker:</b> {totemId || "-"}</div>
+            <div><b>Gaveta:</b> {selectedCatalogItem?.slot ?? "-"}</div>
           </div>
 
-          <button
-            onClick={approveKioskPayment}
-            disabled={loadingPayment || !currentOrderId}
-            style={buttonPrimaryStyle}
-          >
-            {loadingPayment ? "Aprovando..." : "Aprovar pagamento"}
-          </button>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14 }}>
+            <button
+              onClick={initiateKioskPayment}
+              disabled={loadingGatewayPayment || !currentOrderId}
+              style={buttonSecondaryStyle}
+            >
+              {loadingGatewayPayment ? "Iniciando..." : "Iniciar pagamento no gateway"}
+            </button>
+
+            <button
+              onClick={approveKioskPayment}
+              disabled={loadingPayment || !currentOrderId}
+              style={buttonPrimaryStyle}
+            >
+              {loadingPayment ? "Confirmando..." : "Simular pagamento concluído"}
+            </button>
+          </div>
+
+          {gatewayPaymentResp ? (
+            <div style={okBoxStyle}>
+              <strong>Resposta do gateway</strong>
+              <div style={summaryListStyle}>
+                <div><b>result:</b> {gatewayPaymentResp.result || "-"}</div>
+                <div><b>status:</b> {gatewayPaymentResp.payment?.status || "-"}</div>
+                <div><b>gateway_status:</b> {gatewayPaymentResp.payment?.gateway_status || "-"}</div>
+                <div><b>metodo:</b> {gatewayPaymentResp.payment?.metodo || "-"}</div>
+                <div><b>transaction_id:</b> {gatewayPaymentResp.payment?.transaction_id || "-"}</div>
+              </div>
+            </div>
+          ) : null}
+
+          {displayedPendingContext ? (
+            <div
+              style={{
+                ...pendingCardStyle,
+                ...(pendingExpired ? expiredPendingCardStyle : null),
+              }}
+            >
+              <strong>
+                {pendingExpired
+                  ? "Pagamento pendente expirado"
+                  : "Pagamento pendente de ação do cliente"}
+              </strong>
+
+              <div style={summaryListStyle}>
+                <div><b>origem:</b> {pendingPaymentContext ? "gateway" : "preview local do create_order"}</div>
+                <div><b>método:</b> {displayedPendingContext.method || "-"}</div>
+                <div><b>status:</b> {displayedPendingContext.status || "-"}</div>
+                <div><b>instruction_type:</b> {displayedPendingContext.instruction_type || "-"}</div>
+                <div><b>expira em:</b> {formatEpochDateTime(displayedPendingContext.expires_at_epoch, region)}</div>
+                <div><b>tempo restante:</b> {pendingSecondsRemaining == null ? "-" : formatRemaining(pendingSecondsRemaining)}</div>
+              </div>
+
+              {displayedPendingContext.instruction ? (
+                <div style={infoNoticeStyle}>
+                  {displayedPendingContext.instruction}
+                </div>
+              ) : null}
+
+              {displayedPendingContext.qr_code_image_base64 ? (
+                <div style={pendingPaymentGridStyle}>
+                  <div style={pendingQrPanelStyle}>
+                    <img
+                      src={`data:image/png;base64,${displayedPendingContext.qr_code_image_base64}`}
+                      alt="QR Code de pagamento"
+                      style={{ width: 180, height: 180, objectFit: "contain" }}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <label style={labelStyle}>
+                      Código copia-e-cola
+                      <textarea
+                        readOnly
+                        value={
+                          displayedPendingContext.copy_paste_code ||
+                          displayedPendingContext.qr_code_text ||
+                          ""
+                        }
+                        style={textAreaStyle}
+                      />
+                    </label>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await copyText(
+                              displayedPendingContext.copy_paste_code ||
+                                displayedPendingContext.qr_code_text ||
+                                ""
+                            );
+                            setErr(null);
+                          } catch (e) {
+                            setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                          }
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Copiar código
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Ver JSON bruto
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : displayedPendingContext.qr_code_text ? (
+                <div style={pendingPaymentGridStyle}>
+                  <div style={pendingQrPanelStyle}>
+                    <QRCodeCanvas
+                      value={displayedPendingContext.qr_code_text}
+                      size={180}
+                      includeMargin={true}
+                    />
+                  </div>
+
+                  <div style={{ display: "grid", gap: 10 }}>
+                    <label style={labelStyle}>
+                      Código copia-e-cola
+                      <textarea
+                        readOnly
+                        value={
+                          displayedPendingContext.copy_paste_code ||
+                          displayedPendingContext.qr_code_text
+                        }
+                        style={textAreaStyle}
+                      />
+                    </label>
+
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await copyText(
+                              displayedPendingContext.copy_paste_code ||
+                                displayedPendingContext.qr_code_text
+                            );
+                            setErr(null);
+                          } catch (e) {
+                            setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                          }
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Copiar código
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Ver JSON bruto
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : displayedPendingContext.copy_paste_code ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <label style={labelStyle}>
+                    Código / referência
+                    <textarea
+                      readOnly
+                      value={displayedPendingContext.copy_paste_code}
+                      style={textAreaStyle}
+                    />
+                  </label>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await copyText(displayedPendingContext.copy_paste_code);
+                          setErr(null);
+                        } catch (e) {
+                          setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                        }
+                      }}
+                      style={buttonSecondaryStyle}
+                    >
+                      Copiar código
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                      }}
+                      style={buttonSecondaryStyle}
+                    >
+                      Ver JSON bruto
+                    </button>
+                  </div>
+                </div>
+              ) : displayedPendingContext.instruction_type === "DISPLAY_QR" ? (
+                <div style={warningNoticeStyle}>
+                  O gateway indicou fluxo de QR, mas ainda não devolveu
+                  `qr_code_text` / `qr_code_image_base64` / `copy_paste_code`.
+                  Isso indica inconsistência do payload retornado.
+                </div>
+              ) : null}
+
+              {displayedPendingContext.instruction_type === "PHONE_APPROVAL" &&
+              displayedPendingContext.customer_phone ? (
+                <div style={infoNoticeStyle}>
+                  Telefone informado para aprovação: {displayedPendingContext.customer_phone}
+                </div>
+              ) : null}
+
+              {displayedPendingContext.instruction_type === "DISPLAY_REFERENCE" &&
+              displayedPendingContext.amount_cents != null ? (
+                <div style={infoNoticeStyle}>
+                  Valor associado à referência:{" "}
+                  {formatMoney(
+                    displayedPendingContext.amount_cents,
+                    region === "SP" ? "BRL" : "EUR"
+                  )}
+                </div>
+              ) : null}
+
+              {!pendingExpired ? (
+                <div style={warningNoticeStyle}>
+                  Enquanto o pagamento estiver pendente, a gaveta deve permanecer reservada.
+                  A liberação automática deve ocorrer no backend ao fim do prazo.
+                </div>
+              ) : (
+                <div style={expiredNoticeStyle}>
+                  O prazo exibido para este pagamento já expirou. A gaveta deve ser liberada
+                  automaticamente pelo backend/lifecycle. Atualize a vitrine e valide se o slot
+                  voltou para `AVAILABLE`.
+                </div>
+              )}
+
+              {!hasQrLikeContent && !displayedPendingContext.instruction ? (
+                <div style={warningNoticeStyle}>
+                  O pagamento entrou em estado pendente, mas sem dados suficientes para exibição
+                  operacional ao cliente.
+                </div>
+              ) : null}
+            </div>
+          ) : null}
 
           {paymentResp && (
             <div style={okBoxStyle}>
@@ -966,6 +1474,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           <div><b>mode:</b> {mode}</div>
           <div><b>ORDER_PICKUP_BASE:</b> {ORDER_PICKUP_BASE}</div>
           <div><b>GATEWAY_BASE:</b> {GATEWAY_BASE}</div>
+          <div><b>gatewayPaymentUrl:</b> {gatewayPaymentUrl}</div>
           <div><b>backendBase:</b> {backendBase}</div>
           <div><b>catalogSlotsUrl:</b> {catalogSlotsUrl}</div>
           <div><b>createUrl:</b> {createUrl}</div>
@@ -1150,6 +1659,70 @@ const okBoxStyle = {
   borderRadius: 12,
   background: "rgba(31,122,63,0.15)",
   border: "1px solid rgba(31,122,63,0.35)",
+};
+
+const pendingCardStyle = {
+  marginTop: 16,
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(27,88,131,0.12)",
+  border: "1px solid rgba(27,88,131,0.35)",
+  display: "grid",
+  gap: 12,
+};
+
+const expiredPendingCardStyle = {
+  background: "rgba(179,38,30,0.12)",
+  border: "1px solid rgba(179,38,30,0.35)",
+};
+
+const pendingPaymentGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(180px, 220px) 1fr",
+  gap: 12,
+  alignItems: "start",
+};
+
+const pendingQrPanelStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#ffffff",
+  display: "grid",
+  placeItems: "center",
+};
+
+const infoNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  fontSize: 13,
+};
+
+const warningNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(199,146,0,0.14)",
+  border: "1px solid rgba(199,146,0,0.30)",
+  fontSize: 13,
+};
+
+const expiredNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(179,38,30,0.14)",
+  border: "1px solid rgba(179,38,30,0.30)",
+  fontSize: 13,
+};
+
+const textAreaStyle = {
+  minHeight: 120,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+  resize: "vertical",
 };
 
 const errorBoxStyle = {

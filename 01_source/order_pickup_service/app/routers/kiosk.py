@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/routers/kiosk.py
 # Aqui faz pedido KIOSK
 # Router: /kiosk/orders
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.lifecycle_client import LifecycleClientError
+from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import (
     CardType,
@@ -35,9 +37,7 @@ from app.services.lifecycle_integration import (
 )
 
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
-
-# janela curta só pra “segurar” enquanto paga no totem
-ALLOC_TTL_SEC = 120
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_naive() -> datetime:
@@ -77,6 +77,29 @@ def _resolve_card_type_enum(card_type_value: str | None) -> CardType | None:
         ) from exc
 
 
+def _resolve_kiosk_alloc_ttl_sec(*, region: str, payment_method: str) -> int:
+    ttl_sec = resolve_prepayment_timeout_seconds(
+        region_code=region,
+        order_channel=OrderChannel.KIOSK.value,
+        payment_method=payment_method,
+    )
+
+    if int(ttl_sec) <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "KIOSK_PAYMENT_TTL_POLICY_INVALID",
+                "message": "O TTL configurado deve ser maior que zero.",
+                "region": str(region or "").strip().upper(),
+                "channel": OrderChannel.KIOSK.value,
+                "payment_method": str(payment_method or "").strip().upper(),
+                "ttl_value": ttl_sec,
+            },
+        )
+
+    return int(ttl_sec)
+
+
 def _build_kiosk_payment_preview(
     *,
     payment_method: PaymentMethod,
@@ -86,10 +109,6 @@ def _build_kiosk_payment_preview(
     amount_cents: int,
     region: str,
 ) -> tuple[PaymentStatus, str | None, Dict[str, Any]]:
-    """
-    Pré-visualização local do estado de pagamento para a UI do KIOSK.
-    Não substitui a resposta do payment_gateway, mas já dá contexto operacional.
-    """
     expires_at_epoch = int(datetime.now(timezone.utc).timestamp()) + int(ttl_sec)
 
     if payment_method == PaymentMethod.PIX:
@@ -151,6 +170,8 @@ def _build_kiosk_payment_preview(
             "AWAITING_INTEGRATION",
             {
                 "instruction": f"O método {payment_method.value} está preparado, mas ainda depende de integração completa.",
+                "expires_in_sec": int(ttl_sec),
+                "expires_at_epoch": expires_at_epoch,
             },
         )
 
@@ -238,6 +259,46 @@ def _validate_kiosk_locker_context(payload: KioskOrderCreateIn) -> dict:
     return locker
 
 
+def _compensate_failed_kiosk_creation(
+    *,
+    db: Session,
+    order: Order,
+    allocation: Allocation,
+) -> None:
+    try:
+        backend_client.locker_release(
+            order.region,
+            allocation.id,
+            locker_id=order.totem_id,
+        )
+    except Exception:
+        logger.exception(
+            "kiosk_order_compensation_release_failed",
+            extra={
+                "order_id": order.id,
+                "allocation_id": allocation.id,
+                "region": order.region,
+                "locker_id": order.totem_id,
+            },
+        )
+        raise
+
+    try:
+        db.delete(allocation)
+        db.delete(order)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "kiosk_order_compensation_db_failed",
+            extra={
+                "order_id": order.id,
+                "allocation_id": allocation.id,
+            },
+        )
+        raise
+
+
 @router.post("/orders", response_model=KioskOrderOut)
 def kiosk_create_order(
     payload: KioskOrderCreateIn,
@@ -245,13 +306,6 @@ def kiosk_create_order(
     db: Session = Depends(get_db),
     x_device_fingerprint: str | None = Header(default=None, alias="X-Device-Fingerprint"),
 ):
-    """
-    PRESENCIAL:
-    - Guest por padrão
-    - Reserva slot por 120s (tempo do pagamento)
-    - Retorna slot e amount_cents para UI do totem seguir para pagamento
-    """
-
     _validate_kiosk_locker_context(payload)
 
     check_kiosk_antifraud(
@@ -260,6 +314,16 @@ def kiosk_create_order(
         totem_id=payload.totem_id,
         region=payload.region.value,
         device_fingerprint=x_device_fingerprint,
+    )
+
+    payment_method = _resolve_payment_method_enum(payload.payment_method.value)
+    card_type = _resolve_card_type_enum(
+        payload.card_type.value if payload.card_type else None
+    )
+
+    alloc_ttl_sec = _resolve_kiosk_alloc_ttl_sec(
+        region=payload.region.value,
+        payment_method=payment_method.value,
     )
 
     pricing = backend_client.get_sku_pricing(
@@ -280,7 +344,7 @@ def kiosk_create_order(
         alloc = backend_client.locker_allocate(
             payload.region.value,
             payload.sku_id,
-            ALLOC_TTL_SEC,
+            alloc_ttl_sec,
             request_id,
             payload.desired_slot,
             locker_id=payload.totem_id,
@@ -325,15 +389,10 @@ def kiosk_create_order(
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
-    ttl_sec = int(alloc.get("ttl_sec", ALLOC_TTL_SEC))
+    ttl_sec = int(alloc.get("ttl_sec", alloc_ttl_sec))
 
     if not allocation_id or slot is None:
         raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
-
-    payment_method = _resolve_payment_method_enum(payload.payment_method.value)
-    card_type = _resolve_card_type_enum(
-        payload.card_type.value if payload.card_type else None
-    )
 
     payment_status, instruction_type, payment_payload = _build_kiosk_payment_preview(
         payment_method=payment_method,
@@ -384,16 +443,41 @@ def kiosk_create_order(
             slot_id=str(allocation.slot),
             machine_id=order.totem_id,
             created_at=order.created_at,
+            payment_method=order.payment_method.value if order.payment_method else None,
         )
     except LifecycleClientError:
+        try:
+            _compensate_failed_kiosk_creation(
+                db=db,
+                order=order,
+                allocation=allocation,
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED_WITH_COMPENSATION_ERROR",
+                    "message": "Pedido criado localmente, falhou o registro do deadline e a compensação automática também falhou.",
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "channel": order.channel.value,
+                    "region": order.region,
+                    "locker_id": order.totem_id,
+                },
+            )
+
         raise HTTPException(
             status_code=503,
             detail={
                 "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED",
-                "message": "Pedido criado localmente, mas falhou ao registrar o deadline de pré-pagamento.",
+                "message": "Pedido revertido automaticamente após falha ao registrar o deadline de pré-pagamento.",
                 "order_id": order.id,
+                "allocation_id": allocation.id,
                 "channel": order.channel.value,
                 "region": order.region,
+                "locker_id": order.totem_id,
+                "compensated": True,
+                "local_records_deleted": True,
             },
         )
 
@@ -417,16 +501,6 @@ def kiosk_payment_approved(
     order_id: str,
     db: Session = Depends(get_db),
 ):
-    """
-    CHAMADO APÓS O PAGAMENTO SER APROVADO NO KIOSK.
-    Fluxo KIOSK:
-    - confirma alocação
-    - liga led
-    - abre gaveta
-    - marca slot como OUT_OF_STOCK
-    - pedido vira DISPENSED
-    """
-
     order = (
         db.query(Order)
         .filter(Order.id == order_id, Order.channel == OrderChannel.KIOSK)
@@ -550,10 +624,6 @@ def kiosk_identify_customer(
     payload: KioskCustomerIdentifyIn,
     db: Session = Depends(get_db),
 ):
-    """
-    Upgrade opcional do guest após pagamento:
-    registrar contato para recibo/benefícios.
-    """
     order = (
         db.query(Order)
         .filter(Order.id == payload.order_id, Order.channel == OrderChannel.KIOSK)

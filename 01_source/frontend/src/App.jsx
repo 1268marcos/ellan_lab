@@ -2,11 +2,15 @@ import React from "react";
 import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
 import LockerDashboard from "./pages/LockerDashboard.jsx";
 import RegionPage from "./pages/RegionPage.jsx";
+import DevLockerResetPage from "./pages/DevLockerResetPage.jsx";
 
 export default function App() {
   const location = useLocation();
 
   const getNavBackground = () => {
+    if (location.pathname.startsWith("/dev")) {
+      return "linear-gradient(135deg, rgba(138,35,35,0.95) 0%, rgba(70,10,10,0.95) 100%)";
+    }
     if (location.pathname.startsWith("/pt")) {
       return "linear-gradient(135deg, rgba(0,102,0,0.9) 0%, rgba(206,17,38,0.9) 70%)";
     }
@@ -17,12 +21,14 @@ export default function App() {
   };
 
   const getFlagEmoji = () => {
+    if (location.pathname.startsWith("/dev")) return "🛠️";
     if (location.pathname.startsWith("/pt")) return "🇵🇹";
     if (location.pathname.startsWith("/sp")) return "🇧🇷";
     return "";
   };
 
   const getContextLabel = () => {
+    if (location.pathname.startsWith("/dev")) return "DEV Admin";
     if (location.pathname.includes("/kiosk")) return "KIOSK Simulator";
     if (location.pathname === "/pt" || location.pathname === "/sp") return "Dashboard";
     return "ELLAN Lab Locker";
@@ -36,6 +42,7 @@ export default function App() {
           display: "flex",
           gap: 12,
           alignItems: "center",
+          flexWrap: "wrap",
           background: getNavBackground(),
           borderBottom: "1px solid rgba(255,255,255,0.10)",
         }}
@@ -52,6 +59,9 @@ export default function App() {
         <Link style={linkStyle} to="/pt/kiosk">
           /pt/kiosk
         </Link>
+        <Link style={devLinkStyle} to="/dev/reset-locker">
+          /dev/reset-locker
+        </Link>
 
         <span style={{ marginLeft: 10, opacity: 0.75, color: "white", fontSize: 12 }}>
           {getFlagEmoji()} {getContextLabel()}
@@ -67,6 +77,8 @@ export default function App() {
         <Route path="/sp/kiosk" element={<RegionPage region="SP" mode="kiosk" />} />
         <Route path="/pt/kiosk" element={<RegionPage region="PT" mode="kiosk" />} />
 
+        <Route path="/dev/reset-locker" element={<DevLockerResetPage />} />
+
         <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
       </Routes>
     </div>
@@ -80,4 +92,10 @@ const linkStyle = {
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.18)",
   background: "rgba(255,255,255,0.06)",
+};
+
+const devLinkStyle = {
+  ...linkStyle,
+  border: "1px solid rgba(255,120,120,0.35)",
+  background: "rgba(138,35,35,0.30)",
 };

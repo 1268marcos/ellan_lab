@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
+import { QRCodeCanvas } from "qrcode.react";
 
 /**
  * Estados das gavetas (use os mesmos nomes do backend)
@@ -251,6 +252,12 @@ const OPERATIONAL_HIGHLIGHT_LEGEND = [
   },
 ];
 
+const DIGITAL_WALLET_PROVIDER_BY_METHOD = {
+  APPLE_PAY: "applePay",
+  GOOGLE_PAY: "googlePay",
+  MERCADO_PAGO_WALLET: "mercadoPago",
+};
+
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
 }
@@ -373,6 +380,14 @@ function getDefaultPaymentMethodForLocker(locker, current) {
   if (current && methods.includes(current)) return current;
   if (methods.length > 0) return methods[0];
   return locker?.region === "SP" ? "PIX" : "CARTAO";
+}
+
+function getWalletProviderForMethod(method) {
+  return DIGITAL_WALLET_PROVIDER_BY_METHOD[method] || "";
+}
+
+function isDigitalWalletMethod(method) {
+  return Boolean(getWalletProviderForMethod(method));
 }
 
 function buildDefaultSkuId(region, slot, lockerId) {
@@ -664,6 +679,7 @@ function buildRedeemSummary(data, region, mode = "manual") {
   if (data?.order_id) lines.push(`Pedido: ${data.order_id}`);
   if (data?.pickup_id) lines.push(`Pickup: ${data.pickup_id}`);
   if (data?.slot) lines.push(`Gaveta: ${data.slot}`);
+  if (data?.locker_id) lines.push(`Locker: ${data.locker_id}`);
   if (data?.expires_at) lines.push(`Janela original: ${formatDateTime(data.expires_at, region)}`);
 
   return lines.join("\n");
@@ -682,9 +698,15 @@ function focusOrderFromListItem(item, setters) {
     setPayMethod,
     setPayValue,
     setSelectedLockerId,
+    setWalletProvider,
   } = setters;
 
-  if (item?.payment_method) setPayMethod(item.payment_method);
+  if (item?.payment_method) {
+    setPayMethod(item.payment_method);
+    const wallet = getWalletProviderForMethod(item.payment_method);
+    setWalletProvider(wallet || "");
+  }
+
   if (typeof item?.amount_cents === "number") setPayValue(Number(item.amount_cents) / 100);
   if (item?.totem_id) setSelectedLockerId(item.totem_id);
 
@@ -836,7 +858,7 @@ function OrdersCardList({
             </div>
 
             <div style={{ fontSize: 12, opacity: 0.85 }}>
-              Locker: <b>{item.totem_id || "-"}</b> • Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
+              Locker: <b>{item.locker_id || item.totem_id || "-"}</b> • Slot: <b>{item.slot ?? "-"}</b> • Valor: <b>{formatMoney(item.amount_cents)}</b>
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -883,6 +905,45 @@ const btnSmall = {
   color: "white",
   cursor: "pointer",
 };
+
+function extractPendingPaymentData(gatewayData) {
+  const payment = gatewayData?.payment || {};
+  const payload = payment?.payload || {};
+
+  return {
+    result: gatewayData?.result || null,
+    status: payment?.status || null,
+    gatewayStatus: payment?.gateway_status || null,
+    method: payment?.metodo || null,
+    amount: payment?.valor ?? null,
+    currency: payment?.currency || null,
+    transactionId: payment?.transaction_id || null,
+    instructionType: payment?.instruction_type || null,
+    instruction: payload?.instruction || null,
+    expiresInSec: payload?.expires_in_sec ?? null,
+    expiresAtEpoch: payload?.expires_at_epoch ?? null,
+    qrCodeText: payload?.qr_code_text || null,
+    qrCodeImageBase64: payload?.qr_code_image_base64 || null,
+    copyPasteCode: payload?.copy_paste_code || null,
+    raw: gatewayData,
+  };
+}
+
+function formatEpochDateTime(epochSec, region = "PT") {
+  if (!epochSec) return "-";
+
+  try {
+    const dt = new Date(Number(epochSec) * 1000);
+    if (Number.isNaN(dt.getTime())) return "-";
+
+    return dt.toLocaleString("pt-BR", {
+      timeZone: region === "SP" ? "America/Sao_Paulo" : "Europe/Lisbon",
+      hour12: false,
+    });
+  } catch {
+    return "-";
+  }
+}
 
 export default function LockerDashboard({ region = "PT" }) {
   const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
@@ -939,8 +1000,10 @@ export default function LockerDashboard({ region = "PT" }) {
   const [paySlot, setPaySlot] = useState(1);
   const [payResp, setPayResp] = useState("");
   const [payLoading, setPayLoading] = useState(false);
+  const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
   const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [walletProvider, setWalletProvider] = useState("");
 
   const [pickupResp, setPickupResp] = useState("");
   const [regenCodeLoading, setRegenCodeLoading] = useState(false);
@@ -995,6 +1058,7 @@ export default function LockerDashboard({ region = "PT" }) {
   const visibleOrdersTo = Math.min(ordersPage * ordersPageSize, ordersTotal);
   const ordersTableHeight = ordersTableDensity === "3" ? 3 * 44 + 44 : 10 * 44 + 44;
   const availablePaymentMethods = selectedLocker?.payment_methods || [];
+  const isWalletMethodSelected = isDigitalWalletMethod(payMethod);
 
   async function fetchLockersOnce() {
     setLockersLoading(true);
@@ -1056,6 +1120,7 @@ export default function LockerDashboard({ region = "PT" }) {
     setOrderError("");
     setPayResp("");
     setPickupResp("");
+    setPendingPaymentContext(null);
     setSlotSelectionExpiresAt(null);
     setOrdersPage(1);
   }, [selectedLockerId, selectedLocker]);
@@ -1073,6 +1138,13 @@ export default function LockerDashboard({ region = "PT" }) {
   useEffect(() => {
     if (payMethod !== "CARTAO") setCardType("creditCard");
     if (payMethod !== "MBWAY") setCustomerPhone("");
+
+    const wallet = getWalletProviderForMethod(payMethod);
+    if (wallet) {
+      setWalletProvider(wallet);
+    } else {
+      setWalletProvider("");
+    }
   }, [payMethod]);
 
   function selectSlot(slot) {
@@ -1102,6 +1174,7 @@ export default function LockerDashboard({ region = "PT" }) {
       setPayMethod,
       setPayValue,
       setSelectedLockerId,
+      setWalletProvider,
     });
   }
 
@@ -1174,7 +1247,9 @@ export default function LockerDashboard({ region = "PT" }) {
       let items = Array.isArray(data?.items) ? data.items : [];
 
       if (selectedLocker?.locker_id) {
-        items = items.filter((item) => item?.totem_id === selectedLocker.locker_id);
+        items = items.filter(
+          (item) => (item?.locker_id || item?.totem_id) === selectedLocker.locker_id
+        );
       }
 
       const total = Number(
@@ -1299,8 +1374,23 @@ export default function LockerDashboard({ region = "PT" }) {
       return;
     }
 
+    if (!payMethod) {
+      setOrderError("Selecione um método de pagamento.");
+      return;
+    }
+
     if (slotSelectionRemainingSec <= 0) {
       setOrderError("A seleção da gaveta expirou. Escolha novamente.");
+      return;
+    }
+
+    if (payMethod === "CARTAO" && !cardType) {
+      setOrderError("Escolha se o cartão é crédito ou débito.");
+      return;
+    }
+
+    if (payMethod === "MBWAY" && !customerPhone.trim()) {
+      setOrderError("Informe o telefone para pagamento MB WAY.");
       return;
     }
 
@@ -1312,18 +1402,30 @@ export default function LockerDashboard({ region = "PT" }) {
     setOrderError("");
     setPayResp("");
     setPickupResp("");
+    setPendingPaymentContext(null);
 
     try {
+      const payload = {
+        region,
+        sku_id: skuId,
+        totem_id: totemId,
+        desired_slot: slotNum,
+        amount_cents: Math.round(Number(payValue) * 100),
+        payment_method: payMethod,
+      };
+
+      if (payMethod === "CARTAO") {
+        payload.card_type = cardType;
+      }
+
+      if (payMethod === "MBWAY") {
+        payload.customer_phone = customerPhone.trim();
+      }
+
       const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          region,
-          sku_id: skuId,
-          totem_id: totemId,
-          desired_slot: slotNum,
-          amount_cents: Math.round(Number(payValue) * 100),
-        }),
+        body: JSON.stringify(payload),
       });
 
       const text = await res.text();
@@ -1349,6 +1451,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
       if (data?.payment_method) {
         setPayMethod(data.payment_method);
+        setWalletProvider(getWalletProviderForMethod(data.payment_method));
       }
 
       setPayResp(JSON.stringify({ step: "order_created", response: data }, null, 2));
@@ -1533,6 +1636,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
     setPayLoading(true);
     setPayResp("");
+    setPendingPaymentContext(null);
 
     try {
       const gatewayPayload = {
@@ -1551,6 +1655,18 @@ export default function LockerDashboard({ region = "PT" }) {
 
       if (payMethod === "MBWAY") {
         gatewayPayload.customer_phone = customerPhone.trim();
+      }
+
+      if (payMethod === "APPLE_PAY") {
+        gatewayPayload.wallet_provider = "applePay";
+      }
+
+      if (payMethod === "GOOGLE_PAY") {
+        gatewayPayload.wallet_provider = "googlePay";
+      }
+
+      if (payMethod === "MERCADO_PAGO_WALLET") {
+        gatewayPayload.wallet_provider = "mercadoPago";
       }
 
       const gatewayRes = await fetch(gatewayUrl, {
@@ -1585,12 +1701,11 @@ export default function LockerDashboard({ region = "PT" }) {
         gatewayResult === "pending_provider_confirmation" ||
         gatewayResult === "awaiting_integration"
       ) {
+        const pendingData = extractPendingPaymentData(gatewayData);
+        setPendingPaymentContext(pendingData);
+
         setPayResp(
-          `ℹ️ O gateway respondeu com fluxo não concluído automaticamente.\n\n--- JSON bruto ---\n${JSON.stringify(
-            gatewayData,
-            null,
-            2
-          )}`
+          `ℹ️ O gateway respondeu com fluxo não concluído automaticamente.\n\nMétodo: ${pendingData.method || "-"}\nStatus: ${pendingData.status || "-"}\nInstruction type: ${pendingData.instructionType || "-"}\nTransaction ID: ${pendingData.transactionId || "-"}`
         );
         return;
       }
@@ -1608,6 +1723,8 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const transactionId = pickGatewayTransactionId(gatewayData);
       const confirmData = await confirmPaymentInternally(currentOrder.order_id, transactionId);
+
+      setPendingPaymentContext(null);
 
       setCurrentOrder((prev) =>
         prev
@@ -2044,7 +2161,7 @@ export default function LockerDashboard({ region = "PT" }) {
                                 }}
                               >
                                 <td style={{ ...tdStyle, borderLeft: highlight.borderLeft }}>{item.order_id}</td>
-                                <td style={tdStyle}>{item.totem_id || "-"}</td>
+                                <td style={tdStyle}>{item.locker_id || item.totem_id || "-"}</td>
                                 <td style={tdStyle}>
                                   {item.channel ? (
                                     <span style={genericBadgeStyle(CHANNEL_META[item.channel])}>
@@ -2299,6 +2416,25 @@ export default function LockerDashboard({ region = "PT" }) {
               </label>
             ) : null}
 
+            {isWalletMethodSelected ? (
+              <label style={labelCompact}>
+                Carteira digital
+                <select
+                  value={walletProvider}
+                  onChange={(e) => setWalletProvider(e.target.value)}
+                  style={{ ...selectCompact, backgroundColor: "#2d2d3a" }}
+                >
+                  <option value={getWalletProviderForMethod(payMethod)}>
+                    {payMethod === "APPLE_PAY"
+                      ? "Apple Pay"
+                      : payMethod === "GOOGLE_PAY"
+                        ? "Google Pay"
+                        : "Mercado Pago"}
+                  </option>
+                </select>
+              </label>
+            ) : null}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
               <label style={labelCompact}>
                 Gaveta
@@ -2361,6 +2497,134 @@ export default function LockerDashboard({ region = "PT" }) {
             </button>
 
             {payResp ? <pre style={resultPreCompact}>{payResp}</pre> : null}
+
+            {pendingPaymentContext ? (
+              <div
+                style={{
+                  marginTop: 10,
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(255,255,255,0.04)",
+                  padding: 12,
+                  display: "grid",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 800 }}>
+                  Ação do cliente pendente
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  <b>Método:</b> {pendingPaymentContext.method || "-"} •{" "}
+                  <b>Status:</b> {pendingPaymentContext.status || "-"} •{" "}
+                  <b>Instruction type:</b> {pendingPaymentContext.instructionType || "-"}
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  <b>Transaction ID:</b> {pendingPaymentContext.transactionId || "-"}
+                </div>
+
+                <div style={{ fontSize: 12, opacity: 0.85 }}>
+                  <b>Expira em:</b>{" "}
+                  {pendingPaymentContext.expiresAtEpoch
+                    ? formatEpochDateTime(pendingPaymentContext.expiresAtEpoch, region)
+                    : "-"}
+                </div>
+
+                {pendingPaymentContext.instruction ? (
+                  <div style={softInfoBox("info")}>
+                    {pendingPaymentContext.instruction}
+                  </div>
+                ) : null}
+
+                {pendingPaymentContext.instructionType === "DISPLAY_QR" &&
+                pendingPaymentContext.qrCodeText ? (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: isNarrow ? "1fr" : "180px 1fr",
+                      gap: 12,
+                      alignItems: "start",
+                    }}
+                  >
+                    <div
+                      style={{
+                        padding: 10,
+                        borderRadius: 12,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                        background: "#0b0d10",
+                        display: "grid",
+                        placeItems: "center",
+                      }}
+                    >
+                      <QRCodeCanvas
+                        value={pendingPaymentContext.qrCodeText}
+                        size={150}
+                        includeMargin={true}
+                      />
+                    </div>
+
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 12, opacity: 0.8 }}>
+                        QR PIX / código de pagamento
+                      </div>
+
+                      <textarea
+                        readOnly
+                        value={pendingPaymentContext.copyPasteCode || pendingPaymentContext.qrCodeText}
+                        style={{
+                          width: "100%",
+                          minHeight: 120,
+                          padding: 10,
+                          borderRadius: 10,
+                          border: "1px solid rgba(255,255,255,0.16)",
+                          background: "rgba(255,255,255,0.06)",
+                          color: "white",
+                          resize: "vertical",
+                        }}
+                      />
+
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText(
+                                pendingPaymentContext.copyPasteCode || pendingPaymentContext.qrCodeText
+                              );
+                              setPayResp((prev) =>
+                                `${prev || ""}\n\n✅ Código de pagamento copiado para a área de transferência.`
+                              );
+                            } catch (e) {
+                              setPayResp((prev) =>
+                                `${prev || ""}\n\n❌ Falha ao copiar código: ${String(e?.message || e)}`
+                              );
+                            }
+                          }}
+                          style={btnSmall}
+                        >
+                          Copiar código
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            setPayResp(
+                              `${payResp || ""}\n\n--- JSON bruto pendente ---\n${JSON.stringify(
+                                pendingPaymentContext.raw,
+                                null,
+                                2
+                              )}`
+                            )
+                          }
+                          style={btnSmall}
+                        >
+                          Ver JSON bruto
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </section>
 
           <section style={panelStyleCompact}>
@@ -2386,12 +2650,15 @@ export default function LockerDashboard({ region = "PT" }) {
 
             <PickupQRCodePanel
               region={region}
+              lockerId={selectedLocker?.locker_id || ""}
               pickupId={currentOrder?.pickup_id || ""}
+              orderId={currentOrder?.order_id || ""}
               apiBase={ORDER_PICKUP_BASE}
             />
 
             <ManualPickupPanel
               region={region}
+              lockerId={selectedLocker?.locker_id || ""}
               apiBase={ORDER_PICKUP_BASE}
               onRedeemed={handleManualRedeemed}
             />

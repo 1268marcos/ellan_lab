@@ -2,16 +2,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 /**
- * Pickup QR Panel (REAL MODE)
+ * Pickup QR Panel
  * - Busca QR rotativo do backend:
  *   POST /me/pickups/{pickupId}/qr  -> { qr: {...}, refresh_in_sec }
  * - Mostra contagem regressiva e validade total (exp)
- * - Exibe manual_code (fallback sem QR) via endpoint legado:
+ * - Exibe manual_code (fallback sem QR) via endpoint:
  *   POST /orders/{order_id}/pickup-token -> { manual_code, expires_at, ... }
  *
  * Observação:
- * - Em DEV você está com bypass de auth no order_pickup_service, então funciona sem Bearer.
- * - Em PROD, este painel deve chamar com autenticação do usuário (cookie/JWT).
+ * - pickupId aqui deve ser o pickup_id real
+ * - o fluxo atual de redeem manual fica em ManualPickupPanel
+ * - este componente não faz redeem; ele apenas gera/mostra QR e código manual
  */
 
 function nowSec() {
@@ -65,7 +66,9 @@ const input = {
 
 export default function PickupQRCodePanel({
   region = "PT",
-  pickupId, // MVP atual: usamos order_id real como pickup_id
+  lockerId = "",
+  pickupId = "",
+  orderId = "",
   apiBase = "http://localhost:8003",
 }) {
   const [qrResp, setQrResp] = useState(null); // { qr, refresh_in_sec }
@@ -76,31 +79,26 @@ export default function PickupQRCodePanel({
   const [manualCodeError, setManualCodeError] = useState("");
   const [loadingManual, setLoadingManual] = useState(false);
 
-  const [tick, setTick] = useState(0); // timer 1s
   const refreshTimerRef = useRef(null);
 
-  // Test mode (opcional)
   const [testMode, setTestMode] = useState(false);
 
-  // persistência local (ajuda UX do cliente)
   useEffect(() => {
     if (!pickupId) return;
-    const k = `ellan_manual_code_${pickupId}`;
-    const saved = localStorage.getItem(k);
+    const storageKey = `ellan_manual_code_${lockerId || "NO_LOCKER"}_${pickupId}`;
+    const saved = localStorage.getItem(storageKey);
     if (saved) setManualCode(saved);
-  }, [pickupId]);
+  }, [pickupId, lockerId]);
 
   useEffect(() => {
     if (!pickupId) return;
-    const k = `ellan_manual_code_${pickupId}`;
-    if (manualCode) localStorage.setItem(k, manualCode);
-  }, [pickupId, manualCode]);
-
-  // relógio 1s (contagens regressivas)
-  useEffect(() => {
-    const t = setInterval(() => setTick((x) => x + 1), 1000);
-    return () => clearInterval(t);
-  }, []);
+    const storageKey = `ellan_manual_code_${lockerId || "NO_LOCKER"}_${pickupId}`;
+    if (manualCode) {
+      localStorage.setItem(storageKey, manualCode);
+    } else {
+      localStorage.removeItem(storageKey);
+    }
+  }, [pickupId, lockerId, manualCode]);
 
   const qrEndpoint = useMemo(() => {
     if (!pickupId) return null;
@@ -108,11 +106,11 @@ export default function PickupQRCodePanel({
   }, [apiBase, pickupId]);
 
   const legacyManualEndpoint = useMemo(() => {
-    if (!pickupId) return null;
-    return `${apiBase}/orders/${encodeURIComponent(pickupId)}/pickup-token`;
-  }, [apiBase, pickupId]);
+    const effectiveOrderId = orderId || pickupId;
+    if (!effectiveOrderId) return null;
+    return `${apiBase}/orders/${encodeURIComponent(effectiveOrderId)}/pickup-token`;
+  }, [apiBase, orderId, pickupId]);
 
-  // ----- fetch QR -----
   async function fetchQrOnce() {
     if (!qrEndpoint) return;
     setLoadingQr(true);
@@ -140,17 +138,14 @@ export default function PickupQRCodePanel({
     }
   }
 
-  // auto refresh: usa refresh_in_sec vindo do backend (com margem)
   useEffect(() => {
     if (!pickupId) return;
 
-    // limpa timer anterior
     if (refreshTimerRef.current) {
       clearTimeout(refreshTimerRef.current);
       refreshTimerRef.current = null;
     }
 
-    // primeira carga
     fetchQrOnce();
 
     return () => {
@@ -159,7 +154,6 @@ export default function PickupQRCodePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickupId, qrEndpoint]);
 
-  // reagenda a partir do último qrResp
   useEffect(() => {
     if (!qrResp?.refresh_in_sec) return;
 
@@ -168,7 +162,6 @@ export default function PickupQRCodePanel({
       refreshTimerRef.current = null;
     }
 
-    // margem: acorda 1s antes para reduzir chance de “ctr virar” bem na leitura
     const margin = 1;
     const waitSec = testMode ? 5 : Math.max(1, Number(qrResp.refresh_in_sec) - margin);
 
@@ -182,7 +175,6 @@ export default function PickupQRCodePanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [qrResp, testMode]);
 
-  // ----- manual code (legacy endpoint) -----
   async function fetchManualCode() {
     if (!legacyManualEndpoint) return;
     setLoadingManual(true);
@@ -213,18 +205,22 @@ export default function PickupQRCodePanel({
     }
   }
 
-  // ----- derived UI -----
   const qrPayloadObj = qrResp?.qr || null;
   const qrValue = qrPayloadObj ? JSON.stringify(qrPayloadObj) : "";
+
+  const qrVersion = qrPayloadObj?.v ?? "-";
+  const qrLockerId = qrPayloadObj?.locker_id || "-";
+  const qrRegion = qrPayloadObj?.region || "-";
 
   const expEpoch = qrPayloadObj?.exp ? Number(qrPayloadObj.exp) : null;
   const secsToExpire = expEpoch ? expEpoch - nowSec() : null;
 
   const refreshIn = qrResp?.refresh_in_sec != null ? Number(qrResp.refresh_in_sec) : null;
 
-  const statusBadge = expEpoch && secsToExpire != null && secsToExpire > 0
-    ? { text: "ATIVO", bg: "#1f7a3f" }
-    : { text: "EXPIRADO", bg: "#b3261e" };
+  const statusBadge =
+    expEpoch && secsToExpire != null && secsToExpire > 0
+      ? { text: "ATIVO", bg: "#1f7a3f" }
+      : { text: "EXPIRADO", bg: "#b3261e" };
 
   return (
     <div
@@ -256,15 +252,16 @@ export default function PickupQRCodePanel({
       <div style={{ fontSize: 12, opacity: 0.8 }}>
         {pickupId ? (
           <>
-            Pickup/Order ID: <b>{pickupId}</b> • Região: <b>{region}</b>
+            Pickup ID: <b>{pickupId}</b> • Região: <b>{region}</b> • Locker: <b>{lockerId || "-"}</b>
           </>
         ) : (
-          <span style={{ color: "#ffb4b4" }}>⚠️ Selecione/Informe um pickupId (order_id) para gerar QR.</span>
+          <span style={{ color: "#ffb4b4" }}>
+            ⚠️ Selecione um pickup_id válido para gerar QR.
+          </span>
         )}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "140px 1fr", gap: 12, alignItems: "start" }}>
-        {/* QR */}
         <div
           style={{
             padding: 10,
@@ -284,6 +281,10 @@ export default function PickupQRCodePanel({
           )}
 
           <div style={{ marginTop: 8, fontSize: 11, opacity: 0.85 }}>
+            versão: <b>{qrVersion}</b>
+          </div>
+
+          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.85 }}>
             ctr: <b>{qrPayloadObj?.ctr ?? "-"}</b>
           </div>
 
@@ -292,16 +293,13 @@ export default function PickupQRCodePanel({
           </button>
         </div>
 
-        {/* Infos */}
         <div style={{ display: "grid", gap: 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             <div style={{ fontSize: 12, opacity: 0.9 }}>
-              Atualiza em:{" "}
-              <b>{refreshIn == null ? "-" : formatRemaining(refreshIn)}</b>
+              Atualiza em: <b>{refreshIn == null ? "-" : formatRemaining(refreshIn)}</b>
             </div>
             <div style={{ fontSize: 12, opacity: 0.9 }}>
-              Válido até:{" "}
-              <b>{expEpoch ? formatTimeFromEpoch(expEpoch) : "-"}</b>
+              Válido até: <b>{expEpoch ? formatTimeFromEpoch(expEpoch) : "-"}</b>
             </div>
           </div>
 
@@ -310,6 +308,24 @@ export default function PickupQRCodePanel({
               Expira em: <b>{formatRemaining(secsToExpire)}</b>
             </div>
           ) : null}
+
+          <div
+            style={{
+              borderRadius: 12,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(255,255,255,0.04)",
+              padding: 10,
+              display: "grid",
+              gap: 6,
+              fontSize: 12,
+            }}
+          >
+            <div><b>versão do QR:</b> {qrVersion}</div>
+            <div><b>locker_id no QR:</b> {qrLockerId}</div>
+            <div><b>region no QR:</b> {qrRegion}</div>
+            <div><b>locker selecionado na tela:</b> {lockerId || "-"}</div>
+            <div><b>order_id:</b> {orderId || "-"}</div>
+          </div>
 
           {qrError ? (
             <pre
@@ -329,7 +345,6 @@ export default function PickupQRCodePanel({
             </pre>
           ) : null}
 
-          {/* Manual code */}
           <div
             style={{
               borderRadius: 12,
@@ -387,7 +402,9 @@ export default function PickupQRCodePanel({
           </label>
 
           <details>
-            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.85 }}>Ver payload do QR (JSON)</summary>
+            <summary style={{ cursor: "pointer", fontSize: 12, opacity: 0.85 }}>
+              Ver payload do QR (JSON)
+            </summary>
             <pre
               style={{
                 marginTop: 8,

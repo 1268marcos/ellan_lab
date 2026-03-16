@@ -1,47 +1,92 @@
+# 01_source/order_pickup_service/app/core/lifecycle_client.py
 from __future__ import annotations
 
-from datetime import datetime, timezone, timedelta
+import os
+from typing import Any
 
 import requests
 
-from app.core.config import settings
 
-
-class LifecycleClientError(Exception):
+class LifecycleClientError(RuntimeError):
     pass
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def ensure_utc(dt: datetime | None) -> datetime:
-    if dt is None:
-        return utc_now()
-
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-
-    return dt.astimezone(timezone.utc)
-
-
-def build_deadline_key(order_id: str) -> str:
-    return f"prepayment_timeout:{order_id}"
-
-
-def build_due_at(created_at: datetime | None = None) -> datetime:
-    base = ensure_utc(created_at)
-    return base + timedelta(seconds=settings.prepayment_timeout_seconds)
-
-
 class LifecycleClient:
-    def __init__(self) -> None:
-        self.base_url = settings.lifecycle_base_url.rstrip("/")
-        self.timeout = 10
-        self.headers = {
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        timeout_sec: float | None = None,
+        internal_token: str | None = None,
+    ) -> None:
+        self.base_url = (
+            (base_url or os.getenv("ORDER_LIFECYCLE_BASE_URL", "")).rstrip("/")
+        )
+        self.timeout_sec = float(
+            timeout_sec or os.getenv("ORDER_LIFECYCLE_TIMEOUT_SEC", "5")
+        )
+        self.internal_token = (
+            internal_token or os.getenv("ORDER_LIFECYCLE_INTERNAL_TOKEN", "")
+        )
+
+        if not self.base_url:
+            raise LifecycleClientError("ORDER_LIFECYCLE_BASE_URL não configurado.")
+
+    def _headers(self) -> dict[str, str]:
+        headers = {
             "Content-Type": "application/json",
-            "X-Internal-Token": settings.internal_token,
         }
+
+        if self.internal_token:
+            headers["X-Internal-Token"] = self.internal_token
+
+        return headers
+
+    def _request(
+        self,
+        *,
+        method: str,
+        path: str,
+        json_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        url = f"{self.base_url}{path}"
+
+        try:
+            response = requests.request(
+                method=method,
+                url=url,
+                headers=self._headers(),
+                json=json_body,
+                timeout=self.timeout_sec,
+            )
+        except requests.RequestException as exc:
+            raise LifecycleClientError(
+                f"Falha de comunicação com order_lifecycle_service: {exc}"
+            ) from exc
+
+        if response.status_code >= 400:
+            try:
+                detail = response.json()
+            except Exception:
+                detail = response.text
+
+            raise LifecycleClientError(
+                f"order_lifecycle_service retornou erro HTTP {response.status_code}: {detail}"
+            )
+
+        if not response.content:
+            return {}
+
+        try:
+            return response.json()
+        except Exception as exc:
+            raise LifecycleClientError(
+                "Resposta inválida do order_lifecycle_service: JSON malformado."
+            ) from exc
+
+    @staticmethod
+    def _build_prepayment_deadline_key(order_id: str) -> str:
+        return f"order:{order_id}:prepayment_timeout"
 
     def create_prepayment_deadline(
         self,
@@ -51,59 +96,40 @@ class LifecycleClient:
         region_code: str | None,
         slot_id: str | None,
         machine_id: str | None,
-        created_at: datetime | None,
-        extra_payload: dict | None = None,
-    ) -> dict:
+        deadline_at: str | None,
+        payment_method: str | None = None,
+    ) -> dict[str, Any]:
         payload = {
-            "deadline_key": build_deadline_key(order_id),
+            "deadline_key": self._build_prepayment_deadline_key(order_id),
             "order_id": order_id,
             "order_channel": order_channel,
             "deadline_type": "PREPAYMENT_TIMEOUT",
-            "due_at": build_due_at(created_at).isoformat(),
+            "due_at": deadline_at,
             "payload": {
                 "region_code": region_code,
                 "slot_id": slot_id,
                 "machine_id": machine_id,
-                "source_service": "order_pickup_service",
-                **(extra_payload or {}),
+                "payment_method": payment_method,
             },
         }
 
-        try:
-            response = requests.post(
-                f"{self.base_url}/internal/deadlines",
-                json=payload,
-                headers=self.headers,
-                timeout=self.timeout,
-            )
-        except requests.RequestException as exc:
-            raise LifecycleClientError(f"create deadline request failed: {exc}") from exc
+        return self._request(
+            method="POST",
+            path="/internal/deadlines",
+            json_body=payload,
+        )
 
-        if response.status_code >= 300:
-            raise LifecycleClientError(
-                f"create deadline failed: status={response.status_code} body={response.text}"
-            )
-
-        return response.json()
-
-    def cancel_prepayment_deadline(self, *, order_id: str) -> dict:
+    def cancel_prepayment_deadline(
+        self,
+        *,
+        order_id: str,
+    ) -> dict[str, Any]:
         payload = {
-            "deadline_key": build_deadline_key(order_id),
+            "deadline_key": self._build_prepayment_deadline_key(order_id),
         }
 
-        try:
-            response = requests.post(
-                f"{self.base_url}/internal/deadlines/cancel",
-                json=payload,
-                headers=self.headers,
-                timeout=self.timeout,
-            )
-        except requests.RequestException as exc:
-            raise LifecycleClientError(f"cancel deadline request failed: {exc}") from exc
-
-        if response.status_code >= 300:
-            raise LifecycleClientError(
-                f"cancel deadline failed: status={response.status_code} body={response.text}"
-            )
-
-        return response.json()
+        return self._request(
+            method="POST",
+            path="/internal/deadlines/cancel",
+            json_body=payload,
+        )

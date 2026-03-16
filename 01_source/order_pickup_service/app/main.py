@@ -15,7 +15,7 @@ from app.health.health import router as health_router
 from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
-from app.routers import internal, kiosk, orders, pickup
+from app.routers import dev_admin, internal, kiosk, orders, pickup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
@@ -33,6 +33,7 @@ app.include_router(orders.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(internal.router)
+app.include_router(dev_admin.router)
 
 # Routers de health
 app.include_router(health_router, tags=["Health"])
@@ -64,6 +65,8 @@ async def startup():
     required_modules = [
         "app.schemas.kiosk",
         "app.jobs.lifecycle_events_consumer",
+        "app.schemas.dev_admin",
+        "app.routers.dev_admin",
     ]
     for module in required_modules:
         try:

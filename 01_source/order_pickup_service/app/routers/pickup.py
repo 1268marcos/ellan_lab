@@ -1,6 +1,6 @@
-# 01_source/order_pickup_service/app/routers/pickup.py
 import hashlib
 import hmac
+import logging
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
 from app.core.db import get_db
-from app.models.allocation import Allocation
+from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup, PickupRedeemVia, PickupStatus
 from app.models.pickup_token import PickupToken
@@ -18,6 +18,7 @@ from app.schemas.pickup import (
     PickupQrOut,
     PickupViewOut,
     QrPayloadV1,
+    QrPayloadV2,
     TotemRedeemIn,
     TotemRedeemManualIn,
     TotemRedeemOut,
@@ -25,9 +26,17 @@ from app.schemas.pickup import (
 from app.services import backend_client
 
 router = APIRouter(tags=["pickup"])
+logger = logging.getLogger(__name__)
 
 QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))
-PICKUP_QR_SECRET = os.getenv("PICKUP_QR_SECRET", "dev-secreto-mudar").encode("utf-8")
+QR_PAYLOAD_VERSION = int(os.getenv("PICKUP_QR_PAYLOAD_VERSION", "2"))
+
+APP_ENV = str(
+    os.getenv("APP_ENV") or os.getenv("NODE_ENV") or "dev"
+).strip().lower()
+
+_QR_SECRET_RAW = str(os.getenv("PICKUP_QR_SECRET", "")).strip()
+_DEV_FALLBACK_QR_SECRET = "dev-secreto-mudar"
 
 MANUAL_REDEEM_MAX_ATTEMPTS = int(os.getenv("MANUAL_REDEEM_MAX_ATTEMPTS", "5"))
 MANUAL_REDEEM_WINDOW_SEC = int(os.getenv("MANUAL_REDEEM_WINDOW_SEC", "120"))
@@ -48,6 +57,50 @@ def _epoch(dt: datetime) -> int:
 
 def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def _normalize_region(value: str) -> str:
+    normalized = str(value or "").strip().upper()
+    if normalized not in {"SP", "PT"}:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_REGION",
+                "message": "region must be SP or PT",
+                "retryable": False,
+            },
+        )
+    return normalized
+
+
+def _normalize_locker_id(value: str) -> str:
+    normalized = str(value or "").strip().upper()
+    if not normalized:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_LOCKER_ID",
+                "message": "locker_id is required",
+                "retryable": False,
+            },
+        )
+    return normalized
+
+
+def _get_qr_secret_bytes() -> bytes:
+    secret = _QR_SECRET_RAW or _DEV_FALLBACK_QR_SECRET
+    is_weak = (not _QR_SECRET_RAW) or (_QR_SECRET_RAW == _DEV_FALLBACK_QR_SECRET) or (len(secret) < 32)
+
+    if APP_ENV in {"prod", "production"} and is_weak:
+        raise RuntimeError(
+            "PICKUP_QR_SECRET inseguro para produção. "
+            "Configure segredo forte com pelo menos 32 caracteres."
+        )
+
+    if is_weak:
+        logger.warning("pickup_qr_using_weak_or_default_secret_in_non_production")
+
+    return secret.encode("utf-8")
 
 
 def _client_ip(request: Request) -> str:
@@ -157,13 +210,56 @@ def _refresh_in_sec(issued_at: datetime, rotate_sec: int) -> int:
     return max(0, rotate_sec - into)
 
 
-def _sign_qr(*, pickup_id: str, token_id: str, ctr: int, exp: int) -> str:
+def _sign_qr_v1(*, pickup_id: str, token_id: str, ctr: int, exp: int) -> str:
     msg = f"{pickup_id}|{token_id}|{ctr}|{exp}".encode("utf-8")
-    return hmac.new(PICKUP_QR_SECRET, msg, hashlib.sha256).hexdigest()
+    return hmac.new(_get_qr_secret_bytes(), msg, hashlib.sha256).hexdigest()
 
 
-def _verify_qr(*, pickup_id: str, token_id: str, ctr: int, exp: int, sig: str) -> bool:
-    expected = _sign_qr(pickup_id=pickup_id, token_id=token_id, ctr=ctr, exp=exp)
+def _sign_qr_v2(
+    *,
+    pickup_id: str,
+    token_id: str,
+    locker_id: str,
+    region: str,
+    ctr: int,
+    exp: int,
+) -> str:
+    normalized_locker_id = _normalize_locker_id(locker_id)
+    normalized_region = _normalize_region(region)
+    msg = (
+        f"{pickup_id}|{token_id}|{normalized_locker_id}|{normalized_region}|{ctr}|{exp}"
+    ).encode("utf-8")
+    return hmac.new(_get_qr_secret_bytes(), msg, hashlib.sha256).hexdigest()
+
+
+def _verify_qr_v1(*, pickup_id: str, token_id: str, ctr: int, exp: int, sig: str) -> bool:
+    expected = _sign_qr_v1(
+        pickup_id=pickup_id,
+        token_id=token_id,
+        ctr=ctr,
+        exp=exp,
+    )
+    return hmac.compare_digest(expected, sig)
+
+
+def _verify_qr_v2(
+    *,
+    pickup_id: str,
+    token_id: str,
+    locker_id: str,
+    region: str,
+    ctr: int,
+    exp: int,
+    sig: str,
+) -> bool:
+    expected = _sign_qr_v2(
+        pickup_id=pickup_id,
+        token_id=token_id,
+        locker_id=locker_id,
+        region=region,
+        ctr=ctr,
+        exp=exp,
+    )
     return hmac.compare_digest(expected, sig)
 
 
@@ -228,7 +324,7 @@ def _resolve_locker_id(order: Order, allocation: Allocation | None) -> str | Non
 
 
 def _ensure_expected_locker_id(*, payload_locker_id: str, resolved_locker_id: str | None) -> str:
-    normalized_payload = str(payload_locker_id or "").strip().upper()
+    normalized_payload = _normalize_locker_id(payload_locker_id)
     normalized_resolved = str(resolved_locker_id or "").strip().upper()
 
     if not normalized_resolved:
@@ -254,6 +350,69 @@ def _ensure_expected_locker_id(*, payload_locker_id: str, resolved_locker_id: st
         )
 
     return normalized_resolved
+
+
+def _verify_qr_payload_signature(qr: QrPayloadV1 | QrPayloadV2) -> bool:
+    if qr.v == 2:
+        return _verify_qr_v2(
+            pickup_id=qr.pickup_id,
+            token_id=qr.token_id,
+            locker_id=qr.locker_id,
+            region=qr.region,
+            ctr=qr.ctr,
+            exp=qr.exp,
+            sig=qr.sig,
+        )
+
+    return _verify_qr_v1(
+        pickup_id=qr.pickup_id,
+        token_id=qr.token_id,
+        ctr=qr.ctr,
+        exp=qr.exp,
+        sig=qr.sig,
+    )
+
+
+def _ensure_qr_v2_context(
+    *,
+    qr: QrPayloadV1 | QrPayloadV2,
+    payload_region: str,
+    payload_locker_id: str,
+    resolved_locker_id: str,
+) -> None:
+    if qr.v != 2:
+        return
+
+    qr_region = _normalize_region(qr.region)
+    request_region = _normalize_region(payload_region)
+    if qr_region != request_region:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "QR_REGION_MISMATCH",
+                "message": "QR region does not match redeem request region",
+                "qr_region": qr_region,
+                "request_region": request_region,
+                "retryable": False,
+            },
+        )
+
+    qr_locker_id = _normalize_locker_id(qr.locker_id)
+    request_locker_id = _normalize_locker_id(payload_locker_id)
+    expected_locker_id = _normalize_locker_id(resolved_locker_id)
+
+    if qr_locker_id != request_locker_id or qr_locker_id != expected_locker_id:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "QR_LOCKER_MISMATCH",
+                "message": "QR locker does not match redeem request locker",
+                "qr_locker_id": qr_locker_id,
+                "request_locker_id": request_locker_id,
+                "expected_locker_id": expected_locker_id,
+                "retryable": False,
+            },
+        )
 
 
 @router.post("/orders/{order_id}/pickup-token")
@@ -354,7 +513,100 @@ def me_pickup_view(
     )
 
 
-@router.post("/me/pickups/{pickup_id}/qr", response_model=PickupQrOut)
+@router.post(
+    "/me/pickups/{pickup_id}/qr", 
+    response_model=PickupQrOut,
+    summary="Gerar QR Code para retirada do pedido",
+    description="""
+        Gera um QR Code dinâmico para retirada do pedido no totem.
+
+        ## Fluxo de uso:
+        1. Usuário acessa o pedido no app
+        2. Sistema valida se o pickup está ativo e dentro do horário
+        3. Gera QR Code com payload assinado (v1 ou v2)
+        4. QR Code expira automaticamente após o tempo configurado
+        5. O totem escaneia e valida a assinatura
+        
+        ## Características de segurança:
+        - Payload assinado criptograficamente
+        - Contador de rotação (CTR) para evitar replay attacks
+        - Token único por pickup
+        - Expiração automática
+        - Validação de horário de retirada
+        
+        ## Versionamento do QR:
+        - **v1**: Apenas pickup_id, token_id, CTR e expiração
+        - **v2**: Inclui locker_id e região para validação física
+        
+        ## Possíveis erros:
+        - `404`: Pickup/Order não encontrado
+        - `409`: Pickup em estado inválido (não está ACTIVE)
+        - `409`: Fora da janela de retirada permitida
+        - `500`: Contexto do locker não configurado
+        """,
+    response_description="QR Code gerado com sucesso com tempo de refresh",
+    status_code=201,
+    responses={
+            200: {
+                "description": "QR Code gerado com sucesso",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "qr": {
+                                "pickup_id": "pk_123456",
+                                "token_id": "tok_abcdef",
+                                "locker_id": "LKR-01-23",
+                                "region": "SP-ZN",
+                                "ctr": 42,
+                                "exp": 1700000000,
+                                "sig": "a1b2c3d4e5f6..."
+                            },
+                            "refresh_in_sec": 30
+                        }
+                    }
+                }
+            },
+            404: {
+                "description": "Pickup ou ordem não encontrada",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "detail": "pickup/order not found"
+                        }
+                    }
+                }
+            },
+            409: {
+                "description": "Estado inválido do pickup",
+                "content": {
+                    "application/json": {
+                        "examples": {
+                            "invalid_state": {
+                                "value": {"detail": "invalid pickup state: EXPIRED"}
+                            },
+                            "invalid_window": {
+                                "value": {"detail": "outside pickup window"}
+                            }
+                        }
+                    }
+                }
+            },
+            500: {
+                "description": "Erro de configuração do locker",
+                "content": {
+                    "application/json": {
+                        "example": {
+                            "detail": {
+                                "type": "LOCKER_CONTEXT_MISSING",
+                                "message": "locker context missing for QR generation",
+                                "retryable": True
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    )
 def me_pickup_qr(
     pickup_id: str,
     db: Session = Depends(get_db),
@@ -388,15 +640,48 @@ def me_pickup_qr(
 
     issued_at = _issued_at_for_ctr(order)
     ctr = _calc_ctr(issued_at, QR_ROTATE_SEC)
-    sig = _sign_qr(pickup_id=pickup.id, token_id=tok.id, ctr=ctr, exp=exp_epoch)
 
-    qr = QrPayloadV1(
-        pickup_id=pickup.id,
-        token_id=tok.id,
-        ctr=ctr,
-        exp=exp_epoch,
-        sig=sig,
-    )
+    resolved_locker_id = _resolve_locker_id(order, None)
+    if not resolved_locker_id:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "LOCKER_CONTEXT_MISSING",
+                "message": "locker context missing for QR generation",
+                "retryable": True,
+            },
+        )
+
+    if QR_PAYLOAD_VERSION >= 2:
+        qr = QrPayloadV2(
+            pickup_id=pickup.id,
+            token_id=tok.id,
+            locker_id=_normalize_locker_id(resolved_locker_id),
+            region=_normalize_region(order.region),
+            ctr=ctr,
+            exp=exp_epoch,
+            sig=_sign_qr_v2(
+                pickup_id=pickup.id,
+                token_id=tok.id,
+                locker_id=resolved_locker_id,
+                region=order.region,
+                ctr=ctr,
+                exp=exp_epoch,
+            ),
+        )
+    else:
+        qr = QrPayloadV1(
+            pickup_id=pickup.id,
+            token_id=tok.id,
+            ctr=ctr,
+            exp=exp_epoch,
+            sig=_sign_qr_v1(
+                pickup_id=pickup.id,
+                token_id=tok.id,
+                ctr=ctr,
+                exp=exp_epoch,
+            ),
+        )
 
     return PickupQrOut(qr=qr, refresh_in_sec=_refresh_in_sec(issued_at, QR_ROTATE_SEC))
 
@@ -416,13 +701,7 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
             },
         )
 
-    if not _verify_qr(
-        pickup_id=qr.pickup_id,
-        token_id=qr.token_id,
-        ctr=qr.ctr,
-        exp=qr.exp,
-        sig=qr.sig,
-    ):
+    if not _verify_qr_payload_signature(qr):
         raise HTTPException(
             status_code=401,
             detail={
@@ -508,6 +787,13 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
         resolved_locker_id=locker_id,
     )
 
+    _ensure_qr_v2_context(
+        qr=qr,
+        payload_region=payload.region,
+        payload_locker_id=payload.locker_id,
+        resolved_locker_id=resolved_locker_id,
+    )
+
     tok.used_at = now.replace(tzinfo=None)
 
     backend_client.locker_light_on(
@@ -533,7 +819,8 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
     pickup.redeemed_via = PickupRedeemVia.QR
 
     order.mark_as_picked_up()
-    allocation.mark_picked_up()
+    allocation.state = AllocationState.PICKED_UP
+    allocation.locked_until = None
 
     db.commit()
 
@@ -652,7 +939,8 @@ def totem_redeem_manual(
     pickup.redeemed_via = PickupRedeemVia.MANUAL
 
     order.mark_as_picked_up()
-    allocation.mark_picked_up()
+    allocation.state = AllocationState.PICKED_UP
+    allocation.locked_until = None
 
     db.commit()
 

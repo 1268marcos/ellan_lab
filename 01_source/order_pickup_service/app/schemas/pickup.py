@@ -1,4 +1,3 @@
-# 01_source/order_pickup_service/app/schemas/pickup.py
 from __future__ import annotations
 
 from datetime import datetime
@@ -31,6 +30,36 @@ class QrPayloadV1(BaseModel):
         if not normalized:
             raise ValueError("field is required")
         return normalized
+
+
+class QrPayloadV2(BaseModel):
+    v: Literal[2] = 2
+    pickup_id: str
+    token_id: str
+    locker_id: str
+    region: Region
+    ctr: int = Field(ge=0)
+    exp: int = Field(description="Epoch seconds (expiração total do pickup)")
+    sig: str = Field(description="Assinatura gerada no servidor")
+
+    @field_validator("pickup_id", "token_id", "sig")
+    @classmethod
+    def validate_non_empty_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("field is required")
+        return normalized
+
+    @field_validator("locker_id")
+    @classmethod
+    def validate_locker_id(cls, value: str) -> str:
+        normalized = (value or "").strip().upper()
+        if not normalized:
+            raise ValueError("locker_id is required")
+        return normalized
+
+
+QrPayload = QrPayloadV1 | QrPayloadV2
 
 
 # =========================
@@ -72,14 +101,14 @@ class PickupViewOut(BaseModel):
 
 
 class PickupQrOut(BaseModel):
-    qr: QrPayloadV1
+    qr: QrPayload
     refresh_in_sec: int = Field(ge=0, description="Segundos até a próxima rotação do QR")
 
 
 class TotemRedeemIn(BaseModel):
     region: Region
     locker_id: str = Field(..., min_length=1)
-    qr: QrPayloadV1
+    qr: QrPayload
 
     @field_validator("locker_id")
     @classmethod
