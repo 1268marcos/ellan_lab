@@ -1,3 +1,4 @@
+# 01_source/backend_sp/app/core/db.py
 import os
 import sqlite3
 from pathlib import Path
@@ -255,6 +256,28 @@ def _create_pending_sync_operations_table(conn: sqlite3.Connection) -> None:
 
 
 # =========================================================
+# Migração - Verificação de índice antigo
+# =========================================================
+
+def _has_bad_unique_index_on_allocations(conn: sqlite3.Connection) -> bool:
+    cur = conn.execute(
+        """
+        SELECT name, sql
+        FROM sqlite_master
+        WHERE type='index' AND tbl_name='allocations'
+        """
+    )
+    rows = cur.fetchall()
+    for row in rows:
+        sql = (row["sql"] or "").upper().replace(" ", "")
+        if not sql:
+            continue
+        if "UNIQUEINDEX" in sql and "ONALLOCATIONS(MACHINE_ID,DOOR_ID)" in sql and "WHERESTATEIN('RESERVED','COMMITTED')" not in sql:
+            return True
+    return False
+
+
+# =========================================================
 # Init principal
 # =========================================================
 
@@ -268,5 +291,7 @@ def init_db() -> None:
 
     conn.commit()
 
-    if _table_exists(conn, "allocations") and _allocations_has_bad_unique(conn):
+    if _table_exists(conn, "allocations") and (
+        _allocations_has_bad_unique(conn) or _has_bad_unique_index_on_allocations(conn)
+    ):
         _migrate_allocations_drop_bad_unique(conn)

@@ -28,3 +28,26 @@ class DevResetLockerOut(BaseModel):
     deleted_allocations: int
     deleted_orders: int
     message: str
+
+
+class DevReleaseRegionalAllocationsIn(BaseModel):
+    region: str = Field(..., description="SP ou PT")
+    locker_id: str = Field(..., description="Locker físico do qual as allocations serão liberadas")
+    allocation_ids: list[str] = Field(
+        default_factory=list,
+        description="Lista opcional de allocation_ids a serem liberados no backend regional",
+    )
+    auto_collect_from_local_db: bool = Field(
+        default=True,
+        description="Quando true, coleta allocations locais do locker caso allocation_ids não seja informado",
+    )
+
+
+class DevReleaseRegionalAllocationsOut(BaseModel):
+    ok: bool
+    region: str
+    locker_id: str
+    results: list[dict[str, Any]]
+    released_count: int
+    failed_count: int
+    message: str

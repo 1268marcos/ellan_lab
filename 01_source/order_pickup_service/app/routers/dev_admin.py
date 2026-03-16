@@ -99,12 +99,33 @@ def dev_release_regional_allocations(
         if str(item or "").strip()
     ]
 
+    if not allocation_ids and payload.auto_collect_from_local_db:
+        allocations = (
+            db.query(Allocation)
+            .join(Order, Order.id == Allocation.order_id)
+            .filter(
+                Allocation.locker_id == locker_id,
+                Order.region == region,
+            )
+            .order_by(Allocation.created_at.asc(), Allocation.id.asc())
+            .all()
+        )
+
+        allocation_ids = list(dict.fromkeys([
+            str(allocation.id).strip()
+            for allocation in allocations
+            if str(allocation.id or "").strip()
+        ]))
+
     if not allocation_ids:
         raise HTTPException(
             status_code=400,
             detail={
                 "type": "ALLOCATION_IDS_REQUIRED",
-                "message": "Informe ao menos um allocation_id para liberação regional.",
+                "message": (
+                    "Informe ao menos um allocation_id para liberação regional "
+                    "ou mantenha auto_collect_from_local_db=true com allocations locais existentes."
+                ),
             },
         )
 

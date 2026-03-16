@@ -17,6 +17,7 @@ import redis
 from app.core.db import get_conn
 from app.services.mqtt_listener import start as start_mqtt_listener
 from app.core.errors import http_exception_handler, unhandled_exception_handler
+from app.routers.dev_allocations import router as dev_allocations_router
 
 start_mqtt_listener()
 
@@ -47,6 +48,8 @@ app.include_router(locker_state.router)
 app.include_router(allocations.router)
 
 app.include_router(hardware.router)
+
+app.include_router(dev_allocations_router)
 
 app.add_middleware(
     CORSMiddleware,

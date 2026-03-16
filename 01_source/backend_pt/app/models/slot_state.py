@@ -1,3 +1,4 @@
+# 01_source/backend_pt/app/models/slot_state.py
 from pydantic import BaseModel
 from typing import Literal
 
