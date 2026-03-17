@@ -311,6 +311,16 @@ function isPendingPaymentResult(data) {
   );
 }
 
+function isCatalogItemSelectable(item) {
+  return Boolean(
+    item &&
+      item.is_active &&
+      item.sku_id &&
+      item.is_operationally_available &&
+      item.locker_state === "AVAILABLE"
+  );
+}
+
 export default function RegionPage({ region, mode = "kiosk" }) {
   const [availableLockers, setAvailableLockers] = useState([]);
   const [lockersLoading, setLockersLoading] = useState(false);
@@ -601,6 +611,10 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   }
 
   function handleSelectCatalogItem(item) {
+    if (!isCatalogItemSelectable(item)) {
+      return;
+    }
+
     setSelectedSlot(item.slot);
     setSelectedCatalogItem(item);
     setCreateResp(null);
@@ -619,6 +633,13 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     if (!selectedCatalogItem?.sku_id || !selectedCatalogItem?.slot) {
       setErr("Selecione uma gaveta/produto antes de criar o pedido KIOSK.");
+      return;
+    }
+
+    if (!isCatalogItemSelectable(selectedCatalogItem)) {
+      setErr(
+        "A gaveta selecionada não está disponível operacionalmente. Escolha uma gaveta AVAILABLE."
+      );
       return;
     }
 
@@ -935,16 +956,14 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           <div style={slotsGridStyle}>
             {catalogSlots.map((item) => {
               const isSelected = selectedSlot === item.slot;
-              const isDisabled =
-                !item.is_active ||
-                !item.sku_id ||
-                !item.is_operationally_available;
+              const isSelectable = isCatalogItemSelectable(item);
+              const isDisabled = !isSelectable;
 
               return (
                 <button
                   key={item.slot}
                   type="button"
-                  onClick={() => !isDisabled && handleSelectCatalogItem(item)}
+                  onClick={() => handleSelectCatalogItem(item)}
                   disabled={isDisabled}
                   style={{
                     ...slotCardStyle,
@@ -962,11 +981,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                 >
                   <div style={slotTopRowStyle}>
                     <span style={slotBadgeStyle}>Gaveta {item.slot}</span>
-                    <span
-                      style={miniStatusStyle(item.is_active && item.is_operationally_available)}
-                    >
+                    <span style={miniStatusStyle(isSelectable)}>
                       {item.is_active
-                        ? item.is_operationally_available
+                        ? isSelectable
                           ? "Disponível"
                           : item.locker_state || "Indisponível"
                         : "Inativa"}

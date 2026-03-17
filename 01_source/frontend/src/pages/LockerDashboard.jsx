@@ -724,12 +724,13 @@ function focusOrderFromListItem(item, setters) {
   setCurrentOrder(buildCurrentOrderFromListItem(item));
 }
 
-function SlotCard({ slot, state, selected, onClick }) {
+function SlotCard({ slot, state, selected, disabled, onClick }) {
   const st = STATE_STYLE[state] || { bg: "#333", fg: "white", label: state };
 
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       title={`Gaveta ${slot} • ${st.label}`}
       style={{
         width: "100%",
@@ -738,7 +739,8 @@ function SlotCard({ slot, state, selected, onClick }) {
         border: selected ? "3px solid #fff" : "1px solid rgba(255,255,255,0.2)",
         background: st.bg,
         color: st.fg,
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.72 : 1,
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
@@ -1148,6 +1150,12 @@ export default function LockerDashboard({ region = "PT" }) {
   }, [payMethod]);
 
   function selectSlot(slot) {
+    const slotState = slots[slot]?.state || "AVAILABLE";
+
+    if (slotState !== "AVAILABLE") {
+      return;
+    }
+
     setSelectedSlot(slot);
     setActiveGroup(groupIndexFromSlot(slot));
     setCurrentOrder(null);
@@ -1222,62 +1230,75 @@ export default function LockerDashboard({ region = "PT" }) {
     }
   }
 
-  async function fetchOrdersOnce(targetPage = ordersPage, targetPageSize = ordersPageSize) {
-    setOrdersLoading(true);
-    setOrdersError("");
+  async function fetchAllOperationalOrders(baseParams) {
+    const collected = [];
+    let page = 1;
+    let hasNext = true;
 
-    try {
-      const params = new URLSearchParams();
-      params.set("region", region);
-      params.set("scope", "ops");
-      params.set("page", String(targetPage));
-      params.set("page_size", String(targetPageSize));
-      if (ordersFilterStatus) params.set("status", ordersFilterStatus);
-      if (ordersFilterChannel) params.set("channel", ordersFilterChannel);
+    while (hasNext) {
+      const params = new URLSearchParams(baseParams);
+      params.set("page", String(page));
+      params.set("page_size", "100");
 
       const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`);
       const text = await res.text();
 
       if (!res.ok) {
-        setOrdersError(`HTTP ${res.status}: ${text}`);
-        return;
+        throw new Error(`HTTP ${res.status}: ${text}`);
       }
 
       const data = JSON.parse(text);
-      let items = Array.isArray(data?.items) ? data.items : [];
+      const items = Array.isArray(data?.items) ? data.items : [];
 
-      if (selectedLocker?.locker_id) {
-        items = items.filter(
-          (item) => (item?.locker_id || item?.totem_id) === selectedLocker.locker_id
-        );
-      }
+      collected.push(...items);
 
-      const total = Number(
-        selectedLocker?.locker_id ? items.length : data?.total ?? items.length
-      );
-      const resolvedPage = Number(data?.page ?? targetPage);
-      const resolvedPageSize = Number(data?.page_size ?? targetPageSize);
+      hasNext = Boolean(data?.has_next);
+      page += 1;
+    }
 
-      const resolvedHasPrev =
-        typeof data?.has_prev === "boolean"
-          ? data.has_prev && resolvedPage > 1
-          : resolvedPage > 1;
+    return collected;
+  }
 
-      const resolvedHasNext =
-        selectedLocker?.locker_id
-          ? false
-          : typeof data?.has_next === "boolean"
-            ? data.has_next
-            : resolvedPage * resolvedPageSize < total;
+  async function fetchOrdersOnce(targetPage = ordersPage, targetPageSize = ordersPageSize) {
+    setOrdersLoading(true);
+    setOrdersError("");
 
-      setOrdersData(items);
+    try {
+      const baseParams = new URLSearchParams();
+      baseParams.set("region", region);
+      baseParams.set("scope", "ops");
+
+      if (ordersFilterStatus) baseParams.set("status", ordersFilterStatus);
+      if (ordersFilterChannel) baseParams.set("channel", ordersFilterChannel);
+
+      const allItems = await fetchAllOperationalOrders(baseParams);
+
+      const filteredItems = selectedLocker?.locker_id
+        ? allItems.filter(
+            (item) => (item?.locker_id || item?.totem_id) === selectedLocker.locker_id
+          )
+        : allItems;
+
+      const total = filteredItems.length;
+      const totalPages = Math.max(1, Math.ceil(total / targetPageSize));
+      const resolvedPage = Math.min(Math.max(1, targetPage), totalPages);
+
+      const start = (resolvedPage - 1) * targetPageSize;
+      const end = start + targetPageSize;
+      const pageItems = filteredItems.slice(start, end);
+
+      setOrdersData(pageItems);
       setOrdersTotal(total);
-      setOrdersHasNext(resolvedHasNext);
-      setOrdersHasPrev(resolvedHasPrev);
+      setOrdersHasPrev(resolvedPage > 1);
+      setOrdersHasNext(resolvedPage < totalPages);
       setOrdersPage(resolvedPage);
-      setOrdersPageSize(resolvedPageSize);
+      setOrdersPageSize(targetPageSize);
     } catch (e) {
       setOrdersError(String(e?.message || e));
+      setOrdersData([]);
+      setOrdersTotal(0);
+      setOrdersHasPrev(false);
+      setOrdersHasNext(false);
     } finally {
       setOrdersLoading(false);
     }
@@ -1325,6 +1346,10 @@ export default function LockerDashboard({ region = "PT" }) {
   }, [slotSelectionExpiresAt, slotSelectionTick]);
 
   async function setStateOnBackend(slot, nextState) {
+    if(!slot){
+      return;
+    }
+    
     const payload = { state: nextState, product_id: slots[slot]?.product_id ?? null };
 
     setSlots((prev) => ({
@@ -1937,39 +1962,49 @@ export default function LockerDashboard({ region = "PT" }) {
               {Array.from({ length: 24 }).map((_, idx) => {
                 const slot = idx + 1;
                 const st = slots[slot]?.state || "AVAILABLE";
+                const isClickable = st === "AVAILABLE";
+
                 return (
                   <SlotCard
                     key={slot}
                     slot={slot}
                     state={st}
                     selected={slot === selectedSlot}
+                    disabled={!isClickable}
                     onClick={() => selectSlot(slot)}
                   />
                 );
               })}
+
             </div>
 
             <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Alterar estado da gaveta {selectedSlot ?? "—"}:
               </div>
-              {SLOT_STATES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => selectedSlot && setStateOnBackend(selectedSlot, s)}
-                  style={{
-                    padding: "7px 10px",
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "white",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  {STATE_STYLE[s]?.label || s}
-                </button>
-              ))}
+              {SLOT_STATES.map((s) => {
+                const disabled = !selectedSlot;
+
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setStateOnBackend(selectedSlot, s)}
+                    disabled={disabled}
+                    style={{
+                      padding: "7px 10px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.18)",
+                      background: "rgba(255,255,255,0.06)",
+                      color: "white",
+                      cursor: disabled ? "not-allowed" : "pointer",
+                      opacity: disabled ? 0.45 : 1,
+                      fontSize: 12,
+                    }}
+                  >
+                    {STATE_STYLE[s]?.label || s}
+                  </button>
+                );
+              })}
             </div>
           </section>
 
@@ -2709,10 +2744,19 @@ export default function LockerDashboard({ region = "PT" }) {
                         }}
                       >
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <button onClick={() => selectSlot(slot)} style={{ ...btnSmall, padding: "6px 10px", fontWeight: 700 }}>
+                          <button
+                            onClick={() => selectSlot(slot)}
+                            disabled={st !== "AVAILABLE"}
+                            style={{
+                              ...btnSmall,
+                              padding: "6px 10px",
+                              fontWeight: 700,
+                              opacity: st !== "AVAILABLE" ? 0.5 : 1,
+                              cursor: st !== "AVAILABLE" ? "not-allowed" : "pointer",
+                            }}
+                          >
                             Gaveta {slot}
                           </button>
-
                           <span
                             style={{
                               padding: "4px 8px",
