@@ -1,10 +1,11 @@
 # 01_source/order_pickup_service/app/core/lifecycle_client.py
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import requests
+
+from app.core.config import settings
 
 
 class LifecycleClientError(RuntimeError):
@@ -19,15 +20,14 @@ class LifecycleClient:
         timeout_sec: float | None = None,
         internal_token: str | None = None,
     ) -> None:
-        self.base_url = (
-            (base_url or os.getenv("ORDER_LIFECYCLE_BASE_URL", "")).rstrip("/")
-        )
-        self.timeout_sec = float(
-            timeout_sec or os.getenv("ORDER_LIFECYCLE_TIMEOUT_SEC", "5")
-        )
-        self.internal_token = (
-            internal_token or os.getenv("ORDER_LIFECYCLE_INTERNAL_TOKEN", "")
-        )
+        resolved_base_url = base_url or settings.lifecycle_base_url
+        self.base_url = str(resolved_base_url or "").rstrip("/")
+
+        resolved_timeout = timeout_sec if timeout_sec is not None else 5
+        self.timeout_sec = float(resolved_timeout)
+
+        resolved_token = internal_token or settings.internal_token
+        self.internal_token = str(resolved_token or "").strip()
 
         if not self.base_url:
             raise LifecycleClientError("ORDER_LIFECYCLE_BASE_URL não configurado.")

@@ -1,13 +1,12 @@
-# 01_source/order_pickup_service/app/jobs/expiry.py
 from __future__ import annotations
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
@@ -15,12 +14,11 @@ from app.services import backend_client
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = int(os.getenv("EXPIRY_BATCH_SIZE", "100"))
-MAX_RETRIES = int(os.getenv("EXPIRY_MAX_RETRIES", "3"))
+BATCH_SIZE = settings.expiry_batch_size
+MAX_RETRIES = settings.expiry_max_retries
 
-# Crédito opcional (não derruba o job se não existir model/tabela)
-ENABLE_CREDIT = os.getenv("EXPIRY_ENABLE_CREDIT", "false").lower() == "true"
-CREDIT_RATIO = float(os.getenv("EXPIRY_CREDIT_RATIO", "0.50"))  # 50%
+ENABLE_CREDIT = settings.expiry_enable_credit
+CREDIT_RATIO = settings.expiry_credit_ratio
 
 
 def _utc_now() -> datetime:
@@ -28,10 +26,6 @@ def _utc_now() -> datetime:
 
 
 def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
-    """
-    Normaliza datetime para naive UTC, para comparar com colunas DateTime
-    salvas sem timezone explícito.
-    """
     if dt is None:
         return None
 
@@ -42,10 +36,6 @@ def _as_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
 
 
 def _try_import_credit():
-    """
-    Import/tabelas de crédito podem não existir ainda.
-    Se não existir, o job expira pedidos sem criar crédito.
-    """
     try:
         from app.models.credit import Credit, CreditStatus  # type: ignore
         return Credit, CreditStatus
@@ -108,7 +98,6 @@ def run_expiry_once(db: Session) -> int:
             db.rollback()
             logger.error(f"[expiry] erro ao processar order={order.id}: {e}", exc_info=True)
 
-    # efeitos externos fora da transação
     for item in processed:
         try:
             _external_effects(
@@ -148,7 +137,6 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
 
     locker_id = _resolve_locker_id(order=order, allocation=allocation)
 
-    # 1) Crédito 50% (opcional)
     if ENABLE_CREDIT:
         Credit, CreditStatus = _try_import_credit()
         if Credit and CreditStatus and getattr(order, "user_id", None) and getattr(order, "amount_cents", None):
@@ -157,7 +145,7 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
                 if not existing:
                     credit_amount = int(int(order.amount_cents) * CREDIT_RATIO)
                     credit = Credit(
-                        id=Credit.new_id(),  # se existir no seu model
+                        id=Credit.new_id(),
                         user_id=order.user_id,
                         order_id=order.id,
                         amount_cents=credit_amount,
@@ -168,11 +156,9 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
             except Exception as e:
                 logger.warning(f"[expiry] falha ao criar crédito order={order.id}: {e}")
 
-    # 2) Atualiza Order
     order.status = OrderStatus.EXPIRED
     order.mark_payment_expired()
 
-    # 3) Atualiza Pickup
     pickup_id = None
     if pickup:
         pickup_id = pickup.id
@@ -180,11 +166,9 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
         if pickup.status == PickupStatus.ACTIVE:
             pickup.status = PickupStatus.EXPIRED
 
-        # Mantém coerência temporal com o deadline do pedido
         if order.pickup_deadline_at:
             pickup.expires_at = order.pickup_deadline_at
 
-    # 4) Atualiza Allocation
     alloc_id = None
     slot = None
     if allocation:
@@ -223,11 +207,6 @@ def _external_effects(
     region: str,
     locker_id: Optional[str],
 ) -> None:
-    """
-    Best-effort:
-      - marca slot OUT_OF_STOCK (cinza)
-      - libera allocation no backend (locker_release)
-    """
     if slot is not None:
         for attempt in range(MAX_RETRIES):
             try:

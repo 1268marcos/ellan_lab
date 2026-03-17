@@ -1,7 +1,6 @@
 # 01_source/order_pickup_service/app/main.py
 import asyncio
 import logging
-import os
 import time
 import traceback
 
@@ -9,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.config import settings
 from app.core.db import SessionLocal, init_db
 from app.core.version import get_version
 from app.health.health import router as health_router
@@ -19,9 +19,6 @@ from app.routers import dev_admin, internal, kiosk, orders, pickup
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
-
-EXPIRY_POLL_SEC = int(os.getenv("EXPIRY_POLL_SEC", "60"))
-LIFECYCLE_EVENTS_POLL_SEC = int(os.getenv("LIFECYCLE_EVENTS_POLL_SEC", "10"))
 
 app = FastAPI(
     title="ELLAN Order Pickup Service",
@@ -119,7 +116,7 @@ async def expiry_loop():
         finally:
             db.close()
 
-        await asyncio.sleep(EXPIRY_POLL_SEC)
+        await asyncio.sleep(settings.expiry_poll_sec)
 
 
 async def lifecycle_events_loop():
@@ -132,7 +129,7 @@ async def lifecycle_events_loop():
         finally:
             db.close()
 
-        await asyncio.sleep(LIFECYCLE_EVENTS_POLL_SEC)
+        await asyncio.sleep(settings.lifecycle_events_poll_sec)
 
 
 @app.exception_handler(Exception)

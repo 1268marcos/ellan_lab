@@ -1,10 +1,9 @@
-# 01_source/order_pickup_service/app/routers/dev_admin.py
-import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db
 from app.models.allocation import Allocation
 from app.models.order import Order
@@ -21,8 +20,7 @@ router = APIRouter(prefix="/dev-admin", tags=["dev-admin"])
 
 
 def _ensure_dev_mode() -> None:
-    dev_bypass = os.getenv("DEV_BYPASS_AUTH", "false").lower() == "true"
-    if not dev_bypass:
+    if not settings.dev_bypass_auth:
         raise HTTPException(
             status_code=403,
             detail={

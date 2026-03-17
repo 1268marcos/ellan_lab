@@ -1,7 +1,7 @@
+# 01_source/order_pickup_service/app/routers/pickup.py
 import hashlib
 import hmac
 import logging
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
+from app.core.config import settings
 from app.core.db import get_db
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
@@ -28,19 +29,17 @@ from app.services import backend_client
 router = APIRouter(tags=["pickup"])
 logger = logging.getLogger(__name__)
 
-QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))
-QR_PAYLOAD_VERSION = int(os.getenv("PICKUP_QR_PAYLOAD_VERSION", "2"))
+QR_ROTATE_SEC = settings.qr_rotate_sec
+QR_PAYLOAD_VERSION = settings.pickup_qr_payload_version
 
-APP_ENV = str(
-    os.getenv("APP_ENV") or os.getenv("NODE_ENV") or "dev"
-).strip().lower()
+APP_ENV = str(settings.app_env or settings.node_env or "dev").strip().lower()
 
-_QR_SECRET_RAW = str(os.getenv("PICKUP_QR_SECRET", "")).strip()
+_QR_SECRET_RAW = str(settings.pickup_qr_secret or "").strip()
 _DEV_FALLBACK_QR_SECRET = "dev-secreto-mudar"
 
-MANUAL_REDEEM_MAX_ATTEMPTS = int(os.getenv("MANUAL_REDEEM_MAX_ATTEMPTS", "5"))
-MANUAL_REDEEM_WINDOW_SEC = int(os.getenv("MANUAL_REDEEM_WINDOW_SEC", "120"))
-MANUAL_REDEEM_BLOCK_SEC = int(os.getenv("MANUAL_REDEEM_BLOCK_SEC", "300"))
+MANUAL_REDEEM_MAX_ATTEMPTS = settings.manual_redeem_max_attempts
+MANUAL_REDEEM_WINDOW_SEC = settings.manual_redeem_window_sec
+MANUAL_REDEEM_BLOCK_SEC = settings.manual_redeem_block_sec
 
 _manual_redeem_attempts = {}
 
@@ -514,7 +513,7 @@ def me_pickup_view(
 
 
 @router.post(
-    "/me/pickups/{pickup_id}/qr", 
+    "/me/pickups/{pickup_id}/qr",
     response_model=PickupQrOut,
     summary="Gerar QR Code para retirada do pedido",
     description="""
@@ -526,18 +525,18 @@ def me_pickup_view(
         3. Gera QR Code com payload assinado (v1 ou v2)
         4. QR Code expira automaticamente após o tempo configurado
         5. O totem escaneia e valida a assinatura
-        
+
         ## Características de segurança:
         - Payload assinado criptograficamente
         - Contador de rotação (CTR) para evitar replay attacks
         - Token único por pickup
         - Expiração automática
         - Validação de horário de retirada
-        
+
         ## Versionamento do QR:
         - **v1**: Apenas pickup_id, token_id, CTR e expiração
         - **v2**: Inclui locker_id e região para validação física
-        
+
         ## Possíveis erros:
         - `404`: Pickup/Order não encontrado
         - `409`: Pickup em estado inválido (não está ACTIVE)
@@ -547,66 +546,66 @@ def me_pickup_view(
     response_description="QR Code gerado com sucesso com tempo de refresh",
     status_code=201,
     responses={
-            200: {
-                "description": "QR Code gerado com sucesso",
-                "content": {
-                    "application/json": {
-                        "example": {
-                            "qr": {
-                                "pickup_id": "pk_123456",
-                                "token_id": "tok_abcdef",
-                                "locker_id": "LKR-01-23",
-                                "region": "SP-ZN",
-                                "ctr": 42,
-                                "exp": 1700000000,
-                                "sig": "a1b2c3d4e5f6..."
-                            },
-                            "refresh_in_sec": 30
+        200: {
+            "description": "QR Code gerado com sucesso",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "qr": {
+                            "pickup_id": "pk_123456",
+                            "token_id": "tok_abcdef",
+                            "locker_id": "LKR-01-23",
+                            "region": "SP-ZN",
+                            "ctr": 42,
+                            "exp": 1700000000,
+                            "sig": "a1b2c3d4e5f6..."
+                        },
+                        "refresh_in_sec": 30
+                    }
+                }
+            }
+        },
+        404: {
+            "description": "Pickup ou ordem não encontrada",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "pickup/order not found"
+                    }
+                }
+            }
+        },
+        409: {
+            "description": "Estado inválido do pickup",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "invalid_state": {
+                            "value": {"detail": "invalid pickup state: EXPIRED"}
+                        },
+                        "invalid_window": {
+                            "value": {"detail": "outside pickup window"}
                         }
                     }
                 }
-            },
-            404: {
-                "description": "Pickup ou ordem não encontrada",
-                "content": {
-                    "application/json": {
-                        "example": {
-                            "detail": "pickup/order not found"
-                        }
-                    }
-                }
-            },
-            409: {
-                "description": "Estado inválido do pickup",
-                "content": {
-                    "application/json": {
-                        "examples": {
-                            "invalid_state": {
-                                "value": {"detail": "invalid pickup state: EXPIRED"}
-                            },
-                            "invalid_window": {
-                                "value": {"detail": "outside pickup window"}
-                            }
-                        }
-                    }
-                }
-            },
-            500: {
-                "description": "Erro de configuração do locker",
-                "content": {
-                    "application/json": {
-                        "example": {
-                            "detail": {
-                                "type": "LOCKER_CONTEXT_MISSING",
-                                "message": "locker context missing for QR generation",
-                                "retryable": True
-                            }
+            }
+        },
+        500: {
+            "description": "Erro de configuração do locker",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": {
+                            "type": "LOCKER_CONTEXT_MISSING",
+                            "message": "locker context missing for QR generation",
+                            "retryable": True
                         }
                     }
                 }
             }
         }
-    )
+    }
+)
 def me_pickup_qr(
     pickup_id: str,
     db: Session = Depends(get_db),

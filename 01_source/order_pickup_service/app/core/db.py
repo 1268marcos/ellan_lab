@@ -1,20 +1,16 @@
 # 01_source/order_pickup_service/app/core/db.py
 import logging
-import os
 
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:////data/sqlite/order_pickup/orders.db")
-RUN_DB_MIGRATIONS_ON_STARTUP = (
-    os.getenv("RUN_DB_MIGRATIONS_ON_STARTUP", "false").strip().lower() == "true"
-)
+from app.core.config import settings
 
 connect_args = {}
-if DATABASE_URL.startswith("sqlite"):
+if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args, future=True)
+engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 logger = logging.getLogger("order_pickup_service.db")
@@ -162,7 +158,7 @@ def _assert_required_schema() -> None:
 
 
 def _run_startup_migrations_if_enabled() -> None:
-    if not RUN_DB_MIGRATIONS_ON_STARTUP:
+    if not settings.run_db_migrations_on_startup:
         logger.info(
             "RUN_DB_MIGRATIONS_ON_STARTUP=false; migrações automáticas não serão executadas."
         )

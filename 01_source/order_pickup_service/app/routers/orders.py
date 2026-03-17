@@ -1,8 +1,6 @@
-# 01_source/order_pickup_service/app/routers/orders.py
 # Router: /orders (ONLINE)
 # Aqui faz pedido ONLINE
 import logging
-import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +8,7 @@ from requests import HTTPError
 from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.lifecycle_client import LifecycleClientError
 from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
@@ -193,8 +192,6 @@ def _compensate_failed_online_creation(
         raise
 
 
-
-
 @router.post("", response_model=OrderOut)
 def create_order(
     payload: CreateOrderIn,
@@ -231,9 +228,9 @@ def create_order(
             if (
                 e.response is not None
                 and e.response.status_code == 404
-                and os.getenv("DEV_ALLOW_UNKNOWN_SKU", "false").lower() == "true"
+                and settings.dev_allow_unknown_sku
             ):
-                pricing = {"amount_cents": int(os.getenv("DEV_DEFAULT_PRICE_CENTS", "1000"))}
+                pricing = {"amount_cents": settings.dev_default_price_cents}
             else:
                 raise
 

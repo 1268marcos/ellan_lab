@@ -1,24 +1,23 @@
-# 01_source/order_pickup_service/app/jobs/lifecycle_events_consumer.py
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.lifecycle_events_client import (
     LifecycleEventsClient,
     LifecycleEventsClientError,
 )
-from app.models.allocation import Allocation, AllocationState
+from app.models.allocation import Allocation
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
 
 logger = logging.getLogger(__name__)
 
-LIFECYCLE_EVENTS_BATCH_SIZE = int(os.getenv("LIFECYCLE_EVENTS_BATCH_SIZE", "100"))
+LIFECYCLE_EVENTS_BATCH_SIZE = settings.lifecycle_events_batch_size
 
 
 def run_lifecycle_events_consumer_once(db: Session) -> int:
@@ -90,7 +89,6 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         logger.warning("prepayment_timeout_order_not_found", extra={"order_id": order_id})
         return True
 
-    # Idempotência: se já saiu do pré-pagamento, o evento pode ser reconhecido
     if order.status != OrderStatus.PAYMENT_PENDING:
         logger.info(
             "prepayment_timeout_already_handled",
@@ -112,7 +110,6 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
                 locker_id=locker_id,
             )
 
-            # Pré-pagamento expirado: slot volta a ficar disponível
             if allocation.slot is not None:
                 backend_client.locker_set_state(
                     region,

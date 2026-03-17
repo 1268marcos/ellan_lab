@@ -1,24 +1,9 @@
 # 01_source/order_pickup_service/app/services/backend_client.py
-import os
 from typing import Optional
 
 import requests
 
-BACKEND_SP_INTERNAL = os.getenv("BACKEND_SP_INTERNAL", "http://backend_sp:8000")
-BACKEND_PT_INTERNAL = os.getenv("BACKEND_PT_INTERNAL", "http://backend_pt:8000")
-BACKEND_PRICE_PATH_TEMPLATE = os.getenv("BACKEND_PRICE_PATH_TEMPLATE", "/catalog/skus/{sku_id}")
-
-PAYMENT_GATEWAY_INTERNAL = os.getenv("PAYMENT_GATEWAY_INTERNAL", "http://payment_gateway:8000")
-PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE = os.getenv(
-    "PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE",
-    "/lockers/{locker_id}",
-)
-
-DEV_ALLOW_UNKNOWN_SKU = os.getenv("DEV_ALLOW_UNKNOWN_SKU", "false").lower() == "true"
-DEV_DEFAULT_PRICE_CENTS = int(os.getenv("DEV_DEFAULT_PRICE_CENTS", "1000"))
-DEV_DEFAULT_CURRENCY = os.getenv("DEV_DEFAULT_CURRENCY", "EUR")
-
-HTTP_TIMEOUT_SEC = int(os.getenv("BACKEND_CLIENT_TIMEOUT_SEC", "5"))
+from app.core.config import settings
 
 
 def _normalize_region(region: str) -> str:
@@ -31,8 +16,8 @@ def _normalize_region(region: str) -> str:
 def _base(region: str) -> str:
     r = _normalize_region(region)
     if r == "SP":
-        return BACKEND_SP_INTERNAL
-    return BACKEND_PT_INTERNAL
+        return settings.backend_sp_internal
+    return settings.backend_pt_internal
 
 
 def _normalize_locker_id(locker_id: Optional[str]) -> Optional[str]:
@@ -57,11 +42,11 @@ def get_locker_registry_item(locker_id: str) -> Optional[dict]:
     if not normalized:
         return None
 
-    base = PAYMENT_GATEWAY_INTERNAL.rstrip("/")
-    path = PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE.format(locker_id=normalized)
+    base = settings.payment_gateway_internal.rstrip("/")
+    path = settings.payment_gateway_lockers_path_template.format(locker_id=normalized)
     url = f"{base}{path}"
 
-    r = requests.get(url, timeout=HTTP_TIMEOUT_SEC)
+    r = requests.get(url, timeout=settings.backend_client_timeout_sec)
 
     if r.status_code == 404:
         return None
@@ -76,24 +61,24 @@ def get_sku_pricing(region: str, sku_id: str, locker_id: str | None = None) -> d
         raise ValueError("sku_id is required")
 
     base = _base(region).rstrip("/")
-    path = BACKEND_PRICE_PATH_TEMPLATE.format(sku_id=normalized_sku_id)
+    path = settings.backend_price_path_template.format(sku_id=normalized_sku_id)
     url = f"{base}{path}"
 
     try:
         r = requests.get(
             url,
             headers=_headers_for_locker(locker_id),
-            timeout=HTTP_TIMEOUT_SEC,
+            timeout=settings.backend_client_timeout_sec,
         )
         r.raise_for_status()
         return r.json()
     except requests.HTTPError as e:
         status = getattr(e.response, "status_code", None)
-        if status == 404 and DEV_ALLOW_UNKNOWN_SKU:
+        if status == 404 and settings.dev_allow_unknown_sku:
             return {
                 "sku_id": normalized_sku_id,
-                "amount_cents": DEV_DEFAULT_PRICE_CENTS,
-                "currency": DEV_DEFAULT_CURRENCY,
+                "amount_cents": settings.dev_default_price_cents,
+                "currency": settings.dev_default_currency,
                 "source": "DEV_FALLBACK",
                 "note": "SKU não encontrado no catálogo; usando preço default em DEV.",
             }
@@ -131,7 +116,7 @@ def locker_allocate(
         url,
         json=payload,
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()
@@ -155,7 +140,7 @@ def locker_commit(
         url,
         json=payload,
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()
@@ -173,7 +158,7 @@ def locker_release(region: str, allocation_id: str, locker_id: str | None = None
         url,
         json={},
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()
@@ -187,7 +172,7 @@ def locker_open(region: str, slot: int, locker_id: str | None = None) -> dict:
         url,
         json={},
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()
@@ -201,7 +186,7 @@ def locker_light_on(region: str, slot: int, locker_id: str | None = None) -> dic
         url,
         json={},
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()
@@ -229,7 +214,7 @@ def locker_set_state(
         url,
         json=payload,
         headers=_headers_for_locker(locker_id),
-        timeout=HTTP_TIMEOUT_SEC,
+        timeout=settings.backend_client_timeout_sec,
     )
     r.raise_for_status()
     return r.json()

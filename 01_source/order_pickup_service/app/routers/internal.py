@@ -1,9 +1,7 @@
-# 01_source/order_pickup_service/app/routers/internal.py
 # Router: /internal/* (protegido por X-Internal-Token)
 from __future__ import annotations
 
 import hashlib
-import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -12,6 +10,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
 from app.core.lifecycle_client import LifecycleClientError
@@ -26,7 +25,7 @@ from app.services.lifecycle_integration import cancel_prepayment_timeout_deadlin
 router = APIRouter(prefix="/internal", tags=["internal"])
 
 PICKUP_WINDOW_HOURS = 2
-QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))
+QR_ROTATE_SEC = settings.qr_rotate_sec
 
 
 def _utc_now() -> datetime:
