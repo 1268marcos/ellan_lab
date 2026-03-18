@@ -50,7 +50,7 @@ def register_user(
     user = User(
         full_name=full_name.strip(),
         email=email.lower().strip(),
-        phone=phone.strip() if phone else None,
+        phone=normalize_phone(phone),
         password_hash=hash_password(password),
         is_active=True,
         email_verified=False,
@@ -63,6 +63,10 @@ def register_user(
     db.refresh(user)
     return user
 
+def normalize_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    return phone.replace(" ", "").replace("-", "")
 
 def authenticate_user(db: Session, *, email: str, password: str) -> User:
     user = db.query(User).filter(User.email == email.lower().strip()).first()
@@ -74,6 +78,9 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User:
 
     if not user.is_active:
         raise AuthInvalidCredentialsError("inactive_user")
+    
+    user.updated_at = utc_now_naive()
+    db.commit()
 
     return user
 
@@ -115,12 +122,29 @@ def get_user_by_session_token(db: Session, *, raw_token: str) -> User | None:
         .filter(AuthSession.revoked_at.is_(None))
         .filter(AuthSession.expires_at > now)
         .first()
+        # ABAIXO NAO FUNCIONOU : Limite de 1 sessão ativa por usuário - comportamento tipo apps modernos
+        # db.query(AuthSession).filter(
+        #     AuthSession.user_id == user.id
+        # ).filter(
+        #     AuthSession.revoked_at.is_(None)
+        # ).update({
+        #     AuthSession.revoked_at: utc_now_naive()
+        # })
     )
     if not session:
         return None
 
-    user = db.query(User).filter(User.id == session.user_id).first()
-    if not user or not user.is_active:
+    # user = db.query(User).filter(User.id == session.user_id).first()
+    # if not user or not user.is_active:
+    #     return None
+
+    user = (
+        db.query(User)
+        .filter(User.id == session.user_id)
+        .filter(User.is_active == True)
+        .first()
+    )
+    if not user:
         return None
 
     return user

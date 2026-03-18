@@ -1,8 +1,10 @@
 # 01_source/order_pickup_service/app/core/auth_dev.py
-from fastapi import Request
+from fastapi import Depends, HTTPException, Request
+from sqlalchemy.orm import Session
 
-from app.core.auth_dep import get_current_user
 from app.core.config import settings
+from app.core.db import get_db
+from app.services.auth_service import get_user_by_session_token
 
 
 class DevUser:
@@ -10,26 +12,38 @@ class DevUser:
         self.id = user_id
 
 
-def get_current_user_or_dev(request: Request):
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    if not authorization.startswith("Bearer "):
+        return None
+    token = authorization.replace("Bearer ", "", 1).strip()
+    return token or None
+
+
+def get_current_user_or_dev(
+    request: Request,
+    db: Session = Depends(get_db),
+):
     """
-    DEV_BYPASS_AUTH=true:
-      - não exige bearer token
-      - retorna user fake
-    caso contrário:
-      - exige bearer token via get_current_user
-    O que é um "Bearer Token"?
-      - Bearer Token é um tipo de "chave de acesso" usada em 
-        APIs (especialmente em APIs REST que seguem o padrão OAuth 2.0).
-      - É uma string (geralmente longa e criptografada) que o 
-        cliente (como um aplicativo ou site) envia para o servidor 
-        para provar que tem permissão para acessar aquela informação.
-      - O nome "Bearer" (portador) significa: "quem possui este token, 
-        possui o acesso". É como um ingresso de show: quem apresenta 
-        o ingresso (o token) entra.
-      - Normalmente, ele é enviado no cabeçalho (header) da 
-        requisição HTTP, no formato: Authorization: Bearer <seu_token_aqui>.
+    Ordem de resolução:
+    1. Bearer token público -> usuário autenticado por sessão
+    2. DEV_BYPASS_AUTH=true -> usuário fake de desenvolvimento
+    3. fallback -> 401
     """
+    authorization = request.headers.get("authorization")
+    raw_token = _extract_bearer_token(authorization)
+
+    if raw_token:
+        user = get_user_by_session_token(db, raw_token=raw_token)
+        if user:
+            return user
+
     if settings.dev_bypass_auth:
         return DevUser(user_id=settings.dev_user_id)
 
-    return get_current_user(request)
+    raise HTTPException(
+        status_code=401,
+        detail="unauthorized",
+        headers={"WWW-Authenticate": "Bearer"},
+    )

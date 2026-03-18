@@ -67,7 +67,7 @@ class Order(Base):
 
     id = Column(String, primary_key=True)
 
-    user_id = Column(String, nullable=True)  # ONLINE obrigatório; KIOSK null
+    user_id = Column(Integer, nullable=True)  # ONLINE obrigatório; KIOSK null
     channel = Column(Enum(OrderChannel), nullable=False)
 
     region = Column(String, nullable=False)    # "SP" | "PT"

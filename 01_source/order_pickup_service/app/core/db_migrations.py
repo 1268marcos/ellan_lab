@@ -52,6 +52,102 @@ def migrate_order_pickup_schema() -> dict:
         # USERS
         # =========================
         if _has_table(inspector, "users"):
+
+            ###
+            ##
+            #
+            # =========================
+            # SQLITE USERS TABLE REBUILD
+            # =========================
+            if dialect == "sqlite" and _has_table(inspector, "users"):
+                if _sqlite_users_id_needs_rebuild(conn):
+                    conn.execute(text("PRAGMA foreign_keys=OFF"))
+
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE users_new (
+                                id INTEGER PRIMARY KEY,
+                                full_name VARCHAR(255) NULL,
+                                email VARCHAR(255) NOT NULL,
+                                phone VARCHAR(32) NULL,
+                                password_hash VARCHAR(255) NULL,
+                                is_active BOOLEAN NULL,
+                                email_verified BOOLEAN NULL,
+                                phone_verified BOOLEAN NULL,
+                                created_at DATETIME NULL,
+                                updated_at DATETIME NULL
+                            )
+                            """
+                        )
+                    )
+
+                    existing_user_columns = {col["name"] for col in inspector.get_columns("users")}
+
+                    full_name_expr = (
+                        "full_name"
+                        if "full_name" in existing_user_columns
+                        else ("name" if "name" in existing_user_columns else "email")
+                    )
+
+                    phone_expr = "phone" if "phone" in existing_user_columns else "NULL"
+                    password_hash_expr = (
+                        "password_hash" if "password_hash" in existing_user_columns else "NULL"
+                    )
+                    is_active_expr = "is_active" if "is_active" in existing_user_columns else "1"
+                    email_verified_expr = (
+                        "email_verified" if "email_verified" in existing_user_columns else "0"
+                    )
+                    phone_verified_expr = (
+                        "phone_verified" if "phone_verified" in existing_user_columns else "0"
+                    )
+                    created_at_expr = "created_at" if "created_at" in existing_user_columns else "CURRENT_TIMESTAMP"
+                    updated_at_expr = "updated_at" if "updated_at" in existing_user_columns else "CURRENT_TIMESTAMP"
+
+                    conn.execute(
+                        text(
+                            f"""
+                            INSERT INTO users_new (
+                                id,
+                                full_name,
+                                email,
+                                phone,
+                                password_hash,
+                                is_active,
+                                email_verified,
+                                phone_verified,
+                                created_at,
+                                updated_at
+                            )
+                            SELECT
+                                id,
+                                {full_name_expr},
+                                email,
+                                {phone_expr},
+                                {password_hash_expr},
+                                {is_active_expr},
+                                {email_verified_expr},
+                                {phone_verified_expr},
+                                {created_at_expr},
+                                {updated_at_expr}
+                            FROM users
+                            """
+                        )
+                    )
+
+                    conn.execute(text("DROP TABLE users"))
+                    conn.execute(text("ALTER TABLE users_new RENAME TO users"))
+                    conn.execute(text("PRAGMA foreign_keys=ON"))
+
+                    applied.append("users.sqlite_table_rebuild_for_integer_primary_key")
+                    inspector = inspect(conn)
+
+
+
+            #
+            ##
+            ###
+            
             if not _has_column(inspector, "users", "full_name"):
                 if dialect == "sqlite":
                     conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"))
@@ -186,6 +282,164 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("users.full_name_backfill_from_email")
 
         inspector = inspect(conn)
+
+
+        # =========================
+        # SQLITE ORDERS TABLE REBUILD (user_id -> INTEGER)
+        # =========================
+        inspector = inspect(conn)
+        if dialect == "sqlite" and _has_table(inspector, "orders"):
+            if _sqlite_orders_user_id_needs_rebuild(conn):
+                conn.execute(text("PRAGMA foreign_keys=OFF"))
+
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE orders_new (
+                            id VARCHAR NOT NULL PRIMARY KEY,
+                            user_id INTEGER NULL,
+                            channel VARCHAR(6) NOT NULL,
+                            region VARCHAR NOT NULL,
+                            totem_id VARCHAR NOT NULL,
+                            sku_id VARCHAR NOT NULL,
+                            amount_cents INTEGER NOT NULL,
+                            status VARCHAR(18) NOT NULL,
+                            gateway_transaction_id VARCHAR NULL,
+                            payment_method VARCHAR(21) NULL,
+                            payment_status VARCHAR(30) NULL,
+                            card_type VARCHAR(10) NULL,
+                            payment_updated_at DATETIME NULL,
+                            paid_at DATETIME NULL,
+                            pickup_deadline_at DATETIME NULL,
+                            picked_up_at DATETIME NULL,
+                            guest_session_id VARCHAR NULL,
+                            receipt_email VARCHAR NULL,
+                            receipt_phone VARCHAR NULL,
+                            consent_marketing INTEGER NULL,
+                            guest_phone VARCHAR NULL,
+                            guest_email VARCHAR NULL,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                        """
+                    )
+                )
+
+                existing_order_columns = {col["name"] for col in inspector.get_columns("orders")}
+
+                gateway_transaction_id_expr = (
+                    "gateway_transaction_id" if "gateway_transaction_id" in existing_order_columns else "NULL"
+                )
+                payment_method_expr = (
+                    "payment_method" if "payment_method" in existing_order_columns else "NULL"
+                )
+                payment_status_expr = (
+                    "payment_status" if "payment_status" in existing_order_columns else "'CREATED'"
+                )
+                card_type_expr = "card_type" if "card_type" in existing_order_columns else "NULL"
+                payment_updated_at_expr = (
+                    "payment_updated_at" if "payment_updated_at" in existing_order_columns else "NULL"
+                )
+                paid_at_expr = "paid_at" if "paid_at" in existing_order_columns else "NULL"
+                pickup_deadline_at_expr = (
+                    "pickup_deadline_at" if "pickup_deadline_at" in existing_order_columns else "NULL"
+                )
+                picked_up_at_expr = (
+                    "picked_up_at" if "picked_up_at" in existing_order_columns else "NULL"
+                )
+                guest_session_id_expr = (
+                    "guest_session_id" if "guest_session_id" in existing_order_columns else "NULL"
+                )
+                receipt_email_expr = (
+                    "receipt_email" if "receipt_email" in existing_order_columns else "NULL"
+                )
+                receipt_phone_expr = (
+                    "receipt_phone" if "receipt_phone" in existing_order_columns else "NULL"
+                )
+                consent_marketing_expr = (
+                    "consent_marketing" if "consent_marketing" in existing_order_columns else "0"
+                )
+                guest_phone_expr = "guest_phone" if "guest_phone" in existing_order_columns else "NULL"
+                guest_email_expr = "guest_email" if "guest_email" in existing_order_columns else "NULL"
+                updated_at_expr = "updated_at" if "updated_at" in existing_order_columns else "created_at"
+
+                # user_id:
+                # - se for numérico em texto, converte para INTEGER
+                # - se for algo como 'dev_user_1', vira NULL
+                user_id_expr = """
+                    CASE
+                        WHEN user_id IS NULL THEN NULL
+                        WHEN TRIM(CAST(user_id AS TEXT)) GLOB '[0-9]*' THEN CAST(user_id AS INTEGER)
+                        ELSE NULL
+                    END
+                """
+
+                conn.execute(
+                    text(
+                        f"""
+                        INSERT INTO orders_new (
+                            id,
+                            user_id,
+                            channel,
+                            region,
+                            totem_id,
+                            sku_id,
+                            amount_cents,
+                            status,
+                            gateway_transaction_id,
+                            payment_method,
+                            payment_status,
+                            card_type,
+                            payment_updated_at,
+                            paid_at,
+                            pickup_deadline_at,
+                            picked_up_at,
+                            guest_session_id,
+                            receipt_email,
+                            receipt_phone,
+                            consent_marketing,
+                            guest_phone,
+                            guest_email,
+                            created_at,
+                            updated_at
+                        )
+                        SELECT
+                            id,
+                            {user_id_expr},
+                            channel,
+                            region,
+                            totem_id,
+                            sku_id,
+                            amount_cents,
+                            status,
+                            {gateway_transaction_id_expr},
+                            {payment_method_expr},
+                            {payment_status_expr},
+                            {card_type_expr},
+                            {payment_updated_at_expr},
+                            {paid_at_expr},
+                            {pickup_deadline_at_expr},
+                            {picked_up_at_expr},
+                            {guest_session_id_expr},
+                            {receipt_email_expr},
+                            {receipt_phone_expr},
+                            {consent_marketing_expr},
+                            {guest_phone_expr},
+                            {guest_email_expr},
+                            created_at,
+                            {updated_at_expr}
+                        FROM orders
+                        """
+                    )
+                )
+
+                conn.execute(text("DROP TABLE orders"))
+                conn.execute(text("ALTER TABLE orders_new RENAME TO orders"))
+                conn.execute(text("PRAGMA foreign_keys=ON"))
+
+                applied.append("orders.sqlite_table_rebuild_user_id_to_integer")
+                inspector = inspect(conn)
+
 
         # =========================
         # ORDERS
@@ -364,6 +618,82 @@ def migrate_order_pickup_schema() -> dict:
         "ok": True,
         "applied": applied,
     }
+
+
+
+
+def _sqlite_table_sql(conn, table_name: str) -> str | None:
+    row = conn.execute(
+        text(
+            """
+            SELECT sql
+              FROM sqlite_master
+             WHERE type = 'table'
+               AND name = :table_name
+            """
+        ),
+        {"table_name": table_name},
+    ).fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _sqlite_users_id_needs_rebuild(conn) -> bool:
+    """
+    Detecta se a tabela users do SQLite precisa ser recriada para que
+    users.id volte a funcionar como INTEGER PRIMARY KEY autoincrement implícito.
+
+    Em SQLite, o comportamento correto de autoincrement do rowid depende de
+    users.id estar definido como INTEGER PRIMARY KEY.
+    """
+    sql = _sqlite_table_sql(conn, "users")
+    if not sql:
+        return False
+
+    normalized = " ".join(sql.lower().split())
+
+    # Caso saudável esperado:
+    # id integer primary key
+    if "id integer primary key" in normalized:
+        return False
+
+    return True
+
+
+
+
+def _sqlite_orders_id_user_id_sql(conn) -> str | None:
+    row = conn.execute(
+        text(
+            """
+            SELECT sql
+              FROM sqlite_master
+             WHERE type = 'table'
+               AND name = 'orders'
+            """
+        )
+    ).fetchone()
+    return row[0] if row and row[0] else None
+
+
+def _sqlite_orders_user_id_needs_rebuild(conn) -> bool:
+    """
+    Detecta se a tabela orders no SQLite ainda está com user_id em tipo textual.
+    Queremos normalizar para INTEGER.
+    """
+    sql = _sqlite_orders_id_user_id_sql(conn)
+    if not sql:
+        return False
+
+    normalized = " ".join(sql.lower().split())
+
+    # Caso correto esperado:
+    # user_id integer
+    if "user_id integer" in normalized:
+        return False
+
+    return True
+
+
 
 
 if __name__ == "__main__":

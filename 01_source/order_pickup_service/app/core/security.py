@@ -14,7 +14,13 @@ from app.core.config import settings
 from passlib.context import CryptContext
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt_sha256 evita o limite prático de 72 bytes do bcrypt puro,
+# mas continua compatível com hashes antigos em bcrypt.
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "bcrypt"],
+    deprecated="auto",
+)
 
 
 # Compatibilidade retroativa para módulos legados que ainda importam constantes
@@ -43,11 +49,17 @@ def hash_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode("utf-8")).hexdigest()
 
 
+
+
 def hash_password(raw_password: str) -> str:
-    return pwd_context.hash(raw_password)
+    if not raw_password:
+        raise ValueError("password_empty")
+    return pwd_context.hash(raw_password, scheme="pbkdf2_sha256")
 
 
 def verify_password(raw_password: str, password_hash: str) -> bool:
+    if not raw_password or not password_hash:
+        return False
     return pwd_context.verify(raw_password, password_hash)
 
 
