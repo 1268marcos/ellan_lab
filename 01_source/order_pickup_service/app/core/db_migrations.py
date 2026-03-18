@@ -25,19 +25,166 @@ def migrate_order_pickup_schema() -> dict:
     Migração incremental e idempotente do schema do order_pickup_service.
 
     Objetivos desta versão:
+    - users.full_name
+    - users.phone
+    - users.password_hash
+    - users.is_active
+    - users.email_verified
+    - users.phone_verified
+    - users.created_at
+    - users.updated_at
     - orders.payment_status
     - orders.card_type
     - orders.payment_updated_at
     - orders.updated_at
     - allocations.locker_id
     - allocations.updated_at
-    - índices novos em orders
-    - índices novos em allocations
+    - índices explícitos em orders
+    - índices explícitos em allocations
     """
     dialect = engine.dialect.name
     applied: list[str] = []
 
     with engine.begin() as conn:
+        inspector = inspect(conn)
+
+        # =========================
+        # USERS
+        # =========================
+        if _has_table(inspector, "users"):
+            if not _has_column(inspector, "users", "full_name"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(255) NULL"))
+                applied.append("users.full_name")
+
+            if not _has_column(inspector, "users", "phone"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(32)"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(32) NULL"))
+                applied.append("users.phone")
+
+            if not _has_column(inspector, "users", "password_hash"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) NULL"))
+                applied.append("users.password_hash")
+
+            if not _has_column(inspector, "users", "is_active"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET is_active = 1
+                         WHERE is_active IS NULL
+                        """
+                    )
+                )
+                applied.append("users.is_active")
+
+            if not _has_column(inspector, "users", "email_verified"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET email_verified = 0
+                         WHERE email_verified IS NULL
+                        """
+                    )
+                )
+                applied.append("users.email_verified")
+
+            if not _has_column(inspector, "users", "phone_verified"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN phone_verified BOOLEAN"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN phone_verified BOOLEAN NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET phone_verified = 0
+                         WHERE phone_verified IS NULL
+                        """
+                    )
+                )
+                applied.append("users.phone_verified")
+
+            if not _has_column(inspector, "users", "created_at"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET created_at = CURRENT_TIMESTAMP
+                         WHERE created_at IS NULL
+                        """
+                    )
+                )
+                applied.append("users.created_at")
+
+            if not _has_column(inspector, "users", "updated_at"):
+                if dialect == "sqlite":
+                    conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
+                else:
+                    conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP NULL"))
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP)
+                         WHERE updated_at IS NULL
+                        """
+                    )
+                )
+                applied.append("users.updated_at")
+
+        # refresh inspector após alterações
+        inspector = inspect(conn)
+
+        # Backfill best-effort de full_name
+        if _has_table(inspector, "users") and _has_column(inspector, "users", "full_name"):
+            existing_user_columns = {col["name"] for col in inspector.get_columns("users")}
+
+            if "name" in existing_user_columns:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET full_name = name
+                         WHERE full_name IS NULL
+                            OR TRIM(full_name) = ''
+                        """
+                    )
+                )
+                applied.append("users.full_name_backfill_from_name")
+            elif "email" in existing_user_columns:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE users
+                           SET full_name = email
+                         WHERE full_name IS NULL
+                            OR TRIM(full_name) = ''
+                        """
+                    )
+                )
+                applied.append("users.full_name_backfill_from_email")
+
         inspector = inspect(conn)
 
         # =========================
@@ -47,15 +194,11 @@ def migrate_order_pickup_schema() -> dict:
             if not _has_column(inspector, "orders", "payment_status"):
                 if dialect == "sqlite":
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(64)"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN payment_status VARCHAR(64)")
                     )
                 else:
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN payment_status VARCHAR(64) NULL"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN payment_status VARCHAR(64) NULL")
                     )
 
                 conn.execute(
@@ -75,24 +218,18 @@ def migrate_order_pickup_schema() -> dict:
             if not _has_column(inspector, "orders", "card_type"):
                 if dialect == "sqlite":
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN card_type VARCHAR(64)"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN card_type VARCHAR(64)")
                     )
                 else:
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN card_type VARCHAR(64) NULL"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN card_type VARCHAR(64) NULL")
                     )
                 applied.append("orders.card_type")
 
             if not _has_column(inspector, "orders", "payment_updated_at"):
                 if dialect == "sqlite":
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN payment_updated_at DATETIME"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN payment_updated_at DATETIME")
                     )
                 else:
                     conn.execute(
@@ -114,16 +251,10 @@ def migrate_order_pickup_schema() -> dict:
 
             if not _has_column(inspector, "orders", "updated_at"):
                 if dialect == "sqlite":
-                    conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN updated_at DATETIME"
-                        )
-                    )
+                    conn.execute(text("ALTER TABLE orders ADD COLUMN updated_at DATETIME"))
                 else:
                     conn.execute(
-                        text(
-                            "ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP NULL"
-                        )
+                        text("ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP NULL")
                     )
 
                 conn.execute(
@@ -146,30 +277,22 @@ def migrate_order_pickup_schema() -> dict:
             if not _has_column(inspector, "allocations", "locker_id"):
                 if dialect == "sqlite":
                     conn.execute(
-                        text(
-                            "ALTER TABLE allocations ADD COLUMN locker_id VARCHAR"
-                        )
+                        text("ALTER TABLE allocations ADD COLUMN locker_id VARCHAR")
                     )
                 else:
                     conn.execute(
-                        text(
-                            "ALTER TABLE allocations ADD COLUMN locker_id VARCHAR NULL"
-                        )
+                        text("ALTER TABLE allocations ADD COLUMN locker_id VARCHAR NULL")
                     )
                 applied.append("allocations.locker_id")
 
             if not _has_column(inspector, "allocations", "updated_at"):
                 if dialect == "sqlite":
                     conn.execute(
-                        text(
-                            "ALTER TABLE allocations ADD COLUMN updated_at DATETIME"
-                        )
+                        text("ALTER TABLE allocations ADD COLUMN updated_at DATETIME")
                     )
                 else:
                     conn.execute(
-                        text(
-                            "ALTER TABLE allocations ADD COLUMN updated_at TIMESTAMP NULL"
-                        )
+                        text("ALTER TABLE allocations ADD COLUMN updated_at TIMESTAMP NULL")
                     )
 
                 conn.execute(

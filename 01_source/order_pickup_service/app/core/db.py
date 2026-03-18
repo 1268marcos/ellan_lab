@@ -54,6 +54,8 @@ def _assert_required_schema() -> None:
         "pickups",
         "pickup_tokens",
         "users",
+        "auth_sessions",
+        "notification_logs",
     }
 
     missing_tables = sorted(required_tables - tables)
@@ -65,6 +67,9 @@ def _assert_required_schema() -> None:
 
     orders_columns = _get_columns_map(inspector, "orders")
     allocations_columns = _get_columns_map(inspector, "allocations")
+    users_columns = _get_columns_map(inspector, "users")
+    auth_sessions_columns = _get_columns_map(inspector, "auth_sessions")
+    notification_logs_columns = _get_columns_map(inspector, "notification_logs")
 
     required_orders_columns = {
         "id",
@@ -104,6 +109,47 @@ def _assert_required_schema() -> None:
         "updated_at",
     }
 
+    required_users_columns = {
+        "id",
+        "full_name",
+        "email",
+        "phone",
+        "password_hash",
+        "is_active",
+        "email_verified",
+        "phone_verified",
+        "created_at",
+        "updated_at",
+    }
+
+    required_auth_sessions_columns = {
+        "id",
+        "user_id",
+        "session_token_hash",
+        "user_agent",
+        "ip_address",
+        "created_at",
+        "expires_at",
+        "revoked_at",
+    }
+
+    required_notification_logs_columns = {
+        "id",
+        "user_id",
+        "order_id",
+        "channel",
+        "template_key",
+        "destination_masked",
+        "provider_name",
+        "provider_message_id",
+        "status",
+        "error_message",
+        "created_at",
+        "sent_at",
+        "delivered_at",
+        "failed_at",
+    }
+
     missing_orders_columns = sorted(required_orders_columns - set(orders_columns.keys()))
     if missing_orders_columns:
         raise RuntimeError(
@@ -120,6 +166,34 @@ def _assert_required_schema() -> None:
             + ", ".join(missing_allocations_columns)
         )
 
+    missing_users_columns = sorted(required_users_columns - set(users_columns.keys()))
+    if missing_users_columns:
+        raise RuntimeError(
+            "Schema incompatível em users: colunas ausentes: "
+            + ", ".join(missing_users_columns)
+        )
+
+    missing_auth_sessions_columns = sorted(
+        required_auth_sessions_columns - set(auth_sessions_columns.keys())
+    )
+    if missing_auth_sessions_columns:
+        raise RuntimeError(
+            "Schema incompatível em auth_sessions: colunas ausentes: "
+            + ", ".join(missing_auth_sessions_columns)
+        )
+
+    missing_notification_logs_columns = sorted(
+        required_notification_logs_columns - set(notification_logs_columns.keys())
+    )
+    if missing_notification_logs_columns:
+        raise RuntimeError(
+            "Schema incompatível em notification_logs: colunas ausentes: "
+            + ", ".join(missing_notification_logs_columns)
+        )
+
+    # Nesta fase validamos índices apenas para tabelas cujo nome do índice
+    # é criado explicitamente por migration. Para users/auth_sessions/notification_logs,
+    # create_all() pode gerar nomes diferentes dependendo do banco/dialeto/modelo.
     orders_indexes = _get_indexes_set(inspector, "orders")
     allocations_indexes = _get_indexes_set(inspector, "allocations")
 
@@ -194,6 +268,8 @@ def init_db():
     from app.models import pickup  # noqa: F401
     from app.models import pickup_token  # noqa: F401
     from app.models import user  # noqa: F401
+    from app.models.auth_session import AuthSession  # noqa: F401
+    from app.models.notification_log import NotificationLog  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _run_startup_migrations_if_enabled()

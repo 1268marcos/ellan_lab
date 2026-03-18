@@ -1,5 +1,7 @@
 # 01_source/order_pickup_service/app/core/security.py
 # Segurança do token (QR) - token opaco + hash
+from __future__ import annotations
+
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -8,6 +10,12 @@ from typing import Any, Dict, Optional
 from jose import jwt
 
 from app.core.config import settings
+
+from passlib.context import CryptContext
+
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 # Compatibilidade retroativa para módulos legados que ainda importam constantes
 JWT_SECRET = settings.jwt_secret
@@ -33,3 +41,19 @@ def generate_otp_6() -> str:
 
 def hash_otp(otp: str) -> str:
     return hashlib.sha256(otp.encode("utf-8")).hexdigest()
+
+
+def hash_password(raw_password: str) -> str:
+    return pwd_context.hash(raw_password)
+
+
+def verify_password(raw_password: str, password_hash: str) -> bool:
+    return pwd_context.verify(raw_password, password_hash)
+
+
+def generate_session_token() -> str:
+    return secrets.token_urlsafe(48)
+
+
+def hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
