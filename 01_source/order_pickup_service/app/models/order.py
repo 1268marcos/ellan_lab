@@ -3,7 +3,7 @@
 import enum
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Enum, Index, Integer, String
+from sqlalchemy import Column, DateTime, Enum, Index, String, Integer
 
 from app.core.db import Base
 
@@ -67,11 +67,13 @@ class Order(Base):
 
     id = Column(String, primary_key=True)
 
-    user_id = Column(Integer, nullable=True)  # ONLINE obrigatório; KIOSK null
+    # 🔥 ALTERAÇÃO PRINCIPAL — AGORA STRING
+    user_id = Column(String, nullable=True)  # ONLINE obrigatório; KIOSK null
+
     channel = Column(Enum(OrderChannel), nullable=False)
 
-    region = Column(String, nullable=False)    # "SP" | "PT"
-    totem_id = Column(String, nullable=False)  # locker_id operacional do pedido
+    region = Column(String, nullable=False)
+    totem_id = Column(String, nullable=False)
     sku_id = Column(String, nullable=False)
 
     amount_cents = Column(Integer, nullable=False)
@@ -89,11 +91,11 @@ class Order(Base):
     payment_updated_at = Column(DateTime, nullable=True)
 
     paid_at = Column(DateTime, nullable=True)
-    pickup_deadline_at = Column(DateTime, nullable=True)   # ONLINE somente
-    picked_up_at = Column(DateTime, nullable=True)         # data/hora efetiva da retirada
+    pickup_deadline_at = Column(DateTime, nullable=True)
+    picked_up_at = Column(DateTime, nullable=True)
 
-    guest_session_id = Column(String, nullable=True)       # KIOSK opcional
-    receipt_email = Column(String, nullable=True)          # KIOSK pós-pagamento
+    guest_session_id = Column(String, nullable=True)
+    receipt_email = Column(String, nullable=True)
     receipt_phone = Column(String, nullable=True)
     consent_marketing = Column(Integer, nullable=False, default=0)
     guest_phone = Column(String, nullable=True)

@@ -1,4 +1,3 @@
-# 01_source/order_pickup_service/app/schemas/orders.py
 from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
@@ -138,7 +137,7 @@ class OrderOut(BaseModel):
 
 class OrderListItemOut(BaseModel):
     order_id: str
-    user_id: Optional[int] = None
+    user_id: Optional[str] = None
     region: str
     channel: str
     status: str

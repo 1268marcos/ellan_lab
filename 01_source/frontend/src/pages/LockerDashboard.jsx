@@ -3,6 +3,8 @@ import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 import { QRCodeCanvas } from "qrcode.react";
 
+import { useAuth } from "../context/AuthContext";
+
 /**
  * Estados das gavetas (use os mesmos nomes do backend)
  */
@@ -257,6 +259,20 @@ const DIGITAL_WALLET_PROVIDER_BY_METHOD = {
   GOOGLE_PAY: "googlePay",
   MERCADO_PAGO_WALLET: "mercadoPago",
 };
+
+function buildAuthHeaders(token) {
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  } else {
+    headers["X-Dev-Bypass-Auth"] = "1";
+  }
+
+  return headers;
+}
 
 function clamp(n, min, max) {
   return Math.max(min, Math.min(max, n));
@@ -948,6 +964,9 @@ function formatEpochDateTime(epochSec, region = "PT") {
 }
 
 export default function LockerDashboard({ region = "PT" }) {
+  // PRIMEIRO: todos os hooks no topo do componente
+  const { token } = useAuth();
+
   const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
   const BACKEND_PT = import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
   const GATEWAY_BASE = import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
@@ -1240,7 +1259,12 @@ export default function LockerDashboard({ region = "PT" }) {
       params.set("page", String(page));
       params.set("page_size", "100");
 
-      const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`);
+      // const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`);
+
+      const res = await fetch(`${ORDER_PICKUP_BASE}/orders?${params.toString()}`, {
+        headers: buildAuthHeaders(token),
+      });
+
       const text = await res.text();
 
       if (!res.ok) {
@@ -1449,7 +1473,7 @@ export default function LockerDashboard({ region = "PT" }) {
 
       const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),
       });
 
@@ -1561,7 +1585,7 @@ export default function LockerDashboard({ region = "PT" }) {
         `${ORDER_PICKUP_BASE}/orders/${encodeURIComponent(currentOrder.order_id)}/pickup-token`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: buildAuthHeaders(token), 
           body: "{}",
         }
       );

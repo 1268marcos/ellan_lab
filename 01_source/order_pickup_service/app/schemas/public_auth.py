@@ -1,3 +1,5 @@
+# 01_source/order_pickup_service/app/schemas/public_auth.py
+
 from __future__ import annotations
 
 from pydantic import BaseModel, EmailStr, Field
@@ -16,7 +18,7 @@ class PublicLoginIn(BaseModel):
 
 
 class PublicUserOut(BaseModel):
-    id: int
+    id: str  # 🔥 ALTERADO
     full_name: str
     email: EmailStr
     phone: str | None

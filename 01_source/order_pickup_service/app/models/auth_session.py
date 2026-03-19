@@ -1,4 +1,5 @@
 # 01_source/order_pickup_service/app/models/auth_session.py
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -14,7 +15,7 @@ class AuthSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    user_id: Mapped[int] = mapped_column(
+    user_id: Mapped[str] = mapped_column(
         ForeignKey("users.id"),
         index=True,
         nullable=False,

@@ -1,3 +1,4 @@
+# 01_source/order_pickup_service/app/routers/orders.py
 # Router: /orders (ONLINE)
 # Aqui faz pedido ONLINE
 import logging
@@ -294,9 +295,12 @@ def create_order(
     if not allocation_id or slot is None:
         raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
 
+    resolved_user_id = getattr(user, "id", None)
+    resolved_user_id = str(resolved_user_id) if resolved_user_id is not None else None
+
     order = Order(
         id=str(uuid.uuid4()),
-        user_id=user.id,
+        user_id=resolved_user_id,
         channel=OrderChannel.ONLINE,
         region=payload.region.value,
         totem_id=payload.totem_id,
@@ -401,7 +405,7 @@ def list_orders(
     q = db.query(Order)
 
     if scope != "ops" and getattr(user, "id", None):
-        q = q.filter(Order.user_id == user.id)
+        q = q.filter(Order.user_id == str(user.id))
 
     if region:
         q = q.filter(Order.region == region)
@@ -440,10 +444,12 @@ def list_orders(
             .first()
         )
 
+        normalized_user_id = str(order.user_id) if order.user_id is not None else None
+
         items.append(
             OrderListItemOut(
                 order_id=order.id,
-                user_id=order.user_id,
+                user_id=normalized_user_id,
                 region=order.region,
                 channel=order.channel.value,
                 status=order.status.value,

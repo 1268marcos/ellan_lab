@@ -121,9 +121,11 @@ export default function PublicOrderDetailPage() {
                 <Field label="Status" value={order.status} />
                 <Field label="Canal" value={order.channel} />
                 <Field label="Locker" value={order.totem_id} />
+                <Field label="Gaveta/Slot" value={order.slot} />
                 <Field label="Produto" value={order.sku_id} />
                 <Field label="Valor" value={formatAmount(order.amount_cents)} />
                 <Field label="Pago em" value={formatDateTime(order.paid_at)} />
+                <Field label="Retirado em" value={formatDateTime(order.pickup_up_at)} />
                 <Field label="Expira a retirada em" value={formatDateTime(order.pickup_deadline_at)} />
               </div>
             </section>
