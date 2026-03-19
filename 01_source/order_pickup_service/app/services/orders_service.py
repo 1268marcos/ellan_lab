@@ -11,6 +11,9 @@ from app.models.allocation import Allocation, AllocationState
 from app.models.pickup_token import PickupToken
 from app.services import backend_client
 
+from app.models.user import User
+from app.services.email_service import send_email
+
 ALLOC_TTL_SEC = int(os.getenv("ALLOC_TTL_SEC", "120"))
 PICKUP_WINDOW_SEC = int(os.getenv("PICKUP_WINDOW_SEC", str(2 * 60 * 60)))  # 2h
 QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))  # 10 min
@@ -189,6 +192,25 @@ def confirm_online_payment(
     allocation.locked_until = pickup_deadline_at.replace(tzinfo=None)
 
     db.commit()
+
+    user = db.query(User).filter(User.id == order.user_id).first() if order.user_id else None
+
+    expires_at_iso = pickup_deadline_at.isoformat()
+
+    if user and user.email:
+        send_email(
+            to_email=user.email,
+            subject="Seu pedido está pronto para retirada",
+            html=f"""
+            <p>Olá {user.full_name},</p>
+            <p>Seu pedido está pronto para retirada.</p>
+            <p><strong>Pedido:</strong> {order.id}</p>
+            <p><strong>Locker:</strong> {order.totem_id}</p>
+            <p><strong>Código manual:</strong> {manual_code}</p>
+            <p><strong>Expira em:</strong> {expires_at_iso}</p>
+            <p>Apresente o QRCode ou o código manual no totem.</p>
+            """,
+        )
 
     return {
         "ok": True,

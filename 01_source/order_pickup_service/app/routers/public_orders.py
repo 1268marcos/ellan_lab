@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_public_user
 from app.core.db import get_db
-from app.models.order import Order
+from app.models.order import Order, OrderStatus
 from app.models.user import User
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
@@ -24,32 +24,28 @@ def _serialize_order(order: Order) -> dict:
     return {
         "id": order.id,
         "user_id": order.user_id,
-        "channel": order.channel,
+        "channel": order.channel.value if order.channel else None,
         "region": order.region,
         "totem_id": order.totem_id,
         "sku_id": order.sku_id,
         "amount_cents": order.amount_cents,
-        "status": order.status,
+        "status": order.status.value if order.status else None,
         "gateway_transaction_id": order.gateway_transaction_id,
-        "payment_method": order.payment_method,
-        "payment_status": order.payment_status,
-        "card_type": order.card_type,
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "payment_status": order.payment_status.value if order.payment_status else None,
+        "card_type": order.card_type.value if order.card_type else None,
         "payment_updated_at": _dt_iso(order.payment_updated_at),
         "paid_at": _dt_iso(order.paid_at),
         "pickup_deadline_at": _dt_iso(order.pickup_deadline_at),
         "picked_up_at": _dt_iso(order.picked_up_at),
         "guest_session_id": order.guest_session_id,
-        "receipt_email": order.receipt_email,
-        "receipt_phone": order.receipt_phone,
         "consent_marketing": order.consent_marketing,
-        "guest_phone": order.guest_phone,
-        "guest_email": order.guest_email,
         "created_at": _dt_iso(order.created_at),
         "updated_at": _dt_iso(order.updated_at),
     }
 
 
-@router.get("")
+@router.get("/")
 def list_my_public_orders(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -60,7 +56,11 @@ def list_my_public_orders(
     query = db.query(Order).filter(Order.user_id == current_user.id)
 
     if status:
-        query = query.filter(Order.status == status)
+        try:
+            status_enum = OrderStatus(status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid_status") from exc
+        query = query.filter(Order.status == status_enum)
 
     total = query.count()
 

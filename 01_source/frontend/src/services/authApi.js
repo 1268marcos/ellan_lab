@@ -31,6 +31,7 @@ export async function fetchPublicMe(token) {
   const response = await fetch(`${API_BASE}/public/auth/me`, {
     headers: {
       Authorization: `Bearer ${token}`,
+      Accept: "application/json",
     },
   });
   return parseJson(response);

@@ -49,7 +49,7 @@ class OrderOut(BaseModel):
 
 class OrderListItemOut(BaseModel):
     order_id: str
-    user_id: Optional[str] = None
+    user_id: Optional[int] = None
     region: str
     channel: str
     status: str

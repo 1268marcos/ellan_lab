@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
+import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
+
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
@@ -1483,7 +1485,28 @@ export default function RegionPage({ region, mode = "kiosk" }) {
             </div>
           )}
         </section>
+
+
+        <section style={cardStyle}>
+          <h2 style={h2Style}>Retirada por código manual</h2>
+          <div style={summaryListStyle}>
+            <ManualPickupPanel
+              region={region}
+              lockerId={selectedLockerId}
+              apiBase="/api/op"
+              onRedeemed={(data) => {
+                console.log("Retirada manual concluída:", data);
+              }}
+            />
+          </div>
+        </section>
+
+
       </div>
+
+
+
+
 
       <section style={cardStyle}>
         <h2 style={h2Style}>Configuração desta tela</h2>

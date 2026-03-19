@@ -1,13 +1,13 @@
 import React from "react";
-import { Routes, Route, Navigate, Link, useLocation } from "react-router-dom";
-import { AuthProvider } from "./context/AuthContext";
+import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 
 // Importações existentes
 import LockerDashboard from "./pages/LockerDashboard.jsx";
 import RegionPage from "./pages/RegionPage.jsx";
 import DevLockerResetPage from "./pages/DevLockerResetPage.jsx";
 
-// Novas importações públicas
+// Públicas
 import PublicLandingPage from "./pages/public/PublicLandingPage.jsx";
 import PublicLoginPage from "./pages/public/PublicLoginPage.jsx";
 import PublicRegisterPage from "./pages/public/PublicRegisterPage.jsx";
@@ -16,140 +16,202 @@ import PublicCheckoutPage from "./pages/public/PublicCheckoutPage.jsx";
 import PublicMyOrdersPage from "./pages/public/PublicMyOrdersPage.jsx";
 import PublicOrderDetailPage from "./pages/public/PublicOrderDetailPage.jsx";
 
-function AppContent() {
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function initialsFromName(nameOrEmail) {
+  const raw = (nameOrEmail || "").trim();
+  if (!raw) return "?";
+
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
+  }
+
+  return raw.slice(0, 2).toUpperCase();
+}
+
+/* =========================================================
+   NAVBAR
+========================================================= */
+
+function TopNav() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { user, isAuthenticated, logout, loading } = useAuth();
+
+  const fullName = user?.full_name || user?.email || "";
+  const initials = initialsFromName(fullName);
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   const getNavBackground = () => {
     if (location.pathname.startsWith("/dev")) {
-      return "linear-gradient(135deg, rgba(138,35,35,0.95) 0%, rgba(70,10,10,0.95) 100%)";
+      return "linear-gradient(135deg, rgba(138,35,35,0.95), rgba(70,10,10,0.95))";
     }
     if (location.pathname.startsWith("/pt")) {
-      return "linear-gradient(135deg, rgba(0,102,0,0.9) 0%, rgba(206,17,38,0.9) 70%)";
+      return "linear-gradient(135deg, rgba(0,102,0,0.9), rgba(206,17,38,0.9))";
     }
     if (location.pathname.startsWith("/sp")) {
-      return "linear-gradient(135deg, rgba(0,155,58,0.9) 0%, rgba(254,221,0,0.9) 50%, rgba(0,39,118,0.9) 100%)";
+      return "linear-gradient(135deg, rgba(0,155,58,0.9), rgba(254,221,0,0.9), rgba(0,39,118,0.9))";
     }
-    // Cores para rotas públicas
-    if (location.pathname === "/" || 
-        location.pathname.startsWith("/login") || 
-        location.pathname.startsWith("/cadastro") ||
-        location.pathname.startsWith("/comprar") ||
-        location.pathname.startsWith("/checkout") ||
-        location.pathname.startsWith("/meus-pedidos")) {
-      return "linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d)";
-    }
-    return "linear-gradient(135deg, #222324, #0b0d10)";
-  };
-
-  const getFlagEmoji = () => {
-    if (location.pathname.startsWith("/dev")) return "🛠️";
-    if (location.pathname.startsWith("/pt")) return "🇵🇹";
-    if (location.pathname.startsWith("/sp")) return "🇧🇷";
-    if (location.pathname === "/" || location.pathname.startsWith("/login") || 
-        location.pathname.startsWith("/cadastro") || location.pathname.startsWith("/comprar") ||
-        location.pathname.startsWith("/checkout") || location.pathname.startsWith("/meus-pedidos")) {
-      return "🏪";
-    }
-    return "";
-  };
-
-  const getContextLabel = () => {
-    if (location.pathname.startsWith("/dev")) return "DEV Admin";
-    if (location.pathname.includes("/kiosk")) return "KIOSK Simulator";
-    if (location.pathname === "/pt" || location.pathname === "/sp") return "Dashboard";
-    if (location.pathname === "/") return "ELLAN Store";
-    if (location.pathname.startsWith("/login")) return "Login";
-    if (location.pathname.startsWith("/cadastro")) return "Cadastro";
-    if (location.pathname.startsWith("/comprar")) return "Catálogo";
-    if (location.pathname.startsWith("/checkout")) return "Checkout";
-    if (location.pathname.startsWith("/meus-pedidos")) {
-      if (location.pathname.includes("/meus-pedidos/")) return "Detalhe do Pedido";
-      return "Meus Pedidos";
-    }
-    return "ELLAN Lab Locker";
+    return "linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d)";
   };
 
   return (
-    <div>
-      <nav
-        style={{
-          padding: 12,
-          display: "flex",
-          gap: 12,
-          alignItems: "center",
-          flexWrap: "wrap",
-          background: getNavBackground(),
-          borderBottom: "1px solid rgba(255,255,255,0.10)",
-        }}
-      >
-        {/* Links Públicos */}
-        <Link style={linkStyle} to="/">
-          Início
-        </Link>
-        <Link style={linkStyle} to="/login">
-          Login
-        </Link>
-        <Link style={linkStyle} to="/cadastro">
-          Cadastro
-        </Link>
-        <Link style={linkStyle} to="/comprar">
-          Comprar
-        </Link>
+    <nav
+      style={{
+        padding: 12,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        flexWrap: "wrap",
+        background: getNavBackground(),
+        borderBottom: "1px solid rgba(255,255,255,0.1)",
+      }}
+    >
+      {/* ÁREA PÚBLICA */}
+      <Link style={linkStyle} to="/">Início</Link>
+      <Link style={linkStyle} to="/comprar">Comprar</Link>
+
+      {!loading && isAuthenticated && (
         <Link style={linkStyle} to="/meus-pedidos">
           Meus Pedidos
         </Link>
+      )}
 
-        {/* Separador visual */}
-        <span style={{ color: "rgba(255,255,255,0.3)", margin: "0 5px" }}>|</span>
+      {/* SEPARADOR */}
+      <span style={separatorStyle}>|</span>
 
-        {/* Links Regionais */}
-        <Link style={linkStyle} to="/sp">
-          /sp
-        </Link>
-        <Link style={linkStyle} to="/pt">
-          /pt
-        </Link>
-        <Link style={linkStyle} to="/sp/kiosk">
-          /sp/kiosk
-        </Link>
-        <Link style={linkStyle} to="/pt/kiosk">
-          /pt/kiosk
-        </Link>
-        <Link style={devLinkStyle} to="/dev/reset">
-          /dev/reset
-        </Link>
+      {/* DEV / REGIONAL */}
+      <Link style={linkStyle} to="/sp">/sp</Link>
+      <Link style={linkStyle} to="/pt">/pt</Link>
+      <Link style={linkStyle} to="/sp/kiosk">/sp/kiosk</Link>
+      <Link style={linkStyle} to="/pt/kiosk">/pt/kiosk</Link>
+      <Link style={devLinkStyle} to="/dev/reset">/dev/reset</Link>
 
-        <span style={{ marginLeft: 10, opacity: 0.75, color: "white", fontSize: 12 }}>
-          {getFlagEmoji()} {getContextLabel()}
-        </span>
-      </nav>
+      <div style={{ flex: 1 }} />
+
+      {/* AUTH */}
+      {!loading && !isAuthenticated && (
+        <>
+          <Link style={linkStyle} to="/login">Entrar</Link>
+          <Link style={linkStyle} to="/cadastro">Criar conta</Link>
+        </>
+      )}
+
+      {!loading && isAuthenticated && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            title={fullName}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "white",
+              fontWeight: "bold",
+            }}
+          >
+            {initials}
+          </div>
+
+          <button onClick={handleLogout} style={logoutButtonStyle}>
+            Sair
+          </button>
+        </div>
+      )}
+    </nav>
+  );
+}
+
+/* =========================================================
+   ROUTE PROTECTION
+========================================================= */
+
+function PrivateRoute({ children }) {
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <PageLoader />;
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
+/* =========================================================
+   APP
+========================================================= */
+
+function AppContent() {
+  return (
+    <div>
+      <TopNav />
 
       <Routes>
-        {/* Rotas Públicas */}
+        {/* PÚBLICO */}
         <Route path="/" element={<PublicLandingPage />} />
         <Route path="/login" element={<PublicLoginPage />} />
         <Route path="/cadastro" element={<PublicRegisterPage />} />
         <Route path="/comprar" element={<PublicCatalogPage />} />
         <Route path="/checkout" element={<PublicCheckoutPage />} />
-        <Route path="/meus-pedidos" element={<PublicMyOrdersPage />} />
-        <Route path="/meus-pedidos/:orderId" element={<PublicOrderDetailPage />} />
 
-        {/* Rotas Regionais */}
+        {/* PROTEGIDO */}
+        <Route
+          path="/meus-pedidos"
+          element={
+            <PrivateRoute>
+              <PublicMyOrdersPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/meus-pedidos/:orderId"
+          element={
+            <PrivateRoute>
+              <PublicOrderDetailPage />
+            </PrivateRoute>
+          }
+        />
+
+        {/* REGIONAL */}
         <Route path="/sp" element={<LockerDashboard region="SP" />} />
         <Route path="/pt" element={<LockerDashboard region="PT" />} />
-
         <Route path="/sp/kiosk" element={<RegionPage region="SP" mode="kiosk" />} />
         <Route path="/pt/kiosk" element={<RegionPage region="PT" mode="kiosk" />} />
 
-        {/* Rotas de Desenvolvimento */}
+        {/* DEV */}
         <Route path="/dev/reset" element={<DevLockerResetPage />} />
 
-        {/* Rota 404 */}
-        <Route path="*" element={<div style={{ padding: 24 }}>404 - Página não encontrada</div>} />
+        {/* 404 */}
+        <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
       </Routes>
     </div>
   );
 }
+
+function PageLoader() {
+  return (
+    <div style={{ padding: 24 }}>
+      <p style={{ color: "#666" }}>Carregando sessão...</p>
+    </div>
+  );
+}
+
+/* =========================================================
+   ROOT
+========================================================= */
 
 export default function App() {
   return (
@@ -158,6 +220,10 @@ export default function App() {
     </AuthProvider>
   );
 }
+
+/* =========================================================
+   STYLE
+========================================================= */
 
 const linkStyle = {
   color: "white",
@@ -172,4 +238,17 @@ const devLinkStyle = {
   ...linkStyle,
   border: "1px solid rgba(255,120,120,0.35)",
   background: "rgba(138,35,35,0.30)",
+};
+
+const separatorStyle = {
+  color: "rgba(255,255,255,0.35)",
+};
+
+const logoutButtonStyle = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.3)",
+  background: "transparent",
+  color: "white",
+  cursor: "pointer",
 };
