@@ -27,6 +27,9 @@ _ALLOWED_CATEGORIES = {
     "volume",
     "risk",
     "trend",
+    "positive",
+    "saturation",
+    "reliability",
 }
 
 _ALLOWED_METRICS = {
@@ -177,7 +180,6 @@ def _rate(value: int, total: int) -> float:
 
 
 def _default_direction_for_metric(metric: str) -> str:
-    # desc = "pior/maior/mais"
     if metric in {
         "terminal_volume",
         "redeemed_volume",
@@ -323,7 +325,6 @@ def build_pickup_ranking(
 
         metric_value = round(metric_value_map[metric], 3)
 
-        # evita ranking vazio por média sem dados
         if metric.startswith("avg_minutes_"):
             source_avg = {
                 "avg_minutes_created_to_ready": avg_created_to_ready,

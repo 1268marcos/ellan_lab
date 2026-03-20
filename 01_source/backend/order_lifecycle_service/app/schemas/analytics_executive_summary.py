@@ -27,6 +27,9 @@ class ExecutiveSummaryItem(BaseModel):
     metric_value: float
     label: str
 
+    severity: str = "LOW"
+    recommended_action: str = "monitor"
+
     total_terminal_pickups: int = 0
     redeemed_pickups: int = 0
     expired_pickups: int = 0
@@ -40,6 +43,8 @@ class ExecutiveSummaryItem(BaseModel):
     avg_minutes_ready_to_redeemed: float | None = None
     avg_minutes_door_opened_to_redeemed: float | None = None
     avg_minutes_door_opened_to_door_closed: float | None = None
+
+    stddev_minutes_ready_to_redeemed: float | None = None
 
 
 class ExecutiveSummarySection(BaseModel):
@@ -59,16 +64,37 @@ class ExecutiveSummaryTrendItem(BaseModel):
     current_terminal_pickups: int = 0
     label: str = ""
 
+    severity: str = "LOW"
+    recommended_action: str = "monitor"
+
+
+class ExecutiveActionItem(BaseModel):
+    title: str
+    severity: str
+    recommended_action: str
+    dimension: str
+    dimension_value: str | None = None
+    reason: str
+
 
 class PickupExecutiveSummaryResponse(BaseModel):
     window_start: str | None = None
     window_end: str | None = None
 
     overview: ExecutiveSummaryOverview
+
     worst_lockers: ExecutiveSummarySection
     best_sites: ExecutiveSummarySection
     critical_machines: ExecutiveSummarySection
-    worst_regions_trend: list[ExecutiveSummaryTrendItem] = Field(default_factory=list)
 
+    positive_highlights: list[ExecutiveSummarySection] = Field(default_factory=list)
+    saturation: list[ExecutiveSummarySection] = Field(default_factory=list)
+    reliability: list[ExecutiveSummarySection] = Field(default_factory=list)
+
+    worsening_regions_trend: list[ExecutiveSummaryTrendItem] = Field(default_factory=list)
+    improving_regions_trend: list[ExecutiveSummaryTrendItem] = Field(default_factory=list)
+    stable_regions_trend: list[ExecutiveSummaryTrendItem] = Field(default_factory=list)
+
+    actions: list[ExecutiveActionItem] = Field(default_factory=list)
     insights: list[str] = Field(default_factory=list)
     filters: dict = Field(default_factory=dict)
