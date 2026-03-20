@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/routers/internal.py
+from __future__ import annotations
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,6 +15,8 @@ from app.models.lifecycle import (
     EventStatus,
     LifecycleDeadline,
 )
+from app.schemas.analytics import PickupMetricsResponse
+from app.schemas.analytics_breakdown import PickupBreakdownResponse
 from app.schemas.internal import (
     AckEventRequest,
     AckEventResponse,
@@ -23,10 +27,10 @@ from app.schemas.internal import (
     PendingEventItem,
     PendingEventsResponse,
 )
-from app.schemas.pickup_events import (
-    PickupEventIn,
-    PickupEventResponse,
-)
+from app.schemas.pickup_events import PickupEventIn, PickupEventResponse
+from app.services.pickup_analytics_projector import project_pickup_event_facts
+from app.services.pickup_breakdown_service import build_pickup_breakdown
+from app.services.pickup_metrics_service import build_pickup_metrics
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -201,26 +205,17 @@ def ack_event(
     )
 
 
-@router.post(
-    "/pickup-events",
-    response_model=PickupEventResponse,
-)
+@router.post("/pickup-events", response_model=PickupEventResponse)
 def ingest_pickup_event(
     payload: PickupEventIn,
     _: None = Depends(require_internal_token),
     db: Session = Depends(get_db),
 ):
-    """
-    Ingestão de eventos de pickup no DomainEvent (fonte oficial)
-    """
-
-    # idempotência por event_key
     existing = (
         db.query(DomainEvent)
         .filter(DomainEvent.event_key == payload.event_key)
         .first()
     )
-
     if existing:
         return PickupEventResponse(
             ok=True,
@@ -255,8 +250,11 @@ def ingest_pickup_event(
         occurred_at=payload.occurred_at,
         created_at=now,
     )
-
     db.add(event)
+    db.flush()
+
+    project_pickup_event_facts(db, event=event)
+
     db.commit()
 
     return PickupEventResponse(
@@ -264,3 +262,68 @@ def ingest_pickup_event(
         event_key=event.event_key,
         stored=True,
     )
+
+
+@router.get("/analytics/pickup-metrics", response_model=PickupMetricsResponse)
+def get_pickup_metrics(
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+    region: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    slot: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    machine_id: str | None = Query(default=None),
+    operator_id: str | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+    site_id: str | None = Query(default=None),
+    _: None = Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    return build_pickup_metrics(
+        db,
+        start_at=start_at,
+        end_at=end_at,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+    )
+
+
+@router.get("/analytics/pickup-breakdown", response_model=PickupBreakdownResponse)
+def get_pickup_breakdown(
+    dimension: str = Query(...),
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+    region: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    slot: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    machine_id: str | None = Query(default=None),
+    operator_id: str | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+    site_id: str | None = Query(default=None),
+    _: None = Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    try:
+        return build_pickup_breakdown(
+            db,
+            dimension=dimension,
+            start_at=start_at,
+            end_at=end_at,
+            region=region,
+            channel=channel,
+            slot=slot,
+            locker_id=locker_id,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            tenant_id=tenant_id,
+            site_id=site_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

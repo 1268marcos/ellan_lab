@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/schemas/pickup_events.py
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 
