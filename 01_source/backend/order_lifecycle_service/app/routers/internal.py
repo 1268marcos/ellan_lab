@@ -23,6 +23,10 @@ from app.schemas.internal import (
     PendingEventItem,
     PendingEventsResponse,
 )
+from app.schemas.pickup_events import (
+    PickupEventIn,
+    PickupEventResponse,
+)
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -194,4 +198,69 @@ def ack_event(
         event_key=event.event_key,
         status=event.status.value,
         acknowledged=True,
+    )
+
+
+@router.post(
+    "/pickup-events",
+    response_model=PickupEventResponse,
+)
+def ingest_pickup_event(
+    payload: PickupEventIn,
+    _: None = Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    """
+    Ingestão de eventos de pickup no DomainEvent (fonte oficial)
+    """
+
+    # idempotência por event_key
+    existing = (
+        db.query(DomainEvent)
+        .filter(DomainEvent.event_key == payload.event_key)
+        .first()
+    )
+
+    if existing:
+        return PickupEventResponse(
+            ok=True,
+            event_key=existing.event_key,
+            stored=False,
+        )
+
+    now = utc_now()
+
+    event = DomainEvent(
+        event_key=payload.event_key,
+        aggregate_type="pickup",
+        aggregate_id=payload.pickup_id,
+        event_name=payload.event_type,
+        event_version=1,
+        status=EventStatus.PENDING,
+        payload={
+            "order_id": payload.order_id,
+            "pickup_id": payload.pickup_id,
+            "channel": payload.channel,
+            "region": payload.region,
+            "locker_id": payload.locker_id,
+            "machine_id": payload.machine_id,
+            "slot": payload.slot,
+            "operator_id": payload.operator_id,
+            "tenant_id": payload.tenant_id,
+            "site_id": payload.site_id,
+            "correlation_id": payload.correlation_id,
+            "source_service": payload.source_service,
+            **(payload.payload or {}),
+        },
+        occurred_at=payload.occurred_at,
+        created_at=now,
+    )
+
+    db.add(event)
+    db.commit()
+
+    return PickupEventResponse(
+        ok=True,
+        event_key=event.event_key,
+        stored=True,
     )

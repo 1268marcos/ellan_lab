@@ -1,6 +1,9 @@
 # 01_source/order_pickup_service/app/routers/kiosk.py
 # Aqui faz pedido KIOSK
 # Router: /kiosk/orders
+
+from __future__ import annotations
+
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -21,6 +24,12 @@ from app.models.order import (
     OrderStatus,
     PaymentMethod,
     PaymentStatus,
+)
+from app.models.pickup import (
+    Pickup,
+    PickupChannel,
+    PickupLifecycleStage,
+    PickupStatus,
 )
 from app.schemas.kiosk import (
     KioskCustomerIdentifyIn,
@@ -297,6 +306,89 @@ def _compensate_failed_kiosk_creation(
             },
         )
         raise
+
+
+def _ensure_kiosk_pickup(
+    db: Session,
+    *,
+    order: Order,
+    allocation: Allocation,
+) -> Pickup:
+    now = _utc_now_naive()
+
+    existing_pickup = (
+        db.query(Pickup)
+        .filter(
+            Pickup.order_id == order.id,
+            Pickup.status == PickupStatus.ACTIVE,
+        )
+        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .first()
+    )
+
+    if existing_pickup:
+        pickup = existing_pickup
+        pickup.channel = PickupChannel.KIOSK
+        pickup.region = order.region
+        pickup.locker_id = allocation.locker_id or order.totem_id
+        pickup.machine_id = order.totem_id
+        pickup.slot = str(allocation.slot) if allocation.slot is not None else None
+        pickup.operator_id = pickup.operator_id
+        pickup.tenant_id = pickup.tenant_id
+        pickup.site_id = pickup.site_id
+        pickup.status = PickupStatus.ACTIVE
+        pickup.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
+        pickup.current_token_id = None
+        pickup.activated_at = pickup.activated_at or now
+        pickup.ready_at = pickup.ready_at or now
+        pickup.expires_at = None
+        pickup.door_opened_at = pickup.door_opened_at or now
+        pickup.item_removed_at = None
+        pickup.door_closed_at = None
+        pickup.redeemed_at = None
+        pickup.redeemed_via = None
+        pickup.expired_at = None
+        pickup.cancelled_at = None
+        pickup.cancel_reason = None
+        pickup.notes = "Pickup liberado via fluxo KIOSK."
+        pickup.updated_at = now
+        return pickup
+
+    pickup = Pickup(
+        id=str(uuid.uuid4()),
+        order_id=order.id,
+        channel=PickupChannel.KIOSK,
+        region=order.region,
+        locker_id=allocation.locker_id or order.totem_id,
+        machine_id=order.totem_id,
+        slot=str(allocation.slot) if allocation.slot is not None else None,
+        operator_id=None,
+        tenant_id=None,
+        site_id=None,
+        status=PickupStatus.ACTIVE,
+        lifecycle_stage=PickupLifecycleStage.DOOR_OPENED,
+        current_token_id=None,
+        activated_at=now,
+        ready_at=now,
+        expires_at=None,
+        door_opened_at=now,
+        item_removed_at=None,
+        door_closed_at=None,
+        redeemed_at=None,
+        redeemed_via=None,
+        expired_at=None,
+        cancelled_at=None,
+        cancel_reason=None,
+        correlation_id=None,
+        source_event_id=None,
+        sensor_event_id=None,
+        notes="Pickup liberado via fluxo KIOSK.",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(pickup)
+    db.flush()
+    return pickup
 
 
 @router.post("/orders", response_model=KioskOrderOut)
@@ -591,9 +683,17 @@ def kiosk_payment_approved(
     order.mark_payment_approved()
     allocation.state = AllocationState.OPENED_FOR_PICKUP
     allocation.locked_until = None
+
+    pickup = _ensure_kiosk_pickup(
+        db,
+        order=order,
+        allocation=allocation,
+    )
+
     db.commit()
     db.refresh(order)
     db.refresh(allocation)
+    db.refresh(pickup)
 
     try:
         cancel_prepayment_timeout_deadline(order_id=order.id)

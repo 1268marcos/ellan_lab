@@ -1,6 +1,4 @@
-# 01_source/order_pickup_service/app/routers/internal.py
 # Router: /internal/* (protegido por X-Internal-Token)
-
 from __future__ import annotations
 
 import hashlib
@@ -18,26 +16,11 @@ from app.core.internal_auth import require_internal_token
 from app.core.lifecycle_client import LifecycleClientError
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
-from app.models.pickup import (
-    Pickup,
-    PickupChannel,
-    PickupLifecycleStage,
-    PickupRedeemVia,
-    PickupStatus,
-)
+from app.models.pickup import Pickup, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.schemas.internal import InternalPaymentApprovedIn as PaymentConfirmIn
 from app.services import backend_client
 from app.services.lifecycle_integration import cancel_prepayment_timeout_deadline
-
-from app.services.pickup_event_publisher import (
-    publish_pickup_created,
-    publish_pickup_ready,
-    publish_pickup_door_opened,
-    publish_pickup_expired,
-    publish_pickup_cancelled,
-)
-
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -47,10 +30,6 @@ QR_ROTATE_SEC = settings.qr_rotate_sec
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _utc_now_naive() -> datetime:
-    return _utc_now().replace(tzinfo=None)
 
 
 def _ensure_allocation(db: Session, order_id: str) -> Allocation:
@@ -87,165 +66,6 @@ def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetim
     db.add(tok)
     db.flush()
     return {"token_id": tok.id, "manual_code": manual_code}
-
-
-def _pickup_channel_from_order(order: Order) -> PickupChannel:
-    return PickupChannel.KIOSK if order.channel == OrderChannel.KIOSK else PickupChannel.ONLINE
-
-
-def _build_pickup_context(order: Order, allocation: Allocation) -> dict:
-    return {
-        "channel": _pickup_channel_from_order(order),
-        "region": order.region,
-        "locker_id": allocation.locker_id or order.totem_id,
-        "machine_id": order.totem_id,
-        "slot": str(allocation.slot) if allocation.slot is not None else None,
-        "operator_id": None,
-        "tenant_id": None,
-        "site_id": None,
-    }
-
-
-def _apply_pickup_context(pickup: Pickup, *, order: Order, allocation: Allocation) -> None:
-    ctx = _build_pickup_context(order, allocation)
-    pickup.channel = ctx["channel"]
-    pickup.region = ctx["region"]
-    pickup.locker_id = ctx["locker_id"]
-    pickup.machine_id = ctx["machine_id"]
-    pickup.slot = ctx["slot"]
-    pickup.operator_id = ctx["operator_id"]
-    pickup.tenant_id = ctx["tenant_id"]
-    pickup.site_id = ctx["site_id"]
-
-
-def _ensure_online_pickup(
-    db: Session,
-    *,
-    order: Order,
-    allocation: Allocation,
-    deadline_utc: datetime,
-) -> Pickup:
-    now_naive = _utc_now_naive()
-    existing_pickup = _get_active_pickup_by_order(db, order.id)
-
-    if existing_pickup:
-        pickup = existing_pickup
-        _apply_pickup_context(pickup, order=order, allocation=allocation)
-        pickup.status = PickupStatus.ACTIVE
-        pickup.lifecycle_stage = PickupLifecycleStage.READY_FOR_PICKUP
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = now_naive
-        pickup.expires_at = deadline_utc.replace(tzinfo=None)
-        pickup.door_opened_at = None
-        pickup.item_removed_at = None
-        pickup.door_closed_at = None
-        pickup.redeemed_at = None
-        pickup.redeemed_via = None
-        pickup.expired_at = None
-        pickup.cancelled_at = None
-        pickup.cancel_reason = None
-        pickup.notes = None
-        pickup.touch()
-        return pickup
-
-    pickup = Pickup(
-        id=str(uuid.uuid4()),
-        order_id=order.id,
-        channel=PickupChannel.ONLINE,
-        region=order.region,
-        locker_id=allocation.locker_id or order.totem_id,
-        machine_id=order.totem_id,
-        slot=str(allocation.slot) if allocation.slot is not None else None,
-        operator_id=None,
-        tenant_id=None,
-        site_id=None,
-        status=PickupStatus.ACTIVE,
-        lifecycle_stage=PickupLifecycleStage.READY_FOR_PICKUP,
-        current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
-        expires_at=deadline_utc.replace(tzinfo=None),
-        door_opened_at=None,
-        item_removed_at=None,
-        door_closed_at=None,
-        redeemed_at=None,
-        redeemed_via=None,
-        expired_at=None,
-        cancelled_at=None,
-        cancel_reason=None,
-        correlation_id=None,
-        source_event_id=None,
-        sensor_event_id=None,
-        notes=None,
-    )
-    db.add(pickup)
-    db.flush()
-    return pickup
-
-
-def _ensure_kiosk_pickup(
-    db: Session,
-    *,
-    order: Order,
-    allocation: Allocation,
-) -> Pickup:
-    now_naive = _utc_now_naive()
-    existing_pickup = _get_active_pickup_by_order(db, order.id)
-
-    if existing_pickup:
-        pickup = existing_pickup
-        _apply_pickup_context(pickup, order=order, allocation=allocation)
-        pickup.status = PickupStatus.ACTIVE
-        pickup.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = pickup.ready_at or now_naive
-        pickup.expires_at = None
-        pickup.door_opened_at = pickup.door_opened_at or now_naive
-        pickup.item_removed_at = None
-        pickup.door_closed_at = None
-        pickup.redeemed_at = None
-        pickup.redeemed_via = None
-        pickup.expired_at = None
-        pickup.cancelled_at = None
-        pickup.cancel_reason = None
-        pickup.current_token_id = None
-        pickup.notes = "Pickup liberado via fluxo KIOSK."
-        pickup.touch()
-        return pickup
-
-    pickup = Pickup(
-        id=str(uuid.uuid4()),
-        order_id=order.id,
-        channel=PickupChannel.KIOSK,
-        region=order.region,
-        locker_id=allocation.locker_id or order.totem_id,
-        machine_id=order.totem_id,
-        slot=str(allocation.slot) if allocation.slot is not None else None,
-        operator_id=None,
-        tenant_id=None,
-        site_id=None,
-        status=PickupStatus.ACTIVE,
-        lifecycle_stage=PickupLifecycleStage.DOOR_OPENED,
-        current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
-        expires_at=None,
-        door_opened_at=now_naive,
-        item_removed_at=None,
-        door_closed_at=None,
-        redeemed_at=None,
-        redeemed_via=None,
-        expired_at=None,
-        cancelled_at=None,
-        cancel_reason=None,
-        correlation_id=None,
-        source_event_id=None,
-        sensor_event_id=None,
-        notes="Pickup liberado via fluxo KIOSK.",
-    )
-    db.add(pickup)
-    db.flush()
-    return pickup
 
 
 def _reallocate_if_needed(db: Session, *, order: Order, allocation: Allocation) -> Allocation:
@@ -334,7 +154,7 @@ def _get_active_pickup_by_order(db: Session, order_id: str) -> Optional[Pickup]:
             Pickup.order_id == order_id,
             Pickup.status == PickupStatus.ACTIVE,
         )
-        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .order_by(Pickup.expires_at.desc(), Pickup.id.desc())
         .first()
     )
 
@@ -394,11 +214,6 @@ def payment_confirm(
             "pickup_id": pickup.id if pickup else None,
             "pickup_status": pickup.status.value if pickup else None,
             "pickup_expires_at": pickup.expires_at.isoformat() if pickup and pickup.expires_at else None,
-            "pickup_channel": pickup.channel.value if pickup and pickup.channel else None,
-            "pickup_lifecycle_stage": pickup.lifecycle_stage.value if pickup and pickup.lifecycle_stage else None,
-            "pickup_locker_id": pickup.locker_id if pickup else None,
-            "pickup_machine_id": pickup.machine_id if pickup else None,
-            "pickup_slot": pickup.slot if pickup else None,
             "token_id": pickup.current_token_id if pickup else None,
             "manual_code": None,
             "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
@@ -505,38 +320,34 @@ def payment_confirm(
             locker_id=order.totem_id,
         )
 
-        pickup = _ensure_online_pickup(
-            db,
-            order=order,
-            allocation=allocation,
-            deadline_utc=deadline,
-        )
+        existing_pickup = _get_active_pickup_by_order(db, order.id)
 
-        publish_pickup_created(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        publish_pickup_ready(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
+        if existing_pickup:
+            pickup = existing_pickup
+            pickup.region = order.region
+            pickup.status = PickupStatus.ACTIVE
+            pickup.expires_at = deadline.replace(tzinfo=None)
+            pickup.redeemed_at = None
+            pickup.redeemed_via = None
+        else:
+            pickup = Pickup(
+                id=str(uuid.uuid4()),
+                order_id=order.id,
+                region=order.region,
+                status=PickupStatus.ACTIVE,
+                expires_at=deadline.replace(tzinfo=None),
+                current_token_id=None,
+                redeemed_at=None,
+                redeemed_via=None,
+            )
+            db.add(pickup)
+            db.flush()
 
         tok = _create_pickup_token(db, pickup_id=pickup.id, expires_at_utc=deadline)
         token_id = tok["token_id"]
         manual_code = tok["manual_code"]
+
         pickup.current_token_id = token_id
-        pickup.touch()
 
     else:
         order.pickup_deadline_at = None
@@ -610,32 +421,6 @@ def payment_confirm(
                     },
                 )
 
-        pickup = _ensure_kiosk_pickup(
-            db,
-            order=order,
-            allocation=allocation,
-        )
-
-        publish_pickup_created(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        publish_pickup_door_opened(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
         backend_client.locker_light_on(
             order.region,
             allocation.slot,
@@ -680,11 +465,6 @@ def payment_confirm(
         "pickup_id": pickup.id if pickup else None,
         "pickup_status": pickup.status.value if pickup else None,
         "pickup_expires_at": pickup.expires_at.isoformat() if pickup and pickup.expires_at else None,
-        "pickup_channel": pickup.channel.value if pickup and pickup.channel else None,
-        "pickup_lifecycle_stage": pickup.lifecycle_stage.value if pickup and pickup.lifecycle_stage else None,
-        "pickup_locker_id": pickup.locker_id if pickup else None,
-        "pickup_machine_id": pickup.machine_id if pickup else None,
-        "pickup_slot": pickup.slot if pickup else None,
         "token_id": token_id,
         "manual_code": manual_code,
         "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
@@ -720,32 +500,7 @@ def release_order(
 
     pickup = _get_active_pickup_by_order(db, order.id)
     if pickup:
-        if order.channel == OrderChannel.ONLINE:
-            pickup.mark_expired()
-
-            publish_pickup_expired(
-                order_id=order.id,
-                pickup_id=pickup.id,
-                channel=pickup.channel.value,
-                region=pickup.region,
-                locker_id=pickup.locker_id,
-                machine_id=pickup.machine_id,
-                slot=pickup.slot,
-            )
-
-        else:
-            pickup.mark_cancelled(reason or "kiosk_release_before_completion")
-
-            publish_pickup_cancelled(
-                order_id=order.id,
-                pickup_id=pickup.id,
-                channel=pickup.channel.value,
-                region=pickup.region,
-                locker_id=pickup.locker_id,
-                machine_id=pickup.machine_id,
-                slot=pickup.slot,
-                payload={"reason": reason},
-            )
+        pickup.status = PickupStatus.CANCELLED
 
     db.commit()
 
@@ -756,7 +511,6 @@ def release_order(
         "reason": reason,
         "pickup_id": pickup.id if pickup else None,
         "pickup_status": pickup.status.value if pickup else None,
-        "pickup_lifecycle_stage": pickup.lifecycle_stage.value if pickup else None,
         "totem_id": order.totem_id,
     }
 
@@ -832,28 +586,9 @@ def internal_order_status(
         "pickup": None if not pickup else {
             "id": pickup.id,
             "order_id": pickup.order_id,
-            "channel": pickup.channel.value if pickup.channel else None,
             "region": pickup.region,
-            "locker_id": pickup.locker_id,
-            "machine_id": pickup.machine_id,
-            "slot": pickup.slot,
             "status": pickup.status.value,
-            "lifecycle_stage": pickup.lifecycle_stage.value if pickup.lifecycle_stage else None,
             "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
             "current_token_id": pickup.current_token_id,
-            "activated_at": pickup.activated_at.isoformat() if pickup.activated_at else None,
-            "ready_at": pickup.ready_at.isoformat() if pickup.ready_at else None,
-            "door_opened_at": pickup.door_opened_at.isoformat() if pickup.door_opened_at else None,
-            "item_removed_at": pickup.item_removed_at.isoformat() if pickup.item_removed_at else None,
-            "door_closed_at": pickup.door_closed_at.isoformat() if pickup.door_closed_at else None,
-            "redeemed_at": pickup.redeemed_at.isoformat() if pickup.redeemed_at else None,
-            "redeemed_via": pickup.redeemed_via.value if pickup.redeemed_via else None,
-            "expired_at": pickup.expired_at.isoformat() if pickup.expired_at else None,
-            "cancelled_at": pickup.cancelled_at.isoformat() if pickup.cancelled_at else None,
-            "cancel_reason": pickup.cancel_reason,
-            "correlation_id": pickup.correlation_id,
-            "source_event_id": pickup.source_event_id,
-            "sensor_event_id": pickup.sensor_event_id,
-            "notes": pickup.notes,
         },
     }
