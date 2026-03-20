@@ -17,6 +17,7 @@ from app.models.lifecycle import (
 )
 from app.schemas.analytics import PickupMetricsResponse
 from app.schemas.analytics_breakdown import PickupBreakdownResponse
+from app.schemas.analytics_executive_summary import PickupExecutiveSummaryResponse
 from app.schemas.analytics_ranking import PickupRankingResponse
 from app.schemas.internal import (
     AckEventRequest,
@@ -31,6 +32,7 @@ from app.schemas.internal import (
 from app.schemas.pickup_events import PickupEventIn, PickupEventResponse
 from app.services.pickup_analytics_projector import project_pickup_event_facts
 from app.services.pickup_breakdown_service import build_pickup_breakdown
+from app.services.pickup_executive_summary_service import build_pickup_executive_summary
 from app.services.pickup_metrics_service import build_pickup_metrics
 from app.services.pickup_ranking_service import build_pickup_ranking
 
@@ -372,3 +374,40 @@ def get_pickup_ranking(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get(
+    "/analytics/pickup-executive-summary",
+    response_model=PickupExecutiveSummaryResponse,
+)
+def get_pickup_executive_summary(
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+    region: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    slot: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    machine_id: str | None = Query(default=None),
+    operator_id: str | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+    site_id: str | None = Query(default=None),
+    ranking_limit: int = Query(default=5, ge=1, le=20),
+    trend_days_window: int = Query(default=7, ge=1, le=90),
+    _: None = Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    return build_pickup_executive_summary(
+        db,
+        start_at=start_at,
+        end_at=end_at,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+        ranking_limit=ranking_limit,
+        trend_days_window=trend_days_window,
+    )
