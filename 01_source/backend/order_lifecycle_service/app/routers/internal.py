@@ -1,4 +1,5 @@
 # 01_source/backend/order_lifecycle_service/app/routers/internal.py
+# AVISO: Contém todo o Analytics
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -35,6 +36,8 @@ from app.services.pickup_breakdown_service import build_pickup_breakdown
 from app.services.pickup_executive_summary_service import build_pickup_executive_summary
 from app.services.pickup_metrics_service import build_pickup_metrics
 from app.services.pickup_ranking_service import build_pickup_ranking
+
+from app.services.pickup_health_service import compute_health
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -411,3 +414,202 @@ def get_pickup_executive_summary(
         ranking_limit=ranking_limit,
         trend_days_window=trend_days_window,
     )
+
+
+# =========================================================
+# PICKUP HEALTH (NOVO ENDPOINT)
+# =========================================================
+
+
+@router.get("/analytics/pickup-health")
+def get_pickup_health(
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+    region: str | None = Query(default=None),
+    channel: str | None = Query(default=None),
+    slot: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    machine_id: str | None = Query(default=None),
+    operator_id: str | None = Query(default=None),
+    tenant_id: str | None = Query(default=None),
+    site_id: str | None = Query(default=None),
+    ranking_limit: int = Query(default=20, ge=1, le=100),
+    trend_days_window: int = Query(default=7, ge=1, le=90),
+    include_alerts: bool = Query(default=True),
+    _: None = Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    """
+    🔥 CAMADA FINAL DE PRODUTO
+    Consolida ranking + health score em score operacional único
+    """
+
+    ranking = build_pickup_ranking(
+        db,
+        category="efficiency",
+        metric="redemption_rate",
+        dimension="locker_id",  # pode evoluir depois
+        direction="desc",
+        limit=ranking_limit,
+        start_at=start_at,
+        end_at=end_at,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+    )
+
+    results = []
+
+    for item in ranking.items:
+        signals = {
+            "pickup_success_rate": item.redemption_rate / 100.0 if item.redemption_rate else 0.0,
+            "expiration_rate": item.expiration_rate / 100.0 if item.expiration_rate else 0.0,
+            "cancel_rate": item.cancellation_rate / 100.0 if item.cancellation_rate else 0.0,
+            "avg_pickup_minutes": item.avg_minutes_ready_to_redeemed or 0.0,
+            "trend_direction": "stable",  # 🔥 depois evoluímos
+            "saturation_level": (
+                "high" if item.total_terminal_pickups > 300
+                else "medium" if item.total_terminal_pickups > 100
+                else "low"
+            ),
+            "sample_size": item.total_terminal_pickups,
+        }
+
+        health = compute_health(signals)
+
+        row = {
+            "entity_type": "locker",
+            "entity_id": item.dimension_value,
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "region": region,
+            "site_id": site_id,
+            "machine_id": machine_id,
+            "locker_id": item.dimension_value,
+            "health_score": health["health_score"],
+            "classification": health["classification"],
+            "recommended_action": health["recommended_action"],
+            "components": health["components"],
+            "signals": signals,
+        }
+
+        if include_alerts:
+            row["alerts"] = health["alerts"]
+
+        results.append(row)
+
+    # ordenar por pior primeiro
+    results.sort(key=lambda x: x["health_score"])
+
+    summary_counts = {
+        "total_entities": len(results),
+        "healthy_count": sum(1 for r in results if r["classification"] == "healthy"),
+        "attention_count": sum(1 for r in results if r["classification"] == "attention"),
+        "warning_count": sum(1 for r in results if r["classification"] == "warning"),
+        "critical_count": sum(1 for r in results if r["classification"] == "critical"),
+        "collapsed_count": sum(1 for r in results if r["classification"] == "collapsed"),
+    }
+
+    return {
+        "ok": True,
+        "generated_at": datetime.now(timezone.utc),
+        "filters": {
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "region": region,
+            "site_id": site_id,
+            "machine_id": machine_id,
+            "locker_id": locker_id,
+        },
+        "summary": summary_counts,
+        "ranking": results,
+    }
+    """
+    🔥 CAMADA FINAL DE PRODUTO
+    Consolida executive summary + ranking em score operacional único
+    """
+
+    summary = build_pickup_executive_summary(
+        db,
+        start_at=start_at,
+        end_at=end_at,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+        ranking_limit=ranking_limit,
+        trend_days_window=trend_days_window,
+    )
+
+    results = []
+
+    # 🔥 CRÍTICO: usar ranking que já existe
+    for item in summary.ranking.items:
+        signals = {
+            "pickup_success_rate": item.metrics.pickup_success_rate,
+            "expiration_rate": item.metrics.expiration_rate,
+            "cancel_rate": item.metrics.cancel_rate,
+            "avg_pickup_minutes": item.metrics.avg_pickup_minutes,
+            "trend_direction": item.trend.direction,
+            "saturation_level": item.saturation.level,
+            "sample_size": item.metrics.total_pickups,
+        }
+
+        health = compute_health(signals)
+
+        row = {
+            "entity_type": summary.ranking.dimension,
+            "entity_id": item.dimension_value,
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "region": region,
+            "site_id": site_id,
+            "machine_id": machine_id,
+            "locker_id": locker_id,
+            "health_score": health["health_score"],
+            "classification": health["classification"],
+            "recommended_action": health["recommended_action"],
+            "components": health["components"],
+            "signals": signals,
+        }
+
+        if include_alerts:
+            row["alerts"] = health["alerts"]
+
+        results.append(row)
+
+    # ordenar por pior primeiro
+    results.sort(key=lambda x: x["health_score"])
+
+    summary_counts = {
+        "total_entities": len(results),
+        "healthy_count": sum(1 for r in results if r["classification"] == "healthy"),
+        "attention_count": sum(1 for r in results if r["classification"] == "attention"),
+        "warning_count": sum(1 for r in results if r["classification"] == "warning"),
+        "critical_count": sum(1 for r in results if r["classification"] == "critical"),
+        "collapsed_count": sum(1 for r in results if r["classification"] == "collapsed"),
+    }
+
+    return {
+        "ok": True,
+        "generated_at": datetime.now(timezone.utc),
+        "filters": {
+            "tenant_id": tenant_id,
+            "operator_id": operator_id,
+            "region": region,
+            "site_id": site_id,
+            "machine_id": machine_id,
+            "locker_id": locker_id,
+        },
+        "summary": summary_counts,
+        "ranking": results,
+    }
