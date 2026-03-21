@@ -2,8 +2,11 @@
 # Deverá ser uma camada acima do executive summary (presente em intenal.py)
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
 from math import isnan
+from typing import Any, Dict, List, Optional
+
+from app.services.pickup_ranking_service import build_pickup_ranking
 
 
 WEIGHTS = {
@@ -74,10 +77,6 @@ def _derive_trend_direction_from_rates(
     expiration_rate: float,
     cancellation_rate: float,
 ) -> str:
-    """
-    Heurística inicial, estável e auditável.
-    Pode ser refinada depois com comparação entre janelas.
-    """
     if redemption_rate >= 0.90 and expiration_rate <= 0.05 and cancellation_rate <= 0.03:
         return "improving"
 
@@ -156,7 +155,9 @@ def compute_trend_score(signals: Dict[str, Any]) -> float:
     trend = signals.get("trend_direction")
     mapping = {
         "improving": 90.0,
+        "slight_improving": 80.0,
         "stable": 70.0,
+        "slight_worsening": 55.0,
         "worsening": 40.0,
         "critical": 10.0,
     }
@@ -194,7 +195,7 @@ def generate_alerts(signals: Dict[str, Any]) -> List[str]:
     if _safe(signals.get("cancel_rate")) > 0.10:
         alerts.append("cancelamento_acima_do_normal")
 
-    if signals.get("trend_direction") == "worsening":
+    if signals.get("trend_direction") in {"slight_worsening", "worsening", "critical"}:
         alerts.append("tendencia_negativa")
 
     if signals.get("saturation_level") == "high":
@@ -296,3 +297,95 @@ def build_entity_context(
         row["region"] = entity_id
 
     return row
+
+
+def compute_trend_from_ranking(
+    *,
+    db,
+    dimension: str,
+    start_at: datetime | None,
+    end_at: datetime | None,
+    region: str | None,
+    channel: str | None,
+    slot: str | None,
+    locker_id: str | None,
+    machine_id: str | None,
+    operator_id: str | None,
+    tenant_id: str | None,
+    site_id: str | None,
+    days_window: int,
+    limit: int,
+) -> dict[str | None, dict[str, Any]]:
+    now = end_at or datetime.now(timezone.utc)
+
+    current_start = start_at or (now - timedelta(days=days_window))
+    previous_end = current_start
+    previous_start = previous_end - timedelta(days=days_window)
+
+    current = build_pickup_ranking(
+        db,
+        category="trend",
+        metric="redemption_rate",
+        dimension=dimension,
+        direction="desc",
+        limit=limit,
+        start_at=current_start,
+        end_at=now,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+    )
+
+    previous = build_pickup_ranking(
+        db,
+        category="trend",
+        metric="redemption_rate",
+        dimension=dimension,
+        direction="desc",
+        limit=limit,
+        start_at=previous_start,
+        end_at=previous_end,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+    )
+
+    previous_map = {item.dimension_value: item for item in previous.items}
+    trend_map: dict[str | None, dict[str, Any]] = {}
+
+    for item in current.items:
+        previous_item = previous_map.get(item.dimension_value)
+
+        previous_rate = float(previous_item.redemption_rate) if previous_item else 0.0
+        current_rate = float(item.redemption_rate)
+        delta = round(current_rate - previous_rate, 3)
+
+        if delta >= 5.0:
+            direction = "improving"
+        elif delta >= 1.0:
+            direction = "slight_improving"
+        elif delta > -1.0:
+            direction = "stable"
+        elif delta > -5.0:
+            direction = "slight_worsening"
+        else:
+            direction = "worsening"
+
+        trend_map[item.dimension_value] = {
+            "direction": direction,
+            "delta": delta,
+            "previous_rate": previous_rate,
+            "current_rate": current_rate,
+        }
+
+    return trend_map

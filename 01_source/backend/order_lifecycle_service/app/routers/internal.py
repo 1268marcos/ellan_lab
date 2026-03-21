@@ -38,6 +38,7 @@ from app.services.pickup_health_service import (
     build_entity_context,
     build_health_signals_from_ranking_item,
     compute_health,
+    compute_trend_from_ranking,
     resolve_dimension_for_entity_type,
     supported_entity_types,
 )
@@ -477,10 +478,35 @@ def get_pickup_health(
             site_id=site_id,
         )
 
+        trend_map = compute_trend_from_ranking(
+            db=db,
+            dimension=dimension,
+            start_at=start_at,
+            end_at=end_at,
+            region=region,
+            channel=channel,
+            slot=slot,
+            locker_id=locker_id,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            tenant_id=tenant_id,
+            site_id=site_id,
+            days_window=7,
+            limit=ranking_limit,
+        )
+
         entity_results: list[dict] = []
 
         for item in ranking.items:
             signals = build_health_signals_from_ranking_item(item)
+
+            trend = trend_map.get(item.dimension_value)
+            if trend:
+                signals["trend_direction"] = trend["direction"]
+                signals["trend_delta"] = trend["delta"]
+                signals["trend_previous_rate"] = trend["previous_rate"]
+                signals["trend_current_rate"] = trend["current_rate"]
+
             health = compute_health(signals)
 
             row = build_entity_context(
@@ -514,6 +540,7 @@ def get_pickup_health(
                         "avg_minutes_door_opened_to_redeemed": item.avg_minutes_door_opened_to_redeemed,
                         "avg_minutes_door_opened_to_door_closed": item.avg_minutes_door_opened_to_door_closed,
                     },
+                    "trend": trend,
                 }
             )
 
