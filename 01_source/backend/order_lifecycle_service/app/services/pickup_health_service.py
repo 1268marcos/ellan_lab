@@ -389,3 +389,156 @@ def compute_trend_from_ranking(
         }
 
     return trend_map
+
+
+def compute_historical_baseline_from_ranking(
+    *,
+    db,
+    dimension: str,
+    end_at: datetime | None,
+    region: str | None,
+    channel: str | None,
+    slot: str | None,
+    locker_id: str | None,
+    machine_id: str | None,
+    operator_id: str | None,
+    tenant_id: str | None,
+    site_id: str | None,
+    history_windows: int,
+    window_days: int,
+    limit: int,
+) -> dict[str | None, dict[str, Any]]:
+    now = end_at or datetime.now(timezone.utc)
+
+    history: dict[str | None, list[float]] = {}
+
+    for idx in range(history_windows):
+        window_end = now - timedelta(days=window_days * idx)
+        window_start = window_end - timedelta(days=window_days)
+
+        ranking = build_pickup_ranking(
+            db,
+            category="trend",
+            metric="redemption_rate",
+            dimension=dimension,
+            direction="desc",
+            limit=limit,
+            start_at=window_start,
+            end_at=window_end,
+            region=region,
+            channel=channel,
+            slot=slot,
+            locker_id=locker_id,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            tenant_id=tenant_id,
+            site_id=site_id,
+        )
+
+        for item in ranking.items:
+            history.setdefault(item.dimension_value, []).append(float(item.redemption_rate))
+
+    baseline_map: dict[str | None, dict[str, Any]] = {}
+
+    for dimension_value, rates in history.items():
+        if not rates:
+            continue
+
+        count = len(rates)
+        mean_rate = sum(rates) / count
+
+        if count <= 1:
+            stddev = 0.0
+        else:
+            variance = sum((rate - mean_rate) ** 2 for rate in rates) / count
+            stddev = variance ** 0.5
+
+        baseline_map[dimension_value] = {
+            "history_count": count,
+            "mean_rate": round(mean_rate, 3),
+            "stddev_rate": round(stddev, 3),
+            "min_rate": round(min(rates), 3),
+            "max_rate": round(max(rates), 3),
+        }
+
+    return baseline_map
+
+
+def detect_anomalies(
+    *,
+    signals: Dict[str, Any],
+    trend: dict[str, Any] | None,
+    baseline: dict[str, Any] | None,
+) -> dict[str, Any]:
+    alerts: list[str] = []
+    prediction_signals: list[str] = []
+
+    abrupt_drop = False
+    out_of_pattern = False
+    predictive_risk = False
+
+    trend_delta = _safe((trend or {}).get("delta"), 0.0)
+    current_rate = _safe((trend or {}).get("current_rate"), 0.0)
+
+    baseline_mean = _safe((baseline or {}).get("mean_rate"), 0.0)
+    baseline_stddev = _safe((baseline or {}).get("stddev_rate"), 0.0)
+    history_count = int(_safe((baseline or {}).get("history_count"), 0))
+
+    expiration_rate = _safe(signals.get("expiration_rate"), 0.0)
+    cancel_rate = _safe(signals.get("cancel_rate"), 0.0)
+    avg_pickup_minutes = _safe(signals.get("avg_pickup_minutes"), 0.0)
+    saturation_level = str(signals.get("saturation_level") or "").lower()
+
+    if trend_delta <= -8.0:
+        abrupt_drop = True
+        alerts.append("queda_abruta")
+
+    if history_count >= 3 and baseline_stddev > 0:
+        z_score = abs(current_rate - baseline_mean) / baseline_stddev
+        if z_score >= 2.0:
+            out_of_pattern = True
+            alerts.append("fora_do_padrao_historico")
+    else:
+        z_score = None
+
+    predictive_score = 0
+
+    if trend_delta <= -5.0:
+        predictive_score += 2
+        prediction_signals.append("queda_recente_relevante")
+
+    if expiration_rate >= 0.15:
+        predictive_score += 1
+        prediction_signals.append("expiracao_alta")
+
+    if cancel_rate >= 0.10:
+        predictive_score += 1
+        prediction_signals.append("cancelamento_alto")
+
+    if avg_pickup_minutes >= 90.0:
+        predictive_score += 1
+        prediction_signals.append("sla_lento")
+
+    if saturation_level == "high":
+        predictive_score += 1
+        prediction_signals.append("saturacao_alta")
+
+    if out_of_pattern:
+        predictive_score += 1
+        prediction_signals.append("desvio_historico")
+
+    if predictive_score >= 3:
+        predictive_risk = True
+        alerts.append("alerta_preditivo")
+
+    return {
+        "abrupt_drop": abrupt_drop,
+        "out_of_pattern": out_of_pattern,
+        "predictive_risk": predictive_risk,
+        "alerts": alerts,
+        "prediction_signals": prediction_signals,
+        "baseline_mean_rate": baseline_mean if history_count > 0 else None,
+        "baseline_stddev_rate": baseline_stddev if history_count > 0 else None,
+        "z_score": round(z_score, 3) if z_score is not None else None,
+        "history_count": history_count,
+    }

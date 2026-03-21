@@ -34,14 +34,18 @@ from app.schemas.pickup_events import PickupEventIn, PickupEventResponse
 from app.services.pickup_analytics_projector import project_pickup_event_facts
 from app.services.pickup_breakdown_service import build_pickup_breakdown
 from app.services.pickup_executive_summary_service import build_pickup_executive_summary
+
 from app.services.pickup_health_service import (
     build_entity_context,
     build_health_signals_from_ranking_item,
     compute_health,
+    compute_historical_baseline_from_ranking,
     compute_trend_from_ranking,
+    detect_anomalies,
     resolve_dimension_for_entity_type,
     supported_entity_types,
 )
+
 from app.services.pickup_metrics_service import build_pickup_metrics
 from app.services.pickup_ranking_service import build_pickup_ranking
 
@@ -436,6 +440,7 @@ def get_pickup_health(
     tenant_id: str | None = Query(default=None),
     site_id: str | None = Query(default=None),
     ranking_limit: int = Query(default=20, ge=1, le=100),
+    trend_days_window: int = Query(default=7, ge=1, le=90),
     include_alerts: bool = Query(default=True),
     _: None = Depends(require_internal_token),
     db: Session = Depends(get_db),
@@ -491,7 +496,24 @@ def get_pickup_health(
             operator_id=operator_id,
             tenant_id=tenant_id,
             site_id=site_id,
-            days_window=7,
+            days_window=trend_days_window,
+            limit=ranking_limit,
+        )
+
+        baseline_map = compute_historical_baseline_from_ranking(
+            db=db,
+            dimension=dimension,
+            end_at=end_at,
+            region=region,
+            channel=channel,
+            slot=slot,
+            locker_id=locker_id,
+            machine_id=machine_id,
+            operator_id=operator_id,
+            tenant_id=tenant_id,
+            site_id=site_id,
+            history_windows=6,
+            window_days=trend_days_window,
             limit=ranking_limit,
         )
 
@@ -506,6 +528,13 @@ def get_pickup_health(
                 signals["trend_delta"] = trend["delta"]
                 signals["trend_previous_rate"] = trend["previous_rate"]
                 signals["trend_current_rate"] = trend["current_rate"]
+
+            baseline = baseline_map.get(item.dimension_value)
+            anomaly = detect_anomalies(
+                signals=signals,
+                trend=trend,
+                baseline=baseline,
+            )
 
             health = compute_health(signals)
 
@@ -541,16 +570,27 @@ def get_pickup_health(
                         "avg_minutes_door_opened_to_door_closed": item.avg_minutes_door_opened_to_door_closed,
                     },
                     "trend": trend,
+                    "anomaly": anomaly,
+                    "baseline": baseline,
                 }
             )
 
             if include_alerts:
-                row["alerts"] = health["alerts"]
+                merged_alerts = list(health["alerts"])
+                for alert in anomaly["alerts"]:
+                    if alert not in merged_alerts:
+                        merged_alerts.append(alert)
+                row["alerts"] = merged_alerts
 
             entity_results.append(row)
             all_results.append(row)
 
-        entity_results.sort(key=lambda x: (x["health_score"], -(x["metrics"]["total_terminal_pickups"] or 0)))
+        entity_results.sort(
+            key=lambda x: (
+                x["health_score"],
+                -int((x["metrics"]["total_terminal_pickups"] or 0)),
+            )
+        )
         ranking_by_entity[current_entity_type] = entity_results
 
     all_results.sort(key=lambda x: (x["health_score"], -(x["metrics"]["total_terminal_pickups"] or 0)))
@@ -580,6 +620,7 @@ def get_pickup_health(
             "tenant_id": tenant_id,
             "site_id": site_id,
             "ranking_limit": ranking_limit,
+            "trend_days_window": trend_days_window,
             "include_alerts": include_alerts,
         },
         "summary": summary,
