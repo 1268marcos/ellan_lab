@@ -22,11 +22,15 @@ ENTITY_DIMENSION_MAP = {
     "machine": "machine_id",
     "site": "site_id",
     "region": "region",
+    "channel": "channel", 
+    "slot": "slot", 
+    "operator": "operator_id", 
+    "tenant": "tenant_id",
 }
 
 
 def supported_entity_types() -> list[str]:
-    return ["locker", "machine", "site", "region", "all"]
+    return ["locker", "machine", "site", "region", "channel", "slot", "operator", "tenant", "all"]
 
 
 def resolve_dimension_for_entity_type(entity_type: str) -> str:
