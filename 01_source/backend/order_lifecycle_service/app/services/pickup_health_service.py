@@ -2,14 +2,9 @@
 # Deverá ser uma camada acima do executive summary (presente em intenal.py)
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from math import isnan
 
-
-# =========================
-# CONFIGURAÇÃO DE PESOS
-# =========================
 
 WEIGHTS = {
     "efficiency": 0.40,
@@ -19,9 +14,27 @@ WEIGHTS = {
 }
 
 
-# =========================
-# HELPERS
-# =========================
+ENTITY_DIMENSION_MAP = {
+    "locker": "locker_id",
+    "machine": "machine_id",
+    "site": "site_id",
+    "region": "region",
+}
+
+
+def supported_entity_types() -> list[str]:
+    return ["locker", "machine", "site", "region", "all"]
+
+
+def resolve_dimension_for_entity_type(entity_type: str) -> str:
+    try:
+        return ENTITY_DIMENSION_MAP[entity_type]
+    except KeyError as exc:
+        raise ValueError(
+            f"unsupported entity_type: {entity_type}. "
+            f"supported={', '.join(supported_entity_types())}"
+        ) from exc
+
 
 def _clamp(v: float, min_v: float = 0.0, max_v: float = 100.0) -> float:
     return max(min_v, min(max_v, v))
@@ -38,103 +51,117 @@ def _safe(v: Optional[float], default: float = 0.0) -> float:
         return default
 
 
-# =========================
-# COMPONENTES
-# =========================
+def _normalize_percent_to_ratio(value: float | None) -> float:
+    raw = _safe(value, 0.0)
+    if raw <= 0:
+        return 0.0
+    if raw > 1:
+        return raw / 100.0
+    return raw
+
+
+def _derive_saturation_level(sample_size: int) -> str:
+    if sample_size >= 300:
+        return "high"
+    if sample_size >= 100:
+        return "medium"
+    return "low"
+
+
+def _derive_trend_direction_from_rates(
+    *,
+    redemption_rate: float,
+    expiration_rate: float,
+    cancellation_rate: float,
+) -> str:
+    """
+    Heurística inicial, estável e auditável.
+    Pode ser refinada depois com comparação entre janelas.
+    """
+    if redemption_rate >= 0.90 and expiration_rate <= 0.05 and cancellation_rate <= 0.03:
+        return "improving"
+
+    if redemption_rate < 0.60 or expiration_rate >= 0.20 or cancellation_rate >= 0.10:
+        return "worsening"
+
+    return "stable"
+
 
 def compute_efficiency_score(signals: Dict[str, Any]) -> float:
-    """
-    Mede quão bem o fluxo está funcionando.
-    """
-    success_rate = _safe(signals.get("pickup_success_rate"), 0.0)  # 0..1
-    expiration_rate = _safe(signals.get("expiration_rate"), 0.0)   # 0..1
-    cancel_rate = _safe(signals.get("cancel_rate"), 0.0)           # 0..1
+    success_rate = _safe(signals.get("pickup_success_rate"), 0.0)
+    expiration_rate = _safe(signals.get("expiration_rate"), 0.0)
+    cancel_rate = _safe(signals.get("cancel_rate"), 0.0)
     avg_minutes = _safe(signals.get("avg_pickup_minutes"), 999.0)
 
-    success_score = success_rate * 100
-    penalty_exp = expiration_rate * 100
-    penalty_cancel = cancel_rate * 100
+    success_score = success_rate * 100.0
+    penalty_exp = expiration_rate * 100.0
+    penalty_cancel = cancel_rate * 100.0
 
-    # tempo: ideal < 30 min, ruim > 120 min
-    if avg_minutes <= 30:
-        time_score = 100
+    if avg_minutes <= 10:
+        time_score = 100.0
     elif avg_minutes >= 120:
-        time_score = 0
+        time_score = 0.0
     else:
-        time_score = 100 - ((avg_minutes - 30) / 90) * 100
+        time_score = 100.0 - ((avg_minutes - 10.0) / 110.0) * 100.0
 
     score = (
-        success_score * 0.5 +
-        time_score * 0.3 +
-        (100 - penalty_exp) * 0.1 +
-        (100 - penalty_cancel) * 0.1
+        success_score * 0.50
+        + time_score * 0.30
+        + (100.0 - penalty_exp) * 0.10
+        + (100.0 - penalty_cancel) * 0.10
     )
 
     return _clamp(score)
 
 
 def compute_reliability_score(signals: Dict[str, Any]) -> float:
-    """
-    Mede confiança estatística.
-    """
-    sample_size = _safe(signals.get("sample_size"), 0)
+    sample_size = int(_safe(signals.get("sample_size"), 0))
 
+    if sample_size >= 500:
+        return 100.0
     if sample_size >= 200:
-        return 100
+        return 90.0
     if sample_size >= 100:
-        return 85
+        return 80.0
     if sample_size >= 50:
-        return 70
+        return 65.0
     if sample_size >= 20:
-        return 50
+        return 45.0
     if sample_size > 0:
-        return 30
-    return 10
+        return 25.0
+    return 10.0
 
 
 def compute_risk_score(signals: Dict[str, Any]) -> float:
-    """
-    Quanto maior, pior.
-    """
     expiration = _safe(signals.get("expiration_rate"), 0.0)
     cancel = _safe(signals.get("cancel_rate"), 0.0)
-
     saturation = signals.get("saturation_level")
 
     sat_score = {
-        "low": 20,
-        "medium": 50,
-        "high": 80,
-    }.get(saturation, 40)
+        "low": 20.0,
+        "medium": 50.0,
+        "high": 80.0,
+    }.get(saturation, 40.0)
 
     score = (
-        expiration * 100 * 0.5 +
-        cancel * 100 * 0.3 +
-        sat_score * 0.2
+        expiration * 100.0 * 0.50
+        + cancel * 100.0 * 0.30
+        + sat_score * 0.20
     )
 
     return _clamp(score)
 
 
 def compute_trend_score(signals: Dict[str, Any]) -> float:
-    """
-    Tendência operacional.
-    """
     trend = signals.get("trend_direction")
-
     mapping = {
-        "improving": 90,
-        "stable": 70,
-        "worsening": 40,
-        "critical": 10,
+        "improving": 90.0,
+        "stable": 70.0,
+        "worsening": 40.0,
+        "critical": 10.0,
     }
+    return mapping.get(trend, 60.0)
 
-    return mapping.get(trend, 60)
-
-
-# =========================
-# CLASSIFICAÇÃO
-# =========================
 
 def classify(score: float) -> str:
     if score >= 90:
@@ -158,10 +185,6 @@ def recommended_action(classification: str) -> str:
     }.get(classification, "avaliar_manual")
 
 
-# =========================
-# ALERTAS
-# =========================
-
 def generate_alerts(signals: Dict[str, Any]) -> List[str]:
     alerts: List[str] = []
 
@@ -177,7 +200,7 @@ def generate_alerts(signals: Dict[str, Any]) -> List[str]:
     if signals.get("saturation_level") == "high":
         alerts.append("saturacao_elevada")
 
-    if _safe(signals.get("sample_size")) < 20:
+    if int(_safe(signals.get("sample_size"))) < 20:
         alerts.append("baixa_confiabilidade_amostral")
 
     if _safe(signals.get("avg_pickup_minutes")) > 90:
@@ -186,10 +209,6 @@ def generate_alerts(signals: Dict[str, Any]) -> List[str]:
     return alerts
 
 
-# =========================
-# ENGINE PRINCIPAL
-# =========================
-
 def compute_health(signals: Dict[str, Any]) -> Dict[str, Any]:
     efficiency = compute_efficiency_score(signals)
     reliability = compute_reliability_score(signals)
@@ -197,14 +216,13 @@ def compute_health(signals: Dict[str, Any]) -> Dict[str, Any]:
     trend = compute_trend_score(signals)
 
     score = (
-        efficiency * WEIGHTS["efficiency"] +
-        reliability * WEIGHTS["reliability"] +
-        (100 - risk) * WEIGHTS["risk"] +
-        trend * WEIGHTS["trend"]
+        efficiency * WEIGHTS["efficiency"]
+        + reliability * WEIGHTS["reliability"]
+        + (100.0 - risk) * WEIGHTS["risk"]
+        + trend * WEIGHTS["trend"]
     )
 
     score = round(_clamp(score), 2)
-
     classification_value = classify(score)
 
     return {
@@ -219,3 +237,62 @@ def compute_health(signals: Dict[str, Any]) -> Dict[str, Any]:
         },
         "alerts": generate_alerts(signals),
     }
+
+
+def build_health_signals_from_ranking_item(item: Any) -> Dict[str, Any]:
+    redemption_rate = _normalize_percent_to_ratio(getattr(item, "redemption_rate", 0.0))
+    expiration_rate = _normalize_percent_to_ratio(getattr(item, "expiration_rate", 0.0))
+    cancellation_rate = _normalize_percent_to_ratio(getattr(item, "cancellation_rate", 0.0))
+    total_terminal_pickups = int(_safe(getattr(item, "total_terminal_pickups", 0), 0))
+    avg_pickup_minutes = _safe(getattr(item, "avg_minutes_ready_to_redeemed", 0.0), 0.0)
+
+    saturation_level = _derive_saturation_level(total_terminal_pickups)
+    trend_direction = _derive_trend_direction_from_rates(
+        redemption_rate=redemption_rate,
+        expiration_rate=expiration_rate,
+        cancellation_rate=cancellation_rate,
+    )
+
+    return {
+        "pickup_success_rate": redemption_rate,
+        "expiration_rate": expiration_rate,
+        "cancel_rate": cancellation_rate,
+        "avg_pickup_minutes": avg_pickup_minutes,
+        "trend_direction": trend_direction,
+        "saturation_level": saturation_level,
+        "sample_size": total_terminal_pickups,
+    }
+
+
+def build_entity_context(
+    *,
+    entity_type: str,
+    entity_id: str | None,
+    tenant_id: str | None,
+    operator_id: str | None,
+    region: str | None,
+    site_id: str | None,
+    machine_id: str | None,
+    locker_id: str | None,
+) -> dict[str, Any]:
+    row = {
+        "entity_type": entity_type,
+        "entity_id": entity_id,
+        "tenant_id": tenant_id,
+        "operator_id": operator_id,
+        "region": region,
+        "site_id": site_id,
+        "machine_id": machine_id,
+        "locker_id": locker_id,
+    }
+
+    if entity_type == "locker":
+        row["locker_id"] = entity_id
+    elif entity_type == "machine":
+        row["machine_id"] = entity_id
+    elif entity_type == "site":
+        row["site_id"] = entity_id
+    elif entity_type == "region":
+        row["region"] = entity_id
+
+    return row
