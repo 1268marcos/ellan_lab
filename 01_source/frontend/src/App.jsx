@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import LockerDashboard from "./pages/LockerDashboard.jsx";
 import RegionPage from "./pages/RegionPage.jsx";
 import DevLockerResetPage from "./pages/DevLockerResetPage.jsx";
+import PickupHealthPage from "./pages/PickupHealthPage.jsx";
 
 // Públicas
 import PublicLandingPage from "./pages/public/PublicLandingPage.jsx";
@@ -93,6 +94,7 @@ function TopNav() {
       <Link style={linkStyle} to="/sp/kiosk">/sp/kiosk</Link>
       <Link style={linkStyle} to="/pt/kiosk">/pt/kiosk</Link>
       <Link style={devLinkStyle} to="/dev/reset">/dev/reset</Link>
+      <Link style={devLinkStyle} to="/analytics/pickup">/analytics/pickup</Link>
 
       <div style={{ flex: 1 }} />
 
@@ -193,6 +195,10 @@ function AppContent() {
 
         {/* DEV */}
         <Route path="/dev/reset" element={<DevLockerResetPage />} />
+
+        {/* ANALYTICS */}
+        <Route path="/analytics/pickup" element={<PickupHealthPage />} />
+
 
         {/* 404 */}
         <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />

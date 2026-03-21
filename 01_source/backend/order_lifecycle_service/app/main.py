@@ -1,6 +1,8 @@
 # 01_source/backend/order_lifecycle_service/app/main.py
 from fastapi import FastAPI
 
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
 from app.core.db import init_db
 from app.core.logging import configure_logging
@@ -23,6 +25,13 @@ def on_startup() -> None:
 app.include_router(health_router)
 app.include_router(internal_router)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.get("/")
 def root():

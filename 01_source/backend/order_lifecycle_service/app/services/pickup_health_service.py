@@ -542,3 +542,127 @@ def detect_anomalies(
         "z_score": round(z_score, 3) if z_score is not None else None,
         "history_count": history_count,
     }
+
+
+# -----------------------------------------------------
+# PRIORITY SCORE (VERSÃO FINAL COMPATÍVEL) - CORE: PRIORITY SCORE (0–100)
+# -----------------------------------------------------
+def compute_priority_score(
+    *,
+    health_score: float,
+    signals: Dict[str, Any] | None = None,
+    anomaly: Dict[str, Any] | None = None,
+    trend: Dict[str, Any] | None = None,
+) -> float:
+    """
+    Score operacional final (0–100)
+
+    Compatível com:
+    - signals (novo pipeline)
+    - anomaly
+    - trend
+    """
+
+    signals = signals or {}
+    anomaly = anomaly or {}
+    trend = trend or {}
+
+    # Base: quanto pior health → maior prioridade
+    base = 100.0 - (health_score or 0.0)
+
+    penalty = 0.0
+
+    # -----------------------------------
+    # ANOMALIAS (forte peso)
+    # -----------------------------------
+    if anomaly.get("predictive_risk"):
+        penalty += 25
+
+    if anomaly.get("abrupt_drop"):
+        penalty += 20
+
+    if anomaly.get("out_of_pattern"):
+        penalty += 15
+
+    # -----------------------------------
+    # TREND (médio peso)
+    # -----------------------------------
+    delta = trend.get("delta") or signals.get("trend_delta") or 0.0
+
+    if delta < -0.05:
+        penalty += 10
+
+    if delta < -0.15:
+        penalty += 15
+
+    # -----------------------------------
+    # SIGNALS adicionais (expansível)
+    # -----------------------------------
+    if signals.get("high_expiration_rate"):
+        penalty += 10
+
+    if signals.get("high_cancellation_rate"):
+        penalty += 8
+
+    if signals.get("slow_pickup_time"):
+        penalty += 6
+
+    return _clamp(base + penalty)
+
+
+# -----------------------------------------------------
+# SEVERITY BUCKET
+# -----------------------------------------------------
+def classify_severity(priority_score: float) -> str:
+    if priority_score >= 80:
+        return "incident"
+    if priority_score >= 60:
+        return "critical"
+    if priority_score >= 40:
+        return "attention"
+    return "normal"
+
+
+# -----------------------------------------------------
+# PLAYBOOK OPERACIONAL
+# -----------------------------------------------------
+def suggest_playbook(
+    *,
+    anomaly: Dict[str, Any] | None = None,
+    metrics: Dict[str, Any] | None = None,
+    signals: Dict[str, Any] | None = None,
+    severity: str | None = None,
+) -> str:
+    anomaly = anomaly or {}
+    metrics = metrics or {}
+    signals = signals or {}
+
+    if severity == "incident":
+        return "dispatch_immediate_field_check"
+
+    if anomaly.get("predictive_risk"):
+        return "investigate_predictive_failure"
+
+    if anomaly.get("abrupt_drop"):
+        return "check_device_or_access"
+
+    if anomaly.get("out_of_pattern"):
+        return "investigate_behavior_change"
+
+    if metrics.get("expiration_rate", 0) > 0.3:
+        return "optimize_customer_notifications"
+
+    if metrics.get("cancellation_rate", 0) > 0.2:
+        return "review_payment_or_friction"
+
+    if signals.get("expiration_rate", 0) > 0.15:
+        return "review_pickup_sla"
+
+    if signals.get("cancel_rate", 0) > 0.1:
+        return "review_payment_flow"
+
+    if signals.get("slow_pickup_time"):
+        return "optimize_pickup_flow"
+
+    return "monitor"
+

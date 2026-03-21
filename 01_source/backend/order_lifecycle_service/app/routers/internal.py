@@ -44,6 +44,9 @@ from app.services.pickup_health_service import (
     detect_anomalies,
     resolve_dimension_for_entity_type,
     supported_entity_types,
+    compute_priority_score,
+    classify_severity,
+    suggest_playbook,
 )
 
 from app.services.pickup_metrics_service import build_pickup_metrics
@@ -549,25 +552,38 @@ def get_pickup_health(
                 locker_id=locker_id,
             )
 
+            priority_score = compute_priority_score(
+                health_score=health["health_score"],
+                anomaly=anomaly,
+                signals=signals,
+            )
+
+            severity_bucket = classify_severity(priority_score)
+
+            playbook = suggest_playbook(
+                anomaly=anomaly,
+                signals=signals,
+                severity=severity_bucket,
+            )
+
             row.update(
                 {
                     "health_score": health["health_score"],
                     "classification": health["classification"],
                     "recommended_action": health["recommended_action"],
+
+                    # 🔥 NOVO
+                    "priority_score": priority_score,
+                    "severity_bucket": severity_bucket,
+                    "suggested_playbook": playbook,
+
                     "components": health["components"],
                     "signals": signals,
                     "metrics": {
-                        "total_terminal_pickups": item.total_terminal_pickups,
-                        "redeemed_pickups": item.redeemed_pickups,
-                        "expired_pickups": item.expired_pickups,
-                        "cancelled_pickups": item.cancelled_pickups,
-                        "redemption_rate": item.redemption_rate,
-                        "expiration_rate": item.expiration_rate,
-                        "cancellation_rate": item.cancellation_rate,
-                        "avg_minutes_created_to_ready": item.avg_minutes_created_to_ready,
-                        "avg_minutes_ready_to_redeemed": item.avg_minutes_ready_to_redeemed,
-                        "avg_minutes_door_opened_to_redeemed": item.avg_minutes_door_opened_to_redeemed,
-                        "avg_minutes_door_opened_to_door_closed": item.avg_minutes_door_opened_to_door_closed,
+                        "total_terminal_pickups": getattr(item, "total_terminal_pickups", 0),
+                        "expiration_rate": getattr(item, "expiration_rate", 0.0),
+                        "cancellation_rate": getattr(item, "cancellation_rate", 0.0),
+                        "avg_minutes_ready_to_redeemed": getattr(item, "avg_minutes_ready_to_redeemed", 0.0),
                     },
                     "trend": trend,
                     "anomaly": anomaly,
@@ -584,16 +600,30 @@ def get_pickup_health(
 
             entity_results.append(row)
             all_results.append(row)
-
+        
         entity_results.sort(
             key=lambda x: (
-                x["health_score"],
-                -int((x["metrics"]["total_terminal_pickups"] or 0)),
-            )
+                not x.get("anomaly", {}).get("predictive_risk", False),
+                -float(x.get("priority_score", 0.0)),
+                float(x.get("health_score", 0.0)),
+                -int((x.get("metrics", {}).get("total_terminal_pickups") or 0)),
+            ),
+            reverse=True,
         )
+
         ranking_by_entity[current_entity_type] = entity_results
 
-    all_results.sort(key=lambda x: (x["health_score"], -(x["metrics"]["total_terminal_pickups"] or 0)))
+    # all_results.sort(key=lambda x: (x["health_score"], -(x["metrics"]["total_terminal_pickups"] or 0)))
+
+    all_results.sort(
+        key=lambda x: (
+            not x.get("anomaly", {}).get("predictive_risk", False),
+            -float(x.get("priority_score", 0.0)),
+            float(x.get("health_score", 0.0)),
+            -int((x.get("metrics", {}).get("total_terminal_pickups") or 0)),
+        ),
+        reverse=True,
+    )
 
     summary = {
         "total_entities": len(all_results),

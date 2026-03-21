@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
+import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
+
 import { QRCodeCanvas } from "qrcode.react";
 
 import { useAuth } from "../context/AuthContext";
@@ -973,6 +975,8 @@ export default function LockerDashboard({ region = "PT" }) {
   const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
   const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
 
+  const ORDER_LIFECYCLE_BASE = import.meta.env.VITE_ORDER_LIFECYCLE_BASE_URL || "http://localhost:8010";
+  
   const isNarrow = useMediaQuery("(max-width: 1280px)");
   const isVeryNarrow = useMediaQuery("(max-width: 980px)");
 
@@ -2848,6 +2852,12 @@ export default function LockerDashboard({ region = "PT" }) {
           </section>
         </div>
       </div>
+      <PickupHealthPanel 
+        lifecycleBaseUrl={ORDER_LIFECYCLE_BASE}
+        internalToken={INTERNAL_TOKEN}
+        region={region}
+        defaultEntityType="locker"
+      />
     </div>
   );
 }
