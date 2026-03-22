@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import uuid
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.domain_event_outbox import DomainEventOutbox
+
+logger = logging.getLogger("order_paid_outbox")
 
 
 def _utc_now_naive() -> datetime:
@@ -34,14 +37,50 @@ def enqueue_order_paid_event(
     site_id: str | None = None,
     source_service: str = "order_pickup_service",
 ) -> DomainEventOutbox:
+
+    # 🔒 VALIDAÇÃO CANÔNICA (NOVA)
+    if not order_id:
+        raise ValueError("order_id obrigatório")
+
+    if not amount_cents or amount_cents <= 0:
+        raise ValueError(f"amount_cents inválido: {amount_cents}")
+
+    if not currency:
+        raise ValueError("currency obrigatório")
+
+    if not channel:
+        raise ValueError("channel obrigatório")
+
+    if not transaction_id:
+        logger.warning(
+            "order_paid_event_missing_transaction_id",
+            extra={"order_id": order_id},
+        )
+
+    if not payment_method:
+        logger.warning(
+            "order_paid_event_missing_payment_method",
+            extra={"order_id": order_id},
+        )
+
     event_key = f"order.paid:{order_id}"
 
+    # 🔒 IDEMPOTÊNCIA FORTE
     existing = (
         db.query(DomainEventOutbox)
         .filter(DomainEventOutbox.event_key == event_key)
         .first()
     )
+
     if existing:
+        logger.info(
+            "order_paid_event_already_exists",
+            extra={
+                "order_id": order_id,
+                "event_key": event_key,
+                "status": existing.status,
+            },
+        )
         return existing
 
     occurred_at = _utc_now_naive()
@@ -80,6 +119,19 @@ def enqueue_order_paid_event(
         created_at=occurred_at,
         updated_at=occurred_at,
     )
+
     db.add(row)
     db.flush()
+
+    logger.info(
+        "order_paid_event_enqueued",
+        extra={
+            "order_id": order_id,
+            "event_key": event_key,
+            "amount_cents": amount_cents,
+            "channel": channel,
+            "payment_method": payment_method,
+        },
+    )
+
     return row

@@ -45,6 +45,8 @@ from app.services.lifecycle_integration import (
     register_prepayment_timeout_deadline,
 )
 
+from app.services.domain_event_outbox_service import enqueue_order_paid_event
+
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
 
@@ -681,6 +683,10 @@ def kiosk_payment_approved(
     order.paid_at = _utc_now_naive()
     order.status = OrderStatus.DISPENSED
     order.mark_payment_approved()
+
+    # 🔥 GARANTIR transaction_id
+    order.gateway_transaction_id = order.gateway_transaction_id or f"kiosk-{order.id}"
+
     allocation.state = AllocationState.OPENED_FOR_PICKUP
     allocation.locked_until = None
 
@@ -688,6 +694,27 @@ def kiosk_payment_approved(
         db,
         order=order,
         allocation=allocation,
+    )
+
+    # 🔥 EVENTO FINANCEIRO
+    enqueue_order_paid_event(
+        db,
+        order_id=order.id,
+        region=order.region,
+        channel=order.channel.value,
+        payment_method=order.payment_method.value if order.payment_method else None,
+        transaction_id=order.gateway_transaction_id,
+        amount_cents=order.amount_cents,
+        currency="BRL",  # 🔥 ajuste depois se quiser multi-moeda
+        locker_id=pickup.locker_id if pickup else order.totem_id,
+        machine_id=pickup.machine_id if pickup else order.totem_id,
+        slot=pickup.slot if pickup else allocation.slot,
+        allocation_id=allocation.id,
+        pickup_id=pickup.id if pickup else None,
+        tenant_id=None,
+        operator_id=None,
+        site_id=None,
+        source_service="order_pickup_service",
     )
 
     db.commit()

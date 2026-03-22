@@ -372,7 +372,7 @@ def payment_confirm(
     db: Session = Depends(get_db),
 ):
     order = _ensure_order(db, order_id)
-
+   
     if getattr(payload, "region", None) and order.region != payload.region:
         raise HTTPException(
             status_code=409,
@@ -652,6 +652,22 @@ def payment_confirm(
             order.region,
             allocation.slot,
             locker_id=order.totem_id,
+        )
+
+    if payload.amount_cents != order.amount_cents:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "AMOUNT_MISMATCH",
+                "order_amount": order.amount_cents,
+                "payload_amount": payload.amount_cents,
+            },
+        )
+
+    if not order.gateway_transaction_id:
+        raise HTTPException(
+            status_code=500,
+            detail="gateway_transaction_id não preenchido",
         )
 
     # order.paid nasce na mesma transação que confirmou o pagamento
