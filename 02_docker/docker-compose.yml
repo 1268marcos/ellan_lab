@@ -439,6 +439,40 @@ services:
 
 
   # =========================
+  # ORDER PICKUP DOMAIN EVENT WORKER
+  # =========================
+  order_pickup_domain_event_worker:
+    build:
+      context: ../01_source/order_pickup_service
+    container_name: order_pickup_domain_event_worker
+    command: ["python", "-m", "app.workers.domain_event_outbox_worker"]
+    restart: unless-stopped
+    env_file:
+      - .env.${NODE_ENV:-development}
+    environment:
+      - TZ=America/Sao_Paulo
+      - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
+      - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
+      - LIFECYCLE_SERVICE_URL=http://order_lifecycle_service:8010
+      - DOMAIN_EVENT_OUTBOX_POLL_SEC=5
+      - DOMAIN_EVENT_OUTBOX_BATCH_SIZE=50
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      order_lifecycle_service:
+        condition: service_started
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+
+
+
+
+  # =========================
   # SIMULATOR SP (24 doors)
   # =========================
   simulator_sp:

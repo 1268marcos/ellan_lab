@@ -9,6 +9,8 @@ from app.core.logging import configure_logging
 from app.routers.health import router as health_router
 from app.routers.internal import router as internal_router
 
+from app.api.routes_domain_events import router as domain_events_router
+
 configure_logging()
 
 app = FastAPI(
@@ -24,6 +26,7 @@ def on_startup() -> None:
 
 app.include_router(health_router)
 app.include_router(internal_router)
+app.include_router(domain_events_router)
 
 app.add_middleware(
     CORSMiddleware,

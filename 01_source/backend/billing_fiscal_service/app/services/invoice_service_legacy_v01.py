@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.integrations.lifecycle_client import has_order_paid_event
+from app.integrations.lifecycle_client import has_invoice_trigger_event
 from app.models.invoice_model import Invoice, InvoiceStatus
 from app.utils.id_generator import generate_invoice_id
 
@@ -21,10 +21,10 @@ def generate_invoice(db: Session, order_id: str) -> Invoice:
     if existing:
         return existing
 
-    if not has_order_paid_event(db, normalized_order_id):
+    if not has_invoice_trigger_event(db, normalized_order_id):
         raise ValueError(
-            f"Evento financeiro oficial não encontrado para order_id={normalized_order_id}. "
-            f"Esperado: order.paid em domain_events."
+            f"Evento gatilho não encontrado para order_id={normalized_order_id}. "
+            f"Esperado: pickup.ready_for_pickup em domain_events."
         )
 
     now = datetime.now(timezone.utc)
@@ -39,7 +39,7 @@ def generate_invoice(db: Session, order_id: str) -> Invoice:
         xml_content=None,
         payload_json={
             "source": "manual_generate_endpoint",
-            "trigger_event": "order.paid",
+            "trigger_event": "pickup.ready_for_pickup",
         },
         error_message=None,
         created_at=now,

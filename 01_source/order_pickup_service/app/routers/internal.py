@@ -38,6 +38,7 @@ from app.services.pickup_event_publisher import (
     publish_pickup_cancelled,
 )
 
+from app.services.domain_event_outbox_service import enqueue_order_paid_event
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -51,6 +52,12 @@ def _utc_now() -> datetime:
 
 def _utc_now_naive() -> datetime:
     return _utc_now().replace(tzinfo=None)
+
+
+def _enum_value_or_raw(value) -> str | None:
+    if value is None:
+        return None
+    return getattr(value, "value", value)
 
 
 def _ensure_allocation(db: Session, order_id: str) -> Allocation:
@@ -388,7 +395,7 @@ def payment_confirm(
             "status": order.status.value,
             "slot": allocation.slot,
             "allocation_id": allocation.id,
-            "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
+            "payment_method": _enum_value_or_raw(order.payment_method),
             "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
             "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
             "pickup_id": pickup.id if pickup else None,
@@ -414,7 +421,7 @@ def payment_confirm(
     order.gateway_transaction_id = payload.transaction_id
     provider_value = getattr(payload, "provider", None)
     if provider_value:
-        order.payment_method = provider_value
+        order.payment_method = _enum_value_or_raw(provider_value)
     order.paid_at = now
     order.mark_payment_approved()
 
@@ -647,6 +654,27 @@ def payment_confirm(
             locker_id=order.totem_id,
         )
 
+    # order.paid nasce na mesma transação que confirmou o pagamento
+    enqueue_order_paid_event(
+        db,
+        order_id=order.id,
+        region=order.region,
+        channel=_enum_value_or_raw(order.channel),
+        payment_method=_enum_value_or_raw(order.payment_method),
+        transaction_id=order.gateway_transaction_id,
+        amount_cents=order.amount_cents,
+        currency=payload.currency,
+        locker_id=(pickup.locker_id if pickup else order.totem_id),
+        machine_id=(pickup.machine_id if pickup else order.totem_id),
+        slot=(pickup.slot if pickup else allocation.slot),
+        allocation_id=allocation.id,
+        pickup_id=(pickup.id if pickup else None),
+        tenant_id=None,
+        operator_id=None,
+        site_id=None,
+        source_service="order_pickup_service",
+    )
+
     db.commit()
     db.refresh(order)
     db.refresh(allocation)
@@ -674,7 +702,7 @@ def payment_confirm(
         "status": order.status.value,
         "slot": allocation.slot,
         "allocation_id": allocation.id,
-        "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
+        "payment_method": _enum_value_or_raw(order.payment_method),
         "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,
         "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
         "pickup_id": pickup.id if pickup else None,
@@ -816,7 +844,7 @@ def internal_order_status(
             "sku_id": getattr(order, "sku_id", None),
             "status": order.status.value,
             "amount_cents": getattr(order, "amount_cents", None),
-            "payment_method": order.payment_method.value if getattr(order, "payment_method", None) else None,
+            "payment_method": _enum_value_or_raw(order.payment_method),
             "paid_at": order.paid_at.isoformat() if getattr(order, "paid_at", None) else None,
             "pickup_deadline_at": order.pickup_deadline_at.isoformat() if order.pickup_deadline_at else None,
             "picked_up_at": order.picked_up_at.isoformat() if order.picked_up_at else None,

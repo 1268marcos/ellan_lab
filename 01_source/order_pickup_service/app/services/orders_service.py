@@ -189,7 +189,8 @@ def confirm_online_payment(
 
     order.status = OrderStatus.PAID_PENDING_PICKUP
     order.pickup_deadline_at = pickup_deadline_at.replace(tzinfo=None)
-    allocation.state = AllocationState.RESERVED_PENDING_PICKUP
+    # allocation.state = AllocationState.RESERVED_PENDING_PICKUP - QUEBRADO
+    allocation.state = AllocationState.RESERVED_PAID_PENDING_PICKUP
     allocation.locked_until = pickup_deadline_at.replace(tzinfo=None)
 
     db.commit()

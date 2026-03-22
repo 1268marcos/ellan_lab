@@ -270,6 +270,7 @@ def init_db():
     from app.models import user  # noqa: F401
     from app.models.auth_session import AuthSession  # noqa: F401
     from app.models.notification_log import NotificationLog  # noqa: F401
+    from app.models import domain_event_outbox  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _run_startup_migrations_if_enabled()
