@@ -414,26 +414,33 @@ services:
 
 
   # =========================
-  # BILLING FISCAL WORKER - Para automatizar / Ainda não utilizado / Futura implementação
+  # BILLING FISCAL ISSUE WORKER
   # =========================
-  billing_fiscal_worker:
+  billing_fiscal_issue_worker:
     build:
       context: ../01_source/backend/billing_fiscal_service
-    container_name: billing_fiscal_worker
-    command: ["python", "-m", "app.workers.invoice_worker"]
+    container_name: billing_fiscal_issue_worker
+    command: ["python", "-m", "app.workers.invoice_issue_worker"]
+    restart: unless-stopped
     environment:
       SERVICE_NAME: billing_fiscal_service
       APP_ENV: dev
       LOG_LEVEL: INFO
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      HOST: 0.0.0.0
+      PORT: 8020
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
+      INVOICE_ISSUE_POLL_SEC: 5
+      INVOICE_ISSUE_BATCH_SIZE: 50
     depends_on:
       postgres_central:
         condition: service_healthy
+      billing_fiscal_service:
+        condition: service_started
     networks:
       - locker-network
 

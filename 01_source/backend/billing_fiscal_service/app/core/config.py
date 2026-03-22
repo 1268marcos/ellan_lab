@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     postgres_user: str = Field(default="admin", alias="POSTGRES_USER")
     postgres_password: str = Field(default="admin123", alias="POSTGRES_PASSWORD")
 
+    invoice_issue_poll_sec: int = Field(default=5, alias="INVOICE_ISSUE_POLL_SEC")
+    invoice_issue_batch_size: int = Field(default=50, alias="INVOICE_ISSUE_BATCH_SIZE")
+
     @property
     def database_url(self) -> str:
         return (

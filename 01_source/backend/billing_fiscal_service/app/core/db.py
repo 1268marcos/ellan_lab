@@ -4,9 +4,18 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
 
-engine = create_engine(settings.database_url, future=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    future=True,
+)
 
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+SessionLocal = sessionmaker(
+    bind=engine,
+    autoflush=False,
+    autocommit=False,
+    future=True,
+)
 
 
 def get_db():
@@ -15,3 +24,9 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def init_db() -> None:
+    from app.core.db_migrations import run_startup_migrations
+
+    run_startup_migrations(engine)

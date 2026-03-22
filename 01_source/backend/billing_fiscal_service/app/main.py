@@ -1,15 +1,16 @@
 # 01_source/backend/billing_fiscal_service/app/main.py
 from fastapi import FastAPI
 
-from app.core.db import engine
-from app.core.db_migrations import run_startup_migrations
+from app.core.db import init_db
 from app.api.routes_invoice import router as invoice_router
 
 app = FastAPI(title="Billing Fiscal Service")
 
+
 @app.on_event("startup")
 def startup():
-    run_startup_migrations(engine)
+    init_db()
+
 
 app.include_router(invoice_router)
 
