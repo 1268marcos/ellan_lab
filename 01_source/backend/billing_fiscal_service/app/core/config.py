@@ -24,8 +24,21 @@ class Settings(BaseSettings):
     postgres_user: str = Field(default="admin", alias="POSTGRES_USER")
     postgres_password: str = Field(default="admin123", alias="POSTGRES_PASSWORD")
 
+    order_pickup_service_url: str = Field(
+        default="http://order_pickup_service:8003",
+        alias="ORDER_PICKUP_SERVICE_URL",
+    )
+    order_pickup_timeout_sec: int = Field(default=5, alias="ORDER_PICKUP_TIMEOUT_SEC")
+
     invoice_issue_poll_sec: int = Field(default=5, alias="INVOICE_ISSUE_POLL_SEC")
     invoice_issue_batch_size: int = Field(default=50, alias="INVOICE_ISSUE_BATCH_SIZE")
+    invoice_issue_max_retries: int = Field(default=5, alias="INVOICE_ISSUE_MAX_RETRIES")
+    invoice_issue_base_backoff_sec: int = Field(default=15, alias="INVOICE_ISSUE_BASE_BACKOFF_SEC")
+    invoice_issue_processing_timeout_sec: int = Field(
+        default=180,
+        alias="INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC",
+    )
+    invoice_issue_worker_id: str = Field(default="billing_fiscal_issue_worker", alias="INVOICE_ISSUE_WORKER_ID")
 
     @property
     def database_url(self) -> str:

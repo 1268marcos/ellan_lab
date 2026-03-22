@@ -9,16 +9,14 @@ from sqlalchemy.engine import Engine
 logger = logging.getLogger(__name__)
 
 
-REQUIRED_TABLES = {
-    "invoices",
-}
-
+REQUIRED_TABLES = {"invoices"}
 
 REQUIRED_COLUMNS = {
     "invoices": {
         "id": "VARCHAR(50)",
         "order_id": "VARCHAR(100)",
         "tenant_id": "VARCHAR(100)",
+        "region": "VARCHAR(20)",
         "country": "VARCHAR(5)",
         "invoice_type": "VARCHAR(20)",
         "invoice_number": "VARCHAR(50)",
@@ -26,14 +24,23 @@ REQUIRED_COLUMNS = {
         "access_key": "VARCHAR(120)",
         "payment_method": "VARCHAR(50)",
         "currency": "VARCHAR(10)",
-        "status": "VARCHAR(50)",
+        "amount_cents": "BIGINT",
+        "status": "invoicestatus",
         "xml_content": "JSONB",
         "payload_json": "JSONB",
         "tax_details": "JSONB",
         "government_response": "JSONB",
+        "order_snapshot": "JSONB",
         "error_message": "VARCHAR(1000)",
-        "issued_at": "TIMESTAMP WITH TIME ZONE",
+        "last_error_code": "VARCHAR(120)",
+        "retry_count": "INTEGER DEFAULT 0",
+        "next_retry_at": "TIMESTAMP WITH TIME ZONE",
+        "last_attempt_at": "TIMESTAMP WITH TIME ZONE",
+        "dead_lettered_at": "TIMESTAMP WITH TIME ZONE",
         "processing_started_at": "TIMESTAMP WITH TIME ZONE",
+        "locked_by": "VARCHAR(120)",
+        "locked_at": "TIMESTAMP WITH TIME ZONE",
+        "issued_at": "TIMESTAMP WITH TIME ZONE",
         "created_at": "TIMESTAMP WITH TIME ZONE",
         "updated_at": "TIMESTAMP WITH TIME ZONE",
     }
@@ -44,6 +51,40 @@ def _get_columns_map(inspector, table_name: str) -> dict[str, dict]:
     return {col["name"]: col for col in inspector.get_columns(table_name)}
 
 
+def _ensure_invoice_status_enum(engine: Engine) -> None:
+    statements = [
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_type
+                WHERE typname = 'invoicestatus'
+            ) THEN
+                CREATE TYPE invoicestatus AS ENUM (
+                    'PENDING',
+                    'PROCESSING',
+                    'ISSUED',
+                    'FAILED',
+                    'DEAD_LETTER',
+                    'CANCELLED'
+                );
+            END IF;
+        END$$;
+        """,
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'PENDING';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'PROCESSING';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'ISSUED';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'FAILED';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'DEAD_LETTER';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'CANCELLED';",
+    ]
+
+    with engine.begin() as conn:
+        for stmt in statements:
+            conn.execute(text(stmt))
+
+
 def _add_column_if_missing(engine: Engine, table_name: str, column_name: str, sql_type: str) -> None:
     inspector = inspect(engine)
     columns = _get_columns_map(inspector, table_name)
@@ -52,36 +93,24 @@ def _add_column_if_missing(engine: Engine, table_name: str, column_name: str, sq
         return
 
     sql = f'ALTER TABLE {table_name} ADD COLUMN "{column_name}" {sql_type}'
-    logger.info(
-        "billing_fiscal_add_column",
-        extra={
-            "table": table_name,
-            "column": column_name,
-            "sql_type": sql_type,
-        },
-    )
-
     with engine.begin() as conn:
         conn.execute(text(sql))
 
 
 def _ensure_indexes(engine: Engine) -> None:
-    index_statements = [
-        'CREATE INDEX IF NOT EXISTS ix_invoice_order_id ON invoices (order_id)',
-        'CREATE INDEX IF NOT EXISTS ix_invoice_status ON invoices (status)',
-        'CREATE INDEX IF NOT EXISTS ix_invoice_country_status ON invoices (country, status)',
-        'CREATE INDEX IF NOT EXISTS ix_invoice_created_at ON invoices (created_at)',
+    statements = [
+        "CREATE INDEX IF NOT EXISTS ix_invoice_order_id ON invoices (order_id)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_status ON invoices (status)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_country_status ON invoices (country, status)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_created_at ON invoices (created_at)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_next_retry_at ON invoices (next_retry_at)",
     ]
-
     with engine.begin() as conn:
-        for stmt in index_statements:
+        for stmt in statements:
             conn.execute(text(stmt))
 
 
 def _ensure_unique_constraint(engine: Engine) -> None:
-    """
-    Em Postgres, adicionamos índice único para order_id se ainda não existir.
-    """
     stmt = """
     DO $$
     BEGIN
@@ -95,21 +124,15 @@ def _ensure_unique_constraint(engine: Engine) -> None:
         END IF;
     END$$;
     """
-
     with engine.begin() as conn:
         conn.execute(text(stmt))
 
 
 def run_startup_migrations(engine: Engine) -> None:
-    """
-    Estratégia:
-    1. create_all() para criação inicial
-    2. garantir colunas novas em tabelas já existentes
-    3. garantir índices e unique index
-    4. validar schema final
-    """
     from app.models.base import Base
     from app.models.invoice_model import Invoice  # noqa: F401
+
+    _ensure_invoice_status_enum(engine)
 
     inspector = inspect(engine)
     existing_tables = set(inspector.get_table_names())
@@ -139,7 +162,6 @@ def run_startup_migrations(engine: Engine) -> None:
     _ensure_unique_constraint(engine)
 
     inspector_after = inspect(engine)
-
     for table_name, required_columns in REQUIRED_COLUMNS.items():
         final_columns = set(_get_columns_map(inspector_after, table_name).keys())
         missing_columns = sorted(set(required_columns.keys()) - final_columns)

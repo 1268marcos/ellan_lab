@@ -13,7 +13,8 @@ def _sefaz_sp_now_iso() -> str:
 
 
 def _sefaz_sp_generate_invoice_number(invoice: Invoice) -> str:
-    return f"SP{datetime.now(timezone.utc).strftime('%Y%m%d')}{str(invoice.id)[-6:].upper()}"
+    suffix = str(invoice.id)[-6:].upper()
+    return f"SP{datetime.now(timezone.utc).strftime('%Y%m%d')}{suffix}"
 
 
 def _sefaz_sp_generate_series() -> str:
@@ -25,10 +26,18 @@ def _sefaz_sp_generate_access_key(invoice: Invoice) -> str:
 
 
 def _sefaz_sp_build_tax_details(invoice: Invoice) -> dict:
+    amount_cents = invoice.amount_cents or 0
+    amount = round(amount_cents / 100, 2)
+
     return {
         "country": "BR",
         "authority": "SEFAZ-SP",
+        "provider_namespace": "sefaz_sp",
         "regime": "stub_simples_nacional",
+        "base_amount_cents": amount_cents,
+        "base_amount": amount,
+        "currency": invoice.currency,
+        "payment_method": invoice.payment_method,
         "taxes": [
             {
                 "tax_type": "ICMS",
@@ -42,15 +51,26 @@ def _sefaz_sp_build_tax_details(invoice: Invoice) -> dict:
 
 
 def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: str, access_key: str) -> dict:
+    snapshot = invoice.order_snapshot or {}
+    order = snapshot.get("order") or {}
+    pickup = snapshot.get("pickup") or {}
+
     return {
         "format": "xml_stub",
         "country": "BR",
         "authority": "SEFAZ-SP",
+        "provider_namespace": "sefaz_sp",
         "invoice_type": invoice.invoice_type,
         "invoice_number": invoice_number,
         "invoice_series": invoice_series,
         "access_key": access_key,
         "order_id": invoice.order_id,
+        "region": invoice.region,
+        "currency": invoice.currency,
+        "payment_method": invoice.payment_method,
+        "amount_cents": invoice.amount_cents,
+        "locker_id": pickup.get("locker_id"),
+        "slot": pickup.get("slot"),
         "generated_at": _sefaz_sp_now_iso(),
         "xml_preview": (
             f"<NFe>"
@@ -58,6 +78,7 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
             f"<ide><nNF>{invoice_number}</nNF><serie>{invoice_series}</serie></ide>"
             f"<emit><xNome>ELLAN STUB SP</xNome></emit>"
             f"<dest><xNome>CLIENTE FINAL</xNome></dest>"
+            f"<det><prod><cProd>{order.get('sku_id')}</cProd></prod></det>"
             f"</infNFe>"
             f"</NFe>"
         ),
@@ -75,11 +96,17 @@ def _sefaz_sp_build_government_response(invoice: Invoice, invoice_number: str, i
         "invoice_number": invoice_number,
         "invoice_series": invoice_series,
         "access_key": access_key,
+        "country": invoice.country,
+        "region": invoice.region,
         "processed_at": _sefaz_sp_now_iso(),
         "raw": {
             "environment": "stub",
             "state": "SP",
             "integration_mode": "local_stub",
+            "order_id": invoice.order_id,
+            "amount_cents": invoice.amount_cents,
+            "currency": invoice.currency,
+            "payment_method": invoice.payment_method,
         },
     }
 
@@ -106,4 +133,3 @@ def sefaz_sp_issue_invoice(invoice: Invoice) -> dict:
         "xml_content": xml_content,
         "government_response": government_response,
     }
-    

@@ -391,7 +391,6 @@ services:
     build:
       context: ../01_source/backend/billing_fiscal_service
     container_name: billing_fiscal_service
-    # command: ["python", "-m", "app.workers.invoice_worker"] ISSO FAZ SUBIR COMO WORKER E NAO COMO API / veja worker abaixo
     environment:
       SERVICE_NAME: billing_fiscal_service
       APP_ENV: dev
@@ -404,11 +403,21 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
+      ORDER_PICKUP_SERVICE_URL: http://order_pickup_service:8003
+      ORDER_PICKUP_TIMEOUT_SEC: 5
+      INVOICE_ISSUE_POLL_SEC: 5
+      INVOICE_ISSUE_BATCH_SIZE: 50
+      INVOICE_ISSUE_MAX_RETRIES: 5
+      INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
+      INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
+      INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
     ports:
       - "8020:8020"
     depends_on:
       postgres_central:
         condition: service_healthy
+      order_pickup_service:
+        condition: service_started
     networks:
       - locker-network
 
@@ -434,12 +443,20 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
+      ORDER_PICKUP_SERVICE_URL: http://order_pickup_service:8003
+      ORDER_PICKUP_TIMEOUT_SEC: 5
       INVOICE_ISSUE_POLL_SEC: 5
       INVOICE_ISSUE_BATCH_SIZE: 50
+      INVOICE_ISSUE_MAX_RETRIES: 5
+      INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
+      INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
+      INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
     depends_on:
       postgres_central:
         condition: service_healthy
       billing_fiscal_service:
+        condition: service_started
+      order_pickup_service:
         condition: service_started
     networks:
       - locker-network

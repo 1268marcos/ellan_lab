@@ -4,7 +4,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Enum, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, Enum, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -20,6 +20,7 @@ class InvoiceStatus(str, enum.Enum):
     PROCESSING = "PROCESSING"
     ISSUED = "ISSUED"
     FAILED = "FAILED"
+    DEAD_LETTER = "DEAD_LETTER"
     CANCELLED = "CANCELLED"
 
 
@@ -32,12 +33,14 @@ class Invoice(Base):
         Index("ix_invoice_status", "status"),
         Index("ix_invoice_country_status", "country", "status"),
         Index("ix_invoice_created_at", "created_at"),
+        Index("ix_invoice_next_retry_at", "next_retry_at"),
     )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
     order_id: Mapped[str] = mapped_column(String(100), nullable=False)
     tenant_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    region: Mapped[str | None] = mapped_column(String(20), nullable=True)
     country: Mapped[str] = mapped_column(String(5), nullable=False, default="BR")
     invoice_type: Mapped[str] = mapped_column(String(20), nullable=False, default="NFE")
 
@@ -47,9 +50,10 @@ class Invoice(Base):
 
     payment_method: Mapped[str | None] = mapped_column(String(50), nullable=True)
     currency: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    amount_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     status: Mapped[InvoiceStatus] = mapped_column(
-        Enum(InvoiceStatus, name="invoice_status_enum"),
+        Enum(InvoiceStatus, name="invoicestatus"),
         nullable=False,
         default=InvoiceStatus.PENDING,
     )
@@ -58,11 +62,21 @@ class Invoice(Base):
     payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tax_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     government_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    order_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    last_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+    retry_count: Mapped[int] = mapped_column(nullable=False, default=0)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
