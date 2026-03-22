@@ -1,4 +1,5 @@
 -- =====================================================================
+-- 02_docker/postgres_central/init/001_schema.sql
 -- POSTGRES CENTRAL SCHEMA (locker_central)
 -- - UTC epoch em BIGINT (segundos)
 -- - Suporte a ONLINE e GUEST_TOTEM (guest também vira order)

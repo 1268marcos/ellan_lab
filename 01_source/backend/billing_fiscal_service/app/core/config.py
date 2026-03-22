@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     host: str = Field(default="0.0.0.0", alias="HOST")
     port: int = Field(default=8020, alias="PORT")
+    internal_token: str = Field(default="dev-internal-token", alias="INTERNAL_TOKEN")
 
     postgres_host: str = Field(default="postgres_central", alias="POSTGRES_HOST")
     postgres_port: int = Field(default=5432, alias="POSTGRES_PORT")

@@ -391,8 +391,12 @@ services:
     build:
       context: ../01_source/backend/billing_fiscal_service
     container_name: billing_fiscal_service
+    # command: ["python", "-m", "app.workers.invoice_worker"] ISSO FAZ SUBIR COMO WORKER E NAO COMO API / veja worker abaixo
     environment:
       SERVICE_NAME: billing_fiscal_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
       HOST: 0.0.0.0
       PORT: 8020
       POSTGRES_HOST: postgres_central
@@ -402,6 +406,31 @@ services:
       POSTGRES_PASSWORD: admin123
     ports:
       - "8020:8020"
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+
+  # =========================
+  # BILLING FISCAL WORKER - Para automatizar / Ainda não utilizado / Futura implementação
+  # =========================
+  billing_fiscal_worker:
+    build:
+      context: ../01_source/backend/billing_fiscal_service
+    container_name: billing_fiscal_worker
+    command: ["python", "-m", "app.workers.invoice_worker"]
+    environment:
+      SERVICE_NAME: billing_fiscal_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      POSTGRES_HOST: postgres_central
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
     depends_on:
       postgres_central:
         condition: service_healthy
