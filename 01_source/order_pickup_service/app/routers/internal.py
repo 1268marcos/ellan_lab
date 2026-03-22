@@ -38,7 +38,7 @@ from app.services.pickup_event_publisher import (
     publish_pickup_cancelled,
 )
 
-from app.services.domain_event_outbox_service import enqueue_order_paid_event
+from app.services.payment_confirm_service import confirm_payment_and_emit_event
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -671,24 +671,14 @@ def payment_confirm(
         )
 
     # order.paid nasce na mesma transação que confirmou o pagamento
-    enqueue_order_paid_event(
-        db,
-        order_id=order.id,
-        region=order.region,
-        channel=_enum_value_or_raw(order.channel),
-        payment_method=_enum_value_or_raw(order.payment_method),
-        transaction_id=order.gateway_transaction_id,
-        amount_cents=order.amount_cents,
+    confirm_payment_and_emit_event(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+        amount_cents=payload.amount_cents,
         currency=payload.currency,
-        locker_id=(pickup.locker_id if pickup else order.totem_id),
-        machine_id=(pickup.machine_id if pickup else order.totem_id),
-        slot=(pickup.slot if pickup else allocation.slot),
-        allocation_id=allocation.id,
-        pickup_id=(pickup.id if pickup else None),
-        tenant_id=None,
-        operator_id=None,
-        site_id=None,
-        source_service="order_pickup_service",
+        source="internal",
     )
 
     db.commit()
