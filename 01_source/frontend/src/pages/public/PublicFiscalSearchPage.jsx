@@ -1,8 +1,13 @@
 // 01_source/frontend/src/pages/public/PublicFiscalSearchPage.jsx
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
+import { QRCodeSVG } from "qrcode.react";
 
 const API_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+
+const FRONTEND_BASE =
+  import.meta.env.VITE_FRONTEND_BASE_URL || window.location.origin;
 
 function toAbsoluteApiUrl(path) {
   if (!path) return "#";
@@ -12,21 +17,29 @@ function toAbsoluteApiUrl(path) {
   return `${API_BASE}${path}`;
 }
 
+function normalize(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
 export default function PublicFiscalSearchPage() {
-  const [code, setCode] = useState("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [code, setCode] = useState(searchParams.get("code") || "");
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
-  function normalize(value) {
-    return String(value || "").trim().toUpperCase();
-  }
+  const normalizedCode = useMemo(() => normalize(code), [code]);
 
-  async function handleSearch() {
-    const normalized = normalize(code);
-    setCode(normalized);
+  const deepLink = useMemo(() => {
+    if (!normalizedCode) return "";
+    return `${FRONTEND_BASE}/comprovante?code=${encodeURIComponent(normalizedCode)}`;
+  }, [normalizedCode]);
 
-    if (!normalized) {
+  async function handleSearch(explicitCode) {
+    const nextCode = normalize(explicitCode ?? code);
+    setCode(nextCode);
+
+    if (!nextCode) {
       setError("Informe um código de comprovante.");
       setData(null);
       return;
@@ -38,7 +51,7 @@ export default function PublicFiscalSearchPage() {
 
     try {
       const res = await fetch(
-        `${API_BASE}/public/fiscal/by-code/${encodeURIComponent(normalized)}`
+        `${API_BASE}/public/fiscal/by-code/${encodeURIComponent(nextCode)}`
       );
 
       const json = await res.json();
@@ -52,11 +65,27 @@ export default function PublicFiscalSearchPage() {
       }
 
       setData(json);
+      setSearchParams({ code: nextCode }, { replace: true });
     } catch (e) {
-      setError(e.message);
+      setError(String(e?.message || e));
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    const initialCode = normalize(searchParams.get("code"));
+    if (initialCode) {
+      setCode(initialCode);
+      handleSearch(initialCode);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function copyDeepLink() {
+    if (!deepLink) return;
+    navigator.clipboard?.writeText(deepLink);
+    window.alert("Link copiado.");
   }
 
   function renderResult() {
@@ -75,54 +104,88 @@ export default function PublicFiscalSearchPage() {
 
     return (
       <div style={cardStyle}>
-        <h2>Comprovante</h2>
+        <h2 style={{ marginTop: 0 }}>Comprovante</h2>
 
         <div style={codeStyle}>{data.receipt_code}</div>
 
-        <table style={tableStyle}>
-          <tbody>
-            <tr><td>Pedido</td><td>{order.id}</td></tr>
-            <tr><td>Canal</td><td>{order.channel}</td></tr>
-            <tr><td>Região</td><td>{order.region}</td></tr>
-            <tr><td>Valor</td><td>{doc.currency} {amount}</td></tr>
-            <tr><td>Método pagamento</td><td>{order.payment_method}</td></tr>
-            <tr><td>Gateway ID</td><td>{order.gateway_transaction_id}</td></tr>
+        <div style={resultGridStyle}>
+          <div>
+            <table style={tableStyle}>
+              <tbody>
+                <tr><td>Pedido</td><td>{order.id || ""}</td></tr>
+                <tr><td>Canal</td><td>{order.channel || ""}</td></tr>
+                <tr><td>Região</td><td>{order.region || ""}</td></tr>
+                <tr><td>Valor</td><td>{doc.currency || "BRL"} {amount}</td></tr>
+                <tr><td>Método pagamento</td><td>{order.payment_method || ""}</td></tr>
+                <tr><td>Gateway ID</td><td>{order.gateway_transaction_id || ""}</td></tr>
+                <tr><td>SKU</td><td>{order.sku_id || ""}</td></tr>
+                <tr><td>Totem</td><td>{order.totem_id || ""}</td></tr>
+                <tr><td>Allocation</td><td>{allocation.id || ""}</td></tr>
+                <tr><td>Pickup</td><td>{pickup.id || ""}</td></tr>
+                <tr><td>Locker</td><td>{pickup.locker_id || allocation.locker_id || ""}</td></tr>
+                <tr><td>Machine</td><td>{pickup.machine_id || ""}</td></tr>
+                <tr><td>Slot</td><td>{pickup.slot || allocation.slot || ""}</td></tr>
+              </tbody>
+            </table>
 
-            <tr><td>SKU</td><td>{order.sku_id}</td></tr>
-            <tr><td>Totem</td><td>{order.totem_id}</td></tr>
-            <tr><td>Allocation</td><td>{allocation.id}</td></tr>
-            <tr><td>Pickup</td><td>{pickup.id}</td></tr>
-            <tr><td>Locker</td><td>{pickup.locker_id || allocation.locker_id}</td></tr>
-            <tr><td>Machine</td><td>{pickup.machine_id}</td></tr>
-            <tr><td>Slot</td><td>{pickup.slot || allocation.slot}</td></tr>
-          </tbody>
-        </table>
+            <div style={actionsStyle}>
+              <a
+                href={printUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={btnStyle}
+              >
+                Abrir impressão
+              </a>
 
-        <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <a
-            href={printUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={btnStyle}
-          >
-            Abrir impressão
-          </a>
+              <a
+                href={jsonUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={btnStyle}
+              >
+                Ver JSON
+              </a>
 
-          <a
-            href={jsonUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={btnStyle}
-          >
-            Ver JSON
-          </a>
+              <button
+                style={btnStyle}
+                onClick={() => window.open(printUrl, "_blank", "noopener,noreferrer")}
+              >
+                Imprimir / PDF
+              </button>
+            </div>
+          </div>
 
-          <button
-            style={btnStyle}
-            onClick={() => window.open(printUrl, "_blank", "noopener,noreferrer")}
-          >
-            Imprimir / PDF
-          </button>
+          <div style={qrCardStyle}>
+            <div style={{ fontWeight: 700, marginBottom: 12 }}>QRCode do comprovante</div>
+
+            {deepLink ? (
+              <>
+                <div style={qrBoxStyle}>
+                  <QRCodeSVG value={deepLink} size={180} />
+                </div>
+
+                <div style={smallMutedStyle}>Link público do comprovante</div>
+                <div style={linkPreviewStyle}>{deepLink}</div>
+
+                <div style={actionsStyle}>
+                  <button style={btnStyle} onClick={copyDeepLink}>
+                    Copiar link
+                  </button>
+                  <a
+                    href={deepLink}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={btnStyle}
+                  >
+                    Abrir link
+                  </a>
+                </div>
+              </>
+            ) : (
+              <div style={smallMutedStyle}>Busque um comprovante para gerar o QRCode.</div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -130,44 +193,59 @@ export default function PublicFiscalSearchPage() {
 
   return (
     <div style={pageStyle}>
-      <h1>Buscar comprovante</h1>
+      <h1 style={{ marginTop: 0 }}>Buscar comprovante</h1>
+      <p style={mutedStyle}>
+        Digite o código do comprovante ou use um link com <code>?code=...</code>.
+      </p>
 
-      <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+      <div style={searchRowStyle}>
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Ex: KSK-XXXXX"
+          placeholder="Ex.: KSK-57FC92582464"
           style={inputStyle}
         />
 
-        <button onClick={handleSearch} style={btnPrimary}>
+        <button onClick={() => handleSearch()} style={btnPrimaryStyle}>
           {loading ? "Buscando..." : "Buscar"}
         </button>
       </div>
 
-      {error && <div style={errorStyle}>{error}</div>}
+      {error ? <div style={errorStyle}>{error}</div> : null}
 
       {renderResult()}
     </div>
   );
 }
 
-/* ================= STYLES ================= */
-
 const pageStyle = {
   padding: 24,
-  maxWidth: 800,
+  maxWidth: 1100,
   margin: "0 auto",
+};
+
+const mutedStyle = {
+  color: "#666",
+  marginTop: 6,
+};
+
+const searchRowStyle = {
+  display: "flex",
+  gap: 10,
+  marginTop: 16,
+  flexWrap: "wrap",
 };
 
 const inputStyle = {
   flex: 1,
+  minWidth: 280,
   padding: 10,
   borderRadius: 8,
   border: "1px solid #ccc",
+  textTransform: "uppercase",
 };
 
-const btnPrimary = {
+const btnPrimaryStyle = {
   padding: "10px 16px",
   borderRadius: 8,
   border: "none",
@@ -182,7 +260,8 @@ const btnStyle = {
   border: "1px solid #ccc",
   textDecoration: "none",
   color: "#333",
-  background: "#fff",
+  background: "rgba(255, 255, 255, 0.85)",
+  cursor: "pointer",
 };
 
 const cardStyle = {
@@ -190,17 +269,66 @@ const cardStyle = {
   padding: 16,
   border: "1px solid #ddd",
   borderRadius: 12,
-  background: "rgba(255,255,255,0.06)",
+  background: "rgba(255, 255, 255, 0.06)",
 };
 
 const codeStyle = {
+  display: "inline-block",
   fontWeight: "bold",
-  margin: "10px 0",
+  margin: "10px 0 16px 0",
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px dashed #bbb",
+  background: "rgba(51, 59, 165, 0.75)",
+};
+
+const resultGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.7fr) minmax(280px, 0.9fr)",
+  gap: 16,
+};
+
+const qrCardStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 12,
+  padding: 16,
+  background: "rgba(51, 59, 165, 0.75)",
+  height: "fit-content",
+};
+
+const qrBoxStyle = {
+  background: "white",
+  padding: 12,
+  borderRadius: 12,
+  display: "inline-flex",
+};
+
+const linkPreviewStyle = {
+  marginTop: 8,
+  padding: 10,
+  borderRadius: 8,
+  background: "rgba(51, 59, 165, 0.75)",
+  border: "1px solid #e5e7eb",
+  fontSize: 12,
+  wordBreak: "break-word",
+};
+
+const smallMutedStyle = {
+  color: "#666",
+  fontSize: 13,
+  marginTop: 10,
 };
 
 const tableStyle = {
   width: "100%",
   borderCollapse: "collapse",
+};
+
+const actionsStyle = {
+  marginTop: 16,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
 };
 
 const errorStyle = {

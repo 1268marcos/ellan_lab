@@ -164,22 +164,18 @@ class KioskOrderOut(BaseModel):
 
 
 class KioskPaymentApprovedOut(BaseModel):
-    # order_id: str
-    order_id: str = Field(..., description="ID do pedido")
-    # slot: int
-    slot: int = Field(..., description="Número do slot")
-    # status: str
-    status: str = Field(..., description="Status do pagamento")
-    # allocation_id: str
-    allocation_id: str = Field(..., description="ID da alocação")
-    # payment_method: Optional[str] = None
-    payment_method: str | None = Field(None, description="Método de pagamento utilizado")
-    # fiscal_receipt_code: str | None = None
-    # fiscal_receipt_code: str | None = Field(None, description="Código do cupom fiscal")
-    # fiscal_print_site_path: str | None = None
-    # fiscal_print_site_path: str | None = Field(None, description="Caminho para impressão fiscal")
-    # message: str
-    message: str = Field(..., description="Mensagem descritiva da operação")
+    order_id: str
+    slot: int
+    status: str
+    allocation_id: str
+    payment_method: str | None = None
+
+    receipt_code: str | None = None
+    receipt_print_path: str | None = None
+    receipt_json_path: str | None = None
+
+    message: str
+
 
 class KioskIdentifyOut(BaseModel):
     ok: bool

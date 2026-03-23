@@ -1,3 +1,4 @@
+// 01_source/frontend/src/pages/public/PublicMyOrdersPage.jsx 
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -110,6 +111,21 @@ export default function PublicMyOrdersPage() {
                       <span style={metaLabelStyle}>SKU</span>
                       <div>{item.sku_id || "—"}</div>
                     </div>
+
+                    {item.receipt_code ? (
+                      <div style={{ marginTop: 12 }}>
+                        <span style={metaLabelStyle}>Comprovante fiscal</span>
+                        <div>
+                          <Link
+                            to={`/comprovante?code=${encodeURIComponent(item.receipt_code)}`}
+                            style={receiptLinkStyle}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {item.receipt_code}
+                          </Link>
+                        </div>
+                      </div>
+                    ) : null}
 
                     {"region_code" in item ? (
                       <div>
@@ -252,5 +268,14 @@ const primaryLinkStyle = {
   border: "1px solid #d1d5db",
   background: "#f9fafb",
   color: "#111827",
+  fontWeight: 600,
+};
+
+const receiptLinkStyle = {
+  display: "inline-block",
+  marginTop: 4,
+  fontSize: 13,
+  textDecoration: "none",
+  color: "#2563eb",
   fontWeight: 600,
 };

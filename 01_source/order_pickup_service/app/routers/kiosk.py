@@ -52,6 +52,8 @@ from app.services.payment_confirm_service import (
 )
 from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
+from app.models.fiscal_document import FiscalDocument
+
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
 
@@ -613,8 +615,15 @@ def kiosk_payment_approved(
         raise HTTPException(status_code=500, detail="allocation not found")
 
     if order.status == OrderStatus.DISPENSED:
-        receipt_code = f"KSK-{order.id.replace('-', '')[:12].upper()}"
-        print_site_path = f"/public/fiscal/print/{receipt_code}"
+        fiscal_doc = (
+            db.query(FiscalDocument)
+            .filter(FiscalDocument.order_id == order.id)
+            .first()
+        )
+
+        receipt_code = fiscal_doc.receipt_code if fiscal_doc else None
+        print_site_path = fiscal_doc.print_site_path if fiscal_doc else None
+        json_site_path = f"/public/fiscal/by-code/{receipt_code}" if receipt_code else None
 
         return KioskPaymentApprovedOut(
             order_id=order.id,
@@ -622,10 +631,13 @@ def kiosk_payment_approved(
             status=order.status.value,
             allocation_id=allocation.id,
             payment_method=order.payment_method.value if order.payment_method else None,
+            receipt_code=receipt_code,
+            receipt_print_path=print_site_path,
+            receipt_json_path=json_site_path,
+
             message=(
                 f"Pagamento já aprovado anteriormente. "
-                f"Comprovante simulado: {receipt_code}. "
-                f"Impressão: {print_site_path}"
+                f"Comprovante: {receipt_code}"
             ),
         )
 
@@ -709,13 +721,17 @@ def kiosk_payment_approved(
         status=order.status.value,
         allocation_id=allocation.id,
         payment_method=order.payment_method.value if order.payment_method else None,
+
+        # 🔴 CONTRATO OFICIAL
+        receipt_code=fiscal.get("receipt_code"),
+        receipt_print_path=fiscal.get("print_site_path"),
+        receipt_json_path=fiscal.get("json_site_path"),
+
         message=(
-            f"Pagamento aprovado. Retire o produto na gaveta {allocation.slot}. "
-            f"Comprovante simulado: {fiscal['receipt_code']}. "
-            f"Impressão: {fiscal['print_site_path']}"
+            f"Pagamento aprovado. Retire na gaveta {allocation.slot}. "
+            f"Comprovante: {fiscal.get('receipt_code')}"
         ),
     )
-
 
 
 @router.post("/identify", response_model=KioskIdentifyOut)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_public_user
 from app.core.db import get_db
+from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus
 from app.models.user import User
 
@@ -20,7 +21,7 @@ def _dt_iso(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
-def _serialize_order(order: Order) -> dict:
+def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict:
     return {
         "id": order.id,
         "user_id": order.user_id,
@@ -42,6 +43,13 @@ def _serialize_order(order: Order) -> dict:
         "consent_marketing": order.consent_marketing,
         "created_at": _dt_iso(order.created_at),
         "updated_at": _dt_iso(order.updated_at),
+
+        # fiscal
+        "receipt_code": fiscal.receipt_code if fiscal else None,
+        "receipt_print_path": fiscal.print_site_path if fiscal else None,
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
+        ),
     }
 
 
@@ -71,8 +79,21 @@ def list_my_public_orders(
         .all()
     )
 
+    order_ids = [order.id for order in items]
+    fiscal_docs = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id.in_(order_ids))
+        .all()
+        if order_ids
+        else []
+    )
+    fiscal_by_order_id = {doc.order_id: doc for doc in fiscal_docs}
+
     return {
-        "items": [_serialize_order(order) for order in items],
+        "items": [
+            _serialize_order(order, fiscal=fiscal_by_order_id.get(order.id))
+            for order in items
+        ],
         "pagination": {
             "total": total,
             "limit": limit,
@@ -100,4 +121,11 @@ def get_my_public_order(
     if not order:
         raise HTTPException(status_code=404, detail="order_not_found")
 
-    return _serialize_order(order)
+    fiscal = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id == order.id)
+        .first()
+    )
+
+    return _serialize_order(order, fiscal=fiscal)
+    

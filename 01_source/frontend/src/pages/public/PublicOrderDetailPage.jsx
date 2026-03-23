@@ -1,7 +1,11 @@
+// 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx 
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchOrderDetail, fetchOrderPickup } from "../../services/publicApi";
+
+const API_BASE =
+  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
 export default function PublicOrderDetailPage() {
   const { orderId } = useParams();
@@ -129,6 +133,55 @@ export default function PublicOrderDetailPage() {
                 <Field label="Expira a retirada em" value={formatDateTime(order.pickup_deadline_at)} />
               </div>
             </section>
+
+            {order?.receipt_code ? (
+              <section style={cardStyle}>
+                <div style={sectionHeaderStyle}>
+                  <h2 style={sectionTitleStyle}>Comprovante fiscal</h2>
+                  <p style={sectionMetaStyle}>
+                    Código disponível para consulta, impressão e PDF.
+                  </p>
+                </div>
+
+                <div style={detailsGridStyle}>
+                  <Field label="Código" value={order.receipt_code} />
+                </div>
+
+                <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <a
+                    href={`${API_BASE}/public/fiscal/print/${encodeURIComponent(order.receipt_code)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={actionButtonStyle}
+                  >
+                    Abrir comprovante
+                  </a>
+
+                  <a
+                    href={`${API_BASE}/public/fiscal/by-code/${encodeURIComponent(order.receipt_code)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={actionButtonStyle}
+                  >
+                    Ver JSON
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      window.open(
+                        `${API_BASE}/public/fiscal/print/${encodeURIComponent(order.receipt_code)}`,
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
+                    }
+                    style={actionButtonStyle}
+                  >
+                    Imprimir / PDF
+                  </button>
+                </div>
+              </section>
+            ) : null}
 
             <section style={cardStyle}>
               <div style={sectionHeaderStyle}>
@@ -379,4 +432,15 @@ const textAreaStyle = {
   resize: "vertical",
   boxSizing: "border-box",
   fontFamily: "inherit",
+};
+
+const actionButtonStyle = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #d1d5db",
+  background: "#f9fafb",
+  color: "#111827",
+  textDecoration: "none",
+  fontWeight: 600,
+  cursor: "pointer",
 };

@@ -1,3 +1,4 @@
+// 01_source/frontend/src/pages/RegionPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -107,6 +108,16 @@ const initialPaymentExtras = {
   cardType: "",
   customerPhone: "",
 };
+
+function extractReceiptCodeFromPaymentResp(paymentResp) {
+  if (!paymentResp) return null;
+
+  return (
+    paymentResp?.fiscal?.receipt_code ||
+    paymentResp?.receipt_code ||
+    null
+  );
+}
 
 function formatMoney(cents, currency) {
   const value = Number(cents);
@@ -377,6 +388,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const currentOrderId = createResp?.order_id || null;
   const allowedPaymentMethods = selectedLocker?.payment_methods || [];
+
+  const receiptCode = extractReceiptCodeFromPaymentResp(paymentResp);
 
   const displayedPendingContext = useMemo(
     () => resolveDisplayedPendingContext(pendingPaymentContext, createResp, paymentMethod),
@@ -1429,13 +1442,62 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           {paymentResp && (
             <div style={okBoxStyle}>
               <strong>Pagamento aprovado</strong>
+
               <div style={summaryListStyle}>
                 <div><b>order_id:</b> {paymentResp.order_id}</div>
                 <div><b>allocation_id:</b> {paymentResp.allocation_id}</div>
                 <div><b>slot:</b> {paymentResp.slot}</div>
                 <div><b>status:</b> {paymentResp.status}</div>
                 <div><b>payment_method:</b> {paymentResp.payment_method || "-"}</div>
+                <div><b>comprovante:</b> {receiptCode || "-"}</div>
               </div>
+
+              {receiptCode ? (
+                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      window.open(
+                        `${ORDER_PICKUP_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`,
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
+                    }
+                    style={buttonPrimaryStyle}
+                  >
+                    Imprimir comprovante
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      window.open(
+                        `${ORDER_PICKUP_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`,
+                        "_blank",
+                        "noopener,noreferrer"
+                      )
+                    }
+                    style={buttonSecondaryStyle}
+                  >
+                    Ver JSON
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setIdentifyResp({
+                        ok: true,
+                        message:
+                          "Preencha email ou telefone abaixo para receber o código do comprovante fiscal depois.",
+                      })
+                    }
+                    style={buttonSecondaryStyle}
+                  >
+                    Receber por email/SMS
+                  </button>
+                </div>
+              ) : null}
+
               <div style={messageStyle}>{paymentResp.message}</div>
             </div>
           )}
@@ -1443,6 +1505,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
         <section style={cardStyle}>
           <h2 style={h2Style}>4. Identificação opcional</h2>
+
+          <div style={subtleStyle}>
+            Informe telefone ou email se desejar receber depois o código do comprovante fiscal
+            para consulta e impressão posterior. Esta etapa é opcional e não deve bloquear a operação.
+          </div>
 
           <div style={fieldGridStyle}>
             <label style={labelStyle}>
@@ -1475,7 +1542,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
             disabled={loadingIdentify || !currentOrderId}
             style={buttonSecondaryStyle}
           >
-            {loadingIdentify ? "Registrando..." : "Registrar identificação"}
+            {loadingIdentify ? "Registrando..." : "Registrar identificação / receber comprovante fiscal depois"}
           </button>
 
           {identifyResp && (
