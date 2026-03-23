@@ -112,7 +112,7 @@ export default function PublicMyOrdersPage() {
                       <div>{item.sku_id || "—"}</div>
                     </div>
 
-                    {item.receipt_code ? (
+                    {/* item.receipt_code ? (
                       <div style={{ marginTop: 12 }}>
                         <span style={metaLabelStyle}>Comprovante fiscal</span>
                         <div>
@@ -124,6 +124,13 @@ export default function PublicMyOrdersPage() {
                             {item.receipt_code}
                           </Link>
                         </div>
+                      </div>
+                    ) : null */}
+
+                    {item.receipt_code ? (
+                      <div>
+                        <span style={metaLabelStyle}>Comprovante fiscal</span>
+                        <div>{item.receipt_code || "—"}</div>
                       </div>
                     ) : null}
 
