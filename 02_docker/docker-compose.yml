@@ -463,6 +463,44 @@ services:
 
 
   # =========================
+  # BILLING FISCAL EVENT WORKER (NOVO)
+  # =========================
+  billing_fiscal_event_worker:
+    build:
+      context: ../01_source/backend/billing_fiscal_service
+    container_name: billing_fiscal_event_worker
+    command: ["python", "-m", "app.workers.invoice_event_worker"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: billing_fiscal_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      POSTGRES_HOST: postgres_central
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+
+      ORDER_PICKUP_SERVICE_URL: http://order_pickup_service:8003
+      ORDER_PICKUP_TIMEOUT_SEC: 5
+
+      INVOICE_EVENT_WORKER_POLL_SEC: 10
+      INVOICE_EVENT_WORKER_BATCH_SIZE: 100
+
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      billing_fiscal_service:
+        condition: service_started
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+
+  # =========================
   # ORDER PICKUP DOMAIN EVENT WORKER
   # =========================
   order_pickup_domain_event_worker:
@@ -491,6 +529,12 @@ services:
         condition: service_started
     networks:
       - locker-network
+
+
+
+
+
+
 
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -142,6 +142,7 @@ def process_invoice(db: Session, invoice: Invoice) -> Invoice:
         invoice.error_message = str(exc)
         invoice.last_error_code = "ISSUE_FAILED"
         invoice.retry_count = int(invoice.retry_count or 0) + 1
+        invoice.next_retry_at = _utc_now() + timedelta(minutes=5)
 
         logger.exception(
             "invoice_issue_failed",
