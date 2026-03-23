@@ -45,7 +45,12 @@ from app.services.lifecycle_integration import (
     register_prepayment_timeout_deadline,
 )
 
-from app.services.payment_confirm_service import confirm_payment_and_emit_event
+# from app.services.payment_confirm_service import confirm_payment_and_emit_event
+from app.services.payment_confirm_service import (
+    apply_payment_confirmation,
+    emit_order_paid_and_simulate_fiscal,
+)
+from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
@@ -608,101 +613,71 @@ def kiosk_payment_approved(
         raise HTTPException(status_code=500, detail="allocation not found")
 
     if order.status == OrderStatus.DISPENSED:
+        receipt_code = f"KSK-{order.id.replace('-', '')[:12].upper()}"
+        print_site_path = f"/public/fiscal/print/{receipt_code}"
+
         return KioskPaymentApprovedOut(
             order_id=order.id,
             slot=allocation.slot,
             status=order.status.value,
             allocation_id=allocation.id,
             payment_method=order.payment_method.value if order.payment_method else None,
-            message="Pagamento já aprovado anteriormente.",
+            message=(
+                f"Pagamento já aprovado anteriormente. "
+                f"Comprovante simulado: {receipt_code}. "
+                f"Impressão: {print_site_path}"
+            ),
         )
 
     if order.status != OrderStatus.PAYMENT_PENDING:
         raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
     try:
-        backend_client.locker_commit(
-            order.region,
-            allocation.id,
-            locked_until_iso=None,
-            locker_id=order.totem_id,
+        apply_payment_confirmation(
+            db=db,
+            order=order,
+            transaction_id=None,
+            payment_method=order.payment_method,
+            amount_cents=order.amount_cents,
+            currency="BRL",
+            source="kiosk",
         )
-        backend_client.locker_light_on(
-            order.region,
-            allocation.slot,
-            locker_id=order.totem_id,
-        )
-        backend_client.locker_open(
-            order.region,
-            allocation.slot,
-            locker_id=order.totem_id,
-        )
-        backend_client.locker_set_state(
-            order.region,
-            allocation.slot,
-            "OUT_OF_STOCK",
-            locker_id=order.totem_id,
-        )
-    except HTTPError as e:
-        status = e.response.status_code if e.response is not None else 502
-
-        backend_detail = None
-        if e.response is not None:
-            try:
-                backend_detail = e.response.json()
-            except Exception:
-                backend_detail = e.response.text
-
+    except ValueError as exc:
         raise HTTPException(
-            status_code=502,
+            status_code=409,
             detail={
-                "type": "KIOSK_PAYMENT_APPROVAL_BACKEND_FAILED",
-                "message": "Falha operacional ao concluir o fluxo KIOSK no backend regional.",
+                "type": "KIOSK_PAYMENT_CONFIRM_INVALID",
+                "message": str(exc),
                 "order_id": order.id,
-                "allocation_id": allocation.id,
-                "region": order.region,
-                "locker_id": order.totem_id,
-                "backend_status": status,
-                "backend_detail": backend_detail,
             },
+        ) from exc
+
+    try:
+        fulfillment = fulfill_payment_post_approval(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup_window_hours=2,
+            set_kiosk_out_of_stock=True,
         )
-    except Exception as e:
+    except RuntimeError as exc:
+        detail = exc.args[0] if exc.args else {
+            "type": "KIOSK_PAYMENT_APPROVAL_BACKEND_FAILED",
+            "message": "Falha operacional",
+        }
         raise HTTPException(
-            status_code=502,
-            detail={
-                "type": "KIOSK_PAYMENT_APPROVAL_BACKEND_FAILED",
-                "message": "Falha operacional ao concluir o fluxo KIOSK no backend regional.",
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "region": order.region,
-                "locker_id": order.totem_id,
-                "error": str(e),
-            },
-        )
+            status_code=409 if detail.get("type") in {"REALLOCATE_CONFLICT", "COMMIT_AFTER_REALLOCATE_FAILED"} else 502,
+            detail=detail,
+        ) from exc
 
-    order.paid_at = _utc_now_naive()
-    order.status = OrderStatus.DISPENSED
-    order.mark_payment_approved()
+    allocation = fulfillment["allocation"]
+    pickup = fulfillment["pickup"]
 
-    # 🔥 GARANTIR transaction_id
-    order.gateway_transaction_id = order.gateway_transaction_id or f"kiosk-{order.id}"
-
-    allocation.state = AllocationState.OPENED_FOR_PICKUP
-    allocation.locked_until = None
-
-    pickup = _ensure_kiosk_pickup(
-        db,
-        order=order,
-        allocation=allocation,
-    )
-
-    # 🔥 EVENTO FINANCEIRO
-    confirm_payment_and_emit_event(
+    financial = emit_order_paid_and_simulate_fiscal(
         db=db,
         order=order,
         allocation=allocation,
         pickup=pickup,
-        amount_cents=order.amount_cents,
         currency="BRL",
         source="kiosk",
     )
@@ -726,14 +701,21 @@ def kiosk_payment_approved(
             },
         )
 
+    fiscal = financial["fiscal"]
+
     return KioskPaymentApprovedOut(
         order_id=order.id,
         slot=allocation.slot,
         status=order.status.value,
         allocation_id=allocation.id,
         payment_method=order.payment_method.value if order.payment_method else None,
-        message=f"Pagamento aprovado. Retire o produto na gaveta {allocation.slot}.",
+        message=(
+            f"Pagamento aprovado. Retire o produto na gaveta {allocation.slot}. "
+            f"Comprovante simulado: {fiscal['receipt_code']}. "
+            f"Impressão: {fiscal['print_site_path']}"
+        ),
     )
+
 
 
 @router.post("/identify", response_model=KioskIdentifyOut)

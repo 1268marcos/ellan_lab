@@ -38,7 +38,12 @@ from app.services.pickup_event_publisher import (
     publish_pickup_cancelled,
 )
 
-from app.services.payment_confirm_service import confirm_payment_and_emit_event
+# from app.services.payment_confirm_service import confirm_payment_and_emit_event
+from app.services.payment_confirm_service import (
+    apply_payment_confirmation,
+    emit_order_paid_and_simulate_fiscal,
+)
+from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -372,7 +377,7 @@ def payment_confirm(
     db: Session = Depends(get_db),
 ):
     order = _ensure_order(db, order_id)
-   
+
     if getattr(payload, "region", None) and order.region != payload.region:
         raise HTTPException(
             status_code=409,
@@ -416,270 +421,69 @@ def payment_confirm(
         raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
     allocation = _ensure_allocation(db, order.id)
-    now = _utc_now()
-
-    order.gateway_transaction_id = payload.transaction_id
     provider_value = getattr(payload, "provider", None)
-    if provider_value:
-        order.payment_method = _enum_value_or_raw(provider_value)
-    order.paid_at = now
-    order.mark_payment_approved()
 
-    token_id: Optional[str] = None
-    manual_code: Optional[str] = None
-    pickup: Optional[Pickup] = None
-
-    if order.channel == OrderChannel.ONLINE:
-        deadline = now + timedelta(hours=PICKUP_WINDOW_HOURS)
-
-        order.pickup_deadline_at = deadline
-        order.status = OrderStatus.PAID_PENDING_PICKUP
-
-        allocation.mark_reserved_paid_pending_pickup()
-        allocation.locked_until = deadline.replace(tzinfo=None)
-
-        try:
-            backend_client.locker_commit(
-                order.region,
-                allocation.id,
-                deadline.isoformat(),
-                locker_id=order.totem_id,
-            )
-        except requests.HTTPError as e:
-            status = getattr(e.response, "status_code", None)
-
-            if status == 409:
-                allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
-                allocation.mark_reserved_paid_pending_pickup()
-                allocation.locked_until = deadline.replace(tzinfo=None)
-
-                try:
-                    backend_client.locker_commit(
-                        order.region,
-                        allocation.id,
-                        deadline.isoformat(),
-                        locker_id=order.totem_id,
-                    )
-                except requests.HTTPError as e2:
-                    status2 = getattr(e2.response, "status_code", None)
-
-                    backend_detail = None
-                    if e2.response is not None:
-                        try:
-                            backend_detail = e2.response.json()
-                        except Exception:
-                            backend_detail = e2.response.text
-
-                    raise HTTPException(
-                        status_code=409 if status2 == 409 else 502,
-                        detail={
-                            "type": "COMMIT_AFTER_REALLOCATE_FAILED",
-                            "message": "A gaveta foi realocada, mas o commit final falhou.",
-                            "order_id": order.id,
-                            "allocation_id": allocation.id,
-                            "region": order.region,
-                            "locker_id": order.totem_id,
-                            "backend_status": status2,
-                            "backend_detail": backend_detail,
-                        },
-                    )
-            else:
-                backend_detail = None
-                if e.response is not None:
-                    try:
-                        backend_detail = e.response.json()
-                    except Exception:
-                        backend_detail = e.response.text
-
-                raise HTTPException(
-                    status_code=409 if status == 409 else 502,
-                    detail={
-                        "type": "LOCKER_COMMIT_FAILED",
-                        "message": "Falha ao confirmar a reserva da gaveta no backend.",
-                        "order_id": order.id,
-                        "allocation_id": allocation.id,
-                        "region": order.region,
-                        "locker_id": order.totem_id,
-                        "backend_status": status,
-                        "backend_detail": backend_detail,
-                    },
-                )
-
-        backend_client.locker_set_state(
-            order.region,
-            allocation.slot,
-            "PAID_PENDING_PICKUP",
-            locker_id=order.totem_id,
-        )
-
-        pickup = _ensure_online_pickup(
-            db,
+    try:
+        apply_payment_confirmation(
+            db=db,
             order=order,
-            allocation=allocation,
-            deadline_utc=deadline,
+            transaction_id=payload.transaction_id,
+            payment_method=provider_value,
+            amount_cents=payload.amount_cents,
+            currency=payload.currency,
+            source="internal",
         )
-
-        publish_pickup_created(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        publish_pickup_ready(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        tok = _create_pickup_token(db, pickup_id=pickup.id, expires_at_utc=deadline)
-        token_id = tok["token_id"]
-        manual_code = tok["manual_code"]
-        pickup.current_token_id = token_id
-        pickup.touch()
-
-    else:
-        order.pickup_deadline_at = None
-        order.status = OrderStatus.DISPENSED
-
-        allocation.mark_opened_for_pickup()
-
-        try:
-            backend_client.locker_commit(
-                order.region,
-                allocation.id,
-                None,
-                locker_id=order.totem_id,
-            )
-        except requests.HTTPError as e:
-            status = getattr(e.response, "status_code", None)
-
-            if status == 409:
-                allocation = _reallocate_if_needed(db, order=order, allocation=allocation)
-                allocation.mark_opened_for_pickup()
-
-                try:
-                    backend_client.locker_commit(
-                        order.region,
-                        allocation.id,
-                        None,
-                        locker_id=order.totem_id,
-                    )
-                except requests.HTTPError as e2:
-                    status2 = getattr(e2.response, "status_code", None)
-
-                    backend_detail = None
-                    if e2.response is not None:
-                        try:
-                            backend_detail = e2.response.json()
-                        except Exception:
-                            backend_detail = e2.response.text
-
-                    raise HTTPException(
-                        status_code=409 if status2 == 409 else 502,
-                        detail={
-                            "type": "COMMIT_AFTER_REALLOCATE_FAILED",
-                            "message": "A gaveta foi realocada no fluxo KIOSK, mas o commit final falhou.",
-                            "order_id": order.id,
-                            "allocation_id": allocation.id,
-                            "region": order.region,
-                            "locker_id": order.totem_id,
-                            "backend_status": status2,
-                            "backend_detail": backend_detail,
-                        },
-                    )
-            else:
-                backend_detail = None
-                if e.response is not None:
-                    try:
-                        backend_detail = e.response.json()
-                    except Exception:
-                        backend_detail = e.response.text
-
-                raise HTTPException(
-                    status_code=409 if status == 409 else 502,
-                    detail={
-                        "type": "LOCKER_COMMIT_FAILED",
-                        "message": "Falha ao confirmar a reserva da gaveta no fluxo KIOSK.",
-                        "order_id": order.id,
-                        "allocation_id": allocation.id,
-                        "region": order.region,
-                        "locker_id": order.totem_id,
-                        "backend_status": status,
-                        "backend_detail": backend_detail,
-                    },
-                )
-
-        pickup = _ensure_kiosk_pickup(
-            db,
-            order=order,
-            allocation=allocation,
-        )
-
-        publish_pickup_created(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        publish_pickup_door_opened(
-            order_id=order.id,
-            pickup_id=pickup.id,
-            channel=pickup.channel.value,
-            region=pickup.region,
-            locker_id=pickup.locker_id,
-            machine_id=pickup.machine_id,
-            slot=pickup.slot,
-        )
-
-        backend_client.locker_light_on(
-            order.region,
-            allocation.slot,
-            locker_id=order.totem_id,
-        )
-        backend_client.locker_open(
-            order.region,
-            allocation.slot,
-            locker_id=order.totem_id,
-        )
-
-    if payload.amount_cents != order.amount_cents:
+    except ValueError as exc:
         raise HTTPException(
             status_code=409,
             detail={
-                "type": "AMOUNT_MISMATCH",
-                "order_amount": order.amount_cents,
-                "payload_amount": payload.amount_cents,
+                "type": "PAYMENT_CONFIRM_INVALID",
+                "message": str(exc),
+                "order_id": order.id,
             },
-        )
+        ) from exc
 
-    if not order.gateway_transaction_id:
+    try:
+        fulfillment = fulfill_payment_post_approval(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup_window_hours=PICKUP_WINDOW_HOURS,
+            set_kiosk_out_of_stock=False,
+        )
+    except RuntimeError as exc:
+        detail = exc.args[0] if exc.args else {
+            "type": "PAYMENT_FULFILLMENT_FAILED",
+            "message": "Falha no fulfillment",
+        }
         raise HTTPException(
-            status_code=500,
-            detail="gateway_transaction_id não preenchido",
-        )
+            status_code=409 if detail.get("type") in {"REALLOCATE_CONFLICT", "COMMIT_AFTER_REALLOCATE_FAILED"} else 502,
+            detail=detail,
+        ) from exc
 
-    # order.paid nasce na mesma transação que confirmou o pagamento
-    confirm_payment_and_emit_event(
-        db=db,
-        order=order,
-        allocation=allocation,
-        pickup=pickup,
-        amount_cents=payload.amount_cents,
-        currency=payload.currency,
-        source="internal",
-    )
+    allocation = fulfillment["allocation"]
+    pickup = fulfillment["pickup"]
+    token_id = fulfillment["token_id"]
+    manual_code = fulfillment["manual_code"]
+
+    try:
+        financial = emit_order_paid_and_simulate_fiscal(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup=pickup,
+            currency=payload.currency,
+            source="internal",
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "ORDER_PAID_EVENT_INVALID",
+                "message": str(exc),
+                "order_id": order.id,
+            },
+        ) from exc
 
     db.commit()
     db.refresh(order)
@@ -723,8 +527,13 @@ def payment_confirm(
         "manual_code": manual_code,
         "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
         "totem_id": order.totem_id,
+        "financial_event": {
+            "event_key": financial["event_key"],
+            "already_exists": financial["event_already_exists"],
+        },
+        "fiscal": financial["fiscal"],
     }
-
+    
 
 @router.post("/orders/{order_id}/release")
 def release_order(

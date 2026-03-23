@@ -951,6 +951,41 @@ def migrate_order_pickup_schema() -> dict:
                 conn.execute(text(ddl))
                 applied.append(index_name)
 
+
+        # =========================
+        # FISCAL DOCUMENTS
+        # =========================
+        inspector = inspect(conn)
+
+        if not _has_table(inspector, "fiscal_documents"):
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE fiscal_documents (
+                        id VARCHAR PRIMARY KEY,
+                        order_id VARCHAR NOT NULL UNIQUE,
+                        receipt_code VARCHAR(64) NOT NULL UNIQUE,
+                        document_type VARCHAR(50) NOT NULL,
+                        channel VARCHAR(20),
+                        region VARCHAR(10),
+                        amount_cents INTEGER NOT NULL,
+                        currency VARCHAR(10) NOT NULL,
+                        delivery_mode VARCHAR(20),
+                        send_status VARCHAR(50),
+                        send_target VARCHAR(255),
+                        print_status VARCHAR(50),
+                        print_site_path VARCHAR(255),
+                        payload_json TEXT NOT NULL,
+                        issued_at DATETIME NOT NULL,
+                        created_at DATETIME NOT NULL,
+                        updated_at DATETIME NOT NULL
+                    )
+                    """
+                )
+            )
+
+            applied.append("fiscal_documents.create_table")
+
     return {
         "ok": True,
         "applied": applied,

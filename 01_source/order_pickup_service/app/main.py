@@ -21,6 +21,7 @@ from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
 from app.routers.public_orders import router as public_orders_router
 from app.routers.public_pickup import router as public_pickup_router
+from app.routers.public_fiscal import router as public_fiscal_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
@@ -40,6 +41,7 @@ app.include_router(public_auth_router)
 app.include_router(public_catalog_router)
 app.include_router(public_orders_router)
 app.include_router(public_pickup_router)
+app.include_router(public_fiscal_router)
 # incluir public_orders e public_me se você quiser subir Sprint 1 mais limpo. Pode deixar para Sprint 2.
 
 # Routers de health

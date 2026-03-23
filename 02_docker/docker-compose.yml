@@ -513,7 +513,7 @@ services:
       FAILURE_RATE: "0.12"
       PAYMENT_TRIGGERS_OPEN: "false"
       TZ: America/Sao_Paulo
-      DEUBG_LOGS: "true"
+      DEBUG_LOGS: "true"
     depends_on:
       mqtt:
         condition: service_healthy
