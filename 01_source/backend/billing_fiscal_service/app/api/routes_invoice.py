@@ -1,4 +1,5 @@
 # 01_source/backend/billing_fiscal_service/app/api/routes_invoice.py
+# 01_source/backend/billing_fiscal_service/app/routers/internal_invoices.py (NUNCA FOI CRIADO)
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -8,8 +9,11 @@ from app.core.config import settings
 from app.core.db import get_db
 from app.models.invoice_model import Invoice
 from app.schemas.invoice_schema import InvoiceResponse
+
+# from app.services.invoice_issue_service import reset_invoice_for_retry
+# from app.services.invoice_service import generate_invoice
 from app.services.invoice_issue_service import reset_invoice_for_retry
-from app.services.invoice_service import generate_invoice
+from app.services.invoice_orchestrator import ensure_and_process_invoice
 
 router = APIRouter(prefix="/internal/invoices", tags=["invoices"])
 
@@ -56,7 +60,7 @@ def create_invoice(
     _: None = Depends(validate_internal_token),
 ):
     try:
-        invoice = generate_invoice(db, order_id)
+        invoice = ensure_and_process_invoice(db, order_id)
         return _to_invoice_response(invoice)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
