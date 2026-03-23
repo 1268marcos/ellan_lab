@@ -1,3 +1,4 @@
+// 01_source/frontend/src/App.jsx
 import React from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -16,6 +17,7 @@ import PublicCatalogPage from "./pages/public/PublicCatalogPage.jsx";
 import PublicCheckoutPage from "./pages/public/PublicCheckoutPage.jsx";
 import PublicMyOrdersPage from "./pages/public/PublicMyOrdersPage.jsx";
 import PublicOrderDetailPage from "./pages/public/PublicOrderDetailPage.jsx";
+import PublicFiscalSearchPage from "./pages/public/PublicFiscalSearchPage.jsx";
 
 /* =========================================================
    HELPERS
@@ -78,6 +80,7 @@ function TopNav() {
       {/* ÁREA PÚBLICA */}
       <Link style={linkStyle} to="/">Início</Link>
       <Link style={linkStyle} to="/comprar">Comprar</Link>
+      <Link style={linkStyle} to="/comprovante">Comprovante</Link>
 
       {!loading && isAuthenticated && (
         <Link style={linkStyle} to="/meus-pedidos">
@@ -168,6 +171,7 @@ function AppContent() {
         <Route path="/cadastro" element={<PublicRegisterPage />} />
         <Route path="/comprar" element={<PublicCatalogPage />} />
         <Route path="/checkout" element={<PublicCheckoutPage />} />
+        <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
 
         {/* PROTEGIDO */}
         <Route
