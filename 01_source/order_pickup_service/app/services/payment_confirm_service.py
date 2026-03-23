@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import uuid
-
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,10 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.models.allocation import Allocation
 from app.models.domain_event_outbox import DomainEventOutbox
+from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order
 from app.services.domain_event_outbox_service import enqueue_order_paid_event
-
-from app.models.fiscal_document import FiscalDocument
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +38,8 @@ def _build_fiscal_receipt_code(*, order: Order) -> str:
 def _build_fiscal_simulation_payload(
     *,
     order: Order,
+    allocation: Allocation,
+    pickup,
     currency: str,
 ) -> dict[str, Any]:
     receipt_code = _build_fiscal_receipt_code(order=order)
@@ -53,6 +53,7 @@ def _build_fiscal_simulation_payload(
 
     channel = _enum_value_or_raw(order.channel)
     region = str(getattr(order, "region", "") or "").strip().upper()
+    payment_method = _enum_value_or_raw(getattr(order, "payment_method", None))
 
     document_type = "NFE" if region == "SP" else "FISCAL_RECEIPT_SIMULATED"
     delivery_mode = "PRINT" if channel == "KIOSK" else "SEND"
@@ -77,7 +78,34 @@ def _build_fiscal_simulation_payload(
             else "SIMULATED_NOT_APPLICABLE"
         ),
         "print_site_path": f"/public/fiscal/print/{receipt_code}",
+        "json_site_path": f"/public/fiscal/by-code/{receipt_code}",
         "print_label": "Use este código no site de impressão do comprovante/cupom simulado.",
+        "order": {
+            "id": order.id,
+            "channel": channel,
+            "region": order.region,
+            "totem_id": getattr(order, "totem_id", None),
+            "sku_id": getattr(order, "sku_id", None),
+            "amount_cents": getattr(order, "amount_cents", None),
+            "payment_method": payment_method,
+            "gateway_transaction_id": getattr(order, "gateway_transaction_id", None),
+            "paid_at": order.paid_at.isoformat() if getattr(order, "paid_at", None) else None,
+            "pickup_deadline_at": order.pickup_deadline_at.isoformat() if getattr(order, "pickup_deadline_at", None) else None,
+        },
+        "allocation": {
+            "id": allocation.id if allocation else None,
+            "locker_id": allocation.locker_id if allocation else None,
+            "slot": allocation.slot if allocation else None,
+            "state": _enum_value_or_raw(getattr(allocation, "state", None)) if allocation else None,
+        },
+        "pickup": {
+            "id": getattr(pickup, "id", None) if pickup else None,
+            "locker_id": getattr(pickup, "locker_id", None) if pickup else None,
+            "machine_id": getattr(pickup, "machine_id", None) if pickup else None,
+            "slot": getattr(pickup, "slot", None) if pickup else None,
+            "status": _enum_value_or_raw(getattr(pickup, "status", None)) if pickup else None,
+            "lifecycle_stage": _enum_value_or_raw(getattr(pickup, "lifecycle_stage", None)) if pickup else None,
+        },
     }
 
 
@@ -91,16 +119,6 @@ def apply_payment_confirmation(
     currency: str | None,
     source: str,
 ) -> None:
-    """
-    Consolida a parte financeira da confirmação de pagamento:
-    - validações financeiras
-    - fallback de gateway_transaction_id
-    - marcação de paid_at / payment approved
-
-    Não decide fluxo ONLINE/KIOSK.
-    Não decide status operacional do pedido.
-    """
-
     if order is None:
         raise ValueError("order obrigatório")
 
@@ -154,15 +172,6 @@ def emit_order_paid_and_simulate_fiscal(
     currency: str,
     source: str,
 ) -> dict[str, Any]:
-    """
-    Consolida:
-    - idempotência por outbox
-    - emissão de order.paid
-    - simulação de geração/envio/impressão fiscal
-
-    A emissão oficial continua sendo downstream, a partir de order.paid.
-    """
-
     if order is None:
         raise ValueError("order obrigatório")
 
@@ -237,6 +246,8 @@ def emit_order_paid_and_simulate_fiscal(
     else:
         fiscal = _build_fiscal_simulation_payload(
             order=order,
+            allocation=allocation,
+            pickup=pickup,
             currency=currency_norm,
         )
 
@@ -296,12 +307,6 @@ def confirm_payment_and_emit_event(
     currency: str | None,
     source: str,
 ) -> dict[str, Any]:
-    """
-    Compatibilidade retroativa com o service já existente.
-    Mantém o nome antigo para não quebrar chamadas atuais, mas agora
-    delega para as funções mais explícitas.
-    """
-
     apply_payment_confirmation(
         db=db,
         order=order,
