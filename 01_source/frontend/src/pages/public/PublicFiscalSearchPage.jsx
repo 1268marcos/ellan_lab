@@ -1,5 +1,5 @@
 // 01_source/frontend/src/pages/public/PublicFiscalSearchPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { QRCodeSVG } from "qrcode.react";
 
@@ -28,6 +28,8 @@ export default function PublicFiscalSearchPage() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
+  const hasAutoSearched = useRef(false);
+
   const normalizedCode = useMemo(() => normalize(code), [code]);
 
   const deepLink = useMemo(() => {
@@ -37,7 +39,6 @@ export default function PublicFiscalSearchPage() {
 
   async function handleSearch(explicitCode) {
     const nextCode = normalize(explicitCode ?? code);
-    setCode(nextCode);
 
     if (!nextCode) {
       setError("Informe um código de comprovante.");
@@ -45,6 +46,9 @@ export default function PublicFiscalSearchPage() {
       return;
     }
 
+    if (loading) return;
+
+    setCode(nextCode);
     setLoading(true);
     setError("");
     setData(null);
@@ -74,11 +78,14 @@ export default function PublicFiscalSearchPage() {
   }
 
   useEffect(() => {
+    if (hasAutoSearched.current) return;
+
     const initialCode = normalize(searchParams.get("code"));
-    if (initialCode) {
-      setCode(initialCode);
-      handleSearch(initialCode);
-    }
+    if (!initialCode) return;
+
+    hasAutoSearched.current = true;
+    setCode(initialCode);
+    handleSearch(initialCode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -86,6 +93,12 @@ export default function PublicFiscalSearchPage() {
     if (!deepLink) return;
     navigator.clipboard?.writeText(deepLink);
     window.alert("Link copiado.");
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === "Enter") {
+      handleSearch(code);
+    }
   }
 
   function renderResult() {
@@ -148,8 +161,11 @@ export default function PublicFiscalSearchPage() {
               </a>
 
               <button
+                type="button"
                 style={btnStyle}
-                onClick={() => window.open(printUrl, "_blank", "noopener,noreferrer")}
+                onClick={() =>
+                  window.open(printUrl, "_blank", "noopener,noreferrer")
+                }
               >
                 Imprimir / PDF
               </button>
@@ -157,7 +173,9 @@ export default function PublicFiscalSearchPage() {
           </div>
 
           <div style={qrCardStyle}>
-            <div style={{ fontWeight: 700, marginBottom: 12 }}>QRCode do comprovante</div>
+            <div style={{ fontWeight: 700, marginBottom: 12 }}>
+              QRCode do comprovante
+            </div>
 
             {deepLink ? (
               <>
@@ -169,7 +187,7 @@ export default function PublicFiscalSearchPage() {
                 <div style={linkPreviewStyle}>{deepLink}</div>
 
                 <div style={actionsStyle}>
-                  <button style={btnStyle} onClick={copyDeepLink}>
+                  <button type="button" style={btnStyle} onClick={copyDeepLink}>
                     Copiar link
                   </button>
                   <a
@@ -183,7 +201,9 @@ export default function PublicFiscalSearchPage() {
                 </div>
               </>
             ) : (
-              <div style={smallMutedStyle}>Busque um comprovante para gerar o QRCode.</div>
+              <div style={smallMutedStyle}>
+                Busque um comprovante para gerar o QRCode.
+              </div>
             )}
           </div>
         </div>
@@ -202,11 +222,17 @@ export default function PublicFiscalSearchPage() {
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder="Ex.: KSK-57FC92582464"
           style={inputStyle}
         />
 
-        <button onClick={() => handleSearch()} style={btnPrimaryStyle}>
+        <button
+          type="button"
+          onClick={() => handleSearch(code)}
+          style={btnPrimaryStyle}
+          disabled={loading}
+        >
           {loading ? "Buscando..." : "Buscar"}
         </button>
       </div>

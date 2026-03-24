@@ -68,22 +68,52 @@ def _bootstrap_24(conn, machine_id: str) -> None:
             _door_state_upsert(conn, machine_id, i, "AVAILABLE", None)
     conn.commit()
 
+# def _expire_old_allocations(conn, machine_id: str) -> int:
+#     now_iso = _now_iso()
+#     cur = conn.execute(
+#         """
+#         SELECT allocation_id, door_id
+#         FROM allocations
+#         WHERE machine_id=? AND state IN ('RESERVED') AND expires_at < ?
+#         """,
+#         (machine_id, now_iso),
+#     )
+#     rows = cur.fetchall()
+#     expired = 0
+#     for allocation_id, door_id in rows:
+#         st = _door_state_get(conn, machine_id, int(door_id))
+#         if st == "RESERVED":
+#             _door_state_upsert(conn, machine_id, int(door_id), "AVAILABLE", None)
+#         conn.execute(
+#             "UPDATE allocations SET state='EXPIRED' WHERE allocation_id=?",
+#             (allocation_id,),
+#         )
+#         expired += 1
+# 
+#     if expired:
+#         conn.commit()
+#     return expired
+
 def _expire_old_allocations(conn, machine_id: str) -> int:
     now_iso = _now_iso()
     cur = conn.execute(
         """
-        SELECT allocation_id, door_id
+        SELECT allocation_id, door_id, state, expires_at
         FROM allocations
-        WHERE machine_id=? AND state IN ('RESERVED') AND expires_at < ?
+        WHERE machine_id=? AND state IN ('RESERVED', 'COMMITTED') AND expires_at < ?
         """,
         (machine_id, now_iso),
     )
     rows = cur.fetchall()
     expired = 0
-    for allocation_id, door_id in rows:
-        st = _door_state_get(conn, machine_id, int(door_id))
-        if st == "RESERVED":
+    for allocation_id, door_id, state, expires_at in rows:
+        # Sempre liberar o door_state se estava RESERVED
+        if state == "RESERVED":
             _door_state_upsert(conn, machine_id, int(door_id), "AVAILABLE", None)
+        # Se COMMITTED, também liberar (já que expirou antes de ser retirado)
+        elif state == "COMMITTED":
+            _door_state_upsert(conn, machine_id, int(door_id), "AVAILABLE", None)
+        
         conn.execute(
             "UPDATE allocations SET state='EXPIRED' WHERE allocation_id=?",
             (allocation_id,),
@@ -93,6 +123,7 @@ def _expire_old_allocations(conn, machine_id: str) -> int:
     if expired:
         conn.commit()
     return expired
+
 
 # --------- models ---------
 
@@ -142,6 +173,10 @@ def allocate(payload: AllocateIn, request: Request):
     try:
         conn = get_conn()
         _bootstrap_24(conn, machine_id)
+
+        # 🔥 PREVENÇÃO: Limpar alocações expiradas ANTES de qualquer verificação
+        conn.execute("DELETE FROM allocations WHERE expires_at < ?", (_now_iso(),))
+
         _expire_old_allocations(conn, machine_id)
 
         ttl = int(payload.ttl_sec)
@@ -254,11 +289,68 @@ def allocate(payload: AllocateIn, request: Request):
                 (allocation_id, machine_id, door_id, _now_iso(), expires_at, payload.request_id),
             )
         except Exception as e:
+            # 🔥 MELHORIA: Verificar se é conflito de UNIQUE e logar melhor
+            is_unique_conflict = "UNIQUE constraint failed" in str(e)
+
             # desfaz reserva se insert falhar
             st = _door_state_get(conn, machine_id, door_id)
             if st == "RESERVED":
                 _door_state_upsert(conn, machine_id, door_id, "AVAILABLE", None)
             conn.commit()
+
+            # 🔥 TRATAMENTO ESPECÍFICO: Se é conflito UNIQUE, tenta limpar e retry
+            if is_unique_conflict:
+                # Limpa alocações expiradas ou órfãs para este slot
+                conn.execute(
+                    """
+                    UPDATE allocations 
+                    SET state='EXPIRED' 
+                    WHERE machine_id=? AND door_id=? AND expires_at < ?
+                    """,
+                    (machine_id, door_id, _now_iso()),
+                )
+                conn.execute(
+                    """
+                    UPDATE allocations 
+                    SET state='RELEASED' 
+                    WHERE machine_id=? AND door_id=? AND state IN ('RESERVED','COMMITTED') 
+                    AND expires_at < ?
+                    """,
+                    (machine_id, door_id, _now_iso()),
+                )
+                conn.commit()
+                
+                # Re-tenta o INSERT
+                try:
+                    conn.execute(
+                        """
+                        INSERT INTO allocations(allocation_id, machine_id, door_id, state, created_at, expires_at, sale_id, request_id)
+                        VALUES (?, ?, ?, 'RESERVED', ?, ?, NULL, ?)
+                        """,
+                        (allocation_id, machine_id, door_id, _now_iso(), expires_at, payload.request_id),
+                    )
+                    conn.commit()
+                    return AllocateOut(
+                        allocation_id=allocation_id,
+                        machine_id=machine_id,
+                        slot=door_id,
+                        state="RESERVED",
+                        expires_at=expires_at,
+                    )
+                except Exception as retry_e:
+                    _raise(
+                        409,
+                        err_type="RESOURCE_ALLOCATION_CONFLICT",
+                        message="allocation insert failed after cleanup",
+                        retryable=True,
+                        machine_id=machine_id,
+                        endpoint=str(request.url.path),
+                        slot=door_id,
+                        allocation_id=allocation_id,
+                        db_error=str(retry_e),
+                    )
+
+
             _raise(
                 409,
                 err_type="RESOURCE_ALLOCATION_CONFLICT",
