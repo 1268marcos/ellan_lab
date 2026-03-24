@@ -1453,48 +1453,70 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               </div>
 
               {receiptCode ? (
-                <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.open(
-                        `${ORDER_PICKUP_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`,
-                        "_blank",
-                        "noopener,noreferrer"
-                      )
-                    }
-                    style={buttonPrimaryStyle}
-                  >
-                    Imprimir comprovante
-                  </button>
+                <div style={{ marginTop: 16, display: "grid", gap: 16 }}>
+                  <div style={receiptTerminalBoxStyle}>
+                    <div style={receiptTerminalTitleStyle}>Comprovante fiscal</div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.open(
-                        `${ORDER_PICKUP_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`,
-                        "_blank",
-                        "noopener,noreferrer"
-                      )
-                    }
-                    style={buttonSecondaryStyle}
-                  >
-                    Ver JSON
-                  </button>
+                    <div style={receiptCodeBigStyle}>
+                      {receiptCode}
+                    </div>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setIdentifyResp({
-                        ok: true,
-                        message:
-                          "Preencha email ou telefone abaixo para receber o código do comprovante fiscal depois.",
-                      })
-                    }
-                    style={buttonSecondaryStyle}
-                  >
-                    Receber por email/SMS
-                  </button>
+                    <div style={receiptQrPanelStyle}>
+                      <QRCodeCanvas
+                        value={receiptCode}
+                        size={180}
+                        includeMargin={true}
+                      />
+                    </div>
+
+                    <div style={receiptTerminalHelpStyle}>
+                      Fotografe este código ou o QRCode para consultar o comprovante depois.
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          `${ORDER_PICKUP_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                      style={buttonPrimaryStyle}
+                    >
+                      Imprimir comprovante
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIdentifyResp({
+                          ok: true,
+                          message:
+                            "Informe email ou telefone abaixo para receber o comprovante depois.",
+                        })
+                      }
+                      style={buttonSecondaryStyle}
+                    >
+                      Receber por email/SMS
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          `${ORDER_PICKUP_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                      style={buttonSecondaryStyle}
+                    >
+                      Ver JSON
+                    </button>
+                  </div>
                 </div>
               ) : null}
 
@@ -1866,4 +1888,46 @@ const summaryListStyle = {
 const messageStyle = {
   marginTop: 10,
   fontSize: 14,
+};
+
+const receiptTerminalBoxStyle = {
+  padding: 14,
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  display: "grid",
+  justifyItems: "center",
+  textAlign: "center",
+  gap: 12,
+};
+
+const receiptTerminalTitleStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const receiptCodeBigStyle = {
+  fontSize: 22,
+  fontWeight: 800,
+  letterSpacing: 1,
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.08)",
+  border: "1px dashed rgba(255,255,255,0.25)",
+  wordBreak: "break-word",
+};
+
+const receiptQrPanelStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#ffffff",
+  display: "grid",
+  placeItems: "center",
+};
+
+const receiptTerminalHelpStyle = {
+  fontSize: 13,
+  opacity: 0.85,
+  maxWidth: 320,
+  lineHeight: 1.4,
 };

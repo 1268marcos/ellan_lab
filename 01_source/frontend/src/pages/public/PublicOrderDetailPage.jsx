@@ -1,11 +1,18 @@
-// 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx 
-import React, { useEffect, useState } from "react";
+// 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchOrderDetail, fetchOrderPickup } from "../../services/publicApi";
 
 const API_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+
+const FRONTEND_BASE =
+  import.meta.env.VITE_FRONTEND_BASE_URL || window.location.origin;
+
+function normalize(value) {
+  return String(value || "").trim().toUpperCase();
+}
 
 export default function PublicOrderDetailPage() {
   const { orderId } = useParams();
@@ -75,6 +82,29 @@ export default function PublicOrderDetailPage() {
 
   const pickupMessage = getPickupMessage(order);
 
+  const receiptCode = useMemo(() => normalize(order?.receipt_code), [order?.receipt_code]);
+
+  const receiptPrintUrl = useMemo(() => {
+    if (!receiptCode) return "";
+    return `${API_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`;
+  }, [receiptCode]);
+
+  const receiptJsonUrl = useMemo(() => {
+    if (!receiptCode) return "";
+    return `${API_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`;
+  }, [receiptCode]);
+
+  const receiptDeepLink = useMemo(() => {
+    if (!receiptCode) return "";
+    return `${FRONTEND_BASE}/comprovante?code=${encodeURIComponent(receiptCode)}`;
+  }, [receiptCode]);
+
+  function copyReceiptLink() {
+    if (!receiptDeepLink) return;
+    navigator.clipboard?.writeText(receiptDeepLink);
+    window.alert("Link do comprovante copiado.");
+  }
+
   return (
     <main style={pageStyle}>
       <div style={containerStyle}>
@@ -134,31 +164,49 @@ export default function PublicOrderDetailPage() {
               </div>
             </section>
 
-            {order?.receipt_code ? (
+            {receiptCode ? (
               <section style={cardStyle}>
                 <div style={sectionHeaderStyle}>
                   <h2 style={sectionTitleStyle}>Comprovante fiscal</h2>
                   <p style={sectionMetaStyle}>
-                    Código disponível para consulta, impressão e PDF.
+                    Código disponível para consulta, página pública, impressão e PDF.
                   </p>
                 </div>
 
                 <div style={detailsGridStyle}>
-                  <Field label="Código" value={order.receipt_code} />
+                  <Field label="Código" value={receiptCode} />
+                  <Field label="Página pública" value={receiptDeepLink} />
                 </div>
 
-                <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <div style={actionsRowStyle}>
                   <a
-                    href={`${API_BASE}/public/fiscal/print/${encodeURIComponent(order.receipt_code)}`}
+                    href={receiptDeepLink}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={actionButtonStyle}
                   >
-                    Abrir comprovante
+                    Abrir página do comprovante
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={copyReceiptLink}
+                    style={actionButtonStyle}
+                  >
+                    Copiar link
+                  </button>
+
+                  <a
+                    href={receiptPrintUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={actionButtonStyle}
+                  >
+                    Abrir impressão
                   </a>
 
                   <a
-                    href={`${API_BASE}/public/fiscal/by-code/${encodeURIComponent(order.receipt_code)}`}
+                    href={receiptJsonUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={actionButtonStyle}
@@ -170,7 +218,7 @@ export default function PublicOrderDetailPage() {
                     type="button"
                     onClick={() =>
                       window.open(
-                        `${API_BASE}/public/fiscal/print/${encodeURIComponent(order.receipt_code)}`,
+                        receiptPrintUrl,
                         "_blank",
                         "noopener,noreferrer"
                       )
@@ -432,6 +480,13 @@ const textAreaStyle = {
   resize: "vertical",
   boxSizing: "border-box",
   fontFamily: "inherit",
+};
+
+const actionsRowStyle = {
+  marginTop: 16,
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
 };
 
 const actionButtonStyle = {
