@@ -378,6 +378,12 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const [err, setErr] = useState(null);
   const [, setTick] = useState(0);
 
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printCountdown, setPrintCountdown] = useState(10);
+  const [printPhase, setPrintPhase] = useState("idle"); // idle | printing | ready
+  const printTimerRef = useRef(null);
+  const printCloseTimerRef = useRef(null);
+
   const backendBase = getBackendBaseByRegion(selectedLocker?.backend_region || region);
 
   const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
@@ -441,6 +447,12 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       setLockersLoading(false);
     }
   }
+
+  useEffect(() => {
+    return () => {
+      clearPrintSimulationTimers();
+    };
+  }, []);
 
   useEffect(() => {
     fetchLockersOnce();
@@ -883,6 +895,55 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     } finally {
       setLoadingIdentify(false);
     }
+  }
+
+  function clearPrintSimulationTimers() {
+    if (printTimerRef.current) {
+      clearInterval(printTimerRef.current);
+      printTimerRef.current = null;
+    }
+
+    if (printCloseTimerRef.current) {
+      clearTimeout(printCloseTimerRef.current);
+      printCloseTimerRef.current = null;
+    }
+  }
+
+  function closePrintSimulation() {
+    clearPrintSimulationTimers();
+    setPrintModalOpen(false);
+    setPrintCountdown(10);
+    setPrintPhase("idle");
+  }
+
+  function startPrintSimulation() {
+    if (!receiptCode) {
+      setErr("Comprovante fiscal indisponível para impressão.");
+      return;
+    }
+
+    clearPrintSimulationTimers();
+    setErr(null);
+    setPrintCountdown(10);
+    setPrintPhase("printing");
+    setPrintModalOpen(true);
+
+    printTimerRef.current = setInterval(() => {
+      setPrintCountdown((prev) => {
+        if (prev <= 1) {
+          clearPrintSimulationTimers();
+          setPrintPhase("ready");
+
+          printCloseTimerRef.current = setTimeout(() => {
+            closePrintSimulation();
+          }, 2000);
+
+          return 0;
+        }
+
+        return prev - 1;
+      });
+    }, 1000);
   }
 
   return (
@@ -1477,16 +1538,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() =>
-                        window.open(
-                          `${ORDER_PICKUP_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`,
-                          "_blank",
-                          "noopener,noreferrer"
-                        )
-                      }
+                      onClick={startPrintSimulation}
                       style={buttonPrimaryStyle}
+                      disabled={printModalOpen}
                     >
-                      Imprimir comprovante
+                      {printModalOpen ? "Imprimindo..." : "Imprimir comprovante"}
                     </button>
 
                     <button
@@ -1590,12 +1646,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           </div>
         </section>
 
-
       </div>
-
-
-
-
 
       <section style={cardStyle}>
         <h2 style={h2Style}>Configuração desta tela</h2>
@@ -1612,6 +1663,98 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           <div><b>fonte dos lockers:</b> {lockersSource === "gateway" ? "gateway /lockers" : "fallback local"}</div>
         </div>
       </section>
+
+
+      {printModalOpen ? (
+        <div style={printModalOverlayStyle}>
+          <div style={printModalCardStyle}>
+            <div style={printModalHeaderStyle}>
+              <div style={printModalTitleStyle}>Simulação de impressão</div>
+
+              <button
+                type="button"
+                onClick={closePrintSimulation}
+                style={printModalCloseButtonStyle}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div style={printTicketStyle}>
+              <div style={printTicketBrandStyle}>ELLAN LAB LOCKER</div>
+              <div style={printTicketLineStyle}>COMPROVANTE FISCAL</div>
+              <div style={printTicketDividerStyle} />
+
+              <div style={printTicketRowStyle}>
+                <span>Região</span>
+                <strong>{region}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Locker</span>
+                <strong>{totemId || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Pedido</span>
+                <strong>{paymentResp?.order_id || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Slot</span>
+                <strong>{paymentResp?.slot ?? "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Método</span>
+                <strong>{paymentResp?.payment_method || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Valor</span>
+                <strong>
+                  {selectedCatalogItem
+                    ? formatMoney(selectedCatalogItem.amount_cents, selectedCatalogItem.currency)
+                    : "-"}
+                </strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Data/hora</span>
+                <strong>{new Date().toLocaleString(region === "SP" ? "pt-BR" : "pt-PT")}</strong>
+              </div>
+
+              <div style={printTicketDividerStyle} />
+
+              <div style={printTicketReceiptLabelStyle}>CÓDIGO DO COMPROVANTE</div>
+              <div style={printTicketReceiptCodeStyle}>{receiptCode}</div>
+
+              <div style={printTicketQrBoxStyle}>
+                <QRCodeCanvas
+                  value={receiptCode}
+                  size={120}
+                  includeMargin={true}
+                />
+              </div>
+            </div>
+
+            {printPhase === "printing" ? (
+              <div style={printStatusBoxStyle}>
+                <div style={printStatusTitleStyle}>
+                  Imprimindo comprovante...
+                </div>
+                <div style={printStatusCountdownStyle}>
+                  {printCountdown}s
+                </div>
+              </div>
+            ) : (
+              <div style={printReadyBoxStyle}>
+                RETIRE O COMPROVANTE IMPRESSO
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       {err && <pre style={errorBoxStyle}>{err}</pre>}
     </div>
@@ -1930,4 +2073,131 @@ const receiptTerminalHelpStyle = {
   opacity: 0.85,
   maxWidth: 320,
   lineHeight: 1.4,
+};
+
+const printModalOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.78)",
+  display: "grid",
+  placeItems: "center",
+  zIndex: 9999,
+  padding: 24,
+};
+
+const printModalCardStyle = {
+  width: "100%",
+  maxWidth: 420,
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 18,
+  boxShadow: "0 18px 48px rgba(0,0,0,0.45)",
+  padding: 18,
+  display: "grid",
+  gap: 16,
+};
+
+const printModalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const printModalTitleStyle = {
+  fontSize: 18,
+  fontWeight: 700,
+};
+
+const printModalCloseButtonStyle = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#1b5883",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const printTicketStyle = {
+  background: "#ffffff",
+  color: "#111",
+  borderRadius: 12,
+  padding: 14,
+  display: "grid",
+  gap: 8,
+  fontFamily: '"Courier New", monospace',
+  fontSize: 12,
+};
+
+const printTicketBrandStyle = {
+  textAlign: "center",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const printTicketLineStyle = {
+  textAlign: "center",
+  fontSize: 12,
+};
+
+const printTicketDividerStyle = {
+  borderTop: "1px dashed #999",
+  margin: "4px 0",
+};
+
+const printTicketRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const printTicketReceiptLabelStyle = {
+  textAlign: "center",
+  fontSize: 11,
+  marginTop: 4,
+};
+
+const printTicketReceiptCodeStyle = {
+  textAlign: "center",
+  fontSize: 16,
+  fontWeight: 700,
+  letterSpacing: 1,
+  wordBreak: "break-word",
+};
+
+const printTicketQrBoxStyle = {
+  display: "grid",
+  placeItems: "center",
+  marginTop: 8,
+};
+
+const printStatusBoxStyle = {
+  borderRadius: 12,
+  padding: 14,
+  background: "rgba(27,88,131,0.16)",
+  border: "1px solid rgba(27,88,131,0.34)",
+  textAlign: "center",
+};
+
+const printStatusTitleStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const printStatusCountdownStyle = {
+  marginTop: 6,
+  fontSize: 26,
+  fontWeight: 800,
+};
+
+const printReadyBoxStyle = {
+  borderRadius: 12,
+  padding: 16,
+  background: "rgba(31,122,63,0.18)",
+  border: "1px solid rgba(31,122,63,0.36)",
+  textAlign: "center",
+  fontSize: 18,
+  fontWeight: 800,
+  letterSpacing: 0.4,
 };
