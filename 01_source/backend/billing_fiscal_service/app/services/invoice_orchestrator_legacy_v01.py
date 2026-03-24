@@ -1,9 +1,9 @@
 # 01_source/backend/biling_fiscal_service/app/services/invoice_orchestrator.py
-# Arquivo preserva o endpoint manual como fallback, mas agora ele usa o mesmo mecanismo de lock/processamento dos workers.
 from __future__ import annotations
 
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -12,10 +12,14 @@ from app.integrations.order_pickup_client import (
     OrderPickupClientError,
     get_order_snapshot,
 )
-from app.models.invoice_model import Invoice
-from app.services.invoice_processing_service import claim_and_process_invoice_by_id
+from app.models.invoice_model import Invoice, InvoiceStatus
+from app.services.fiscal_router_service import route_issue_invoice
 
 logger = logging.getLogger(__name__)
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
 
 
 def _resolve_country_from_snapshot(snapshot: dict) -> str:
@@ -64,6 +68,7 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
         raise ValueError(str(exc)) from exc
 
     order = snapshot.get("order") or {}
+
     country = _resolve_country_from_snapshot(snapshot)
     invoice_type = _resolve_invoice_type(country)
 
@@ -77,12 +82,13 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
         payment_method=order.get("payment_method"),
         currency=order.get("currency") or ("BRL" if country == "BR" else "EUR"),
         amount_cents=order.get("amount_cents"),
+        status=InvoiceStatus.PENDING,
+        retry_count=0,
         order_snapshot=snapshot,
     )
 
     db.add(invoice)
-    db.commit()
-    db.refresh(invoice)
+    db.flush()
 
     logger.info(
         "invoice_created_from_order_paid",
@@ -97,16 +103,62 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
     return invoice
 
 
-def ensure_and_process_invoice(db: Session, order_id: str) -> Invoice:
-    invoice = ensure_invoice_for_order(db, order_id)
-
-    processed = claim_and_process_invoice_by_id(
-        db,
-        invoice_id=invoice.id,
-    )
-
-    if processed is None:
-        invoice = db.query(Invoice).filter(Invoice.id == invoice.id).first()
+def process_invoice(db: Session, invoice: Invoice) -> Invoice:
+    if invoice.status == InvoiceStatus.ISSUED:
         return invoice
 
-    return processed
+    invoice.status = InvoiceStatus.PROCESSING
+    invoice.processing_started_at = _utc_now()
+    invoice.last_attempt_at = _utc_now()
+
+    try:
+        result = route_issue_invoice(invoice)
+
+        invoice.status = InvoiceStatus.ISSUED
+        invoice.invoice_number = result.get("invoice_number")
+        invoice.invoice_series = result.get("invoice_series")
+        invoice.access_key = result.get("access_key")
+        invoice.tax_details = result.get("tax_details")
+        invoice.xml_content = result.get("xml_content")
+        invoice.government_response = result.get("government_response")
+        invoice.payload_json = result
+        invoice.error_message = None
+        invoice.last_error_code = None
+        invoice.issued_at = _utc_now()
+        invoice.next_retry_at = None
+
+        logger.info(
+            "invoice_issued",
+            extra={
+                "order_id": invoice.order_id,
+                "invoice_id": invoice.id,
+                "invoice_number": invoice.invoice_number,
+                "country": invoice.country,
+            },
+        )
+
+    except Exception as exc:
+        invoice.status = InvoiceStatus.FAILED
+        invoice.error_message = str(exc)
+        invoice.last_error_code = "ISSUE_FAILED"
+        invoice.retry_count = int(invoice.retry_count or 0) + 1
+        invoice.next_retry_at = _utc_now() + timedelta(minutes=5)
+
+        logger.exception(
+            "invoice_issue_failed",
+            extra={
+                "order_id": invoice.order_id,
+                "invoice_id": invoice.id,
+                "retry_count": invoice.retry_count,
+            },
+        )
+
+    return invoice
+
+
+def ensure_and_process_invoice(db: Session, order_id: str) -> Invoice:
+    invoice = ensure_invoice_for_order(db, order_id)
+    invoice = process_invoice(db, invoice)
+    db.commit()
+    db.refresh(invoice)
+    return invoice

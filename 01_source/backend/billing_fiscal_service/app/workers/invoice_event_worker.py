@@ -1,44 +1,90 @@
 # 01_source/backend/billing_fiscal_service/app/workers/invoice_event_worker.py
+# Esse worker passa a consultar somente order.paid que ainda não têm 
+# invoice, evitando varrer histórico já materializado. 
 from __future__ import annotations
 
 import logging
 import os
 import time
-from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import outerjoin, select
+
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal
 from app.models.external_domain_event import DomainEvent
+
+from app.integrations.order_pickup_client import OrderPickupClientError
+
 from app.models.invoice_model import Invoice
 from app.services.invoice_orchestrator import ensure_and_process_invoice
 
+from datetime import datetime, timezone
+from app.models.processed_event import ProcessedEvent
+
+
 logger = logging.getLogger(__name__)
+
+MAX_EVENT_RETRIES = int(os.getenv("INVOICE_EVENT_MAX_RETRIES", "3"))
 
 
 def _utc_now():
     return datetime.now(timezone.utc)
 
 
-def _get_order_paid_events(db: Session, limit: int):
-    stmt = (
-        select(DomainEvent)
-        .where(DomainEvent.aggregate_type == "order")
-        .where(DomainEvent.event_name == "order.paid")
-        .order_by(DomainEvent.created_at.asc())
-        .limit(limit)
-    )
-    return db.execute(stmt).scalars().all()
-
-
-def _invoice_exists(db: Session, order_id: str) -> bool:
+def _get_events(db, batch_size):
     return (
-        db.query(Invoice)
-        .filter(Invoice.order_id == order_id)
+        db.query(DomainEvent)
+        .filter(DomainEvent.aggregate_type == "order")
+        .filter(DomainEvent.event_name == "order.paid")
+        .order_by(DomainEvent.created_at.asc())
+        .limit(batch_size)
+        .all()
+    )
+
+
+def _already_processed(db, event_key: str) -> bool:
+    return (
+        db.query(ProcessedEvent)
+        .filter(ProcessedEvent.event_key == event_key)
         .first()
         is not None
     )
+
+
+def _mark_processed(db, event, status: str, error: str | None = None):
+    record = ProcessedEvent(
+        event_key=event.event_key,
+        order_id=str(event.aggregate_id),
+        status=status,
+        error_message=error,
+        created_at=_utc_now(),
+    )
+    db.add(record)
+    db.commit()
+
+
+
+
+
+def _get_order_paid_events_without_invoice(db, batch_size: int):
+    join_stmt = outerjoin(
+        DomainEvent,
+        Invoice,
+        DomainEvent.aggregate_id == Invoice.order_id,
+    )
+
+    stmt = (
+        select(DomainEvent)
+        .select_from(join_stmt)
+        .where(DomainEvent.aggregate_type == "order")
+        .where(DomainEvent.event_name == "order.paid")
+        .where(Invoice.id.is_(None))
+        .order_by(DomainEvent.created_at.asc())
+        .limit(batch_size)
+    )
+
+    return list(db.execute(stmt).scalars().all())
 
 
 def process_events_once(batch_size: int):
@@ -49,21 +95,43 @@ def process_events_once(batch_size: int):
     failed = 0
 
     try:
-        events = _get_order_paid_events(db, batch_size)
+        events = _get_order_paid_events_without_invoice(db, batch_size)
 
         for event in events:
-            order_id = str(event.aggregate_id)
+            order_id = str(event.aggregate_id).strip()
+
+            # 🔒 BLOQUEIO ANTES DE PROCESSAR
+            if _already_processed(db, event.event_key):
+                skipped += 1
+                continue
 
             try:
-                if _invoice_exists(db, order_id):
-                    skipped += 1
-                    continue
-
                 ensure_and_process_invoice(db, order_id)
+
+                _mark_processed(db, event, "PROCESSED")
                 processed += 1
 
-            except Exception:
+            except OrderPickupClientError as exc:
+                msg = str(exc).lower()
+
+                # 💀 TRATAR 404 COMO DEAD (E NÃO RETENTAR)
+                if "404" in msg or "order not found" in msg:
+                    logger.warning(
+                        "invoice_event_order_not_found_dead",
+                        extra={"order_id": order_id},
+                    )
+
+                    _mark_processed(db, event, "DEAD", "order_not_found")
+                    skipped += 1
+                    continue  # 🔥 IMPORTANTE
+
+                _mark_processed(db, event, "FAILED", str(exc))
                 failed += 1
+
+            except Exception as exc:
+                _mark_processed(db, event, "FAILED", str(exc))
+                failed += 1
+
                 logger.exception(
                     "invoice_event_worker_error",
                     extra={
@@ -71,7 +139,6 @@ def process_events_once(batch_size: int):
                         "event_key": event.event_key,
                     },
                 )
-                db.rollback()
 
         return {
             "processed": processed,

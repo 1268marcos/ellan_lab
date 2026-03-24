@@ -489,6 +489,11 @@ services:
       INVOICE_EVENT_WORKER_POLL_SEC: 10
       INVOICE_EVENT_WORKER_BATCH_SIZE: 100
 
+      INVOICE_ISSUE_MAX_RETRIES: 5
+      INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
+      INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
+      INVOICE_ISSUE_WORKER_ID: billing_fiscal_event_worker
+
     depends_on:
       postgres_central:
         condition: service_healthy

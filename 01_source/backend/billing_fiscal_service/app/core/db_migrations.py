@@ -6,6 +6,8 @@ import logging
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 
+from app.models.processed_event import ProcessedEvent  # 👈 IMPORTANTE
+
 logger = logging.getLogger(__name__)
 
 
