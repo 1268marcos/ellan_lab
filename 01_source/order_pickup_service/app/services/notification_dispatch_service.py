@@ -30,25 +30,17 @@ def queue_receipt_email(
     receipt_code: str,
 ) -> NotificationLog:
     normalized_email = str(email or "").strip().lower()
-
-    # 🔑 Gerar chave de deduplicação
     dedupe_key = f"EMAIL|RECEIPT|{normalized_email}|{receipt_code}"
 
-    # 🔒 IDEMPOTÊNCIA FORTE
     existing = (
         db.query(NotificationLog)
-        .filter(
-            NotificationLog.channel == "EMAIL",
-            NotificationLog.template_key == "RECEIPT",
-            NotificationLog.destination_value == normalized_email,
-            NotificationLog.payload_json["receipt_code"].as_string() == receipt_code,
-            NotificationLog.status.in_(["QUEUED", "PROCESSING", "SENT"]),
-        )
+        .filter(NotificationLog.dedupe_key == dedupe_key)
         .first()
     )
-
     if existing:
         return existing
+
+    now = datetime.utcnow()
 
     log = NotificationLog(
         user_id=None,
@@ -57,6 +49,7 @@ def queue_receipt_email(
         template_key="RECEIPT",
         destination_masked=_mask_email(normalized_email),
         destination_value=normalized_email,
+        dedupe_key=dedupe_key,
         provider_name="SMTP",
         provider_message_id=None,
         status="QUEUED",
@@ -66,8 +59,10 @@ def queue_receipt_email(
             "receipt_code": receipt_code,
             "order_id": order_id,
         },
-        dedupe_key=dedupe_key,  # 🆕 Adicionando chave de deduplicação
-        created_at=datetime.utcnow(),
+        processing_started_at=None,
+        last_attempt_at=None,
+        next_attempt_at=now,
+        created_at=now,
         sent_at=None,
         delivered_at=None,
         failed_at=None,

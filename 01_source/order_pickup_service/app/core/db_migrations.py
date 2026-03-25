@@ -993,7 +993,6 @@ def migrate_order_pickup_schema() -> dict:
         inspector = inspect(conn)
 
         if _has_table(inspector, "notification_logs"):
-
             if not _has_column(inspector, "notification_logs", "destination_value"):
                 conn.execute(text("ALTER TABLE notification_logs ADD COLUMN destination_value VARCHAR(255)"))
                 applied.append("notification_logs.destination_value")
@@ -1007,35 +1006,91 @@ def migrate_order_pickup_schema() -> dict:
                 conn.execute(text("ALTER TABLE notification_logs ADD COLUMN payload_json TEXT"))
                 applied.append("notification_logs.payload_json")
 
-            # =========================
-            # 🆕 DEDUPE KEY (PRODUÇÃO)
-            # =========================
             if not _has_column(inspector, "notification_logs", "dedupe_key"):
                 conn.execute(text("ALTER TABLE notification_logs ADD COLUMN dedupe_key VARCHAR(255)"))
                 applied.append("notification_logs.dedupe_key")
 
-                # backfill seguro
-                conn.execute(text("""
+            if not _has_column(inspector, "notification_logs", "processing_started_at"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN processing_started_at DATETIME"))
+                applied.append("notification_logs.processing_started_at")
+
+            if not _has_column(inspector, "notification_logs", "last_attempt_at"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN last_attempt_at DATETIME"))
+                applied.append("notification_logs.last_attempt_at")
+
+            if not _has_column(inspector, "notification_logs", "next_attempt_at"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN next_attempt_at DATETIME"))
+                applied.append("notification_logs.next_attempt_at")
+
+            conn.execute(
+                text(
+                    """
                     UPDATE notification_logs
-                    SET dedupe_key =
-                        COALESCE(channel, '') || '|' ||
-                        COALESCE(template_key, '') || '|' ||
-                        COALESCE(destination_value, '') || '|' ||
-                        COALESCE(json_extract(payload_json, '$.receipt_code'), '')
-                    WHERE dedupe_key IS NULL
-                """))
+                       SET dedupe_key =
+                           COALESCE(channel, '') || '|' ||
+                           COALESCE(template_key, '') || '|' ||
+                           COALESCE(destination_value, '') || '|' ||
+                           COALESCE(json_extract(payload_json, '$.receipt_code'), '')
+                     WHERE dedupe_key IS NULL
+                        OR TRIM(dedupe_key) = ''
+                    """
+                )
+            )
+            applied.append("notification_logs.dedupe_key_backfill")
 
-                applied.append("notification_logs.dedupe_key_backfill")
+            conn.execute(
+                text(
+                    """
+                    UPDATE notification_logs
+                       SET next_attempt_at = COALESCE(next_attempt_at, created_at, CURRENT_TIMESTAMP)
+                     WHERE status IN ('QUEUED', 'FAILED')
+                    """
+                )
+            )
+            applied.append("notification_logs.next_attempt_at_backfill")
 
-            # =========================
-            # 🆕 UNIQUE INDEX (ANTI DUPLICAÇÃO)
-            # =========================
+            inspector = inspect(conn)
+
             if not _has_index(inspector, "notification_logs", "ux_notification_logs_dedupe"):
-                conn.execute(text("""
-                    CREATE UNIQUE INDEX ux_notification_logs_dedupe
-                    ON notification_logs (dedupe_key)
-                """))
+                conn.execute(
+                    text(
+                        """
+                        CREATE UNIQUE INDEX ux_notification_logs_dedupe
+                        ON notification_logs (dedupe_key)
+                        """
+                    )
+                )
                 applied.append("notification_logs.ux_notification_logs_dedupe")
+
+            inspector = inspect(conn)
+
+            if not _has_index(inspector, "notification_logs", "ix_notification_logs_next_attempt_at"):
+                conn.execute(
+                    text(
+                        """
+                        CREATE INDEX ix_notification_logs_next_attempt_at
+                        ON notification_logs (next_attempt_at)
+                        """
+                    )
+                )
+                applied.append("notification_logs.ix_notification_logs_next_attempt_at")
+
+            inspector = inspect(conn)
+
+            if not _has_index(inspector, "notification_logs", "ix_notification_logs_status_next_attempt_at"):
+                conn.execute(
+                    text(
+                        """
+                        CREATE INDEX ix_notification_logs_status_next_attempt_at
+                        ON notification_logs (status, next_attempt_at)
+                        """
+                    )
+                )
+                applied.append("notification_logs.ix_notification_logs_status_next_attempt_at")
+
+
+
+
 
     return {
         "ok": True,

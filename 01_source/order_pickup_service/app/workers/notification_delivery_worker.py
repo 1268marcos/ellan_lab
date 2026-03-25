@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
+from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal, init_db
@@ -23,32 +24,119 @@ from app.models import fiscal_document  # noqa
 
 MAX_ATTEMPTS = 5
 POLL_SEC = 5
+BATCH_SIZE = 20
 
 
-def run_notification_delivery_once(db: Session) -> None:
-    pending = (
-        db.query(NotificationLog)
-        .filter(NotificationLog.status.in_(["QUEUED", "FAILED"]))
+def _utcnow() -> datetime:
+    return datetime.utcnow()
+
+
+def _compute_next_attempt_at(attempt_count: int) -> datetime:
+    delays = {
+        1: 30,
+        2: 60,
+        3: 120,
+        4: 300,
+    }
+    delay_sec = delays.get(attempt_count, 600)
+    return _utcnow() + timedelta(seconds=delay_sec)
+
+
+def _find_candidate_ids(db: Session) -> list[int]:
+    now = _utcnow()
+
+    rows = (
+        db.query(NotificationLog.id)
+        .filter(
+            NotificationLog.channel == "EMAIL",
+            NotificationLog.template_key == "RECEIPT",
+            or_(
+                NotificationLog.status == "QUEUED",
+                and_(
+                    NotificationLog.status == "FAILED",
+                    NotificationLog.next_attempt_at.is_not(None),
+                    NotificationLog.next_attempt_at <= now,
+                ),
+            ),
+        )
         .order_by(NotificationLog.created_at.asc(), NotificationLog.id.asc())
-        .limit(20)
+        .limit(BATCH_SIZE)
         .all()
     )
 
-    for item in pending:
-        if item.channel != "EMAIL" or item.template_key != "RECEIPT":
+    return [row[0] for row in rows]
+
+
+def _claim_item(db: Session, notification_id: int) -> NotificationLog | None:
+    now = _utcnow()
+
+    result = db.execute(
+        update(NotificationLog)
+        .where(
+            NotificationLog.id == notification_id,
+            NotificationLog.status.in_(["QUEUED", "FAILED"]),
+        )
+        .values(
+            status="PROCESSING",
+            processing_started_at=now,
+            error_message=None,
+        )
+    )
+
+    if (result.rowcount or 0) != 1:
+        db.rollback()
+        return None
+
+    db.commit()
+    return db.get(NotificationLog, notification_id)
+
+
+def _mark_dead(db: Session, item: NotificationLog, message: str | None = None) -> None:
+    item.status = "DEAD"
+    item.error_message = message
+    item.failed_at = item.failed_at or _utcnow()
+    item.processing_started_at = None
+    item.next_attempt_at = None
+    db.commit()
+
+
+def _mark_failed(db: Session, item: NotificationLog, exc: Exception) -> None:
+    item.status = "FAILED" if (item.attempt_count or 0) < MAX_ATTEMPTS else "DEAD"
+    item.error_message = str(exc)
+    item.failed_at = _utcnow()
+    item.processing_started_at = None
+
+    if item.status == "FAILED":
+        item.next_attempt_at = _compute_next_attempt_at(item.attempt_count or 0)
+    else:
+        item.next_attempt_at = None
+
+    db.commit()
+
+
+def _mark_sent(db: Session, item: NotificationLog) -> None:
+    item.status = "SENT"
+    item.error_message = None
+    item.sent_at = _utcnow()
+    item.failed_at = None
+    item.processing_started_at = None
+    item.next_attempt_at = None
+    db.commit()
+
+
+def run_notification_delivery_once(db: Session) -> None:
+    candidate_ids = _find_candidate_ids(db)
+
+    for notification_id in candidate_ids:
+        item = _claim_item(db, notification_id)
+        if item is None:
             continue
 
         if (item.attempt_count or 0) >= MAX_ATTEMPTS:
-            item.status = "DEAD"
-            item.failed_at = item.failed_at or datetime.utcnow()
-            db.commit()
+            _mark_dead(db, item, "MAX_ATTEMPTS_EXCEEDED")
             continue
 
         try:
-            # 🔒 MARCA COMO PROCESSANDO (lock lógico)
-            item.status = "PROCESSING"
-            db.commit()
-
             payload = item.payload_json or {}
             receipt_code = payload.get("receipt_code")
             order_id = payload.get("order_id") or item.order_id
@@ -60,8 +148,9 @@ def run_notification_delivery_once(db: Session) -> None:
             if not receipt_code:
                 raise RuntimeError("receipt_code ausente em payload_json")
 
-            # incrementa UMA vez por tentativa real
             item.attempt_count = (item.attempt_count or 0) + 1
+            item.last_attempt_at = _utcnow()
+            db.commit()
 
             send_receipt_email(
                 to_email=to_email,
@@ -69,25 +158,15 @@ def run_notification_delivery_once(db: Session) -> None:
                 order_id=order_id,
             )
 
-            item.status = "SENT"
-            item.error_message = None
-            item.sent_at = datetime.utcnow()
-            item.failed_at = None
-            db.commit()
+            _mark_sent(db, item)
 
         except Exception as exc:
-            item.status = "FAILED" if item.attempt_count < MAX_ATTEMPTS else "DEAD"
-            item.error_message = str(exc)
-            item.failed_at = datetime.utcnow()
-            db.commit()
+            _mark_failed(db, item, exc)
 
 
 def main() -> None:
-    # worker autossuficiente:
-    # cria tabelas ausentes, roda migration se habilitada
-    # e valida schema antes de entrar no loop.
     init_db()
-    
+
     while True:
         db = SessionLocal()
         try:

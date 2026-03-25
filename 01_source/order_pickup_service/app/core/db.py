@@ -37,14 +37,6 @@ def _get_indexes_set(inspector, table_name: str) -> set[str]:
 
 
 def _assert_required_schema() -> None:
-    """
-    Valida o schema mínimo esperado pela versão atual do serviço.
-
-    IMPORTANTE:
-    - create_all() não faz migração de colunas novas em tabelas já existentes
-    - create_all() não deve ser tratado como substituto de migration
-    - se o schema estiver defasado, o serviço deve falhar no startup
-    """
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
 
@@ -148,6 +140,9 @@ def _assert_required_schema() -> None:
         "attempt_count",
         "error_message",
         "payload_json",
+        "processing_started_at",
+        "last_attempt_at",
+        "next_attempt_at",
         "created_at",
         "sent_at",
         "delivered_at",
@@ -195,11 +190,9 @@ def _assert_required_schema() -> None:
             + ", ".join(missing_notification_logs_columns)
         )
 
-    # Nesta fase validamos índices apenas para tabelas cujo nome do índice
-    # é criado explicitamente por migration. Para users/auth_sessions/notification_logs,
-    # create_all() pode gerar nomes diferentes dependendo do banco/dialeto/modelo.
     orders_indexes = _get_indexes_set(inspector, "orders")
     allocations_indexes = _get_indexes_set(inspector, "allocations")
+    notification_logs_indexes = _get_indexes_set(inspector, "notification_logs")
 
     required_orders_indexes = {
         "idx_orders_status",
@@ -220,6 +213,12 @@ def _assert_required_schema() -> None:
         "idx_allocations_created_at",
     }
 
+    required_notification_logs_indexes = {
+        "ux_notification_logs_dedupe",
+        "ix_notification_logs_next_attempt_at",
+        "ix_notification_logs_status_next_attempt_at",
+    }
+
     missing_orders_indexes = sorted(required_orders_indexes - orders_indexes)
     if missing_orders_indexes:
         raise RuntimeError(
@@ -232,6 +231,15 @@ def _assert_required_schema() -> None:
         raise RuntimeError(
             "Schema incompatível em allocations: índices ausentes: "
             + ", ".join(missing_allocations_indexes)
+        )
+
+    missing_notification_logs_indexes = sorted(
+        required_notification_logs_indexes - notification_logs_indexes
+    )
+    if missing_notification_logs_indexes:
+        raise RuntimeError(
+            "Schema incompatível em notification_logs: índices ausentes: "
+            + ", ".join(missing_notification_logs_indexes)
         )
 
 
@@ -255,15 +263,6 @@ def _run_startup_migrations_if_enabled() -> None:
 
 
 def init_db():
-    """
-    Bootstrap inicial + migração opcional + validação de schema.
-
-    Regras:
-    - create_all() serve apenas para criação inicial
-    - tabelas já existentes NÃO são migradas por create_all()
-    - migração automática só roda se RUN_DB_MIGRATIONS_ON_STARTUP=true
-    - após bootstrap/migração, validamos o schema exigido pela versão atual do serviço
-    """
     from app.models import allocation  # noqa: F401
     from app.models import credit  # noqa: F401
     from app.models import kiosk_antifraud_event  # noqa: F401

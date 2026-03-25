@@ -15,7 +15,6 @@ class NotificationLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
 
-    # users.id no seu projeto é textual/string
     user_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id"),
         nullable=True,
@@ -27,13 +26,10 @@ class NotificationLog(Base):
     channel: Mapped[str] = mapped_column(String(32), nullable=False)
     template_key: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    # exibido/auditável
     destination_masked: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    # real para entrega
     destination_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    dedupe_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    dedupe_key: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
 
     provider_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -44,6 +40,10 @@ class NotificationLog(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     payload_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
