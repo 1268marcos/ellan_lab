@@ -20,7 +20,10 @@ def _build_receipt_email_html(*, receipt_code: str, order_id: str) -> str:
         <p>Seu comprovante foi gerado com sucesso.</p>
         <p><strong>Pedido:</strong> {order_id}</p>
         <p><strong>Código:</strong> {receipt_code}</p>
-        <p>Guarde este código para consulta posterior do comprovante.</p>
+        <p>Guarde este código para consulta posterior do comprovante em nosso site.</p>
+        <hr/>
+        <p>Se você não solicitou este código, pode ignorar com segurança este e-mail.</p>
+        <p>Outra pessoa pode ter digitado seu endereço de e-mail por engano.</p>
         <hr/>
         <small>ELLAN LAB LOCKER</small>
     </div>

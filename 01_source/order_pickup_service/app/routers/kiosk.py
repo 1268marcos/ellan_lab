@@ -54,7 +54,8 @@ from app.services.pickup_payment_fulfillment_service import fulfill_payment_post
 
 from app.models.fiscal_document import FiscalDocument
 
-from app.services.email_notification_service import send_receipt_email
+# from app.services.email_notification_service import send_receipt_email # Envio direto
+from app.services.notification_dispatch_service import queue_receipt_email
 
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
@@ -764,6 +765,7 @@ def kiosk_identify_customer(
     db.commit()
 
     # 🔥 envio de email (se disponível)
+
     email_delivery_message = None
 
     if payload.email:
@@ -779,25 +781,26 @@ def kiosk_identify_customer(
                     "Email registrado, mas o comprovante fiscal ainda não está disponível."
                 )
             else:
-                send_receipt_email(
-                    to_email=payload.email.strip().lower(),
-                    receipt_code=fiscal.receipt_code,
+                queue_receipt_email(
+                    db=db,
                     order_id=order.id,
+                    email=payload.email.strip().lower(),
+                    receipt_code=fiscal.receipt_code,
                 )
                 email_delivery_message = (
-                    f"Comprovante fiscal enviado com sucesso para {payload.email.strip().lower()}."
+                    f"Email registrado. O comprovante será enviado em instantes para {payload.email.strip().lower()}."
                 )
 
         except Exception as e:
             logger.exception(
-                "kiosk_email_send_failed",
+                "kiosk_email_queue_failed",
                 extra={
                     "order_id": order.id,
                     "email": payload.email,
                     "error": str(e),
                 },
             )
-            email_delivery_message = f"Erro ao enviar email: {str(e)}"
+            email_delivery_message = f"Erro ao registrar envio de email: {str(e)}"
 
     if payload.email and email_delivery_message:
         return KioskIdentifyOut(
@@ -807,6 +810,7 @@ def kiosk_identify_customer(
 
     return KioskIdentifyOut(
         ok=True,
-        # message="Dados registrados com sucesso. Recibo/benefícios poderão ser associados a este pedido.",
-        message=email_delivery_message,
+        message="Dados registrados com sucesso.",
     )
+
+    

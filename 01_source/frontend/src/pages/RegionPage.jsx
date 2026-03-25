@@ -1844,6 +1844,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           setSendingEmail(false);
           setEmailModalError("");
           setEmailModalSuccess("");
+          setIdentifyResp(null);
         }}
         onSubmit={handleSendReceiptEmail}
         receiptCode={receiptCode}

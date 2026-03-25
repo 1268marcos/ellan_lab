@@ -537,6 +537,27 @@ services:
       - locker-network
 
 
+  # =========================
+  # ORDER PICKUP SERVICE NOTIFICATION DELIVERY WORKER - email
+  # =========================
+  notification_delivery_worker:
+    build:
+      context: ../01_source/order_pickup_service
+    container_name: notification_delivery_worker
+    command: ["python", "-m", "app.workers.notification_delivery_worker"]
+    restart: unless-stopped
+    env_file:
+      - ../01_source/order_pickup_service/.env
+    environment:
+      - TZ=America/Sao_Paulo
+      - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+    depends_on:
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
 
 
 

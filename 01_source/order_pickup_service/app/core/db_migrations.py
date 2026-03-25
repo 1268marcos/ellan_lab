@@ -986,6 +986,27 @@ def migrate_order_pickup_schema() -> dict:
 
             applied.append("fiscal_documents.create_table")
 
+
+        # =========================
+        # NOTIFICATION LOGS
+        # =========================
+        inspector = inspect(conn)
+
+        if _has_table(inspector, "notification_logs"):
+            if not _has_column(inspector, "notification_logs", "destination_value"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN destination_value VARCHAR(255)"))
+                applied.append("notification_logs.destination_value")
+
+            if not _has_column(inspector, "notification_logs", "attempt_count"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN attempt_count INTEGER"))
+                conn.execute(text("UPDATE notification_logs SET attempt_count = 0 WHERE attempt_count IS NULL"))
+                applied.append("notification_logs.attempt_count")
+
+            if not _has_column(inspector, "notification_logs", "payload_json"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN payload_json TEXT"))
+                applied.append("notification_logs.payload_json")
+
+
     return {
         "ok": True,
         "applied": applied,
