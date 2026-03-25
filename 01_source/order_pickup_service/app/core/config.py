@@ -251,6 +251,22 @@ class Settings(BaseSettings):
         alias="NODE_ENV",
     )
 
+    # =========================================================
+    # Email / SMTP
+    # =========================================================
+
+    email_enabled: bool = Field(default=False, alias="EMAIL_ENABLED")
+
+    email_host: str = Field(default="", alias="EMAIL_HOST")
+    email_port: int = Field(default=465, alias="EMAIL_PORT")
+    email_secure: bool = Field(default=True, alias="EMAIL_SECURE")
+
+    email_username: str = Field(default="", alias="EMAIL_USERNAME")
+    email_password: str = Field(default="", alias="EMAIL_PASSWORD")
+
+    email_sender: str = Field(default="", alias="EMAIL_SENDER")
+    email_from_name: str = Field(default="ELLAN LAB", alias="EMAIL_FROM_NAME")
+
 
 @lru_cache
 def get_settings() -> Settings:

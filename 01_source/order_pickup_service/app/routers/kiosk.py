@@ -54,6 +54,8 @@ from app.services.pickup_payment_fulfillment_service import fulfill_payment_post
 
 from app.models.fiscal_document import FiscalDocument
 
+from app.services.email_notification_service import send_receipt_email
+
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
 
@@ -761,7 +763,50 @@ def kiosk_identify_customer(
 
     db.commit()
 
+    # 🔥 envio de email (se disponível)
+    email_delivery_message = None
+
+    if payload.email:
+        try:
+            fiscal = (
+                db.query(FiscalDocument)
+                .filter(FiscalDocument.order_id == order.id)
+                .first()
+            )
+
+            if not fiscal or not fiscal.receipt_code:
+                email_delivery_message = (
+                    "Email registrado, mas o comprovante fiscal ainda não está disponível."
+                )
+            else:
+                send_receipt_email(
+                    to_email=payload.email.strip().lower(),
+                    receipt_code=fiscal.receipt_code,
+                    order_id=order.id,
+                )
+                email_delivery_message = (
+                    f"Comprovante fiscal enviado com sucesso para {payload.email.strip().lower()}."
+                )
+
+        except Exception as e:
+            logger.exception(
+                "kiosk_email_send_failed",
+                extra={
+                    "order_id": order.id,
+                    "email": payload.email,
+                    "error": str(e),
+                },
+            )
+            email_delivery_message = f"Erro ao enviar email: {str(e)}"
+
+    if payload.email and email_delivery_message:
+        return KioskIdentifyOut(
+            ok=True,
+            message=email_delivery_message,
+        )
+
     return KioskIdentifyOut(
         ok=True,
-        message="Dados registrados. Recibo/benefícios poderão ser associados a este pedido.",
+        # message="Dados registrados com sucesso. Recibo/benefícios poderão ser associados a este pedido.",
+        message=email_delivery_message,
     )

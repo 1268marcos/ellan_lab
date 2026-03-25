@@ -4,6 +4,8 @@ import { QRCodeCanvas } from "qrcode.react";
 
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
+import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
+
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
@@ -396,6 +398,68 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const allowedPaymentMethods = selectedLocker?.payment_methods || [];
 
   const receiptCode = extractReceiptCodeFromPaymentResp(paymentResp);
+
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailModalSuccess, setEmailModalSuccess] = useState("");
+  const [emailModalError, setEmailModalError] = useState("");
+
+  // Adicione esta função para lidar com o envio do email
+  const handleSendReceiptEmail = async (email) => {
+    if (!currentOrderId) {
+      setEmailModalError("Pedido não encontrado.");
+      setEmailModalSuccess("");
+      return;
+    }
+
+    setSendingEmail(true);
+    setErr(null);
+    setIdentifyResp(null);
+    setEmailModalError("");
+    setEmailModalSuccess("");
+
+    try {
+      const res = await fetch(identifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: currentOrderId,
+          phone: null,
+          email: email,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.detail
+            ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail))
+            : JSON.stringify(data)
+        );
+      }
+
+      const successMessage =
+        data?.message || `Comprovante fiscal enviado com sucesso para ${email}.`;
+
+      setIdentifyResp(data);
+      setEmailModalSuccess(successMessage);
+      setEmailModalError("");
+    } catch (e) {
+      const msg = String(e?.message || e);
+      setEmailModalError(msg);
+      setEmailModalSuccess("");
+      setErr(msg);
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+
+
+
 
   const displayedPendingContext = useMemo(
     () => resolveDisplayedPendingContext(pendingPaymentContext, createResp, paymentMethod),
@@ -1545,7 +1609,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                       {printModalOpen ? "Imprimindo..." : "Imprimir comprovante"}
                     </button>
 
-                    <button
+                    {/*<button
                       type="button"
                       onClick={() =>
                         setIdentifyResp({
@@ -1557,7 +1621,22 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                       style={buttonSecondaryStyle}
                     >
                       Receber por email/SMS
+                    </button> */}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailModalError("");
+                        setEmailModalSuccess("");
+                        setEmailModalOpen(true);
+                      }}
+                      style={buttonSecondaryStyle}
+                    >
+                      Receber por email/SMS
                     </button>
+
+
+
 
                     <button
                       type="button"
@@ -1755,6 +1834,24 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           </div>
         </div>
       ) : null}
+
+
+      {/* Modal para envio de email do comprovante */}
+      <EmailReceiptModal
+        isOpen={emailModalOpen}
+        onClose={() => {
+          setEmailModalOpen(false);
+          setSendingEmail(false);
+          setEmailModalError("");
+          setEmailModalSuccess("");
+        }}
+        onSubmit={handleSendReceiptEmail}
+        receiptCode={receiptCode}
+        orderId={currentOrderId}
+        isLoading={sendingEmail}
+        successMessage={emailModalSuccess}
+        errorMessage={emailModalError}
+      />
 
       {err && <pre style={errorBoxStyle}>{err}</pre>}
     </div>

@@ -5,12 +5,12 @@ from email.mime.text import MIMEText
 
 
 def send_email(*, to_email: str, subject: str, html: str) -> None:
-    host = os.getenv("HOST")
+    host = os.getenv("EMAIL_HOST", "smtp.hostinger.com")
     port = int(os.getenv("EMAIL_PORT", "465"))
     user = os.getenv("EMAIL_SENDER")
-    password = os.getenv("EMAIL_PASS")
-    secure = os.getenv("SECURE", "true").lower() == "true"
-    email_from_name = os.getenv("EMAIL_FROM", "ELLAN Lab Locker")
+    password = os.getenv("EMAIL_PASSWORD")
+    secure = os.getenv("EMAIL_SECURE", "true").lower() == "true"
+    email_from_name = os.getenv("EMAIL_FROM_NAME", "ELLAN LAB")
 
     msg = MIMEMultipart()
     msg["From"] = f'"{email_from_name}" <{user}>'
