@@ -31,6 +31,22 @@ def queue_receipt_email(
 ) -> NotificationLog:
     normalized_email = str(email or "").strip().lower()
 
+    # 🔒 IDEMPOTÊNCIA FORTE
+    existing = (
+        db.query(NotificationLog)
+        .filter(
+            NotificationLog.channel == "EMAIL",
+            NotificationLog.template_key == "RECEIPT",
+            NotificationLog.destination_value == normalized_email,
+            NotificationLog.payload_json["receipt_code"].as_string() == receipt_code,
+            NotificationLog.status.in_(["QUEUED", "PROCESSING", "SENT"]),
+        )
+        .first()
+    )
+
+    if existing:
+        return existing
+
     log = NotificationLog(
         user_id=None,
         order_id=order_id,

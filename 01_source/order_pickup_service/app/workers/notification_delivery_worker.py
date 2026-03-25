@@ -10,8 +10,7 @@ from app.core.db import SessionLocal
 from app.models.notification_log import NotificationLog
 from app.services.email_notification_service import send_receipt_email
 
-# IMPORTAR TODOS OS MODELS PARA REGISTRAR NO SQLALCHEMY
-
+# IMPORTAR TODOS OS MODELS
 from app.models import user  # noqa
 from app.models import order  # noqa
 from app.models import allocation  # noqa
@@ -39,6 +38,10 @@ def run_notification_delivery_once(db: Session) -> None:
         if item.channel != "EMAIL" or item.template_key != "RECEIPT":
             continue
 
+        # 🔒 MARCA COMO PROCESSANDO (lock lógico)
+        item.status = "PROCESSING"
+        db.commit()
+
         if (item.attempt_count or 0) >= MAX_ATTEMPTS:
             item.status = "DEAD"
             item.failed_at = item.failed_at or datetime.utcnow()
@@ -57,6 +60,7 @@ def run_notification_delivery_once(db: Session) -> None:
             if not receipt_code:
                 raise RuntimeError("receipt_code ausente em payload_json")
 
+            # incrementa UMA vez
             item.attempt_count = (item.attempt_count or 0) + 1
 
             send_receipt_email(
@@ -71,7 +75,6 @@ def run_notification_delivery_once(db: Session) -> None:
             db.commit()
 
         except Exception as exc:
-            item.attempt_count = (item.attempt_count or 0) + 1
             item.status = "FAILED" if item.attempt_count < MAX_ATTEMPTS else "DEAD"
             item.error_message = str(exc)
             item.failed_at = datetime.utcnow()
