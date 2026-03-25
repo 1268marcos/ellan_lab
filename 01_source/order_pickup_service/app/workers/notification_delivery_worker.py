@@ -25,6 +25,7 @@ from app.models import fiscal_document  # noqa
 MAX_ATTEMPTS = 5
 POLL_SEC = 5
 BATCH_SIZE = 20
+PROCESSING_STALE_TIMEOUT_SEC = 180
 
 
 def _utcnow() -> datetime:
@@ -40,6 +41,42 @@ def _compute_next_attempt_at(attempt_count: int) -> datetime:
     }
     delay_sec = delays.get(attempt_count, 600)
     return _utcnow() + timedelta(seconds=delay_sec)
+
+
+def _recover_stale_processing_items(db: Session) -> None:
+    now = _utcnow()
+    stale_before = now - timedelta(seconds=PROCESSING_STALE_TIMEOUT_SEC)
+
+    stale_items = (
+        db.query(NotificationLog)
+        .filter(
+            NotificationLog.channel == "EMAIL",
+            NotificationLog.template_key == "RECEIPT",
+            NotificationLog.status == "PROCESSING",
+            NotificationLog.processing_started_at.is_not(None),
+            NotificationLog.processing_started_at <= stale_before,
+        )
+        .order_by(NotificationLog.processing_started_at.asc(), NotificationLog.id.asc())
+        .limit(BATCH_SIZE)
+        .all()
+    )
+
+    for item in stale_items:
+        if (item.attempt_count or 0) >= MAX_ATTEMPTS:
+            item.status = "DEAD"
+            item.error_message = "PROCESSING_STALE_TIMEOUT_MAX_ATTEMPTS"
+            item.failed_at = now
+            item.processing_started_at = None
+            item.next_attempt_at = None
+            db.commit()
+            continue
+
+        item.status = "FAILED"
+        item.error_message = "PROCESSING_STALE_TIMEOUT"
+        item.failed_at = now
+        item.processing_started_at = None
+        item.next_attempt_at = now
+        db.commit()
 
 
 def _find_candidate_ids(db: Session) -> list[int]:
@@ -125,6 +162,8 @@ def _mark_sent(db: Session, item: NotificationLog) -> None:
 
 
 def run_notification_delivery_once(db: Session) -> None:
+    _recover_stale_processing_items(db)
+
     candidate_ids = _find_candidate_ids(db)
 
     for notification_id in candidate_ids:
