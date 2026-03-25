@@ -6,7 +6,7 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from app.core.db import SessionLocal
+from app.core.db import SessionLocal, init_db
 from app.models.notification_log import NotificationLog
 from app.services.email_notification_service import send_receipt_email
 
@@ -38,10 +38,6 @@ def run_notification_delivery_once(db: Session) -> None:
         if item.channel != "EMAIL" or item.template_key != "RECEIPT":
             continue
 
-        # 🔒 MARCA COMO PROCESSANDO (lock lógico)
-        item.status = "PROCESSING"
-        db.commit()
-
         if (item.attempt_count or 0) >= MAX_ATTEMPTS:
             item.status = "DEAD"
             item.failed_at = item.failed_at or datetime.utcnow()
@@ -49,6 +45,10 @@ def run_notification_delivery_once(db: Session) -> None:
             continue
 
         try:
+            # 🔒 MARCA COMO PROCESSANDO (lock lógico)
+            item.status = "PROCESSING"
+            db.commit()
+
             payload = item.payload_json or {}
             receipt_code = payload.get("receipt_code")
             order_id = payload.get("order_id") or item.order_id
@@ -60,7 +60,7 @@ def run_notification_delivery_once(db: Session) -> None:
             if not receipt_code:
                 raise RuntimeError("receipt_code ausente em payload_json")
 
-            # incrementa UMA vez
+            # incrementa UMA vez por tentativa real
             item.attempt_count = (item.attempt_count or 0) + 1
 
             send_receipt_email(
@@ -72,6 +72,7 @@ def run_notification_delivery_once(db: Session) -> None:
             item.status = "SENT"
             item.error_message = None
             item.sent_at = datetime.utcnow()
+            item.failed_at = None
             db.commit()
 
         except Exception as exc:
@@ -82,6 +83,11 @@ def run_notification_delivery_once(db: Session) -> None:
 
 
 def main() -> None:
+    # worker autossuficiente:
+    # cria tabelas ausentes, roda migration se habilitada
+    # e valida schema antes de entrar no loop.
+    init_db()
+    
     while True:
         db = SessionLocal()
         try:
