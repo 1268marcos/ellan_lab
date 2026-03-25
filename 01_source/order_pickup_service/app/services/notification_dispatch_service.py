@@ -31,6 +31,9 @@ def queue_receipt_email(
 ) -> NotificationLog:
     normalized_email = str(email or "").strip().lower()
 
+    # 🔑 Gerar chave de deduplicação
+    dedupe_key = f"EMAIL|RECEIPT|{normalized_email}|{receipt_code}"
+
     # 🔒 IDEMPOTÊNCIA FORTE
     existing = (
         db.query(NotificationLog)
@@ -63,6 +66,7 @@ def queue_receipt_email(
             "receipt_code": receipt_code,
             "order_id": order_id,
         },
+        dedupe_key=dedupe_key,  # 🆕 Adicionando chave de deduplicação
         created_at=datetime.utcnow(),
         sent_at=None,
         delivered_at=None,

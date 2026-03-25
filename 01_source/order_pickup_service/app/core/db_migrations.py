@@ -993,6 +993,7 @@ def migrate_order_pickup_schema() -> dict:
         inspector = inspect(conn)
 
         if _has_table(inspector, "notification_logs"):
+
             if not _has_column(inspector, "notification_logs", "destination_value"):
                 conn.execute(text("ALTER TABLE notification_logs ADD COLUMN destination_value VARCHAR(255)"))
                 applied.append("notification_logs.destination_value")
@@ -1006,6 +1007,35 @@ def migrate_order_pickup_schema() -> dict:
                 conn.execute(text("ALTER TABLE notification_logs ADD COLUMN payload_json TEXT"))
                 applied.append("notification_logs.payload_json")
 
+            # =========================
+            # 🆕 DEDUPE KEY (PRODUÇÃO)
+            # =========================
+            if not _has_column(inspector, "notification_logs", "dedupe_key"):
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN dedupe_key VARCHAR(255)"))
+                applied.append("notification_logs.dedupe_key")
+
+                # backfill seguro
+                conn.execute(text("""
+                    UPDATE notification_logs
+                    SET dedupe_key =
+                        COALESCE(channel, '') || '|' ||
+                        COALESCE(template_key, '') || '|' ||
+                        COALESCE(destination_value, '') || '|' ||
+                        COALESCE(json_extract(payload_json, '$.receipt_code'), '')
+                    WHERE dedupe_key IS NULL
+                """))
+
+                applied.append("notification_logs.dedupe_key_backfill")
+
+            # =========================
+            # 🆕 UNIQUE INDEX (ANTI DUPLICAÇÃO)
+            # =========================
+            if not _has_index(inspector, "notification_logs", "ux_notification_logs_dedupe"):
+                conn.execute(text("""
+                    CREATE UNIQUE INDEX ux_notification_logs_dedupe
+                    ON notification_logs (dedupe_key)
+                """))
+                applied.append("notification_logs.ux_notification_logs_dedupe")
 
     return {
         "ok": True,

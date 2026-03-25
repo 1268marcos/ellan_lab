@@ -33,6 +33,8 @@ class NotificationLog(Base):
     # real para entrega
     destination_value: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    dedupe_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     provider_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 

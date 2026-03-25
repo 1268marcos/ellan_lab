@@ -141,6 +141,7 @@ def _assert_required_schema() -> None:
         "template_key",
         "destination_masked",
         "destination_value",
+        "dedupe_key",
         "provider_name",
         "provider_message_id",
         "status",
