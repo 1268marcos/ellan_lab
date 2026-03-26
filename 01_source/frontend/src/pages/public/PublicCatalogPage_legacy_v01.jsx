@@ -1,20 +1,20 @@
-// 01_source/frontend/src/pages/public/PublicCheckouPage.jsx
+// 01_source/frontend/src/pages/public/PublicCatalogPage.jsx
 import React from "react";
 import { Link } from "react-router-dom";
 
-export default function PublicCheckoutPage() {
+export default function PublicCatalogPage() {
   return (
     <main style={pageStyle}>
       <div style={containerStyle}>
         <section style={heroCardStyle}>
-          <span style={eyebrowStyle}>Checkout público</span>
+          <span style={eyebrowStyle}>Catálogo público</span>
 
-          <h1 style={titleStyle}>Checkout</h1>
+          <h1 style={titleStyle}>Catálogo</h1>
 
           <p style={subtitleStyle}>
-            A etapa pública de checkout ainda está em evolução. Esta tela
-            permanece temporária enquanto o fluxo oficial de compra online é
-            concluído com catálogo real, pagamento e geração de retirada.
+            O catálogo público completo ainda está em evolução. Esta tela
+            permanece como etapa temporária enquanto a experiência oficial de
+            compra online é consolidada.
           </p>
 
           <div style={actionsStyle}>
@@ -22,12 +22,12 @@ export default function PublicCheckoutPage() {
               Voltar ao início
             </Link>
 
-            <Link to="/comprar" style={secondaryActionStyle}>
-              Ir para catálogo
+            <Link to="/login" style={secondaryActionStyle}>
+              Entrar
             </Link>
 
-            <Link to="/login" style={primaryActionStyle}>
-              Entrar
+            <Link to="/cadastro" style={primaryActionStyle}>
+              Criar conta
             </Link>
           </div>
         </section>
@@ -36,23 +36,24 @@ export default function PublicCheckoutPage() {
           <article style={infoCardStyle}>
             <h2 style={cardTitleStyle}>Situação atual</h2>
             <p style={cardTextStyle}>
-              Esta tela ainda não executa o checkout completo do canal público.
+              Esta página ainda está em preparação e será conectada ao fluxo
+              oficial de produtos e checkout público.
             </p>
           </article>
 
           <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>O que falta integrar</h2>
+            <h2 style={cardTitleStyle}>O que já existe</h2>
             <p style={cardTextStyle}>
-              Seleção final de produto, confirmação do pedido, pagamento e
-              disponibilização dos dados de retirada.
+              Login, cadastro, autenticação, pedidos do usuário e detalhe do
+              pedido já estão sendo organizados no frontend.
             </p>
           </article>
 
           <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Próxima evolução</h2>
+            <h2 style={cardTitleStyle}>Próxima etapa</h2>
             <p style={cardTextStyle}>
-              A próxima etapa desta área é conectar o checkout ao catálogo real
-              e ao fluxo público de autenticação e pedidos.
+              A próxima evolução desta área é apresentar produtos reais,
+              seleção de itens e continuidade para checkout.
             </p>
           </article>
         </section>

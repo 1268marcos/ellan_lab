@@ -1,3 +1,4 @@
+// 01_source/frontend/src/pages/LockerDashboard.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";

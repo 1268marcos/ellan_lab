@@ -3,13 +3,11 @@ import React from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-// Importações existentes
 import LockerDashboard from "./pages/LockerDashboard.jsx";
 import RegionPage from "./pages/RegionPage.jsx";
 import DevLockerResetPage from "./pages/DevLockerResetPage.jsx";
 import PickupHealthPage from "./pages/PickupHealthPage.jsx";
 
-// Públicas
 import PublicLandingPage from "./pages/public/PublicLandingPage.jsx";
 import PublicLoginPage from "./pages/public/PublicLoginPage.jsx";
 import PublicRegisterPage from "./pages/public/PublicRegisterPage.jsx";
@@ -18,10 +16,7 @@ import PublicCheckoutPage from "./pages/public/PublicCheckoutPage.jsx";
 import PublicMyOrdersPage from "./pages/public/PublicMyOrdersPage.jsx";
 import PublicOrderDetailPage from "./pages/public/PublicOrderDetailPage.jsx";
 import PublicFiscalSearchPage from "./pages/public/PublicFiscalSearchPage.jsx";
-
-/* =========================================================
-   HELPERS
-========================================================= */
+import PublicRegionHubPage from "./pages/public/PublicRegionHubPage.jsx";
 
 function initialsFromName(nameOrEmail) {
   const raw = (nameOrEmail || "").trim();
@@ -35,9 +30,9 @@ function initialsFromName(nameOrEmail) {
   return raw.slice(0, 2).toUpperCase();
 }
 
-/* =========================================================
-   NAVBAR
-========================================================= */
+function isOpsEnabled() {
+  return String(import.meta.env.VITE_ENABLE_OPS_ROUTES || "").toLowerCase() === "true";
+}
 
 function TopNav() {
   const location = useLocation();
@@ -46,6 +41,7 @@ function TopNav() {
 
   const fullName = user?.full_name || user?.email || "";
   const initials = initialsFromName(fullName);
+  const opsEnabled = isOpsEnabled();
 
   const handleLogout = () => {
     logout();
@@ -53,7 +49,7 @@ function TopNav() {
   };
 
   const getNavBackground = () => {
-    if (location.pathname.startsWith("/dev")) {
+    if (location.pathname.startsWith("/ops")) {
       return "linear-gradient(135deg, rgba(138,35,35,0.95), rgba(70,10,10,0.95))";
     }
     if (location.pathname.startsWith("/pt")) {
@@ -77,10 +73,11 @@ function TopNav() {
         borderBottom: "1px solid rgba(255,255,255,0.1)",
       }}
     >
-      {/* ÁREA PÚBLICA */}
       <Link style={linkStyle} to="/">Início</Link>
       <Link style={linkStyle} to="/comprar">Comprar</Link>
       <Link style={linkStyle} to="/comprovante">Comprovante</Link>
+      <Link style={linkStyle} to="/sp">SP</Link>
+      <Link style={linkStyle} to="/pt">PT</Link>
 
       {!loading && isAuthenticated && (
         <Link style={linkStyle} to="/meus-pedidos">
@@ -88,20 +85,20 @@ function TopNav() {
         </Link>
       )}
 
-      {/* SEPARADOR */}
-      <span style={separatorStyle}>|</span>
-
-      {/* DEV / REGIONAL */}
-      <Link style={linkStyle} to="/sp">/sp</Link>
-      <Link style={linkStyle} to="/pt">/pt</Link>
-      <Link style={linkStyle} to="/sp/kiosk">/sp/kiosk</Link>
-      <Link style={linkStyle} to="/pt/kiosk">/pt/kiosk</Link>
-      <Link style={devLinkStyle} to="/dev/reset">/dev/reset</Link>
-      <Link style={devLinkStyle} to="/analytics/pickup">/analytics/pickup</Link>
+      {opsEnabled && opsEnabled ? (
+        <>
+          <span style={separatorStyle}>|</span>
+          <Link style={devLinkStyle} to="/ops/sp">ops /sp</Link>
+          <Link style={devLinkStyle} to="/ops/pt">ops /pt</Link>
+          <Link style={devLinkStyle} to="/ops/sp/kiosk">ops /sp/kiosk</Link>
+          <Link style={devLinkStyle} to="/ops/pt/kiosk">ops /pt/kiosk</Link>
+          <Link style={devLinkStyle} to="/ops/dev/reset">ops /dev/reset</Link>
+          <Link style={devLinkStyle} to="/ops/analytics/pickup">ops /analytics/pickup</Link>
+        </>
+      ) : null}
 
       <div style={{ flex: 1 }} />
 
-      {/* AUTH */}
       {!loading && !isAuthenticated && (
         <>
           <Link style={linkStyle} to="/login">Entrar</Link>
@@ -137,10 +134,6 @@ function TopNav() {
   );
 }
 
-/* =========================================================
-   ROUTE PROTECTION
-========================================================= */
-
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
 
@@ -155,9 +148,12 @@ function PrivateRoute({ children }) {
   return children;
 }
 
-/* =========================================================
-   APP
-========================================================= */
+function OpsRoute({ children }) {
+  if (!isOpsEnabled()) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
 
 function AppContent() {
   return (
@@ -165,7 +161,6 @@ function AppContent() {
       <TopNav />
 
       <Routes>
-        {/* PÚBLICO */}
         <Route path="/" element={<PublicLandingPage />} />
         <Route path="/login" element={<PublicLoginPage />} />
         <Route path="/cadastro" element={<PublicRegisterPage />} />
@@ -173,7 +168,9 @@ function AppContent() {
         <Route path="/checkout" element={<PublicCheckoutPage />} />
         <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
 
-        {/* PROTEGIDO */}
+        <Route path="/sp" element={<PublicRegionHubPage region="SP" />} />
+        <Route path="/pt" element={<PublicRegionHubPage region="PT" />} />
+
         <Route
           path="/meus-pedidos"
           element={
@@ -191,20 +188,55 @@ function AppContent() {
           }
         />
 
-        {/* REGIONAL */}
-        <Route path="/sp" element={<LockerDashboard region="SP" />} />
-        <Route path="/pt" element={<LockerDashboard region="PT" />} />
-        <Route path="/sp/kiosk" element={<RegionPage region="SP" mode="kiosk" />} />
-        <Route path="/pt/kiosk" element={<RegionPage region="PT" mode="kiosk" />} />
+        <Route
+          path="/ops/sp"
+          element={
+            <OpsRoute>
+              <LockerDashboard region="SP" />
+            </OpsRoute>
+          }
+        />
+        <Route
+          path="/ops/pt"
+          element={
+            <OpsRoute>
+              <LockerDashboard region="PT" />
+            </OpsRoute>
+          }
+        />
+        <Route
+          path="/ops/sp/kiosk"
+          element={
+            <OpsRoute>
+              <RegionPage region="SP" mode="kiosk" />
+            </OpsRoute>
+          }
+        />
+        <Route
+          path="/ops/pt/kiosk"
+          element={
+            <OpsRoute>
+              <RegionPage region="PT" mode="kiosk" />
+            </OpsRoute>
+          }
+        />
+        <Route
+          path="/ops/dev/reset"
+          element={
+            <OpsRoute>
+              <DevLockerResetPage />
+            </OpsRoute>
+          }
+        />
+        <Route
+          path="/ops/analytics/pickup"
+          element={
+            <OpsRoute>
+              <PickupHealthPage />
+            </OpsRoute>
+          }
+        />
 
-        {/* DEV */}
-        <Route path="/dev/reset" element={<DevLockerResetPage />} />
-
-        {/* ANALYTICS */}
-        <Route path="/analytics/pickup" element={<PickupHealthPage />} />
-
-
-        {/* 404 */}
         <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
       </Routes>
     </div>
@@ -219,10 +251,6 @@ function PageLoader() {
   );
 }
 
-/* =========================================================
-   ROOT
-========================================================= */
-
 export default function App() {
   return (
     <AuthProvider>
@@ -230,10 +258,6 @@ export default function App() {
     </AuthProvider>
   );
 }
-
-/* =========================================================
-   STYLE
-========================================================= */
 
 const linkStyle = {
   color: "white",
@@ -262,3 +286,6 @@ const logoutButtonStyle = {
   color: "white",
   cursor: "pointer",
 };
+
+
+

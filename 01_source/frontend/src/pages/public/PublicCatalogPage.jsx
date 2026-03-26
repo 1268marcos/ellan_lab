@@ -1,156 +1,118 @@
-import React from "react";
-import { Link } from "react-router-dom";
+// 01_source/frontend/src/pages/public/PublicCatalogPage.jsx
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+const API_SP = "http://localhost:8201";
+const API_PT = "http://localhost:8202";
 
 export default function PublicCatalogPage() {
+  const navigate = useNavigate();
+
+  const [region, setRegion] = useState("SP");
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const API = region === "SP" ? API_SP : API_PT;
+
+  useEffect(() => {
+    loadCatalog();
+  }, [region]);
+
+  const loadCatalog = async () => {
+    setLoading(true);
+
+    try {
+      const res = await fetch(`${API}/catalog/slots`);
+      const data = await res.json();
+
+      // 🔥 SÓ slots vendáveis
+      const valid = data.filter(
+        (i) => i.sku_id && i.is_active && i.amount_cents > 0
+      );
+
+      setItems(valid);
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao carregar catálogo");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBuy = async (item) => {
+    try {
+      const res = await fetch("http://localhost:8003/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          region,
+          // 🔥 aqui está a mudança conceitual
+          slot: item.slot,
+          locker_id: item.locker_id,
+
+          items: [
+            {
+              sku_id: item.sku_id,
+              quantity: 1,
+              unit_price_cents: item.amount_cents,
+            },
+          ],
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        alert("Erro ao criar pedido");
+        return;
+      }
+
+      navigate(`/checkout?order_id=${data.order_id}`);
+    } catch (err) {
+      console.error(err);
+      alert("Erro de conexão");
+    }
+  };
+
   return (
-    <main style={pageStyle}>
-      <div style={containerStyle}>
-        <section style={heroCardStyle}>
-          <span style={eyebrowStyle}>Catálogo público</span>
+    <main style={{ padding: 24 }}>
+      <h1>Escolha seu produto no locker</h1>
 
-          <h1 style={titleStyle}>Catálogo</h1>
+      <select value={region} onChange={(e) => setRegion(e.target.value)}>
+        <option value="SP">São Paulo</option>
+        <option value="PT">Portugal</option>
+      </select>
 
-          <p style={subtitleStyle}>
-            O catálogo público completo ainda está em evolução. Esta tela
-            permanece como etapa temporária enquanto a experiência oficial de
-            compra online é consolidada.
-          </p>
+      {loading && <p>Carregando...</p>}
 
-          <div style={actionsStyle}>
-            <Link to="/" style={secondaryActionStyle}>
-              Voltar ao início
-            </Link>
+      <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
+        {items.map((item) => (
+          <div
+            key={`${item.locker_id}-${item.slot}`}
+            style={{
+              border: "1px solid #ccc",
+              padding: 16,
+              borderRadius: 12,
+            }}
+          >
+            <h3>{item.name}</h3>
 
-            <Link to="/login" style={secondaryActionStyle}>
-              Entrar
-            </Link>
+            <p>
+              {(item.amount_cents / 100).toFixed(2)} {item.currency}
+            </p>
 
-            <Link to="/cadastro" style={primaryActionStyle}>
-              Criar conta
-            </Link>
+            <p>
+              Locker: <b>{item.locker_id}</b> | Slot: <b>{item.slot}</b>
+            </p>
+
+            <button onClick={() => handleBuy(item)}>
+              Comprar este slot
+            </button>
           </div>
-        </section>
-
-        <section style={gridStyle}>
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Situação atual</h2>
-            <p style={cardTextStyle}>
-              Esta página ainda está em preparação e será conectada ao fluxo
-              oficial de produtos e checkout público.
-            </p>
-          </article>
-
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>O que já existe</h2>
-            <p style={cardTextStyle}>
-              Login, cadastro, autenticação, pedidos do usuário e detalhe do
-              pedido já estão sendo organizados no frontend.
-            </p>
-          </article>
-
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Próxima etapa</h2>
-            <p style={cardTextStyle}>
-              A próxima evolução desta área é apresentar produtos reais,
-              seleção de itens e continuidade para checkout.
-            </p>
-          </article>
-        </section>
+        ))}
       </div>
     </main>
   );
 }
-
-const pageStyle = {
-  padding: 24,
-};
-
-const containerStyle = {
-  maxWidth: 1040,
-  margin: "0 auto",
-};
-
-const heroCardStyle = {
-  borderRadius: 20,
-  padding: 28,
-  marginBottom: 20,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const eyebrowStyle = {
-  display: "inline-block",
-  marginBottom: 10,
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#666",
-};
-
-const titleStyle = {
-  margin: 0,
-  fontSize: 34,
-  lineHeight: 1.1,
-};
-
-const subtitleStyle = {
-  marginTop: 14,
-  marginBottom: 0,
-  fontSize: 16,
-  lineHeight: 1.6,
-  color: "#555",
-  maxWidth: 700,
-};
-
-const actionsStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  marginTop: 22,
-};
-
-const primaryActionStyle = {
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid #111827",
-  background: "#111827",
-  color: "white",
-  fontWeight: 700,
-};
-
-const secondaryActionStyle = {
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid #d1d5db",
-  background: "#f9fafb",
-  color: "#111827",
-  fontWeight: 700,
-};
-
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 14,
-};
-
-const infoCardStyle = {
-  borderRadius: 16,
-  padding: 18,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const cardTitleStyle = {
-  marginTop: 0,
-  marginBottom: 10,
-  fontSize: 18,
-};
-
-const cardTextStyle = {
-  margin: 0,
-  color: "#666",
-  lineHeight: 1.6,
-};
