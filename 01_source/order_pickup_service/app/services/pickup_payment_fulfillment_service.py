@@ -25,10 +25,11 @@ from app.services.pickup_event_publisher import (
     publish_pickup_ready,
 )
 
+from app.models.user import User
 from app.services.notification_dispatch_service import queue_pickup_email
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 
-from app.models.user import User
+
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -462,6 +463,9 @@ def fulfill_payment_post_approval(
                 qr_value=qr_value,
                 manual_code=manual_code,
                 expires_at=expires_at_iso,
+                region=order.region,
+                locker_id=allocation.locker_id or order.totem_id,
+                slot=str(allocation.slot) if allocation.slot is not None else None,
             )
 
         return {

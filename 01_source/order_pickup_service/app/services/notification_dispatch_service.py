@@ -104,6 +104,9 @@ def queue_pickup_email(
     qr_value: str,
     manual_code: str,
     expires_at: str | None,
+    region: str | None,
+    locker_id: str | None,
+    slot: str | None,
 ) -> NotificationLog:
     normalized_email = str(email or "").strip().lower()
     normalized_manual_code = str(manual_code or "").strip()
@@ -120,5 +123,8 @@ def queue_pickup_email(
             "qr_value": qr_value,
             "manual_code": normalized_manual_code,
             "expires_at": expires_at,
+            "region": region,
+            "locker_id": locker_id,
+            "slot": slot,
         },
     )

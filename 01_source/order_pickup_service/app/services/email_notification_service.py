@@ -1,10 +1,14 @@
 # 01_source/order_pickup_service/app/services/email_notification_service.py
 from __future__ import annotations
 
+import base64
+import io
 import smtplib
 import ssl
+from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from zoneinfo import ZoneInfo
 
 from app.core.config import settings
 
@@ -14,20 +18,80 @@ class EmailNotificationError(Exception):
 
 
 # =========================================================
+# Helpers
+# =========================================================
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except Exception:
+        return None
+
+
+def _format_pickup_expiration(*, expires_at: str | None, region: str | None) -> str:
+    dt = _parse_iso_datetime(expires_at)
+    if not dt:
+        return expires_at or "ver aplicativo"
+
+    region_norm = str(region or "").strip().upper()
+    tz = ZoneInfo("Europe/Lisbon") if region_norm == "PT" else ZoneInfo("America/Sao_Paulo")
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=ZoneInfo("UTC"))
+
+    local_dt = dt.astimezone(tz)
+
+    return local_dt.strftime("%d/%m/%Y às %H:%M")
+
+
+def _build_pickup_link(order_id: str) -> str:
+    base = settings.frontend_base_url.rstrip("/")
+    return f"{base}/meus-pedidos/{order_id}"
+
+
+def _build_qr_data_uri(value: str) -> str | None:
+    """
+    Gera imagem PNG em base64 para embutir no email.
+    Se a lib qrcode não estiver instalada, retorna None e o email segue sem imagem.
+    """
+    try:
+        import qrcode
+    except Exception:
+        return None
+
+    try:
+        qr = qrcode.QRCode(
+            version=None,
+            box_size=8,
+            border=2,
+        )
+        qr.add_data(value)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        img_bytes = buffer.getvalue()
+        encoded = base64.b64encode(img_bytes).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    except Exception:
+        return None
+
+
+# =========================================================
 # RECEIPT EMAIL (KIOSK)
 # =========================================================
 
 def _build_receipt_email_html(*, receipt_code: str, order_id: str) -> str:
     return f"""
-    <div style="font-family: Arial, sans-serif;">
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
         <h2>Comprovante fiscal</h2>
         <p>Seu comprovante foi gerado com sucesso.</p>
         <p><strong>Pedido:</strong> {order_id}</p>
         <p><strong>Código:</strong> {receipt_code}</p>
         <p>Guarde este código para consulta posterior.</p>
-        <hr/>
-        <p>Se você não solicitou este código, pode ignorar com segurança este e-mail.</p>
-        <p>Outra pessoa pode ter digitado seu endereço de e-mail por engano.</p>
         <hr/>
         <small>ELLAN LAB LOCKER</small>
     </div>
@@ -35,7 +99,7 @@ def _build_receipt_email_html(*, receipt_code: str, order_id: str) -> str:
 
 
 # =========================================================
-# PICKUP EMAIL (ONLINE) 🚀 NOVO
+# PICKUP EMAIL (ONLINE)
 # =========================================================
 
 def _build_pickup_email_html(
@@ -44,12 +108,47 @@ def _build_pickup_email_html(
     qr_value: str,
     manual_code: str,
     expires_at: str | None,
-    frontend_base_url: str,
+    region: str | None,
+    locker_id: str | None,
+    slot: str | None,
 ) -> str:
-    pickup_link = f"{frontend_base_url}/meus-pedidos/{order_id}"
+    pickup_link = _build_pickup_link(order_id)
+    formatted_expiration = _format_pickup_expiration(
+        expires_at=expires_at,
+        region=region,
+    )
+    qr_data_uri = _build_qr_data_uri(qr_value)
+
+    location_lines = []
+    if region:
+        location_lines.append(f"<p><strong>Região:</strong> {region}</p>")
+    if locker_id:
+        location_lines.append(f"<p><strong>Locker / Cacifo:</strong> {locker_id}</p>")
+    if slot:
+        location_lines.append(f"<p><strong>Gaveta / Slot:</strong> {slot}</p>")
+
+    location_html = "".join(location_lines)
+
+    qr_image_html = (
+        f"""
+        <div style="margin: 16px 0; text-align: center;">
+            <img
+                src="{qr_data_uri}"
+                alt="QR Code de retirada"
+                style="max-width: 220px; width: 220px; height: 220px; border: 1px solid #ddd; padding: 8px; background: #fff;"
+            />
+        </div>
+        """
+        if qr_data_uri
+        else
+        """
+        <p><strong>QR Code:</strong> seu cliente de email não conseguiu renderizar a imagem.
+        Use o link do pedido ou o código manual abaixo.</p>
+        """
+    )
 
     return f"""
-    <div style="font-family: Arial, sans-serif;">
+    <div style="font-family: Arial, sans-serif; line-height: 1.55; color: #111;">
         <h2>Retirada disponível</h2>
 
         <p>Seu pedido está pronto para retirada.</p>
@@ -57,31 +156,34 @@ def _build_pickup_email_html(
         <p><strong>Pedido:</strong> {order_id}</p>
 
         <p>Ficamos agradecidos por sua compra e saboreie nossas delícias.</p>
-        
+
+        <hr/>
+
+        <h3>Local de retirada</h3>
+        {location_html}
+
         <hr/>
 
         <h3>QR Code de retirada</h3>
-        <p>Apresente este QR Code no locker:</p>
+        <p>Apresente este QR Code no locker/cacifo:</p>
 
-        <pre style="background:#eee;padding:10px;border-radius:6px;">
-{qr_value}
-        </pre>
+        {qr_image_html}
 
         <hr/>
 
         <h3>Código manual (fallback)</h3>
-        <p><strong>{manual_code}</strong></p>
+        <p style="font-size: 20px; font-weight: bold; letter-spacing: 1px;">{manual_code}</p>
 
         <p>Use este código se não conseguir utilizar o QR Code.</p>
 
         <hr/>
 
-        <p><strong>Validade:</strong> {expires_at or "ver aplicativo"}</p>
+        <p><strong>Validade:</strong> {formatted_expiration}</p>
 
         <hr/>
 
         <p>
-            Você também pode acessar sua retirada em:
+            Você pode ver seu pedido em:
             <br/>
             <a href="{pickup_link}">{pickup_link}</a>
         </p>
@@ -141,6 +243,20 @@ def send_email(*, to_email: str, subject: str, html: str) -> None:
                 server.login(user, password)
                 server.send_message(msg)
 
+    except smtplib.SMTPAuthenticationError as exc:
+        raise EmailNotificationError(
+            "Autenticação SMTP falhou. Verifique EMAIL_USERNAME, EMAIL_PASSWORD e EMAIL_SENDER."
+        ) from exc
+    except smtplib.SMTPRecipientsRefused as exc:
+        raise EmailNotificationError(
+            f"Destinatário recusado pelo servidor SMTP: {to_email}"
+        ) from exc
+    except smtplib.SMTPConnectError as exc:
+        raise EmailNotificationError(
+            "Falha ao conectar no servidor SMTP. Verifique EMAIL_HOST, EMAIL_PORT e EMAIL_SECURE."
+        ) from exc
+    except TimeoutError as exc:
+        raise EmailNotificationError("Tempo de conexão com SMTP esgotado.") from exc
     except Exception as exc:
         raise EmailNotificationError(
             f"Falha ao enviar email: {exc.__class__.__name__}: {exc}"
@@ -170,16 +286,18 @@ def send_pickup_email(
     qr_value: str,
     manual_code: str,
     expires_at: str | None,
+    region: str | None,
+    locker_id: str | None,
+    slot: str | None,
 ) -> None:
-    # frontend_base_url = settings.frontend_base_url or "http://localhost:5173"
-    frontend_base_url = getattr(settings, "frontend_base_url", None) or getattr(settings, "FRONTEND_BASE_URL", None) or "http://localhost:5173"
-
     html = _build_pickup_email_html(
         order_id=order_id,
         qr_value=qr_value,
         manual_code=manual_code,
         expires_at=expires_at,
-        frontend_base_url=frontend_base_url,
+        region=region,
+        locker_id=locker_id,
+        slot=slot,
     )
 
     send_email(

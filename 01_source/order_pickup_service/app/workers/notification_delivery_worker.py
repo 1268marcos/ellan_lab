@@ -29,6 +29,7 @@ MAX_ATTEMPTS = 5
 POLL_SEC = 5
 BATCH_SIZE = 20
 PROCESSING_STALE_TIMEOUT_SEC = 180
+SUPPORTED_TEMPLATE_KEYS = {"RECEIPT", "PICKUP"}
 
 
 def _utcnow() -> datetime:
@@ -44,10 +45,6 @@ def _compute_next_attempt_at(attempt_count: int) -> datetime:
     }
     delay_sec = delays.get(attempt_count, 600)
     return _utcnow() + timedelta(seconds=delay_sec)
-
-
-# 🔥 AGORA SUPORTA TODOS OS TEMPLATE_KEY
-SUPPORTED_TEMPLATE_KEYS = {"RECEIPT", "PICKUP"}
 
 
 def _recover_stale_processing_items(db: Session) -> None:
@@ -176,7 +173,6 @@ def _process_email_notification(db: Session, item: NotificationLog) -> None:
     if not to_email:
         raise RuntimeError("destination_value ausente")
 
-    # 🔥 ROUTER POR TEMPLATE
     if template == "RECEIPT":
         receipt_code = payload.get("receipt_code")
         order_id = payload.get("order_id") or item.order_id
@@ -189,12 +185,16 @@ def _process_email_notification(db: Session, item: NotificationLog) -> None:
             receipt_code=receipt_code,
             order_id=order_id,
         )
+        return
 
-    elif template == "PICKUP":
+    if template == "PICKUP":
         order_id = payload.get("order_id") or item.order_id
         qr_value = payload.get("qr_value")
         manual_code = payload.get("manual_code")
         expires_at = payload.get("expires_at")
+        region = payload.get("region")
+        locker_id = payload.get("locker_id")
+        slot = payload.get("slot")
 
         if not qr_value:
             raise RuntimeError("qr_value ausente")
@@ -208,10 +208,13 @@ def _process_email_notification(db: Session, item: NotificationLog) -> None:
             qr_value=qr_value,
             manual_code=manual_code,
             expires_at=expires_at,
+            region=region,
+            locker_id=locker_id,
+            slot=slot,
         )
+        return
 
-    else:
-        raise RuntimeError(f"template_key não suportado: {template}")
+    raise RuntimeError(f"template_key não suportado: {template}")
 
 
 def run_notification_delivery_once(db: Session) -> None:
