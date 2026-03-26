@@ -269,8 +269,8 @@ services:
     ports:
       - "8003:8003"
     env_file:
-      # - .env.${NODE_ENV:-development}
-      - ../01_source/order_pickup_service/.env
+      - .env.${NODE_ENV:-development}  # PARA DAR RESET
+      # - ../01_source/order_pickup_service/.env
     environment:
       - TZ=America/Sao_Paulo
 

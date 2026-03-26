@@ -1,3 +1,4 @@
+// 01_source/frontend/src/components/PickupQRCodePanel.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
