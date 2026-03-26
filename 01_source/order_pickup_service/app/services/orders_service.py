@@ -13,7 +13,7 @@ from app.models.pickup_token import PickupToken
 from app.services import backend_client
 
 from app.models.user import User
-from app.services.email_service import send_email
+from app.services.notification_dispatch_service import queue_receipt_email
 
 ALLOC_TTL_SEC = int(os.getenv("ALLOC_TTL_SEC", "120"))
 PICKUP_WINDOW_SEC = int(os.getenv("PICKUP_WINDOW_SEC", str(2 * 60 * 60)))  # 2h
@@ -200,18 +200,11 @@ def confirm_online_payment(
     expires_at_iso = pickup_deadline_at.isoformat()
 
     if user and user.email:
-        send_email(
-            to_email=user.email,
-            subject="Seu pedido está pronto para retirada",
-            html=f"""
-            <p>Olá {user.full_name},</p>
-            <p>Seu pedido está pronto para retirada.</p>
-            <p><strong>Pedido:</strong> {order.id}</p>
-            <p><strong>Locker:</strong> {order.totem_id}</p>
-            <p><strong>Código manual:</strong> {manual_code}</p>
-            <p><strong>Expira em:</strong> {expires_at_iso}</p>
-            <p>Apresente o QRCode ou o código manual no totem.</p>
-            """,
+        queue_receipt_email(
+            db=db,
+            order_id=order.id,
+            email=user.email,
+            receipt_code=manual_code,
         )
 
     return {

@@ -22,15 +22,16 @@ def _mask_email(email: str) -> str:
     return f"{masked_name}@{domain}"
 
 
-def queue_receipt_email(
+def _queue_email_notification(
     *,
     db: Session,
     order_id: str,
     email: str,
-    receipt_code: str,
+    template_key: str,
+    dedupe_key: str,
+    payload_json: dict,
 ) -> NotificationLog:
     normalized_email = str(email or "").strip().lower()
-    dedupe_key = f"EMAIL|RECEIPT|{normalized_email}|{receipt_code}"
 
     existing = (
         db.query(NotificationLog)
@@ -46,7 +47,7 @@ def queue_receipt_email(
         user_id=None,
         order_id=order_id,
         channel="EMAIL",
-        template_key="RECEIPT",
+        template_key=template_key,
         destination_masked=_mask_email(normalized_email),
         destination_value=normalized_email,
         dedupe_key=dedupe_key,
@@ -55,10 +56,7 @@ def queue_receipt_email(
         status="QUEUED",
         attempt_count=0,
         error_message=None,
-        payload_json={
-            "receipt_code": receipt_code,
-            "order_id": order_id,
-        },
+        payload_json=payload_json,
         processing_started_at=None,
         last_attempt_at=None,
         next_attempt_at=now,
@@ -72,3 +70,55 @@ def queue_receipt_email(
     db.commit()
     db.refresh(log)
     return log
+
+
+def queue_receipt_email(
+    *,
+    db: Session,
+    order_id: str,
+    email: str,
+    receipt_code: str,
+) -> NotificationLog:
+    normalized_email = str(email or "").strip().lower()
+    normalized_receipt_code = str(receipt_code or "").strip().upper()
+    dedupe_key = f"EMAIL|RECEIPT|{normalized_email}|{normalized_receipt_code}"
+
+    return _queue_email_notification(
+        db=db,
+        order_id=order_id,
+        email=normalized_email,
+        template_key="RECEIPT",
+        dedupe_key=dedupe_key,
+        payload_json={
+            "receipt_code": normalized_receipt_code,
+            "order_id": order_id,
+        },
+    )
+
+
+def queue_pickup_email(
+    *,
+    db: Session,
+    order_id: str,
+    email: str,
+    qr_value: str,
+    manual_code: str,
+    expires_at: str | None,
+) -> NotificationLog:
+    normalized_email = str(email or "").strip().lower()
+    normalized_manual_code = str(manual_code or "").strip()
+    dedupe_key = f"EMAIL|PICKUP|{normalized_email}|{order_id}"
+
+    return _queue_email_notification(
+        db=db,
+        order_id=order_id,
+        email=normalized_email,
+        template_key="PICKUP",
+        dedupe_key=dedupe_key,
+        payload_json={
+            "order_id": order_id,
+            "qr_value": qr_value,
+            "manual_code": normalized_manual_code,
+            "expires_at": expires_at,
+        },
+    )

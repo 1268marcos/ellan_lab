@@ -43,72 +43,39 @@ class Settings(BaseSettings):
     )
 
     # =========================================================
+    # 🔥 FRONTEND (CORREÇÃO DO BUG DE EMAIL)
+    # =========================================================
+
+    frontend_base_url: str = Field(
+        default="http://localhost:5173",
+        alias="FRONTEND_BASE_URL",
+    )
+
+    # =========================================================
     # Fluxo de pickup / deadlines
     # =========================================================
 
-    pickup_window_sec: int = Field(
-        default=7200,
-        alias="PICKUP_WINDOW_SEC",
-    )
+    pickup_window_sec: int = Field(default=7200, alias="PICKUP_WINDOW_SEC")
+    pickup_token_ttl_sec: int = Field(default=600, alias="PICKUP_TOKEN_TTL_SEC")
+    prepayment_timeout_seconds: int = Field(default=90, alias="PREPAYMENT_TIMEOUT_SECONDS")
 
-    pickup_token_ttl_sec: int = Field(
-        default=600,
-        alias="PICKUP_TOKEN_TTL_SEC",
-    )
+    expiry_poll_sec: int = Field(default=60, alias="EXPIRY_POLL_SEC")
+    lifecycle_events_poll_sec: int = Field(default=10, alias="LIFECYCLE_EVENTS_POLL_SEC")
 
-    prepayment_timeout_seconds: int = Field(
-        default=90,
-        alias="PREPAYMENT_TIMEOUT_SECONDS",
-    )
+    expiry_batch_size: int = Field(default=100, alias="EXPIRY_BATCH_SIZE")
+    expiry_max_retries: int = Field(default=3, alias="EXPIRY_MAX_RETRIES")
 
-    expiry_poll_sec: int = Field(
-        default=60,
-        alias="EXPIRY_POLL_SEC",
-    )
+    expiry_enable_credit: bool = Field(default=False, alias="EXPIRY_ENABLE_CREDIT")
+    expiry_credit_ratio: float = Field(default=0.50, alias="EXPIRY_CREDIT_RATIO")
 
-    lifecycle_events_poll_sec: int = Field(
-        default=10,
-        alias="LIFECYCLE_EVENTS_POLL_SEC",
-    )
-
-    expiry_batch_size: int = Field(
-        default=100,
-        alias="EXPIRY_BATCH_SIZE",
-    )
-
-    expiry_max_retries: int = Field(
-        default=3,
-        alias="EXPIRY_MAX_RETRIES",
-    )
-
-    expiry_enable_credit: bool = Field(
-        default=False,
-        alias="EXPIRY_ENABLE_CREDIT",
-    )
-
-    expiry_credit_ratio: float = Field(
-        default=0.50,
-        alias="EXPIRY_CREDIT_RATIO",
-    )
-
-    lifecycle_events_batch_size: int = Field(
-        default=100,
-        alias="LIFECYCLE_EVENTS_BATCH_SIZE",
-    )
+    lifecycle_events_batch_size: int = Field(default=100, alias="LIFECYCLE_EVENTS_BATCH_SIZE")
 
     # =========================================================
     # Backends internos / integração
     # =========================================================
 
-    backend_sp_internal: str = Field(
-        default="http://backend_sp:8000",
-        alias="BACKEND_SP_INTERNAL",
-    )
-
-    backend_pt_internal: str = Field(
-        default="http://backend_pt:8000",
-        alias="BACKEND_PT_INTERNAL",
-    )
+    backend_sp_internal: str = Field(default="http://backend_sp:8000", alias="BACKEND_SP_INTERNAL")
+    backend_pt_internal: str = Field(default="http://backend_pt:8000", alias="BACKEND_PT_INTERNAL")
 
     payment_gateway_internal: str = Field(
         default="http://payment_gateway:8000",
@@ -120,15 +87,8 @@ class Settings(BaseSettings):
         alias="ORDER_LIFECYCLE_BASE_URL",
     )
 
-    backend_client_timeout_sec: int = Field(
-        default=5,
-        alias="BACKEND_CLIENT_TIMEOUT_SEC",
-    )
-
-    order_lifecycle_timeout_sec: int = Field(
-        default=5,
-        alias="ORDER_LIFECYCLE_TIMEOUT_SEC",
-    )
+    backend_client_timeout_sec: int = Field(default=5, alias="BACKEND_CLIENT_TIMEOUT_SEC")
+    order_lifecycle_timeout_sec: int = Field(default=5, alias="ORDER_LIFECYCLE_TIMEOUT_SEC")
 
     backend_price_path_template: str = Field(
         default="/catalog/skus/{sku_id}",
@@ -144,112 +104,49 @@ class Settings(BaseSettings):
     # Segurança / auth interna
     # =========================================================
 
-    internal_token: str = Field(
-        default="dev-internal-token",
-        alias="INTERNAL_TOKEN",
-    )
+    internal_token: str = Field(default="dev-internal-token", alias="INTERNAL_TOKEN")
+    internal_health_token: str = Field(default="secret-token-123", alias="INTERNAL_HEALTH_TOKEN")
 
-    internal_health_token: str = Field(
-        default="secret-token-123",
-        alias="INTERNAL_HEALTH_TOKEN",
-    )
-
-    jwt_secret: str = Field(
-        default="CHANGE_ME_IN_PROD",
-        alias="JWT_SECRET",
-    )
-
-    jwt_alg: str = Field(
-        default="HS256",
-        alias="JWT_ALG",
-    )
-
-    jwt_access_ttl_min: int = Field(
-        default=60,
-        alias="JWT_ACCESS_TTL_MIN",
-    )
+    jwt_secret: str = Field(default="CHANGE_ME_IN_PROD", alias="JWT_SECRET")
+    jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
+    jwt_access_ttl_min: int = Field(default=60, alias="JWT_ACCESS_TTL_MIN")
 
     # =========================================================
     # QR / resgate manual
     # =========================================================
 
-    qr_rotate_sec: int = Field(
-        default=600,
-        alias="QR_ROTATE_SEC",
-    )
+    qr_rotate_sec: int = Field(default=600, alias="QR_ROTATE_SEC")
 
     pickup_qr_payload_version: int = Field(
         default=2,
         alias="PICKUP_QR_PAYLOAD_VERSION",
     )
 
-    pickup_qr_secret: str = Field(
-        default="",
-        alias="PICKUP_QR_SECRET",
-    )
+    pickup_qr_secret: str = Field(default="", alias="PICKUP_QR_SECRET")
 
-    manual_redeem_max_attempts: int = Field(
-        default=5,
-        alias="MANUAL_REDEEM_MAX_ATTEMPTS",
-    )
-
-    manual_redeem_window_sec: int = Field(
-        default=120,
-        alias="MANUAL_REDEEM_WINDOW_SEC",
-    )
-
-    manual_redeem_block_sec: int = Field(
-        default=300,
-        alias="MANUAL_REDEEM_BLOCK_SEC",
-    )
+    manual_redeem_max_attempts: int = Field(default=5, alias="MANUAL_REDEEM_MAX_ATTEMPTS")
+    manual_redeem_window_sec: int = Field(default=120, alias="MANUAL_REDEEM_WINDOW_SEC")
+    manual_redeem_block_sec: int = Field(default=300, alias="MANUAL_REDEEM_BLOCK_SEC")
 
     # =========================================================
     # DEV / fallback
     # =========================================================
 
-    dev_bypass_auth: bool = Field(
-        default=False,
-        alias="DEV_BYPASS_AUTH",
-    )
+    dev_bypass_auth: bool = Field(default=False, alias="DEV_BYPASS_AUTH")
+    dev_user_id: str = Field(default="dev_user_1", alias="DEV_USER_ID")
 
-    dev_user_id: str = Field(
-        default="dev_user_1",
-        alias="DEV_USER_ID",
-    )
-
-    dev_allow_unknown_sku: bool = Field(
-        default=False,
-        alias="DEV_ALLOW_UNKNOWN_SKU",
-    )
-
-    dev_default_price_cents: int = Field(
-        default=1000,
-        alias="DEV_DEFAULT_PRICE_CENTS",
-    )
-
-    dev_default_currency: str = Field(
-        default="EUR",
-        alias="DEV_DEFAULT_CURRENCY",
-    )
+    dev_allow_unknown_sku: bool = Field(default=False, alias="DEV_ALLOW_UNKNOWN_SKU")
+    dev_default_price_cents: int = Field(default=1000, alias="DEV_DEFAULT_PRICE_CENTS")
+    dev_default_currency: str = Field(default="EUR", alias="DEV_DEFAULT_CURRENCY")
 
     # =========================================================
     # Orders service / compat
     # =========================================================
 
-    alloc_ttl_sec: int = Field(
-        default=120,
-        alias="ALLOC_TTL_SEC",
-    )
+    alloc_ttl_sec: int = Field(default=120, alias="ALLOC_TTL_SEC")
 
-    app_env: str = Field(
-        default="dev",
-        alias="APP_ENV",
-    )
-
-    node_env: str = Field(
-        default="dev",
-        alias="NODE_ENV",
-    )
+    app_env: str = Field(default="dev", alias="APP_ENV")
+    node_env: str = Field(default="dev", alias="NODE_ENV")
 
     # =========================================================
     # Email / SMTP

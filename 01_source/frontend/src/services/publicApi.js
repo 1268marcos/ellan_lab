@@ -1,3 +1,4 @@
+// 01_source/frontend/src/services/publicApi.js
 const API_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
 async function parseJson(response) {

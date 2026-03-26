@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.core.db import SessionLocal, init_db
 from app.models.notification_log import NotificationLog
-from app.services.email_notification_service import send_receipt_email
+from app.services.email_notification_service import (
+    send_receipt_email,
+    send_pickup_email,
+)
 
 # IMPORTAR TODOS OS MODELS
 from app.models import user  # noqa
@@ -43,6 +46,10 @@ def _compute_next_attempt_at(attempt_count: int) -> datetime:
     return _utcnow() + timedelta(seconds=delay_sec)
 
 
+# 🔥 AGORA SUPORTA TODOS OS TEMPLATE_KEY
+SUPPORTED_TEMPLATE_KEYS = {"RECEIPT", "PICKUP"}
+
+
 def _recover_stale_processing_items(db: Session) -> None:
     now = _utcnow()
     stale_before = now - timedelta(seconds=PROCESSING_STALE_TIMEOUT_SEC)
@@ -51,7 +58,7 @@ def _recover_stale_processing_items(db: Session) -> None:
         db.query(NotificationLog)
         .filter(
             NotificationLog.channel == "EMAIL",
-            NotificationLog.template_key == "RECEIPT",
+            NotificationLog.template_key.in_(SUPPORTED_TEMPLATE_KEYS),
             NotificationLog.status == "PROCESSING",
             NotificationLog.processing_started_at.is_not(None),
             NotificationLog.processing_started_at <= stale_before,
@@ -86,7 +93,7 @@ def _find_candidate_ids(db: Session) -> list[int]:
         db.query(NotificationLog.id)
         .filter(
             NotificationLog.channel == "EMAIL",
-            NotificationLog.template_key == "RECEIPT",
+            NotificationLog.template_key.in_(SUPPORTED_TEMPLATE_KEYS),
             or_(
                 NotificationLog.status == "QUEUED",
                 and_(
@@ -161,6 +168,52 @@ def _mark_sent(db: Session, item: NotificationLog) -> None:
     db.commit()
 
 
+def _process_email_notification(db: Session, item: NotificationLog) -> None:
+    payload = item.payload_json or {}
+    template = item.template_key
+    to_email = item.destination_value
+
+    if not to_email:
+        raise RuntimeError("destination_value ausente")
+
+    # 🔥 ROUTER POR TEMPLATE
+    if template == "RECEIPT":
+        receipt_code = payload.get("receipt_code")
+        order_id = payload.get("order_id") or item.order_id
+
+        if not receipt_code:
+            raise RuntimeError("receipt_code ausente")
+
+        send_receipt_email(
+            to_email=to_email,
+            receipt_code=receipt_code,
+            order_id=order_id,
+        )
+
+    elif template == "PICKUP":
+        order_id = payload.get("order_id") or item.order_id
+        qr_value = payload.get("qr_value")
+        manual_code = payload.get("manual_code")
+        expires_at = payload.get("expires_at")
+
+        if not qr_value:
+            raise RuntimeError("qr_value ausente")
+
+        if not manual_code:
+            raise RuntimeError("manual_code ausente")
+
+        send_pickup_email(
+            to_email=to_email,
+            order_id=order_id,
+            qr_value=qr_value,
+            manual_code=manual_code,
+            expires_at=expires_at,
+        )
+
+    else:
+        raise RuntimeError(f"template_key não suportado: {template}")
+
+
 def run_notification_delivery_once(db: Session) -> None:
     _recover_stale_processing_items(db)
 
@@ -176,26 +229,11 @@ def run_notification_delivery_once(db: Session) -> None:
             continue
 
         try:
-            payload = item.payload_json or {}
-            receipt_code = payload.get("receipt_code")
-            order_id = payload.get("order_id") or item.order_id
-            to_email = item.destination_value
-
-            if not to_email:
-                raise RuntimeError("destination_value ausente em notification_logs")
-
-            if not receipt_code:
-                raise RuntimeError("receipt_code ausente em payload_json")
-
             item.attempt_count = (item.attempt_count or 0) + 1
             item.last_attempt_at = _utcnow()
             db.commit()
 
-            send_receipt_email(
-                to_email=to_email,
-                receipt_code=receipt_code,
-                order_id=order_id,
-            )
+            _process_email_notification(db, item)
 
             _mark_sent(db, item)
 

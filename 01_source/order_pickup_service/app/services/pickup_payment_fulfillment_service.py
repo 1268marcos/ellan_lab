@@ -25,6 +25,10 @@ from app.services.pickup_event_publisher import (
     publish_pickup_ready,
 )
 
+from app.services.notification_dispatch_service import queue_pickup_email
+from app.services.pickup_qr_service import build_public_pickup_qr_value
+
+from app.models.user import User
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -429,8 +433,36 @@ def fulfill_payment_post_approval(
         tok = _create_pickup_token(db, pickup_id=pickup.id, expires_at_utc=deadline)
         token_id = tok["token_id"]
         manual_code = tok["manual_code"]
+
         pickup.current_token_id = token_id
         pickup.touch()
+
+        # 🚀 BUILD QR VALUE (MESMA REGRA DO PUBLIC PICKUP)
+        expires_at_iso = deadline.isoformat()
+
+        qr_value = build_public_pickup_qr_value(
+            order_id=order.id,
+            token_id=token_id,
+            expires_at_iso=expires_at_iso,
+        )
+
+        # 🚀 DISPARAR EMAIL (QUEUE)
+        user_email = None
+
+        if order.user_id:
+            user = db.get(User, order.user_id)
+            if user and user.email:
+                user_email = user.email
+
+        if user_email:
+            queue_pickup_email(
+                db=db,
+                order_id=order.id,
+                email=user_email,
+                qr_value=qr_value,
+                manual_code=manual_code,
+                expires_at=expires_at_iso,
+            )
 
         return {
             "allocation": allocation,
