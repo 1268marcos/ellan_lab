@@ -2,8 +2,7 @@
 // UX Mobile-First
 // Otimizado para SEO
 // Filtros: Ordem Gaveta, Ordem Sabor (destaque no nome), Menor Preço, Maior Preço
-// Busca: Filtro por nome do produto/sabor com busca em tempo real
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -57,23 +56,6 @@ function resolveBackendBase(region) {
   return region === "PT" ? BACKEND_PT : BACKEND_SP;
 }
 
-// Hook personalizado para debounce
-function useDebounce(value, delay) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
 export default function PublicCatalogPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,11 +72,7 @@ export default function PublicCatalogPage() {
   const [error, setError] = useState("");
   const [selectedLockerDetails, setSelectedLockerDetails] = useState(null);
   const [expandedCards, setExpandedCards] = useState(new Set());
-  const [sortType, setSortType] = useState(SORT_TYPES.SLOT);
-  const [searchTerm, setSearchTerm] = useState("");
-  
-  // Debounce da busca para evitar renderizações excessivas
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const [sortType, setSortType] = useState(SORT_TYPES.SLOT); // Padrão: ordenação por gaveta
   
   const backendBase = useMemo(() => resolveBackendBase(region), [region]);
 
@@ -170,22 +148,11 @@ export default function PublicCatalogPage() {
     loadCatalog();
   }, [backendBase, lockerId, region]);
 
-  // Função para filtrar itens baseado no termo de busca
-  const filteredBySearch = useMemo(() => {
-    if (!debouncedSearchTerm.trim()) return items;
-    
-    const searchLower = debouncedSearchTerm.toLowerCase().trim();
-    return items.filter(item => 
-      item.name.toLowerCase().includes(searchLower) ||
-      (item.description && item.description.toLowerCase().includes(searchLower))
-    );
-  }, [items, debouncedSearchTerm]);
-
   // Função de ordenação baseada no tipo selecionado
   const sortedItems = useMemo(() => {
-    if (!filteredBySearch.length) return [];
+    if (!items.length) return [];
     
-    const itemsCopy = [...filteredBySearch];
+    const itemsCopy = [...items];
     
     switch (sortType) {
       case SORT_TYPES.SLOT:
@@ -206,12 +173,7 @@ export default function PublicCatalogPage() {
       default:
         return itemsCopy;
     }
-  }, [filteredBySearch, sortType]);
-
-  // Função para limpar a busca
-  const clearSearch = useCallback(() => {
-    setSearchTerm("");
-  }, []);
+  }, [items, sortType]);
 
   async function handleReserve(item) {
     if (!item?.sku_id || !item?.slot || !lockerId) return;
@@ -387,94 +349,12 @@ export default function PublicCatalogPage() {
             </div>
           </div>
 
-          {/* Campo de Busca por Nome do Produto/Sabor */}
-          <div 
-            className="search-bar"
-            style={{
-              marginTop: 'var(--spacing-5)',
-              marginBottom: 'var(--spacing-3)'
-            }}
-          >
-            <div style={{
-              position: 'relative',
-              width: '100%'
-            }}>
-              <div style={{
-                position: 'absolute',
-                left: 'var(--spacing-3)',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                fontSize: 'var(--font-size-lg)',
-                pointerEvents: 'none',
-                color: '#9ca3af'
-              }}>
-                🔍
-              </div>
-              <input
-                type="text"
-                id="search-product"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por sabor ou descrição..."
-                style={{
-                  width: '100%',
-                  padding: 'var(--spacing-3) var(--spacing-3) var(--spacing-3) calc(var(--spacing-3) + 32px)',
-                  fontSize: 'var(--font-size-base)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  transition: 'all var(--transition-base)',
-                  outline: 'none'
-                }}
-                aria-label="Buscar produtos por nome ou descrição"
-                onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-              />
-              {searchTerm && (
-                <button
-                  onClick={clearSearch}
-                  style={{
-                    position: 'absolute',
-                    right: 'var(--spacing-3)',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 'var(--font-size-lg)',
-                    cursor: 'pointer',
-                    padding: 'var(--spacing-1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 'var(--radius-full)',
-                    transition: 'background var(--transition-base)'
-                  }}
-                  aria-label="Limpar busca"
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {debouncedSearchTerm && (
-              <p style={{
-                marginTop: 'var(--spacing-2)',
-                fontSize: 'var(--font-size-xs)',
-                color: '#e0e7ff',
-                textAlign: 'right'
-              }}>
-                {filteredBySearch.length} {filteredBySearch.length === 1 ? 'resultado' : 'resultados'} encontrados
-              </p>
-            )}
-          </div>
-
           {/* Ações Rápidas */}
           <div 
             style={{
               display: 'flex',
               gap: 'var(--spacing-3)',
-              marginTop: 'var(--spacing-4)',
+              marginTop: 'var(--spacing-5)',
               paddingTop: 'var(--spacing-4)',
               borderTop: '1px solid var(--color-border)',
               flexWrap: 'wrap'
@@ -635,46 +515,29 @@ export default function PublicCatalogPage() {
                     background: 'white'
                   }}
                 >
-                  <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>
-                    {debouncedSearchTerm ? '🔍' : '📭'}
-                  </div>
+                  <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>🔍</div>
                   <h3 style={{
                     fontSize: 'var(--font-size-xl)',
                     fontWeight: 600,
                     color: 'var(--color-text)',
                     marginBottom: 'var(--spacing-3)'
                   }}>
-                    {debouncedSearchTerm 
-                      ? `Nenhum produto encontrado para "${debouncedSearchTerm}"`
-                      : 'Nenhum produto disponível'}
+                    Nenhum produto disponível
                   </h3>
                   <p style={{
                     fontSize: 'var(--font-size-sm)',
                     color: 'var(--color-text-muted)',
                     marginBottom: 'var(--spacing-4)'
                   }}>
-                    {debouncedSearchTerm
-                      ? `Tente buscar por outro sabor ou verifique a ortografia.`
-                      : 'Não encontramos produtos ativos para este locker. Tente selecionar outro ponto de retirada.'}
+                    Não encontramos produtos ativos para este locker.
+                    Tente selecionar outro ponto de retirada.
                   </p>
-                  {debouncedSearchTerm ? (
-                    <button
-                      onClick={clearSearch}
-                      className="btn btn--primary"
-                      style={{
-                        padding: 'var(--spacing-2) var(--spacing-6)'
-                      }}
-                    >
-                      Limpar busca
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setLockerId(LOCKER_OPTIONS[region]?.[0]?.locker_id || "")}
-                      className="btn btn--secondary"
-                    >
-                      Ver outro locker
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setLockerId(LOCKER_OPTIONS[region]?.[0]?.locker_id || "")}
+                    className="btn btn--secondary"
+                  >
+                    Ver outro locker
+                  </button>
                 </article>
               ) : (
                 sortedItems.map((item) => {
@@ -683,22 +546,6 @@ export default function PublicCatalogPage() {
                   const isNameHighlighted = sortType === SORT_TYPES.NAME;
                   const isPriceHighlighted = sortType === SORT_TYPES.PRICE_ASC || sortType === SORT_TYPES.PRICE_DESC;
                   
-                  // Destacar termo de busca no nome do produto
-                  const highlightSearchTerm = (text, search) => {
-                    if (!search) return text;
-                    const parts = text.split(new RegExp(`(${search})`, 'gi'));
-                    return parts.map((part, i) => 
-                      part.toLowerCase() === search.toLowerCase() ? 
-                        <mark key={i} style={{
-                          background: '#fef3c7',
-                          color: '#92400e',
-                          padding: '0 2px',
-                          borderRadius: 'var(--radius-sm)'
-                        }}>{part}</mark> : 
-                        part
-                    );
-                  };
-
                   return (
                     <article 
                       key={`${item.locker_id}-${item.slot}`}
@@ -740,7 +587,7 @@ export default function PublicCatalogPage() {
                             {item.slot}
                           </div>
                           <div style={{ flex: 1 }}>
-                            {/* Nome do Produto/Sabor - com destaque quando ordenado por sabor e highlight da busca */}
+                            {/* Nome do Produto/Sabor - com destaque quando ordenado por sabor */}
                             <div style={{
                               fontSize: isNameHighlighted ? 'var(--font-size-lg)' : 'var(--font-size-base)',
                               fontWeight: isNameHighlighted ? 800 : 700,
@@ -749,9 +596,7 @@ export default function PublicCatalogPage() {
                               lineHeight: 1.3,
                               transition: 'all var(--transition-base)'
                             }}>
-                              {debouncedSearchTerm 
-                                ? highlightSearchTerm(item.name, debouncedSearchTerm)
-                                : item.name}
+                              {item.name}
                               {isNameHighlighted && (
                                 <span style={{
                                   marginLeft: 'var(--spacing-2)',
@@ -868,9 +713,7 @@ export default function PublicCatalogPage() {
                               <div style={{ marginTop: 'var(--spacing-2)' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>Descrição:</span>
                                 <p style={{ margin: 'var(--spacing-1) 0 0', color: 'var(--color-text)' }}>
-                                  {debouncedSearchTerm 
-                                    ? highlightSearchTerm(item.description, debouncedSearchTerm)
-                                    : item.description}
+                                  {item.description}
                                 </p>
                               </div>
                             )}
@@ -917,7 +760,6 @@ export default function PublicCatalogPage() {
               >
                 {sortedItems.length} {sortedItems.length === 1 ? 'produto' : 'produtos'} • 
                 Ordenado por: {SORT_LABELS[sortType]} • 
-                {debouncedSearchTerm && ` Busca: "${debouncedSearchTerm}" • `}
                 Role para ver mais
               </div>
             )}
@@ -959,17 +801,9 @@ export default function PublicCatalogPage() {
         }
         
         /* Foco acessível */
-        button:focus-visible, select:focus-visible, a:focus-visible, input:focus-visible {
+        button:focus-visible, select:focus-visible, a:focus-visible {
           outline: 2px solid #667eea;
           outline-offset: 2px;
-        }
-        
-        /* Estilo para o mark de highlight */
-        mark {
-          background: #fef3c7;
-          color: #92400e;
-          padding: 0 2px;
-          border-radius: 4px;
         }
       `}</style>
     </main>

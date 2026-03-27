@@ -1,5 +1,5 @@
 // 01_source/frontend/src/App.jsx
-import React, { Suspense, lazy } from "react";
+import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
@@ -13,6 +13,10 @@ const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"
 const PublicOrderDetailPage = lazy(() => import("./pages/public/PublicOrderDetailPage"));
 const PublicFiscalSearchPage = lazy(() => import("./pages/public/PublicFiscalSearchPage"));
 const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPage"));
+const PublicNotFoundPage = lazy(() => import("./pages/public/PublicNotFoundPage"));
+const PublicSupportPage = lazy(() => import("./pages/public/PublicSupportPage")); // NOVA IMPORT
+const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyPolicyPage"));
+const PublicTermsOfUsePage = lazy(() => import("./pages/public/PublicTermsOfUsePage"));
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
@@ -50,10 +54,58 @@ function TopNav() {
   const fullName = user?.full_name || user?.email || "";
   const initials = initialsFromName(fullName);
   const opsEnabled = isOpsEnabled();
+  
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const menuRef = useRef(null);
+  const buttonRef = useRef(null);
+
+  // Detectar tamanho da tela
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth <= 768);
+      if (window.innerWidth > 768) {
+        setIsMobileMenuOpen(false); // Fecha menu ao redimensionar para desktop
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Fechar menu ao clicar fora
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isMobileMenuOpen && 
+          menuRef.current && 
+          !menuRef.current.contains(event.target) &&
+          buttonRef.current && 
+          !buttonRef.current.contains(event.target)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMobileMenuOpen]);
+
+  // Prevenir scroll do body quando menu estiver aberto
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = 'unset';
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, [isMobileMenuOpen]);
 
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
+    setIsMobileMenuOpen(false);
   };
 
   const getNavBackground = () => {
@@ -69,66 +121,215 @@ function TopNav() {
     return "var(--nav-default-bg)";
   };
 
+  // Fechar menu ao navegar
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location]);
+
+  // Links comuns para todos os usuários
+  const publicLinks = [
+    { to: "/", label: "Início", aria: "Ir para página inicial" },
+    { to: "/comprar", label: "Comprar", aria: "Ver catálogo de produtos" },
+    { to: "/comprovante", label: "Comprovante", aria: "Consultar comprovante fiscal" },
+    { to: "/suporte", label: "Suporte", aria: "Central de ajuda e suporte" }, // NOVO LINK
+    { to: "/sp", label: "SP", aria: "Região São Paulo" },
+    { to: "/pt", label: "PT", aria: "Região Portugal" }
+  ];
+
+  // Links de operação
+  const opsLinks = opsEnabled ? [
+    { to: "/ops/sp", label: "ops /sp", aria: "Ferramentas operacionais São Paulo" },
+    { to: "/ops/pt", label: "ops /pt", aria: "Ferramentas operacionais Portugal" },
+    { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
+    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" }
+  ] : [];
+
   return (
-    <nav 
-      className="top-nav" 
-      style={{ background: getNavBackground() }}
-      role="navigation"
-      aria-label="Navegação principal"
-    >
-      <Link className="nav-link" to="/" aria-label="Ir para página inicial">Início</Link>
-      <Link className="nav-link" to="/comprar" aria-label="Ver catálogo de produtos">Comprar</Link>
-      <Link className="nav-link" to="/comprovante" aria-label="Consultar comprovante fiscal">Comprovante</Link>
-      <Link className="nav-link" to="/sp" aria-label="Região São Paulo">SP</Link>
-      <Link className="nav-link" to="/pt" aria-label="Região Portugal">PT</Link>
-      
-      {!loading && isAuthenticated && (
-        <Link className="nav-link" to="/meus-pedidos" aria-label="Ver meus pedidos">
-          Meus Pedidos
-        </Link>
-      )}
-      
-      {opsEnabled && (
-        <div className="nav-divider" aria-hidden="true">|</div>
-      )}
-      
-      {opsEnabled && (
-        <div className="nav-ops-group" role="group" aria-label="Ferramentas operacionais">
-          <Link className="nav-link nav-link--dev" to="/ops/sp">ops /sp</Link>
-          <Link className="nav-link nav-link--dev" to="/ops/pt">ops /pt</Link>
-          <Link className="nav-link nav-link--dev" to="/ops/dev/reset">ops /dev/reset</Link>
+    <>
+      <nav 
+        className="top-nav" 
+        style={{ background: getNavBackground() }}
+        role="navigation"
+        aria-label="Navegação principal"
+      >
+        {/* Logo ou marca */}
+        <div className="nav-brand">
+          <Link to="/" className="nav-brand-link" aria-label="Página inicial">
+            ELLAN Lab
+          </Link>
         </div>
-      )}
-      
-      <div className="nav-spacer" aria-hidden="true" />
-      
-      {!loading && !isAuthenticated && (
-        <div className="nav-auth-group" role="group" aria-label="Autenticação">
-          <Link className="nav-link nav-link--primary" to="/login">Entrar</Link>
-          <Link className="nav-link nav-link--secondary" to="/cadastro">Criar conta</Link>
+
+        {/* Menu Desktop - visível apenas em telas grandes */}
+        <div className="nav-desktop">
+          {publicLinks.map(link => (
+            <Link key={link.to} className="nav-link" to={link.to} aria-label={link.aria}>
+              {link.label}
+            </Link>
+          ))}
+          
+          {!loading && isAuthenticated && (
+            <Link className="nav-link" to="/meus-pedidos" aria-label="Ver meus pedidos">
+              Meus Pedidos
+            </Link>
+          )}
+          
+          {opsEnabled && opsLinks.length > 0 && (
+            <>
+              <div className="nav-divider" aria-hidden="true">|</div>
+              <div className="nav-ops-group" role="group" aria-label="Ferramentas operacionais">
+                {opsLinks.map(link => (
+                  <Link key={link.to} className="nav-link nav-link--dev" to={link.to} aria-label={link.aria}>
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+          
+          <div className="nav-spacer" aria-hidden="true" />
+          
+          {!loading && !isAuthenticated && (
+            <div className="nav-auth-group" role="group" aria-label="Autenticação">
+              <Link className="nav-link nav-link--primary" to="/login">Entrar</Link>
+              <Link className="nav-link nav-link--secondary" to="/cadastro">Criar conta</Link>
+            </div>
+          )}
+          
+          {!loading && isAuthenticated && (
+            <div className="nav-user-group" role="group" aria-label="Conta do usuário">
+              <div
+                className="user-avatar"
+                title={fullName}
+                aria-label={`Conta de ${fullName}`}
+                role="img"
+              >
+                {initials}
+              </div>
+              <button 
+                onClick={handleLogout} 
+                className="nav-button nav-button--logout"
+                aria-label="Sair da conta"
+              >
+                Sair
+              </button>
+            </div>
+          )}
         </div>
-      )}
-      
-      {!loading && isAuthenticated && (
-        <div className="nav-user-group" role="group" aria-label="Conta do usuário">
-          <div
-            className="user-avatar"
-            title={fullName}
-            aria-label={`Conta de ${fullName}`}
-            role="img"
+
+        {/* Menu Mobile - Hambúrguer */}
+        <div className="nav-mobile">
+          {!loading && isAuthenticated && (
+            <div className="mobile-user-info">
+              <div className="user-avatar-mobile" title={fullName}>
+                {initials}
+              </div>
+            </div>
+          )}
+          
+          <button
+            ref={buttonRef}
+            className={`hamburger-menu ${isMobileMenuOpen ? 'active' : ''}`}
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+            aria-expanded={isMobileMenuOpen}
+            aria-controls="mobile-menu"
           >
-            {initials}
-          </div>
-          <button 
-            onClick={handleLogout} 
-            className="nav-button nav-button--logout"
-            aria-label="Sair da conta"
-          >
-            Sair
+            <span className="hamburger-line"></span>
+            <span className="hamburger-line"></span>
+            <span className="hamburger-line"></span>
           </button>
         </div>
+      </nav>
+
+      {/* Overlay do menu mobile */}
+      {isMobileMenuOpen && (
+        <div className="mobile-menu-overlay" onClick={() => setIsMobileMenuOpen(false)}>
+          <div 
+            ref={menuRef}
+            className="mobile-menu"
+            id="mobile-menu"
+            role="dialog"
+            aria-label="Menu de navegação móvel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mobile-menu-header">
+              {!loading && isAuthenticated && (
+                <div className="mobile-user-details">
+                  <div className="user-avatar-large">{initials}</div>
+                  <div className="user-name">{fullName}</div>
+                </div>
+              )}
+              {!loading && !isAuthenticated && (
+                <div className="mobile-auth-buttons">
+                  <Link to="/login" className="mobile-nav-link mobile-nav-link--primary" onClick={() => setIsMobileMenuOpen(false)}>
+                    Entrar
+                  </Link>
+                  <Link to="/cadastro" className="mobile-nav-link mobile-nav-link--secondary" onClick={() => setIsMobileMenuOpen(false)}>
+                    Criar conta
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            <div className="mobile-menu-content">
+              {/* Links principais */}
+              <div className="mobile-menu-section">
+                <h3 className="mobile-menu-section-title">Navegação</h3>
+                {publicLinks.map(link => (
+                  <Link 
+                    key={link.to} 
+                    className="mobile-nav-link" 
+                    to={link.to} 
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                
+                {!loading && isAuthenticated && (
+                  <Link 
+                    className="mobile-nav-link" 
+                    to="/meus-pedidos" 
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Meus Pedidos
+                  </Link>
+                )}
+              </div>
+
+              {/* Links de operação */}
+              {opsEnabled && opsLinks.length > 0 && (
+                <div className="mobile-menu-section">
+                  <h3 className="mobile-menu-section-title">Ferramentas Operacionais</h3>
+                  {opsLinks.map(link => (
+                    <Link 
+                      key={link.to} 
+                      className="mobile-nav-link mobile-nav-link--dev" 
+                      to={link.to} 
+                      onClick={() => setIsMobileMenuOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+
+              {/* Botão de logout para usuários autenticados */}
+              {!loading && isAuthenticated && (
+                <div className="mobile-menu-section">
+                  <button 
+                    onClick={handleLogout} 
+                    className="mobile-logout-button"
+                  >
+                    Sair
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
-    </nav>
+    </>
   );
 }
 
@@ -166,6 +367,9 @@ function AppContent() {
             <Route path="/comprar" element={<PublicCatalogPage />} />
             <Route path="/checkout" element={<PublicCheckoutPage />} />
             <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
+            <Route path="/suporte" element={<PublicSupportPage />} /> {/* NOVA ROTA */}
+            <Route path="/privacidade" element={<PublicPrivacyPolicyPage />} />
+            <Route path="/termos" element={<PublicTermsOfUsePage />} />
             <Route path="/sp" element={<PublicRegionHubPage region="SP" />} />
             <Route path="/pt" element={<PublicRegionHubPage region="PT" />} />
             <Route
@@ -232,22 +436,106 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+
+            {/* Rota 404 - Página não encontrada */}
             <Route 
               path="*" 
-              element={
-                <div className="error-page" role="alert">
-                  <h1>404</h1>
-                  <p>Página não encontrada</p>
-                  <Link to="/" className="btn btn--primary">Voltar ao início</Link>
-                </div>
-              } 
+              element={<PublicNotFoundPage />}
             />
           </Routes>
         </Suspense>
       </main>
-      <footer className="app-footer" role="contentinfo">
+      {/* <footer className="app-footer" role="contentinfo">
         <p>&copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.</p>
+      </footer> */}
+
+
+
+      {/* <footer className="app-footer" role="contentinfo">
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', // Centraliza horizontalmente
+          flexWrap: 'wrap', 
+          gap: 'var(--spacing-2)',
+          textAlign: 'center'
+        }}>
+          <p style={{ margin: 0 }}>
+            &copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.
+          </p>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/suporte" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Central de Suporte
+          </Link>
+        </div>
+      </footer> */}
+
+
+      <footer className="app-footer" role="contentinfo">
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          flexWrap: 'wrap', 
+          gap: 'var(--spacing-2)',
+          textAlign: 'center'
+        }}>
+          <p style={{ margin: 0 }}>
+            &copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.
+          </p>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/privacidade" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Política de Privacidade
+          </Link>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/termos" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Termos de Uso
+          </Link>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/suporte" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Central de Suporte
+          </Link>
+        </div>
       </footer>
+
+
+
     </div>
   );
 }

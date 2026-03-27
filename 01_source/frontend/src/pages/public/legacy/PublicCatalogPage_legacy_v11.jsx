@@ -1,9 +1,7 @@
 // 01_source/frontend/src/pages/public/PublicCatalogPage.jsx
 // UX Mobile-First
 // Otimizado para SEO
-// Filtros: Ordem Gaveta, Ordem Sabor (destaque no nome), Menor Preço, Maior Preço
-// Busca: Filtro por nome do produto/sabor com busca em tempo real
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -19,21 +17,6 @@ const LOCKER_OPTIONS = {
     { locker_id: "PT-MAIA-CENTRO-LK-001", label: "Maia Centro", address: "Rua do Comércio, 89" },
     { locker_id: "PT-GUIMARAES-AZUREM-LK-001", label: "Guimarães Azurém", address: "Avenida da Liberdade, 234" },
   ],
-};
-
-// Tipos de ordenação disponíveis
-const SORT_TYPES = {
-  SLOT: "slot",
-  NAME: "name",
-  PRICE_ASC: "price_asc",
-  PRICE_DESC: "price_desc",
-};
-
-const SORT_LABELS = {
-  [SORT_TYPES.SLOT]: "🔢 Ordem de Gaveta",
-  [SORT_TYPES.NAME]: "🍽️ Ordem de Sabor",
-  [SORT_TYPES.PRICE_ASC]: "💰 Menor Preço",
-  [SORT_TYPES.PRICE_DESC]: "💰 Maior Preço",
 };
 
 function formatMoney(cents, currency) {
@@ -57,23 +40,6 @@ function resolveBackendBase(region) {
   return region === "PT" ? BACKEND_PT : BACKEND_SP;
 }
 
-// Hook personalizado para debounce
-function useDebounce(value, delay) {
-  const [debouncedValue, setDebouncedValue] = useState(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedValue(value);
-    }, delay);
-
-    return () => {
-      clearTimeout(handler);
-    };
-  }, [value, delay]);
-
-  return debouncedValue;
-}
-
 export default function PublicCatalogPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -90,11 +56,6 @@ export default function PublicCatalogPage() {
   const [error, setError] = useState("");
   const [selectedLockerDetails, setSelectedLockerDetails] = useState(null);
   const [expandedCards, setExpandedCards] = useState(new Set());
-  const [sortType, setSortType] = useState(SORT_TYPES.SLOT);
-  const [searchTerm, setSearchTerm] = useState("");
-  
-  // Debounce da busca para evitar renderizações excessivas
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
   
   const backendBase = useMemo(() => resolveBackendBase(region), [region]);
 
@@ -169,49 +130,6 @@ export default function PublicCatalogPage() {
     }
     loadCatalog();
   }, [backendBase, lockerId, region]);
-
-  // Função para filtrar itens baseado no termo de busca
-  const filteredBySearch = useMemo(() => {
-    if (!debouncedSearchTerm.trim()) return items;
-    
-    const searchLower = debouncedSearchTerm.toLowerCase().trim();
-    return items.filter(item => 
-      item.name.toLowerCase().includes(searchLower) ||
-      (item.description && item.description.toLowerCase().includes(searchLower))
-    );
-  }, [items, debouncedSearchTerm]);
-
-  // Função de ordenação baseada no tipo selecionado
-  const sortedItems = useMemo(() => {
-    if (!filteredBySearch.length) return [];
-    
-    const itemsCopy = [...filteredBySearch];
-    
-    switch (sortType) {
-      case SORT_TYPES.SLOT:
-        return itemsCopy.sort((a, b) => a.slot - b.slot);
-        
-      case SORT_TYPES.NAME:
-        return itemsCopy.sort((a, b) => {
-          // Ordenação case-insensitive por nome (sabor)
-          return a.name.localeCompare(b.name, 'pt', { sensitivity: 'base' });
-        });
-        
-      case SORT_TYPES.PRICE_ASC:
-        return itemsCopy.sort((a, b) => a.amount_cents - b.amount_cents);
-        
-      case SORT_TYPES.PRICE_DESC:
-        return itemsCopy.sort((a, b) => b.amount_cents - a.amount_cents);
-        
-      default:
-        return itemsCopy;
-    }
-  }, [filteredBySearch, sortType]);
-
-  // Função para limpar a busca
-  const clearSearch = useCallback(() => {
-    setSearchTerm("");
-  }, []);
 
   async function handleReserve(item) {
     if (!item?.sku_id || !item?.slot || !lockerId) return;
@@ -319,7 +237,7 @@ export default function PublicCatalogPage() {
               backgroundClip: 'text'
             }}
           >
-            Escolha seu produto
+            Escolha sua gaveta
           </h1>
           
           <p style={{
@@ -387,94 +305,12 @@ export default function PublicCatalogPage() {
             </div>
           </div>
 
-          {/* Campo de Busca por Nome do Produto/Sabor */}
-          <div 
-            className="search-bar"
-            style={{
-              marginTop: 'var(--spacing-5)',
-              marginBottom: 'var(--spacing-3)'
-            }}
-          >
-            <div style={{
-              position: 'relative',
-              width: '100%'
-            }}>
-              <div style={{
-                position: 'absolute',
-                left: 'var(--spacing-3)',
-                top: '50%',
-                transform: 'translateY(-50%)',
-                fontSize: 'var(--font-size-lg)',
-                pointerEvents: 'none',
-                color: '#9ca3af'
-              }}>
-                🔍
-              </div>
-              <input
-                type="text"
-                id="search-product"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Buscar por sabor ou descrição..."
-                style={{
-                  width: '100%',
-                  padding: 'var(--spacing-3) var(--spacing-3) var(--spacing-3) calc(var(--spacing-3) + 32px)',
-                  fontSize: 'var(--font-size-base)',
-                  borderRadius: 'var(--radius-lg)',
-                  border: '1px solid #e2e8f0',
-                  background: 'white',
-                  transition: 'all var(--transition-base)',
-                  outline: 'none'
-                }}
-                aria-label="Buscar produtos por nome ou descrição"
-                onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-              />
-              {searchTerm && (
-                <button
-                  onClick={clearSearch}
-                  style={{
-                    position: 'absolute',
-                    right: 'var(--spacing-3)',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    fontSize: 'var(--font-size-lg)',
-                    cursor: 'pointer',
-                    padding: 'var(--spacing-1)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    borderRadius: 'var(--radius-full)',
-                    transition: 'background var(--transition-base)'
-                  }}
-                  aria-label="Limpar busca"
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#f3f4f6'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-            {debouncedSearchTerm && (
-              <p style={{
-                marginTop: 'var(--spacing-2)',
-                fontSize: 'var(--font-size-xs)',
-                color: '#e0e7ff',
-                textAlign: 'right'
-              }}>
-                {filteredBySearch.length} {filteredBySearch.length === 1 ? 'resultado' : 'resultados'} encontrados
-              </p>
-            )}
-          </div>
-
           {/* Ações Rápidas */}
           <div 
             style={{
               display: 'flex',
               gap: 'var(--spacing-3)',
-              marginTop: 'var(--spacing-4)',
+              marginTop: 'var(--spacing-5)',
               paddingTop: 'var(--spacing-4)',
               borderTop: '1px solid var(--color-border)',
               flexWrap: 'wrap'
@@ -531,7 +367,7 @@ export default function PublicCatalogPage() {
           </div>
         ) : (
           <>
-            {/* Header de Resultados com Filtros de Ordenação */}
+            {/* Header de Resultados */}
             <div 
               className="results-header"
               style={{
@@ -540,78 +376,27 @@ export default function PublicCatalogPage() {
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 flexWrap: 'wrap',
-                gap: 'var(--spacing-3)',
-                background: 'rgba(255,255,255,0.1)',
-                padding: 'var(--spacing-3)',
-                borderRadius: 'var(--radius-lg)',
-                backdropFilter: 'blur(10px)'
+                gap: 'var(--spacing-3)'
               }}
             >
-              <div>
-                <h2 style={{
-                  fontSize: 'var(--font-size-xl)',
-                  fontWeight: 700,
-                  color: 'white',
-                  margin: 0
-                }}>
-                  Produtos disponíveis
-                  {sortedItems.length > 0 && (
-                    <span style={{
-                      fontSize: 'var(--font-size-base)',
-                      fontWeight: 500,
-                      color: '#e0e7ff',
-                      marginLeft: 'var(--spacing-2)'
-                    }}>
-                      ({sortedItems.length})
-                    </span>
-                  )}
-                </h2>
-              </div>
-              
-              {/* Seletor de Ordenação */}
-              <div 
-                className="sort-selector"
-                style={{
-                  display: 'flex',
-                  gap: 'var(--spacing-2)',
-                  flexWrap: 'wrap',
-                  alignItems: 'center'
-                }}
-              >
-                <label 
-                  htmlFor="sort-select" 
-                  style={{
-                    fontSize: 'var(--font-size-sm)',
-                    fontWeight: 600,
-                    color: 'white',
-                    marginRight: 'var(--spacing-1)'
-                  }}
-                >
-                  Ordenar por:
-                </label>
-                <select
-                  id="sort-select"
-                  value={sortType}
-                  onChange={(e) => setSortType(e.target.value)}
-                  style={{
-                    padding: 'var(--spacing-2) var(--spacing-3)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                    background: 'rgba(255,255,255,0.95)',
-                    fontSize: 'var(--font-size-sm)',
+              <h2 style={{
+                fontSize: 'var(--font-size-xl)',
+                fontWeight: 700,
+                color: 'white',
+                margin: 0
+              }}>
+                Gavetas disponíveis
+                {items.length > 0 && (
+                  <span style={{
+                    fontSize: 'var(--font-size-base)',
                     fontWeight: 500,
-                    cursor: 'pointer',
-                    transition: 'all var(--transition-base)',
-                    outline: 'none'
-                  }}
-                  aria-label="Ordenar produtos"
-                >
-                  <option value={SORT_TYPES.SLOT}>{SORT_LABELS[SORT_TYPES.SLOT]}</option>
-                  <option value={SORT_TYPES.NAME}>{SORT_LABELS[SORT_TYPES.NAME]}</option>
-                  <option value={SORT_TYPES.PRICE_ASC}>{SORT_LABELS[SORT_TYPES.PRICE_ASC]}</option>
-                  <option value={SORT_TYPES.PRICE_DESC}>{SORT_LABELS[SORT_TYPES.PRICE_DESC]}</option>
-                </select>
-              </div>
+                    color: '#e0e7ff',
+                    marginLeft: 'var(--spacing-2)'
+                  }}>
+                    ({items.length})
+                  </span>
+                )}
+              </h2>
             </div>
 
             {/* Grid de Produtos */}
@@ -625,7 +410,7 @@ export default function PublicCatalogPage() {
               role="list"
               aria-label="Lista de produtos disponíveis"
             >
-              {sortedItems.length === 0 ? (
+              {items.length === 0 ? (
                 <article 
                   className="card empty-state"
                   style={{
@@ -635,70 +420,33 @@ export default function PublicCatalogPage() {
                     background: 'white'
                   }}
                 >
-                  <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>
-                    {debouncedSearchTerm ? '🔍' : '📭'}
-                  </div>
+                  <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>🔍</div>
                   <h3 style={{
                     fontSize: 'var(--font-size-xl)',
                     fontWeight: 600,
                     color: 'var(--color-text)',
                     marginBottom: 'var(--spacing-3)'
                   }}>
-                    {debouncedSearchTerm 
-                      ? `Nenhum produto encontrado para "${debouncedSearchTerm}"`
-                      : 'Nenhum produto disponível'}
+                    Nenhuma gaveta disponível
                   </h3>
                   <p style={{
                     fontSize: 'var(--font-size-sm)',
                     color: 'var(--color-text-muted)',
                     marginBottom: 'var(--spacing-4)'
                   }}>
-                    {debouncedSearchTerm
-                      ? `Tente buscar por outro sabor ou verifique a ortografia.`
-                      : 'Não encontramos produtos ativos para este locker. Tente selecionar outro ponto de retirada.'}
+                    Não encontramos produtos ativos para este locker.
+                    Tente selecionar outro ponto de retirada.
                   </p>
-                  {debouncedSearchTerm ? (
-                    <button
-                      onClick={clearSearch}
-                      className="btn btn--primary"
-                      style={{
-                        padding: 'var(--spacing-2) var(--spacing-6)'
-                      }}
-                    >
-                      Limpar busca
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => setLockerId(LOCKER_OPTIONS[region]?.[0]?.locker_id || "")}
-                      className="btn btn--secondary"
-                    >
-                      Ver outro locker
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setLockerId(LOCKER_OPTIONS[region]?.[0]?.locker_id || "")}
+                    className="btn btn--secondary"
+                  >
+                    Ver outro locker
+                  </button>
                 </article>
               ) : (
-                sortedItems.map((item) => {
+                items.map((item) => {
                   const isExpanded = expandedCards.has(item.slot);
-                  // Destaque visual baseado no tipo de ordenação
-                  const isNameHighlighted = sortType === SORT_TYPES.NAME;
-                  const isPriceHighlighted = sortType === SORT_TYPES.PRICE_ASC || sortType === SORT_TYPES.PRICE_DESC;
-                  
-                  // Destacar termo de busca no nome do produto
-                  const highlightSearchTerm = (text, search) => {
-                    if (!search) return text;
-                    const parts = text.split(new RegExp(`(${search})`, 'gi'));
-                    return parts.map((part, i) => 
-                      part.toLowerCase() === search.toLowerCase() ? 
-                        <mark key={i} style={{
-                          background: '#fef3c7',
-                          color: '#92400e',
-                          padding: '0 2px',
-                          borderRadius: 'var(--radius-sm)'
-                        }}>{part}</mark> : 
-                        part
-                    );
-                  };
-
                   return (
                     <article 
                       key={`${item.locker_id}-${item.slot}`}
@@ -709,8 +457,7 @@ export default function PublicCatalogPage() {
                         padding: 'var(--spacing-4)',
                         boxShadow: 'var(--shadow-md)',
                         transition: 'all var(--transition-base)',
-                        animation: 'slideDown 0.3s ease-out',
-                        border: sortType === SORT_TYPES.NAME && isExpanded ? '2px solid #667eea' : 'none'
+                        animation: 'slideDown 0.3s ease-out'
                       }}
                       role="listitem"
                     >
@@ -722,73 +469,37 @@ export default function PublicCatalogPage() {
                         gap: 'var(--spacing-3)' 
                       }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-3)', flex: 1 }}>
-                          {/* Gaveta - visível mas não destacada quando ordenado por sabor */}
                           <div style={{
                             width: 50,
                             height: 50,
-                            background: isNameHighlighted ? '#e5e7eb' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                             borderRadius: 'var(--radius-lg)',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
                             fontSize: 'var(--font-size-xl)',
                             fontWeight: 800,
-                            color: isNameHighlighted ? '#4a5568' : 'white',
-                            flexShrink: 0,
-                            transition: 'all var(--transition-base)'
+                            color: 'white',
+                            flexShrink: 0
                           }}>
                             {item.slot}
                           </div>
                           <div style={{ flex: 1 }}>
-                            {/* Nome do Produto/Sabor - com destaque quando ordenado por sabor e highlight da busca */}
                             <div style={{
-                              fontSize: isNameHighlighted ? 'var(--font-size-lg)' : 'var(--font-size-base)',
-                              fontWeight: isNameHighlighted ? 800 : 700,
-                              color: isNameHighlighted ? '#667eea' : 'var(--color-text)',
+                              fontSize: 'var(--font-size-base)',
+                              fontWeight: 700,
+                              color: 'var(--color-text)',
                               marginBottom: 'var(--spacing-1)',
-                              lineHeight: 1.3,
-                              transition: 'all var(--transition-base)'
+                              lineHeight: 1.3
                             }}>
-                              {debouncedSearchTerm 
-                                ? highlightSearchTerm(item.name, debouncedSearchTerm)
-                                : item.name}
-                              {isNameHighlighted && (
-                                <span style={{
-                                  marginLeft: 'var(--spacing-2)',
-                                  fontSize: 'var(--font-size-xs)',
-                                  background: '#667eea',
-                                  color: 'white',
-                                  padding: '2px 6px',
-                                  borderRadius: 'var(--radius-full)',
-                                  display: 'inline-block'
-                                }}>
-                                  Destaque
-                                </span>
-                              )}
+                              {item.name}
                             </div>
-                            {/* Preço - com destaque quando ordenado por preço */}
                             <div style={{
-                              fontSize: isPriceHighlighted ? 'var(--font-size-xl)' : 'var(--font-size-lg)',
-                              fontWeight: isPriceHighlighted ? 900 : 800,
-                              color: isPriceHighlighted ? '#f59e0b' : 'var(--color-primary)',
-                              transition: 'all var(--transition-base)',
-                              display: 'inline-block'
+                              fontSize: 'var(--font-size-lg)',
+                              fontWeight: 800,
+                              color: 'var(--color-primary)'
                             }}>
                               {formatMoney(item.amount_cents, item.currency)}
-                              {isPriceHighlighted && (
-                                <span style={{
-                                  marginLeft: 'var(--spacing-2)',
-                                  fontSize: 'var(--font-size-xs)',
-                                  background: '#f59e0b',
-                                  color: 'white',
-                                  padding: '2px 6px',
-                                  borderRadius: 'var(--radius-full)',
-                                  display: 'inline-block',
-                                  verticalAlign: 'middle'
-                                }}>
-                                  {sortType === SORT_TYPES.PRICE_ASC ? 'Menor Preço ↑' : 'Maior Preço ↓'}
-                                </span>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -802,12 +513,9 @@ export default function PublicCatalogPage() {
                               height: 50,
                               borderRadius: 'var(--radius-lg)',
                               padding: 0,
-                              fontSize: '20px',
-                              transition: 'transform var(--transition-base)'
+                              fontSize: '20px'
                             }}
-                            aria-label={`Reservar ${item.name} - Gaveta ${item.slot}`}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            aria-label={`Reservar gaveta ${item.slot}`}
                           >
                             {submittingSlot === item.slot ? '⏳' : '🛒'}
                           </button>
@@ -819,8 +527,7 @@ export default function PublicCatalogPage() {
                               height: 40,
                               borderRadius: 'var(--radius-md)',
                               padding: 0,
-                              fontSize: 'var(--font-size-sm)',
-                              transition: 'transform var(--transition-base)'
+                              fontSize: 'var(--font-size-sm)'
                             }}
                             aria-label={isExpanded ? 'Recolher detalhes' : 'Expandir detalhes'}
                             aria-expanded={isExpanded}
@@ -841,10 +548,6 @@ export default function PublicCatalogPage() {
                           }}
                         >
                           <div style={{ display: 'grid', gap: 'var(--spacing-2)', fontSize: 'var(--font-size-sm)' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>Gaveta:</span>
-                              <span style={{ fontWeight: 700 }}>{item.slot}</span>
-                            </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                               <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>SKU:</span>
                               <span>{item.sku_id}</span>
@@ -868,9 +571,7 @@ export default function PublicCatalogPage() {
                               <div style={{ marginTop: 'var(--spacing-2)' }}>
                                 <span style={{ fontWeight: 600, color: 'var(--color-text-muted)' }}>Descrição:</span>
                                 <p style={{ margin: 'var(--spacing-1) 0 0', color: 'var(--color-text)' }}>
-                                  {debouncedSearchTerm 
-                                    ? highlightSearchTerm(item.description, debouncedSearchTerm)
-                                    : item.description}
+                                  {item.description}
                                 </p>
                               </div>
                             )}
@@ -900,8 +601,8 @@ export default function PublicCatalogPage() {
               )}
             </div>
 
-            {/* Hint de Scroll e Ordenação Atual */}
-            {sortedItems.length > 0 && (
+            {/* Hint de Scroll */}
+            {items.length > 0 && (
               <div 
                 className="scroll-hint"
                 style={{
@@ -909,16 +610,10 @@ export default function PublicCatalogPage() {
                   padding: 'var(--spacing-4)',
                   color: '#e0e7ff',
                   fontSize: 'var(--font-size-xs)',
-                  marginTop: 'var(--spacing-4)',
-                  background: 'rgba(0,0,0,0.2)',
-                  borderRadius: 'var(--radius-lg)',
-                  backdropFilter: 'blur(5px)'
+                  marginTop: 'var(--spacing-4)'
                 }}
               >
-                {sortedItems.length} {sortedItems.length === 1 ? 'produto' : 'produtos'} • 
-                Ordenado por: {SORT_LABELS[sortType]} • 
-                {debouncedSearchTerm && ` Busca: "${debouncedSearchTerm}" • `}
-                Role para ver mais
+                {items.length} gavetas disponíveis • Role para ver mais
               </div>
             )}
           </>
@@ -934,42 +629,6 @@ export default function PublicCatalogPage() {
         @keyframes slideDown {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }
-        }
-        
-        /* Melhorias de hover e interação */
-        .product-card {
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .product-card:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-        }
-        
-        /* Responsividade */
-        @media (max-width: 640px) {
-          .results-header {
-            flex-direction: column;
-            align-items: stretch;
-          }
-          
-          .sort-selector {
-            justify-content: space-between;
-          }
-        }
-        
-        /* Foco acessível */
-        button:focus-visible, select:focus-visible, a:focus-visible, input:focus-visible {
-          outline: 2px solid #667eea;
-          outline-offset: 2px;
-        }
-        
-        /* Estilo para o mark de highlight */
-        mark {
-          background: #fef3c7;
-          color: #92400e;
-          padding: 0 2px;
-          border-radius: 4px;
         }
       `}</style>
     </main>

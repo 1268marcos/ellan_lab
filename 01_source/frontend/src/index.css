@@ -499,3 +499,270 @@ body {
     border: 1px solid #000;
   }
 }
+
+/* Adicione ao seu arquivo CSS principal */
+
+/* Navbar base */
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+}
+
+.nav-brand-link {
+  font-size: 1.25rem;
+  font-weight: bold;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* Desktop menu */
+.nav-desktop {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex: 1;
+}
+
+/* Mobile menu */
+.nav-mobile {
+  display: none;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mobile-user-info {
+  display: flex;
+  align-items: center;
+}
+
+.user-avatar-mobile {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+/* Hamburger menu */
+.hamburger-menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  z-index: 10;
+}
+
+.hamburger-line {
+  width: 100%;
+  height: 2px;
+  background: currentColor;
+  border-radius: 2px;
+  transition: all 0.3s ease;
+}
+
+.hamburger-menu.active .hamburger-line:nth-child(1) {
+  transform: rotate(45deg) translate(8px, 8px);
+}
+
+.hamburger-menu.active .hamburger-line:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger-menu.active .hamburger-line:nth-child(3) {
+  transform: rotate(-45deg) translate(7px, -7px);
+}
+
+/* Mobile overlay */
+.mobile-menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  animation: fadeIn 0.3s ease;
+}
+
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 80%;
+  max-width: 320px;
+  height: 100%;
+  background-color: white;
+  box-shadow: -2px 0 8px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.3s ease;
+  overflow-y: auto;
+}
+
+.mobile-menu-header {
+  padding: 2rem 1.5rem;
+  border-bottom: 1px solid #e0e0e0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.mobile-user-details {
+  text-align: center;
+}
+
+.user-avatar-large {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: rgba(255,255,255,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin: 0 auto 1rem;
+}
+
+.user-name {
+  font-size: 1rem;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.mobile-auth-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mobile-menu-content {
+  flex: 1;
+  padding: 1.5rem;
+}
+
+.mobile-menu-section {
+  margin-bottom: 2rem;
+}
+
+.mobile-menu-section-title {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  color: #666;
+  margin-bottom: 1rem;
+  letter-spacing: 0.5px;
+}
+
+.mobile-nav-link {
+  display: block;
+  padding: 0.75rem 0;
+  color: #333;
+  text-decoration: none;
+  transition: color 0.2s;
+  font-size: 1rem;
+}
+
+.mobile-nav-link:hover {
+  color: #667eea;
+}
+
+.mobile-nav-link--primary {
+  background-color: #667eea;
+  color: white;
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 8px;
+}
+
+.mobile-nav-link--secondary {
+  border: 2px solid #667eea;
+  color: #667eea;
+  text-align: center;
+  padding: 0.75rem;
+  border-radius: 8px;
+}
+
+.mobile-nav-link--dev {
+  font-family: monospace;
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.mobile-logout-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #f44336;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+.mobile-logout-button:hover {
+  background-color: #d32f2f;
+}
+
+/* Animações */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+  .nav-desktop {
+    display: none;
+  }
+  
+  .nav-mobile {
+    display: flex;
+  }
+  
+  .top-nav {
+    padding: 0.75rem 1rem;
+  }
+}
+
+/* Tablet landscape */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .nav-desktop {
+    gap: 0.75rem;
+  }
+  
+  .nav-link {
+    font-size: 0.875rem;
+  }
+}
