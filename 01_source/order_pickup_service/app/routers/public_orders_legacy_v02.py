@@ -3,8 +3,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
+from uuid import uuid4
+
 import hashlib
-import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -15,11 +16,13 @@ from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus
 from app.models.user import User
-from app.schemas.orders import CreateOrderIn, OrderOut
-from app.services.order_creation_service import create_order_core
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
+
+# =========================================================
+# SERIALIZAÇÃO
+# =========================================================
 
 def _dt_iso(value: datetime | None) -> str | None:
     if value is None:
@@ -55,17 +58,15 @@ def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict
         "receipt_json_path": (
             f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
         ),
-        "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
     }
 
-
 def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _generate_public_access_token() -> str:
-    return secrets.token_urlsafe(32)
-
+# =========================================================
+# PAYLOAD PÚBLICO
+# =========================================================
 
 class PublicCreateOrderRequest(BaseModel):
     region: str = Field(..., min_length=2, max_length=8)
@@ -80,9 +81,14 @@ class PublicCreateOrderRequest(BaseModel):
     consent_marketing: bool = False
 
 
+# =========================================================
+# RESOLUÇÃO DE ACESSO
+# =========================================================
+
 def _resolve_guest_session_id(device_fp: str | None) -> str | None:
     value = str(device_fp or "").strip()
     return value or None
+
 
 
 def _get_order_for_public_access(
@@ -91,30 +97,31 @@ def _get_order_for_public_access(
     order_id: str,
     current_user: User | None,
     guest_session_id: str | None,
-    public_token: str | None,
+    public_token: str | None = None,
 ) -> Order | None:
-    base_query = db.query(Order).filter(Order.id == order_id)
+    query = db.query(Order).filter(Order.id == order_id)
 
+    # 1. usuário autenticado
     if current_user is not None:
-        order = base_query.filter(Order.user_id == current_user.id).first()
+        order = query.filter(Order.user_id == current_user.id).first()
         if order:
             return order
 
+    # 2. guest por fingerprint (SEU MODELO ATUAL)
     if guest_session_id:
-        order = base_query.filter(Order.guest_session_id == guest_session_id).first()
+        order = query.filter(Order.guest_session_id == guest_session_id).first()
         if order:
             return order
 
+    # 3. NOVO: token público
     if public_token:
-        order = (
-            base_query
-            .filter(Order.public_access_token_hash == _hash_token(public_token))
-            .first()
-        )
+        token_hash = _hash_token(public_token)
+        order = query.filter(Order.public_access_token_hash == token_hash).first()
         if order:
             return order
 
     return None
+
 
 
 def _list_orders_for_public_access(
@@ -174,6 +181,10 @@ def _list_orders_for_public_access(
     return items, total
 
 
+# =========================================================
+# INTEGRAÇÃO COM O FLOW EXISTENTE
+# =========================================================
+
 def _create_public_order_via_existing_flow(
     *,
     db: Session,
@@ -183,65 +194,83 @@ def _create_public_order_via_existing_flow(
     device_fp: str,
     request: Request,
 ) -> dict[str, Any]:
-    _ = idempotency_key
-    _ = device_fp
-    _ = request
+    """
+    PONTO ÚNICO DE INTEGRAÇÃO.
 
-    create_payload = CreateOrderIn.model_validate(payload.model_dump())
+    ESTE MÉTODO DEVE CHAMAR O MESMO CORE JÁ USADO PELO ENDPOINT PROTEGIDO /orders.
 
-    result = create_order_core(
-        db=db,
-        region=create_payload.region.value,
-        sku_id=create_payload.sku_id,
-        totem_id=create_payload.totem_id,
-        desired_slot=create_payload.desired_slot,
-        payment_method_value=create_payload.payment_method.value,
-        card_type_value=create_payload.card_type.value if create_payload.card_type else None,
-        amount_cents_input=create_payload.amount_cents,
-        guest_phone=create_payload.customer_phone,
-        user_id=None,
+    Motivo:
+    - a criação real do pedido já existe e funciona;
+    - nela estão as regras de:
+      * slot-first
+      * alocação da gaveta
+      * idempotência real
+      * criação do pedido ONLINE
+      * consistência transacional
+      * possíveis eventos/domínio/pickup associados
+
+    Não reescrevi esse fluxo aqui para não quebrar arquitetura nem duplicar regra.
+
+    IMPLEMENTAÇÃO ESPERADA:
+    - importar a função/service já usado no router protegido
+    - passar channel="ONLINE"
+    - passar guest_session_id=device_fp
+    - passar idempotency_key/device_fp
+    - retornar o mesmo shape já devolvido por /orders
+    """
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail={
+            "type": "PUBLIC_CREATE_ORDER_INTEGRATION_PENDING",
+            "message": (
+                "A rota pública foi aberta, mas falta ligar este endpoint ao mesmo "
+                "service/core já usado pelo endpoint protegido /orders."
+            ),
+            "next_required_file": (
+                "Envie o arquivo do endpoint protegido de criação (/orders) "
+                "ou o service/função que ele usa para criar pedido."
+            ),
+            "expected_contract": {
+                "payload": payload.model_dump(),
+                "guest_session_id": guest_session_id,
+                "idempotency_key": idempotency_key,
+                "device_fp": device_fp,
+                "channel": "ONLINE",
+            },
+        },
     )
 
-    order = result.order
-    allocation = result.allocation
 
-    public_access_token = _generate_public_access_token()
-
-    order.user_id = None
-    order.guest_session_id = guest_session_id
-    order.public_access_token_hash = _hash_token(public_access_token)
-    order.guest_phone = payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
-    order.consent_marketing = 1 if payload.consent_marketing else 0
-    order.touch()
-
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-
-    return {
-        "order_id": order.id,
-        "channel": order.channel.value,
-        "status": order.status.value,
-        "amount_cents": order.amount_cents,
-        "payment_method": order.payment_method.value if order.payment_method else None,
-        "allocation": {
-            "allocation_id": allocation.id,
-            "slot": allocation.slot,
-            "ttl_sec": result.ttl_sec,
-        },
-        "public_access_token": public_access_token,
-        "guest_session_id": guest_session_id,
-    }
-
+# =========================================================
+# CRIAÇÃO PÚBLICA
+# =========================================================
 
 @router.post("/")
 def create_public_order(
     payload: PublicCreateOrderRequest,
     request: Request,
     db: Session = Depends(get_db),
-    idempotency_key: str = Header(..., alias="Idempotency-Key"),
-    device_fp: str = Header(..., alias="X-Device-Fingerprint"),
+    idempotency_key: str = Header(..., alias="Chave de idempotência para evitar duplicação de pedidos Idempotency-Key"),
+    device_fp: str = Header(..., alias="Identificador único do dispositivo para rastrear sessão de convidado X-Device-Fingerprint"),
 ):
+    """
+    Criar Pedido Público
+    
+    Arquivo: # 01_source/order_pickup_service/app/routers/public_orders.py
+
+    Funcionalidade: def create_public_order(
+
+    Endpoint: POST /public/orders/
+    
+    Descrição: Cria um novo pedido para usuários não autenticados (modo convidado). Este endpoint utiliza um fluxo de criação existente do sistema, garantindo regras de negócio como validação de slot, alocação de gaveta e idempotência.
+
+    Respostas:
+    - Código	Descrição
+    - 200	Pedido criado com sucesso
+    - 400	X-Device-Fingerprint ou Idempotency-Key ausente/inválido
+    - 501	Integração com fluxo existente não implementada
+
+    """
     guest_session_id = _resolve_guest_session_id(device_fp)
 
     if not guest_session_id:
@@ -272,15 +301,41 @@ def create_public_order(
     )
 
 
+# =========================================================
+# LISTAGEM PÚBLICA
+# =========================================================
+
 @router.get("/")
 def list_my_public_orders(
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    status_value: str | None = Query(default=None, alias="status"),
+    limit: int = Query(default=20, ge=1, le=100, alias="Número máximo de itens"),
+    offset: int = Query(default=0, ge=0, alias="Deslocamento para paginação offset"),
+    status_value: str | None = Query(default=None, alias="Filtra por status do pedido"),
     current_user: User | None = Depends(get_current_public_user),
     db: Session = Depends(get_db),
-    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    device_fp: str | None = Header(default=None, alias="Identificador do dispositivo para modo convidado X-Device-Fingerprint"),
 ):
+    """
+    Listar Meus Pedidos Públicos
+    
+    Arquivo: # 01_source/order_pickup_service/app/routers/public_orders.py
+
+    Funcionalidade: def list_my_public_orders(
+
+    Endpoint: GET /public/orders/
+    
+    Descrição: Lista os pedidos acessíveis ao contexto atual (usuário autenticado ou sessão convidada). Permite filtragem por status e paginação.
+
+    Autenticação:
+    - Pode ser autenticado (token JWT público) OU
+    - Pode ser convidado via X-Device-Fingerprint
+
+    Códigos de Resposta:
+    - Código	Descrição
+    - 200	Lista retornada com sucesso
+    - 400	Status de filtro inválido
+    - 401	Nenhuma forma de autenticação fornecida
+
+    """
     guest_session_id = _resolve_guest_session_id(device_fp)
 
     items, total = _list_orders_for_public_access(
@@ -322,24 +377,51 @@ def list_my_public_orders(
     }
 
 
+# =========================================================
+# DETALHE PÚBLICO
+# =========================================================
+
 @router.get("/{order_id}")
 def get_my_public_order(
     order_id: str,
     current_user: User | None = Depends(get_current_public_user),
     db: Session = Depends(get_db),
-    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
-    public_token_query: str | None = Query(default=None, alias="token"),
-    public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
+    device_fp: str | None = Header(default=None, alias="Identificador do dispositivo para modo convidado X-Device-Fingerprint"),
+    public_token: str | None = Query(default=None, alias="token"),
 ):
+    """
+    Obter Detalhes de um Pedido Público
+
+    Arquivo: # 01_source/order_pickup_service/app/routers/public_orders.py
+
+    Funcionalidade: def get_my_public_order(
+
+    Endpoint: GET /public/orders/{order_id}
+
+    Descrição: Recupera os detalhes completos de um pedido específico, desde que seja acessível pelo contexto atual (usuário autenticado ou sessão convidada). Inclui informações fiscais quando disponíveis.
+
+    Autenticação:
+    - Pode ser autenticado (token JWT público) OU
+    - Pode ser convidado via X-Device-Fingerprint
+
+    Códigos de Resposta:
+    - Código	Descrição
+    - 200	Pedido encontrado e retornado
+    - 404	Pedido não encontrado para o contexto de acesso
+
+    Regras de Acesso:
+    1. Modo Autenticado: Usuário com token JWT público válido acessa apenas seus próprios pedidos
+    2. Modo Convidado: Usuário não autenticado acessa pedidos associados ao X-Device-Fingerprint
+    3. Prioridade: Quando ambos estão presentes, o sistema retorna pedidos que correspondem a qualquer um dos contextos
+
+    """
     guest_session_id = _resolve_guest_session_id(device_fp)
-    public_token = public_token_header or public_token_query
 
     order = _get_order_for_public_access(
         db=db,
         order_id=order_id,
         current_user=current_user,
         guest_session_id=guest_session_id,
-        public_token=public_token,
     )
 
     if not order:
@@ -351,7 +433,6 @@ def get_my_public_order(
                 "order_id": order_id,
                 "guest_session_id": guest_session_id,
                 "user_id": current_user.id if current_user else None,
-                "public_token_present": bool(public_token),
             },
         )
 
@@ -362,3 +443,5 @@ def get_my_public_order(
     )
 
     return _serialize_order(order, fiscal=fiscal)
+
+    

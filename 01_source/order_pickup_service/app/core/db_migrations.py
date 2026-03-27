@@ -736,6 +736,24 @@ def migrate_order_pickup_schema() -> dict:
                     )
                 )
                 applied.append("orders.updated_at")
+                
+            # 🔥 NOVO BLOCO:
+            if not _has_column(inspector, "orders", "public_access_token_hash"):
+                conn.execute(
+                    text("ALTER TABLE orders ADD COLUMN public_access_token_hash VARCHAR")
+                )
+                applied.append("orders.public_access_token_hash")
+
+            inspector = inspect(conn)
+
+            if not _has_index(inspector, "orders", "idx_orders_public_access_token_hash"):
+                conn.execute(
+                    text(
+                        "CREATE INDEX idx_orders_public_access_token_hash "
+                        "ON orders (public_access_token_hash)"
+                    )
+                )
+                applied.append("orders.idx_orders_public_access_token_hash")
 
         inspector = inspect(conn)
 

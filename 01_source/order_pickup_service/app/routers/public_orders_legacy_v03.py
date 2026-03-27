@@ -3,8 +3,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-import hashlib
-import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -12,11 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_public_user
 from app.core.db import get_db
+from app.core.public_token import generate_public_token, hash_public_token
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus
 from app.models.user import User
-from app.schemas.orders import CreateOrderIn, OrderOut
-from app.services.order_creation_service import create_order_core
+from app.routers.orders import create_order
+from app.schemas.orders import CreateOrderIn
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
@@ -57,14 +56,6 @@ def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict
         ),
         "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
     }
-
-
-def _hash_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
-def _generate_public_access_token() -> str:
-    return secrets.token_urlsafe(32)
 
 
 class PublicCreateOrderRequest(BaseModel):
@@ -108,7 +99,7 @@ def _get_order_for_public_access(
     if public_token:
         order = (
             base_query
-            .filter(Order.public_access_token_hash == _hash_token(public_token))
+            .filter(Order.public_access_token_hash == hash_public_token(public_token))
             .first()
         )
         if order:
@@ -183,34 +174,46 @@ def _create_public_order_via_existing_flow(
     device_fp: str,
     request: Request,
 ) -> dict[str, Any]:
+    """
+    Reaproveita o mesmo core real já usado por /orders.
+    Não renomeia rotas existentes e não duplica a lógica de negócio.
+    """
     _ = idempotency_key
     _ = device_fp
     _ = request
 
     create_payload = CreateOrderIn.model_validate(payload.model_dump())
 
-    result = create_order_core(
+    class _GuestUser:
+        id = None
+
+    created = create_order(
+        payload=create_payload,
         db=db,
-        region=create_payload.region.value,
-        sku_id=create_payload.sku_id,
-        totem_id=create_payload.totem_id,
-        desired_slot=create_payload.desired_slot,
-        payment_method_value=create_payload.payment_method.value,
-        card_type_value=create_payload.card_type.value if create_payload.card_type else None,
-        amount_cents_input=create_payload.amount_cents,
-        guest_phone=create_payload.customer_phone,
-        user_id=None,
+        user=_GuestUser(),
     )
 
-    order = result.order
-    allocation = result.allocation
+    order = db.query(Order).filter(Order.id == created.order_id).first()
+    if not order:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "PUBLIC_ORDER_CREATED_BUT_NOT_FOUND",
+                "message": "Pedido criado, mas não foi localizado para atualização do contexto público.",
+                "order_id": created.order_id,
+            },
+        )
 
-    public_access_token = _generate_public_access_token()
+    # PASSO 5 — gerar token no momento correto
+    public_access_token = generate_public_token()
 
+    # PASSO 6 — não quebrar o fluxo atual; só adicionar ownership público
     order.user_id = None
     order.guest_session_id = guest_session_id
-    order.public_access_token_hash = _hash_token(public_access_token)
-    order.guest_phone = payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
+    order.public_access_token_hash = hash_public_token(public_access_token)
+    order.guest_phone = (
+        payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
+    )
     order.consent_marketing = 1 if payload.consent_marketing else 0
     order.touch()
 
@@ -219,16 +222,12 @@ def _create_public_order_via_existing_flow(
     db.refresh(order)
 
     return {
-        "order_id": order.id,
-        "channel": order.channel.value,
-        "status": order.status.value,
-        "amount_cents": order.amount_cents,
-        "payment_method": order.payment_method.value if order.payment_method else None,
-        "allocation": {
-            "allocation_id": allocation.id,
-            "slot": allocation.slot,
-            "ttl_sec": result.ttl_sec,
-        },
+        "order_id": created.order_id,
+        "channel": created.channel,
+        "status": created.status,
+        "amount_cents": created.amount_cents,
+        "payment_method": created.payment_method,
+        "allocation": created.allocation,
         "public_access_token": public_access_token,
         "guest_session_id": guest_session_id,
     }

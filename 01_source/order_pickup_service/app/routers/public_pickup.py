@@ -23,7 +23,7 @@ def _mask_manual_code(token_id: str) -> str:
 @router.get("/{order_id}/pickup", response_model=PublicPickupOut)
 def get_public_pickup(
     order_id: str,
-    current_user: User = Depends(get_current_public_user),
+    current_user: User = Depends(get_current_public_user), # isso quebra o fluxo guest
     db: Session = Depends(get_db),
 ):
     # 1. ORDER

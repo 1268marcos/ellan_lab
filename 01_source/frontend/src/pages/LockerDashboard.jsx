@@ -1476,7 +1476,7 @@ export default function LockerDashboard({ region = "PT" }) {
         payload.customer_phone = customerPhone.trim();
       }
 
-      const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, {
+      const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, { //só para público fetch(`${ORDER_PICKUP_BASE}/public/orders/` se usar aqui erro 422
         method: "POST",
         headers: buildAuthHeaders(token),
         body: JSON.stringify(payload),

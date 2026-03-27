@@ -63,12 +63,13 @@ class Order(Base):
         Index("idx_orders_picked_up_at", "picked_up_at"),
         Index("idx_orders_status_picked_up", "status", "picked_up_at"),
         Index("idx_orders_totem_picked_up", "totem_id", "picked_up_at"),
+        Index("idx_orders_public_access_token_hash", "public_access_token_hash"),
     )
 
     id = Column(String, primary_key=True)
 
-    # 🔥 ALTERAÇÃO PRINCIPAL — AGORA STRING
-    user_id = Column(String, nullable=True)  # ONLINE obrigatório; KIOSK null
+    # ONLINE autenticado pode preencher; guest/KIOSK podem deixar null
+    user_id = Column(String, nullable=True)
 
     channel = Column(Enum(OrderChannel), nullable=False)
 
@@ -95,6 +96,8 @@ class Order(Base):
     picked_up_at = Column(DateTime, nullable=True)
 
     guest_session_id = Column(String, nullable=True)
+    public_access_token_hash = Column(String, nullable=True)
+
     receipt_email = Column(String, nullable=True)
     receipt_phone = Column(String, nullable=True)
     consent_marketing = Column(Integer, nullable=False, default=0)

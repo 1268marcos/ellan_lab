@@ -88,6 +88,8 @@ def _assert_required_schema() -> None:
         "guest_email",
         "created_at",
         "updated_at",
+        # 🔥 NOVO (sem quebrar)
+        "public_access_token_hash",
     }
 
     required_allocations_columns = {
@@ -204,6 +206,8 @@ def _assert_required_schema() -> None:
         "idx_orders_picked_up_at",
         "idx_orders_status_picked_up",
         "idx_orders_totem_picked_up",
+        # 🔥 NOVO
+        "idx_orders_public_access_token_hash",        
     }
 
     required_allocations_indexes = {

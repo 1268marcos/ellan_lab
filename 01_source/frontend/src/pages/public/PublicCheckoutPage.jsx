@@ -226,7 +226,7 @@ export default function PublicCheckoutPage() {
     try {
       const deviceFp = getOrCreateDeviceFingerprint();
       const idempotencyKey = generateIdempotencyKey();
-      const res = await fetch(`${ORDER_PICKUP_BASE}/orders`, {
+      const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, { //fetch(`${ORDER_PICKUP_BASE}/orders`
         method: "POST",
         headers: {
           "Content-Type": "application/json",
