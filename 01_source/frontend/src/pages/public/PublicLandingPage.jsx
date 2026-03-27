@@ -1,161 +1,226 @@
+// 01_source/frontend/src/pages/public/PublicLandingPage.jsx
+// Otimizado para conversão
 import React from "react";
 import { Link } from "react-router-dom";
 
 export default function PublicLandingPage() {
   return (
-    <main style={pageStyle}>
-      <div style={containerStyle}>
-        <section style={heroCardStyle}>
-          <div style={heroContentStyle}>
-            <span style={eyebrowStyle}>Canal público oficial</span>
-
-            <h1 style={titleStyle}>ELLAN Lab Locker</h1>
-
-            <p style={subtitleStyle}>
+    <main className="landing-page" style={{ padding: 'var(--spacing-8)' }}>
+      <div className="container" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+        
+        {/* HERO SECTION - Otimizado para conversão */}
+        <section 
+          className="card card--hero"
+          aria-labelledby="hero-title"
+        >
+          <div className="hero-content">
+            <span className="eyebrow" style={{ 
+              display: 'inline-block',
+              marginBottom: 'var(--spacing-3)',
+              fontSize: 'var(--font-size-xs)',
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              opacity: 0.9
+            }}>
+              🚀 Canal público oficial
+            </span>
+            
+            <h1 
+              id="hero-title"
+              style={{
+                margin: 0,
+                fontSize: 'var(--font-size-4xl)',
+                lineHeight: 1.1,
+                marginBottom: 'var(--spacing-4)'
+              }}
+            >
+              ELLAN Lab Locker
+            </h1>
+            
+            <p 
+              className="hero-subtitle"
+              style={{
+                marginTop: 'var(--spacing-4)',
+                marginBottom: 0,
+                fontSize: 'var(--font-size-lg)',
+                lineHeight: 1.6,
+                opacity: 0.95,
+                maxWidth: '640px'
+              }}
+            >
               Compre online, acompanhe seus pedidos e consulte as informações
-              de retirada de forma simples e organizada.
+              de retirada de forma <strong>simples, segura e organizada</strong>.
             </p>
-
-            <div style={actionsStyle}>
-              <Link to="/comprar" style={primaryActionStyle}>
-                Comprar agora
+            
+            {/* Trust Signals */}
+            <div 
+              className="trust-signals"
+              style={{
+                display: 'flex',
+                gap: 'var(--spacing-4)',
+                marginTop: 'var(--spacing-6)',
+                flexWrap: 'wrap',
+                fontSize: 'var(--font-size-sm)',
+                opacity: 0.9
+              }}
+            >
+              <span>✅ Pagamento Seguro</span>
+              <span>✅ Retirada 24/7</span>
+              <span>✅ SP & Portugal</span>
+            </div>
+            
+            {/* CTAs Hierárquicos */}
+            <div 
+              className="hero-actions"
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 'var(--spacing-3)',
+                marginTop: 'var(--spacing-8)'
+              }}
+            >
+              <Link 
+                to="/comprar" 
+                className="btn btn--primary"
+                style={{
+                  padding: 'var(--spacing-4) var(--spacing-6)',
+                  fontSize: 'var(--font-size-lg)',
+                  boxShadow: 'var(--shadow-lg)'
+                }}
+              >
+                🛒 Comprar agora
               </Link>
-
-              <Link to="/login" style={secondaryActionStyle}>
+              <Link 
+                to="/login" 
+                className="btn btn--secondary"
+                style={{ background: 'rgba(255,255,255,0.2)', color: 'white', border: '1px solid rgba(255,255,255,0.3)' }}
+              >
                 Entrar
               </Link>
-
-              <Link to="/cadastro" style={secondaryActionStyle}>
+              <Link 
+                to="/cadastro" 
+                className="btn btn--secondary"
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'white', border: '1px solid rgba(255,255,255,0.2)' }}
+              >
                 Criar conta
               </Link>
             </div>
           </div>
         </section>
 
-        <section style={gridStyle}>
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Comprar online</h2>
-            <p style={cardTextStyle}>
-              Escolha o produto, siga o fluxo de checkout e acompanhe o pedido
-              na sua área logada.
+        {/* FEATURES - Benefícios claros */}
+        <section 
+          className="features-grid"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: 'var(--spacing-6)',
+            marginTop: 'var(--spacing-12)'
+          }}
+          aria-labelledby="features-title"
+        >
+          <h2 id="features-title" className="sr-only">Como funciona</h2>
+          
+          <article className="card" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>📦</div>
+            <h3 style={{ 
+              marginTop: 0, 
+              marginBottom: 'var(--spacing-3)',
+              fontSize: 'var(--font-size-xl)'
+            }}>
+              Comprar online
+            </h3>
+            <p style={{ 
+              margin: 0, 
+              color: 'var(--color-text-muted)',
+              lineHeight: 1.6
+            }}>
+              Escolha o produto, siga o fluxo de checkout e acompanhe 
+              o pedido na sua área logada.
             </p>
           </article>
 
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Acompanhar pedidos</h2>
-            <p style={cardTextStyle}>
+          <article className="card" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>📊</div>
+            <h3 style={{ 
+              marginTop: 0, 
+              marginBottom: 'var(--spacing-3)',
+              fontSize: 'var(--font-size-xl)'
+            }}>
+              Acompanhar pedidos
+            </h3>
+            <p style={{ 
+              margin: 0, 
+              color: 'var(--color-text-muted)',
+              lineHeight: 1.6
+            }}>
               Veja o status do pedido, detalhes da compra e informações
-              relacionadas à retirada.
+              relacionadas à retirada em tempo real.
             </p>
           </article>
 
-          <article style={infoCardStyle}>
-            <h2 style={cardTitleStyle}>Retirada no kiosk/totem</h2>
-            <p style={cardTextStyle}>
-              Quando disponível, os dados de retirada ficam visíveis no detalhe
-              do pedido para uso no locker.
+          <article className="card" style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: 'var(--spacing-4)' }}>🔓</div>
+            <h3 style={{ 
+              marginTop: 0, 
+              marginBottom: 'var(--spacing-3)',
+              fontSize: 'var(--font-size-xl)'
+            }}>
+              Retirada no kiosk
+            </h3>
+            <p style={{ 
+              margin: 0, 
+              color: 'var(--color-text-muted)',
+              lineHeight: 1.6
+            }}>
+              Quando disponível, os dados de retirada ficam visíveis 
+              no detalhe do pedido para uso no locker.
             </p>
           </article>
         </section>
+
+        {/* SOCIAL PROOF - Opcional para conversão */}
+        <section 
+          className="social-proof"
+          style={{
+            marginTop: 'var(--spacing-12)',
+            padding: 'var(--spacing-8)',
+            background: 'var(--color-bg-alt)',
+            borderRadius: 'var(--radius-2xl)',
+            textAlign: 'center'
+          }}
+        >
+          <h2 style={{ 
+            fontSize: 'var(--font-size-2xl)',
+            marginBottom: 'var(--spacing-4)'
+          }}>
+            Por que escolher ELLAN Lab?
+          </h2>
+          <div 
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: 'var(--spacing-6)',
+              marginTop: 'var(--spacing-6)'
+            }}
+          >
+            <div>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary)' }}>24/7</div>
+              <div style={{ color: 'var(--color-text-muted)' }}>Disponibilidade</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary)' }}>SP + PT</div>
+              <div style={{ color: 'var(--color-text-muted)' }}>Regiões Atendidas</div>
+            </div>
+            <div>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary)' }}>100%</div>
+              <div style={{ color: 'var(--color-text-muted)' }}>Seguro</div>
+            </div>
+          </div>
+        </section>
+
       </div>
     </main>
   );
 }
-
-const pageStyle = {
-  padding: 24,
-};
-
-const containerStyle = {
-  maxWidth: 1040,
-  margin: "0 auto",
-};
-
-const heroCardStyle = {
-  borderRadius: 20,
-  padding: 28,
-  marginBottom: 20,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const heroContentStyle = {
-  maxWidth: 720,
-};
-
-const eyebrowStyle = {
-  display: "inline-block",
-  marginBottom: 10,
-  fontSize: 12,
-  fontWeight: 700,
-  letterSpacing: "0.08em",
-  textTransform: "uppercase",
-  color: "#666",
-};
-
-const titleStyle = {
-  margin: 0,
-  fontSize: 36,
-  lineHeight: 1.1,
-};
-
-const subtitleStyle = {
-  marginTop: 14,
-  marginBottom: 0,
-  fontSize: 16,
-  lineHeight: 1.6,
-  color: "#555",
-  maxWidth: 640,
-};
-
-const actionsStyle = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 12,
-  marginTop: 22,
-};
-
-const primaryActionStyle = {
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid #111827",
-  background: "#111827",
-  color: "white",
-  fontWeight: 700,
-};
-
-const secondaryActionStyle = {
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid #d1d5db",
-  background: "#f9fafb",
-  color: "#111827",
-  fontWeight: 700,
-};
-
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 14,
-};
-
-const infoCardStyle = {
-  borderRadius: 16,
-  padding: 18,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const cardTitleStyle = {
-  marginTop: 0,
-  marginBottom: 10,
-  fontSize: 18,
-};
-
-const cardTextStyle = {
-  margin: 0,
-  color: "#666",
-  lineHeight: 1.6,
-};

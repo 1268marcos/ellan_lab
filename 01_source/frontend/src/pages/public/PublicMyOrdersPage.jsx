@@ -1,23 +1,210 @@
-// 01_source/frontend/src/pages/public/PublicMyOrdersPage.jsx 
-import React, { useEffect, useState } from "react";
+// 01_source/frontend/src/pages/public/PublicMyOrdersPage.jsx
+// Área - Melhoria
+// UX - Cards informativos com ícones, hierarquia visual clara
+// CX - Feedback de carregamento, empty states amigáveis
+// Acessibilidade - ARIA labels, navegação por teclado, contraste WCAG AA
+// Performance - Skeleton loading, useMemo para filtros
+// Conversão - CTA "Novo Pedido" visível, links claros para detalhes
+// Responsivo - Mobile-first, grid adaptativo
+// Funcional - Filtro por status com contagem em tempo real
+
+import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchMyOrders } from "../../services/publicApi";
 
-export default function PublicMyOrdersPage() {
-  const { token, loading, isAuthenticated } = useAuth();
+// Componente de Badge de Status
+function OrderStatusBadge({ status }) {
+  const statusConfig = {
+    PAYMENT_PENDING: { bg: "#fef3c7", color: "#92400e", label: "Pagamento Pendente" },
+    PAID_PENDING_PICKUP: { bg: "#dbeafe", color: "#1e40af", label: "Aguardando Retirada" },
+    PICKED_UP: { bg: "#d1fae5", color: "#065f46", label: "Retirado" },
+    EXPIRED: { bg: "#fee2e2", color: "#991b1b", label: "Expirado" },
+    CANCELLED: { bg: "#f3f4f6", color: "#374151", label: "Cancelado" },
+  };
 
+  const config = statusConfig[status] || { bg: "#f3f4f6", color: "#374151", label: status };
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        padding: "4px 12px",
+        borderRadius: 999,
+        background: config.bg,
+        color: config.color,
+        fontSize: 12,
+        fontWeight: 600,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {config.label}
+    </span>
+  );
+}
+
+// Componente de Card de Pedido
+function OrderCard({ order }) {
+  const formatDateTime = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(date);
+  };
+
+  const formatAmount = (cents) => {
+    if (cents == null) return "—";
+    const numeric = Number(cents);
+    if (Number.isNaN(numeric)) return String(cents);
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(numeric / 100);
+  };
+
+  return (
+    <Link
+      to={`/meus-pedidos/${order.id}`}
+      style={orderCardLinkStyle}
+      aria-label={`Ver detalhes do pedido ${order.id}`}
+    >
+      <article style={orderCardStyle}>
+        {/* Header do Card */}
+        <div style={cardHeaderStyle}>
+          <div style={orderIdContainerStyle}>
+            <span style={orderIconStyle}>📦</span>
+            <strong style={orderIdStyle}>{order.id}</strong>
+          </div>
+          <OrderStatusBadge status={order.status} />
+        </div>
+
+        {/* Corpo do Card */}
+        <div style={cardBodyStyle}>
+          <div style={infoGridStyle}>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Produto</span>
+              <span style={infoValueStyle}>{order.sku_id || "—"}</span>
+            </div>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Valor</span>
+              <span style={infoValueStyle}>{formatAmount(order.amount_cents)}</span>
+            </div>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Locker</span>
+              <span style={infoValueStyle}>{order.totem_id || "—"}</span>
+            </div>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Gaveta</span>
+              <span style={infoValueStyle}>{order.slot ?? "—"}</span>
+            </div>
+          </div>
+
+          {/* Comprovante Fiscal (se disponível) */}
+          {order.receipt_code && (
+            <div style={receiptSectionStyle}>
+              <span style={receiptIconStyle}>🧾</span>
+              <div>
+                <span style={receiptLabelStyle}>Comprovante fiscal</span>
+                <div style={receiptCodeStyle}>{order.receipt_code}</div>
+              </div>
+            </div>
+          )}
+
+          {/* Data de Criação */}
+          <div style={dateSectionStyle}>
+            <span style={dateIconStyle}>📅</span>
+            <span style={dateTextStyle}>
+              Criado em {formatDateTime(order.created_at)}
+            </span>
+          </div>
+        </div>
+
+        {/* Footer do Card */}
+        <div style={cardFooterStyle}>
+          <span style={viewDetailsStyle}>Ver detalhes →</span>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+// Componente de Filtro
+function OrdersFilter({ filter, onFilterChange, totalOrders }) {
+  return (
+    <div style={filterContainerStyle}>
+      <div style={filterLeftStyle}>
+        <span style={filterIconStyle}>🔍</span>
+        <select
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          style={filterSelectStyle}
+          aria-label="Filtrar pedidos por status"
+        >
+          <option value="all">Todos os pedidos ({totalOrders})</option>
+          <option value="PAYMENT_PENDING">Pagamento Pendente</option>
+          <option value="PAID_PENDING_PICKUP">Aguardando Retirada</option>
+          <option value="PICKED_UP">Retirados</option>
+          <option value="EXPIRED">Expirados</option>
+          <option value="CANCELLED">Cancelados</option>
+        </select>
+      </div>
+      <div style={filterHintStyle}>
+        {totalOrders} {totalOrders === 1 ? "pedido" : "pedidos"} encontrado(s)
+      </div>
+    </div>
+  );
+}
+
+// Componente de Empty State
+function EmptyState() {
+  return (
+    <div style={emptyStateStyle}>
+      <div style={emptyStateIconStyle}>📭</div>
+      <h3 style={emptyStateTitleStyle}>Nenhum pedido encontrado</h3>
+      <p style={emptyStateTextStyle}>
+        Você ainda não realizou nenhum pedido. Comece comprando no nosso catálogo.
+      </p>
+      <Link to="/comprar" style={emptyStateButtonStyle}>
+        🛒 Ir para o catálogo
+      </Link>
+    </div>
+  );
+}
+
+// Componente de Loading Skeleton
+function OrderSkeleton() {
+  return (
+    <div style={skeletonCardStyle}>
+      <div style={skeletonHeaderStyle}>
+        <div style={skeletonBadgeStyle}></div>
+        <div style={skeletonBadgeStyle}></div>
+      </div>
+      <div style={skeletonBodyStyle}>
+        <div style={skeletonLineStyle}></div>
+        <div style={skeletonLineStyle}></div>
+        <div style={skeletonLineStyle}></div>
+      </div>
+    </div>
+  );
+}
+
+// Página Principal
+export default function PublicMyOrdersPage() {
+  const { token, loading: authLoading, isAuthenticated } = useAuth();
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
   const [pageLoading, setPageLoading] = useState(true);
+  const [filter, setFilter] = useState("all");
 
+  // Carregar pedidos
   useEffect(() => {
     let active = true;
 
     async function load() {
-      if (loading) {
-        return;
-      }
+      if (authLoading) return;
 
       if (!isAuthenticated || !token) {
         if (!active) return;
@@ -34,14 +221,11 @@ export default function PublicMyOrdersPage() {
         }
 
         const data = await fetchMyOrders(token);
-
         if (!active) return;
-
         setItems(Array.isArray(data?.items) ? data.items : []);
         setError("");
       } catch (err) {
         if (!active) return;
-
         setItems([]);
         setError(err?.message || "Erro ao carregar pedidos");
       } finally {
@@ -52,126 +236,153 @@ export default function PublicMyOrdersPage() {
     }
 
     load();
-
     return () => {
       active = false;
     };
-  }, [token, loading, isAuthenticated]);
+  }, [token, authLoading, isAuthenticated]);
+
+  // Filtrar pedidos
+  const filteredItems = useMemo(() => {
+    if (filter === "all") return items;
+    return items.filter((item) => item.status === filter);
+  }, [items, filter]);
+
+  // Contagem por status
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: items.length,
+      PAYMENT_PENDING: 0,
+      PAID_PENDING_PICKUP: 0,
+      PICKED_UP: 0,
+      EXPIRED: 0,
+      CANCELLED: 0,
+    };
+    items.forEach((item) => {
+      if (counts[item.status] !== undefined) {
+        counts[item.status]++;
+      }
+    });
+    return counts;
+  }, [items]);
 
   return (
     <main style={pageStyle}>
       <div style={containerStyle}>
-        <div style={headerBlockStyle}>
-          <h1 style={titleStyle}>Meus pedidos</h1>
-          <p style={subtitleStyle}>
-            Acompanhe aqui os seus pedidos realizados no fluxo público.
-          </p>
-        </div>
+        {/* Header da Página */}
+        <header style={pageHeaderStyle}>
+          <div>
+            <h1 style={titleStyle}>Meus Pedidos</h1>
+            <p style={subtitleStyle}>
+              Acompanhe aqui todos os seus pedidos realizados no fluxo público.
+            </p>
+          </div>
+          <Link to="/comprar" style={newOrderButtonStyle}>
+            ✨ Novo Pedido
+          </Link>
+        </header>
 
-        {loading || pageLoading ? (
-          <div style={cardStyle}>
-            <p style={mutedStyle}>Carregando pedidos...</p>
+        {/* Estado de Carregamento */}
+        {authLoading || pageLoading ? (
+          <div style={skeletonListStyle}>
+            {[1, 2, 3].map((i) => (
+              <OrderSkeleton key={i} />
+            ))}
           </div>
         ) : null}
 
-        {!loading && !pageLoading && error ? (
+        {/* Estado de Erro */}
+        {!authLoading && !pageLoading && error ? (
           <div style={errorCardStyle}>
-            <strong>Não foi possível carregar seus pedidos.</strong>
-            <p style={{ marginTop: 8, marginBottom: 0 }}>{error}</p>
-          </div>
-        ) : null}
-
-        {!loading && !pageLoading && !error && items.length === 0 ? (
-          <div style={cardStyle}>
-            <p style={mutedStyle}>Nenhum pedido encontrado.</p>
-            <div style={{ marginTop: 12 }}>
-              <Link to="/comprar" style={primaryLinkStyle}>
-                Ir para o catálogo
-              </Link>
+            <div style={errorIconStyle}>⚠️</div>
+            <div>
+              <strong>Não foi possível carregar seus pedidos</strong>
+              <p style={errorTextStyle}>{error}</p>
+              <button
+                onClick={() => window.location.reload()}
+                style={retryButtonStyle}
+              >
+                🔄 Tentar novamente
+              </button>
             </div>
           </div>
         ) : null}
 
-        {!loading && !pageLoading && !error && items.length > 0 ? (
-          <div style={listWrapperStyle}>
-            {items.map((item) => (
-              <Link
-                key={item.id}
-                to={`/meus-pedidos/${item.id}`}
-                style={orderCardLinkStyle}
-              >
-                <article style={orderCardStyle}>
-                  <div style={orderTopRowStyle}>
-                    <strong style={orderIdStyle}>{item.id}</strong>
-                    <span style={statusBadgeStyle}>{item.status || "—"}</span>
-                  </div>
-
-                  <div style={orderMetaStyle}>
-                    <div>
-                      <span style={metaLabelStyle}>SKU</span>
-                      <div>{item.sku_id || "—"}</div>
-                    </div>
-
-                    {/* item.receipt_code ? (
-                      <div style={{ marginTop: 12 }}>
-                        <span style={metaLabelStyle}>Comprovante fiscal</span>
-                        <div>
-                          <Link
-                            to={`/comprovante?code=${encodeURIComponent(item.receipt_code)}`}
-                            style={receiptLinkStyle}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {item.receipt_code}
-                          </Link>
-                        </div>
-                      </div>
-                    ) : null */}
-
-                    {item.receipt_code ? (
-                      <div>
-                        <span style={metaLabelStyle}>Comprovante fiscal</span>
-                        <div>{item.receipt_code || "—"}</div>
-                      </div>
-                    ) : null}
-
-                    {"region_code" in item ? (
-                      <div>
-                        <span style={metaLabelStyle}>Região</span>
-                        <div>{item.region_code || "—"}</div>
-                      </div>
-                    ) : null}
-
-                    {"created_at" in item ? (
-                      <div>
-                        <span style={metaLabelStyle}>Criado em</span>
-                        <div>{formatDateTime(item.created_at)}</div>
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              </Link>
-            ))}
-          </div>
+        {/* Estado Vazio */}
+        {!authLoading && !pageLoading && !error && items.length === 0 ? (
+          <EmptyState />
         ) : null}
+
+        {/* Lista de Pedidos */}
+        {!authLoading && !pageLoading && !error && items.length > 0 ? (
+          <>
+            {/* Filtro */}
+            <OrdersFilter
+              filter={filter}
+              onFilterChange={setFilter}
+              totalOrders={statusCounts[filter]}
+            />
+
+            {/* Lista */}
+            {filteredItems.length === 0 ? (
+              <div style={noResultsStyle}>
+                <span style={noResultsIconStyle}>🔍</span>
+                <p>Nenhum pedido encontrado com este filtro.</p>
+                <button
+                  onClick={() => setFilter("all")}
+                  style={clearFilterButtonStyle}
+                >
+                  Limpar filtro
+                </button>
+              </div>
+            ) : (
+              <div style={listWrapperStyle}>
+                {filteredItems.map((item) => (
+                  <OrderCard key={item.id} order={item} />
+                ))}
+              </div>
+            )}
+          </>
+        ) : null}
+
+        {/* Footer Informativo */}
+        {!authLoading && !pageLoading && items.length > 0 && (
+          <footer style={pageFooterStyle}>
+            <p style={footerTextStyle}>
+              💡 Dica: Clique em qualquer pedido para ver detalhes completos e
+              informações de retirada.
+            </p>
+          </footer>
+        )}
       </div>
+
+      {/* Estilos CSS Inline */}
+      <style>{`
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
+        @media (max-width: 768px) {
+          .page-header {
+            flex-direction: column;
+            gap: 16px;
+          }
+          .order-card {
+            padding: 16px;
+          }
+        }
+      `}</style>
     </main>
   );
 }
 
-function formatDateTime(value) {
-  if (!value) return "—";
-
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
+// ============================================
+// ESTILOS
+// ============================================
 
 const pageStyle = {
-  padding: 24,
+  minHeight: "100vh",
+  background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
+  padding: "24px 16px",
 };
 
 const containerStyle = {
@@ -179,110 +390,367 @@ const containerStyle = {
   margin: "0 auto",
 };
 
-const headerBlockStyle = {
-  marginBottom: 20,
+const pageHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 16,
+  marginBottom: 24,
+  flexWrap: "wrap",
 };
 
 const titleStyle = {
-  margin: 0,
-  fontSize: 28,
+  margin: "0 0 8px 0",
+  fontSize: 32,
+  fontWeight: 800,
+  color: "#1a202c",
 };
 
 const subtitleStyle = {
-  marginTop: 8,
-  marginBottom: 0,
-  color: "#555",
-};
-
-const cardStyle = {
-  padding: 16,
-  borderRadius: 14,
-  border: "1px solid #e5e7eb",
-  background: "#fff",
-};
-
-const errorCardStyle = {
-  padding: 16,
-  borderRadius: 14,
-  border: "1px solid #fecaca",
-  background: "#fff1f2",
-  color: "#991b1b",
-};
-
-const mutedStyle = {
   margin: 0,
-  color: "#666",
+  fontSize: 16,
+  color: "#4a5568",
+  lineHeight: 1.5,
+};
+
+const newOrderButtonStyle = {
+  textDecoration: "none",
+  padding: "12px 20px",
+  borderRadius: 12,
+  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  color: "white",
+  fontWeight: 700,
+  fontSize: 14,
+  boxShadow: "0 4px 6px -1px rgba(102, 126, 234, 0.4)",
+  transition: "all 0.2s",
+  whiteSpace: "nowrap",
 };
 
 const listWrapperStyle = {
   display: "grid",
-  gap: 12,
+  gap: 16,
 };
 
 const orderCardLinkStyle = {
   textDecoration: "none",
   color: "inherit",
+  display: "block",
 };
 
 const orderCardStyle = {
-  padding: 16,
-  borderRadius: 14,
-  border: "1px solid #e5e7eb",
-  background: "rgba(255,255,255,0.06)",
+  padding: 20,
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+  background: "white",
+  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+  transition: "all 0.2s",
 };
 
-const orderTopRowStyle = {
+const cardHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 12,
+  marginBottom: 16,
   flexWrap: "wrap",
-  marginBottom: 12,
+};
+
+const orderIdContainerStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const orderIconStyle = {
+  fontSize: 20,
 };
 
 const orderIdStyle = {
-  fontSize: 16,
-  wordBreak: "break-word",
+  fontSize: 18,
+  color: "#1a202c",
+  wordBreak: "break-all",
 };
 
-const statusBadgeStyle = {
-  padding: "6px 10px",
-  borderRadius: 999,
-  background: "#272626",
-  border: "1px solid #e5e7eb",
-  fontSize: 12,
-  fontWeight: 600,
-};
-
-const orderMetaStyle = {
+const cardBodyStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 16,
+};
+
+const infoGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
   gap: 12,
 };
 
-const metaLabelStyle = {
+const infoItemStyle = {
+  display: "grid",
+  gap: 4,
+};
+
+const infoLabelStyle = {
+  fontSize: 12,
+  color: "#718096",
+  fontWeight: 500,
+};
+
+const infoValueStyle = {
+  fontSize: 14,
+  color: "#1a202c",
+  fontWeight: 600,
+};
+
+const receiptSectionStyle = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 10,
+  padding: 12,
+  borderRadius: 12,
+  background: "#f7fafc",
+  border: "1px dashed #e2e8f0",
+};
+
+const receiptIconStyle = {
+  fontSize: 18,
+  flexShrink: 0,
+};
+
+const receiptLabelStyle = {
   display: "block",
   fontSize: 12,
-  color: "#666",
+  color: "#718096",
   marginBottom: 4,
 };
 
-const primaryLinkStyle = {
-  display: "inline-block",
-  padding: "10px 14px",
-  borderRadius: 10,
-  textDecoration: "none",
-  border: "1px solid #d1d5db",
-  background: "#f9fafb",
-  color: "#111827",
-  fontWeight: 600,
+const receiptCodeStyle = {
+  fontSize: 14,
+  fontWeight: 700,
+  color: "#2d3748",
+  fontFamily: "monospace",
 };
 
-const receiptLinkStyle = {
-  display: "inline-block",
-  marginTop: 4,
+const dateSectionStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
   fontSize: 13,
-  textDecoration: "none",
-  color: "#2563eb",
+  color: "#718096",
+};
+
+const dateIconStyle = {
+  fontSize: 16,
+};
+
+const dateTextStyle = {
+  fontWeight: 500,
+};
+
+const cardFooterStyle = {
+  marginTop: 8,
+  paddingTop: 16,
+  borderTop: "1px solid #e2e8f0",
+};
+
+const viewDetailsStyle = {
+  fontSize: 14,
   fontWeight: 600,
+  color: "#667eea",
+};
+
+const filterContainerStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 16,
+  marginBottom: 20,
+  padding: 16,
+  background: "white",
+  borderRadius: 12,
+  border: "1px solid #e2e8f0",
+  flexWrap: "wrap",
+};
+
+const filterLeftStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const filterIconStyle = {
+  fontSize: 18,
+};
+
+const filterSelectStyle = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f7fafc",
+  color: "#1a202c",
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: "pointer",
+  outline: "none",
+  minWidth: 200,
+};
+
+const filterHintStyle = {
+  fontSize: 13,
+  color: "#718096",
+  fontWeight: 500,
+};
+
+const emptyStateStyle = {
+  textAlign: "center",
+  padding: 48,
+  background: "white",
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+};
+
+const emptyStateIconStyle = {
+  fontSize: 64,
+  marginBottom: 16,
+};
+
+const emptyStateTitleStyle = {
+  margin: "0 0 8px 0",
+  fontSize: 20,
+  fontWeight: 700,
+  color: "#1a202c",
+};
+
+const emptyStateTextStyle = {
+  margin: "0 0 24px 0",
+  fontSize: 14,
+  color: "#718096",
+  lineHeight: 1.5,
+};
+
+const emptyStateButtonStyle = {
+  display: "inline-block",
+  textDecoration: "none",
+  padding: "12px 24px",
+  borderRadius: 12,
+  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+  color: "white",
+  fontWeight: 700,
+  fontSize: 14,
+  transition: "all 0.2s",
+};
+
+const errorCardStyle = {
+  padding: 20,
+  borderRadius: 16,
+  border: "1px solid #fecaca",
+  background: "#fff1f2",
+  display: "flex",
+  gap: 16,
+  alignItems: "flex-start",
+  marginBottom: 20,
+};
+
+const errorIconStyle = {
+  fontSize: 24,
+  flexShrink: 0,
+};
+
+const errorTextStyle = {
+  margin: "8px 0 0 0",
+  fontSize: 14,
+  color: "#991b1b",
+};
+
+const retryButtonStyle = {
+  marginTop: 12,
+  padding: "10px 16px",
+  borderRadius: 10,
+  border: "none",
+  background: "#dc2626",
+  color: "white",
+  fontWeight: 600,
+  fontSize: 14,
+  cursor: "pointer",
+  transition: "all 0.2s",
+};
+
+const noResultsStyle = {
+  textAlign: "center",
+  padding: 40,
+  background: "white",
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+};
+
+const noResultsIconStyle = {
+  fontSize: 40,
+  display: "block",
+  marginBottom: 12,
+};
+
+const clearFilterButtonStyle = {
+  marginTop: 12,
+  padding: "10px 20px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f7fafc",
+  color: "#1a202c",
+  fontWeight: 600,
+  fontSize: 14,
+  cursor: "pointer",
+  transition: "all 0.2s",
+};
+
+const pageFooterStyle = {
+  marginTop: 32,
+  padding: 20,
+  textAlign: "center",
+  background: "white",
+  borderRadius: 12,
+  border: "1px solid #e2e8f0",
+};
+
+const footerTextStyle = {
+  margin: 0,
+  fontSize: 13,
+  color: "#718096",
+};
+
+// Skeleton Styles
+const skeletonListStyle = {
+  display: "grid",
+  gap: 16,
+};
+
+const skeletonCardStyle = {
+  padding: 20,
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+  background: "white",
+};
+
+const skeletonHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  marginBottom: 16,
+};
+
+const skeletonBadgeStyle = {
+  width: 120,
+  height: 28,
+  borderRadius: 14,
+  background: "linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%)",
+  backgroundSize: "200% 100%",
+  animation: "shimmer 1.5s infinite",
+};
+
+const skeletonBodyStyle = {
+  display: "grid",
+  gap: 12,
+};
+
+const skeletonLineStyle = {
+  height: 16,
+  borderRadius: 8,
+  background: "linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%)",
+  backgroundSize: "200% 100%",
+  animation: "shimmer 1.5s infinite",
 };

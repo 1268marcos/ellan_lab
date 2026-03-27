@@ -1,32 +1,41 @@
 // 01_source/frontend/src/App.jsx
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 
-import LockerDashboard from "./pages/LockerDashboard.jsx";
-import RegionPage from "./pages/RegionPage.jsx";
-import DevLockerResetPage from "./pages/DevLockerResetPage.jsx";
-import PickupHealthPage from "./pages/PickupHealthPage.jsx";
+// Lazy loading para performance
+const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
+const PublicLoginPage = lazy(() => import("./pages/public/PublicLoginPage"));
+const PublicRegisterPage = lazy(() => import("./pages/public/PublicRegisterPage"));
+const PublicCatalogPage = lazy(() => import("./pages/public/PublicCatalogPage"));
+const PublicCheckoutPage = lazy(() => import("./pages/public/PublicCheckoutPage"));
+const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"));
+const PublicOrderDetailPage = lazy(() => import("./pages/public/PublicOrderDetailPage"));
+const PublicFiscalSearchPage = lazy(() => import("./pages/public/PublicFiscalSearchPage"));
+const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPage"));
+const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
+const RegionPage = lazy(() => import("./pages/RegionPage"));
+const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
+const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 
-import PublicLandingPage from "./pages/public/PublicLandingPage.jsx";
-import PublicLoginPage from "./pages/public/PublicLoginPage.jsx";
-import PublicRegisterPage from "./pages/public/PublicRegisterPage.jsx";
-import PublicCatalogPage from "./pages/public/PublicCatalogPage.jsx";
-import PublicCheckoutPage from "./pages/public/PublicCheckoutPage.jsx";
-import PublicMyOrdersPage from "./pages/public/PublicMyOrdersPage.jsx";
-import PublicOrderDetailPage from "./pages/public/PublicOrderDetailPage.jsx";
-import PublicFiscalSearchPage from "./pages/public/PublicFiscalSearchPage.jsx";
-import PublicRegionHubPage from "./pages/public/PublicRegionHubPage.jsx";
+// Componente de loading otimizado
+function PageLoader() {
+  return (
+    <div className="page-loader" role="status" aria-live="polite">
+      <div className="loader-spinner" aria-hidden="true"></div>
+      <span className="sr-only">Carregando sessão...</span>
+      <p className="loader-text">Carregando...</p>
+    </div>
+  );
+}
 
 function initialsFromName(nameOrEmail) {
   const raw = (nameOrEmail || "").trim();
   if (!raw) return "?";
-
   const parts = raw.split(/\s+/).filter(Boolean);
   if (parts.length >= 2) {
     return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
   }
-
   return raw.slice(0, 2).toUpperCase();
 }
 
@@ -38,7 +47,6 @@ function TopNav() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, logout, loading } = useAuth();
-
   const fullName = user?.full_name || user?.email || "";
   const initials = initialsFromName(fullName);
   const opsEnabled = isOpsEnabled();
@@ -50,82 +58,72 @@ function TopNav() {
 
   const getNavBackground = () => {
     if (location.pathname.startsWith("/ops")) {
-      return "linear-gradient(135deg, rgba(138,35,35,0.95), rgba(70,10,10,0.95))";
+      return "var(--nav-ops-bg)";
     }
     if (location.pathname.startsWith("/pt")) {
-      return "linear-gradient(135deg, rgba(0,102,0,0.9), rgba(206,17,38,0.9))";
+      return "var(--nav-pt-bg)";
     }
     if (location.pathname.startsWith("/sp")) {
-      return "linear-gradient(135deg, rgba(0,155,58,0.9), rgba(254,221,0,0.9), rgba(0,39,118,0.9))";
+      return "var(--nav-sp-bg)";
     }
-    return "linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d)";
+    return "var(--nav-default-bg)";
   };
 
   return (
-    <nav
-      style={{
-        padding: 12,
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        flexWrap: "wrap",
-        background: getNavBackground(),
-        borderBottom: "1px solid rgba(255,255,255,0.1)",
-      }}
+    <nav 
+      className="top-nav" 
+      style={{ background: getNavBackground() }}
+      role="navigation"
+      aria-label="Navegação principal"
     >
-      <Link style={linkStyle} to="/">Início</Link>
-      <Link style={linkStyle} to="/comprar">Comprar</Link>
-      <Link style={linkStyle} to="/comprovante">Comprovante</Link>
-      <Link style={linkStyle} to="/sp">SP</Link>
-      <Link style={linkStyle} to="/pt">PT</Link>
-
+      <Link className="nav-link" to="/" aria-label="Ir para página inicial">Início</Link>
+      <Link className="nav-link" to="/comprar" aria-label="Ver catálogo de produtos">Comprar</Link>
+      <Link className="nav-link" to="/comprovante" aria-label="Consultar comprovante fiscal">Comprovante</Link>
+      <Link className="nav-link" to="/sp" aria-label="Região São Paulo">SP</Link>
+      <Link className="nav-link" to="/pt" aria-label="Região Portugal">PT</Link>
+      
       {!loading && isAuthenticated && (
-        <Link style={linkStyle} to="/meus-pedidos">
+        <Link className="nav-link" to="/meus-pedidos" aria-label="Ver meus pedidos">
           Meus Pedidos
         </Link>
       )}
-
-      {opsEnabled && opsEnabled ? (
-        <>
-          <span style={separatorStyle}>|</span>
-          <Link style={devLinkStyle} to="/ops/sp">ops /sp</Link>
-          <Link style={devLinkStyle} to="/ops/pt">ops /pt</Link>
-          <Link style={devLinkStyle} to="/ops/sp/kiosk">ops /sp/kiosk</Link>
-          <Link style={devLinkStyle} to="/ops/pt/kiosk">ops /pt/kiosk</Link>
-          <Link style={devLinkStyle} to="/ops/dev/reset">ops /dev/reset</Link>
-          <Link style={devLinkStyle} to="/ops/analytics/pickup">ops /analytics/pickup</Link>
-        </>
-      ) : null}
-
-      <div style={{ flex: 1 }} />
-
-      {!loading && !isAuthenticated && (
-        <>
-          <Link style={linkStyle} to="/login">Entrar</Link>
-          <Link style={linkStyle} to="/cadastro">Criar conta</Link>
-        </>
+      
+      {opsEnabled && (
+        <div className="nav-divider" aria-hidden="true">|</div>
       )}
-
+      
+      {opsEnabled && (
+        <div className="nav-ops-group" role="group" aria-label="Ferramentas operacionais">
+          <Link className="nav-link nav-link--dev" to="/ops/sp">ops /sp</Link>
+          <Link className="nav-link nav-link--dev" to="/ops/pt">ops /pt</Link>
+          <Link className="nav-link nav-link--dev" to="/ops/dev/reset">ops /dev/reset</Link>
+        </div>
+      )}
+      
+      <div className="nav-spacer" aria-hidden="true" />
+      
+      {!loading && !isAuthenticated && (
+        <div className="nav-auth-group" role="group" aria-label="Autenticação">
+          <Link className="nav-link nav-link--primary" to="/login">Entrar</Link>
+          <Link className="nav-link nav-link--secondary" to="/cadastro">Criar conta</Link>
+        </div>
+      )}
+      
       {!loading && isAuthenticated && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div className="nav-user-group" role="group" aria-label="Conta do usuário">
           <div
+            className="user-avatar"
             title={fullName}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: "50%",
-              background: "rgba(255,255,255,0.15)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              color: "white",
-              fontWeight: "bold",
-            }}
+            aria-label={`Conta de ${fullName}`}
+            role="img"
           >
             {initials}
           </div>
-
-          <button onClick={handleLogout} style={logoutButtonStyle}>
+          <button 
+            onClick={handleLogout} 
+            className="nav-button nav-button--logout"
+            aria-label="Sair da conta"
+          >
             Sair
           </button>
         </div>
@@ -136,15 +134,15 @@ function TopNav() {
 
 function PrivateRoute({ children }) {
   const { isAuthenticated, loading } = useAuth();
-
+  
   if (loading) {
     return <PageLoader />;
   }
-
+  
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
-
+  
   return children;
 }
 
@@ -157,96 +155,99 @@ function OpsRoute({ children }) {
 
 function AppContent() {
   return (
-    <div>
+    <div className="app-container">
       <TopNav />
-
-      <Routes>
-        <Route path="/" element={<PublicLandingPage />} />
-        <Route path="/login" element={<PublicLoginPage />} />
-        <Route path="/cadastro" element={<PublicRegisterPage />} />
-        <Route path="/comprar" element={<PublicCatalogPage />} />
-        <Route path="/checkout" element={<PublicCheckoutPage />} />
-        <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
-
-        <Route path="/sp" element={<PublicRegionHubPage region="SP" />} />
-        <Route path="/pt" element={<PublicRegionHubPage region="PT" />} />
-
-        <Route
-          path="/meus-pedidos"
-          element={
-            <PrivateRoute>
-              <PublicMyOrdersPage />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/meus-pedidos/:orderId"
-          element={
-            <PrivateRoute>
-              <PublicOrderDetailPage />
-            </PrivateRoute>
-          }
-        />
-
-        <Route
-          path="/ops/sp"
-          element={
-            <OpsRoute>
-              <LockerDashboard region="SP" />
-            </OpsRoute>
-          }
-        />
-        <Route
-          path="/ops/pt"
-          element={
-            <OpsRoute>
-              <LockerDashboard region="PT" />
-            </OpsRoute>
-          }
-        />
-        <Route
-          path="/ops/sp/kiosk"
-          element={
-            <OpsRoute>
-              <RegionPage region="SP" mode="kiosk" />
-            </OpsRoute>
-          }
-        />
-        <Route
-          path="/ops/pt/kiosk"
-          element={
-            <OpsRoute>
-              <RegionPage region="PT" mode="kiosk" />
-            </OpsRoute>
-          }
-        />
-        <Route
-          path="/ops/dev/reset"
-          element={
-            <OpsRoute>
-              <DevLockerResetPage />
-            </OpsRoute>
-          }
-        />
-        <Route
-          path="/ops/analytics/pickup"
-          element={
-            <OpsRoute>
-              <PickupHealthPage />
-            </OpsRoute>
-          }
-        />
-
-        <Route path="*" element={<div style={{ padding: 24 }}>404</div>} />
-      </Routes>
-    </div>
-  );
-}
-
-function PageLoader() {
-  return (
-    <div style={{ padding: 24 }}>
-      <p style={{ color: "#666" }}>Carregando sessão...</p>
+      <main id="main-content" role="main">
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/" element={<PublicLandingPage />} />
+            <Route path="/login" element={<PublicLoginPage />} />
+            <Route path="/cadastro" element={<PublicRegisterPage />} />
+            <Route path="/comprar" element={<PublicCatalogPage />} />
+            <Route path="/checkout" element={<PublicCheckoutPage />} />
+            <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
+            <Route path="/sp" element={<PublicRegionHubPage region="SP" />} />
+            <Route path="/pt" element={<PublicRegionHubPage region="PT" />} />
+            <Route
+              path="/meus-pedidos"
+              element={
+                <PrivateRoute>
+                  <PublicMyOrdersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/meus-pedidos/:orderId"
+              element={
+                <PrivateRoute>
+                  <PublicOrderDetailPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/ops/sp"
+              element={
+                <OpsRoute>
+                  <LockerDashboard region="SP" />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/pt"
+              element={
+                <OpsRoute>
+                  <LockerDashboard region="PT" />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/sp/kiosk"
+              element={
+                <OpsRoute>
+                  <RegionPage region="SP" mode="kiosk" />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/pt/kiosk"
+              element={
+                <OpsRoute>
+                  <RegionPage region="PT" mode="kiosk" />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/dev/reset"
+              element={
+                <OpsRoute>
+                  <DevLockerResetPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/analytics/pickup"
+              element={
+                <OpsRoute>
+                  <PickupHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route 
+              path="*" 
+              element={
+                <div className="error-page" role="alert">
+                  <h1>404</h1>
+                  <p>Página não encontrada</p>
+                  <Link to="/" className="btn btn--primary">Voltar ao início</Link>
+                </div>
+              } 
+            />
+          </Routes>
+        </Suspense>
+      </main>
+      <footer className="app-footer" role="contentinfo">
+        <p>&copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.</p>
+      </footer>
     </div>
   );
 }
@@ -258,34 +259,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-
-const linkStyle = {
-  color: "white",
-  textDecoration: "none",
-  padding: "8px 10px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.06)",
-};
-
-const devLinkStyle = {
-  ...linkStyle,
-  border: "1px solid rgba(255,120,120,0.35)",
-  background: "rgba(138,35,35,0.30)",
-};
-
-const separatorStyle = {
-  color: "rgba(255,255,255,0.35)",
-};
-
-const logoutButtonStyle = {
-  padding: "6px 10px",
-  borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.3)",
-  background: "transparent",
-  color: "white",
-  cursor: "pointer",
-};
-
-
-

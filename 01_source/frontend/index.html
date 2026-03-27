@@ -1,13 +1,55 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="description" content="Compre online e retire em locker. ELLAN Lab Locker - Reserva de gavetas, pagamento seguro e retirada rápida em SP e Portugal." />
+    <meta name="keywords" content="locker, retirada, e-commerce, SP, Portugal, compra online" />
+    <meta name="author" content="ELLAN Lab" />
+    <meta name="robots" content="index, follow" />
+    
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="ELLAN Lab Locker - Compre e Retire" />
+    <meta property="og:description" content="Reserva de gavetas com pagamento seguro. Retire quando quiser." />
+    <meta property="og:image" content="/og-image.jpg" />
+    <meta property="og:url" content="https://ellanlab.com" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="ELLAN Lab Locker" />
+    <meta name="twitter:description" content="Compre online, retire no locker" />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    
+    <!-- Preconnect para performance -->
+    <link rel="preconnect" href="http://localhost:8003" />
+    <link rel="preconnect" href="http://localhost:8201" />
+    
+    <!-- Schema.org para LocalBusiness -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "LocalBusiness",
+      "name": "ELLAN Lab Locker",
+      "description": "Sistema de lockers para retirada de produtos",
+      "areaServed": ["BR", "PT"],
+      "availableLanguage": ["pt-BR", "pt-PT"]
+    }
+    </script>
+    
+    <title>ELLAN Lab Locker - Compre Online e Retire no Locker</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <!-- Loading skeleton para melhor perceived performance -->
+      <div class="loading-skeleton" aria-label="Carregando aplicação">
+        <div class="skeleton-header"></div>
+        <div class="skeleton-content"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
