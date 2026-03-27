@@ -140,6 +140,11 @@ function TopNav() {
   const opsLinks = opsEnabled ? [
     { to: "/ops/sp", label: "ops /sp", aria: "Ferramentas operacionais São Paulo" },
     { to: "/ops/pt", label: "ops /pt", aria: "Ferramentas operacionais Portugal" },
+    
+    { to: "/ops/sp/kiosk", label: "ops /sp/kiosk", aria: "Kiosk São Paulo" },
+    { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal" },
+
+    
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" }
   ] : [];
