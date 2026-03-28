@@ -67,6 +67,11 @@ def _generate_public_access_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+def generate_public_token():
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    return token, token_hash
+
 class PublicCreateOrderRequest(BaseModel):
     region: str = Field(..., min_length=2, max_length=8)
     sku_id: str = Field(..., min_length=1, max_length=255)

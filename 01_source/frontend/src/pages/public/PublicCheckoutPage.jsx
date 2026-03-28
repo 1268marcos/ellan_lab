@@ -21,7 +21,7 @@ function TrustSignals() {
       </div>
       <div style={trustItemStyle}>
         <span style={trustIconStyle}>📦</span>
-        <span style={trustTextStyle}>Retirada 24/7</span>
+        <span style={trustTextStyle}>Retirada em 2 horas 24/7</span>
       </div>
     </div>
   );
@@ -276,6 +276,7 @@ export default function PublicCheckoutPage() {
       setCurrentStep(3);
       setTimeout(() => {
         navigate(`/public/orders/${encodeURIComponent(orderId)}`, { replace: true });
+        // navigate(`/public/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
       }, 1500);
     } catch (e) {
       setSubmitError(String(e?.message || e));

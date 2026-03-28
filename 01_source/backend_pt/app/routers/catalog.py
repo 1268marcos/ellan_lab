@@ -137,7 +137,65 @@ LOCKER_SLOT_PLANS = {
          23: "cookie_rainha",
          24: "mini_cookie_milho",
     },
+        "CACIFO-PT-001": {
+         1: "cookie_laranja_algarve",
+         2: "cookie_cenoura_alentejo",
+         3: "cookie_cenoura_alentejo",
+         4: "cookie_cenoura_alentejo",
+         5: "mini_cookie_milho",
+         6: "mini_cookie_milho",
+         7: "cookie_cenoura_alentejo",
+         8: "cookie_rei",
+         9: "mini_cookie_milho",
+         10: "cookie_rei",
+         11: "cookie_cenoura_alentejo",
+         12: "cookie_rei",
+         13: "cookie_rei",
+         14: "cookie_rainha",
+         15: "cookie_rainha",
+         16: "cookie_rei",
+         17: "mini_cookie_milho",
+         18: "cookie_laranja_algarve",
+         19: "cookie_rainha",
+         20: "cookie_laranja_algarve",
+         21: "cookie_laranja_algarve",
+         22: "cookie_laranja_algarve",
+         23: "cookie_rainha",
+         24: "mini_cookie_milho",
+    },
 }
+
+# -------------------------------------------------------------------
+# Aceitar Lockers dinâmicos
+# -------------------------------------------------------------------
+KNOWN_LOCKERS = {
+    "SP-OSASCO-CENTRO-LK-001",
+    "SP-CARAPICUIBA-JDMARILU-LK-001",
+    "PT-MAIA-CENTRO-LK-001",
+    "PT-GUIMARAES-AZUREM-LK-001",
+
+    # DEV
+    "CACIFO-SP-001",
+    "CACIFO-PT-001",
+}
+
+def validate_locker_id(locker_id: str):
+    if locker_id in KNOWN_LOCKERS:
+        return
+
+    # fallback seguro (modo DEV)
+    if locker_id.startswith("SP-") or locker_id.startswith("PT-") or locker_id.startswith("CACIFO-"):
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "LOCKER_NOT_FOUND",
+            "message": f"Locker não encontrado: {locker_id}",
+            "locker_id": locker_id,
+            "retryable": False,
+        },
+    )
 
 
 def _now_iso() -> str:

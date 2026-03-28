@@ -137,8 +137,65 @@ LOCKER_SLOT_PLANS = {
         23: "cookie_especial",
         24: "cookie_laranja",
     },
-
+    "CACIFO-SP-001": {
+        1: "cookie_canetinha",
+        2: "cookie_especial",
+        3: "mini_cookie_iogurte",
+        4: "mini_cookie_iogurte",
+        5: "cookie_cenoura",
+        6: "cookie_cenoura",
+        7: "mini_cookie_iogurte",
+        8: "cookie_especial",
+        9: "cookie_canetinha",
+        10: "cookie_especial",
+        11: "cookie_laranja",
+        12: "cookie_laranja",
+        13: "cookie_cenoura",
+        14: "mini_cookie_iogurte",
+        15: "cookie_laranja",
+        16: "cookie_laranja",
+        17: "mini_cookie_iogurte",
+        18: "cookie_especial",
+        19: "cookie_canetinha",
+        20: "cookie_laranja",
+        21: "cookie_cenoura",
+        22: "cookie_laranja",
+        23: "cookie_especial",
+        24: "mini_cookie_iogurte",
+    },
 }
+
+# -------------------------------------------------------------------
+# Aceitar Lockers dinâmicos
+# -------------------------------------------------------------------
+KNOWN_LOCKERS = {
+    "SP-OSASCO-CENTRO-LK-001",
+    "SP-CARAPICUIBA-JDMARILU-LK-001",
+    "PT-MAIA-CENTRO-LK-001",
+    "PT-GUIMARAES-AZUREM-LK-001",
+
+    # DEV
+    "CACIFO-SP-001",
+    "CACIFO-PT-001",
+}
+
+def validate_locker_id(locker_id: str):
+    if locker_id in KNOWN_LOCKERS:
+        return
+
+    # fallback seguro (modo DEV)
+    if locker_id.startswith("SP-") or locker_id.startswith("PT-") or locker_id.startswith("CACIFO-"):
+        return
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "LOCKER_NOT_FOUND",
+            "message": f"Locker não encontrado: {locker_id}",
+            "locker_id": locker_id,
+            "retryable": False,
+        },
+    )
 
 
 def _now_iso() -> str:

@@ -14,10 +14,12 @@ const LOCKER_OPTIONS = {
   SP: [
     { locker_id: "SP-OSASCO-CENTRO-LK-001", label: "Osasco Centro", address: "Av. dos Autonomistas, 1234" },
     { locker_id: "SP-CARAPICUIBA-JDMARILU-LK-001", label: "Carapicuíba Jardim Marilu", address: "Rua Bahia, 567" },
+    { locker_id: "CACIFO-SP-001", label: "Araraquara Centro", address: "Rua XV de Novembro, 1888" },
   ],
   PT: [
     { locker_id: "PT-MAIA-CENTRO-LK-001", label: "Maia Centro", address: "Rua do Comércio, 89" },
     { locker_id: "PT-GUIMARAES-AZUREM-LK-001", label: "Guimarães Azurém", address: "Avenida da Liberdade, 234" },
+    { locker_id: "CACIFO-PT-001", label: "Porto Trindade", address: "Rua de Cedofeita, 1" },
   ],
 };
 

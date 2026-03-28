@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import logging
 import uuid
+import re
+
 from dataclasses import dataclass
 
 from fastapi import HTTPException
@@ -17,7 +19,11 @@ from app.models.order import CardType, Order, OrderChannel, OrderStatus, Payment
 from app.services import backend_client
 from app.services.lifecycle_integration import register_prepayment_timeout_deadline
 
+LOCKER_ID_PATTERN = re.compile(r"^(SP|PT)-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
+DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-(SP|PT)-\d{3}$")
+
 logger = logging.getLogger(__name__)
+
 
 
 @dataclass
@@ -196,6 +202,37 @@ def compensate_failed_online_creation(
         raise
 
 
+def validate_locker_id_format(locker_id: str) -> str:
+    raw = str(locker_id or "").strip().upper()
+
+    if not raw:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_LOCKER_ID",
+                "message": "locker_id não informado.",
+                "locker_id": locker_id,
+                "retryable": False,
+            },
+        )
+
+    if LOCKER_ID_PATTERN.match(raw):
+        return raw
+
+    if DEV_LOCKER_ID_PATTERN.match(raw):
+        return raw
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "INVALID_LOCKER_ID_FORMAT",
+            "message": f"Formato inválido de locker_id: {raw}",
+            "locker_id": raw,
+            "retryable": False,
+        },
+    )
+
+
 def create_order_core(
     *,
     db: Session,
@@ -209,6 +246,9 @@ def create_order_core(
     guest_phone: str | None,
     user_id: str | None,
 ) -> CreateOrderCoreResult:
+
+    totem_id = validate_locker_id_format(totem_id)
+
     validate_online_locker_context(
         region=region,
         totem_id=totem_id,
