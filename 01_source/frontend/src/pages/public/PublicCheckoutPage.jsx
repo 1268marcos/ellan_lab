@@ -275,8 +275,9 @@ export default function PublicCheckoutPage() {
 
       setCurrentStep(3);
       setTimeout(() => {
-        navigate(`/public/orders/${encodeURIComponent(orderId)}`, { replace: true });
+        // navigate(`/public/orders/${encodeURIComponent(orderId)}`, { replace: true });
         // navigate(`/public/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
+        navigate(`/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
       }, 1500);
     } catch (e) {
       setSubmitError(String(e?.message || e));
