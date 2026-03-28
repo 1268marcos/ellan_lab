@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+import { useAuth } from "../../context/AuthContext";
+
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
 const BACKEND_PT = import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
@@ -163,6 +165,16 @@ export default function PublicCheckoutPage() {
 
   const invalidParams = !lockerId || !skuId || !slot;
 
+  const { token, isAuthenticated } = useAuth();
+
+  // 🔥 Redirecionar para login se não estiver autenticado
+  useEffect(() => {
+    if (!isAuthenticated && !invalidParams) {
+      const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
+      navigate(`/login?redirect=${redirectUrl}`);
+    }
+  }, [isAuthenticated, invalidParams, navigate]);
+
   useEffect(() => {
     async function loadProduct() {
       if (invalidParams) return;
@@ -226,11 +238,13 @@ export default function PublicCheckoutPage() {
     try {
       const deviceFp = getOrCreateDeviceFingerprint();
       const idempotencyKey = generateIdempotencyKey();
+
+      // 🔥 Headers com Authorization Bearer token
       const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, { //fetch(`${ORDER_PICKUP_BASE}/orders`
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Dev-Bypass-Auth": "1",
+          "Authorization": `Bearer ${token}`,
           "X-Device-Fingerprint": deviceFp,
           "Idempotency-Key": idempotencyKey,
         },

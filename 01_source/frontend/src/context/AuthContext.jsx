@@ -1,3 +1,4 @@
+// 01_source/frontend/src/context/AuthContext.jsx
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { fetchPublicMe, loginPublicUser, registerPublicUser } from "../services/authApi";
 

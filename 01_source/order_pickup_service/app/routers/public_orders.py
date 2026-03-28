@@ -7,16 +7,19 @@ import hashlib
 import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.auth_dep import get_current_public_user
+from app.core.auth_dep import get_current_public_user, get_current_user  # 🔥 ALTERAÇÃO: Importar get_current_user do auth_dep
+
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus
 from app.models.user import User
 from app.schemas.orders import CreateOrderIn, OrderOut
 from app.services.order_creation_service import create_order_core
+
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
@@ -187,6 +190,9 @@ def _create_public_order_via_existing_flow(
     idempotency_key: str,
     device_fp: str,
     request: Request,
+    # 🔥 ALTERAÇÃO: Adicionado parâmetro current_user com Depends
+    # ERRO current_user: User = Depends(get_current_user),
+    current_user: User,  # 🔥 ALTERAÇÃO: Remover Depends daqui, receber como parâmetro
 ) -> dict[str, Any]:
     _ = idempotency_key
     _ = device_fp
@@ -204,7 +210,7 @@ def _create_public_order_via_existing_flow(
         card_type_value=create_payload.card_type.value if create_payload.card_type else None,
         amount_cents_input=create_payload.amount_cents,
         guest_phone=create_payload.customer_phone,
-        user_id=None,
+        user_id=current_user.id,  # 🔥 ALTERAÇÃO: Salvar ownership com user_id do usuário autenticado
     )
 
     order = result.order
@@ -212,7 +218,8 @@ def _create_public_order_via_existing_flow(
 
     public_access_token = _generate_public_access_token()
 
-    order.user_id = None
+    # 🔥 ALTERAÇÃO: Garantir que o user_id está definido
+    order.user_id = current_user.id  # Salvar ownership
     order.guest_session_id = guest_session_id
     order.public_access_token_hash = _hash_token(public_access_token)
     order.guest_phone = payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
@@ -236,6 +243,7 @@ def _create_public_order_via_existing_flow(
         },
         "public_access_token": public_access_token,
         "guest_session_id": guest_session_id,
+        "user_id": order.user_id,  # 🔥 ALTERAÇÃO: Incluir user_id na resposta
     }
 
 
@@ -246,7 +254,18 @@ def create_public_order(
     db: Session = Depends(get_db),
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     device_fp: str = Header(..., alias="X-Device-Fingerprint"),
+    current_user: User = Depends(get_current_user),  # 🔥 ALTERAÇÃO: Usar get_current_user do auth_dep
 ):
+    # 🔥 ALTERAÇÃO: Verificar se o usuário está autenticado
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "type": "AUTHENTICATION_REQUIRED",
+                "message": "É necessário estar autenticado para criar pedidos.",
+            },
+        )
+
     guest_session_id = _resolve_guest_session_id(device_fp)
 
     if not guest_session_id:
@@ -274,6 +293,7 @@ def create_public_order(
         idempotency_key=idempotency_key,
         device_fp=device_fp,
         request=request,
+        current_user=current_user,  # 🔥 ALTERAÇÃO: Passar current_user para a função
     )
 
 
@@ -357,6 +377,20 @@ def get_my_public_order(
                 "guest_session_id": guest_session_id,
                 "user_id": current_user.id if current_user else None,
                 "public_token_present": bool(public_token),
+            },
+        )
+
+    # 🔐 GET ORDER (CRÍTICO) - Verificar ownership
+    # Se o usuário está autenticado, garantir que o pedido pertence a ele
+    if current_user and order.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido não encontrado",
+                "order_id": order_id,
+                "user_id": current_user.id,
+                "order_user_id": order.user_id,
             },
         )
 

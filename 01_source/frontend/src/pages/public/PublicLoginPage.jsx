@@ -17,7 +17,10 @@ export default function PublicLoginPage() {
 
   useEffect(() => {
     if (!loading && isAuthenticated) {
-      navigate("/meus-pedidos", { replace: true });
+      // 🔥 ALTERAÇÃO: Redirecionamento dinâmico baseado no parâmetro redirect
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect") || "/meus-pedidos";
+      navigate(redirect, { replace: true });
     }
   }, [loading, isAuthenticated, navigate]);
 
@@ -50,7 +53,10 @@ export default function PublicLoginPage() {
 
     try {
       await login(payload);
-      navigate("/meus-pedidos", { replace: true });
+      // 🔥 ALTERAÇÃO: Redirecionamento dinâmico baseado no parâmetro redirect
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect") || "/meus-pedidos";
+      navigate(redirect, { replace: true });
     } catch (err) {
       setError(err?.message || "Falha no login. Verifique suas credenciais.");
     } finally {

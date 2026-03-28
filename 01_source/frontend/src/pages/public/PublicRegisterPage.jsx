@@ -22,7 +22,10 @@ export default function PublicRegisterPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) {
-      navigate("/meus-pedidos", { replace: true });
+      // 🔥 ALTERAÇÃO: Redirecionamento dinâmico baseado no parâmetro redirect
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect") || "/meus-pedidos";
+      navigate(redirect, { replace: true });
     }
   }, [authLoading, isAuthenticated, navigate]);
 
@@ -82,7 +85,10 @@ export default function PublicRegisterPage() {
         phone: form.phone.trim() || null,
         password: form.password,
       });
-      navigate("/meus-pedidos", { replace: true });
+      // 🔥 ALTERAÇÃO: Redirecionamento dinâmico baseado no parâmetro redirect
+      const params = new URLSearchParams(window.location.search);
+      const redirect = params.get("redirect") || "/meus-pedidos";
+      navigate(redirect, { replace: true });
     } catch (err) {
       setError(err?.message || "Falha ao criar conta. Tente novamente.");
     } finally {
@@ -351,7 +357,7 @@ export default function PublicRegisterPage() {
             <span style={trustTextStyle}>Dados protegidos</span>
           </div>
           <div style={trustItemStyle}>
-            <span style={trustIconStyle}></span>
+            <span style={trustIconStyle}>📧</span>
             <span style={trustTextStyle}>Sem spam</span>
           </div>
           <div style={trustItemStyle}>
