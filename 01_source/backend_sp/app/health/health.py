@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Response
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.version import get_app_info
 import logging
 
@@ -15,7 +15,7 @@ async def health_check():
     """
     try:
         app_info = get_app_info()
-        app_info["timestamp"] = datetime.utcnow().isoformat()
+        app_info["timestamp"] = datetime.now(timezone.utc)
         app_info["status"] = "healthy"
         
         logger.debug("Healthcheck público acessado")

@@ -1,7 +1,7 @@
 # 01_source/order_pickup_service/app/models/order.py
 # orders (pedido) - padrão "ledger"
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, Index, String, Integer
 
@@ -113,52 +113,52 @@ class Order(Base):
     )
 
     def touch(self) -> None:
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_payment_pending_customer_action(self) -> None:
         self.payment_status = PaymentStatus.PENDING_CUSTOMER_ACTION
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_pending_provider_confirmation(self) -> None:
         self.payment_status = PaymentStatus.PENDING_PROVIDER_CONFIRMATION
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_approved(self) -> None:
         self.payment_status = PaymentStatus.APPROVED
-        self.payment_updated_at = datetime.utcnow()
-        self.paid_at = self.paid_at or datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
+        self.paid_at = self.paid_at or datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_declined(self) -> None:
         self.payment_status = PaymentStatus.DECLINED
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_expired(self) -> None:
         self.payment_status = PaymentStatus.EXPIRED
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_failed(self) -> None:
         self.payment_status = PaymentStatus.FAILED
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_cancelled(self) -> None:
         self.payment_status = PaymentStatus.CANCELLED
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_payment_awaiting_integration(self) -> None:
         self.payment_status = PaymentStatus.AWAITING_INTEGRATION
-        self.payment_updated_at = datetime.utcnow()
+        self.payment_updated_at = datetime.now(timezone.utc)
         self.touch()
 
     def mark_as_picked_up(self) -> None:
         self.status = OrderStatus.PICKED_UP
-        self.picked_up_at = datetime.utcnow()
+        self.picked_up_at = datetime.now(timezone.utc)
         self.touch()
 
     @property

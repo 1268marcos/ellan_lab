@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import and_, or_, update
 from sqlalchemy.orm import Session
@@ -33,7 +33,7 @@ SUPPORTED_TEMPLATE_KEYS = {"RECEIPT", "PICKUP"}
 
 
 def _utcnow() -> datetime:
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _compute_next_attempt_at(attempt_count: int) -> datetime:

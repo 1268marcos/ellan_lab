@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String
 
@@ -148,10 +148,10 @@ class Pickup(Base):
     )
 
     def touch(self) -> None:
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_ready_for_pickup(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.status = PickupStatus.ACTIVE
         self.lifecycle_stage = PickupLifecycleStage.READY_FOR_PICKUP
         self.ready_at = self.ready_at or now
@@ -161,25 +161,25 @@ class Pickup(Base):
         self.touch()
 
     def mark_door_opened(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
         self.door_opened_at = self.door_opened_at or now
         self.touch()
 
     def mark_item_removed(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.lifecycle_stage = PickupLifecycleStage.ITEM_REMOVED
         self.item_removed_at = self.item_removed_at or now
         self.touch()
 
     def mark_door_closed(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.lifecycle_stage = PickupLifecycleStage.DOOR_CLOSED
         self.door_closed_at = self.door_closed_at or now
         self.touch()
 
     def mark_redeemed(self, via: PickupRedeemVia) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.status = PickupStatus.REDEEMED
         self.lifecycle_stage = PickupLifecycleStage.COMPLETED
         self.redeemed_at = self.redeemed_at or now
@@ -188,7 +188,7 @@ class Pickup(Base):
         self.touch()
 
     def mark_expired(self) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.status = PickupStatus.EXPIRED
         self.lifecycle_stage = PickupLifecycleStage.EXPIRED
         self.expired_at = self.expired_at or now
@@ -196,7 +196,7 @@ class Pickup(Base):
         self.touch()
 
     def mark_cancelled(self, reason: str | None = None) -> None:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         self.status = PickupStatus.CANCELLED
         self.lifecycle_stage = PickupLifecycleStage.CANCELLED
         self.cancelled_at = self.cancelled_at or now

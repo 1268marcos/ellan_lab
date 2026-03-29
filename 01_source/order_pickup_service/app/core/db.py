@@ -48,6 +48,13 @@ def _assert_required_schema() -> None:
         "users",
         "auth_sessions",
         "notification_logs",
+        "fiscal_documents",
+        # Novas tabelas de lockers
+        "lockers",
+        "locker_slot_configs",
+        "locker_operators",
+        "product_locker_configs",
+        "product_categories",
     }
 
     missing_tables = sorted(required_tables - tables)
@@ -62,6 +69,12 @@ def _assert_required_schema() -> None:
     users_columns = _get_columns_map(inspector, "users")
     auth_sessions_columns = _get_columns_map(inspector, "auth_sessions")
     notification_logs_columns = _get_columns_map(inspector, "notification_logs")
+    fiscal_documents_columns = _get_columns_map(inspector, "fiscal_documents")
+    lockers_columns = _get_columns_map(inspector, "lockers")
+    locker_slot_configs_columns = _get_columns_map(inspector, "locker_slot_configs")
+    locker_operators_columns = _get_columns_map(inspector, "locker_operators")
+    product_locker_configs_columns = _get_columns_map(inspector, "product_locker_configs")
+    product_categories_columns = _get_columns_map(inspector, "product_categories")
 
     required_orders_columns = {
         "id",
@@ -88,7 +101,6 @@ def _assert_required_schema() -> None:
         "guest_email",
         "created_at",
         "updated_at",
-        # 🔥 NOVO (sem quebrar)
         "public_access_token_hash",
     }
 
@@ -151,6 +163,126 @@ def _assert_required_schema() -> None:
         "failed_at",
     }
 
+    required_fiscal_documents_columns = {
+        "id",
+        "order_id",
+        "receipt_code",
+        "document_type",
+        "channel",
+        "region",
+        "amount_cents",
+        "currency",
+        "delivery_mode",
+        "send_status",
+        "send_target",
+        "print_status",
+        "print_site_path",
+        "payload_json",
+        "issued_at",
+        "created_at",
+        "updated_at",
+    }
+
+    required_lockers_columns = {
+        "id",
+        "external_id",
+        "display_name",
+        "description",
+        "region",
+        "site_id",
+        "timezone",
+        "address_line",
+        "address_number",
+        "address_extra",
+        "district",
+        "city",
+        "state",
+        "postal_code",
+        "country",
+        "latitude",
+        "longitude",
+        "active",
+        "slots_count",
+        "machine_id",
+        "allowed_channels",
+        "allowed_payment_methods",
+        "temperature_zone",
+        "security_level",
+        "has_camera",
+        "has_alarm",
+        "access_hours",
+        "operator_id",
+        "tenant_id",
+        "is_rented",
+        "metadata_json",
+        "created_at",
+        "updated_at",
+    }
+
+    required_locker_slot_configs_columns = {
+        "id",
+        "locker_id",
+        "slot_size",
+        "slot_count",
+        "available_count",
+        "width_cm",
+        "height_cm",
+        "depth_cm",
+        "max_weight_kg",
+        "created_at",
+        "updated_at",
+    }
+
+    required_locker_operators_columns = {
+        "id",
+        "name",
+        "document",
+        "email",
+        "phone",
+        "operator_type",
+        "active",
+        "commission_rate",
+        "currency",
+        "created_at",
+        "updated_at",
+    }
+
+    required_product_locker_configs_columns = {
+        "id",
+        "locker_id",
+        "category",
+        "subcategory",
+        "allowed",
+        "temperature_zone",
+        "min_value",
+        "max_value",
+        "max_weight_kg",
+        "max_width_cm",
+        "max_height_cm",
+        "max_depth_cm",
+        "requires_signature",
+        "requires_id",
+        "is_fragile",
+        "is_hazardous",
+        "priority",
+        "notes",
+        "created_at",
+        "updated_at",
+    }
+
+    required_product_categories_columns = {
+        "id",
+        "name",
+        "description",
+        "parent_category",
+        "default_temperature_zone",
+        "default_security_level",
+        "is_hazardous",
+        "requires_age_verification",
+        "created_at",
+        "updated_at",
+    }
+
     missing_orders_columns = sorted(required_orders_columns - set(orders_columns.keys()))
     if missing_orders_columns:
         raise RuntimeError(
@@ -192,9 +324,68 @@ def _assert_required_schema() -> None:
             + ", ".join(missing_notification_logs_columns)
         )
 
+    missing_fiscal_documents_columns = sorted(
+        required_fiscal_documents_columns - set(fiscal_documents_columns.keys())
+    )
+    if missing_fiscal_documents_columns:
+        raise RuntimeError(
+            "Schema incompatível em fiscal_documents: colunas ausentes: "
+            + ", ".join(missing_fiscal_documents_columns)
+        )
+
+    missing_lockers_columns = sorted(
+        required_lockers_columns - set(lockers_columns.keys())
+    )
+    if missing_lockers_columns:
+        raise RuntimeError(
+            "Schema incompatível em lockers: colunas ausentes: "
+            + ", ".join(missing_lockers_columns)
+        )
+
+    missing_locker_slot_configs_columns = sorted(
+        required_locker_slot_configs_columns - set(locker_slot_configs_columns.keys())
+    )
+    if missing_locker_slot_configs_columns:
+        raise RuntimeError(
+            "Schema incompatível em locker_slot_configs: colunas ausentes: "
+            + ", ".join(missing_locker_slot_configs_columns)
+        )
+
+    missing_locker_operators_columns = sorted(
+        required_locker_operators_columns - set(locker_operators_columns.keys())
+    )
+    if missing_locker_operators_columns:
+        raise RuntimeError(
+            "Schema incompatível em locker_operators: colunas ausentes: "
+            + ", ".join(missing_locker_operators_columns)
+        )
+
+    missing_product_locker_configs_columns = sorted(
+        required_product_locker_configs_columns - set(product_locker_configs_columns.keys())
+    )
+    if missing_product_locker_configs_columns:
+        raise RuntimeError(
+            "Schema incompatível em product_locker_configs: colunas ausentes: "
+            + ", ".join(missing_product_locker_configs_columns)
+        )
+
+    missing_product_categories_columns = sorted(
+        required_product_categories_columns - set(product_categories_columns.keys())
+    )
+    if missing_product_categories_columns:
+        raise RuntimeError(
+            "Schema incompatível em product_categories: colunas ausentes: "
+            + ", ".join(missing_product_categories_columns)
+        )
+
     orders_indexes = _get_indexes_set(inspector, "orders")
     allocations_indexes = _get_indexes_set(inspector, "allocations")
     notification_logs_indexes = _get_indexes_set(inspector, "notification_logs")
+    lockers_indexes = _get_indexes_set(inspector, "lockers")
+    locker_slot_configs_indexes = _get_indexes_set(inspector, "locker_slot_configs")
+    locker_operators_indexes = _get_indexes_set(inspector, "locker_operators")
+    product_locker_configs_indexes = _get_indexes_set(inspector, "product_locker_configs")
+    product_categories_indexes = _get_indexes_set(inspector, "product_categories")
 
     required_orders_indexes = {
         "idx_orders_status",
@@ -206,8 +397,7 @@ def _assert_required_schema() -> None:
         "idx_orders_picked_up_at",
         "idx_orders_status_picked_up",
         "idx_orders_totem_picked_up",
-        # 🔥 NOVO
-        "idx_orders_public_access_token_hash",        
+        "idx_orders_public_access_token_hash",
     }
 
     required_allocations_indexes = {
@@ -221,6 +411,30 @@ def _assert_required_schema() -> None:
         "ux_notification_logs_dedupe",
         "ix_notification_logs_next_attempt_at",
         "ix_notification_logs_status_next_attempt_at",
+    }
+
+    required_lockers_indexes = {
+        "idx_lockers_region",
+        "idx_lockers_site_id",
+        "idx_lockers_active",
+        "idx_lockers_operator",
+    }
+
+    required_locker_slot_configs_indexes = {
+        "idx_locker_slot_locker",
+    }
+
+    required_locker_operators_indexes = {
+        "idx_operator_document",
+    }
+
+    required_product_locker_configs_indexes = {
+        "idx_product_config_locker",
+        "idx_product_config_category",
+    }
+
+    required_product_categories_indexes = {
+        "idx_product_categories_parent",
     }
 
     missing_orders_indexes = sorted(required_orders_indexes - orders_indexes)
@@ -246,6 +460,49 @@ def _assert_required_schema() -> None:
             + ", ".join(missing_notification_logs_indexes)
         )
 
+    missing_lockers_indexes = sorted(required_lockers_indexes - lockers_indexes)
+    if missing_lockers_indexes:
+        raise RuntimeError(
+            "Schema incompatível em lockers: índices ausentes: "
+            + ", ".join(missing_lockers_indexes)
+        )
+
+    missing_locker_slot_configs_indexes = sorted(
+        required_locker_slot_configs_indexes - locker_slot_configs_indexes
+    )
+    if missing_locker_slot_configs_indexes:
+        raise RuntimeError(
+            "Schema incompatível em locker_slot_configs: índices ausentes: "
+            + ", ".join(missing_locker_slot_configs_indexes)
+        )
+
+    missing_locker_operators_indexes = sorted(
+        required_locker_operators_indexes - locker_operators_indexes
+    )
+    if missing_locker_operators_indexes:
+        raise RuntimeError(
+            "Schema incompatível em locker_operators: índices ausentes: "
+            + ", ".join(missing_locker_operators_indexes)
+        )
+
+    missing_product_locker_configs_indexes = sorted(
+        required_product_locker_configs_indexes - product_locker_configs_indexes
+    )
+    if missing_product_locker_configs_indexes:
+        raise RuntimeError(
+            "Schema incompatível em product_locker_configs: índices ausentes: "
+            + ", ".join(missing_product_locker_configs_indexes)
+        )
+
+    missing_product_categories_indexes = sorted(
+        required_product_categories_indexes - product_categories_indexes
+    )
+    if missing_product_categories_indexes:
+        raise RuntimeError(
+            "Schema incompatível em product_categories: índices ausentes: "
+            + ", ".join(missing_product_categories_indexes)
+        )
+
 
 def _run_startup_migrations_if_enabled() -> None:
     if not settings.run_db_migrations_on_startup:
@@ -254,10 +511,10 @@ def _run_startup_migrations_if_enabled() -> None:
         )
         return
 
-    from app.core.db_migrations import migrate_order_pickup_schema
+    from app.core.db_migrations import _run_startup_migrations_if_enabled as run_all_startup_migrations
 
     logger.info("Executando migrações automáticas do order_pickup_service...")
-    result = migrate_order_pickup_schema()
+    result = run_all_startup_migrations()
 
     applied = result.get("applied", []) if isinstance(result, dict) else []
     if applied:
@@ -267,18 +524,39 @@ def _run_startup_migrations_if_enabled() -> None:
 
 
 def init_db():
-    from app.models import allocation  # noqa: F401
-    from app.models import credit  # noqa: F401
-    from app.models import kiosk_antifraud_event  # noqa: F401
-    from app.models import login_otp  # noqa: F401
-    from app.models import order  # noqa: F401
-    from app.models import pickup  # noqa: F401
-    from app.models import pickup_token  # noqa: F401
-    from app.models import user  # noqa: F401
+    # =========================
+    # IMPORTS EXPLÍCITOS (CRÍTICO)
+    # =========================
+    from app.models.allocation import Allocation  # noqa: F401
+    from app.models.credit import Credit  # noqa: F401
+    from app.models.kiosk_antifraud_event import KioskAntifraudEvent  # noqa: F401
+    from app.models.login_otp import LoginOTP  # noqa: F401
+    from app.models.order import Order  # noqa: F401
+    from app.models.pickup import Pickup  # noqa: F401
+    from app.models.pickup_token import PickupToken  # noqa: F401
+    from app.models.user import User  # noqa: F401
     from app.models.auth_session import AuthSession  # noqa: F401
     from app.models.notification_log import NotificationLog  # noqa: F401
-    from app.models import domain_event_outbox  # noqa: F401
+    from app.models.domain_event_outbox import DomainEventOutbox  # noqa: F401
+    from app.models.fiscal_document import FiscalDocument  # noqa: F401
 
-    Base.metadata.create_all(bind=engine)
+    # 🔥 LOCKERS (EXPLÍCITO — ESSENCIAL)
+    from app.models.locker import Locker, LockerSlotConfig, LockerOperator  # noqa: F401
+
+    # 🔥 PRODUCT CONFIG
+    from app.models.product_locker_config import ProductLockerConfig, ProductCategory  # noqa: F401
+
+    # =========================
+    # 1. MIGRATIONS PRIMEIRO
+    # =========================
     _run_startup_migrations_if_enabled()
+
+    # =========================
+    # 2. CREATE TABLES (fallback)
+    # =========================
+    # Base.metadata.create_all(bind=engine)
+
+    # =========================
+    # 3. VALIDAR SCHEMA
+    # =========================
     _assert_required_schema()

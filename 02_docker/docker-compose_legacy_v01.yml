@@ -1,25 +1,14 @@
-# ============================================================================
 # docker-compose.yml (Compose V2 - sem version)
-# VERSÃO 2.0 - BACKENDS SP/PT DESCONTINUADOS
-# ============================================================================
-# 
-# ALTERAÇÕES NESTA VERSÃO:
-# ✅ backend_sp - COMENTADO (descontinuado)
-# ✅ backend_pt - COMENTADO (descontinuado)
-# ✅ payment_gateway - BACKEND_SP/PT removidos das env vars
-# ✅ order_pickup_service - BACKEND_SP/PT removidos das env vars e depends_on
-# ✅ order_lifecycle_service - depends_on ajustado
-# ✅ billing_fiscal_service - depends_on ajustado
-# ✅ billing_fiscal_issue_worker - depends_on ajustado
-# ✅ billing_fiscal_event_worker - depends_on ajustado
-#
-# Arquitetura CENTRAL simplificada:
+# Arquitetura CENTRAL:
 # - Postgres CENTRAL (fonte da verdade)
 # - Redis CENTRAL (cache/locks/fila leve)
-# - Payment Gateway (sem dependência de backends legados)
+# - Backends SP/PT usam o Postgres CENTRAL (com REGION para separar regras e dados)
+# - Payment Gateway mantém SQLite local (resiliência) + escreve/audita no CENTRAL
 # - Simuladores SP/PT via MQTT
-# ============================================================================
 
+# =========================
+# REDE COMPARTILHADA (adicionar)
+# =========================
 networks:
   locker-network:
     name: locker_network
@@ -57,13 +46,14 @@ services:
     networks:
       - locker-network
 
+
   # =========================
   # REDIS CENTRAL
   # =========================
   redis_central:
     image: redis:7
     container_name: redis_central
-    restart: unless-stopped
+    restart: unless-stopped  # always    unless-stopped oferece mais controle em ambiente de produção
     ports:
       - "6382:6379"
     volumes:
@@ -83,11 +73,13 @@ services:
   mqtt:
     image: eclipse-mosquitto:2
     container_name: mqtt_broker
-    restart: unless-stopped
+    restart: unless-stopped  # always # unless-stopped oferece mais controle em ambiente de produção
     ports:
       - "1884:1883"
     volumes:
       - ../03_data/mqtt:/mosquitto/data
+      # (opcional) se tiver config custom:
+      # - ./02_docker/mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
     healthcheck:
       test: ["CMD", "mosquitto_sub", "-t", "$$SYS/#", "-C", "1", "-W", "5"]
       interval: 10s
@@ -98,97 +90,105 @@ services:
       - locker-network
 
   # =========================
-  # ⚠️ BACKEND SP - DESCONTINUADO (comentado)
+  # BACKEND SP (DB CENTRAL)
   # =========================
-  # backend_sp:
-  #   build:
-  #     context: ../01_source/backend_sp
-  #   container_name: backend_sp
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8201:8000"
-  #   environment:
-  #     DB_HOST: postgres_central
-  #     DB_NAME: locker_central
-  #     DB_USER: admin
-  #     DB_PASS: admin123
-  #     REDIS_HOST: redis_central
-  #     REGION: SP
-  #     TZ: America/Sao_Paulo
-  #     MQTT_HOST: mqtt_broker
-  #     LOCKER_ID: LOCKER_SP_01
-  #     MACHINE_ID: CACIFO-SP-001
-  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-  #     BACKUPS_DIR: /backups
-  #     LOGS_DIR: /logs
-  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
-  #     HOST: 0.0.0.0
-  #     PORT: 8000
-  #   env_file:
-  #     - ./configs/backend_sp.env
-  #   volumes:
-  #     - ../03_data/sqlite:/data/sqlite
-  #   depends_on:
-  #     postgres_central:
-  #       condition: service_healthy
-  #     redis_central:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
+  backend_sp:
+    build:
+      context: ../01_source/backend_sp
+    container_name: backend_sp
+    restart: unless-stopped
+    ports:
+      - "8201:8000"   # 🔥 ALTERADO: 8101 → 8201
+    environment:
+      DB_HOST: postgres_central
+      DB_NAME: locker_central
+      DB_USER: admin
+      DB_PASS: admin123
+
+      REDIS_HOST: redis_central
+      REGION: SP
+      TZ: America/Sao_Paulo
+
+      MQTT_HOST: mqtt_broker
+      LOCKER_ID: LOCKER_SP_01
+      MACHINE_ID: CACIFO-SP-001
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
+
+      HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
+      PORT: 8000
+    env_file:
+      - ./configs/backend_sp.env
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"] # externo
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # =========================
-  # ⚠️ BACKEND PT - DESCONTINUADO (comentado)
+  # BACKEND PT (DB CENTRAL)
   # =========================
-  # backend_pt:
-  #   build:
-  #     context: ../01_source/backend_pt
-  #   container_name: backend_pt
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8202:8000"
-  #   environment:
-  #     DB_HOST: postgres_central
-  #     DB_NAME: locker_central
-  #     DB_USER: admin
-  #     DB_PASS: admin123
-  #     REDIS_HOST: redis_central
-  #     REGION: PT
-  #     TZ: Europe/Lisbon
-  #     MQTT_HOST: mqtt_broker
-  #     LOCKER_ID: LOCKER_PT_01
-  #     MACHINE_ID: CACIFO-PT-001
-  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-  #     BACKUPS_DIR: /backups
-  #     LOGS_DIR: /logs
-  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
-  #     HOST: 0.0.0.0
-  #     PORT: 8000
-  #   env_file:
-  #     - ./configs/backend_pt.env
-  #   volumes:
-  #     - ../03_data/sqlite:/data/sqlite
-  #   depends_on:
-  #     postgres_central:
-  #       condition: service_healthy
-  #     redis_central:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
+  backend_pt:
+    build:
+      context: ../01_source/backend_pt
+    container_name: backend_pt
+    restart: unless-stopped
+    ports:
+      - "8202:8000"
+    environment:
+      DB_HOST: postgres_central
+      DB_NAME: locker_central
+      DB_USER: admin
+      DB_PASS: admin123
+
+      REDIS_HOST: redis_central
+      REGION: PT
+      TZ: Europe/Lisbon
+
+      MQTT_HOST: mqtt_broker
+      LOCKER_ID: LOCKER_PT_01
+      MACHINE_ID: CACIFO-PT-001
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
+
+      HOST: 0.0.0.0   # IMPORTANTE: Host precisa ser 0.0.0.0 para aceitar conexões
+      PORT: 8000
+    env_file:
+      - ./configs/backend_pt.env
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"] # externo
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
   # =========================
-  # PAYMENT GATEWAY (sem backends legados)
+  # PAYMENT GATEWAY
   # =========================
   payment_gateway:
     build:
@@ -201,9 +201,9 @@ services:
     env_file:
       - .env
     environment:
-      # ⚠️ BACKENDS LEGADOS REMOVIDOS - usar apenas Postgres Central
-      # - BACKEND_SP=http://backend_sp:8000  # REMOVIDO
-      # - BACKEND_PT=http://backend_pt:8000  # REMOVIDO
+      # chama backends por região
+      - BACKEND_SP=http://backend_sp:8000
+      - BACKEND_PT=http://backend_pt:8000
 
       # redis central
       - REDIS_HOST=redis_central
@@ -229,7 +229,7 @@ services:
       - LOCKER_ID_SP=${LOCKER_ID_SP:-}
       - LOCKER_ID_PT=${LOCKER_ID_PT:-}
 
-      # antifraude
+      # antifraude (pepper versionado)
       - ANTIFRAUD_ACTIVE_PEPPER_VERSION=${ANTIFRAUD_ACTIVE_PEPPER_VERSION}
       - ANTIFRAUD_PEPPER_V1=${ANTIFRAUD_PEPPER_V1}
       - ANTIFRAUD_PEPPER_V2=${ANTIFRAUD_PEPPER_V2}
@@ -259,7 +259,7 @@ services:
       start_period: 60s
 
   # =========================
-  # ORDER PICKUP SERVICE (sem backends legados)
+  # ORDER PICKUP SERVICE - não tem healthcheck: ...
   # =========================
   order_pickup_service:
     build:
@@ -269,15 +269,16 @@ services:
     ports:
       - "8003:8003"
     env_file:
+      # - .env.${NODE_ENV:-development}  # PARA DAR RESET
       - ../01_source/order_pickup_service/.env
     environment:
       - TZ=America/Sao_Paulo
 
-      # ⚠️ BACKENDS LEGADOS REMOVIDOS
-      # - BACKEND_SP_INTERNAL=http://backend_sp:8000  # REMOVIDO
-      # - BACKEND_PT_INTERNAL=http://backend_pt:8000  # REMOVIDO
+      # chama backends por região
+      - BACKEND_SP_INTERNAL=http://backend_sp:8000
+      - BACKEND_PT_INTERNAL=http://backend_pt:8000
 
-      # endpoint de preço (agora via gateway ou diretamente)
+      # endpoint de preço
       - BACKEND_PRICE_PATH_TEMPLATE=/catalog/skus/{sku_id}
 
       # gateway registry central
@@ -291,16 +292,17 @@ services:
       - PICKUP_QR_SECRET=${PICKUP_QR_SECRET}
       - QR_ROTATE_SEC=${QR_ROTATE_SEC}
 
-      # DB do serviço (agora apenas Postgres Central)
+      # DB do serviço
+      # - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
 
-      # migração automática
+      # migração automática controlada por ambiente
       - RUN_DB_MIGRATIONS_ON_STARTUP=true
 
       # timeout do backend client
       - BACKEND_CLIENT_TIMEOUT_SEC=5
 
-      # central
+      # central (opcional para consultas futuras)
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
 
       # ambiente
@@ -313,9 +315,14 @@ services:
       # email smtp
       - FRONTEND_BASE_URL=http://localhost:5173
 
-    # ⚠️ depends_on ajustado - REMOVIDOS backend_sp e backend_pt
+    # volumes:
+    #   - ../03_data/sqlite:/data/sqlite
     depends_on:
       postgres_central:
+        condition: service_healthy
+      backend_sp:
+        condition: service_healthy
+      backend_pt:
         condition: service_healthy
       payment_gateway:
         condition: service_healthy
@@ -323,6 +330,7 @@ services:
         condition: service_started
     networks:
       - locker-network
+
 
   # =========================
   # ORDER LIFECYCLE SERVICE
@@ -343,7 +351,7 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      PREPAYMENT_TIMEOUT_SECONDS: 90
+      PREPAYMENT_TIMEOUT_SECONDS: 90  # 1 minuto e 30 seguntos
       WORKER_POLL_INTERVAL_SECONDS: 5
     ports:
       - "8010:8010"
@@ -352,6 +360,7 @@ services:
         condition: service_healthy
     networks:
       - locker-network
+
 
   # =========================
   # ORDER LIFECYCLE WORKER
@@ -371,13 +380,14 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      PREPAYMENT_TIMEOUT_SECONDS: 90
+      PREPAYMENT_TIMEOUT_SECONDS: 90 # 1 minutos e 30 segundos
       WORKER_POLL_INTERVAL_SECONDS: 5
     depends_on:
       postgres_central:
         condition: service_healthy
     networks:
       - locker-network
+
 
   # =========================
   # BILLING FISCAL SERVICE
@@ -415,6 +425,7 @@ services:
         condition: service_started
     networks:
       - locker-network
+
 
   # =========================
   # BILLING FISCAL ISSUE WORKER
@@ -455,8 +466,9 @@ services:
     networks:
       - locker-network
 
+
   # =========================
-  # BILLING FISCAL EVENT WORKER
+  # BILLING FISCAL EVENT WORKER (NOVO)
   # =========================
   billing_fiscal_event_worker:
     build:
@@ -469,19 +481,24 @@ services:
       APP_ENV: dev
       LOG_LEVEL: INFO
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
+
       ORDER_PICKUP_SERVICE_URL: http://order_pickup_service:8003
       ORDER_PICKUP_TIMEOUT_SEC: 5
+
       INVOICE_EVENT_WORKER_POLL_SEC: 10
       INVOICE_EVENT_WORKER_BATCH_SIZE: 100
+
       INVOICE_ISSUE_MAX_RETRIES: 5
       INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_event_worker
+
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -491,6 +508,7 @@ services:
         condition: service_started
     networks:
       - locker-network
+
 
   # =========================
   # ORDER PICKUP DOMAIN EVENT WORKER
@@ -502,14 +520,18 @@ services:
     command: ["python", "-m", "app.workers.domain_event_outbox_worker"]
     restart: unless-stopped
     env_file:
+      # - .env.${NODE_ENV:-development}
       - ../01_source/order_pickup_service/.env
     environment:
       - TZ=America/Sao_Paulo
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
+      # - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
       - LIFECYCLE_SERVICE_URL=http://order_lifecycle_service:8010
       - DOMAIN_EVENT_OUTBOX_POLL_SEC=5
       - DOMAIN_EVENT_OUTBOX_BATCH_SIZE=50
+    # volumes:
+    #   - ../03_data/sqlite:/data/sqlite
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -520,8 +542,9 @@ services:
     networks:
       - locker-network
 
+
   # =========================
-  # ORDER PICKUP NOTIFICATION DELIVERY WORKER
+  # ORDER PICKUP SERVICE NOTIFICATION DELIVERY WORKER - email
   # =========================
   notification_delivery_worker:
     build:
@@ -534,25 +557,36 @@ services:
       - ../01_source/order_pickup_service/.env
     environment:
       - TZ=America/Sao_Paulo
+      # - DATABASE_URL=sqlite:////data/sqlite/order_pickup/orders.db
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
       - RUN_DB_MIGRATIONS_ON_STARTUP=true
+      # email smtp
       - FRONTEND_BASE_URL=http://localhost:5173
     volumes:
       - ../01_source/order_pickup_service/app:/app/app
+      # - ../03_data/sqlite:/data/sqlite
     depends_on:
       order_pickup_service:
         condition: service_started
     networks:
       - locker-network
 
+
+
+
+
+
+
+
+
   # =========================
-  # SIMULATOR SP
+  # SIMULATOR SP (24 doors)
   # =========================
   simulator_sp:
     build:
       context: ../01_source/simulator
     container_name: simulator_sp
-    restart: unless-stopped
+    restart: unless-stopped  # always # unless-stopped oferece mais controle em ambiente de produção
     environment:
       MQTT_HOST: mqtt_broker
       MQTT_PORT: "1883"
@@ -570,7 +604,7 @@ services:
       - locker-network
 
   # =========================
-  # SIMULATOR PT
+  # SIMULATOR PT (24 doors)
   # =========================
   simulator_pt:
     build:
@@ -593,22 +627,12 @@ services:
     networks:
       - locker-network
 
+# Rede padrão do Compose V2 (opcional, mas recomendado para clareza)
+# Melhora visibilidade e isolamento da rede explícita
+# networks:
+#  default:
+#    name: locker_network
+#    driver: bridge
 
-  # =========================
-  # PGADMIN - Interface Web gráfica (provisório na fase desenvolvimento)
-  # Como usar?   http://localhost:5050 e configure a conexão com postgres_central (hostname do container)
-  # =========================
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
-    depends_on:
-    - postgres_central
-    networks:
-      - locker-network
+# Adicionados healthcheck em postgres, redis e mqtt
+# Garante que depends_on aguarde serviços prontos docs.docker.com

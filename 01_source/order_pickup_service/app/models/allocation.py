@@ -1,6 +1,6 @@
 # 01_source/order_pickup_service/app/models/allocation.py
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, Integer, String
 
@@ -86,7 +86,7 @@ class Allocation(Base):
     )
 
     def touch(self) -> None:
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now(timezone.utc)
 
     def mark_reserved_pending_payment(self) -> None:
         self.state = AllocationState.RESERVED_PENDING_PAYMENT

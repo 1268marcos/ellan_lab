@@ -1,7 +1,7 @@
 # 01_source/order_pickup_service/app/services/notification_dispatch_service.py
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -41,7 +41,7 @@ def _queue_email_notification(
     if existing:
         return existing
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     log = NotificationLog(
         user_id=None,

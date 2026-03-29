@@ -164,6 +164,13 @@ class Settings(BaseSettings):
     email_sender: str = Field(default="", alias="EMAIL_SENDER")
     email_from_name: str = Field(default="ELLAN LAB", alias="EMAIL_FROM_NAME")
 
+    # =========================================================
+    # Regiões para Lockers
+    # =========================================================
+    
+    VALID_LOCKER_REGIONS: list[str] = ["BR", "PT", "ES", "MG", "BA", "PE", "RS", "SC", "SP", "RJ", "PR"]
+    VALIDATE_LOCKER_REGION: bool = False  # Ative se quiser validar
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -90,7 +90,7 @@ async def internal_health_check(authorized: bool = Depends(verify_internal_token
     Verifica conexão com banco de dados e outros serviços.
     """
     app_info = get_app_info()
-    app_info["timestamp"] = datetime.utcnow().isoformat()
+    app_info["timestamp"] = datetime.now(timezone.utc)
 
     health_status = {
         **app_info,
@@ -124,7 +124,7 @@ async def readiness_check(authorized: bool = Depends(verify_internal_token)):
         return {
             "status": "ready",
             "message": "Aplicação pronta para receber tráfego",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc),
         }
 
     raise HTTPException(
@@ -146,7 +146,7 @@ async def liveness_check(authorized: bool = Depends(verify_internal_token)):
     return {
         "status": "alive",
         "message": "Aplicação está rodando",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc),
     }
 
 
@@ -168,7 +168,7 @@ async def detailed_health_check(authorized: bool = Depends(verify_internal_token
     }
 
     app_info = get_app_info()
-    app_info["timestamp"] = datetime.utcnow().isoformat()
+    app_info["timestamp"] = datetime.now(timezone.utc)
 
     db_status = await check_database()
 

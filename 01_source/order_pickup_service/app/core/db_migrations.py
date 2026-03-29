@@ -113,8 +113,8 @@ def _rebuild_users_sqlite_to_text_id(conn, applied: list[str]) -> None:
                 is_active BOOLEAN NOT NULL,
                 email_verified BOOLEAN NOT NULL,
                 phone_verified BOOLEAN NOT NULL,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL
             )
             """
         )
@@ -199,18 +199,18 @@ def _rebuild_orders_sqlite_user_id_to_text(conn, applied: list[str]) -> None:
                 payment_method VARCHAR(21) NULL,
                 payment_status VARCHAR(30) NOT NULL,
                 card_type VARCHAR(10) NULL,
-                payment_updated_at DATETIME NULL,
-                paid_at DATETIME NULL,
-                pickup_deadline_at DATETIME NULL,
-                picked_up_at DATETIME NULL,
+                payment_updated_at TIMESTAMP WITH TIME ZONE NULL,
+                paid_at TIMESTAMP WITH TIME ZONE NULL,
+                pickup_deadline_at TIMESTAMP WITH TIME ZONE NULL,
+                picked_up_at TIMESTAMP WITH TIME ZONE NULL,
                 guest_session_id VARCHAR NULL,
                 receipt_email VARCHAR NULL,
                 receipt_phone VARCHAR NULL,
                 consent_marketing INTEGER NOT NULL,
                 guest_phone VARCHAR NULL,
                 guest_email VARCHAR NULL,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL
             )
             """
         )
@@ -339,9 +339,9 @@ def _rebuild_auth_sessions_sqlite_user_id_to_text(conn, applied: list[str]) -> N
                 session_token_hash VARCHAR(255) NOT NULL,
                 user_agent VARCHAR(500) NULL,
                 ip_address VARCHAR(64) NULL,
-                created_at DATETIME NOT NULL,
-                expires_at DATETIME NOT NULL,
-                revoked_at DATETIME NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                revoked_at TIMESTAMP WITH TIME ZONE NULL,
                 FOREIGN KEY(user_id) REFERENCES users (id)
             )
             """
@@ -396,7 +396,7 @@ def _rebuild_pickups_sqlite_final_model(conn, applied: list[str]) -> None:
             CREATE TABLE pickups_new (
                 id VARCHAR NOT NULL PRIMARY KEY,
                 order_id VARCHAR NOT NULL UNIQUE,
-                channel VARCHAR(8) NOT NULL,
+                channel TEXT NOT NULL,
                 region VARCHAR NOT NULL,
                 locker_id VARCHAR NULL,
                 machine_id VARCHAR NULL,
@@ -407,23 +407,23 @@ def _rebuild_pickups_sqlite_final_model(conn, applied: list[str]) -> None:
                 status VARCHAR(16) NOT NULL,
                 lifecycle_stage VARCHAR(24) NOT NULL,
                 current_token_id VARCHAR NULL,
-                activated_at DATETIME NOT NULL,
-                ready_at DATETIME NULL,
-                expires_at DATETIME NULL,
-                door_opened_at DATETIME NULL,
-                item_removed_at DATETIME NULL,
-                door_closed_at DATETIME NULL,
-                redeemed_at DATETIME NULL,
+                activated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                ready_at TIMESTAMP WITH TIME ZONE NULL,
+                expires_at TIMESTAMP WITH TIME ZONE NULL,
+                door_opened_at TIMESTAMP WITH TIME ZONE NULL,
+                item_removed_at TIMESTAMP WITH TIME ZONE NULL,
+                door_closed_at TIMESTAMP WITH TIME ZONE NULL,
+                redeemed_at TIMESTAMP WITH TIME ZONE NULL,
                 redeemed_via VARCHAR(16) NULL,
-                expired_at DATETIME NULL,
-                cancelled_at DATETIME NULL,
+                expired_at TIMESTAMP WITH TIME ZONE NULL,
+                cancelled_at TIMESTAMP WITH TIME ZONE NULL,
                 cancel_reason VARCHAR NULL,
                 correlation_id VARCHAR NULL,
                 source_event_id VARCHAR NULL,
                 sensor_event_id VARCHAR NULL,
                 notes VARCHAR NULL,
-                created_at DATETIME NOT NULL,
-                updated_at DATETIME NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
                 FOREIGN KEY(order_id) REFERENCES orders (id)
             )
             """
@@ -607,6 +607,46 @@ def _rebuild_pickups_sqlite_final_model(conn, applied: list[str]) -> None:
     applied.append("pickups.sqlite_table_rebuild_final_model")
 
 
+def ensure_locker_indexes(engine):
+    """Garante a criação dos índices essenciais para a tabela lockers."""
+    with engine.connect() as conn:
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lockers_active ON lockers (active)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lockers_operator ON lockers (operator_id)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lockers_region ON lockers (region)"
+        ))
+        conn.execute(text(
+            "CREATE INDEX IF NOT EXISTS idx_lockers_site_id ON lockers (site_id)"
+        ))
+        conn.commit()
+
+
+def ensure_domain_event_outbox_table(engine):
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS domain_event_outbox (
+                id VARCHAR PRIMARY KEY,
+                event_key VARCHAR(255) NOT NULL,
+                aggregate_type VARCHAR(100),
+                aggregate_id VARCHAR(100),
+                event_name VARCHAR(100),
+                event_version INTEGER,
+                status VARCHAR(50),
+                payload_json TEXT,
+                occurred_at TIMESTAMP,
+                published_at TIMESTAMP,
+                last_error TEXT,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+        """))
+        conn.commit()
+
+
 def migrate_order_pickup_schema() -> dict:
     """
     Migração alinhada ao domínio atual:
@@ -676,12 +716,12 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("users.phone_verified")
 
             if not _has_column(inspector, "users", "created_at"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN created_at DATETIME"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP WITH TIME ZONE"))
                 conn.execute(text("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
                 applied.append("users.created_at")
 
             if not _has_column(inspector, "users", "updated_at"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN updated_at DATETIME"))
+                conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
                 conn.execute(text("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
                 applied.append("users.updated_at")
 
@@ -712,7 +752,7 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("orders.card_type")
 
             if not _has_column(inspector, "orders", "payment_updated_at"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN payment_updated_at DATETIME"))
+                conn.execute(text("ALTER TABLE orders ADD COLUMN payment_updated_at TIMESTAMP WITH TIME ZONE"))
                 conn.execute(
                     text(
                         """
@@ -725,7 +765,7 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("orders.payment_updated_at")
 
             if not _has_column(inspector, "orders", "updated_at"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN updated_at DATETIME"))
+                conn.execute(text("ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
                 conn.execute(
                     text(
                         """
@@ -766,7 +806,7 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("allocations.locker_id")
 
             if not _has_column(inspector, "allocations", "updated_at"):
-                conn.execute(text("ALTER TABLE allocations ADD COLUMN updated_at DATETIME"))
+                conn.execute(text("ALTER TABLE allocations ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
                 conn.execute(
                     text(
                         """
@@ -793,13 +833,13 @@ def migrate_order_pickup_schema() -> dict:
                 "tenant_id": "ALTER TABLE pickups ADD COLUMN tenant_id VARCHAR",
                 "site_id": "ALTER TABLE pickups ADD COLUMN site_id VARCHAR",
                 "lifecycle_stage": "ALTER TABLE pickups ADD COLUMN lifecycle_stage VARCHAR(24)",
-                "activated_at": "ALTER TABLE pickups ADD COLUMN activated_at DATETIME",
-                "ready_at": "ALTER TABLE pickups ADD COLUMN ready_at DATETIME",
-                "door_opened_at": "ALTER TABLE pickups ADD COLUMN door_opened_at DATETIME",
-                "item_removed_at": "ALTER TABLE pickups ADD COLUMN item_removed_at DATETIME",
-                "door_closed_at": "ALTER TABLE pickups ADD COLUMN door_closed_at DATETIME",
-                "expired_at": "ALTER TABLE pickups ADD COLUMN expired_at DATETIME",
-                "cancelled_at": "ALTER TABLE pickups ADD COLUMN cancelled_at DATETIME",
+                "activated_at": "ALTER TABLE pickups ADD COLUMN activated_at TIMESTAMP WITH TIME ZONE",
+                "ready_at": "ALTER TABLE pickups ADD COLUMN ready_at TIMESTAMP WITH TIME ZONE",
+                "door_opened_at": "ALTER TABLE pickups ADD COLUMN door_opened_at TIMESTAMP WITH TIME ZONE",
+                "item_removed_at": "ALTER TABLE pickups ADD COLUMN item_removed_at TIMESTAMP WITH TIME ZONE",
+                "door_closed_at": "ALTER TABLE pickups ADD COLUMN door_closed_at TIMESTAMP WITH TIME ZONE",
+                "expired_at": "ALTER TABLE pickups ADD COLUMN expired_at TIMESTAMP WITH TIME ZONE",
+                "cancelled_at": "ALTER TABLE pickups ADD COLUMN cancelled_at TIMESTAMP WITH TIME ZONE",
                 "cancel_reason": "ALTER TABLE pickups ADD COLUMN cancel_reason VARCHAR",
                 "correlation_id": "ALTER TABLE pickups ADD COLUMN correlation_id VARCHAR",
                 "source_event_id": "ALTER TABLE pickups ADD COLUMN source_event_id VARCHAR",
@@ -852,14 +892,13 @@ def migrate_order_pickup_schema() -> dict:
                         UPDATE pickups
                            SET channel = (
                                SELECT CASE
-                                   WHEN orders.channel = 'KIOSK' THEN 'KIOSK'
-                                   ELSE 'ONLINE'
+                                   WHEN orders.channel = 'KIOSK' THEN 'KIOSK'::pickupchannel
+                                   ELSE 'ONLINE'::pickupchannel
                                END
                                  FROM orders
                                 WHERE orders.id = pickups.order_id
-                           )
+                           )::pickupchannel
                          WHERE channel IS NULL
-                            OR TRIM(channel) = ''
                         """
                     )
                 )
@@ -994,9 +1033,9 @@ def migrate_order_pickup_schema() -> dict:
                         print_status VARCHAR(50),
                         print_site_path VARCHAR(255),
                         payload_json TEXT NOT NULL,
-                        issued_at DATETIME NOT NULL,
-                        created_at DATETIME NOT NULL,
-                        updated_at DATETIME NOT NULL
+                        issued_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL
                     )
                     """
                 )
@@ -1029,15 +1068,15 @@ def migrate_order_pickup_schema() -> dict:
                 applied.append("notification_logs.dedupe_key")
 
             if not _has_column(inspector, "notification_logs", "processing_started_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN processing_started_at DATETIME"))
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN processing_started_at TIMESTAMP WITH TIME ZONE"))
                 applied.append("notification_logs.processing_started_at")
 
             if not _has_column(inspector, "notification_logs", "last_attempt_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN last_attempt_at DATETIME"))
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN last_attempt_at TIMESTAMP WITH TIME ZONE"))
                 applied.append("notification_logs.last_attempt_at")
 
             if not _has_column(inspector, "notification_logs", "next_attempt_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN next_attempt_at DATETIME"))
+                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN next_attempt_at TIMESTAMP WITH TIME ZONE"))
                 applied.append("notification_logs.next_attempt_at")
 
             conn.execute(
@@ -1048,9 +1087,9 @@ def migrate_order_pickup_schema() -> dict:
                            COALESCE(channel, '') || '|' ||
                            COALESCE(template_key, '') || '|' ||
                            COALESCE(destination_value, '') || '|' ||
-                           COALESCE(json_extract(payload_json, '$.receipt_code'), '')
+                           COALESCE(payload_json->>'receipt_code', '')
                      WHERE dedupe_key IS NULL
-                        OR TRIM(dedupe_key) = ''
+                        OR dedupe_key = '';
                     """
                 )
             )
@@ -1106,9 +1145,18 @@ def migrate_order_pickup_schema() -> dict:
                 )
                 applied.append("notification_logs.ix_notification_logs_status_next_attempt_at")
 
+        # =========================
+        # OUTBOX TABLE
+        # =========================
+        ensure_domain_event_outbox_table(engine)
 
+        # =========================
+        # LOCKER TABLE/INDEXES
+        # =========================
+        # ensure_lockers_table(engine)
+        ensure_locker_indexes(engine)
 
-
+        applied.append("lockers.indexes_ensured")
 
     return {
         "ok": True,
@@ -1116,6 +1164,183 @@ def migrate_order_pickup_schema() -> dict:
     }
 
 
-if __name__ == "__main__":
+def run_migrations(conn):
+    """Executa migrations completas do order_pickup_service."""
+    
+    # ==========================================
+    # TABELA: lockers
+    # ==========================================
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS lockers (
+            id VARCHAR PRIMARY KEY,
+
+            region VARCHAR(10) NOT NULL,
+            display_name VARCHAR(255),
+
+            slots_count INTEGER NOT NULL,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+
+            allowed_channels VARCHAR(100),
+            allowed_payment_methods VARCHAR(255),
+
+            timezone VARCHAR(50),
+            site_id VARCHAR(100),
+
+            access_hours TEXT,
+            address_line VARCHAR(255),
+            address_number VARCHAR(50),
+            address_extra VARCHAR(255),
+            district VARCHAR(100),
+            city VARCHAR(100),
+            state VARCHAR(100),
+            country VARCHAR(100),
+            postal_code VARCHAR(50),
+
+            latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
+
+            description TEXT,
+            external_id VARCHAR(100),
+
+            has_alarm BOOLEAN DEFAULT FALSE,
+            has_camera BOOLEAN DEFAULT FALSE,
+            is_rented BOOLEAN DEFAULT FALSE,
+
+            machine_id VARCHAR(100),
+            tenant_id VARCHAR(100),
+
+            metadata_json JSONB,
+
+            security_level VARCHAR(50),
+            temperature_zone VARCHAR(50),
+
+            operator_id VARCHAR(100),
+
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """))
+
+    # ==========================================
+    # TABELA: locker_slot_configs
+    # ==========================================
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS locker_slot_configs (
+            id BIGSERIAL PRIMARY KEY,
+            locker_id VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            slot_size VARCHAR(8) NOT NULL,
+            slot_count INTEGER NOT NULL DEFAULT 0,
+            available_count INTEGER,
+            width_cm INTEGER,
+            height_cm INTEGER,
+            depth_cm INTEGER,
+            max_weight_kg FLOAT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+        )
+    """))
+
+    # ==========================================
+    # TABELA: locker_operators
+    # ==========================================
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS locker_operators (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(128) NOT NULL,
+            document VARCHAR(32),
+            email VARCHAR(128),
+            phone VARCHAR(32),
+            operator_type VARCHAR(32) NOT NULL DEFAULT 'LOGISTICS',
+            country VARCHAR(2) NOT NULL DEFAULT 'BR',
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            commission_rate FLOAT,
+            currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+        )
+    """))
+
+    # ==========================================
+    # TABELA: product_locker_configs
+    # ==========================================
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_locker_configs (
+            id BIGSERIAL PRIMARY KEY,
+            locker_id VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            category VARCHAR(64) NOT NULL,
+            subcategory VARCHAR(64),
+            allowed BOOLEAN NOT NULL DEFAULT TRUE,
+            temperature_zone VARCHAR(32) NOT NULL DEFAULT 'ANY',
+            min_value FLOAT,
+            max_value FLOAT,
+            max_weight_kg FLOAT,
+            max_width_cm INTEGER,
+            max_height_cm INTEGER,
+            max_depth_cm INTEGER,
+            requires_signature BOOLEAN NOT NULL DEFAULT FALSE,
+            requires_id BOOLEAN NOT NULL DEFAULT FALSE,
+            is_fragile BOOLEAN NOT NULL DEFAULT FALSE,
+            is_hazardous BOOLEAN NOT NULL DEFAULT FALSE,
+            priority INTEGER NOT NULL DEFAULT 100,
+            notes TEXT,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+        )
+    """))
+
+    # ==========================================
+    # TABELA: product_categories
+    # ==========================================
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_categories (
+            id VARCHAR(64) PRIMARY KEY,
+            name VARCHAR(128) NOT NULL,
+            description TEXT,
+            parent_category VARCHAR(64),
+            default_temperature_zone VARCHAR(32) NOT NULL DEFAULT 'AMBIENT',
+            default_security_level VARCHAR(32) NOT NULL DEFAULT 'STANDARD',
+            is_hazardous BOOLEAN NOT NULL DEFAULT FALSE,
+            requires_age_verification BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
+        )
+    """))
+
+    # ==========================================
+    # ÍNDICES
+    # ==========================================
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_region ON lockers (region)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_site_id ON lockers (site_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_active ON lockers (active)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_operator ON lockers (operator_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_locker_slot_locker ON locker_slot_configs (locker_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_operator_document ON locker_operators (document)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_config_locker ON product_locker_configs (locker_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_config_category ON product_locker_configs (category)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_categories_parent ON product_categories (parent_category)"))
+
+
+def _run_startup_migrations_if_enabled():
+    """
+    Executa as migrações iniciais se habilitadas.
+    Esta função deve ser chamada durante a inicialização do serviço.
+    """
+    # Executa a migração principal do schema
     result = migrate_order_pickup_schema()
+
+    # 🔥 ADICIONE ISSO AQUI (CRÍTICO)
+    from app.core.db import engine
+    
+    # Executa a criação das tabelas adicionais via run_migrations
+    with engine.begin() as conn:
+        run_migrations(conn)
+    
+    # Garante os índices adicionais da tabela lockers
+    ensure_locker_indexes(engine)
+    
+    return result
+
+
+if __name__ == "__main__":
+    result = _run_startup_migrations_if_enabled()
     print(result)

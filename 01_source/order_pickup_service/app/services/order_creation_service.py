@@ -18,9 +18,16 @@ from app.models.allocation import Allocation, AllocationState
 from app.models.order import CardType, Order, OrderChannel, OrderStatus, PaymentMethod
 from app.services import backend_client
 from app.services.lifecycle_integration import register_prepayment_timeout_deadline
+from app.services.locker_service import validate_locker_for_order
 
-LOCKER_ID_PATTERN = re.compile(r"^(SP|PT)-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
-DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-(SP|PT)-\d{3}$")
+# LOCKER_ID_PATTERN = re.compile(r"^(SP|PT)-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
+# DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-(SP|PT)-\d{3}$")
+
+# Padrão mais flexível que aceita qualquer código de região de 2 caracteres (maiúsculas)
+LOCKER_ID_PATTERN = re.compile(r"^([A-Z]{2})-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
+DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-([A-Z]{2})-\d{3}$")
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +210,15 @@ def compensate_failed_online_creation(
 
 
 def validate_locker_id_format(locker_id: str) -> str:
+    """
+    Valida o formato do locker_id.
+    
+    Formatos aceitos:
+    - Produção: {REGIAO}-{LOCALIDADE}-{SUFIXO}-LK-{NUMERO}
+      Ex: PT-MAIA-CENTRO-LK-001, SP-CARAPICUIBA-JDMARILU-LK-002
+    - Desenvolvimento: CACIFO-{REGIAO}-{NUMERO}
+      Ex: CACIFO-PT-001, CACIFO-SP-001
+    """
     raw = str(locker_id or "").strip().upper()
 
     if not raw:
@@ -216,17 +232,23 @@ def validate_locker_id_format(locker_id: str) -> str:
             },
         )
 
+    # Verifica padrão de desenvolvimento
     if LOCKER_ID_PATTERN.match(raw):
         return raw
 
+    # Verifica padrão de produção
     if DEV_LOCKER_ID_PATTERN.match(raw):
         return raw
 
+    # Se chegou aqui, formato é inválido
     raise HTTPException(
         status_code=400,
         detail={
             "type": "INVALID_LOCKER_ID_FORMAT",
-            "message": f"Formato inválido de locker_id: {raw}",
+            "message": f"Formato inválido de locker_id: {raw}. "
+                       f"Formato esperado: {{REGIAO}}-{{LOCAL}}-{{SUFIXO}}-LK-{{NUMERO}} "
+                       f"(ex: PT-MAIA-CENTRO-LK-001) "
+                       f"ou CACIFO-{{REGIAO}}-{{NUMERO}} para desenvolvimento.",
             "locker_id": raw,
             "retryable": False,
         },
@@ -246,9 +268,34 @@ def create_order_core(
     guest_phone: str | None,
     user_id: str | None,
 ) -> CreateOrderCoreResult:
+    """
+    Criação de pedido com validação completa de locker e produto.
+    """
 
     totem_id = validate_locker_id_format(totem_id)
 
+    # ✅ VALIDAÇÃO DO LOCKER COM PRODUTO (substitui validate_online_locker_context)
+    locker = validate_locker_for_order(
+        db=db,
+        locker_id=totem_id,
+        region=region,
+        channel="ONLINE",
+        payment_method=payment_method_value,
+        product_category=product_category,
+        product_value=product_value,
+        product_weight_kg=product_weight_kg,
+        product_dimensions=product_dimensions,
+    )
+
+    # ✅ A PARTIR DAQUI, locker É A FONTE DE VERDADE
+    # Use locker.slot_configs para validar tamanho do produto
+    # Use locker.temperature_zone para produtos refrigerados
+    # Use locker.security_level para itens de valor
+    # Use locker.timezone para calcular expiry
+    # Use locker.operator_id para billing/faturamento
+
+
+    # Mantida - usada em outros lugares (ex: kiosk orders) 
     validate_online_locker_context(
         region=region,
         totem_id=totem_id,
@@ -359,7 +406,16 @@ def create_order_core(
         payment_method=payment_method,
         card_type=card_type,
         guest_phone=guest_phone,
+        # Novos campos do locker - NAO IMPLEMENTADOS veja deepseek
+        # locker_id=locker.id,
+        # locker_region=locker.region,
+        # locker_timezone=locker.timezone,
+        # operator_id=locker.operator_id,
+        # product_category=product_category,
+        # product_value=int(product_value * 100) if product_value else None,
+        # product_weight_kg=product_weight_kg,
     )
+
     db.add(order)
     db.flush()
 

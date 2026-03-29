@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 logger = logging.getLogger("order_pickup_service")
@@ -12,7 +12,7 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "order_pickup_service",
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc)
     }
 
 @router.get("/health/ready")
@@ -41,7 +41,7 @@ router = APIRouter()
 async def health_check():
     try:
         app_info = get_app_info()
-        app_info["timestamp"] = datetime.utcnow().isoformat()
+        app_info["timestamp"] = datetime.now(timezone.utc)
         app_info["status"] = "healthy"
         
         logger.debug("Healthcheck público acessado")

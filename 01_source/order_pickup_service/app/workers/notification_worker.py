@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -33,7 +33,7 @@ def run_worker():
                     )
 
                     item.status = "SENT"
-                    item.sent_at = datetime.utcnow()
+                    item.sent_at = datetime.now(timezone.utc)
 
                 except Exception as e:
                     item.status = "FAILED"
