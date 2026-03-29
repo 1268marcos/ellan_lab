@@ -212,7 +212,7 @@ const printModalCloseButtonStyle = {
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.14)",
   background: "#1b5883",
-  color: "#fff",
+  color: "#ffffff",
   cursor: "pointer",
   fontWeight: 600,
 };

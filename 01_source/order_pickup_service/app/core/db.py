@@ -6,6 +6,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import settings
 
+from sqlalchemy.orm import Session
+# from app.models.locker import Locker
+
+
 connect_args = {}
 if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
@@ -560,3 +564,27 @@ def init_db():
     # 3. VALIDAR SCHEMA
     # =========================
     _assert_required_schema()
+
+    # =========================
+    # 3. SEED
+    # =========================
+
+    _run_seed_if_needed()
+
+
+
+def _run_seed_if_needed():
+    from app.models.locker import Locker
+    from app.core.locker_seed import run_full_seed
+    
+    db = SessionLocal()
+    try:
+        has_lockers = db.query(Locker).first()
+        if not has_lockers:
+            print("🌱 Executando seed inicial...")
+            run_full_seed(db)
+            print("✅ Seed concluído")
+        else:
+            print("✔ Seed já existente, pulando")
+    finally:
+        db.close()

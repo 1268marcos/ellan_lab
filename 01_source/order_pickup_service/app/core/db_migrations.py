@@ -1267,12 +1267,12 @@ def run_migrations(conn):
         CREATE TABLE IF NOT EXISTS product_locker_configs (
             id BIGSERIAL PRIMARY KEY,
             locker_id VARCHAR(64) NOT NULL REFERENCES lockers(id),
-            category VARCHAR(64) NOT NULL,
+            category VARCHAR(64) NOT NULL REFERENCES product_categories(id), 
             subcategory VARCHAR(64),
             allowed BOOLEAN NOT NULL DEFAULT TRUE,
             temperature_zone VARCHAR(32) NOT NULL DEFAULT 'ANY',
-            min_value FLOAT,
-            max_value FLOAT,
+            min_value BIGINT,
+            max_value BIGINT,
             max_weight_kg FLOAT,
             max_width_cm INTEGER,
             max_height_cm INTEGER,
@@ -1287,6 +1287,11 @@ def run_migrations(conn):
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL
         )
     """))
+
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_locker_category "
+        "ON product_locker_configs (locker_id, category)"
+    ))
 
     # ==========================================
     # TABELA: product_categories

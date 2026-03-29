@@ -1,14 +1,16 @@
-# novo (compatibilidade)
 # 01_source/order_pickup_service/app/models/product_locker_config.py
 """
 Configuração de compatibilidade entre Produtos e Lockers.
 Define quais categorias de produtos podem ser armazenadas em cada locker.
 """
-
 from __future__ import annotations
 
-from datetime import datetime
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text, Float, ForeignKey
+from datetime import datetime, timezone
+from typing import Optional
+from sqlalchemy import (
+    Boolean, Column, DateTime, Integer, String, Text, 
+    Float, ForeignKey, BigInteger, UniqueConstraint
+)
 from sqlalchemy.orm import relationship
 from app.core.db import Base
 
@@ -16,63 +18,68 @@ from app.core.db import Base
 class ProductLockerConfig(Base):
     """
     Define regras de compatibilidade entre categorias de produtos e lockers.
-    Um locker pode aceitar ou rejeitar categorias específicas.
+    Um locker pode aceitar ou rejeitar categorias específicas com overrides.
     """
     __tablename__ = "product_locker_configs"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Chaves estrangeiras
     locker_id = Column(String(64), ForeignKey("lockers.id"), nullable=False, index=True)
+    category = Column(String(64), ForeignKey("product_categories.id"), nullable=False, index=True)
     
-    # Categoria do Produto
-    category = Column(String(64), nullable=False, index=True)  # ex: ELECTRONICS, FOOD, DOCUMENTS
-    subcategory = Column(String(64), nullable=True)  # ex: SMARTPHONE, PERISHABLE, LEGAL
+    # ==================== PERMISSÃO ====================
+    allowed = Column(Boolean, nullable=False, default=True)
     
-    # Permissão
-    allowed = Column(Boolean, nullable=False, default=True)  # Se esta categoria é permitida
-    
-    # Restrições de Temperatura
+    # ==================== TEMPERATURA ====================
     temperature_zone = Column(String(32), nullable=False, default="ANY")  # ANY, AMBIENT, REFRIGERATED, FROZEN
     
-    # Restrições de Valor
-    min_value = Column(Float, nullable=True)  # Valor mínimo do produto (centavos)
-    max_value = Column(Float, nullable=True)  # Valor máximo do produto (centavos)
+    # ==================== VALOR (em centavos) ====================
+    # Usando BigInteger para suportar valores altos em centavos (ex: R$ 10.000,00 = 1000000)
+    min_value = Column(BigInteger, nullable=True)
+    # max_value = Column(BigInteger, nullable=True)
     
-    # Restrições de Peso
-    max_weight_kg = Column(Float, nullable=True)  # Peso máximo permitido
-    
-    # Restrições de Dimensões
+    # ==================== PESO E DIMENSÕES ====================
+    max_weight_kg = Column(Float, nullable=True)
     max_width_cm = Column(Integer, nullable=True)
     max_height_cm = Column(Integer, nullable=True)
     max_depth_cm = Column(Integer, nullable=True)
     
-    # Restrições Especiais
-    requires_signature = Column(Boolean, nullable=False, default=False)  # Precisa de assinatura na retirada
-    requires_id = Column(Boolean, nullable=False, default=False)  # Precisa de documento na retirada
-    is_fragile = Column(Boolean, nullable=False, default=False)  # Produto frágil
-    is_hazardous = Column(Boolean, nullable=False, default=False)  # Produto perigoso (proibido na maioria)
+    # ==================== REQUISITOS ESPECIAIS ====================
+    # requires_signature = Column(Boolean, nullable=False, default=False)
+    # requires_id = Column(Boolean, nullable=False, default=False)
+    # requires_age_verification = Column(Boolean, nullable=False, default=False)
     
-    # Prioridade de Alocação
+    # ==================== CLASSIFICAÇÃO ====================
+    is_fragile = Column(Boolean, nullable=False, default=False)
+    is_hazardous = Column(Boolean, nullable=False, default=False)
     priority = Column(Integer, nullable=False, default=100)  # Menor = maior prioridade
     
-    # Observações
+    # ==================== METADADOS ====================
     notes = Column(Text, nullable=True)
+    
+    # ==================== TIMESTAMPS (timezone-aware para PostgreSQL) ====================
+    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Relacionamentos
+    # ==================== RELACIONAMENTOS ====================
     locker = relationship("Locker", back_populates="product_configs")
+    category_ref = relationship("ProductCategory", back_populates="product_locker_configs")
+
+    __table_args__ = (
+        # Garante unicidade: uma categoria só pode ter uma configuração por locker
+        UniqueConstraint('locker_id', 'category', name='uq_locker_category'),
+    )
 
     def to_dict(self) -> dict:
         return {
+            "locker_id": self.locker_id,
             "category": self.category,
-            "subcategory": self.subcategory,
             "allowed": self.allowed,
             "temperature_zone": self.temperature_zone,
             "value_range": {
                 "min": self.min_value,
-                "max": self.max_value,
+                # "max": self.max_value,
             },
             "max_weight_kg": self.max_weight_kg,
             "max_dimensions": {
@@ -81,8 +88,9 @@ class ProductLockerConfig(Base):
                 "depth_cm": self.max_depth_cm,
             },
             "requirements": {
-                "requires_signature": self.requires_signature,
-                "requires_id": self.requires_id,
+                # "requires_signature": self.requires_signature,
+                # "requires_id": self.requires_id,
+                # "requires_age_verification": self.requires_age_verification,
                 "is_fragile": self.is_fragile,
                 "is_hazardous": self.is_hazardous,
             },
@@ -98,20 +106,43 @@ class ProductCategory(Base):
     """
     __tablename__ = "product_categories"
 
-    id = Column(String(64), primary_key=True)
-    name = Column(String(128), nullable=False)
+    # ==================== IDENTIFICAÇÃO ====================
+    id = Column(String(64), primary_key=True)  # ex: ELECTRONICS, PHARMACY_OTC_MEDS
+    name = Column(String(128), nullable=False, unique=True)
     description = Column(Text, nullable=True)
-    parent_category = Column(String(64), nullable=True, index=True)  # Para hierarquia
     
-    # Configurações Padrão
+    # Hierarquia opcional
+    parent_category = Column(String(64), nullable=True, index=True)
+    
+    # ==================== CONFIGURAÇÕES PADRÃO ====================
     default_temperature_zone = Column(String(32), nullable=False, default="AMBIENT")
     default_security_level = Column(String(32), nullable=False, default="STANDARD")
-    is_hazardous = Column(Boolean, nullable=False, default=False)
-    requires_age_verification = Column(Boolean, nullable=False, default=False)
     
-    # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # ==================== RESTRIÇÕES GLOBAIS ====================
+    is_hazardous = Column(Boolean, nullable=False, default=False)
+    
+    # Requisitos de verificação (APENAS os que existem no DB)
+    # requires_age_verification = Column(Boolean, nullable=False, default=False)
+    
+    # ==================== TIMESTAMPS ====================
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc)
+    )
+
+    # ==================== RELACIONAMENTOS ====================
+    product_locker_configs = relationship(
+        "ProductLockerConfig", 
+        back_populates="category_ref", 
+        cascade="all, delete-orphan"
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -122,5 +153,5 @@ class ProductCategory(Base):
             "default_temperature_zone": self.default_temperature_zone,
             "default_security_level": self.default_security_level,
             "is_hazardous": self.is_hazardous,
-            "requires_age_verification": self.requires_age_verification,
+            # "requires_age_verification": self.requires_age_verification,
         }

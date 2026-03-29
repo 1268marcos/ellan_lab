@@ -147,7 +147,7 @@ def _build_print_html(doc: FiscalDocument) -> str:
       --border: #d9d9d9;
       --text: #1f1f1f;
       --muted: #666;
-      --bg: #ffffff;
+      --bg: #fffff5;
       --soft: #f6f6f6;
     }}
     * {{
@@ -248,7 +248,7 @@ def _build_print_html(doc: FiscalDocument) -> str:
     }}
     @media print {{
       body {{
-        background: #fff;
+        background: #fffff5;
         padding: 0;
       }}
       .page {{
@@ -357,7 +357,7 @@ def _build_search_html() -> str:
       --border: #d9d9d9;
       --text: #1f1f1f;
       --muted: #666;
-      --bg: #ffffff;
+      --bg: #fffff5;
       --soft: #f6f6f6;
       --accent: #111827;
     }

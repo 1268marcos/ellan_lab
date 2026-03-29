@@ -135,7 +135,7 @@ def _build_pickup_email_html(
             <img
                 src="{qr_data_uri}"
                 alt="QR Code de retirada"
-                style="max-width: 220px; width: 220px; height: 220px; border: 1px solid #ddd; padding: 8px; background: #fff;"
+                style="max-width: 220px; width: 220px; height: 220px; border: 1px solid #ddd; padding: 8px; background: #fffff5;"
             />
         </div>
         """

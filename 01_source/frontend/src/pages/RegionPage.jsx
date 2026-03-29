@@ -2056,7 +2056,7 @@ const pendingPaymentGridStyle = {
 const pendingQrPanelStyle = {
   padding: 12,
   borderRadius: 12,
-  background: "#ffffff",
+  background: "#fffff5",
   display: "grid",
   placeItems: "center",
 };
@@ -2161,7 +2161,7 @@ const receiptCodeBigStyle = {
 const receiptQrPanelStyle = {
   padding: 12,
   borderRadius: 12,
-  background: "#ffffff",
+  background: "#fffff5",
   display: "grid",
   placeItems: "center",
 };
@@ -2218,7 +2218,7 @@ const printModalCloseButtonStyle = {
 };
 
 const printTicketStyle = {
-  background: "#ffffff",
+  background: "#fffff5",
   color: "#111",
   borderRadius: 12,
   padding: 14,

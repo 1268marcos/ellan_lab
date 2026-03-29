@@ -146,7 +146,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # requires_age_verification=True,
+            requires_age_verification=True,
             # requires_id=False,
         ),
         ProductCategory(
@@ -156,7 +156,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="REFRIGERATED",
             default_security_level="HIGH",
             is_hazardous=False,
-            # requires_age_verification=True,
+            requires_age_verification=True,
             # requires_id=True,
             # requires_signature=True,
         ),
@@ -254,7 +254,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # requires_age_verification=True,
+            requires_age_verification=True,
             # max_value=50000,  # R$ 500,00
         ),
         
@@ -1114,88 +1114,82 @@ def seed_lockers(db: Session):
     """Popula lockers com configurações de produtos - Versão completa e consistente"""
     
     # ============================================================
-    # CONFIGURAÇÕES PADRÃO DE PRODUTOS (TODAS AS CATEGORIAS) - locker_seed_legacy_v02_completa.py ATENÇÃO
+    # CONFIGURAÇÕES PADRÃO DE PRODUTOS (TODAS AS CATEGORIAS)
     # ============================================================
-   
     default_product_configs = [
         # ==================== ELETRÔNICOS ====================
-        {"category": "ELECTRONICS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ELECTRONICS_ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "ELECTRONICS", "allowed": True, "max_value": 500000, "requires_id": True, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "ELECTRONICS_ACCESSORIES", "allowed": True, "max_value": 30000, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== MODA ====================
-        {"category": "FASHION", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "FASHION_LUXURY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "FOOTWEAR", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "FASHION", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "FASHION_LUXURY", "allowed": True, "max_value": 500000, "requires_id": True, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "FOOTWEAR", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "ACCESSORIES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== BELEZA ====================
-        {"category": "BEAUTY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BEAUTY_PREMIUM", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ORAL_HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "BEAUTY", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "BEAUTY_PREMIUM", "allowed": True, "max_value": 100000, "requires_id": True, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "HYGIENE", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "ORAL_HYGIENE", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== SAÚDE ====================
-        {"category": "PHARMACY_OTC_MEDS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "MEDICAL_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "VITAMINS_SUPPLEMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "PHARMACY_OTC_MEDS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": False, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "REFRIGERATED"},
+        {"category": "MEDICAL_SUPPLIES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "VITAMINS_SUPPLEMENTS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== ALIMENTOS ====================
-        {"category": "FOOD_PERISHABLE", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "FOOD_FROZEN", "allowed": False, "temperature_zone": "FROZEN"},
-        {"category": "BAKED_GOODS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "CAKES_TARTS", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "EMPADAS_PIES", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "FOOD_DRY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "SNACKS", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "FOOD_PERISHABLE", "allowed": False, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "REFRIGERATED"},
+        {"category": "FOOD_FROZEN", "allowed": False, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "FROZEN"},
+        {"category": "BAKED_GOODS", "allowed": True, "max_value": 20000, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "CAKES_TARTS", "allowed": False, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "REFRIGERATED"},
+        {"category": "EMPADAS_PIES", "allowed": False, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "REFRIGERATED"},
+        {"category": "FOOD_DRY", "allowed": True, "max_value": 15000, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "SNACKS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== BEBIDAS ====================
-        {"category": "BEVERAGES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BEVERAGES_ALCOHOLIC", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "BEVERAGES", "allowed": True, "max_value": 10000, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "BEVERAGES_ALCOHOLIC", "allowed": True, "max_value": 50000, "requires_id": True, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== DOCUMENTOS ====================
-        {"category": "DOCUMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "STATIONERY", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "DOCUMENTS", "allowed": True, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
+        {"category": "STATIONERY", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== CASA ====================
-        {"category": "HOME_APPLIANCES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "HOME_DECOR", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "CLEANING_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "HOME_APPLIANCES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "HOME_DECOR", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "CLEANING_SUPPLIES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== BEBÊS ====================
-        {"category": "BABY_PRODUCTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BABY_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "TOYS", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "BABY_PRODUCTS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "BABY_FOOD", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "TOYS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== ESPORTES ====================
-        {"category": "SPORTS_EQUIPMENT", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "SUPPLEMENTS_SPORTS", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "SPORTS_EQUIPMENT", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "SUPPLEMENTS_SPORTS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== PET ====================
-        {"category": "PET_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "PET_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "PET_SUPPLIES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "PET_FOOD", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== ALTO VALOR ====================
-        {"category": "HIGH_VALUE", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "JEWELRY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "WATCHES", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "HIGH_VALUE", "allowed": False, "max_value": 1000000, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
+        {"category": "JEWELRY", "allowed": True, "max_value": 500000, "requires_id": True, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "WATCHES", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
         
         # ==================== PRODUTOS ESPECIAIS ====================
-        {"category": "HAZARDOUS", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "MONEY", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "ANIMALS_ALIVE", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "WEAPONS", "allowed": False, "temperature_zone": "AMBIENT"},
+        {"category": "HAZARDOUS", "allowed": False, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
+        {"category": "MONEY", "allowed": False, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
+        {"category": "ANIMALS_ALIVE", "allowed": False, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
+        {"category": "WEAPONS", "allowed": False, "max_value": None, "requires_id": True, "requires_signature": True, "temperature_zone": "AMBIENT"},
         
         # ==================== SERVIÇOS ====================
-        {"category": "GIFT_CARDS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "TICKETS", "allowed": True, "temperature_zone": "AMBIENT"},
+        {"category": "GIFT_CARDS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
+        {"category": "TICKETS", "allowed": True, "max_value": None, "requires_id": False, "requires_signature": False, "temperature_zone": "AMBIENT"},
     ]
-
-
-
-
-
-
+    
     # ==================== LOCKERS - SÃO PAULO ====================
     lockers_sp = [
         {
