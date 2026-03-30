@@ -31,6 +31,8 @@ import os
 
 from fastapi import HTTPException
 
+from app.repositories.runtime_registry_repo import get_runtime_locker
+
 
 def _build_error(
     *,
@@ -127,6 +129,7 @@ def resolve_runtime_locker(x_locker_id: str | None) -> dict:
             ),
         )
 
+    """ 
     env_slot_ids = _parse_slot_ids_json(os.getenv("SLOT_IDS_JSON"))
 
     if env_slot_ids:
@@ -171,3 +174,19 @@ def resolve_runtime_locker(x_locker_id: str | None) -> dict:
         "slot_ids": slot_ids,
         "slot_count_total": len(slot_ids),
     }
+    """
+
+    runtime_ctx = get_runtime_locker(locker_id)
+
+    if not runtime_ctx.get("slot_ids"):
+        raise HTTPException(
+            status_code=503,
+            detail=_build_error(
+                err_type="LOCKER_WITHOUT_SLOT_IDS",
+                message="Locker has no active slot ids in runtime registry.",
+                retryable=False,
+                locker_id=locker_id,
+            ),
+        )
+
+    return runtime_ctx

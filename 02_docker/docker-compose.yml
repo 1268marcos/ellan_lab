@@ -191,10 +191,73 @@ services:
   # =========================
   # BACKEND RUNTIME - runtime operacional multi-locker
   # =========================
-  runtime:
+  # runtime:
+  #   build:
+  #     context: ../01_source/backend/runtime
+  #   container_name: runtime
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8200:8000"
+  #   environment:
+  #     DB_HOST: postgres_central
+  #     DB_NAME: locker_central
+  #     DB_USER: admin
+  #     DB_PASS: admin123
+  #     REDIS_HOST: redis_central
+
+  #     MQTT_HOST: mqtt_broker
+  #     MQTT_PORT: 1883
+
+  #     BACKUPS_DIR: /backups
+  #     LOGS_DIR: /logs
+      
+  #     CENTRAL_POSTGRES_DSN: postgresql://admin:admin123@postgres_central:5432/locker_central
+  #     EVENTS_DB_PATH: /data/sqlite/runtime/events.db
+  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
+      
+  #     APP_NAME: backend_runtime
+  #     HOST: 0.0.0.0
+  #     PORT: 8000
+  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+  #     TZ: Europe/Lisbon
+
+  #     RUNTIME_REGISTRY_CACHE_TTL_SEC: 5
+
+  #     RUNTIME_APPLY_SCHEMA_ON_STARTUP: "true"
+  #     RUNTIME_SYNC_ON_STARTUP: "true"
+  #     RUNTIME_SYNC_PRUNE_MISSING_ON_STARTUP: "false"
+  #     RUNTIME_FAIL_FAST_ON_STARTUP_ERROR: "true"
+
+  #   volumes:
+  #     - ../03_data/sqlite:/data/sqlite
+  #     - ../04_logs:/logs
+  #     - ../05_backups:/backups
+  #   depends_on:
+  #     postgres_central:
+  #       condition: service_healthy
+  #     redis_central:
+  #       condition: service_healthy
+  #     mqtt:
+  #       condition: service_healthy
+  #   networks:
+  #     - locker-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 40s
+
+
+  # =========================
+  # BACKEND RUNTIME (multi-locker)
+  # =========================
+  backend_runtime:
     build:
       context: ../01_source/backend/runtime
-    container_name: runtime
+      dockerfile: Dockerfile
+    container_name: backend_runtime
     restart: unless-stopped
     ports:
       - "8200:8000"
@@ -204,13 +267,29 @@ services:
       DB_USER: admin
       DB_PASS: admin123
       REDIS_HOST: redis_central
-      MQTT_HOST: mqtt_broker
-      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-      BACKUPS_DIR: /backups
-      LOGS_DIR: /logs
-      LOG_HASH_SALT: ${LOG_HASH_SALT}
+
+      APP_NAME: backend_runtime
       HOST: 0.0.0.0
       PORT: 8000
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+
+      MQTT_HOST: mqtt_broker
+      MQTT_PORT: 1883
+
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+
+      CENTRAL_POSTGRES_DSN: postgresql://admin:admin123@postgres_central:5432/locker_central
+      EVENTS_DB_PATH: /data/sqlite/runtime/events.db
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
+
+      RUNTIME_REGISTRY_CACHE_TTL_SEC: 5
+
+      RUNTIME_APPLY_SCHEMA_ON_STARTUP: "true"
+      RUNTIME_SYNC_ON_STARTUP: "true"
+      RUNTIME_SYNC_PRUNE_MISSING_ON_STARTUP: "false"
+      RUNTIME_FAIL_FAST_ON_STARTUP_ERROR: "true"
+
       TZ: Europe/Lisbon
     volumes:
       - ../03_data/sqlite:/data/sqlite
@@ -284,6 +363,22 @@ services:
       - DEVICE_FP_VERSION=v1_web
       - LOG_HASH_SALT=${LOG_HASH_SALT}
       - ANTIFRAUD_PEPPER=${ANTIFRAUD_PEPPER}
+
+      # runtime operacional multi-locker
+      - LOCKER_RUNTIME_INTERNAL=http://backend_runtime:8000
+      - LOCKER_RUNTIME_HEALTH_PATH=/health
+      - LOCKER_RUNTIME_ALLOCATE_PATH=/locker/allocate
+      - LOCKER_RUNTIME_COMMIT_PATH=/locker/allocations/{allocation_id}/commit
+      - LOCKER_RUNTIME_RELEASE_PATH=/locker/allocations/{allocation_id}/release
+      - LOCKER_RUNTIME_SLOTS_PATH=/locker/slots
+      - LOCKER_RUNTIME_SLOT_PATH=/locker/slots/{slot}
+      - LOCKER_RUNTIME_SET_SLOT_STATE_PATH=/locker/slots/{slot}/set-state
+      - LOCKER_RUNTIME_OPEN_SLOT_PATH=/locker/slots/{slot}/open
+      - LOCKER_RUNTIME_LIGHT_ON_PATH=/locker/slots/{slot}/light/on
+      - LOCKER_RUNTIME_CATALOG_SKUS_PATH=/catalog/skus
+      - LOCKER_RUNTIME_CATALOG_SKU_PATH=/catalog/skus/{sku_id}
+      - LOCKER_RUNTIME_CATALOG_SLOTS_PATH=/catalog/slots
+
     volumes:
       - ../03_data/sqlite:/data/sqlite
       - ../04_logs:/logs
@@ -294,6 +389,8 @@ services:
       redis_central:
         condition: service_healthy
       mqtt:
+        condition: service_healthy
+      backend_runtime:
         condition: service_healthy
     networks:
       - locker-network
@@ -323,10 +420,10 @@ services:
       # - BACKEND_SP_INTERNAL=http://backend_sp:8000  # REMOVIDO
       # - BACKEND_PT_INTERNAL=http://backend_pt:8000  # REMOVIDO
 
-      # endpoint de preço (agora via gateway ou diretamente)
+      # endpoint de preço 
       - BACKEND_PRICE_PATH_TEMPLATE=/catalog/skus/{sku_id}
 
-      # gateway registry central
+      # gateway central
       - PAYMENT_GATEWAY_INTERNAL=http://payment_gateway:8000
       - PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE=/lockers/{locker_id}
 
@@ -337,7 +434,7 @@ services:
       - PICKUP_QR_SECRET=${PICKUP_QR_SECRET}
       - QR_ROTATE_SEC=${QR_ROTATE_SEC}
 
-      # DB do serviço (agora apenas Postgres Central)
+      # DB do serviço
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
 
       # migração automática
@@ -364,6 +461,8 @@ services:
       postgres_central:
         condition: service_healthy
       payment_gateway:
+        condition: service_healthy
+      backend_runtime:
         condition: service_healthy
       order_lifecycle_service:
         condition: service_started
