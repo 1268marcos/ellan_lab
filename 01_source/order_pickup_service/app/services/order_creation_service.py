@@ -1,4 +1,5 @@
 # 01_source/order_pickup_service/app/services/order_creation_service.py
+# 30/03/2026
 from __future__ import annotations
 
 import logging
@@ -20,17 +21,10 @@ from app.services import backend_client
 from app.services.lifecycle_integration import register_prepayment_timeout_deadline
 from app.services.locker_service import validate_locker_for_order
 
-# LOCKER_ID_PATTERN = re.compile(r"^(SP|PT)-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
-# DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-(SP|PT)-\d{3}$")
-
-# Padrão mais flexível que aceita qualquer código de região de 2 caracteres (maiúsculas)
 LOCKER_ID_PATTERN = re.compile(r"^([A-Z]{2})-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$")
 DEV_LOCKER_ID_PATTERN = re.compile(r"^CACIFO-([A-Z]{2})-\d{3}$")
 
-
-
 logger = logging.getLogger(__name__)
-
 
 
 @dataclass
@@ -57,9 +51,9 @@ def resolve_online_prepayment_ttl_sec(*, region: str, payment_method: str) -> in
             detail={
                 "type": "ONLINE_PAYMENT_TTL_POLICY_INVALID",
                 "message": "O TTL configurado deve ser maior que zero.",
-                "region": str(region or "").strip().upper(),
+                "region": region,
                 "channel": OrderChannel.ONLINE.value,
-                "payment_method": str(payment_method or "").strip().upper(),
+                "payment_method": payment_method,
                 "ttl_value": ttl_sec,
             },
         )
@@ -96,77 +90,31 @@ def resolve_card_type_enum(card_type_value: str | None) -> CardType | None:
         ) from exc
 
 
-def validate_online_locker_context(*, region: str, totem_id: str, payment_method: str) -> dict:
-    locker = backend_client.get_locker_registry_item(totem_id)
+def validate_locker_id_format(locker_id: str) -> str:
+    raw = str(locker_id or "").strip().upper()
 
-    if not locker:
+    if not raw:
         raise HTTPException(
             status_code=400,
             detail={
-                "type": "LOCKER_NOT_FOUND",
-                "message": f"Locker não encontrado: {totem_id}",
-                "locker_id": totem_id,
-                "retryable": False,
+                "type": "INVALID_LOCKER_ID",
+                "message": "locker_id não informado.",
             },
         )
 
-    if not bool(locker.get("active", False)):
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "LOCKER_INACTIVE",
-                "message": "O locker informado está inativo.",
-                "locker_id": totem_id,
-                "retryable": False,
-            },
-        )
+    if LOCKER_ID_PATTERN.match(raw):
+        return raw
 
-    locker_region = str(locker.get("region") or "").strip().upper()
-    payload_region = str(region or "").strip().upper()
+    if DEV_LOCKER_ID_PATTERN.match(raw):
+        return raw
 
-    if locker_region != payload_region:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "LOCKER_REGION_MISMATCH",
-                "message": "O locker informado não pertence à região do pedido.",
-                "locker_id": totem_id,
-                "payload_region": payload_region,
-                "locker_region": locker_region,
-                "retryable": False,
-            },
-        )
-
-    channels = normalize_upper_list(locker.get("channels"))
-    if "ONLINE" not in channels:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "LOCKER_CHANNEL_NOT_ALLOWED",
-                "message": "O locker informado não aceita pedidos no canal ONLINE.",
-                "locker_id": totem_id,
-                "allowed_channels": channels,
-                "retryable": False,
-            },
-        )
-
-    payment_methods = normalize_upper_list(locker.get("payment_methods"))
-    requested_method = str(payment_method or "").strip().upper()
-
-    if requested_method not in payment_methods:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "LOCKER_PAYMENT_METHOD_NOT_ALLOWED",
-                "message": "O método de pagamento informado não é permitido para este locker.",
-                "locker_id": totem_id,
-                "payment_method": requested_method,
-                "allowed_payment_methods": payment_methods,
-                "retryable": False,
-            },
-        )
-
-    return locker
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "INVALID_LOCKER_ID_FORMAT",
+            "message": f"Formato inválido de locker_id: {raw}",
+        },
+    )
 
 
 def compensate_failed_online_creation(
@@ -182,15 +130,7 @@ def compensate_failed_online_creation(
             locker_id=order.totem_id,
         )
     except Exception:
-        logger.exception(
-            "online_order_compensation_release_failed",
-            extra={
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "region": order.region,
-                "locker_id": order.totem_id,
-            },
-        )
+        logger.exception("online_order_compensation_release_failed")
         raise
 
     try:
@@ -199,60 +139,8 @@ def compensate_failed_online_creation(
         db.commit()
     except Exception:
         db.rollback()
-        logger.exception(
-            "online_order_compensation_db_failed",
-            extra={
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-            },
-        )
+        logger.exception("online_order_compensation_db_failed")
         raise
-
-
-def validate_locker_id_format(locker_id: str) -> str:
-    """
-    Valida o formato do locker_id.
-    
-    Formatos aceitos:
-    - Produção: {REGIAO}-{LOCALIDADE}-{SUFIXO}-LK-{NUMERO}
-      Ex: PT-MAIA-CENTRO-LK-001, SP-CARAPICUIBA-JDMARILU-LK-002
-    - Desenvolvimento: CACIFO-{REGIAO}-{NUMERO}
-      Ex: CACIFO-PT-001, CACIFO-SP-001
-    """
-    raw = str(locker_id or "").strip().upper()
-
-    if not raw:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "INVALID_LOCKER_ID",
-                "message": "locker_id não informado.",
-                "locker_id": locker_id,
-                "retryable": False,
-            },
-        )
-
-    # Verifica padrão de desenvolvimento
-    if LOCKER_ID_PATTERN.match(raw):
-        return raw
-
-    # Verifica padrão de produção
-    if DEV_LOCKER_ID_PATTERN.match(raw):
-        return raw
-
-    # Se chegou aqui, formato é inválido
-    raise HTTPException(
-        status_code=400,
-        detail={
-            "type": "INVALID_LOCKER_ID_FORMAT",
-            "message": f"Formato inválido de locker_id: {raw}. "
-                       f"Formato esperado: {{REGIAO}}-{{LOCAL}}-{{SUFIXO}}-LK-{{NUMERO}} "
-                       f"(ex: PT-MAIA-CENTRO-LK-001) "
-                       f"ou CACIFO-{{REGIAO}}-{{NUMERO}} para desenvolvimento.",
-            "locker_id": raw,
-            "retryable": False,
-        },
-    )
 
 
 def create_order_core(
@@ -268,56 +156,45 @@ def create_order_core(
     guest_phone: str | None,
     user_id: str | None,
 ) -> CreateOrderCoreResult:
-    """
-    Criação de pedido com validação completa de locker e produto.
-    """
 
+    # =========================
+    # 1. VALIDAR LOCKER ID
+    # =========================
     totem_id = validate_locker_id_format(totem_id)
 
-    # ✅ VALIDAÇÃO DO LOCKER COM PRODUTO (substitui validate_online_locker_context)
+    # =========================
+    # 2. VALIDAR LOCKER (SOURCE OF TRUTH)
+    # =========================
     locker = validate_locker_for_order(
         db=db,
         locker_id=totem_id,
         region=region,
         channel="ONLINE",
         payment_method=payment_method_value,
-        product_category=product_category,
-        product_value=product_value,
-        product_weight_kg=product_weight_kg,
-        product_dimensions=product_dimensions,
     )
 
-    # ✅ A PARTIR DAQUI, locker É A FONTE DE VERDADE
-    # Use locker.slot_configs para validar tamanho do produto
-    # Use locker.temperature_zone para produtos refrigerados
-    # Use locker.security_level para itens de valor
-    # Use locker.timezone para calcular expiry
-    # Use locker.operator_id para billing/faturamento
-
-
-    # Mantida - usada em outros lugares (ex: kiosk orders) 
-    validate_online_locker_context(
-        region=region,
-        totem_id=totem_id,
-        payment_method=payment_method_value,
-    )
-
+    # =========================
+    # 3. ENUMS
+    # =========================
     payment_method = resolve_payment_method_enum(payment_method_value)
     card_type = resolve_card_type_enum(card_type_value)
 
+    # =========================
+    # 4. TTL
+    # =========================
     alloc_ttl_sec = resolve_online_prepayment_ttl_sec(
         region=region,
         payment_method=payment_method.value,
     )
 
-    amount_cents = None
-
+    # =========================
+    # 5. PRICING
+    # =========================
     if amount_cents_input is not None:
         if int(amount_cents_input) <= 0:
             raise HTTPException(status_code=400, detail="amount_cents must be > 0")
         amount_cents = int(amount_cents_input)
-
-    if amount_cents is None:
+    else:
         try:
             pricing = backend_client.get_sku_pricing(
                 region,
@@ -335,12 +212,16 @@ def create_order_core(
                 raise
 
         amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
+
         if amount_cents is None:
             raise HTTPException(
                 status_code=502,
-                detail="pricing missing amount_cents/price_cents from backend",
+                detail="pricing missing amount_cents/price_cents",
             )
 
+    # =========================
+    # 6. ALLOCATION
+    # =========================
     request_id = str(uuid.uuid4())
 
     try:
@@ -353,47 +234,18 @@ def create_order_core(
             locker_id=totem_id,
         )
     except HTTPError as e:
-        status = e.response.status_code if e.response is not None else 502
-
-        backend_detail = None
-        if e.response is not None:
-            try:
-                backend_detail = e.response.json()
-            except Exception:
-                backend_detail = e.response.text
-
-        if status == 409:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": "DESIRED_SLOT_UNAVAILABLE",
-                    "message": "A gaveta escolhida não está disponível para reserva.",
-                    "desired_slot": desired_slot,
-                    "region": region,
-                    "locker_id": totem_id,
-                    "backend_detail": backend_detail,
-                },
-            )
-
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "type": "LOCKER_ALLOCATE_FAILED",
-                "message": "Falha ao alocar gaveta no backend.",
-                "region": region,
-                "locker_id": totem_id,
-                "backend_status": status,
-                "backend_detail": backend_detail,
-            },
-        )
+        raise HTTPException(status_code=502, detail="locker allocate failed")
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
     ttl_sec = int(alloc.get("ttl_sec", alloc_ttl_sec))
 
     if not allocation_id or slot is None:
-        raise HTTPException(status_code=502, detail="locker allocate missing allocation_id/slot")
+        raise HTTPException(status_code=502, detail="invalid allocation response")
 
+    # =========================
+    # 7. ORDER
+    # =========================
     order = Order(
         id=str(uuid.uuid4()),
         user_id=user_id,
@@ -406,14 +258,6 @@ def create_order_core(
         payment_method=payment_method,
         card_type=card_type,
         guest_phone=guest_phone,
-        # Novos campos do locker - NAO IMPLEMENTADOS veja deepseek
-        # locker_id=locker.id,
-        # locker_region=locker.region,
-        # locker_timezone=locker.timezone,
-        # operator_id=locker.operator_id,
-        # product_category=product_category,
-        # product_value=int(product_value * 100) if product_value else None,
-        # product_weight_kg=product_weight_kg,
     )
 
     db.add(order)
@@ -425,13 +269,16 @@ def create_order_core(
         locker_id=totem_id,
         slot=int(slot),
         state=AllocationState.RESERVED_PENDING_PAYMENT,
-        locked_until=None,
     )
+
     db.add(allocation)
     db.commit()
     db.refresh(order)
     db.refresh(allocation)
 
+    # =========================
+    # 8. LIFECYCLE
+    # =========================
     try:
         register_prepayment_timeout_deadline(
             order_id=order.id,
@@ -440,43 +287,15 @@ def create_order_core(
             slot_id=str(allocation.slot),
             machine_id=order.totem_id,
             created_at=order.created_at,
-            payment_method=order.payment_method.value if order.payment_method else None,
+            payment_method=order.payment_method.value,
         )
     except LifecycleClientError:
-        try:
-            compensate_failed_online_creation(
-                db=db,
-                order=order,
-                allocation=allocation,
-            )
-        except Exception:
-            raise HTTPException(
-                status_code=503,
-                detail={
-                    "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED_WITH_COMPENSATION_ERROR",
-                    "message": "Pedido criado localmente, falhou o registro do deadline e a compensação automática também falhou.",
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                    "channel": order.channel.value,
-                    "region": order.region,
-                    "locker_id": order.totem_id,
-                },
-            )
-
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED",
-                "message": "Pedido revertido automaticamente após falha ao registrar o deadline de pré-pagamento.",
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "channel": order.channel.value,
-                "region": order.region,
-                "locker_id": order.totem_id,
-                "compensated": True,
-                "local_records_deleted": True,
-            },
+        compensate_failed_online_creation(
+            db=db,
+            order=order,
+            allocation=allocation,
         )
+        raise HTTPException(status_code=503, detail="lifecycle register failed")
 
     return CreateOrderCoreResult(
         order=order,

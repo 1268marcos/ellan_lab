@@ -187,6 +187,46 @@ services:
   #     retries: 3
   #     start_period: 40s
 
+
+  # =========================
+  # BACKEND RUNTIME - runtime operacional multi-locker
+  # =========================
+  runtime:
+    build:
+      context: ../01_source/backend/runtime
+    container_name: runtime
+    restart: unless-stopped
+    ports:
+      - "8200:8000"
+    environment:
+      DB_HOST: postgres_central
+      DB_NAME: locker_central
+      DB_USER: admin
+      DB_PASS: admin123
+      REDIS_HOST: redis_central
+      MQTT_HOST: mqtt_broker
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      BACKUPS_DIR: /backups
+      LOGS_DIR: /logs
+      LOG_HASH_SALT: ${LOG_HASH_SALT}
+      HOST: 0.0.0.0
+      PORT: 8000
+      TZ: Europe/Lisbon
+    volumes:
+      - ../03_data/sqlite:/data/sqlite
+      - ../04_logs:/logs
+      - ../05_backups:/backups
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+
   # =========================
   # PAYMENT GATEWAY (sem backends legados)
   # =========================

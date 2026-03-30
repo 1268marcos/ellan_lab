@@ -1,3 +1,4 @@
+# 01_source/backend_pt/app/routers/hardware.py
 from fastapi import APIRouter, HTTPException, Request
 from datetime import datetime, timezone
 from pydantic import BaseModel

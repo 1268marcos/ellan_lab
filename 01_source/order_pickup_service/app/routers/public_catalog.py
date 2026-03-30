@@ -1,3 +1,4 @@
+# 01_source/order_pickup_service/app/routers/public_catalog.py
 from __future__ import annotations
 
 from fastapi import APIRouter
