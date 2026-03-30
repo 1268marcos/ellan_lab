@@ -1,5 +1,6 @@
 # 01_source/backend/runtime/app/core/internal_auth.py
 from fastapi import Header, HTTPException
+
 from app.core.config import settings
 
 

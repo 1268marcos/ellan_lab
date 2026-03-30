@@ -18,6 +18,10 @@ STATE DE HARDWARE ≠ STATE DE PEDIDO
 
 from typing import Final, Tuple, Literal
 
+# ============================================================================
+# SLOTS (Gavetas) - Estados do runtime/hardware
+# ============================================================================
+
 SLOT_STATES: Final[Tuple[str, ...]] = (
     "AVAILABLE",
     "RESERVED",
@@ -42,8 +46,16 @@ SLOT_OCCUPIED_STATES: Final[Tuple[str, ...]] = (
     "PAID_PENDING_PICKUP",
 )
 
+DEFAULT_MIN_SLOT: Final[int] = 1
+
+
+def is_door_active(state: str) -> bool:
+    return state in DOOR_ACTIVE_STATES
+
+
 def is_slot_available(state: str) -> bool:
     return state == "AVAILABLE"
+
 
 def is_slot_occupied(state: str) -> bool:
     return state in SLOT_OCCUPIED_STATES

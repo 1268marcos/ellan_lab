@@ -7,24 +7,21 @@ Deve criar/projetar apenas os slots realmente válidos para aquele locker.
 
 Deve refletir o estado real do locker e não inventar 24 portas fixas.
 """
+
+from __future__ import annotations
+
 from datetime import datetime, timezone
-from typing import Literal, Optional, List
+from typing import Optional, List
 
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.db import get_conn
+from app.core.locker_runtime_resolver import resolve_runtime_locker
+from app.core.slot_topology import get_valid_slot_ids, ensure_valid_slot
+from app.core.constants.slot_states import SLOT_STATES, SlotState
 
 router = APIRouter(prefix="/locker", tags=["locker"])
-
-
-SlotState = Literal[
-    "AVAILABLE",
-    "RESERVED",
-    "PAID_PENDING_PICKUP",
-    "PICKED_UP",
-    "OUT_OF_STOCK",
-]
 
 
 class SlotView(BaseModel):
@@ -39,45 +36,25 @@ class SetSlotStateIn(BaseModel):
     product_id: Optional[str] = None
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _default_machine_id() -> str:
-    import os
-    return os.getenv("MACHINE_ID", "CACIFO-SP-001")
-
-
-def _resolve_machine_id(x_locker_id: str | None) -> str:
-    """
-    Regra:
-    1. usa X-Locker-Id se vier informado
-    2. senão usa fallback legado via env MACHINE_ID
-    """
-    explicit = (x_locker_id or "").strip()
-    if explicit:
-        return explicit
-    return _default_machine_id()
-
-
-def _raise(status: int, *, err_type: str, message: str, retryable: bool, **extra):
-    detail = {"type": err_type, "message": message, "retryable": retryable}
+def _build_error(
+    *,
+    err_type: str,
+    message: str,
+    retryable: bool,
+    **extra,
+) -> dict:
+    detail = {
+        "type": err_type,
+        "message": message,
+        "retryable": retryable,
+    }
     if extra:
         detail.update(extra)
-    raise HTTPException(status_code=status, detail=detail)
+    return detail
 
 
-def _ensure_slot_range(slot: int) -> None:
-    if slot < 1 or slot > 24:
-        _raise(
-            400,
-            err_type="INVALID_SLOT",
-            message="slot must be 1..24",
-            retryable=False,
-            slot=slot,
-            min_slot=1,
-            max_slot=24,
-        )
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _get_slot(conn, machine_id: str, slot: int) -> Optional[dict]:
@@ -88,10 +65,32 @@ def _get_slot(conn, machine_id: str, slot: int) -> Optional[dict]:
     row = cur.fetchone()
     if not row:
         return None
-    return {"state": row[0], "product_id": row[1], "updated_at": row[2]}
+    return {
+        "state": row[0],
+        "product_id": row[1],
+        "updated_at": row[2],
+    }
 
 
-def _upsert_slot(conn, machine_id: str, slot: int, state: str, product_id: Optional[str]) -> dict:
+def _upsert_slot(
+    conn,
+    machine_id: str,
+    slot: int,
+    state: str,
+    product_id: Optional[str],
+) -> dict:
+    if state not in SLOT_STATES:
+        raise HTTPException(
+            status_code=400,
+            detail=_build_error(
+                err_type="INVALID_SLOT_STATE",
+                message="Slot state is invalid.",
+                retryable=False,
+                state=state,
+                allowed_states=list(SLOT_STATES),
+            ),
+        )
+
     now = _now_iso()
     conn.execute(
         """
@@ -103,13 +102,36 @@ def _upsert_slot(conn, machine_id: str, slot: int, state: str, product_id: Optio
         (machine_id, slot, state, product_id, now),
     )
     conn.commit()
-    return {"slot": slot, "state": state, "product_id": product_id, "updated_at": now}
+
+    return {
+        "slot": slot,
+        "state": state,
+        "product_id": product_id,
+        "updated_at": now,
+    }
 
 
-def _bootstrap_slots_if_needed(conn, machine_id: str) -> None:
-    for i in range(1, 25):
-        if _get_slot(conn, machine_id, i) is None:
-            _upsert_slot(conn, machine_id, i, "AVAILABLE", None)
+def _bootstrap_slots_if_needed(conn, machine_id: str, slot_ids: list[int]) -> None:
+    """
+    Cria apenas os slots válidos da topologia do locker.
+    Não assume mais range fixo 1..24.
+    """
+    created = 0
+
+    for slot in slot_ids:
+        if _get_slot(conn, machine_id, slot) is None:
+            conn.execute(
+                """
+                INSERT INTO door_state(machine_id, door_id, state, product_id, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(machine_id, door_id) DO NOTHING
+                """,
+                (machine_id, slot, "AVAILABLE", None, _now_iso()),
+            )
+            created += 1
+
+    if created > 0:
+        conn.commit()
 
 
 @router.get("/slots", response_model=List[SlotView])
@@ -117,65 +139,82 @@ def list_slots(
     request: Request,
     x_locker_id: str | None = Header(default=None, alias="X-Locker-Id"),
 ):
-    mid = _resolve_machine_id(x_locker_id)
+    locker_ctx = resolve_runtime_locker(x_locker_id)
+    machine_id = locker_ctx["machine_id"]
+    slot_ids = get_valid_slot_ids(locker_ctx)
 
     try:
         conn = get_conn()
-    except Exception as e:
-        _raise(
-            500,
-            err_type="DB_CONNECTION_FAILED",
-            message=str(e),
-            retryable=True,
-            service="backend_sp",
-            endpoint=str(request.url.path),
-            machine_id=mid,
-        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_build_error(
+                err_type="DB_CONNECTION_FAILED",
+                message="Failed to connect to runtime database.",
+                retryable=True,
+                service="backend_runtime",
+                endpoint=str(request.url.path),
+                locker_id=locker_ctx["locker_id"],
+                machine_id=machine_id,
+                error=str(exc),
+            ),
+        ) from exc
 
     try:
-        _bootstrap_slots_if_needed(conn, mid)
-    except Exception as e:
-        _raise(
-            500,
-            err_type="DB_BOOTSTRAP_FAILED",
-            message=str(e),
-            retryable=True,
-            service="backend_sp",
-            endpoint=str(request.url.path),
-            machine_id=mid,
-        )
+        _bootstrap_slots_if_needed(conn, machine_id, slot_ids)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_build_error(
+                err_type="DB_BOOTSTRAP_FAILED",
+                message="Failed to bootstrap locker slot state.",
+                retryable=True,
+                service="backend_runtime",
+                endpoint=str(request.url.path),
+                locker_id=locker_ctx["locker_id"],
+                machine_id=machine_id,
+                slot_ids=slot_ids,
+                error=str(exc),
+            ),
+        ) from exc
 
     try:
-        cur = conn.execute(
-            """
-            SELECT door_id, state, product_id, updated_at
-            FROM door_state
-            WHERE machine_id=?
-            ORDER BY door_id
-            """,
-            (mid,),
-        )
-        out = []
-        for door_id, state, product_id, updated_at in cur.fetchall():
+        out: list[SlotView] = []
+
+        for slot in slot_ids:
+            row = _get_slot(conn, machine_id, slot)
+            if row is None:
+                row = _upsert_slot(conn, machine_id, slot, "AVAILABLE", None)
+
             out.append(
                 SlotView(
-                    slot=int(door_id),
-                    state=state,
-                    product_id=product_id,
-                    updated_at=updated_at,
+                    slot=int(slot),
+                    state=row["state"],
+                    product_id=row["product_id"],
+                    updated_at=row["updated_at"],
                 )
             )
+
         return out
-    except Exception as e:
-        _raise(
-            500,
-            err_type="DB_QUERY_FAILED",
-            message=str(e),
-            retryable=True,
-            service="backend_sp",
-            endpoint=str(request.url.path),
-            machine_id=mid,
-        )
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_build_error(
+                err_type="DB_QUERY_FAILED",
+                message="Failed to query locker slots.",
+                retryable=True,
+                service="backend_runtime",
+                endpoint=str(request.url.path),
+                locker_id=locker_ctx["locker_id"],
+                machine_id=machine_id,
+                error=str(exc),
+            ),
+        ) from exc
 
 
 @router.get("/slots/{slot}", response_model=SlotView)
@@ -184,14 +223,16 @@ def get_slot(
     request: Request,
     x_locker_id: str | None = Header(default=None, alias="X-Locker-Id"),
 ):
-    _ensure_slot_range(slot)
-    mid = _resolve_machine_id(x_locker_id)
+    locker_ctx = resolve_runtime_locker(x_locker_id)
+    machine_id = locker_ctx["machine_id"]
+    ensure_valid_slot(locker_ctx, slot)
 
     try:
         conn = get_conn()
-        row = _get_slot(conn, mid, slot)
+        row = _get_slot(conn, machine_id, slot)
+
         if row is None:
-            row = _upsert_slot(conn, mid, slot, "AVAILABLE", None)
+            row = _upsert_slot(conn, machine_id, slot, "AVAILABLE", None)
 
         return SlotView(
             slot=slot,
@@ -199,19 +240,24 @@ def get_slot(
             product_id=row["product_id"],
             updated_at=row["updated_at"],
         )
+
     except HTTPException:
         raise
-    except Exception as e:
-        _raise(
-            500,
-            err_type="DB_OPERATION_FAILED",
-            message=str(e),
-            retryable=True,
-            service="backend_sp",
-            endpoint=str(request.url.path),
-            machine_id=mid,
-            slot=slot,
-        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_build_error(
+                err_type="DB_OPERATION_FAILED",
+                message="Failed to get slot state.",
+                retryable=True,
+                service="backend_runtime",
+                endpoint=str(request.url.path),
+                locker_id=locker_ctx["locker_id"],
+                machine_id=machine_id,
+                slot=slot,
+                error=str(exc),
+            ),
+        ) from exc
 
 
 @router.post("/slots/{slot}/set-state")
@@ -221,18 +267,21 @@ def set_slot_state(
     request: Request,
     x_locker_id: str | None = Header(default=None, alias="X-Locker-Id"),
 ):
-    _ensure_slot_range(slot)
-    mid = _resolve_machine_id(x_locker_id)
+    locker_ctx = resolve_runtime_locker(x_locker_id)
+    machine_id = locker_ctx["machine_id"]
+    ensure_valid_slot(locker_ctx, slot)
 
     try:
         conn = get_conn()
-        prev = _get_slot(conn, mid, slot)
-        new_row = _upsert_slot(conn, mid, slot, payload.state, payload.product_id)
+        prev = _get_slot(conn, machine_id, slot)
+        new_row = _upsert_slot(conn, machine_id, slot, payload.state, payload.product_id)
 
         return {
             "ok": True,
-            "machine_id": mid,
-            "locker_id": mid,
+            "service": "backend_runtime",
+            "locker_id": locker_ctx["locker_id"],
+            "machine_id": machine_id,
+            "region": locker_ctx.get("region"),
             "endpoint": str(request.url.path),
             "slot": slot,
             "old_state": prev["state"] if prev else None,
@@ -240,17 +289,44 @@ def set_slot_state(
             "product_id": new_row["product_id"],
             "updated_at": new_row["updated_at"],
         }
+
     except HTTPException:
         raise
-    except Exception as e:
-        _raise(
-            500,
-            err_type="DB_UPDATE_FAILED",
-            message=str(e),
-            retryable=True,
-            service="backend_sp",
-            endpoint=str(request.url.path),
-            machine_id=mid,
-            slot=slot,
-            desired_state=payload.state,
-        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=_build_error(
+                err_type="DB_UPDATE_FAILED",
+                message="Failed to update slot state.",
+                retryable=True,
+                service="backend_runtime",
+                endpoint=str(request.url.path),
+                locker_id=locker_ctx["locker_id"],
+                machine_id=machine_id,
+                slot=slot,
+                desired_state=payload.state,
+                error=str(exc),
+            ),
+        ) from exc
+        
+
+
+"""
+Observação importante
+
+Neste momento, o locker_runtime_resolver.py ainda usa fallback:
+
+X-Locker-Id
+senão MACHINE_ID
+SLOT_IDS_JSON
+senão LOCKER_SLOT_COUNT
+senão 24
+
+Isso foi intencional para você conseguir subir o runtime sem travar tudo de uma vez.
+
+Mas o destino correto é:
+
+resolve_runtime_locker() -> consulta central -> topologia real do locker
+
+e aí o fallback fixo desaparece.
+"""
