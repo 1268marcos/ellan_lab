@@ -272,6 +272,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      # INTERNAL_SERVICE_TOKEN: ${ORDER_INTERNAL_TOKEN}
 
       MQTT_HOST: mqtt_broker
       MQTT_PORT: 1883
@@ -378,6 +379,8 @@ services:
       - LOCKER_RUNTIME_CATALOG_SKUS_PATH=/catalog/skus
       - LOCKER_RUNTIME_CATALOG_SKU_PATH=/catalog/skus/{sku_id}
       - LOCKER_RUNTIME_CATALOG_SLOTS_PATH=/catalog/slots
+
+      - INTERNAL_SERVICE_TOKEN=${ORDER_INTERNAL_TOKEN}
 
     volumes:
       - ../03_data/sqlite:/data/sqlite

@@ -5,7 +5,11 @@ from fastapi import APIRouter, Depends, Header, Query
 
 from app.core.internal_auth import require_internal_token
 from app.core.locker_runtime_resolver import resolve_runtime_locker
-from app.repositories.runtime_registry_repo import invalidate_runtime_locker_cache
+from app.repositories.runtime_registry_repo import (
+    invalidate_runtime_locker_cache,
+    list_runtime_lockers,
+    get_runtime_locker,
+)
 from app.schemas.runtime_registry import RuntimeLockerContextOut
 from app.services.runtime_bootstrap_service import bootstrap_runtime_on_startup
 from app.services.runtime_registry_sync_service import sync_runtime_registry_from_central
@@ -13,6 +17,30 @@ from app.services.runtime_registry_schema_service import ensure_runtime_registry
 
 
 router = APIRouter(prefix="/internal/runtime", tags=["internal-runtime"])
+
+
+@router.get("/lockers")
+def list_lockers(_=Depends(require_internal_token)):
+    items = list_runtime_lockers()
+    return {
+        "items": items,
+        "total": len(items),
+    }
+
+
+@router.get("/lockers/{locker_id}")
+def get_locker(
+    locker_id: str,
+    _=Depends(require_internal_token),
+):
+    item = get_runtime_locker_by_id(locker_id)
+    if not item:
+        return {
+            "ok": False,
+            "type": "LOCKER_NOT_FOUND",
+            "locker_id": locker_id,
+        }
+    return item
 
 
 @router.get("/lockers/resolve", response_model=RuntimeLockerContextOut)

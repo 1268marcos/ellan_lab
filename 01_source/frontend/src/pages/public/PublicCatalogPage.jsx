@@ -69,6 +69,30 @@ function parseLockersResponse(data) {
   return [];
 }
 
+function isLegacyLockerId(value) {
+  return /^CACIFO-[A-Z]{2}-\d{3}$/i.test(String(value || "").trim());
+}
+
+function isCanonicalLockerId(value) {
+  return /^[A-Z]{2}-[A-Z0-9]+(?:-[A-Z0-9]+)*-LK-\d{3}$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function normalizeLockerId(locker) {
+  const raw = String(
+    locker?.locker_id || locker?.id || locker?.machine_id || ""
+  ).trim();
+
+  if (!raw) return "";
+
+  if (isLegacyLockerId(raw)) {
+    return "";
+  }
+
+  return raw.toUpperCase();
+}
+
 function normalizeLockerItem(locker) {
   const address =
     locker?.address && typeof locker.address === "object"
@@ -84,9 +108,16 @@ function normalizeLockerItem(locker) {
           country: locker?.country || "",
         };
 
+  const normalizedLockerId = normalizeLockerId(locker);
+
   return {
-    locker_id: String(locker?.locker_id || "").trim(),
-    label: locker?.display_name || locker?.locker_id || "",
+    locker_id: normalizedLockerId,
+    label:
+      locker?.display_name ||
+      locker?.locker_id ||
+      locker?.id ||
+      locker?.machine_id ||
+      "",
     address:
       [
         [address.address, address.number].filter(Boolean).join(", "),
@@ -115,6 +146,16 @@ function parseError(data) {
 
 function resolveRegion(raw) {
   return String(raw || "").trim().toUpperCase();
+}
+
+function resolveInitialLockerId(rawLockerId) {
+  const raw = String(rawLockerId || "").trim().toUpperCase();
+
+  if (!raw) return "";
+  if (isLegacyLockerId(raw)) return "";
+  if (isCanonicalLockerId(raw)) return raw;
+
+  return raw;
 }
 
 function highlightSearchTerm(text, search) {
@@ -152,9 +193,10 @@ export default function PublicCatalogPage() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const initialRegion = resolveRegion(searchParams.get("region")) || "SP";
+  const initialLockerId = resolveInitialLockerId(searchParams.get("locker_id"));
 
   const [region, setRegion] = useState(initialRegion);
-  const [lockerId, setLockerId] = useState(searchParams.get("locker_id") || "");
+  const [lockerId, setLockerId] = useState(initialLockerId);
   const [lockers, setLockers] = useState([]);
   const [items, setItems] = useState([]);
 
@@ -200,22 +242,36 @@ export default function PublicCatalogPage() {
 
         const normalized = parseLockersResponse(data)
           .map(normalizeLockerItem)
-          .filter((item) => item.active)
+          .filter((item) => item.active && item.locker_id)
           .sort((a, b) =>
             a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
           );
 
+        if (!normalized.length) {
+          throw new Error(
+            `Nenhum locker canônico ativo encontrado para a região ${region}.`
+          );
+        }
+
         setLockers(normalized);
 
         setLockerId((prev) => {
-          if (prev && normalized.some((item) => item.locker_id === prev)) {
-            return prev;
+          const safePrev = resolveInitialLockerId(prev);
+
+          if (
+            safePrev &&
+            normalized.some((item) => item.locker_id === safePrev)
+          ) {
+            return safePrev;
           }
-          return normalized[0]?.locker_id || "";
+
+          return normalized[0].locker_id;
         });
       } catch (e) {
         setLockers([]);
         setLockerId("");
+        setItems([]);
+        setSelectedLockerDetails(null);
         setError(String(e?.message || e));
       } finally {
         setLoadingLockers(false);
@@ -295,7 +351,8 @@ export default function PublicCatalogPage() {
               is_active: Boolean(item.is_active),
               locker_state: runtimeState,
               is_operationally_available: isOperationallyAvailable,
-              updated_at: item.updated_at || lockerStateMap[slotNumber]?.updated_at || null,
+              updated_at:
+                item.updated_at || lockerStateMap[slotNumber]?.updated_at || null,
             };
           })
           .filter(Boolean)
