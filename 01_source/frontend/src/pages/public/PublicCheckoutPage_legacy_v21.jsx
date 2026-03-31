@@ -1,19 +1,15 @@
 // 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx
-// ONLINE real usando gateway + runtime + order_pickup_service
+// Otimizado com Steps e Trust Signals
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 
-const ORDER_PICKUP_BASE =
-  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
+const BACKEND_PT = import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
 
-const GATEWAY_BASE =
-  import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
-
-const RUNTIME_BASE =
-  import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
-
+// Trust Signals Component
 function TrustSignals() {
   return (
     <div style={trustSignalsStyle}>
@@ -33,6 +29,7 @@ function TrustSignals() {
   );
 }
 
+// Progress Steps Component
 function CheckoutSteps({ currentStep }) {
   const steps = [
     { id: 1, label: "Produto", icon: "🛒" },
@@ -67,30 +64,23 @@ function CheckoutSteps({ currentStep }) {
   );
 }
 
-function formatMoney(cents, currency, locale = undefined) {
+function formatMoney(cents, currency) {
   const value = Number(cents);
   if (!Number.isFinite(value)) return "-";
-
   const amount = value / 100;
-  const safeCurrency = String(currency || "").trim().toUpperCase();
-
+  const locale = currency === "BRL" ? "pt-BR" : "pt-PT";
   try {
-    if (safeCurrency) {
-      return new Intl.NumberFormat(locale || undefined, {
-        style: "currency",
-        currency: safeCurrency,
-      }).format(amount);
-    }
-
-    return new Intl.NumberFormat(locale || undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+    return new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: currency || "EUR",
     }).format(amount);
   } catch {
-    return safeCurrency
-      ? `${amount.toFixed(2)} ${safeCurrency}`.trim()
-      : amount.toFixed(2);
+    return `${amount.toFixed(2)} ${currency || ""}`.trim();
   }
+}
+
+function resolveBackendBase(region) {
+  return region === "PT" ? BACKEND_PT : BACKEND_SP;
 }
 
 function paymentMethodLabel(method) {
@@ -105,6 +95,13 @@ function paymentMethodLabel(method) {
     MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
   };
   return labels[method] || method || "-";
+}
+
+function regionPaymentOptions(region) {
+  if (region === "PT") {
+    return ["CARTAO", "MBWAY", "MULTIBANCO_REFERENCE", "NFC", "APPLE_PAY", "GOOGLE_PAY", "MERCADO_PAGO_WALLET"];
+  }
+  return ["PIX", "CARTAO", "NFC", "APPLE_PAY", "GOOGLE_PAY", "MERCADO_PAGO_WALLET"];
 }
 
 function walletProviderForMethod(method) {
@@ -133,13 +130,11 @@ function generateIdempotencyKey() {
 async function parseRichErrorResponse(res) {
   const rawText = await res.text().catch(() => "");
   let parsed = null;
-
   try {
     parsed = rawText ? JSON.parse(rawText) : null;
   } catch {
     parsed = null;
   }
-
   return {
     status: res.status,
     statusText: res.statusText,
@@ -149,85 +144,21 @@ async function parseRichErrorResponse(res) {
   };
 }
 
-function parseLockersResponse(data) {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.items)) return data.items;
-  return [];
-}
-
-function normalizeLockerItem(locker) {
-  const address =
-    locker?.address && typeof locker.address === "object"
-      ? locker.address
-      : {
-          address: locker?.address || "",
-          number: locker?.number ?? "",
-          additional_information: locker?.additional_information || "",
-          locality: locker?.locality || "",
-          city: locker?.city || "",
-          federative_unit: locker?.federative_unit || "",
-          postal_code: locker?.postal_code || "",
-          country: locker?.country || "",
-        };
-
-  return {
-    locker_id: String(locker?.locker_id || "").trim(),
-    region: String(locker?.region || "").trim().toUpperCase(),
-    site_id: locker?.site_id || "",
-    display_name: locker?.display_name || locker?.locker_id || "",
-    channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
-    payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((item) => String(item).trim().toUpperCase())
-      : [],
-    active: Boolean(locker?.active),
-    address,
-  };
-}
-
-function formatAddress(locker) {
-  if (!locker) return "-";
-
-  const address = locker.address || {};
-  const parts = [
-    [address.address, address.number].filter(Boolean).join(", "),
-    address.additional_information || "",
-    address.locality || "",
-    [address.city, address.federative_unit].filter(Boolean).join(" / "),
-    address.postal_code || "",
-    address.country || "",
-  ]
-    .map((item) => String(item || "").trim())
-    .filter(Boolean);
-
-  return parts.join(" • ");
-}
-
-function resolveDisplayedRegion(value) {
-  return String(value || "").trim().toUpperCase() || "SP";
-}
-
 export default function PublicCheckoutPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  const region = resolveDisplayedRegion(searchParams.get("region") || "SP");
+  const region = String(searchParams.get("region") || "SP").toUpperCase() === "PT" ? "PT" : "SP";
   const lockerId = String(searchParams.get("locker_id") || "").trim();
   const skuId = String(searchParams.get("sku_id") || "").trim();
   const slot = Number(searchParams.get("slot") || 0);
+  const backendBase = useMemo(() => resolveBackendBase(region), [region]);
 
   const [product, setProduct] = useState(null);
-  const [locker, setLocker] = useState(null);
-
   const [productLoading, setProductLoading] = useState(false);
-  const [lockerLoading, setLockerLoading] = useState(false);
-
   const [productError, setProductError] = useState("");
-  const [lockerError, setLockerError] = useState("");
-
-  const [paymentMethod, setPaymentMethod] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState(region === "PT" ? "CARTAO" : "PIX");
   const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
-
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
@@ -236,15 +167,7 @@ export default function PublicCheckoutPage() {
 
   const { token, isAuthenticated } = useAuth();
 
-  const runtimeSkuUrl = useMemo(
-    () => `${RUNTIME_BASE}/catalog/skus/${encodeURIComponent(skuId)}`,
-    [skuId]
-  );
-
-  const allowedPaymentMethods = useMemo(() => {
-    return Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
-  }, [locker]);
-
+  // 🔥 Redirecionar para login se não estiver autenticado
   useEffect(() => {
     if (!isAuthenticated && !invalidParams) {
       const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
@@ -253,80 +176,15 @@ export default function PublicCheckoutPage() {
   }, [isAuthenticated, invalidParams, navigate]);
 
   useEffect(() => {
-    async function loadLocker() {
-      if (invalidParams) return;
-
-      setLockerLoading(true);
-      setLockerError("");
-
-      try {
-        const res = await fetch(
-          `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
-        );
-        const data = await res.json().catch(() => ({}));
-
-        if (!res.ok) {
-          throw new Error(
-            typeof data?.detail !== "undefined"
-              ? JSON.stringify(data.detail, null, 2)
-              : JSON.stringify(data, null, 2)
-          );
-        }
-
-        const items = parseLockersResponse(data).map(normalizeLockerItem);
-        const found = items.find((item) => item.locker_id === lockerId) || null;
-
-        if (!found) {
-          throw new Error(
-            JSON.stringify(
-              {
-                type: "LOCKER_NOT_FOUND_IN_GATEWAY",
-                message: "Locker não encontrado no gateway para a região selecionada.",
-                region,
-                locker_id: lockerId,
-              },
-              null,
-              2
-            )
-          );
-        }
-
-        setLocker(found);
-      } catch (e) {
-        setLockerError(String(e?.message || e));
-        setLocker(null);
-      } finally {
-        setLockerLoading(false);
-      }
-    }
-
-    loadLocker();
-  }, [invalidParams, lockerId, region]);
-
-  useEffect(() => {
-    if (!allowedPaymentMethods.length) {
-      setPaymentMethod("");
-      return;
-    }
-
-    setPaymentMethod((prev) =>
-      allowedPaymentMethods.includes(prev) ? prev : allowedPaymentMethods[0]
-    );
-  }, [allowedPaymentMethods]);
-
-  useEffect(() => {
     async function loadProduct() {
       if (invalidParams) return;
-
       setProductLoading(true);
       setProductError("");
-
       try {
-        const res = await fetch(runtimeSkuUrl, {
+        const res = await fetch(`${backendBase}/catalog/skus/${encodeURIComponent(skuId)}`, {
           headers: { "X-Locker-Id": lockerId },
         });
         const data = await res.json().catch(() => ({}));
-
         if (!res.ok) {
           throw new Error(
             typeof data?.detail !== "undefined"
@@ -334,7 +192,6 @@ export default function PublicCheckoutPage() {
               : JSON.stringify(data, null, 2)
           );
         }
-
         setProduct(data);
         setCurrentStep(1);
       } catch (e) {
@@ -344,23 +201,12 @@ export default function PublicCheckoutPage() {
         setProductLoading(false);
       }
     }
-
     loadProduct();
-  }, [invalidParams, lockerId, runtimeSkuUrl]);
+  }, [backendBase, invalidParams, lockerId, skuId]);
 
   async function handleCreateOrder() {
-    if (invalidParams || !product || !locker) {
+    if (invalidParams || !product) {
       setSubmitError("Dados do checkout incompletos.");
-      return;
-    }
-
-    if (!paymentMethod) {
-      setSubmitError("Nenhum método de pagamento disponível para este locker.");
-      return;
-    }
-
-    if (!allowedPaymentMethods.includes(paymentMethod)) {
-      setSubmitError("Método de pagamento inválido para este locker.");
       return;
     }
 
@@ -374,12 +220,12 @@ export default function PublicCheckoutPage() {
       totem_id: lockerId,
       payment_method: paymentMethod,
       desired_slot: slot,
+      amount_cents: Number(product.amount_cents),
     };
 
     if (paymentMethod === "CARTAO") {
       payload.card_type = cardType;
     }
-
     if (paymentMethod === "MBWAY") {
       payload.customer_phone = customerPhone.trim();
     }
@@ -393,11 +239,12 @@ export default function PublicCheckoutPage() {
       const deviceFp = getOrCreateDeviceFingerprint();
       const idempotencyKey = generateIdempotencyKey();
 
-      const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, {
+      // 🔥 Headers com Authorization Bearer token
+      const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, { //fetch(`${ORDER_PICKUP_BASE}/orders`
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
+          "Authorization": `Bearer ${token}`,
           "X-Device-Fingerprint": deviceFp,
           "Idempotency-Key": idempotencyKey,
         },
@@ -441,8 +288,9 @@ export default function PublicCheckoutPage() {
       }
 
       setCurrentStep(3);
-
       setTimeout(() => {
+        // navigate(`/public/orders/${encodeURIComponent(orderId)}`, { replace: true });
+        // navigate(`/public/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
         navigate(`/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
       }, 1500);
     } catch (e) {
@@ -465,9 +313,7 @@ export default function PublicCheckoutPage() {
               Faltam dados obrigatórios da seleção. Volte ao catálogo e escolha uma gaveta.
             </p>
             <Link
-              to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(
-                lockerId
-              )}`}
+              to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(lockerId)}`}
               style={primaryButtonStyle}
             >
               Voltar ao catálogo
@@ -482,50 +328,22 @@ export default function PublicCheckoutPage() {
     <main style={pageStyle}>
       <div style={containerStyle}>
         <CheckoutSteps currentStep={currentStep} />
-
+        
         <section style={heroCardStyle}>
           <div style={heroContentStyle}>
             <h1 style={titleStyle}>Finalizar Reserva</h1>
             <p style={subtitleStyle}>
-              Você está reservando uma gaveta real do locker selecionado. O pedido será criado
-              no canal ONLINE usando runtime central.
+              Você está reservando uma gaveta real do locker selecionado. 
+              O pedido será criado no canal ONLINE.
             </p>
           </div>
           <TrustSignals />
         </section>
 
         <div style={layoutStyle}>
+          {/* Product Summary */}
           <section style={cardStyle}>
             <h2 style={cardTitleStyle}>📦 Resumo do Pedido</h2>
-
-            {lockerLoading ? (
-              <div style={loadingStyle}>
-                <div style={spinnerStyle} />
-                <p>Carregando locker...</p>
-              </div>
-            ) : lockerError ? (
-              <pre style={errorBoxStyle}>{lockerError}</pre>
-            ) : locker ? (
-              <div style={{ ...summaryGridStyle, marginBottom: 18 }}>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Locker</span>
-                  <span style={summaryValueStyle}>{locker.display_name || lockerId}</span>
-                </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Endereço</span>
-                  <span style={summaryValueStyle}>{formatAddress(locker)}</span>
-                </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Métodos permitidos</span>
-                  <span style={summaryValueStyle}>
-                    {allowedPaymentMethods.length
-                      ? allowedPaymentMethods.map(paymentMethodLabel).join(", ")
-                      : "-"}
-                  </span>
-                </div>
-              </div>
-            ) : null}
-
             {productLoading ? (
               <div style={loadingStyle}>
                 <div style={spinnerStyle} />
@@ -540,7 +358,7 @@ export default function PublicCheckoutPage() {
                   <span style={summaryValueStyle}>{region}</span>
                 </div>
                 <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Locker ID</span>
+                  <span style={summaryLabelStyle}>Locker</span>
                   <span style={summaryValueStyle}>{lockerId}</span>
                 </div>
                 <div style={summaryItemStyle}>
@@ -557,9 +375,7 @@ export default function PublicCheckoutPage() {
                 </div>
                 <div style={summaryItemStyle}>
                   <span style={summaryLabelStyle}>Preço</span>
-                  <span style={priceStyle}>
-                    {formatMoney(product.amount_cents, product.currency)}
-                  </span>
+                  <span style={priceStyle}>{formatMoney(product.amount_cents, product.currency)}</span>
                 </div>
                 <div style={summaryItemStyle}>
                   <span style={summaryLabelStyle}>Moeda</span>
@@ -571,9 +387,10 @@ export default function PublicCheckoutPage() {
             )}
           </section>
 
+          {/* Payment Section */}
           <section style={cardStyle}>
             <h2 style={cardTitleStyle}>💳 Pagamento</h2>
-
+            
             <div style={fieldGridStyle}>
               <label style={labelStyle}>
                 Método de pagamento
@@ -581,17 +398,13 @@ export default function PublicCheckoutPage() {
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   style={inputStyle}
-                  disabled={submitting || !allowedPaymentMethods.length}
+                  disabled={submitting}
                 >
-                  {!allowedPaymentMethods.length ? (
-                    <option value="">Nenhum método disponível</option>
-                  ) : (
-                    allowedPaymentMethods.map((method) => (
-                      <option key={method} value={method}>
-                        {paymentMethodLabel(method)}
-                      </option>
-                    ))
-                  )}
+                  {regionPaymentOptions(region).map((method) => (
+                    <option key={method} value={method}>
+                      {paymentMethodLabel(method)}
+                    </option>
+                  ))}
                 </select>
               </label>
 
@@ -629,29 +442,25 @@ export default function PublicCheckoutPage() {
               <div>
                 <strong>Informação importante:</strong>
                 <p style={{ margin: "4px 0 0 0" }}>
-                  O pedido criado aqui entra no fluxo ONLINE real, respeitando locker, gaveta,
-                  SKU e método de pagamento. O preço final não é confiado ao frontend.
+                  O pedido criado aqui entra no fluxo ONLINE real, respeitando locker, 
+                  gaveta, SKU e método de pagamento.
                 </p>
               </div>
             </div>
 
-            {submitError ? (
+            {submitError && (
               <div style={errorBoxStyle}>
                 <strong>Erro ao processar:</strong>
                 <pre style={{ margin: "8px 0 0 0", fontSize: 12 }}>{submitError}</pre>
               </div>
-            ) : null}
+            )}
 
             <button
               onClick={handleCreateOrder}
               disabled={
                 submitting ||
                 productLoading ||
-                lockerLoading ||
                 !product ||
-                !locker ||
-                !paymentMethod ||
-                !allowedPaymentMethods.length ||
                 (paymentMethod === "MBWAY" && !customerPhone.trim())
               }
               style={{
@@ -676,9 +485,7 @@ export default function PublicCheckoutPage() {
 
             <div style={actionsStyle}>
               <Link
-                to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(
-                  lockerId
-                )}`}
+                to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(lockerId)}`}
                 style={secondaryButtonStyle}
               >
                 ← Voltar
@@ -694,6 +501,7 @@ export default function PublicCheckoutPage() {
   );
 }
 
+// Styles
 const pageStyle = {
   minHeight: "100vh",
   background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
@@ -755,6 +563,7 @@ const trustTextStyle = {
   fontWeight: 500,
 };
 
+// Steps Styles
 const stepsContainerStyle = {
   display: "flex",
   alignItems: "center",
@@ -853,7 +662,6 @@ const summaryItemStyle = {
   alignItems: "center",
   padding: "12px 0",
   borderBottom: "1px solid #e2e8f0",
-  gap: 12,
 };
 
 const summaryLabelStyle = {
@@ -866,7 +674,6 @@ const summaryValueStyle = {
   fontSize: 14,
   color: "#1a202c",
   fontWeight: 600,
-  textAlign: "right",
 };
 
 const priceStyle = {
@@ -964,8 +771,6 @@ const errorBoxStyle = {
   border: "1px solid #feb2b2",
   color: "#c53030",
   marginBottom: 16,
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
 };
 
 const loadingStyle = {
@@ -999,16 +804,16 @@ const successIconStyle = {
   fontSize: 20,
 };
 
+// Add animation
 if (typeof document !== "undefined") {
-  const existingStyle = document.head.querySelector("#public-checkout-styles");
-  if (!existingStyle) {
-    const styleSheet = document.createElement("style");
-    styleSheet.id = "public-checkout-styles";
-    styleSheet.textContent = `
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-    `;
+  const styleSheet = document.createElement("style");
+  styleSheet.textContent = `
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  `;
+  if (!document.head.querySelector("#checkout-styles")) {
+    styleSheet.id = "checkout-styles";
     document.head.appendChild(styleSheet);
   }
 }

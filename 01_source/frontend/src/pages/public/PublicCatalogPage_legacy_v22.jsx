@@ -1,6 +1,5 @@
 // 01_source/frontend/src/pages/public/PublicCatalogPage.jsx
 // Catálogo ONLINE usando gateway + runtime, sem backend_sp/backend_pt e sem lockers hardcoded
-
 import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -29,26 +28,16 @@ function formatMoney(cents, currency, locale = undefined) {
   if (!Number.isFinite(value)) return "-";
 
   const amount = value / 100;
-  const safeCurrency = String(currency || "").trim().toUpperCase();
 
   try {
-    if (safeCurrency) {
-      return new Intl.NumberFormat(locale || undefined, {
-        style: "currency",
-        currency: safeCurrency,
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(amount);
-    }
-
     return new Intl.NumberFormat(locale || undefined, {
+      style: "currency",
+      currency: currency || "EUR",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    return safeCurrency
-      ? `${amount.toFixed(2)} ${safeCurrency}`.trim()
-      : amount.toFixed(2);
+    return `${amount.toFixed(2)} ${currency || ""}`.trim();
   }
 }
 
@@ -99,59 +88,27 @@ function normalizeLockerItem(locker) {
         .map((item) => String(item || "").trim())
         .filter(Boolean)
         .join(" • ") || "-",
-    region: String(locker?.region || "").trim().toUpperCase(),
+    region: String(locker?.region || "").toUpperCase(),
     active: Boolean(locker?.active),
   };
 }
 
 function parseError(data) {
   if (typeof data?.detail === "string") return data.detail;
-  if (typeof data?.detail === "object" && data?.detail) {
-    return JSON.stringify(data.detail);
-  }
+  if (typeof data?.detail === "object" && data?.detail) return JSON.stringify(data.detail);
   if (typeof data?.message === "string") return data.message;
   return JSON.stringify(data);
 }
 
 function resolveRegion(raw) {
-  return String(raw || "").trim().toUpperCase();
-}
-
-function highlightSearchTerm(text, search) {
-  if (!search) return text;
-
-  const safeText = String(text || "");
-  const safeSearch = String(search || "").trim();
-
-  if (!safeSearch) return safeText;
-
-  const escaped = safeSearch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const parts = safeText.split(new RegExp(`(${escaped})`, "gi"));
-
-  return parts.map((part, index) =>
-    part.toLowerCase() === safeSearch.toLowerCase() ? (
-      <mark
-        key={`${part}-${index}`}
-        style={{
-          background: "#fef3c7",
-          color: "#92400e",
-          padding: "0 2px",
-          borderRadius: "var(--radius-sm)",
-        }}
-      >
-        {part}
-      </mark>
-    ) : (
-      part
-    )
-  );
+  return String(raw || "").trim().toUpperCase() || "SP";
 }
 
 export default function PublicCatalogPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const initialRegion = resolveRegion(searchParams.get("region")) || "SP";
+  const initialRegion = resolveRegion(searchParams.get("region") || "SP");
 
   const [region, setRegion] = useState(initialRegion);
   const [lockerId, setLockerId] = useState(searchParams.get("locker_id") || "");
@@ -172,7 +129,7 @@ export default function PublicCatalogPage() {
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
-    params.set("region", region || "SP");
+    params.set("region", region);
 
     if (lockerId) {
       params.set("locker_id", lockerId);
@@ -200,10 +157,8 @@ export default function PublicCatalogPage() {
 
         const normalized = parseLockersResponse(data)
           .map(normalizeLockerItem)
-          .filter((item) => item.active)
-          .sort((a, b) =>
-            a.label.localeCompare(b.label, undefined, { sensitivity: "base" })
-          );
+          .filter((item) => item.region === region && item.active)
+          .sort((a, b) => a.label.localeCompare(b.label));
 
         setLockers(normalized);
 
@@ -234,7 +189,6 @@ export default function PublicCatalogPage() {
     async function loadCatalog() {
       if (!lockerId) {
         setItems([]);
-        setExpandedCards(new Set());
         return;
       }
 
@@ -262,10 +216,7 @@ export default function PublicCatalogPage() {
 
         const lockerStateMap = {};
         for (const row of Array.isArray(lockerStateData) ? lockerStateData : []) {
-          const stateSlot = Number(row.slot);
-          if (!Number.isFinite(stateSlot) || stateSlot <= 0) continue;
-
-          lockerStateMap[stateSlot] = {
+          lockerStateMap[Number(row.slot)] = {
             state: row.state || "AVAILABLE",
             product_id: row.product_id ?? null,
             updated_at: row.updated_at ?? null,
@@ -275,11 +226,6 @@ export default function PublicCatalogPage() {
         const normalized = (Array.isArray(catalogData) ? catalogData : [])
           .map((item) => {
             const slotNumber = Number(item.slot);
-
-            if (!Number.isFinite(slotNumber) || slotNumber <= 0) {
-              return null;
-            }
-
             const runtimeState = lockerStateMap[slotNumber]?.state || "AVAILABLE";
             const isOperationallyAvailable = runtimeState === "AVAILABLE";
 
@@ -290,7 +236,7 @@ export default function PublicCatalogPage() {
               name: item.name || "Produto sem nome",
               description: item.description || "",
               amount_cents: Number(item.amount_cents || 0),
-              currency: String(item.currency || "").trim().toUpperCase() || "",
+              currency: item.currency || "EUR",
               imageURL: item.imageURL || "",
               is_active: Boolean(item.is_active),
               locker_state: runtimeState,
@@ -298,7 +244,6 @@ export default function PublicCatalogPage() {
               updated_at: item.updated_at || lockerStateMap[slotNumber]?.updated_at || null,
             };
           })
-          .filter(Boolean)
           .filter((item) => item.is_active && item.sku_id)
           .sort((a, b) => a.slot - b.slot);
 
@@ -313,7 +258,7 @@ export default function PublicCatalogPage() {
     }
 
     loadCatalog();
-  }, [lockerId]);
+  }, [lockerId, region]);
 
   const filteredBySearch = useMemo(() => {
     if (!debouncedSearchTerm.trim()) return items;
@@ -336,7 +281,7 @@ export default function PublicCatalogPage() {
         return itemsCopy.sort((a, b) => a.slot - b.slot);
       case SORT_TYPES.NAME:
         return itemsCopy.sort((a, b) =>
-          a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+          a.name.localeCompare(b.name, "pt", { sensitivity: "base" })
         );
       case SORT_TYPES.PRICE_ASC:
         return itemsCopy.sort((a, b) => a.amount_cents - b.amount_cents);
@@ -361,7 +306,11 @@ export default function PublicCatalogPage() {
       navigate(
         `/checkout?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(
           lockerId
-        )}&sku_id=${encodeURIComponent(item.sku_id)}&slot=${encodeURIComponent(item.slot)}`
+        )}&sku_id=${encodeURIComponent(item.sku_id)}&slot=${encodeURIComponent(
+          item.slot
+        )}&product_name=${encodeURIComponent(item.name)}&price=${encodeURIComponent(
+          item.amount_cents
+        )}`
       );
     } finally {
       setSubmittingSlot(null);
@@ -501,7 +450,7 @@ export default function PublicCatalogPage() {
               <select
                 id="region-select"
                 value={region}
-                onChange={(e) => setRegion(resolveRegion(e.target.value) || "SP")}
+                onChange={(e) => setRegion(resolveRegion(e.target.value))}
                 className="form-input"
                 aria-describedby="region-help"
               >
@@ -525,27 +474,17 @@ export default function PublicCatalogPage() {
                 aria-describedby="locker-help"
                 disabled={loadingLockers || !lockers.length}
               >
-                {!lockers.length ? (
-                  <option value="">Nenhum locker disponível</option>
-                ) : (
-                  lockers.map((item) => (
-                    <option key={item.locker_id} value={item.locker_id}>
-                      {item.label}
-                    </option>
-                  ))
-                )}
+                {lockers.map((item) => (
+                  <option key={item.locker_id} value={item.locker_id}>
+                    {item.label}
+                  </option>
+                ))}
               </select>
               {selectedLockerDetails ? (
                 <span id="locker-help" className="form-help">
                   📮 {selectedLockerDetails.address}
                 </span>
-              ) : (
-                <span id="locker-help" className="form-help">
-                  {loadingLockers
-                    ? "Carregando pontos de retirada..."
-                    : "Selecione um ponto de retirada"}
-                </span>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -839,6 +778,28 @@ export default function PublicCatalogPage() {
                   const isPriceHighlighted =
                     sortType === SORT_TYPES.PRICE_ASC || sortType === SORT_TYPES.PRICE_DESC;
 
+                  const highlightSearchTerm = (text, search) => {
+                    if (!search) return text;
+                    const parts = text.split(new RegExp(`(${search})`, "gi"));
+                    return parts.map((part, i) =>
+                      part.toLowerCase() === search.toLowerCase() ? (
+                        <mark
+                          key={i}
+                          style={{
+                            background: "#fef3c7",
+                            color: "#92400e",
+                            padding: "0 2px",
+                            borderRadius: "var(--radius-sm)",
+                          }}
+                        >
+                          {part}
+                        </mark>
+                      ) : (
+                        part
+                      )
+                    );
+                  };
+
                   return (
                     <article
                       key={`${item.locker_id}-${item.slot}`}
@@ -849,10 +810,7 @@ export default function PublicCatalogPage() {
                         padding: "var(--spacing-4)",
                         boxShadow: "var(--shadow-md)",
                         transition: "all var(--transition-base)",
-                        border:
-                          sortType === SORT_TYPES.NAME && isExpanded
-                            ? "2px solid #667eea"
-                            : "none",
+                        border: sortType === SORT_TYPES.NAME && isExpanded ? "2px solid #667eea" : "none",
                       }}
                       role="listitem"
                     >
@@ -1003,7 +961,7 @@ export default function PublicCatalogPage() {
                               <span style={{ fontWeight: 600, color: "var(--color-text-muted)" }}>
                                 Moeda:
                               </span>
-                              <span>{item.currency || "-"}</span>
+                              <span>{item.currency}</span>
                             </div>
                             <div style={{ display: "flex", justifyContent: "space-between" }}>
                               <span style={{ fontWeight: 600, color: "var(--color-text-muted)" }}>
@@ -1018,10 +976,8 @@ export default function PublicCatalogPage() {
                               <span>
                                 {item.updated_at
                                   ? new Date(item.updated_at).toLocaleDateString(undefined, {
-                                      day: "2-digit",
-                                      month: "short",
-                                      year: "numeric",
-                                    })
+                                    day: "2-digit", month: "short", year: "numeric" }
+                                    )
                                   : "-"}
                               </span>
                             </div>

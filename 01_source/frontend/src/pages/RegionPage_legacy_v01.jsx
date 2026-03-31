@@ -2,16 +2,104 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
+import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
+
 import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
+const BACKEND_SP =
+  import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
+
+const BACKEND_PT =
+  import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
+
 const GATEWAY_BASE =
   import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
 
-const RUNTIME_BASE =
-  import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
+const LOCKER_REGISTRY_FALLBACK = {
+  "SP-OSASCO-CENTRO-LK-001": {
+    region: "SP",
+    site_id: "SP-OSASCO-CENTRO",
+    display_name: "ELLAN Locker Osasco Centro 001",
+    backend_region: "SP",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["PIX", "CARTAO", "NFC"],
+    address: {
+      address: "Rua Primitiva Vianco",
+      number: "77",
+      additional_information: "Sala 21",
+      locality: "Centro",
+      city: "Osasco",
+      federative_unit: "SP",
+      postal_code: "06001-000",
+      country: "BR",
+    },
+    active: true,
+  },
+  "SP-CARAPICUIBA-JDMARILU-LK-001": {
+    region: "SP",
+    site_id: "SP-CARAPICUIBA-JDMARILU",
+    display_name: "ELLAN Locker Carapicuíba Jardim Marilu 001",
+    backend_region: "SP",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["PIX", "CARTAO", "NFC"],
+    address: {
+      address: "Estrada Aldeinha",
+      number: "7509",
+      additional_information: "Apto 45",
+      locality: "Jardim Marilu",
+      city: "Carapicuíba",
+      federative_unit: "SP",
+      postal_code: "06343-040",
+      country: "BR",
+    },
+    active: true,
+  },
+  "PT-MAIA-CENTRO-LK-001": {
+    region: "PT",
+    site_id: "PT-MAIA-CENTRO",
+    display_name: "ELLAN Locker Maia Centro 001",
+    backend_region: "PT",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["CARTAO", "MBWAY", "MULTIBANCO_REFERENCE", "NFC"],
+    address: {
+      address: "Rua Padre Antonio",
+      number: "12",
+      additional_information: "",
+      locality: "Centro",
+      city: "Maia",
+      federative_unit: "Porto",
+      postal_code: "4400-001",
+      country: "PT",
+    },
+    active: true,
+  },
+  "PT-GUIMARAES-AZUREM-LK-001": {
+    region: "PT",
+    site_id: "PT-GUIMARAES-AZUREM",
+    display_name: "ELLAN Locker Guimarães Azurém 001",
+    backend_region: "PT",
+    slots: 24,
+    channels: ["ONLINE", "KIOSK"],
+    payment_methods: ["CARTAO", "MBWAY", "MULTIBANCO_REFERENCE", "NFC"],
+    address: {
+      address: "Rua Dona Maria",
+      number: "258",
+      additional_information: "Sub-cave",
+      locality: "Azurém",
+      city: "Guimarães",
+      federative_unit: "Braga",
+      postal_code: "4582-052",
+      country: "PT",
+    },
+    active: true,
+  },
+};
 
 const initialIdentify = {
   phone: "",
@@ -25,7 +113,12 @@ const initialPaymentExtras = {
 
 function extractReceiptCodeFromPaymentResp(paymentResp) {
   if (!paymentResp) return null;
-  return paymentResp?.fiscal?.receipt_code || paymentResp?.receipt_code || null;
+
+  return (
+    paymentResp?.fiscal?.receipt_code ||
+    paymentResp?.receipt_code ||
+    null
+  );
 }
 
 function formatMoney(cents, currency) {
@@ -59,17 +152,13 @@ function normalizeLockerItem(locker) {
           country: locker?.country || "",
         };
 
-  const slotCountFromRuntime = Array.isArray(locker?.slot_ids)
-    ? locker.slot_ids.length
-    : Number(locker?.slots || 0);
-
   return {
     locker_id: String(locker?.locker_id || "").trim(),
     region: String(locker?.region || "").toUpperCase(),
     site_id: locker?.site_id || "",
     display_name: locker?.display_name || locker?.locker_id || "",
     backend_region: String(locker?.backend_region || locker?.region || "").toUpperCase(),
-    slots: Number(slotCountFromRuntime || 0),
+    slots: Number(locker?.slots || 24),
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
     payment_methods: Array.isArray(locker?.payment_methods)
       ? locker.payment_methods.map((item) => String(item).toUpperCase())
@@ -77,6 +166,22 @@ function normalizeLockerItem(locker) {
     address,
     active: Boolean(locker?.active),
   };
+}
+
+function buildFallbackLockersByRegion(region) {
+  return Object.entries(LOCKER_REGISTRY_FALLBACK)
+    .map(([lockerId, config]) =>
+      normalizeLockerItem({
+        locker_id: lockerId,
+        ...config,
+      })
+    )
+    .filter((item) => item.region === region && item.active)
+    .sort((a, b) => a.display_name.localeCompare(b.display_name));
+}
+
+function getBackendBaseByRegion(region) {
+  return region === "SP" ? BACKEND_SP : BACKEND_PT;
 }
 
 function getDefaultPaymentMethod(locker, region) {
@@ -180,13 +285,17 @@ function copyText(text) {
 }
 
 function resolveDisplayedPendingContext(gatewayPendingContext, createResp, paymentMethod) {
-  if (gatewayPendingContext) return gatewayPendingContext;
+  if (gatewayPendingContext) {
+    return gatewayPendingContext;
+  }
 
   const preview = createResp?.payment_payload || null;
   const instructionType = createResp?.payment_instruction_type || null;
   const paymentStatus = createResp?.payment_status || null;
 
-  if (!preview || !instructionType) return null;
+  if (!preview || !instructionType) {
+    return null;
+  }
 
   return {
     result: "local_preview",
@@ -225,20 +334,6 @@ function isCatalogItemSelectable(item) {
       item.is_operationally_available &&
       item.locker_state === "AVAILABLE"
   );
-}
-
-function safeJsonStringify(value) {
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function parseErrorPayload(data) {
-  if (typeof data?.detail === "string") return data.detail;
-  if (typeof data?.detail === "object" && data?.detail) return safeJsonStringify(data.detail);
-  return safeJsonStringify(data);
 }
 
 export default function RegionPage({ region, mode = "kiosk" }) {
@@ -285,20 +380,86 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const [err, setErr] = useState(null);
   const [, setTick] = useState(0);
 
+  const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [printCountdown, setPrintCountdown] = useState(10);
+  const [printPhase, setPrintPhase] = useState("idle"); // idle | printing | ready
+  const printTimerRef = useRef(null);
+  const printCloseTimerRef = useRef(null);
+
+  const backendBase = getBackendBaseByRegion(selectedLocker?.backend_region || region);
+
+  const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
+  const identifyUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/identify`, []);
+  const gatewayPaymentUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, []);
+  const catalogSlotsUrl = useMemo(() => `${backendBase}/catalog/slots`, [backendBase]);
+  const lockerSlotsUrl = useMemo(() => `${backendBase}/locker/slots`, [backendBase]);
+
+  const currentOrderId = createResp?.order_id || null;
+  const allowedPaymentMethods = selectedLocker?.payment_methods || [];
+
+  const receiptCode = extractReceiptCodeFromPaymentResp(paymentResp);
+
   const [emailModalOpen, setEmailModalOpen] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [emailModalSuccess, setEmailModalSuccess] = useState("");
   const [emailModalError, setEmailModalError] = useState("");
 
-  const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
-  const identifyUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/identify`, []);
-  const gatewayPaymentUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, []);
-  const runtimeCatalogSlotsUrl = useMemo(() => `${RUNTIME_BASE}/catalog/slots`, []);
-  const runtimeLockerSlotsUrl = useMemo(() => `${RUNTIME_BASE}/locker/slots`, []);
+  // Adicione esta função para lidar com o envio do email
+  const handleSendReceiptEmail = async (email) => {
+    if (!currentOrderId) {
+      setEmailModalError("Pedido não encontrado.");
+      setEmailModalSuccess("");
+      return;
+    }
 
-  const currentOrderId = createResp?.order_id || null;
-  const allowedPaymentMethods = selectedLocker?.payment_methods || [];
-  const receiptCode = extractReceiptCodeFromPaymentResp(paymentResp);
+    setSendingEmail(true);
+    setErr(null);
+    setIdentifyResp(null);
+    setEmailModalError("");
+    setEmailModalSuccess("");
+
+    try {
+      const res = await fetch(identifyUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: currentOrderId,
+          phone: null,
+          email: email,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(
+          data?.detail
+            ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail))
+            : JSON.stringify(data)
+        );
+      }
+
+      const successMessage =
+        data?.message || `Comprovante fiscal enviado com sucesso para ${email}.`;
+
+      setIdentifyResp(data);
+      setEmailModalSuccess(successMessage);
+      setEmailModalError("");
+    } catch (e) {
+      const msg = String(e?.message || e);
+      setEmailModalError(msg);
+      setEmailModalSuccess("");
+      setErr(msg);
+    } finally {
+      setSendingEmail(false);
+    }
+  };
+
+
+
+
 
   const displayedPendingContext = useMemo(
     () => resolveDisplayedPendingContext(pendingPaymentContext, createResp, paymentMethod),
@@ -311,6 +472,51 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const pendingExpired =
     pendingSecondsRemaining != null && Number(pendingSecondsRemaining) <= 0;
+
+  const hasQrLikeContent = Boolean(
+    displayedPendingContext?.qr_code_text ||
+      displayedPendingContext?.copy_paste_code ||
+      displayedPendingContext?.qr_code_image_base64
+  );
+
+  async function fetchLockersOnce() {
+    setLockersLoading(true);
+    setLockersError("");
+
+    try {
+      const res = await fetch(
+        `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
+      );
+      const text = await res.text();
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${text}`);
+      }
+
+      const data = JSON.parse(text);
+      const items = Array.isArray(data?.items) ? data.items.map(normalizeLockerItem) : [];
+
+      if (!items.length) {
+        throw new Error(`Nenhum locker ativo retornado pelo gateway para a região ${region}.`);
+      }
+
+      setAvailableLockers(items);
+      setLockersSource("gateway");
+    } catch (e) {
+      const fallbackItems = buildFallbackLockersByRegion(region);
+      setAvailableLockers(fallbackItems);
+      setLockersSource("fallback");
+      setLockersError(`Falha ao carregar lockers do gateway: ${String(e?.message || e)}`);
+    } finally {
+      setLockersLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      clearPrintSimulationTimers();
+    };
+  }, []);
 
   useEffect(() => {
     fetchLockersOnce();
@@ -341,7 +547,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setTotemId(selectedLocker.locker_id);
 
     setPaymentMethod((prev) => {
-      if (prev && allowedPaymentMethods.includes(prev)) return prev;
+      if (prev && allowedPaymentMethods.includes(prev)) {
+        return prev;
+      }
       return getDefaultPaymentMethod(selectedLocker, region);
     });
 
@@ -376,7 +584,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   useEffect(() => {
     fetchCatalogSlots();
 
-    if (pollRef.current) clearInterval(pollRef.current);
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+    }
 
     pollRef.current = setInterval(() => {
       fetchCatalogSlots(true);
@@ -391,10 +601,12 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+      }
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [selectedLockerId, runtimeCatalogSlotsUrl, runtimeLockerSlotsUrl]);
+  }, [catalogSlotsUrl, lockerSlotsUrl, selectedLockerId]);
 
   useEffect(() => {
     if (!displayedPendingContext?.expires_at_epoch) return;
@@ -405,37 +617,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     return () => clearInterval(interval);
   }, [displayedPendingContext?.expires_at_epoch]);
-
-  async function fetchLockersOnce() {
-    setLockersLoading(true);
-    setLockersError("");
-
-    try {
-      const res = await fetch(
-        `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
-      );
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
-      }
-
-      const items = Array.isArray(data?.items) ? data.items.map(normalizeLockerItem) : [];
-
-      if (!items.length) {
-        throw new Error(`Nenhum locker ativo retornado pelo gateway para a região ${region}.`);
-      }
-
-      setAvailableLockers(items);
-      setLockersSource("gateway");
-    } catch (e) {
-      setAvailableLockers([]);
-      setLockersSource("error");
-      setLockersError(`Falha ao carregar lockers do gateway: ${String(e?.message || e)}`);
-    } finally {
-      setLockersLoading(false);
-    }
-  }
 
   async function fetchCatalogSlots(silent = false) {
     if (!selectedLocker) {
@@ -451,24 +632,32 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setCatalogError("");
 
     try {
-      const headers = {
-        "X-Locker-Id": selectedLocker.locker_id,
-      };
-
       const [catalogRes, lockerRes] = await Promise.all([
-        fetch(runtimeCatalogSlotsUrl, { headers }),
-        fetch(runtimeLockerSlotsUrl, { headers }),
+        fetch(catalogSlotsUrl, {
+          headers: { "X-Locker-Id": selectedLocker.locker_id },
+        }),
+        fetch(lockerSlotsUrl, {
+          headers: { "X-Locker-Id": selectedLocker.locker_id },
+        }),
       ]);
 
       const catalogData = await catalogRes.json().catch(() => []);
       const lockerData = await lockerRes.json().catch(() => []);
 
       if (!catalogRes.ok) {
-        throw new Error(parseErrorPayload(catalogData));
+        throw new Error(
+          typeof catalogData?.detail !== "undefined"
+            ? JSON.stringify(catalogData.detail)
+            : JSON.stringify(catalogData)
+        );
       }
 
       if (!lockerRes.ok) {
-        throw new Error(parseErrorPayload(lockerData));
+        throw new Error(
+          typeof lockerData?.detail !== "undefined"
+            ? JSON.stringify(lockerData.detail)
+            : JSON.stringify(lockerData)
+        );
       }
 
       const lockerMap = {};
@@ -513,7 +702,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   }
 
   function handleSelectCatalogItem(item) {
-    if (!isCatalogItemSelectable(item)) return;
+    if (!isCatalogItemSelectable(item)) {
+      return;
+    }
 
     setSelectedSlot(item.slot);
     setSelectedCatalogItem(item);
@@ -537,7 +728,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     }
 
     if (!isCatalogItemSelectable(selectedCatalogItem)) {
-      setErr("A gaveta selecionada não está disponível operacionalmente.");
+      setErr(
+        "A gaveta selecionada não está disponível operacionalmente. Escolha uma gaveta AVAILABLE."
+      );
       return;
     }
 
@@ -587,7 +780,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
 
       setCreateResp(data);
@@ -662,19 +855,22 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         payload.wallet_provider = "mercadoPago";
       }
 
+      const deviceFp = getOrCreateDeviceFingerprint();
+      const idemKey = generateIdempotencyKey();
+
       const res = await fetch(gatewayPaymentUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Idempotency-Key": generateIdempotencyKey(),
-          "X-Device-Fingerprint": getOrCreateDeviceFingerprint(),
+          "Idempotency-Key": idemKey,
+          "X-Device-Fingerprint": deviceFp,
         },
         body: JSON.stringify(payload),
       });
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
 
       setGatewayPaymentResp(data);
@@ -702,8 +898,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     setErr(null);
     setPaymentResp(null);
-    setLoadingPayment(true);
 
+    setLoadingPayment(true);
     try {
       const url = `${ORDER_PICKUP_BASE}/kiosk/orders/${currentOrderId}/payment-approved`;
 
@@ -716,7 +912,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
 
       setPendingPaymentContext(null);
@@ -737,8 +933,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     setErr(null);
     setIdentifyResp(null);
-    setLoadingIdentify(true);
 
+    setLoadingIdentify(true);
     try {
       const res = await fetch(identifyUrl, {
         method: "POST",
@@ -754,7 +950,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
 
       setIdentifyResp(data);
@@ -765,52 +961,53 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     }
   }
 
-  async function handleSendReceiptEmail(email) {
-    if (!currentOrderId) {
-      setEmailModalError("Pedido não encontrado.");
-      setEmailModalSuccess("");
+  function clearPrintSimulationTimers() {
+    if (printTimerRef.current) {
+      clearInterval(printTimerRef.current);
+      printTimerRef.current = null;
+    }
+
+    if (printCloseTimerRef.current) {
+      clearTimeout(printCloseTimerRef.current);
+      printCloseTimerRef.current = null;
+    }
+  }
+
+  function closePrintSimulation() {
+    clearPrintSimulationTimers();
+    setPrintModalOpen(false);
+    setPrintCountdown(10);
+    setPrintPhase("idle");
+  }
+
+  function startPrintSimulation() {
+    if (!receiptCode) {
+      setErr("Comprovante fiscal indisponível para impressão.");
       return;
     }
 
-    setSendingEmail(true);
+    clearPrintSimulationTimers();
     setErr(null);
-    setIdentifyResp(null);
-    setEmailModalError("");
-    setEmailModalSuccess("");
+    setPrintCountdown(10);
+    setPrintPhase("printing");
+    setPrintModalOpen(true);
 
-    try {
-      const res = await fetch(identifyUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          order_id: currentOrderId,
-          phone: null,
-          email,
-        }),
+    printTimerRef.current = setInterval(() => {
+      setPrintCountdown((prev) => {
+        if (prev <= 1) {
+          clearPrintSimulationTimers();
+          setPrintPhase("ready");
+
+          printCloseTimerRef.current = setTimeout(() => {
+            closePrintSimulation();
+          }, 2000);
+
+          return 0;
+        }
+
+        return prev - 1;
       });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
-      }
-
-      const successMessage =
-        data?.message || `Comprovante fiscal enviado com sucesso para ${email}.`;
-
-      setIdentifyResp(data);
-      setEmailModalSuccess(successMessage);
-      setEmailModalError("");
-    } catch (e) {
-      const msg = String(e?.message || e);
-      setEmailModalError(msg);
-      setEmailModalSuccess("");
-      setErr(msg);
-    } finally {
-      setSendingEmail(false);
-    }
+    }, 1000);
   }
 
   return (
@@ -818,8 +1015,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       <div style={headerCardStyle}>
         <h1 style={{ margin: 0 }}>Simulador KIOSK — {region}</h1>
         <div style={subtleStyle}>
-          Tela operacional usando gateway + runtime. Sem backend_sp/backend_pt e sem
-          fallback local no frontend.
+          Esta tela continua como simulador operacional de KIOSK. Agora ela busca
+          a lista de unidades no endpoint real do gateway e usa fallback local apenas se houver falha.
         </div>
       </div>
 
@@ -837,7 +1034,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
         {availableLockers.length === 0 ? (
           <div style={errorBoxStyle}>
-            {lockersError || `Nenhum locker ativo foi encontrado para a região ${region}.`}
+            Nenhum locker ativo foi encontrado para a região {region}.
           </div>
         ) : (
           <div style={fieldGridStyle}>
@@ -857,10 +1054,10 @@ export default function RegionPage({ region, mode = "kiosk" }) {
             </label>
 
             <div style={lockerSummaryCardStyle}>
-              <div><b>fonte:</b> {lockersSource}</div>
+              <div><b>fonte:</b> {lockersSource === "gateway" ? "gateway /lockers" : "fallback local"}</div>
               <div><b>locker_id:</b> {selectedLocker?.locker_id || "-"}</div>
               <div><b>site_id:</b> {selectedLocker?.site_id || "-"}</div>
-              <div><b>região:</b> {selectedLocker?.region || "-"}</div>
+              <div><b>backend_region:</b> {selectedLocker?.backend_region || "-"}</div>
               <div><b>slots:</b> {selectedLocker?.slots || "-"}</div>
               <div><b>canais:</b> {(selectedLocker?.channels || []).join(", ") || "-"}</div>
               <div>
@@ -877,8 +1074,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
-          <h2 style={h2Style}>1. Vitrine operacional do locker</h2>
-          <button onClick={() => fetchCatalogSlots(false)} disabled={catalogLoading} style={buttonSecondaryStyle}>
+          <h2 style={h2Style}>1. Vitrine KIOSK — 24 gavetas</h2>
+          <button onClick={fetchCatalogSlots} disabled={catalogLoading} style={buttonSecondaryStyle}>
             {catalogLoading ? "Atualizando..." : "Atualizar vitrine"}
           </button>
         </div>
@@ -886,8 +1083,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         <div style={infoGridStyle}>
           <div><b>Região:</b> {region}</div>
           <div><b>Locker selecionado:</b> {selectedLocker?.locker_id || "-"}</div>
-          <div><b>Runtime catálogo:</b> {runtimeCatalogSlotsUrl}</div>
-          <div><b>Runtime estado:</b> {runtimeLockerSlotsUrl}</div>
+          <div><b>Backend catálogo:</b> {backendBase}</div>
+          <div><b>Endpoint catálogo:</b> {catalogSlotsUrl}</div>
           <div><b>Polling vitrine:</b> 3s {catalogRefreshing ? "• sincronizando..." : "• ativo"}</div>
         </div>
 
@@ -960,7 +1157,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
             <label style={labelStyle}>
               Locker / Totem ID
-              <input value={totemId} onChange={(e) => setTotemId(e.target.value)} style={inputStyle} />
+              <input
+                value={totemId}
+                onChange={(e) => setTotemId(e.target.value)}
+                style={inputStyle}
+              />
             </label>
 
             <label style={labelStyle}>
@@ -1065,7 +1266,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
             {loadingCreate ? "Criando..." : "Criar pedido KIOSK"}
           </button>
 
-          {createResp ? (
+          {createResp && (
             <div style={okBoxStyle}>
               <strong>Pedido criado com sucesso</strong>
               <div style={summaryListStyle}>
@@ -1089,7 +1290,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
               <div style={messageStyle}>{createResp.message}</div>
             </div>
-          ) : null}
+          )}
         </section>
 
         <section style={cardStyle}>
@@ -1146,7 +1347,12 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           ) : null}
 
           {displayedPendingContext ? (
-            <div style={pendingCardStyle}>
+            <div
+              style={{
+                ...pendingCardStyle,
+                ...(pendingExpired ? expiredPendingCardStyle : null),
+              }}
+            >
               <strong>
                 {pendingExpired
                   ? "Pagamento pendente expirado"
@@ -1163,7 +1369,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               </div>
 
               {displayedPendingContext.instruction ? (
-                <div style={infoNoticeStyle}>{displayedPendingContext.instruction}</div>
+                <div style={infoNoticeStyle}>
+                  {displayedPendingContext.instruction}
+                </div>
               ) : null}
 
               {displayedPendingContext.qr_code_image_base64 ? (
@@ -1193,15 +1401,29 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                       <button
                         onClick={async () => {
-                          await copyText(
-                            displayedPendingContext.copy_paste_code ||
-                              displayedPendingContext.qr_code_text ||
-                              ""
-                          );
+                          try {
+                            await copyText(
+                              displayedPendingContext.copy_paste_code ||
+                                displayedPendingContext.qr_code_text ||
+                                ""
+                            );
+                            setErr(null);
+                          } catch (e) {
+                            setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                          }
                         }}
                         style={buttonSecondaryStyle}
                       >
                         Copiar código
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Ver JSON bruto
                       </button>
                     </div>
                   </div>
@@ -1209,121 +1431,420 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               ) : displayedPendingContext.qr_code_text ? (
                 <div style={pendingPaymentGridStyle}>
                   <div style={pendingQrPanelStyle}>
-                    <QRCodeCanvas value={displayedPendingContext.qr_code_text} size={180} />
+                    <QRCodeCanvas
+                      value={displayedPendingContext.qr_code_text}
+                      size={180}
+                      includeMargin={true}
+                    />
                   </div>
 
                   <div style={{ display: "grid", gap: 10 }}>
                     <label style={labelStyle}>
-                      QR / Código
+                      Código copia-e-cola
                       <textarea
                         readOnly
                         value={
                           displayedPendingContext.copy_paste_code ||
-                          displayedPendingContext.qr_code_text ||
-                          ""
+                          displayedPendingContext.qr_code_text
                         }
                         style={textAreaStyle}
                       />
                     </label>
 
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await copyText(
+                              displayedPendingContext.copy_paste_code ||
+                                displayedPendingContext.qr_code_text
+                            );
+                            setErr(null);
+                          } catch (e) {
+                            setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                          }
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Copiar código
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                        }}
+                        style={buttonSecondaryStyle}
+                      >
+                        Ver JSON bruto
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : displayedPendingContext.copy_paste_code ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <label style={labelStyle}>
+                    Código / referência
+                    <textarea
+                      readOnly
+                      value={displayedPendingContext.copy_paste_code}
+                      style={textAreaStyle}
+                    />
+                  </label>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       onClick={async () => {
-                        await copyText(
-                          displayedPendingContext.copy_paste_code ||
-                            displayedPendingContext.qr_code_text ||
-                            ""
-                        );
+                        try {
+                          await copyText(displayedPendingContext.copy_paste_code);
+                          setErr(null);
+                        } catch (e) {
+                          setErr(`Falha ao copiar código: ${String(e?.message || e)}`);
+                        }
                       }}
                       style={buttonSecondaryStyle}
                     >
-                      Copiar
+                      Copiar código
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setErr(JSON.stringify(displayedPendingContext.raw, null, 2));
+                      }}
+                      style={buttonSecondaryStyle}
+                    >
+                      Ver JSON bruto
                     </button>
                   </div>
+                </div>
+              ) : displayedPendingContext.instruction_type === "DISPLAY_QR" ? (
+                <div style={warningNoticeStyle}>
+                  O gateway indicou fluxo de QR, mas ainda não devolveu
+                  `qr_code_text` / `qr_code_image_base64` / `copy_paste_code`.
+                  Isso indica inconsistência do payload retornado.
+                </div>
+              ) : null}
+
+              {displayedPendingContext.instruction_type === "PHONE_APPROVAL" &&
+              displayedPendingContext.customer_phone ? (
+                <div style={infoNoticeStyle}>
+                  Telefone informado para aprovação: {displayedPendingContext.customer_phone}
+                </div>
+              ) : null}
+
+              {displayedPendingContext.instruction_type === "DISPLAY_REFERENCE" &&
+              displayedPendingContext.amount_cents != null ? (
+                <div style={infoNoticeStyle}>
+                  Valor associado à referência:{" "}
+                  {formatMoney(
+                    displayedPendingContext.amount_cents,
+                    region === "SP" ? "BRL" : "EUR"
+                  )}
+                </div>
+              ) : null}
+
+              {!pendingExpired ? (
+                <div style={warningNoticeStyle}>
+                  Enquanto o pagamento estiver pendente, a gaveta deve permanecer reservada.
+                  A liberação automática deve ocorrer no backend ao fim do prazo.
+                </div>
+              ) : (
+                <div style={expiredNoticeStyle}>
+                  O prazo exibido para este pagamento já expirou. A gaveta deve ser liberada
+                  automaticamente pelo backend/lifecycle. Atualize a vitrine e valide se o slot
+                  voltou para `AVAILABLE`.
+                </div>
+              )}
+
+              {!hasQrLikeContent && !displayedPendingContext.instruction ? (
+                <div style={warningNoticeStyle}>
+                  O pagamento entrou em estado pendente, mas sem dados suficientes para exibição
+                  operacional ao cliente.
                 </div>
               ) : null}
             </div>
           ) : null}
 
-          {paymentResp ? (
+          {paymentResp && (
             <div style={okBoxStyle}>
-              <strong>Pagamento confirmado</strong>
-              <pre style={jsonBoxStyle}>{JSON.stringify(paymentResp, null, 2)}</pre>
+              <strong>Pagamento aprovado</strong>
+
+              <div style={summaryListStyle}>
+                <div><b>order_id:</b> {paymentResp.order_id}</div>
+                <div><b>allocation_id:</b> {paymentResp.allocation_id}</div>
+                <div><b>slot:</b> {paymentResp.slot}</div>
+                <div><b>status:</b> {paymentResp.status}</div>
+                <div><b>payment_method:</b> {paymentResp.payment_method || "-"}</div>
+                <div><b>comprovante:</b> {receiptCode || "-"}</div>
+              </div>
+
+              {receiptCode ? (
+                <div style={{ marginTop: 16, display: "grid", gap: 16 }}>
+                  <div style={receiptTerminalBoxStyle}>
+                    <div style={receiptTerminalTitleStyle}>Comprovante fiscal</div>
+
+                    <div style={receiptCodeBigStyle}>
+                      {receiptCode}
+                    </div>
+
+                    <div style={receiptQrPanelStyle}>
+                      <QRCodeCanvas
+                        value={receiptCode}
+                        size={180}
+                        includeMargin={true}
+                      />
+                    </div>
+
+                    <div style={receiptTerminalHelpStyle}>
+                      Fotografe este código ou o QRCode para consultar o comprovante depois.
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={startPrintSimulation}
+                      style={buttonPrimaryStyle}
+                      disabled={printModalOpen}
+                    >
+                      {printModalOpen ? "Imprimindo..." : "Imprimir comprovante"}
+                    </button>
+
+                    {/*<button
+                      type="button"
+                      onClick={() =>
+                        setIdentifyResp({
+                          ok: true,
+                          message:
+                            "Informe email ou telefone abaixo para receber o comprovante depois.",
+                        })
+                      }
+                      style={buttonSecondaryStyle}
+                    >
+                      Receber por email/SMS
+                    </button> */}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEmailModalError("");
+                        setEmailModalSuccess("");
+                        setEmailModalOpen(true);
+                      }}
+                      style={buttonSecondaryStyle}
+                    >
+                      Receber por email/SMS
+                    </button>
+
+
+
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          `${ORDER_PICKUP_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                      style={buttonSecondaryStyle}
+                    >
+                      Ver JSON
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div style={messageStyle}>{paymentResp.message}</div>
             </div>
-          ) : null}
+          )}
         </section>
-      </div>
 
-      <section style={cardStyle}>
-        <h2 style={h2Style}>4. Identificação / envio de comprovante</h2>
+        <section style={cardStyle}>
+          <h2 style={h2Style}>4. Identificação opcional</h2>
 
-        <div style={fieldGridStyle}>
-          <label style={labelStyle}>
-            Telefone
-            <input
-              value={identifyForm.phone}
-              onChange={(e) => setIdentifyForm((prev) => ({ ...prev, phone: e.target.value }))}
-              style={inputStyle}
-              placeholder="+5511999999999 / +351912345678"
-            />
-          </label>
+          <div style={subtleStyle}>
+            Informe telefone ou email se desejar receber depois o código do comprovante fiscal
+            para consulta e impressão posterior. Esta etapa é opcional e não deve bloquear a operação.
+          </div>
 
-          <label style={labelStyle}>
-            Email
-            <input
-              value={identifyForm.email}
-              onChange={(e) => setIdentifyForm((prev) => ({ ...prev, email: e.target.value }))}
-              style={inputStyle}
-              placeholder="cliente@email.com"
-            />
-          </label>
-        </div>
+          <div style={fieldGridStyle}>
+            <label style={labelStyle}>
+              Telefone
+              <input
+                value={identifyForm.phone}
+                onChange={(e) =>
+                  setIdentifyForm((prev) => ({ ...prev, phone: e.target.value }))
+                }
+                style={inputStyle}
+                placeholder="+351912345678"
+              />
+            </label>
 
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <label style={labelStyle}>
+              Email
+              <input
+                value={identifyForm.email}
+                onChange={(e) =>
+                  setIdentifyForm((prev) => ({ ...prev, email: e.target.value }))
+                }
+                style={inputStyle}
+                placeholder="cliente@exemplo.com"
+              />
+            </label>
+          </div>
+
           <button
             onClick={identifyCustomer}
             disabled={loadingIdentify || !currentOrderId}
             style={buttonSecondaryStyle}
           >
-            {loadingIdentify ? "Salvando..." : "Salvar identificação"}
+            {loadingIdentify ? "Registrando..." : "Registrar identificação / receber comprovante fiscal depois"}
           </button>
 
-          <button
-            onClick={() => setEmailModalOpen(true)}
-            disabled={!currentOrderId}
-            style={buttonPrimaryStyle}
-          >
-            Enviar comprovante por email
-          </button>
+          {identifyResp && (
+            <div style={okBoxStyle}>
+              <strong>Identificação registrada</strong>
+              <div style={messageStyle}>{identifyResp.message}</div>
+            </div>
+          )}
+        </section>
+
+
+        <section style={cardStyle}>
+          <h2 style={h2Style}>Retirada por código manual</h2>
+          <div style={summaryListStyle}>
+            <ManualPickupPanel
+              region={region}
+              lockerId={selectedLockerId}
+              apiBase="/api/op"
+              onRedeemed={(data) => {
+                console.log("Retirada manual concluída:", data);
+              }}
+            />
+          </div>
+        </section>
+
+      </div>
+
+      <section style={cardStyle}>
+        <h2 style={h2Style}>Configuração desta tela</h2>
+        <div style={summaryListStyle}>
+          <div><b>mode:</b> {mode}</div>
+          <div><b>ORDER_PICKUP_BASE:</b> {ORDER_PICKUP_BASE}</div>
+          <div><b>GATEWAY_BASE:</b> {GATEWAY_BASE}</div>
+          <div><b>gatewayPaymentUrl:</b> {gatewayPaymentUrl}</div>
+          <div><b>backendBase:</b> {backendBase}</div>
+          <div><b>catalogSlotsUrl:</b> {catalogSlotsUrl}</div>
+          <div><b>createUrl:</b> {createUrl}</div>
+          <div><b>identifyUrl:</b> {identifyUrl}</div>
+          <div><b>locker selecionado:</b> {selectedLocker?.locker_id || "-"}</div>
+          <div><b>fonte dos lockers:</b> {lockersSource === "gateway" ? "gateway /lockers" : "fallback local"}</div>
         </div>
-
-        {identifyResp ? (
-          <div style={okBoxStyle}>
-            <strong>Identificação salva</strong>
-            <pre style={jsonBoxStyle}>{JSON.stringify(identifyResp, null, 2)}</pre>
-          </div>
-        ) : null}
-
-        {receiptCode ? (
-          <div style={okBoxStyle}>
-            <strong>Receipt Code</strong>
-            <div style={{ fontSize: 20, fontWeight: 800 }}>{receiptCode}</div>
-          </div>
-        ) : null}
       </section>
 
-      {err ? (
-        <section style={cardStyle}>
-          <h2 style={h2Style}>Erro</h2>
-          <pre style={errorBoxStyle}>{String(err)}</pre>
-        </section>
+
+      {printModalOpen ? (
+        <div style={printModalOverlayStyle}>
+          <div style={printModalCardStyle}>
+            <div style={printModalHeaderStyle}>
+              <div style={printModalTitleStyle}>Simulação de impressão</div>
+
+              <button
+                type="button"
+                onClick={closePrintSimulation}
+                style={printModalCloseButtonStyle}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div style={printTicketStyle}>
+              <div style={printTicketBrandStyle}>ELLAN LAB LOCKER</div>
+              <div style={printTicketLineStyle}>COMPROVANTE FISCAL</div>
+              <div style={printTicketDividerStyle} />
+
+              <div style={printTicketRowStyle}>
+                <span>Região</span>
+                <strong>{region}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Locker</span>
+                <strong>{totemId || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Pedido</span>
+                <strong>{paymentResp?.order_id || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Slot</span>
+                <strong>{paymentResp?.slot ?? "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Método</span>
+                <strong>{paymentResp?.payment_method || "-"}</strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Valor</span>
+                <strong>
+                  {selectedCatalogItem
+                    ? formatMoney(selectedCatalogItem.amount_cents, selectedCatalogItem.currency)
+                    : "-"}
+                </strong>
+              </div>
+
+              <div style={printTicketRowStyle}>
+                <span>Data/hora</span>
+                <strong>{new Date().toLocaleString(region === "SP" ? "pt-BR" : "pt-PT")}</strong>
+              </div>
+
+              <div style={printTicketDividerStyle} />
+
+              <div style={printTicketReceiptLabelStyle}>CÓDIGO DO COMPROVANTE</div>
+              <div style={printTicketReceiptCodeStyle}>{receiptCode}</div>
+
+              <div style={printTicketQrBoxStyle}>
+                <QRCodeCanvas
+                  value={receiptCode}
+                  size={120}
+                  includeMargin={true}
+                />
+              </div>
+            </div>
+
+            {printPhase === "printing" ? (
+              <div style={printStatusBoxStyle}>
+                <div style={printStatusTitleStyle}>
+                  Imprimindo comprovante...
+                </div>
+                <div style={printStatusCountdownStyle}>
+                  {printCountdown}s
+                </div>
+              </div>
+            ) : (
+              <div style={printReadyBoxStyle}>
+                RETIRE O COMPROVANTE IMPRESSO
+              </div>
+            )}
+          </div>
+        </div>
       ) : null}
 
+
+      {/* Modal para envio de email do comprovante */}
       <EmailReceiptModal
         isOpen={emailModalOpen}
         onClose={() => {
           setEmailModalOpen(false);
+          setSendingEmail(false);
           setEmailModalError("");
           setEmailModalSuccess("");
+          setIdentifyResp(null);
         }}
         onSubmit={handleSendReceiptEmail}
         receiptCode={receiptCode}
@@ -1332,35 +1853,115 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         successMessage={emailModalSuccess}
         errorMessage={emailModalError}
       />
+
+      {err && <pre style={errorBoxStyle}>{err}</pre>}
     </div>
   );
 }
 
-/* =========================
-   Styles
-========================= */
-
 const pageStyle = {
-  minHeight: "100vh",
-  background: "#0f172a",
-  color: "#f8fafc",
-  padding: 20,
+  padding: 24,
+  maxWidth: 1200,
+  margin: "0 auto",
+  fontFamily: "system-ui, sans-serif",
+  color: "#f5f7fa",
+};
+
+const gridStyle = {
   display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
   gap: 16,
+  marginTop: 16,
+  marginBottom: 16,
+};
+
+const infoGridStyle = {
+  display: "grid",
+  gap: 8,
+  fontSize: 13,
+  marginBottom: 14,
+  opacity: 0.88,
+};
+
+const slotsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 12,
+};
+
+const slotCardStyle = {
+  borderRadius: 14,
+  padding: 12,
+  textAlign: "left",
+  color: "#f5f7fa",
+  minHeight: 150,
+};
+
+const slotTopRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  marginBottom: 10,
+};
+
+const slotBadgeStyle = {
+  display: "inline-flex",
+  padding: "4px 8px",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.10)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+function miniStatusStyle(active) {
+  return {
+    display: "inline-flex",
+    padding: "4px 8px",
+    borderRadius: 999,
+    background: active ? "rgba(31,122,63,0.18)" : "rgba(179,38,30,0.18)",
+    border: active ? "1px solid rgba(31,122,63,0.38)" : "1px solid rgba(179,38,30,0.38)",
+    fontSize: 11,
+    fontWeight: 700,
+  };
+}
+
+const slotNameStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+  marginBottom: 10,
+  lineHeight: 1.3,
+};
+
+const slotMetaStyle = {
+  display: "grid",
+  gap: 6,
+  fontSize: 13,
+  opacity: 0.92,
 };
 
 const cardStyle = {
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.12)",
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.10)",
   borderRadius: 16,
-  padding: 18,
-  display: "grid",
-  gap: 14,
+  padding: 16,
+  boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
 };
 
 const headerCardStyle = {
   ...cardStyle,
-  background: "linear-gradient(135deg, rgba(27,88,131,0.32), rgba(15,23,42,0.85))",
+  marginBottom: 16,
+};
+
+const lockerSummaryCardStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  display: "grid",
+  gap: 6,
+  fontSize: 14,
 };
 
 const sectionHeaderStyle = {
@@ -1372,215 +1973,329 @@ const sectionHeaderStyle = {
 };
 
 const h2Style = {
-  margin: 0,
+  marginTop: 0,
+  marginBottom: 12,
   fontSize: 18,
-};
-
-const subtleStyle = {
-  opacity: 0.8,
-  lineHeight: 1.5,
-  fontSize: 14,
 };
 
 const fieldGridStyle = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
   gap: 12,
-};
-
-const infoGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 10,
-  fontSize: 13,
-  opacity: 0.95,
+  marginBottom: 16,
 };
 
 const labelStyle = {
   display: "grid",
-  gap: 8,
-  fontSize: 13,
-  fontWeight: 600,
+  gap: 6,
+  fontSize: 14,
 };
 
 const inputStyle = {
-  width: "100%",
-  padding: "12px 14px",
-  borderRadius: 12,
+  padding: "10px 12px",
+  borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
-  outline: "none",
+  background: "#0b0f14",
+  color: "#f5f7fa",
 };
 
 const inputStyleDisabled = {
   ...inputStyle,
-  opacity: 0.75,
-  cursor: "not-allowed",
-};
-
-const textAreaStyle = {
-  minHeight: 100,
-  width: "100%",
-  padding: 12,
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
-  resize: "vertical",
+  opacity: 0.7,
 };
 
 const buttonPrimaryStyle = {
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid rgba(27,88,131,0.44)",
-  background: "#1b5883",
-  color: "#fff",
-  fontWeight: 700,
+  padding: "10px 14px",
   cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#1f7a3f",
+  color: "white",
+  fontWeight: 600,
 };
 
 const buttonSecondaryStyle = {
-  padding: "12px 16px",
-  borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
-  fontWeight: 700,
+  padding: "10px 14px",
   cursor: "pointer",
-};
-
-const lockerSummaryCardStyle = {
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.12)",
-  padding: 14,
-  background: "rgba(255,255,255,0.04)",
-  display: "grid",
-  gap: 6,
-  fontSize: 13,
-};
-
-const slotsGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
-  gap: 12,
-};
-
-const slotCardStyle = {
-  borderRadius: 14,
-  padding: 14,
-  display: "grid",
-  gap: 10,
-  textAlign: "left",
-};
-
-const slotTopRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-};
-
-const slotBadgeStyle = {
-  fontSize: 12,
-  fontWeight: 800,
-  letterSpacing: 0.3,
-};
-
-function miniStatusStyle(isSelectable) {
-  return {
-    fontSize: 11,
-    padding: "4px 8px",
-    borderRadius: 999,
-    background: isSelectable ? "rgba(16,185,129,0.18)" : "rgba(239,68,68,0.18)",
-    color: isSelectable ? "#86efac" : "#fca5a5",
-    fontWeight: 700,
-  };
-}
-
-const slotNameStyle = {
-  fontSize: 15,
-  fontWeight: 700,
-};
-
-const slotMetaStyle = {
-  display: "grid",
-  gap: 4,
-  fontSize: 12,
-  opacity: 0.9,
-};
-
-const gridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 16,
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#1b5883",
+  color: "white",
+  fontWeight: 600,
 };
 
 const okBoxStyle = {
-  padding: 14,
-  borderRadius: 12,
-  background: "rgba(16,185,129,0.16)",
-  border: "1px solid rgba(16,185,129,0.34)",
-  display: "grid",
-  gap: 10,
-};
-
-const errorBoxStyle = {
-  padding: 14,
-  borderRadius: 12,
-  background: "rgba(239,68,68,0.16)",
-  border: "1px solid rgba(239,68,68,0.34)",
-  color: "#fecaca",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-
-const jsonBoxStyle = {
-  margin: 0,
+  marginTop: 16,
   padding: 12,
   borderRadius: 12,
-  background: "rgba(15,23,42,0.78)",
-  overflowX: "auto",
-  fontSize: 12,
-};
-
-const summaryListStyle = {
-  display: "grid",
-  gap: 4,
-  fontSize: 13,
-};
-
-const messageStyle = {
-  fontSize: 13,
-  opacity: 0.95,
+  background: "rgba(31,122,63,0.15)",
+  border: "1px solid rgba(31,122,63,0.35)",
 };
 
 const pendingCardStyle = {
-  padding: 14,
+  marginTop: 16,
+  padding: 12,
   borderRadius: 12,
-  background: "rgba(250,204,21,0.12)",
-  border: "1px solid rgba(250,204,21,0.34)",
+  background: "rgba(27,88,131,0.12)",
+  border: "1px solid rgba(27,88,131,0.35)",
   display: "grid",
   gap: 12,
 };
 
-const infoNoticeStyle = {
-  padding: 12,
-  borderRadius: 12,
-  background: "rgba(255,255,255,0.06)",
-  fontSize: 13,
+const expiredPendingCardStyle = {
+  background: "rgba(179,38,30,0.12)",
+  border: "1px solid rgba(179,38,30,0.35)",
 };
 
 const pendingPaymentGridStyle = {
   display: "grid",
-  gridTemplateColumns: "220px 1fr",
-  gap: 16,
+  gridTemplateColumns: "minmax(180px, 220px) 1fr",
+  gap: 12,
+  alignItems: "start",
 };
 
 const pendingQrPanelStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#fffff5",
   display: "grid",
   placeItems: "center",
-  padding: 16,
+};
+
+const infoNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  fontSize: 13,
+};
+
+const warningNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(199,146,0,0.14)",
+  border: "1px solid rgba(199,146,0,0.30)",
+  fontSize: 13,
+};
+
+const expiredNoticeStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(179,38,30,0.14)",
+  border: "1px solid rgba(179,38,30,0.30)",
+  fontSize: 13,
+};
+
+const textAreaStyle = {
+  minHeight: 120,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+  resize: "vertical",
+};
+
+const errorBoxStyle = {
+  background: "#2b1d1d",
+  color: "#ffb4b4",
+  padding: 12,
   borderRadius: 12,
-  background: "#fff",
+  overflow: "auto",
+};
+
+const jsonBoxStyle = {
+  marginTop: 12,
+  background: "#0b0f14",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 12,
+  padding: 12,
+  overflow: "auto",
+  fontSize: 12,
+};
+
+const subtleStyle = {
+  fontSize: 13,
+  opacity: 0.82,
+  lineHeight: 1.45,
+};
+
+const summaryListStyle = {
+  display: "grid",
+  gap: 6,
+  marginTop: 10,
+  fontSize: 14,
+};
+
+const messageStyle = {
+  marginTop: 10,
+  fontSize: 14,
+};
+
+const receiptTerminalBoxStyle = {
+  padding: 14,
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  display: "grid",
+  justifyItems: "center",
+  textAlign: "center",
+  gap: 12,
+};
+
+const receiptTerminalTitleStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const receiptCodeBigStyle = {
+  fontSize: 22,
+  fontWeight: 800,
+  letterSpacing: 1,
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.08)",
+  border: "1px dashed rgba(255,255,255,0.25)",
+  wordBreak: "break-word",
+};
+
+const receiptQrPanelStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#fffff5",
+  display: "grid",
+  placeItems: "center",
+};
+
+const receiptTerminalHelpStyle = {
+  fontSize: 13,
+  opacity: 0.85,
+  maxWidth: 320,
+  lineHeight: 1.4,
+};
+
+const printModalOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(0,0,0,0.78)",
+  display: "grid",
+  placeItems: "center",
+  zIndex: 9999,
+  padding: 24,
+};
+
+const printModalCardStyle = {
+  width: "100%",
+  maxWidth: 420,
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 18,
+  boxShadow: "0 18px 48px rgba(0,0,0,0.45)",
+  padding: 18,
+  display: "grid",
+  gap: 16,
+};
+
+const printModalHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 12,
+};
+
+const printModalTitleStyle = {
+  fontSize: 18,
+  fontWeight: 700,
+};
+
+const printModalCloseButtonStyle = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#1b5883",
+  color: "#fff",
+  cursor: "pointer",
+  fontWeight: 600,
+};
+
+const printTicketStyle = {
+  background: "#fffff5",
+  color: "#111",
+  borderRadius: 12,
+  padding: 14,
+  display: "grid",
+  gap: 8,
+  fontFamily: '"Courier New", monospace',
+  fontSize: 12,
+};
+
+const printTicketBrandStyle = {
+  textAlign: "center",
+  fontSize: 14,
+  fontWeight: 700,
+};
+
+const printTicketLineStyle = {
+  textAlign: "center",
+  fontSize: 12,
+};
+
+const printTicketDividerStyle = {
+  borderTop: "1px dashed #999",
+  margin: "4px 0",
+};
+
+const printTicketRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const printTicketReceiptLabelStyle = {
+  textAlign: "center",
+  fontSize: 11,
+  marginTop: 4,
+};
+
+const printTicketReceiptCodeStyle = {
+  textAlign: "center",
+  fontSize: 16,
+  fontWeight: 700,
+  letterSpacing: 1,
+  wordBreak: "break-word",
+};
+
+const printTicketQrBoxStyle = {
+  display: "grid",
+  placeItems: "center",
+  marginTop: 8,
+};
+
+const printStatusBoxStyle = {
+  borderRadius: 12,
+  padding: 14,
+  background: "rgba(27,88,131,0.16)",
+  border: "1px solid rgba(27,88,131,0.34)",
+  textAlign: "center",
+};
+
+const printStatusTitleStyle = {
+  fontSize: 16,
+  fontWeight: 700,
+};
+
+const printStatusCountdownStyle = {
+  marginTop: 6,
+  fontSize: 26,
+  fontWeight: 800,
+};
+
+const printReadyBoxStyle = {
+  borderRadius: 12,
+  padding: 16,
+  background: "rgba(31,122,63,0.18)",
+  border: "1px solid rgba(31,122,63,0.36)",
+  textAlign: "center",
+  fontSize: 18,
+  fontWeight: 800,
+  letterSpacing: 0.4,
 };

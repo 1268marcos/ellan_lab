@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/services/order_creation_service.py
 # 30/03/2026
+# coração do sistema
 from __future__ import annotations
 
 import logging
