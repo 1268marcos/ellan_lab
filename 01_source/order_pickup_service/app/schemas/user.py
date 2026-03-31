@@ -1,3 +1,5 @@
+# 01_source/order_pickup_service/app/schemas/user.py
+
 from __future__ import annotations
 
 from pydantic import BaseModel, EmailStr

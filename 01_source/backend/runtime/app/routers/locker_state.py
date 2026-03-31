@@ -1,6 +1,9 @@
 # 01_source/backend/runtime/app/routers/locker_state.py
+
+from __future__ import annotations
+
 """
-Objetivo
+* Objetivo
 
 Listar estado dos slots de acordo com a topologia real do locker.
 Deve criar/projetar apenas os slots realmente válidos para aquele locker.
@@ -8,7 +11,27 @@ Deve criar/projetar apenas os slots realmente válidos para aquele locker.
 Deve refletir o estado real do locker e não inventar 24 portas fixas.
 """
 
-from __future__ import annotations
+"""
+* Observação importante
+
+Neste momento, o locker_runtime_resolver.py ainda usa fallback:
+
+X-Locker-Id
+senão MACHINE_ID
+SLOT_IDS_JSON
+senão LOCKER_SLOT_COUNT
+senão 24
+
+Isso foi intencional para você conseguir subir o runtime sem travar tudo de uma vez.
+
+Mas o destino correto é:
+
+resolve_runtime_locker() -> consulta central -> topologia real do locker
+
+e aí o fallback fixo desaparece.
+"""
+
+
 
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -311,22 +334,3 @@ def set_slot_state(
         
 
 
-"""
-Observação importante
-
-Neste momento, o locker_runtime_resolver.py ainda usa fallback:
-
-X-Locker-Id
-senão MACHINE_ID
-SLOT_IDS_JSON
-senão LOCKER_SLOT_COUNT
-senão 24
-
-Isso foi intencional para você conseguir subir o runtime sem travar tudo de uma vez.
-
-Mas o destino correto é:
-
-resolve_runtime_locker() -> consulta central -> topologia real do locker
-
-e aí o fallback fixo desaparece.
-"""

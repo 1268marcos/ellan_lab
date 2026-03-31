@@ -1,10 +1,11 @@
 # novo (CRUD de lockers)
 # 01_source/order_pickup_service/app/routers/locker.py
+
+from __future__ import annotations
+
 """
 Router para gestão de Lockers (CRUD administrativo).
 """
-
-from __future__ import annotations
 
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status

@@ -1,4 +1,7 @@
 # 01_source/backend/runtime/app/routers/catalog.py
+
+from __future__ import annotations
+
 """
 Objetivo
 
@@ -16,8 +19,6 @@ deve respeitar topologia por locker
 depois pode evoluir para catálogo real por locker
 """
 
-# 01_source/backend/runtime/app/routers/catalog.py
-from __future__ import annotations
 
 from fastapi import APIRouter, Header, Request
 from typing import List

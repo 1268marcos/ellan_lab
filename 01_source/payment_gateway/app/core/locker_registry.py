@@ -1,3 +1,5 @@
+# 01_source/payment_gateway/app/core/locker_registry.py
+
 from __future__ import annotations
 
 from dataclasses import dataclass

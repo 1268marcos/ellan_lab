@@ -1,3 +1,5 @@
+# 01_source/order_pickup_service/app/schemas/pickup.py
+
 from __future__ import annotations
 
 from datetime import datetime

@@ -66,4 +66,19 @@ CREATE TABLE IF NOT EXISTS runtime_locker_features (
     updated_at                      TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS door_state (
+    machine_id   VARCHAR(120) NOT NULL,
+    door_id      INTEGER NOT NULL,
+    state        VARCHAR(40) NOT NULL,
+    product_id   VARCHAR(120),
+    updated_at   TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (machine_id, door_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_door_state_machine
+    ON door_state(machine_id);
+
+CREATE INDEX IF NOT EXISTS idx_door_state_machine_state
+    ON door_state(machine_id, state);
+
 COMMIT;

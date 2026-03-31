@@ -1,5 +1,8 @@
-# completo (com produtos)
 # 01_source/order_pickup_service/app/models/locker.py
+# completo (com produtos)
+
+from __future__ import annotations
+
 """
 Modelo completo de Lockers com suporte a:
 - Multi-região (SP, PT, ES, RJ)
@@ -8,8 +11,6 @@ Modelo completo de Lockers com suporte a:
 - Compatibilidade com produtos
 - Zonas de temperatura
 """
-
-from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional

@@ -1,10 +1,12 @@
 # novo (API schemas)
 # 01_source/order_pickup_service/app/schemas/locker.py
+
+from __future__ import annotations
+
 """
 Schemas Pydantic para API de Lockers.
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any

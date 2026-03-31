@@ -1,4 +1,7 @@
 # 01_source/backend/runtime/app/routers/hardware.py
+
+from __future__ import annotations
+
 """
 Objetivo
 
@@ -16,8 +19,6 @@ Deve publicar comando MQTT para o locker correto, usando resolução dinâmica.
 Hoje esse é um dos principais travamentos para unificação real.
 """
 
-# 01_source/backend/runtime/app/routers/hardware.py
-from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel

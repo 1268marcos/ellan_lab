@@ -1,10 +1,11 @@
 # 01_source/backend/runtime/app/core/mqtt_topics.py
+
+from __future__ import annotations
+
 """
 Responsável por gerar tópicos MQTT de forma dinâmica 
 por locker/região, em vez de depender de constantes globais por processo.
 """
-
-from __future__ import annotations
 
 
 def door_command_topic(*, region: str, locker_id: str | None = None) -> str:

@@ -1,4 +1,7 @@
 # 01_source/backend/runtime/app/core/slot_topology.py
+
+from __future__ import annotations
+
 """
 Responsabilidade
 
@@ -11,7 +14,6 @@ mapa físico por tamanho (P/M/G/XG) - tamanhos por slot
 mapeamento lógico do locker
 """
 
-from __future__ import annotations
 
 from fastapi import HTTPException
 

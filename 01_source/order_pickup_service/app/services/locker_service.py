@@ -1,11 +1,12 @@
 # completo (com validação de produtos)
 # 01_source/order_pickup_service/app/services/locker_service.py
+
+from __future__ import annotations
+
 """
 Serviço completo de validação e consulta de Lockers.
 Inclui validação de compatibilidade com produtos.
 """
-
-from __future__ import annotations
 
 from typing import List, Optional, Set, Dict, Any
 from fastapi import HTTPException, status

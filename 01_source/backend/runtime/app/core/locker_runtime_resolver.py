@@ -1,4 +1,7 @@
 # 01_source/backend/runtime/app/core/locker_runtime_resolver.py
+
+from __future__ import annotations
+
 """
 Esse arquivo é importante - Responsável por resolver, por request, a partir do X-Locker-Id:
 locker_id, region, country, timezone, machine_id físico/lógico, 
@@ -24,7 +27,7 @@ Receber X-Locker-Id e devolver um objeto resolvido com:
 
 """
 
-from __future__ import annotations
+
 
 import json
 import os

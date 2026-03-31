@@ -1,9 +1,12 @@
 # 01_source/order_pickup_service/app/models/product_locker_config.py
+
+from __future__ import annotations
+
 """
 Configuração de compatibilidade entre Produtos e Lockers.
 Define quais categorias de produtos podem ser armazenadas em cada locker.
 """
-from __future__ import annotations
+
 
 from datetime import datetime, timezone
 from typing import Optional
