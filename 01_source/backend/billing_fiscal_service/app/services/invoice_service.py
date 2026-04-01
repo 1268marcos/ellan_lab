@@ -15,28 +15,133 @@ from app.utils.id_generator import generate_invoice_id
 def _country_from_region(region: str | None) -> str:
     normalized = str(region or "").strip().upper()
     mapping = {
+
+        # Brasil e estados
         "SP": "BR",
+        "RJ": "BR",
+        "MG": "BR",
+        "SC": "BR",
+        "PR": "BR",
+        "RS": "BR",
+        "RN": "BR",
+        "BA": "BR",
+        "PE": "BR",
+        "AM": "BR",
         "BR": "BR",
+        
+        # Portugal
         "PT": "PT",
+        
+        # Espanha
         "ES": "ES",
+        
+        # América Latina
+        "AR": "AR",  # Argentina
+        "CL": "CL",  # Chile
+        "CO": "CO",  # Colômbia
+        "MX": "MX",  # México
+        "UY": "UY",  # Uruguai
+        "PY": "PY",  # Paraguai
+        "PE": "PE",  # Peru
+        
+        # Europa
+        "FR": "FR",  # França
+        "IT": "IT",  # Itália
+        "DE": "DE",  # Alemanha
+        "NL": "NL",  # Holanda
+        "BE": "BE",  # Bélgica
+        "GB": "GB",  # Reino Unido
+        "IE": "IE",  # Irlanda
+        
+        # América do Norte
+        "US": "US",  # Estados Unidos
+        "CA": "CA",  # Canadá
+        
+        # África
+        "AO": "AO",  # Angola
+        "MZ": "MZ",  # Moçambique
+        "CV": "CV",  # Cabo Verde
+
+        # Ásia
+        "JP": "JP",
+
     }
     return mapping.get(normalized, "BR")
 
 
 def _currency_from_country(country: str) -> str:
     mapping = {
-        "BR": "BRL",
-        "PT": "EUR",
-        "ES": "EUR",
+
+        # América Latina
+        "BR": "BRL",  # Real Brasileiro
+        "AR": "ARS",  # Peso Argentino
+        "CL": "CLP",  # Peso Chileno
+        "CO": "COP",  # Peso Colombiano
+        "MX": "MXN",  # Peso Mexicano
+        "UY": "UYU",  # Peso Uruguaio
+        "PY": "PYG",  # Guarani Paraguaio
+        "PE": "PEN",  # Sol Peruano
+        
+        # Europa (Euro)
+        "PT": "EUR",  # Euro - Portugal
+        "ES": "EUR",  # Euro - Espanha
+        "FR": "EUR",  # Euro - França
+        "IT": "EUR",  # Euro - Itália
+        "DE": "EUR",  # Euro - Alemanha
+        "NL": "EUR",  # Euro - Holanda
+        "BE": "EUR",  # Euro - Bélgica
+        "IE": "EUR",  # Euro - Irlanda
+        
+        # Outros países europeus
+        "GB": "GBP",  # Libra Esterlina - Reino Unido
+        
+        # América do Norte
+        "US": "USD",  # Dólar Americano
+        "CA": "CAD",  # Dólar Canadense
+        
+        # África
+        "AO": "AOA",  # Kwanza Angolano
+        "MZ": "MZN",  # Metical Moçambicano
+        "CV": "CVE",  # Escudo Cabo-Verdiano
+
+        # Ásia
+        "JP": "YEN",
+
     }
     return mapping.get(country, "BRL")
 
 
 def _invoice_type_from_country(country: str) -> str:
     mapping = {
-        "BR": "NFE",
-        "PT": "SAFT",
-        "ES": "FACTURAE",
+
+        # América Latina
+        "BR": "NFE",        # Nota Fiscal Eletrônica - Brasil
+        "AR": "FCE",        # Factura de Crédito Electrónica - Argentina
+        "CL": "DTE",        # Documento Tributario Electrónico - Chile
+        "CO": "FEL",        # Factura Electrónica - Colômbia
+        "MX": "CFDI",       # Comprobante Fiscal Digital por Internet - México
+        "UY": "FCE",        # Factura Electrónica - Uruguai
+        "PY": "FEL",        # Factura Electrónica - Paraguai
+        "PE": "FEL",        # Factura Electrónica - Peru
+        
+        # Europa (modelos de faturação)
+        "PT": "SAFT",       # SAF-T (Standard Audit File for Tax) - Portugal
+        "ES": "FACTURAE",   # FacturaE - Espanha
+        "FR": "FACTURE",    # Facture électronique - França
+        "IT": "FATTURA",    # Fattura Elettronica - Itália
+        "DE": "XREchnung",  # XRechnung - Alemanha
+        "NL": "UBL",        # UBL Invoice - Holanda
+        "BE": "UBL",        # UBL Invoice - Bélgica
+        "IE": "UBL",        # UBL Invoice - Irlanda
+        
+        # Outros países
+        "GB": "INVOICE",    # E-invoice - Reino Unido
+        "US": "INVOICE",    # Invoice - EUA
+        "CA": "INVOICE",    # Invoice - Canadá
+        "AO": "FATURA",     # Fatura Electrónica - Angola
+        "MZ": "FATURA",     # Fatura Electrónica - Moçambique
+        "CV": "FATURA",     # Fatura Electrónica - Cabo Verde
+
     }
     return mapping.get(country, "NFE")
 
