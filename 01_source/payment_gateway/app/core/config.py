@@ -1,4 +1,5 @@
 # 01_source/payment_gateway/app/core/config.py
+# 01/04/2026 v2
 import json
 import os
 from functools import cached_property
@@ -7,10 +8,25 @@ from typing import Any, Dict, Optional
 
 class Settings:
     # ------------------------------------------------------------------
-    # Backends regionais
+    # Runtime (fonte única para lockers)
     # ------------------------------------------------------------------
-    BACKEND_SP: str = os.getenv("BACKEND_SP", "http://backend_sp:8000")
-    BACKEND_PT: str = os.getenv("BACKEND_PT", "http://backend_pt:8000")
+    RUNTIME_BASE_URL: str = os.getenv(
+        "RUNTIME_BASE_URL",
+        os.getenv("LOCKER_RUNTIME_INTERNAL", "http://backend_runtime:8000"),
+    ).rstrip("/")
+
+    INTERNAL_SERVICE_TOKEN: Optional[str] = (
+        os.getenv("INTERNAL_SERVICE_TOKEN")
+        or os.getenv("INTERNAL_TOKEN")
+        or os.getenv("ORDER_INTERNAL_TOKEN")
+    )
+
+    # ------------------------------------------------------------------
+    # Compatibilidade temporária com imports antigos de backend regional
+    # NÃO usar para resolução de lockers novos.
+    # ------------------------------------------------------------------
+    BACKEND_SP: str = os.getenv("BACKEND_SP", RUNTIME_BASE_URL)
+    BACKEND_PT: str = os.getenv("BACKEND_PT", RUNTIME_BASE_URL)
 
     BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "")
     BACKEND_PT_PATH: str = os.getenv("BACKEND_PT_PATH", "")
@@ -30,12 +46,17 @@ class Settings:
     # ------------------------------------------------------------------
     # SQLite
     # ------------------------------------------------------------------
-    SQLITE_PATH: str = os.getenv("GATEWAY_SQLITE_PATH", "/data/sqlite/gateway/events.db")
+    SQLITE_PATH: str = os.getenv(
+        "GATEWAY_SQLITE_PATH",
+        "/data/sqlite/gateway/events.db",
+    )
 
     # ------------------------------------------------------------------
     # Anti-fraude / auditoria
     # ------------------------------------------------------------------
-    ANTIFRAUD_ACTIVE_PEPPER_VERSION: str = os.getenv("ANTIFRAUD_ACTIVE_PEPPER_VERSION", "v1")
+    ANTIFRAUD_ACTIVE_PEPPER_VERSION: str = os.getenv(
+        "ANTIFRAUD_ACTIVE_PEPPER_VERSION", "v1"
+    )
     ANTIFRAUD_PEPPER_V1: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V1")
     ANTIFRAUD_PEPPER_V2: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V2")
     LOG_HASH_SALT: Optional[str] = os.getenv("LOG_HASH_SALT")
@@ -57,7 +78,9 @@ class Settings:
     GATEWAY_LOG_DIR: str = os.getenv("GATEWAY_LOG_DIR", "/logs")
 
     # ------------------------------------------------------------------
-    # Compatibilidade legada
+    # Compatibilidade legada temporária
+    # Manter por enquanto para não quebrar imports antigos.
+    # Não usar para novas decisões arquiteturais.
     # ------------------------------------------------------------------
     DEFAULT_LOCKER_ID: Optional[str] = (
         os.getenv("DEFAULT_LOCKER_ID")
@@ -75,9 +98,6 @@ class Settings:
         or os.getenv("MACHINE_ID_PT")
     )
 
-    # ------------------------------------------------------------------
-    # Multi-locker registry
-    # ------------------------------------------------------------------
     LOCKER_REGISTRY_JSON: str = os.getenv("LOCKER_REGISTRY_JSON", "").strip()
 
     @property
@@ -113,8 +133,9 @@ class Settings:
     @cached_property
     def locker_registry(self) -> Dict[str, Dict[str, Any]]:
         """
-        Carrega o registry de lockers a partir de LOCKER_REGISTRY_JSON.
-        Deve ser um objeto JSON com locker_id -> config.
+        Compatibilidade temporária:
+        mantém parsing de LOCKER_REGISTRY_JSON para evitar quebra em imports antigos.
+        Não usar para novos fluxos; runtime é a fonte única.
         """
         raw = self.LOCKER_REGISTRY_JSON
         if not raw:
@@ -134,7 +155,9 @@ class Settings:
             if not key:
                 raise RuntimeError("LOCKER_REGISTRY_JSON contém locker_id vazio.")
             if not isinstance(cfg, dict):
-                raise RuntimeError(f"Configuração do locker {key} deve ser um objeto JSON.")
+                raise RuntimeError(
+                    f"Configuração do locker {key} deve ser um objeto JSON."
+                )
             normalized[key] = cfg
 
         return normalized
@@ -155,7 +178,12 @@ class Settings:
         cfg = self.get_locker_config(locker_id)
         if not cfg:
             return None
-        return (cfg.get("backend_region") or cfg.get("region") or "").strip().upper() or None
+        return (
+            (cfg.get("backend_region") or cfg.get("region") or "")
+            .strip()
+            .upper()
+            or None
+        )
 
     def get_lockers_by_region(self, region: str) -> Dict[str, Dict[str, Any]]:
         reg = (region or "").strip().upper()
@@ -188,7 +216,9 @@ class Settings:
 
 settings = Settings()
 
+# ------------------------------------------------------------------
 # Compatibilidade com imports antigos
+# ------------------------------------------------------------------
 SQLITE_PATH = settings.SQLITE_PATH
 IDEMPOTENCY_TTL_SEC = settings.IDEMPOTENCY_TTL_SEC
 DEVICE_FP_VERSION = settings.DEVICE_FP_VERSION
@@ -199,8 +229,13 @@ LOG_HASH_SALT = settings.LOG_HASH_SALT
 BACKEND_SP = settings.BACKEND_SP
 BACKEND_PT = settings.BACKEND_PT
 REGIONAL_BACKENDS = settings.REGIONAL_BACKENDS
+REGIONAL_PATHS = settings.REGIONAL_PATHS
+
 REDIS_HOST = settings.REDIS_HOST
+REDIS_PORT = settings.REDIS_PORT
 MQTT_HOST = settings.MQTT_HOST
+MQTT_PORT = settings.MQTT_PORT
+
 ANTIFRAUD_ACTIVE_PEPPER_VERSION = settings.ANTIFRAUD_ACTIVE_PEPPER_VERSION
 ANTIFRAUD_PEPPER_V1 = settings.ANTIFRAUD_PEPPER_V1
 ANTIFRAUD_PEPPER_V2 = settings.ANTIFRAUD_PEPPER_V2

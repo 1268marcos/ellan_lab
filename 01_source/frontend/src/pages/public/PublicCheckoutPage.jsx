@@ -96,6 +96,9 @@ function formatMoney(cents, currency, locale = undefined) {
 function paymentMethodLabel(method) {
   const labels = {
     PIX: "PIX",
+    CARTAO_CREDITO: "Cartão de Crédito",
+    CARTAO_DEBITO: "Cartão de Débito",
+    CARTAO_PRESENTE: "Cartão Presente",
     CARTAO: "Cartão",
     MBWAY: "MB WAY",
     MULTIBANCO_REFERENCE: "Referência Multibanco",
@@ -114,6 +117,20 @@ function walletProviderForMethod(method) {
     MERCADO_PAGO_WALLET: "mercadoPago",
   };
   return providers[method] || undefined;
+}
+
+function gatewayMethodForUiMethod(method) {
+  if (method === "CARTAO_CREDITO") return "CARTAO";
+  if (method === "CARTAO_DEBITO") return "CARTAO";
+  if (method === "CARTAO_PRESENTE") return "CARTAO_PRESENTE";
+  return method;
+}
+
+function cardTypeForUiMethod(method) {
+  if (method === "CARTAO_CREDITO") return "creditCard";
+  if (method === "CARTAO_DEBITO") return "debitCard";
+  if (method === "CARTAO_PRESENTE") return "giftCard";
+  return null;
 }
 
 function getOrCreateDeviceFingerprint() {
@@ -225,7 +242,7 @@ export default function PublicCheckoutPage() {
   const [lockerError, setLockerError] = useState("");
 
   const [paymentMethod, setPaymentMethod] = useState("");
-  const [cardType, setCardType] = useState("creditCard");
+  // const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
 
   const [submitting, setSubmitting] = useState(false);
@@ -368,16 +385,19 @@ export default function PublicCheckoutPage() {
     setSubmitError("");
     setCurrentStep(2);
 
+    const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
+    const mappedCardType = cardTypeForUiMethod(paymentMethod);
+
     const payload = {
       region,
       sku_id: skuId,
       totem_id: lockerId,
-      payment_method: paymentMethod,
+      payment_method: mappedPaymentMethod,
       desired_slot: slot,
     };
 
-    if (paymentMethod === "CARTAO") {
-      payload.card_type = cardType;
+    if (mappedCardType) {
+      payload.card_type = mappedCardType;
     }
 
     if (paymentMethod === "MBWAY") {
@@ -595,20 +615,7 @@ export default function PublicCheckoutPage() {
                 </select>
               </label>
 
-              {paymentMethod === "CARTAO" && (
-                <label style={labelStyle}>
-                  Tipo do cartão
-                  <select
-                    value={cardType}
-                    onChange={(e) => setCardType(e.target.value)}
-                    style={inputStyle}
-                    disabled={submitting}
-                  >
-                    <option value="creditCard">Crédito</option>
-                    <option value="debitCard">Débito</option>
-                  </select>
-                </label>
-              )}
+
 
               {paymentMethod === "MBWAY" && (
                 <label style={labelStyle}>
@@ -892,8 +899,8 @@ const labelStyle = {
 const inputStyle = {
   padding: "12px 14px",
   borderRadius: 10,
-  border: "1px solid #e2e8f0",
-  background: "#f7fafc",
+  border: "1px solid #cdb5e0",
+  background: "#ffffff",
   color: "#1a202c",
   fontSize: 15,
   outline: "none",

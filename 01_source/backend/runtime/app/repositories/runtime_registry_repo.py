@@ -81,7 +81,8 @@ def _read_runtime_locker_from_db(locker_id: str) -> dict[str, Any]:
                     mqtt_region,
                     mqtt_locker_id,
                     topology_version,
-                    slot_count_total
+                    slot_count_total,
+                    payment_methods_json
                 FROM runtime_lockers
                 WHERE locker_id = %s
                 """,
@@ -158,6 +159,7 @@ def _read_runtime_locker_from_db(locker_id: str) -> dict[str, Any]:
                 "mqtt_region": str(locker["mqtt_region"]),
                 "mqtt_locker_id": str(locker["mqtt_locker_id"]),
                 "topology_version": int(locker["topology_version"]),
+                "payment_methods": list(locker.get("payment_methods_json") or []),
                 "slot_count_total": int(locker["slot_count_total"]),
                 "slot_ids": slot_ids,
                 "slots": [
@@ -264,6 +266,7 @@ def list_runtime_lockers() -> list[dict[str, Any]]:
                     mqtt_region,
                     mqtt_locker_id,
                     topology_version,
+                    payment_methods_json,
                     slot_count_total
                 FROM runtime_lockers
                 WHERE active = TRUE
@@ -290,6 +293,7 @@ def list_runtime_lockers() -> list[dict[str, Any]]:
                     "mqtt_region": str(row["mqtt_region"]),
                     "mqtt_locker_id": str(row["mqtt_locker_id"]),
                     "topology_version": int(row["topology_version"]),
+                    "payment_methods": list(row.get("payment_methods_json") or []),
                     "slot_count_total": int(row["slot_count_total"]),
                 }
                 for row in rows

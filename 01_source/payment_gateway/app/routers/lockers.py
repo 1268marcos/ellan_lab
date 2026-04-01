@@ -73,7 +73,11 @@ def _to_public_summary(item: dict) -> dict:
         "backend_region": str(item.get("region") or "").strip().upper(),
         "slots": int(item.get("slot_count_total") or item.get("slots_count") or item.get("slots") or 0),
         "channels": list(item.get("allowed_channels") or ["ONLINE", "KIOSK"]),
-        "payment_methods": list(item.get("allowed_payment_methods") or []),
+        "payment_methods": list(
+            item.get("payment_methods")
+            or item.get("allowed_payment_methods")
+            or []
+        ),
         "active": bool(item.get("active", False)),
         "address": _safe_address_from_runtime(item),
     }

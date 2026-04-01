@@ -19,7 +19,6 @@ const initialIdentify = {
 };
 
 const initialPaymentExtras = {
-  cardType: "",
   customerPhone: "",
 };
 
@@ -84,6 +83,38 @@ function getDefaultPaymentMethod(locker, region) {
   if (methods.length > 0) return methods[0];
   return region === "PT" ? "MBWAY" : "PIX";
 }
+
+function paymentMethodLabel(method) {
+  const labels = {
+    PIX: "PIX",
+    CARTAO_CREDITO: "Cartão de Crédito",
+    CARTAO_DEBITO: "Cartão de Débito",
+    CARTAO_PRESENTE: "Cartão Presente",
+    CARTAO: "Cartão",
+    MBWAY: "MB WAY",
+    MULTIBANCO_REFERENCE: "Referência Multibanco",
+    NFC: "NFC",
+    APPLE_PAY: "Apple Pay",
+    GOOGLE_PAY: "Google Pay",
+    MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
+  };
+  return labels[method] || method || "-";
+}
+
+function gatewayMethodForUiMethod(method) {
+  if (method === "CARTAO_CREDITO") return "CARTAO";
+  if (method === "CARTAO_DEBITO") return "CARTAO";
+  if (method === "CARTAO_PRESENTE") return "CARTAO_PRESENTE";
+  return method;
+}
+
+function cardTypeForUiMethod(method) {
+  if (method === "CARTAO_CREDITO") return "creditCard";
+  if (method === "CARTAO_DEBITO") return "debitCard";
+  if (method === "CARTAO_PRESENTE") return "giftCard";
+  return null;
+}
+
 
 function formatAddress(locker) {
   if (!locker) return "-";
@@ -361,10 +392,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setPaymentExtras((prev) => {
       const next = { ...prev };
 
-      if (paymentMethod !== "CARTAO") {
-        next.cardType = "";
-      }
-
       if (paymentMethod !== "MBWAY") {
         next.customerPhone = "";
       }
@@ -565,13 +592,16 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     setLoadingCreate(true);
     try {
+      const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
+      const mappedCardType = cardTypeForUiMethod(paymentMethod);
+
       const payload = {
         region,
         totem_id: totemId,
         sku_id: selectedCatalogItem.sku_id,
         desired_slot: Number(selectedCatalogItem.slot),
-        payment_method: paymentMethod,
-        card_type: paymentMethod === "CARTAO" ? paymentExtras.cardType : undefined,
+        payment_method: mappedPaymentMethod,
+        card_type: mappedCardType || undefined,
         customer_phone:
           paymentMethod === "MBWAY" ? paymentExtras.customerPhone.trim() : undefined,
       };
@@ -615,10 +645,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       return;
     }
 
-    if (paymentMethod === "CARTAO" && !paymentExtras.cardType) {
-      setErr("Escolha se o cartão é crédito ou débito.");
-      return;
-    }
+    const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
     if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
       setErr("Informe o telefone para o pagamento MB WAY.");
@@ -632,19 +659,22 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     setLoadingGatewayPayment(true);
     try {
+      const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
+      const mappedCardType = cardTypeForUiMethod(paymentMethod);
+
       const payload = {
         regiao: region,
         canal: "KIOSK",
-        metodo: paymentMethod,
+        metodo: mappedPaymentMethod,
         valor: Number((Number(selectedCatalogItem.amount_cents || 0) / 100).toFixed(2)),
         porta: Number(selectedCatalogItem.slot),
         locker_id: totemId,
         order_id: currentOrderId,
       };
 
-      if (paymentMethod === "CARTAO") {
-        payload.card_type = paymentExtras.cardType;
-      }
+      if (mappedCardType) {
+        payload.card_type = mappedCardType;
+      }      
 
       if (paymentMethod === "MBWAY") {
         payload.customer_phone = paymentExtras.customerPhone.trim();
@@ -1016,32 +1046,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               >
                 {allowedPaymentMethods.map((method) => (
                   <option key={method} value={method}>
-                    {method === "CARTAO"
-                      ? "CARTÃO"
-                      : method === "MULTIBANCO_REFERENCE"
-                        ? "REFERÊNCIA MULTIBANCO"
-                        : method}
+                    {paymentMethodLabel(method)}
                   </option>
                 ))}
               </select>
             </label>
-
-            {paymentMethod === "CARTAO" ? (
-              <label style={labelStyle}>
-                Tipo do cartão
-                <select
-                  value={paymentExtras.cardType}
-                  onChange={(e) =>
-                    setPaymentExtras((prev) => ({ ...prev, cardType: e.target.value }))
-                  }
-                  style={inputStyle}
-                >
-                  <option value="">Selecione</option>
-                  <option value="creditCard">Crédito</option>
-                  <option value="debitCard">Débito</option>
-                </select>
-              </label>
-            ) : null}
 
             {paymentMethod === "MBWAY" ? (
               <label style={labelStyle}>
@@ -1407,9 +1416,9 @@ const inputStyle = {
   width: "100%",
   padding: "12px 14px",
   borderRadius: 12,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "rgba(255,255,255,0.08)",
-  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.22)",
+  background: "#ffffff",
+  color: "#0f172a",
   outline: "none",
 };
 

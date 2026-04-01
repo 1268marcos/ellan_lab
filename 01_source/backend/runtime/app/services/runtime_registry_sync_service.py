@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import json
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
@@ -184,6 +185,34 @@ def _fetch_central_slot_configs(
     return out
 
 
+def _fetch_central_payment_methods(
+    conn,
+    locker_ids: list[str],
+) -> dict[str, list[str]]:
+    if not locker_ids:
+        return {}
+
+    sql = """
+        SELECT
+            pm.locker_id,
+            pm.method
+        FROM locker_payment_methods pm
+        WHERE pm.locker_id = ANY(%s)
+          AND pm.is_active = TRUE
+        ORDER BY pm.locker_id, pm.method
+    """
+
+    with conn.cursor() as cur:
+        cur.execute(sql, (locker_ids,))
+        rows = cur.fetchall()
+
+    grouped: dict[str, list[str]] = {}
+    for row in rows:
+        grouped.setdefault(str(row["locker_id"]), []).append(str(row["method"]).upper())
+
+    return grouped
+
+
 def _group_slot_configs_by_locker(
     slot_configs: list[CentralSlotConfigRow],
 ) -> dict[str, list[CentralSlotConfigRow]]:
@@ -241,6 +270,7 @@ def _upsert_runtime_locker(
     *,
     locker: CentralLockerRow,
     slot_count_total: int,
+    payment_methods: list[str],
 ) -> None:
     with conn.cursor() as cur:
         cur.execute(
@@ -260,10 +290,11 @@ def _upsert_runtime_locker(
                 mqtt_region,
                 mqtt_locker_id,
                 topology_version,
-                slot_count_total
+                slot_count_total,
+                payment_methods_json
             )
             VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (locker_id)
             DO UPDATE SET
@@ -281,6 +312,7 @@ def _upsert_runtime_locker(
                 mqtt_locker_id = EXCLUDED.mqtt_locker_id,
                 topology_version = runtime_lockers.topology_version + 1,
                 slot_count_total = EXCLUDED.slot_count_total,
+                payment_methods_json = EXCLUDED.payment_methods_json,
                 updated_at = NOW()
             """,
             (
@@ -299,6 +331,7 @@ def _upsert_runtime_locker(
                 locker.locker_id,          # mqtt_locker_id
                 1,
                 slot_count_total,
+                json.dumps(payment_methods),
             ),
         )
 
@@ -379,6 +412,8 @@ def sync_runtime_registry_from_central(
             slot_configs = _fetch_central_slot_configs(conn, locker_ids)
             slot_cfg_by_locker = _group_slot_configs_by_locker(slot_configs)
 
+            payment_methods_by_locker = _fetch_central_payment_methods(conn, locker_ids)
+
             lockers_processed = 0
             slots_generated_total = 0
             sync_details: list[dict[str, Any]] = []
@@ -410,10 +445,13 @@ def sync_runtime_registry_from_central(
                         ),
                     )
 
+                payment_methods = payment_methods_by_locker.get(locker.locker_id, [])
+
                 _upsert_runtime_locker(
                     conn,
                     locker=locker,
                     slot_count_total=slot_count_total,
+                    payment_methods=payment_methods,
                 )
 
                 _replace_runtime_locker_slots(
@@ -431,6 +469,7 @@ def sync_runtime_registry_from_central(
                         "region": locker.region,
                         "country": locker.country,
                         "active": locker.active,
+                        "payment_methods": payment_methods,
                         "slot_count_total": slot_count_total,
                         "slot_sizes": [
                             {

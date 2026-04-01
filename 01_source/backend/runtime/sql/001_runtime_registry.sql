@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS runtime_lockers (
     topology_version        INTEGER NOT NULL DEFAULT 1,
     slot_count_total        INTEGER NOT NULL,
 
+    payment_methods_json    JSONB NOT NULL DEFAULT '[]'::jsonb,
+
     created_at              TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at              TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -80,5 +82,86 @@ CREATE INDEX IF NOT EXISTS idx_door_state_machine
 
 CREATE INDEX IF NOT EXISTS idx_door_state_machine_state
     ON door_state(machine_id, state);
+
+-- 01/04/2026
+-- ===================================================================
+-- Runtime Registry Schema
+-- Version: 001
+-- Description: Core tables for locker payment methods and runtime configuration
+-- ===================================================================
+
+-- Tabela: locker_payment_methods
+-- Descrição: Define os métodos de pagamento disponíveis por locker
+-- ===================================================================
+CREATE TABLE IF NOT EXISTS locker_payment_methods (
+    locker_id VARCHAR(120) NOT NULL REFERENCES lockers(id) ON DELETE CASCADE,
+    method VARCHAR(64) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (locker_id, method)
+);
+
+-- Índices para locker_payment_methods
+-- Índice para busca por locker (consultas frequentes)
+CREATE INDEX IF NOT EXISTS idx_locker_payment_methods_locker_id 
+ON locker_payment_methods(locker_id);
+
+-- Índice para busca por método de pagamento ativo
+CREATE INDEX IF NOT EXISTS idx_locker_payment_methods_active 
+ON locker_payment_methods(is_active) 
+WHERE is_active = TRUE;
+
+-- Índice composto para consultas que filtram por locker e status ativo
+CREATE INDEX IF NOT EXISTS idx_locker_payment_methods_locker_active 
+ON locker_payment_methods(locker_id, is_active) 
+WHERE is_active = TRUE;
+
+-- Índice para ordenação por data de criação/atualização
+CREATE INDEX IF NOT EXISTS idx_locker_payment_methods_created_at 
+ON locker_payment_methods(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_locker_payment_methods_updated_at 
+ON locker_payment_methods(updated_at DESC);
+
+-- ===================================================================
+-- Função para atualizar automaticamente o updated_at
+-- ===================================================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger para atualizar updated_at automaticamente
+DROP TRIGGER IF EXISTS update_locker_payment_methods_updated_at 
+ON locker_payment_methods;
+
+CREATE TRIGGER update_locker_payment_methods_updated_at
+    BEFORE UPDATE ON locker_payment_methods
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- ===================================================================
+-- Comentários para documentação
+-- ===================================================================
+COMMENT ON TABLE locker_payment_methods IS 'Métodos de pagamento disponíveis por locker';
+COMMENT ON COLUMN locker_payment_methods.locker_id IS 'ID do locker (referencia lockers.id)';
+COMMENT ON COLUMN locker_payment_methods.method IS 'Método de pagamento (PIX, NFC, CARTAO_CREDITO, etc)';
+COMMENT ON COLUMN locker_payment_methods.is_active IS 'Indica se o método está ativo para o locker';
+COMMENT ON COLUMN locker_payment_methods.created_at IS 'Data de criação do registro';
+COMMENT ON COLUMN locker_payment_methods.updated_at IS 'Data da última atualização';
+
+-- ===================================================================
+-- Estatísticas para otimização do planner
+-- ===================================================================
+ANALYZE locker_payment_methods;
+
+
+
+
+
 
 COMMIT;
