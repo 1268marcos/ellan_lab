@@ -122,7 +122,7 @@ function walletProviderForMethod(method) {
 function gatewayMethodForUiMethod(method) {
   if (method === "CARTAO_CREDITO") return "CARTAO";
   if (method === "CARTAO_DEBITO") return "CARTAO";
-  if (method === "CARTAO_PRESENTE") return "CARTAO_PRESENTE";
+  if (method === "CARTAO_PRESENTE") return "CARTAO";
   return method;
 }
 

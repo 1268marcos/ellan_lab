@@ -172,6 +172,7 @@ def create_order_core(
         region=region,
         channel="ONLINE",
         payment_method=payment_method_value,
+        card_type=card_type_value,
     )
 
     # =========================

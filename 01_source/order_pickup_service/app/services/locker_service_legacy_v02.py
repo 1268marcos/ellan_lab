@@ -1,3 +1,4 @@
+# não está completo (sem validação de produtos)
 # 01_source/order_pickup_service/app/services/locker_service.py
 
 from __future__ import annotations
@@ -34,36 +35,24 @@ def _normalize_methods(methods: list[str]) -> list[str]:
     return [str(m).strip().upper() for m in methods or []]
 
 
-def _map_payment_method(method: str, card_type: str | None = None) -> list[str]:
+def _map_payment_method(method: str) -> list[str]:
     """
-    Compatibilidade de domínio sem usar CARD/CASH.
-
-    O runtime/gateway expõe:
-    - CARTAO_CREDITO
-    - CARTAO_DEBITO
-    - CARTAO_PRESENTE
-    - NFC
-    - PIX
-    ...
-
-    O order_pickup_service ainda usa internamente:
-    - payment_method = CARTAO
-    - card_type = creditCard / debitCard / giftCard
+    Retorna possíveis equivalências para compatibilidade entre
+    frontend moderno e runtime legado.
     """
 
     m = str(method or "").strip().upper()
-    ct = str(card_type or "").strip()
 
-    if m == "CARTAO":
-        if ct == "creditCard":
-            return ["CARTAO_CREDITO"]
-        if ct == "debitCard":
-            return ["CARTAO_DEBITO"]
-        if ct == "giftCard":
-            return ["CARTAO_PRESENTE"]
-        return ["CARTAO_CREDITO", "CARTAO_DEBITO", "CARTAO_PRESENTE"]
+    mapping = {
+        "CARTAO": ["CARD"],
+        "CARTAO_CREDITO": ["CARD"],
+        "CARTAO_DEBITO": ["CARD"],
+        "CARTAO_PRESENTE": ["CARD"],
+        "NFC": ["NFC"],  # mantém direto
+        "PIX": ["PIX"],
+    }
 
-    return [m]
+    return mapping.get(m, [m])
 
 
 def validate_locker_for_order(
@@ -73,7 +62,6 @@ def validate_locker_for_order(
     region: str,
     channel: str,
     payment_method: str,
-    card_type: str | None = None,
 ) -> dict:
 
     lockers = _get_runtime_lockers(region)
@@ -93,7 +81,11 @@ def validate_locker_for_order(
             },
         )
 
+    # =========================
+    # CHANNEL VALIDATION
+    # =========================
     channels = _normalize_methods(locker.get("channels"))
+
     if channel not in channels:
         raise HTTPException(
             status_code=409,
@@ -104,8 +96,12 @@ def validate_locker_for_order(
             },
         )
 
+    # =========================
+    # PAYMENT VALIDATION (🔥 FIX AQUI)
+    # =========================
     allowed_methods = _normalize_methods(locker.get("payment_methods"))
-    normalized_inputs = _map_payment_method(payment_method, card_type=card_type)
+
+    normalized_inputs = _map_payment_method(payment_method)
 
     if not any(m in allowed_methods for m in normalized_inputs):
         raise HTTPException(

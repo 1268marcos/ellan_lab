@@ -36,6 +36,7 @@ class PaymentMethod(str, enum.Enum):
 class CardType(str, enum.Enum):
     CREDIT = "creditCard"
     DEBIT = "debitCard"
+    GIFT = "giftCard"
 
 
 class PaymentStatus(str, enum.Enum):
