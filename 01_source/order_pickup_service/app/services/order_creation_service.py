@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import logging
-import uuid
 import re
+import uuid
 
 from dataclasses import dataclass
 
@@ -118,21 +118,60 @@ def validate_locker_id_format(locker_id: str) -> str:
     )
 
 
+def _extract_pricing_amount_cents(pricing: dict) -> int:
+    amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
+
+    if amount_cents is None:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "PRICING_INVALID_RESPONSE",
+                "message": "pricing missing amount_cents/price_cents",
+            },
+        )
+
+    try:
+        normalized = int(amount_cents)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "PRICING_INVALID_AMOUNT",
+                "message": "pricing amount is invalid",
+                "amount_cents": amount_cents,
+            },
+        ) from exc
+
+    if normalized <= 0:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "PRICING_INVALID_AMOUNT",
+                "message": "pricing amount must be > 0",
+                "amount_cents": normalized,
+            },
+        )
+
+    return normalized
+
+
 def compensate_failed_online_creation(
     *,
     db: Session,
     order: Order,
     allocation: Allocation,
 ) -> None:
+    release_error: Exception | None = None
+
     try:
         backend_client.locker_release(
             order.region,
             allocation.id,
             locker_id=order.totem_id,
         )
-    except Exception:
+    except Exception as exc:
+        release_error = exc
         logger.exception("online_order_compensation_release_failed")
-        raise
 
     try:
         db.delete(allocation)
@@ -142,6 +181,9 @@ def compensate_failed_online_creation(
         db.rollback()
         logger.exception("online_order_compensation_db_failed")
         raise
+
+    if release_error is not None:
+        raise release_error
 
 
 def create_order_core(
@@ -157,7 +199,6 @@ def create_order_core(
     guest_phone: str | None,
     user_id: str | None,
 ) -> CreateOrderCoreResult:
-
     # =========================
     # 1. VALIDAR LOCKER ID
     # =========================
@@ -182,7 +223,41 @@ def create_order_core(
     card_type = resolve_card_type_enum(card_type_value)
 
     # =========================
-    # 4. TTL
+    # 4. SLOT OBRIGATÓRIO
+    # =========================
+    if desired_slot is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "DESIRED_SLOT_REQUIRED",
+                "message": "desired_slot é obrigatório para pedido ONLINE.",
+            },
+        )
+
+    try:
+        desired_slot = int(desired_slot)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DESIRED_SLOT",
+                "message": "desired_slot inválido.",
+                "desired_slot": desired_slot,
+            },
+        ) from exc
+
+    if desired_slot <= 0:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DESIRED_SLOT",
+                "message": "desired_slot deve ser maior que zero.",
+                "desired_slot": desired_slot,
+            },
+        )
+
+    # =========================
+    # 5. TTL (USADO NO BACKEND CENTRAL / LIFECYCLE)
     # =========================
     alloc_ttl_sec = resolve_online_prepayment_ttl_sec(
         region=region,
@@ -190,11 +265,17 @@ def create_order_core(
     )
 
     # =========================
-    # 5. PRICING
+    # 6. PRICING (SOURCE OF TRUTH)
     # =========================
     if amount_cents_input is not None:
         if int(amount_cents_input) <= 0:
-            raise HTTPException(status_code=400, detail="amount_cents must be > 0")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "INVALID_AMOUNT_CENTS",
+                    "message": "amount_cents must be > 0",
+                },
+            )
         amount_cents = int(amount_cents_input)
     else:
         try:
@@ -203,50 +284,117 @@ def create_order_core(
                 sku_id,
                 locker_id=totem_id,
             )
-        except HTTPError as e:
+        except HTTPError as exc:
             if (
-                e.response is not None
-                and e.response.status_code == 404
+                exc.response is not None
+                and exc.response.status_code == 404
                 and settings.dev_allow_unknown_sku
             ):
                 pricing = {"amount_cents": settings.dev_default_price_cents}
             else:
-                raise
+                raise HTTPException(
+                    status_code=502,
+                    detail={
+                        "type": "PRICING_LOOKUP_FAILED",
+                        "message": "Falha ao consultar pricing do SKU.",
+                        "sku_id": sku_id,
+                        "locker_id": totem_id,
+                        "region": region,
+                    },
+                ) from exc
 
-        amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
-
-        if amount_cents is None:
-            raise HTTPException(
-                status_code=502,
-                detail="pricing missing amount_cents/price_cents",
-            )
+        amount_cents = _extract_pricing_amount_cents(pricing)
 
     # =========================
-    # 6. ALLOCATION
+    # 7. ALLOCATION NO RUNTIME (EXECUÇÃO PURA)
     # =========================
     request_id = str(uuid.uuid4())
 
     try:
         alloc = backend_client.locker_allocate(
-            region,
-            sku_id,
-            alloc_ttl_sec,
-            request_id,
-            desired_slot,
+            region=region,
+            sku_id=sku_id,
+            ttl_sec=alloc_ttl_sec,
+            request_id=request_id,
+            desired_slot=desired_slot,
             locker_id=totem_id,
         )
-    except HTTPError as e:
-        raise HTTPException(status_code=502, detail="locker allocate failed")
+    except HTTPError as exc:
+        runtime_detail = None
+        status_code = 502
+
+        if exc.response is not None:
+            status_code = 409 if exc.response.status_code == 409 else 502
+            try:
+                runtime_detail = exc.response.json()
+            except Exception:
+                runtime_detail = exc.response.text
+
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "type": "LOCKER_ALLOCATE_FAILED",
+                "message": "Falha ao executar reserva do slot no runtime.",
+                "locker_id": totem_id,
+                "region": region,
+                "desired_slot": desired_slot,
+                "request_id": request_id,
+                "runtime_detail": runtime_detail,
+            },
+        ) from exc
 
     allocation_id = alloc.get("allocation_id")
     slot = alloc.get("slot")
-    ttl_sec = int(alloc.get("ttl_sec", alloc_ttl_sec))
+    runtime_state = alloc.get("state")
 
     if not allocation_id or slot is None:
-        raise HTTPException(status_code=502, detail="invalid allocation response")
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "INVALID_ALLOCATION_RESPONSE",
+                "message": "Resposta inválida do runtime para allocation.",
+                "runtime_response": alloc,
+            },
+        )
+
+    try:
+        slot = int(slot)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "INVALID_ALLOCATION_RESPONSE",
+                "message": "slot retornado pelo runtime é inválido.",
+                "runtime_response": alloc,
+            },
+        ) from exc
+
+    # defesa extra: runtime executor não pode trocar o slot decidido
+    if slot != desired_slot:
+        try:
+            backend_client.locker_release(
+                region,
+                allocation_id,
+                locker_id=totem_id,
+            )
+        except Exception:
+            logger.exception("allocation_slot_mismatch_release_failed")
+
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "ALLOCATION_SLOT_MISMATCH",
+                "message": "Runtime retornou slot diferente do slot decidido pelo backend central.",
+                "desired_slot": desired_slot,
+                "runtime_slot": slot,
+                "locker_id": totem_id,
+                "allocation_id": allocation_id,
+                "runtime_state": runtime_state,
+            },
+        )
 
     # =========================
-    # 7. ORDER
+    # 8. ORDER
     # =========================
     order = Order(
         id=str(uuid.uuid4()),
@@ -262,24 +410,48 @@ def create_order_core(
         guest_phone=guest_phone,
     )
 
-    db.add(order)
-    db.flush()
+    try:
+        db.add(order)
+        db.flush()
 
-    allocation = Allocation(
-        id=allocation_id,
-        order_id=order.id,
-        locker_id=totem_id,
-        slot=int(slot),
-        state=AllocationState.RESERVED_PENDING_PAYMENT,
-    )
+        allocation = Allocation(
+            id=allocation_id,
+            order_id=order.id,
+            locker_id=totem_id,
+            slot=slot,
+            state=AllocationState.RESERVED_PENDING_PAYMENT,
+        )
 
-    db.add(allocation)
-    db.commit()
-    db.refresh(order)
-    db.refresh(allocation)
+        db.add(allocation)
+        db.commit()
+        db.refresh(order)
+        db.refresh(allocation)
+    except Exception as exc:
+        db.rollback()
+
+        try:
+            backend_client.locker_release(
+                region,
+                allocation_id,
+                locker_id=totem_id,
+            )
+        except Exception:
+            logger.exception("online_order_db_failure_release_failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "ORDER_PERSISTENCE_FAILED",
+                "message": "Falha ao persistir pedido/alocação após reserva no runtime.",
+                "order_id": order.id,
+                "allocation_id": allocation_id,
+                "locker_id": totem_id,
+                "slot": slot,
+            },
+        ) from exc
 
     # =========================
-    # 8. LIFECYCLE
+    # 9. LIFECYCLE
     # =========================
     try:
         register_prepayment_timeout_deadline(
@@ -297,10 +469,19 @@ def create_order_core(
             order=order,
             allocation=allocation,
         )
-        raise HTTPException(status_code=503, detail="lifecycle register failed")
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "type": "LIFECYCLE_REGISTER_FAILED",
+                "message": "Falha ao registrar deadline no lifecycle.",
+                "order_id": order.id,
+                "allocation_id": allocation.id,
+                "locker_id": order.totem_id,
+            },
+        )
 
     return CreateOrderCoreResult(
         order=order,
         allocation=allocation,
-        ttl_sec=ttl_sec,
+        ttl_sec=alloc_ttl_sec,
     )

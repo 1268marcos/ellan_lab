@@ -73,9 +73,11 @@ class Settings(BaseSettings):
     # =========================================================
     # Backends internos / integração
     # =========================================================
-
-    backend_sp_internal: str = Field(default="http://backend_sp:8000", alias="BACKEND_SP_INTERNAL")
-    backend_pt_internal: str = Field(default="http://backend_pt:8000", alias="BACKEND_PT_INTERNAL")
+    
+    runtime_internal: str = Field(
+        default="http://backend_runtime:8000",
+        alias="RUNTIME_INTERNAL",
+    )
 
     payment_gateway_internal: str = Field(
         default="http://payment_gateway:8000",

@@ -104,7 +104,14 @@ def validate_locker_for_order(
             },
         )
 
-    allowed_methods = _normalize_methods(locker.get("payment_methods"))
+    raw_methods = (
+        locker.get("payment_methods")
+        or locker.get("allowed_payment_methods")
+        or []
+    )
+
+    allowed_methods = _normalize_methods(raw_methods)
+
     normalized_inputs = _map_payment_method(payment_method, card_type=card_type)
 
     if not any(m in allowed_methods for m in normalized_inputs):
@@ -116,6 +123,7 @@ def validate_locker_for_order(
                 "locker_id": locker_id,
                 "allowed_methods": allowed_methods,
                 "normalized_input": normalized_inputs,
+                "raw_locker": locker, # 🔥 DEBUG CRÍTICO
             },
         )
 
