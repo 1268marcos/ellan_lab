@@ -60,11 +60,11 @@ def _raise(status: int, *, err_type: str, message: str, retryable: bool, **extra
 
 
 def _ensure_slot_range(slot: int) -> None:
-    if slot < 1 or slot > 24:
+    if slot < 1:
         _raise(
             400,
             err_type="INVALID_SLOT",
-            message="slot must be 1..24",
+            message="invalid slot",
             retryable=False,
             slot=slot,
             min_slot=1,

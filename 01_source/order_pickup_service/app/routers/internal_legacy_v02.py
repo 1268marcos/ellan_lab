@@ -112,23 +112,10 @@ def _pickup_channel_from_order(order: Order) -> PickupChannel:
 
 
 def _build_pickup_context(order: Order, allocation: Allocation) -> dict:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     return {
         "channel": _pickup_channel_from_order(order),
         "region": order.region,
-        "locker_id": locker_id,
+        "locker_id": allocation.locker_id or order.totem_id,
         "machine_id": order.totem_id,
         # "slot": str(allocation.slot) if allocation.slot is not None else None,
         "slot": allocation.slot if allocation.slot is not None else None,
@@ -157,19 +144,6 @@ def _ensure_online_pickup(
     allocation: Allocation,
     deadline_utc: datetime,
 ) -> Pickup:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     now_naive = _utc_now_naive()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
@@ -198,7 +172,7 @@ def _ensure_online_pickup(
         order_id=order.id,
         channel=PickupChannel.ONLINE,
         region=order.region,
-        locker_id=locker_id,
+        locker_id=allocation.locker_id or order.totem_id,
         machine_id=order.totem_id,
         slot=str(allocation.slot) if allocation.slot is not None else None,
         operator_id=None,
@@ -234,19 +208,6 @@ def _ensure_kiosk_pickup(
     order: Order,
     allocation: Allocation,
 ) -> Pickup:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     now_naive = _utc_now_naive()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
@@ -276,7 +237,7 @@ def _ensure_kiosk_pickup(
         order_id=order.id,
         channel=PickupChannel.KIOSK,
         region=order.region,
-        locker_id=locker_id,
+        locker_id=allocation.locker_id or order.totem_id,
         machine_id=order.totem_id,
         slot=str(allocation.slot) if allocation.slot is not None else None,
         operator_id=None,
@@ -470,18 +431,6 @@ def payment_confirm(
         raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
     allocation = _ensure_allocation(db, order.id)
-    
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
     provider_value = getattr(payload, "provider", None)
 
     try:
@@ -699,14 +648,10 @@ def internal_set_slot_state(
     totem_id: str,
     _=Depends(require_internal_token),
 ):
-    if slot < 1:
-        raise HTTPException(status_code=400, detail="invalid slot")
-
-    region = _normalize_region(region)
-
-    if not region:
-        raise HTTPException(status_code=400, detail="invalid region")
-
+    if slot < 1 or slot > 24:
+        raise HTTPException(status_code=400, detail="slot must be between 1 and 24")
+    if region not in ("SP", "PT"):
+        raise HTTPException(status_code=400, detail="region must be SP or PT")
     if not totem_id or not str(totem_id).strip():
         raise HTTPException(status_code=400, detail="totem_id is required")
 

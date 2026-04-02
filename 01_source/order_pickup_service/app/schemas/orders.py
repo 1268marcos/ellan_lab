@@ -38,7 +38,12 @@ class CreateOrderIn(BaseModel):
     sku_id: str
     totem_id: str = Field(..., description="Identificador da unidade física / locker")
     payment_method: OnlinePaymentMethod
-    desired_slot: Optional[int] = Field(default=None, ge=1, le=24)
+    # desired_slot: Optional[int] = Field(default=None, ge=1, le=24)
+    desired_slot: Optional[int] = Field(
+        default=None, 
+        ge=1,  # Removeu o le=24
+        description="Slot físico do locker (validado dinamicamente no backend)"
+    )
     amount_cents: Optional[int] = Field(default=None, gt=0)
 
     card_type: Optional[OnlineCardType] = None

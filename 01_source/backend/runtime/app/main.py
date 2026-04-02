@@ -1,4 +1,6 @@
 # 01_source/backend/runtime/app/main.py
+# 02/04/2026
+
 from __future__ import annotations
 
 import logging
@@ -8,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.db import init_db  # 🔥 IMPORTANTE
 from app.routers.health import router as health_router
 from app.routers.internal_runtime import router as internal_runtime_router
 from app.routers.allocations import router as allocations_router
@@ -22,7 +25,7 @@ logger = logging.getLogger("backend_runtime")
 
 app = FastAPI(
     title="ELLAN Backend Operacional Canônico - runtime operacional multi-locker",
-    version="1.0.1",
+    version="1.0.2",
 )
 
 
@@ -30,6 +33,20 @@ app = FastAPI(
 def startup():
     logger.info("runtime_startup_begin")
 
+    # =========================================================
+    # 🔥 NOVO — INIT SQLITE OPERACIONAL
+    # =========================================================
+    try:
+        init_db()
+        logger.info("runtime_sqlite_init_ok")
+    except Exception:
+        logger.exception("runtime_sqlite_init_failed")
+        if settings.runtime_fail_fast_on_startup_error:
+            raise
+
+    # =========================================================
+    # Bootstrap central (Postgres)
+    # =========================================================
     try:
         result = safe_bootstrap_runtime_on_startup()
         logger.info("runtime_startup_bootstrap_ok extra=%s", result)

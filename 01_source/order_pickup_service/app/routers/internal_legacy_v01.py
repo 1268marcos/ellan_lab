@@ -43,7 +43,7 @@ from app.services.payment_confirm_service import (
     apply_payment_confirmation,
     emit_order_paid_and_simulate_fiscal,
 )
-# from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
+from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -63,12 +63,6 @@ def _enum_value_or_raw(value) -> str | None:
     if value is None:
         return None
     return getattr(value, "value", value)
-
-
-def _normalize_region(region: str | None) -> str | None:
-    if region is None:
-        return None
-    return str(region).strip().upper()
 
 
 def _ensure_allocation(db: Session, order_id: str) -> Allocation:
@@ -112,26 +106,12 @@ def _pickup_channel_from_order(order: Order) -> PickupChannel:
 
 
 def _build_pickup_context(order: Order, allocation: Allocation) -> dict:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     return {
         "channel": _pickup_channel_from_order(order),
         "region": order.region,
-        "locker_id": locker_id,
+        "locker_id": allocation.locker_id or order.totem_id,
         "machine_id": order.totem_id,
-        # "slot": str(allocation.slot) if allocation.slot is not None else None,
-        "slot": allocation.slot if allocation.slot is not None else None,
+        "slot": str(allocation.slot) if allocation.slot is not None else None,
         "operator_id": None,
         "tenant_id": None,
         "site_id": None,
@@ -157,19 +137,6 @@ def _ensure_online_pickup(
     allocation: Allocation,
     deadline_utc: datetime,
 ) -> Pickup:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     now_naive = _utc_now_naive()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
@@ -198,7 +165,7 @@ def _ensure_online_pickup(
         order_id=order.id,
         channel=PickupChannel.ONLINE,
         region=order.region,
-        locker_id=locker_id,
+        locker_id=allocation.locker_id or order.totem_id,
         machine_id=order.totem_id,
         slot=str(allocation.slot) if allocation.slot is not None else None,
         operator_id=None,
@@ -234,19 +201,6 @@ def _ensure_kiosk_pickup(
     order: Order,
     allocation: Allocation,
 ) -> Pickup:
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
-    locker_id = allocation.locker_id
-    
     now_naive = _utc_now_naive()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
@@ -276,7 +230,7 @@ def _ensure_kiosk_pickup(
         order_id=order.id,
         channel=PickupChannel.KIOSK,
         region=order.region,
-        locker_id=locker_id,
+        locker_id=allocation.locker_id or order.totem_id,
         machine_id=order.totem_id,
         slot=str(allocation.slot) if allocation.slot is not None else None,
         operator_id=None,
@@ -424,13 +378,10 @@ def payment_confirm(
 ):
     order = _ensure_order(db, order_id)
 
-    payload_region = _normalize_region(getattr(payload, "region", None))
-    order_region = _normalize_region(order.region)
-
-    if payload_region and order_region != payload_region:
+    if getattr(payload, "region", None) and order.region != payload.region:
         raise HTTPException(
             status_code=409,
-            detail=f"region mismatch: order={order_region} payload={payload_region}",
+            detail=f"region mismatch: order={order.region} payload={payload.region}",
         )
 
     if order.status in (
@@ -470,18 +421,6 @@ def payment_confirm(
         raise HTTPException(status_code=409, detail=f"invalid state: {order.status.value}")
 
     allocation = _ensure_allocation(db, order.id)
-    
-    # 🔥 CORREÇÃO 3 — LOCKER_ID OBRIGATÓRIO
-    if not allocation.locker_id:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "INVALID_ALLOCATION",
-                "message": "allocation sem locker_id",
-                "order_id": order.id,
-            },
-        )
-    
     provider_value = getattr(payload, "provider", None)
 
     try:
@@ -504,73 +443,47 @@ def payment_confirm(
             },
         ) from exc
 
-    # =========================================================
-    # 🔥 NOVO FLOW EXPLÍCITO E PROFISSIONAL
-    # =========================================================
-
-    # 1. COMMIT NO RUNTIME (IDEMPOTENTE)
     try:
-        backend_client.locker_commit(
-            order.region,
-            allocation.id,
-            locker_id=order.totem_id,
+        fulfillment = fulfill_payment_post_approval(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup_window_hours=PICKUP_WINDOW_HOURS,
+            set_kiosk_out_of_stock=False,
         )
-    except Exception as e:
+    except RuntimeError as exc:
+        detail = exc.args[0] if exc.args else {
+            "type": "PAYMENT_FULFILLMENT_FAILED",
+            "message": "Falha no fulfillment",
+        }
         raise HTTPException(
-            status_code=502,
-            detail={
-                "type": "LOCKER_COMMIT_FAILED",
-                "message": "Falha ao confirmar reserva no runtime.",
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "error": str(e),
-            },
+            status_code=409 if detail.get("type") in {"REALLOCATE_CONFLICT", "COMMIT_AFTER_REALLOCATE_FAILED"} else 502,
+            detail=detail,
+        ) from exc
+
+    allocation = fulfillment["allocation"]
+    pickup = fulfillment["pickup"]
+    token_id = fulfillment["token_id"]
+    manual_code = fulfillment["manual_code"]
+
+    try:
+        financial = emit_order_paid_and_simulate_fiscal(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup=pickup,
+            currency=payload.currency,
+            source="internal",
         )
-
-    # 2. ATUALIZA ESTADO DA ALOCAÇÃO
-    allocation.mark_reserved_paid_pending_pickup()
-
-    # 3. DEFINE DEADLINE DE RETIRADA
-    deadline_utc = _utc_now() + timedelta(hours=PICKUP_WINDOW_HOURS)
-    order.pickup_deadline_at = deadline_utc.replace(tzinfo=None)
-
-    # 4. CRIA OU ATUALIZA PICKUP
-    pickup = _ensure_online_pickup(
-        db,
-        order=order,
-        allocation=allocation,
-        deadline_utc=deadline_utc,
-    )
-
-    # 5. GERA TOKEN
-    token_data = _create_pickup_token(
-        db,
-        pickup_id=pickup.id,
-        expires_at_utc=deadline_utc,
-    )
-
-    pickup.current_token_id = token_data["token_id"]
-
-    # 6. EVENTO: PICKUP READY
-    publish_pickup_ready(
-        order_id=order.id,
-        pickup_id=pickup.id,
-        channel=pickup.channel.value,
-        region=pickup.region,
-        locker_id=pickup.locker_id,
-        machine_id=pickup.machine_id,
-        slot=pickup.slot,
-    )
-
-    # 7. EMITIR EVENTO FINANCEIRO + FISCAL
-    financial = emit_order_paid_and_simulate_fiscal(
-        db=db,
-        order=order,
-        allocation=allocation,
-        pickup=pickup,
-        currency=payload.currency,
-        source="internal",
-    )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "ORDER_PAID_EVENT_INVALID",
+                "message": str(exc),
+                "order_id": order.id,
+            },
+        ) from exc
 
     db.commit()
     db.refresh(order)
@@ -610,8 +523,8 @@ def payment_confirm(
         "pickup_locker_id": pickup.locker_id if pickup else None,
         "pickup_machine_id": pickup.machine_id if pickup else None,
         "pickup_slot": pickup.slot if pickup else None,
-        "token_id": token_data["token_id"],
-        "manual_code": token_data["manual_code"],
+        "token_id": token_id,
+        "manual_code": manual_code,
         "qr_rotate_sec": QR_ROTATE_SEC if order.channel == OrderChannel.ONLINE else None,
         "totem_id": order.totem_id,
         "financial_event": {
@@ -699,14 +612,10 @@ def internal_set_slot_state(
     totem_id: str,
     _=Depends(require_internal_token),
 ):
-    if slot < 1:
-        raise HTTPException(status_code=400, detail="invalid slot")
-
-    region = _normalize_region(region)
-
-    if not region:
-        raise HTTPException(status_code=400, detail="invalid region")
-
+    if slot < 1 or slot > 24:
+        raise HTTPException(status_code=400, detail="slot must be between 1 and 24")
+    if region not in ("SP", "PT"):
+        raise HTTPException(status_code=400, detail="region must be SP or PT")
     if not totem_id or not str(totem_id).strip():
         raise HTTPException(status_code=400, detail="totem_id is required")
 

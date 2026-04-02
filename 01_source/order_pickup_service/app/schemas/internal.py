@@ -159,7 +159,8 @@ class InternalPaymentApprovedOut(BaseModel):
 class InternalSetSlotStateIn(BaseModel):
     region: Region
     totem_id: str
-    slot: int = Field(..., ge=1, le=24)
+    # slot: int = Field(..., ge=1, le=24)
+    slot: int = Field(..., ge=1, description="Slot físico (validado dinamicamente no backend)")
     state: SlotState
 
     @field_validator("totem_id")

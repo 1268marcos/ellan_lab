@@ -24,7 +24,11 @@ WalletProviderType = Literal["applePay", "googlePay", "mercadoPago"]
 class PaymentRequest(BaseModel):
     regiao: RegionType
     canal: ChannelType
-    porta: int = Field(ge=1, le=24)
+    # porta: int = Field(ge=1, le=24)
+    porta: int = Field(
+        ge=1, 
+        description="Porta/Número do slot (validado dinamicamente no backend)"
+    )
     metodo: PaymentMethodType
     valor: float = Field(gt=0)
 

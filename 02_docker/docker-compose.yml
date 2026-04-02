@@ -18,6 +18,19 @@
 # - Redis CENTRAL (cache/locks/fila leve)
 # - Payment Gateway (sem dependência de backends legados)
 # - Simuladores SP/PT via MQTT
+#
+# backend_runtime é agora o "cérebro" operacional multi-locker, responsável por:
+# - Grenciar alocação de slots
+# - Comunicar com lockers via MQTT
+# - Sincronizar com o Postgres Central
+# - Expor APIs para payment_gateway e outros serviços
+#
+# Serviço - URL - Finalidade:
+# - Backend Runtime - http://localhost:8200 - API operacional dos lockers
+# - Payment Gateway - http://localhost:8000 - Processamento de pagamentos
+# - Order Pickup - http://localhost:8003 - Fluxo de retirada de pedidos
+# - PGAdmin - http://localhost:5050 - Interface do banco de dados (usamos plugin no VS Code)
+# 
 # ============================================================================
 
 networks:
@@ -696,42 +709,75 @@ services:
   # =========================
   # SIMULATOR SP
   # =========================
-  simulator_sp:
-    build:
-      context: ../01_source/simulator
-    container_name: simulator_sp
-    restart: unless-stopped
-    environment:
-      MQTT_HOST: mqtt_broker
-      MQTT_PORT: "1883"
-      REGION: SP
-      LOCKER_ID: LOCKER_SP_01
-      MACHINE_ID: CACIFO-SP-001
-      FAILURE_RATE: "0.12"
-      PAYMENT_TRIGGERS_OPEN: "false"
-      TZ: America/Sao_Paulo
-      DEBUG_LOGS: "true"
-    depends_on:
-      mqtt:
-        condition: service_healthy
-    networks:
-      - locker-network
+  # simulator_sp:
+  #   build:
+  #     context: ../01_source/simulator
+  #   container_name: simulator_sp
+  #   restart: unless-stopped
+  #   environment:
+  #     MQTT_HOST: mqtt_broker
+  #     MQTT_PORT: "1883"
+  #     REGION: SP
+  #     LOCKER_ID: LOCKER_SP_01
+  #     MACHINE_ID: CACIFO-SP-001
+  #     FAILURE_RATE: "0.12"
+  #     PAYMENT_TRIGGERS_OPEN: "false"
+  #     TZ: America/Sao_Paulo
+  #     DEBUG_LOGS: "true"
+  #   depends_on:
+  #     mqtt:
+  #       condition: service_healthy
+  #   networks:
+  #     - locker-network
 
   # =========================
   # SIMULATOR PT
   # =========================
-  simulator_pt:
+  # simulator_pt:
+  #   build:
+  #     context: ../01_source/simulator
+  #   container_name: simulator_pt
+  #   restart: unless-stopped
+  #   environment:
+  #     MQTT_HOST: mqtt_broker
+  #     MQTT_PORT: "1883"
+  #     REGION: PT
+  #     LOCKER_ID: LOCKER_PT_01
+  #     MACHINE_ID: CACIFO-PT-001
+  #     FAILURE_RATE: "0.10"
+  #     PAYMENT_TRIGGERS_OPEN: "false"
+  #     TZ: Europe/Lisbon
+  #     DEBUG_LOGS: "true"
+  #   depends_on:
+  #     mqtt:
+  #       condition: service_healthy
+  #   networks:
+  #     - locker-network
+      
+
+  # =========================
+  # SIMULATOR BACKEND RUNTIME
+  # =========================
+  simulator_backend_runtime:
     build:
       context: ../01_source/simulator
-    container_name: simulator_pt
+    container_name: simulator_backend_runtime
     restart: unless-stopped
     environment:
       MQTT_HOST: mqtt_broker
       MQTT_PORT: "1883"
       REGION: PT
-      LOCKER_ID: LOCKER_PT_01
+      # LOCKER_ID: LOCKER_PT_01
+      # MACHINE_ID: CACIFO-PT-001
+      # compatibilidade legada opcional - deverá ser abandonada
+      LOCKER_ID: ${DEFAULT_LOCKER_ID:-}
+      LOCKER_ID_SP: ${LOCKER_ID_SP:-}
+      LOCKER_ID_PT: ${LOCKER_ID_PT:-}
       MACHINE_ID: CACIFO-PT-001
-      FAILURE_RATE: "0.10"
+      MACHINE_ID_SP: CACIFO-SP-001
+      MACHINE_ID_PT: CACIFO-PT-001
+
+      FAILURE_RATE: "0.09"
       PAYMENT_TRIGGERS_OPEN: "false"
       TZ: Europe/Lisbon
       DEBUG_LOGS: "true"
@@ -740,6 +786,7 @@ services:
         condition: service_healthy
     networks:
       - locker-network
+
 
 
   # =========================

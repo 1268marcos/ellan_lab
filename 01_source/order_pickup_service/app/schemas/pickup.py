@@ -148,7 +148,11 @@ class TotemRedeemOut(BaseModel):
     pickup_id: str
     order_id: str
     locker_id: str
-    slot: int = Field(ge=1, le=24)
+    # slot: int = Field(ge=1, le=24)
+    slot: int = Field(
+        ge=1, 
+        description="Slot físico do locker (validado dinamicamente no backend)"
+    )
     action: Literal["OPEN_SLOT"] = "OPEN_SLOT"
     expires_at: datetime
 

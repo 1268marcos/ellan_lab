@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String
+from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Integer
 
 from app.core.db import Base
 
@@ -81,7 +81,10 @@ class Pickup(Base):
     # Contexto físico/operacional
     locker_id = Column(String, nullable=True)
     machine_id = Column(String, nullable=True)
-    slot = Column(String, nullable=True)
+    # slot = Column(String, nullable=True)
+    slot = Column(Integer, nullable=True)
+    # Opcional: adicionar constraints para dados válidos
+    # slot = Column(Integer, nullable=True, default=None)
 
     # Contexto SaaS / multi-operador
     operator_id = Column(String, nullable=True)

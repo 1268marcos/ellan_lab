@@ -1,3 +1,4 @@
+# 01_source/order_pickup_service/app/schemas/order.py
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -8,7 +9,12 @@ class CreateOrderIn(BaseModel):
     region: str = Field(..., examples=["SP", "PT"])
     sku_id: str
     totem_id: str = Field(..., description="Identificador da unidade física / locker")
-    desired_slot: Optional[int] = Field(default=None, ge=1, le=24)
+    # desired_slot: Optional[int] = Field(default=None, ge=1, le=24)
+    desired_slot: int = Field(
+        ...,
+        ge=1,
+        description="Slot físico do locker (validado dinamicamente no backend)",
+    )
 
     @field_validator("region")
     @classmethod

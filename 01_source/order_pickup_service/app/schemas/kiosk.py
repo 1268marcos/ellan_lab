@@ -37,7 +37,13 @@ class KioskOrderCreateIn(BaseModel):
     totem_id: str = Field(..., examples=["PT-MAIA-CENTRO-LK-001"])
     sku_id: str = Field(..., examples=["bolo_laranja_algarve"])
     payment_method: KioskPaymentMethod
-    desired_slot: int | None = Field(default=None, ge=1, le=24)
+    # desired_slot: int | None = Field(default=None, ge=1, le=24)
+    desired_slot: int | None = Field(
+        default=None, 
+        ge=1,  # Removeu o le=24
+        description="Slot físico do locker (validado dinamicamente no backend)"
+    )
+
 
     # específicos por método
     card_type: Optional[KioskCardType] = None

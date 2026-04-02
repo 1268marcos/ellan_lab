@@ -17,18 +17,14 @@ def _country_from_region(region: str | None) -> str:
     mapping = {
 
         # Brasil e estados
-        "SP": "BR",
-        "RJ": "BR",
-        "MG": "BR",
-        "SC": "BR",
-        "PR": "BR",
-        "RS": "BR",
-        "RN": "BR",
-        "BA": "BR",
-        "PE": "BR",
-        "AM": "BR",
-        "BR": "BR",
-        
+        "AC": "BR", "AL": "BR", "AP": "BR", "AM": "BR", "BA": "BR",
+        "CE": "BR", "DF": "BR", "ES": "BR", "GO": "BR", "MA": "BR",
+        "MG": "BR", "MS": "BR", "MT": "BR", "PA": "BR", "PB": "BR",
+        "PE": "BR", "PI": "BR", "PR": "BR", "RJ": "BR", "RN": "BR",
+        "RO": "BR", "RR": "BR", "RS": "BR", "SC": "BR", "SE": "BR",
+        "SP": "BR", "TO": "BR", 
+        "BR": "BR",  # Caso a região já venha como BR
+
         # Portugal
         "PT": "PT",
         

@@ -22,7 +22,12 @@ def audit_events(
     since_hours: int = Query(24, ge=0, le=720, description="Janela de busca em horas"),
     decision: Optional[str] = Query(None, description="ALLOW|CHALLENGE|BLOCK"),
     region: Optional[str] = Query(None, description="SP|PT"),
-    porta: Optional[int] = Query(None, ge=1, le=24, description="Número da gaveta"),
+    # porta: Optional[int] = Query(None, ge=1, le=24, description="Número da gaveta"),
+    porta: Optional[int] = Query(
+        None, 
+        ge=1, 
+        description="Número da gaveta/slot (validado dinamicamente no backend)"
+    ),
     request_id: Optional[str] = Query(None, description="ID da requisição para buscar evento específico"),
     policy_id: Optional[str] = Query(None, description="Filtrar por política de risco"),
     event_type: Optional[str] = Query(None, description="Tipo de evento (ex: PAYMENT, WITHDRAWAL)"),
