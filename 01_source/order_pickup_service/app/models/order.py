@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/models/order.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
 # veja fim do arquivo
+# 03/04/2026
 
 import enum
 from datetime import datetime, timezone
@@ -383,7 +384,7 @@ class Order(Base):
     idempotency_key = Column(String, nullable=True, unique=True)  # Adicionado
     
     # Metadados
-    metadata = Column(JSONB, nullable=True, default={})  # Adicionado
+    order_metadata = Column(JSONB, nullable=True, default={})  # Adicionado
     
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)

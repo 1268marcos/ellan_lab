@@ -4,16 +4,6 @@ import { QRCodeCanvas } from "qrcode.react";
 
 import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
 
-import {
-  buildGatewayPaymentPayload,
-  buildKioskOrderPayload,
-  getDefaultPaymentMethod,
-  paymentMethodLabel,
-  requiresCustomerPhone,
-} from "../utils/paymentProfile";
-
-
-
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
@@ -88,28 +78,28 @@ function normalizeLockerItem(locker) {
   };
 }
 
-// function getDefaultPaymentMethod(locker, region) {
-//   const methods = Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
-//   if (methods.length > 0) return methods[0];
-//   return region === "PT" ? "MBWAY" : "PIX";
-// }
+function getDefaultPaymentMethod(locker, region) {
+  const methods = Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
+  if (methods.length > 0) return methods[0];
+  return region === "PT" ? "MBWAY" : "PIX";
+}
 
-// function paymentMethodLabel(method) {
-//   const labels = {
-//     PIX: "PIX",
-//     CARTAO_CREDITO: "Cartão de Crédito",
-//     CARTAO_DEBITO: "Cartão de Débito",
-//     CARTAO_PRESENTE: "Cartão Presente",
-//     CARTAO: "Cartão",
-//     MBWAY: "MB WAY",
-//     MULTIBANCO_REFERENCE: "Referência Multibanco",
-//     NFC: "NFC",
-//     APPLE_PAY: "Apple Pay",
-//     GOOGLE_PAY: "Google Pay",
-//     MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
-//   };
-//   return labels[method] || method || "-";
-// }
+function paymentMethodLabel(method) {
+  const labels = {
+    PIX: "PIX",
+    CARTAO_CREDITO: "Cartão de Crédito",
+    CARTAO_DEBITO: "Cartão de Débito",
+    CARTAO_PRESENTE: "Cartão Presente",
+    CARTAO: "Cartão",
+    MBWAY: "MB WAY",
+    MULTIBANCO_REFERENCE: "Referência Multibanco",
+    NFC: "NFC",
+    APPLE_PAY: "Apple Pay",
+    GOOGLE_PAY: "Google Pay",
+    MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
+  };
+  return labels[method] || method || "-";
+}
 
 function gatewayMethodForUiMethod(method) {
   if (method === "CARTAO_CREDITO") return "CARTAO";
@@ -745,12 +735,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       return;
     }
 
-    // if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
-    //   setErr("Informe o telefone para o pagamento MB WAY.");
-    //   return;
-    // }
-    if (requiresCustomerPhone(paymentMethod) && !paymentExtras.customerPhone.trim()) {
-      setErr("Informe o telefone exigido para esse método de pagamento.");
+    if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
+      setErr("Informe o telefone para o pagamento MB WAY.");
       return;
     }
 
@@ -766,14 +752,46 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
       const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-      const payload = buildKioskOrderPayload({
+      const payload = {
         region,
-        totemId,
-        skuId: selectedCatalogItem.sku_id,
-        slot: selectedCatalogItem.slot,
-        uiMethod: paymentMethod,
-        customerPhone: paymentExtras.customerPhone,
-      });
+        sales_channel: "kiosk",              // ✅ Adicionado (default do schema)
+        fulfillment_type: "instant",         // ✅ Adicionado (default do schema)         
+        totem_id: totemId,
+        sku_id: selectedCatalogItem.sku_id,
+        desired_slot: Number(selectedCatalogItem.slot),
+        // payment_method: mappedPaymentMethod,
+        // card_type: mappedCardType || undefined,
+
+        // ✅ Usa a nova função de mapeamento
+        payment_method: mapPaymentMethodToBackend(paymentMethod),
+        payment_interface: mapPaymentInterface(paymentMethod, region), // ✅ NOVO: nunca vazio! 
+        
+        // ✅ card_type só para métodos de cartão
+        // card_type: cardTypeForUiMethod(paymentMethod) || undefined,
+
+        // customer_phone:
+        //   paymentMethod === "MBWAY" ? paymentExtras.customerPhone.trim() : undefined,
+
+        // ✅ Card type apenas para cartões
+        ...(cardTypeForUiMethod(paymentMethod) && {
+          card_type: cardTypeForUiMethod(paymentMethod)
+        }),
+        
+        // ✅ Wallet provider quando necessário
+        ...(KioskPaymentMethod_requiresWalletProvider(paymentMethod) && {
+          wallet_provider: mapWalletProvider(paymentMethod)
+        }),
+        
+        // ✅ Phone apenas para métodos que permitem
+        ...(paymentMethod === "MBWAY" && {
+          customer_phone: paymentExtras.customerPhone.trim()
+        }),
+        
+        // ✅ Campos regionais quando aplicável
+        ...(region === "CN" && { qr_code_content: "" }), // placeholder se necessário
+        ...(region === "JP" && paymentMethod === "KONBINI" && { konbini_code: "" }),
+          
+      };
 
       const res = await fetch(createUrl, {
         method: "POST",
@@ -816,12 +834,8 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
     const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-    // if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
-    //   setErr("Informe o telefone para o pagamento MB WAY.");
-    //   return;
-    // }
-    if (requiresCustomerPhone(paymentMethod) && !paymentExtras.customerPhone.trim()) {
-      setErr("Informe o telefone exigido para esse método de pagamento.");
+    if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
+      setErr("Informe o telefone para o pagamento MB WAY.");
       return;
     }
 
@@ -835,15 +849,30 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
       const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-      const payload = buildGatewayPaymentPayload({
-        region,
-        orderId: currentOrderId,
-        lockerId: totemId,
-        slot: selectedCatalogItem.slot,
-        amountCents: selectedCatalogItem.amount_cents,
-        uiMethod: paymentMethod,
-        customerPhone: paymentExtras.customerPhone,
-      });
+      const payload = {
+        regiao: region,
+        canal: "KIOSK",
+        // metodo: mappedPaymentMethod,
+        // ✅ Mapeamento correto do método
+        metodo: mapPaymentMethodToBackend(paymentMethod),
+
+        // ✅ Interface de pagamento OBRIGATÓRIA
+        payment_interface: mapPaymentInterface(paymentMethod, region),
+        
+        valor: Number((Number(selectedCatalogItem.amount_cents || 0) / 100).toFixed(2)),
+        porta: Number(selectedCatalogItem.slot),
+        locker_id: totemId,
+        order_id: currentOrderId,
+
+        // ✅ Wallet providers
+        ...(KioskPaymentMethod_requiresWalletProvider(paymentMethod) && {
+          wallet_provider: mapWalletProvider(paymentMethod)
+        }),
+        
+        // ✅ Telefone para MBWAY
+        ...(paymentMethod === "MBWAY" && { customer_phone: paymentExtras.customerPhone.trim() }),
+
+      };
 
       if (mappedCardType) {
         payload.card_type = mappedCardType;

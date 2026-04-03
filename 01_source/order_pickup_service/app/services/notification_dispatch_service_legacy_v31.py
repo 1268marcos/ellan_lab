@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+
 from sqlalchemy.orm import Session
 
 from app.models.notification_log import NotificationLog
 
-
-# ================= HELPERS =================
 
 def _mask_email(email: str) -> str:
     value = (email or "").strip().lower()
@@ -23,23 +22,17 @@ def _mask_email(email: str) -> str:
     return f"{masked_name}@{domain}"
 
 
-def _mask_phone(phone: str) -> str:
-    value = (phone or "").strip()
-    if len(value) <= 4:
-        return "***"
-    return "***" + value[-4:]
-
-
-def _queue_notification(
+def _queue_email_notification(
     *,
     db: Session,
     order_id: str,
-    channel: str,
+    email: str,
     template_key: str,
-    destination_value: str,
     dedupe_key: str,
     payload_json: dict,
 ) -> NotificationLog:
+    normalized_email = str(email or "").strip().lower()
+
     existing = (
         db.query(NotificationLog)
         .filter(NotificationLog.dedupe_key == dedupe_key)
@@ -53,14 +46,12 @@ def _queue_notification(
     log = NotificationLog(
         user_id=None,
         order_id=order_id,
-        channel=channel,
+        channel="EMAIL",
         template_key=template_key,
-        destination_masked=_mask_email(destination_value)
-        if channel == "EMAIL"
-        else _mask_phone(destination_value),
-        destination_value=destination_value,
+        destination_masked=_mask_email(normalized_email),
+        destination_value=normalized_email,
         dedupe_key=dedupe_key,
-        provider_name="INTERNAL",
+        provider_name="SMTP",
         provider_message_id=None,
         status="QUEUED",
         attempt_count=0,
@@ -81,8 +72,6 @@ def _queue_notification(
     return log
 
 
-# ================= RECEIPT (RESTORE CRÍTICO) =================
-
 def queue_receipt_email(
     *,
     db: Session,
@@ -90,23 +79,22 @@ def queue_receipt_email(
     email: str,
     receipt_code: str,
 ) -> NotificationLog:
-    dedupe_key = f"EMAIL|RECEIPT|{email}|{receipt_code}"
+    normalized_email = str(email or "").strip().lower()
+    normalized_receipt_code = str(receipt_code or "").strip().upper()
+    dedupe_key = f"EMAIL|RECEIPT|{normalized_email}|{normalized_receipt_code}"
 
-    return _queue_notification(
+    return _queue_email_notification(
         db=db,
         order_id=order_id,
-        channel="EMAIL",
+        email=normalized_email,
         template_key="RECEIPT",
-        destination_value=email,
         dedupe_key=dedupe_key,
         payload_json={
-            "receipt_code": receipt_code,
+            "receipt_code": normalized_receipt_code,
             "order_id": order_id,
         },
     )
 
-
-# ================= PICKUP EMAIL =================
 
 def queue_pickup_email(
     *,
@@ -120,79 +108,23 @@ def queue_pickup_email(
     locker_id: str | None,
     slot: str | None,
 ) -> NotificationLog:
-    dedupe_key = f"EMAIL|PICKUP|{email}|{order_id}"
+    normalized_email = str(email or "").strip().lower()
+    normalized_manual_code = str(manual_code or "").strip()
+    dedupe_key = f"EMAIL|PICKUP|{normalized_email}|{order_id}"
 
-    return _queue_notification(
+    return _queue_email_notification(
         db=db,
         order_id=order_id,
-        channel="EMAIL",
+        email=normalized_email,
         template_key="PICKUP",
-        destination_value=email,
         dedupe_key=dedupe_key,
         payload_json={
+            "order_id": order_id,
             "qr_value": qr_value,
-            "manual_code": manual_code,
+            "manual_code": normalized_manual_code,
             "expires_at": expires_at,
             "region": region,
             "locker_id": locker_id,
             "slot": slot,
-        },
-    )
-
-
-# ================= SMS =================
-
-def queue_pickup_sms(
-    *,
-    db: Session,
-    order_id: str,
-    phone: str,
-    manual_code: str,
-    expires_at: str,
-    region: str,
-) -> NotificationLog:
-    dedupe_key = f"SMS|PICKUP|{phone}|{order_id}"
-
-    return _queue_notification(
-        db=db,
-        order_id=order_id,
-        channel="SMS",
-        template_key="PICKUP",
-        destination_value=phone,
-        dedupe_key=dedupe_key,
-        payload_json={
-            "manual_code": manual_code,
-            "expires_at": expires_at,
-            "region": region,
-        },
-    )
-
-
-# ================= WHATSAPP =================
-
-def queue_pickup_whatsapp(
-    *,
-    db: Session,
-    order_id: str,
-    phone: str,
-    qr_value: str,
-    manual_code: str,
-    expires_at: str,
-    region: str,
-) -> NotificationLog:
-    dedupe_key = f"WHATSAPP|PICKUP|{phone}|{order_id}"
-
-    return _queue_notification(
-        db=db,
-        order_id=order_id,
-        channel="WHATSAPP",
-        template_key="PICKUP",
-        destination_value=phone,
-        dedupe_key=dedupe_key,
-        payload_json={
-            "qr_value": qr_value,
-            "manual_code": manual_code,
-            "expires_at": expires_at,
-            "region": region,
         },
     )

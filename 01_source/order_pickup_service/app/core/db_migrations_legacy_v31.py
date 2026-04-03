@@ -1,5 +1,4 @@
 # 01_source/order_pickup_service/app/core/db_migrations.py
-# 03/04/2026 - adicionar coluna 'currency' na tabela 'orders'
 
 from __future__ import annotations
 
@@ -784,17 +783,6 @@ def migrate_order_pickup_schema() -> dict:
                     text("ALTER TABLE orders ADD COLUMN public_access_token_hash VARCHAR")
                 )
                 applied.append("orders.public_access_token_hash")
-
-            # 🔥 NOVO BLOCO: coluna currency
-            if not _has_column(inspector, "orders", "currency"):
-                conn.execute(
-                    text("ALTER TABLE orders ADD COLUMN currency VARCHAR(8) DEFAULT 'BRL'")
-                )
-                # Backfill para registros existentes (opcional, mas recomendado)
-                conn.execute(
-                    text("UPDATE orders SET currency = 'BRL' WHERE currency IS NULL")
-                )
-                applied.append("orders.currency")
 
             inspector = inspect(conn)
 

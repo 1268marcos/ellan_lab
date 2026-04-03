@@ -33,9 +33,9 @@ from app.services.notification_dispatch_service import (
     queue_pickup_email,
     queue_pickup_sms,
     queue_pickup_whatsapp,
-    # queue_pickup_wechat,
-    # queue_pickup_line,
-    # queue_pickup_kakao,
+    queue_pickup_wechat,
+    queue_pickup_line,
+    queue_pickup_kakao,
 )
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 from app.schemas.orders import OnlineRegion, OnlinePaymentMethod
@@ -919,40 +919,40 @@ def fulfill_payment_post_approval(
 
 
 # Funções auxiliares para notificações (a serem implementadas nos serviços respectivos)
-# def queue_pickup_sms(db: Session, *, order_id: str, phone: str, manual_code: str, expires_at: str, region: str) -> None:
-#     """Enfileira notificação SMS para pickup"""
-#     # Implementação específica para SMS
-#     pass
+def queue_pickup_sms(db: Session, *, order_id: str, phone: str, manual_code: str, expires_at: str, region: str) -> None:
+    """Enfileira notificação SMS para pickup"""
+    # Implementação específica para SMS
+    pass
 
 
-# def queue_pickup_whatsapp(db: Session, *, order_id: str, phone: str, qr_value: str, manual_code: str, expires_at: str, region: str) -> None:
-#     """Enfileira notificação WhatsApp para pickup"""
-#     # Implementação específica para WhatsApp
-#     pass
+def queue_pickup_whatsapp(db: Session, *, order_id: str, phone: str, qr_value: str, manual_code: str, expires_at: str, region: str) -> None:
+    """Enfileira notificação WhatsApp para pickup"""
+    # Implementação específica para WhatsApp
+    pass
 
 
-# def queue_pickup_wechat(db: Session, *, order_id: str, open_id: str, qr_value: str, expires_at: str) -> None:
-#     """Enfileira notificação WeChat para pickup (China)"""
-#     # Implementação específica para WeChat
-#     pass
+def queue_pickup_wechat(db: Session, *, order_id: str, open_id: str, qr_value: str, expires_at: str) -> None:
+    """Enfileira notificação WeChat para pickup (China)"""
+    # Implementação específica para WeChat
+    pass
 
 
-# def queue_pickup_line(db: Session, *, order_id: str, user_id: str, manual_code: str, expires_at: str) -> None:
-#     """Enfileira notificação LINE para pickup (Japão, Tailândia)"""
-#     # Implementação específica para LINE
-#     pass
+def queue_pickup_line(db: Session, *, order_id: str, user_id: str, manual_code: str, expires_at: str) -> None:
+    """Enfileira notificação LINE para pickup (Japão, Tailândia)"""
+    # Implementação específica para LINE
+    pass
 
 
-# def queue_pickup_kakao(db: Session, *, order_id: str, user_id: str, manual_code: str, expires_at: str) -> None:
-#     """Enfileira notificação KakaoTalk para pickup (Coreia do Sul)"""
-#     # Implementação específica para KakaoTalk
-#     pass
+def queue_pickup_kakao(db: Session, *, order_id: str, user_id: str, manual_code: str, expires_at: str) -> None:
+    """Enfileira notificação KakaoTalk para pickup (Coreia do Sul)"""
+    # Implementação específica para KakaoTalk
+    pass
 
 
-# def queue_pickup_telegram(db: Session, *, order_id: str, phone: str, manual_code: str, expires_at: str) -> None:
-#     """Enfileira notificação Telegram para pickup"""
-#     # Implementação específica para Telegram
-#     pass
+def queue_pickup_telegram(db: Session, *, order_id: str, phone: str, manual_code: str, expires_at: str) -> None:
+    """Enfileira notificação Telegram para pickup"""
+    # Implementação específica para Telegram
+    pass
 
 
 """

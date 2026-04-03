@@ -5,6 +5,14 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 
+import {
+  buildOnlineOrderPayload,
+  getDefaultPaymentMethod,
+  paymentMethodLabel,
+  requiresCustomerPhone,
+} from "../../utils/paymentProfile";
+
+
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
@@ -93,22 +101,22 @@ function formatMoney(cents, currency, locale = undefined) {
   }
 }
 
-function paymentMethodLabel(method) {
-  const labels = {
-    PIX: "PIX",
-    CARTAO_CREDITO: "Cartão de Crédito",
-    CARTAO_DEBITO: "Cartão de Débito",
-    CARTAO_PRESENTE: "Cartão Presente",
-    CARTAO: "Cartão",
-    MBWAY: "MB WAY",
-    MULTIBANCO_REFERENCE: "Referência Multibanco",
-    NFC: "NFC",
-    APPLE_PAY: "Apple Pay",
-    GOOGLE_PAY: "Google Pay",
-    MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
-  };
-  return labels[method] || method || "-";
-}
+// function paymentMethodLabel(method) {
+//   const labels = {
+//     PIX: "PIX",
+//     CARTAO_CREDITO: "Cartão de Crédito",
+//     CARTAO_DEBITO: "Cartão de Débito",
+//     CARTAO_PRESENTE: "Cartão Presente",
+//     CARTAO: "Cartão",
+//     MBWAY: "MB WAY",
+//     MULTIBANCO_REFERENCE: "Referência Multibanco",
+//     NFC: "NFC",
+//     APPLE_PAY: "Apple Pay",
+//     GOOGLE_PAY: "Google Pay",
+//     MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
+//   };
+//   return labels[method] || method || "-";
+// }
 
 function walletProviderForMethod(method) {
   const providers = {
@@ -388,13 +396,21 @@ export default function PublicCheckoutPage() {
     const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
     const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-    const payload = {
+    // const payload = {
+    //   region,
+    //   sku_id: skuId,
+    //   totem_id: lockerId,
+    //   payment_method: mappedPaymentMethod,
+    //   desired_slot: slot,
+    // };
+    const payload = buildOnlineOrderPayload({
       region,
+      totemId: lockerId,
       sku_id: skuId,
-      totem_id: lockerId,
-      payment_method: mappedPaymentMethod,
       desired_slot: slot,
-    };
+      uiMethod: paymentMethod,
+      customerPhone,
+    });
 
     if (mappedCardType) {
       payload.card_type = mappedCardType;

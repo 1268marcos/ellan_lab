@@ -610,11 +610,11 @@ def refund_payment(
         order.mark_payment_refunded()
     else:
         order.payment_status = PaymentStatus.PARTIALLY_REFUNDED
-        if order.metadata is None:
-            order.metadata = {}
-        order.metadata["refunded_amount"] = refund_amount
-        order.metadata["refund_reason"] = reason
-        order.metadata["refund_source"] = source
+        if order.order_metadata is None:
+            order.order_metadata = {}
+        order.order_metadata["refunded_amount"] = refund_amount
+        order.order_metadata["refund_reason"] = reason
+        order.order_metadata["refund_source"] = source
     
     db.commit()
     

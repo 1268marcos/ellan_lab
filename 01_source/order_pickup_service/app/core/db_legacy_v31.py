@@ -1,6 +1,4 @@
 # 01_source/order_pickup_service/app/core/db.py
-# 03/04/2026 - adicionar coluna 'currency' na tabela 'orders'
-
 import logging
 
 from sqlalchemy import create_engine, inspect
@@ -108,7 +106,6 @@ def _assert_required_schema() -> None:
         "created_at",
         "updated_at",
         "public_access_token_hash",
-        "currency",
     }
 
     required_allocations_columns = {

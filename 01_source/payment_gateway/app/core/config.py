@@ -1,5 +1,5 @@
 # 01_source/payment_gateway/app/core/config.py
-# 02/04/2026 v3 - Enhanced with Global Market Support
+# 02/04/2026 v4 - Global Market Support + startup hardening
 # veja fim do arquivo
 
 import json
@@ -34,7 +34,7 @@ class RegionCode(str, Enum):
     CR = "CR"
     PA = "PA"
     DO = "DO"
-    
+
     # América do Norte
     US_NY = "US_NY"
     US_CA = "US_CA"
@@ -44,7 +44,7 @@ class RegionCode(str, Enum):
     CA_ON = "CA_ON"
     CA_QC = "CA_QC"
     CA_BC = "CA_BC"
-    
+
     # Europa Ocidental
     PT = "PT"
     ES = "ES"
@@ -61,7 +61,7 @@ class RegionCode(str, Enum):
     FI = "FI"
     IE = "IE"
     AT = "AT"
-    
+
     # Europa Oriental
     PL = "PL"
     CZ = "CZ"
@@ -70,7 +70,7 @@ class RegionCode(str, Enum):
     RO = "RO"
     RU = "RU"
     TR = "TR"
-    
+
     # África
     ZA = "ZA"
     NG = "NG"
@@ -87,12 +87,12 @@ class RegionCode(str, Enum):
     AO = "AO"
     DZ = "DZ"
     TN = "TN"
-    
+
     # Ásia - Leste Asiático
     CN = "CN"
     JP = "JP"
     KR = "KR"
-    
+
     # Ásia - Sudeste Asiático
     TH = "TH"
     ID = "ID"
@@ -100,7 +100,7 @@ class RegionCode(str, Enum):
     PH = "PH"
     VN = "VN"
     MY = "MY"
-    
+
     # Oriente Médio
     AE = "AE"
     SA = "SA"
@@ -109,7 +109,7 @@ class RegionCode(str, Enum):
     BH = "BH"
     OM = "OM"
     JO = "JO"
-    
+
     # Oceania
     AU = "AU"
     NZ = "NZ"
@@ -134,6 +134,7 @@ class Settings:
     # Backends regionais expandidos
     # ------------------------------------------------------------------
     # América Latina
+    BACKEND_BR: str = os.getenv("BACKEND_BR", RUNTIME_BASE_URL)
     BACKEND_SP: str = os.getenv("BACKEND_SP", RUNTIME_BASE_URL)
     BACKEND_RJ: str = os.getenv("BACKEND_RJ", RUNTIME_BASE_URL)
     BACKEND_MG: str = os.getenv("BACKEND_MG", RUNTIME_BASE_URL)
@@ -144,13 +145,25 @@ class Settings:
     BACKEND_CO: str = os.getenv("BACKEND_CO", RUNTIME_BASE_URL)
     BACKEND_CL: str = os.getenv("BACKEND_CL", RUNTIME_BASE_URL)
     BACKEND_PE: str = os.getenv("BACKEND_PE", RUNTIME_BASE_URL)
-    
+    BACKEND_EC: str = os.getenv("BACKEND_EC", RUNTIME_BASE_URL)
+    BACKEND_UY: str = os.getenv("BACKEND_UY", RUNTIME_BASE_URL)
+    BACKEND_PY: str = os.getenv("BACKEND_PY", RUNTIME_BASE_URL)
+    BACKEND_BO: str = os.getenv("BACKEND_BO", RUNTIME_BASE_URL)
+    BACKEND_VE: str = os.getenv("BACKEND_VE", RUNTIME_BASE_URL)
+    BACKEND_CR: str = os.getenv("BACKEND_CR", RUNTIME_BASE_URL)
+    BACKEND_PA: str = os.getenv("BACKEND_PA", RUNTIME_BASE_URL)
+    BACKEND_DO: str = os.getenv("BACKEND_DO", RUNTIME_BASE_URL)
+
     # América do Norte
     BACKEND_US_NY: str = os.getenv("BACKEND_US_NY", RUNTIME_BASE_URL)
     BACKEND_US_CA: str = os.getenv("BACKEND_US_CA", RUNTIME_BASE_URL)
     BACKEND_US_TX: str = os.getenv("BACKEND_US_TX", RUNTIME_BASE_URL)
+    BACKEND_US_FL: str = os.getenv("BACKEND_US_FL", RUNTIME_BASE_URL)
+    BACKEND_US_IL: str = os.getenv("BACKEND_US_IL", RUNTIME_BASE_URL)
     BACKEND_CA_ON: str = os.getenv("BACKEND_CA_ON", RUNTIME_BASE_URL)
-    
+    BACKEND_CA_QC: str = os.getenv("BACKEND_CA_QC", RUNTIME_BASE_URL)
+    BACKEND_CA_BC: str = os.getenv("BACKEND_CA_BC", RUNTIME_BASE_URL)
+
     # Europa
     BACKEND_PT: str = os.getenv("BACKEND_PT", RUNTIME_BASE_URL)
     BACKEND_ES: str = os.getenv("BACKEND_ES", RUNTIME_BASE_URL)
@@ -174,7 +187,7 @@ class Settings:
     BACKEND_RO: str = os.getenv("BACKEND_RO", RUNTIME_BASE_URL)
     BACKEND_RU: str = os.getenv("BACKEND_RU", RUNTIME_BASE_URL)
     BACKEND_TR: str = os.getenv("BACKEND_TR", RUNTIME_BASE_URL)
-    
+
     # África
     BACKEND_ZA: str = os.getenv("BACKEND_ZA", RUNTIME_BASE_URL)
     BACKEND_NG: str = os.getenv("BACKEND_NG", RUNTIME_BASE_URL)
@@ -182,9 +195,16 @@ class Settings:
     BACKEND_EG: str = os.getenv("BACKEND_EG", RUNTIME_BASE_URL)
     BACKEND_MA: str = os.getenv("BACKEND_MA", RUNTIME_BASE_URL)
     BACKEND_GH: str = os.getenv("BACKEND_GH", RUNTIME_BASE_URL)
+    BACKEND_SN: str = os.getenv("BACKEND_SN", RUNTIME_BASE_URL)
+    BACKEND_CI: str = os.getenv("BACKEND_CI", RUNTIME_BASE_URL)
     BACKEND_TZ: str = os.getenv("BACKEND_TZ", RUNTIME_BASE_URL)
     BACKEND_UG: str = os.getenv("BACKEND_UG", RUNTIME_BASE_URL)
-    
+    BACKEND_RW: str = os.getenv("BACKEND_RW", RUNTIME_BASE_URL)
+    BACKEND_MZ: str = os.getenv("BACKEND_MZ", RUNTIME_BASE_URL)
+    BACKEND_AO: str = os.getenv("BACKEND_AO", RUNTIME_BASE_URL)
+    BACKEND_DZ: str = os.getenv("BACKEND_DZ", RUNTIME_BASE_URL)
+    BACKEND_TN: str = os.getenv("BACKEND_TN", RUNTIME_BASE_URL)
+
     # Ásia
     BACKEND_CN: str = os.getenv("BACKEND_CN", RUNTIME_BASE_URL)
     BACKEND_JP: str = os.getenv("BACKEND_JP", RUNTIME_BASE_URL)
@@ -195,13 +215,16 @@ class Settings:
     BACKEND_PH: str = os.getenv("BACKEND_PH", RUNTIME_BASE_URL)
     BACKEND_VN: str = os.getenv("BACKEND_VN", RUNTIME_BASE_URL)
     BACKEND_MY: str = os.getenv("BACKEND_MY", RUNTIME_BASE_URL)
-    
+
     # Oriente Médio
     BACKEND_AE: str = os.getenv("BACKEND_AE", RUNTIME_BASE_URL)
     BACKEND_SA: str = os.getenv("BACKEND_SA", RUNTIME_BASE_URL)
     BACKEND_QA: str = os.getenv("BACKEND_QA", RUNTIME_BASE_URL)
     BACKEND_KW: str = os.getenv("BACKEND_KW", RUNTIME_BASE_URL)
-    
+    BACKEND_BH: str = os.getenv("BACKEND_BH", RUNTIME_BASE_URL)
+    BACKEND_OM: str = os.getenv("BACKEND_OM", RUNTIME_BASE_URL)
+    BACKEND_JO: str = os.getenv("BACKEND_JO", RUNTIME_BASE_URL)
+
     # Oceania
     BACKEND_AU: str = os.getenv("BACKEND_AU", RUNTIME_BASE_URL)
     BACKEND_NZ: str = os.getenv("BACKEND_NZ", RUNTIME_BASE_URL)
@@ -209,6 +232,7 @@ class Settings:
     # ------------------------------------------------------------------
     # Paths específicos por região
     # ------------------------------------------------------------------
+    BACKEND_BR_PATH: str = os.getenv("BACKEND_BR_PATH", "")
     BACKEND_SP_PATH: str = os.getenv("BACKEND_SP_PATH", "")
     BACKEND_PT_PATH: str = os.getenv("BACKEND_PT_PATH", "")
     BACKEND_MX_PATH: str = os.getenv("BACKEND_MX_PATH", "")
@@ -234,10 +258,9 @@ class Settings:
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     REDIS_DB: int = int(os.getenv("REDIS_DB", "0"))
     REDIS_PASSWORD: Optional[str] = os.getenv("REDIS_PASSWORD")
-    
-    # Redis por região (cache distribuído)
+
     REDIS_REGIONAL_HOSTS: Dict[str, str] = {}
-    
+
     # ------------------------------------------------------------------
     # MQTT
     # ------------------------------------------------------------------
@@ -254,8 +277,7 @@ class Settings:
         "GATEWAY_SQLITE_PATH",
         "/data/sqlite/gateway/events.db",
     )
-    
-    # Bancos de dados regionais
+
     SQLITE_REGIONAL_PATHS: Dict[str, str] = {}
 
     # ------------------------------------------------------------------
@@ -266,10 +288,9 @@ class Settings:
     )
     ANTIFRAUD_PEPPER_V1: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V1")
     ANTIFRAUD_PEPPER_V2: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V2")
-    ANTIFRAUD_PEPPER_V3: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V3")  # Nova versão
+    ANTIFRAUD_PEPPER_V3: Optional[str] = os.getenv("ANTIFRAUD_PEPPER_V3")
     LOG_HASH_SALT: Optional[str] = os.getenv("LOG_HASH_SALT")
-    
-    # Configurações de fraude por região
+
     FRAUD_DETECTION_ENABLED_REGIONS: Set[str] = set()
     FRAUD_RULES_UPDATE_INTERVAL: int = int(os.getenv("FRAUD_RULES_UPDATE_INTERVAL", "300"))
 
@@ -291,8 +312,7 @@ class Settings:
     GATEWAY_ID: str = os.getenv("GATEWAY_ID", "payment_gateway_01")
     GATEWAY_LOG_DIR: str = os.getenv("GATEWAY_LOG_DIR", "/logs")
     GATEWAY_LOG_LEVEL: str = os.getenv("GATEWAY_LOG_LEVEL", "INFO")
-    
-    # Timeouts
+
     REQUEST_TIMEOUT_SEC: int = int(os.getenv("REQUEST_TIMEOUT_SEC", "30"))
     CONNECTION_TIMEOUT_SEC: int = int(os.getenv("CONNECTION_TIMEOUT_SEC", "10"))
 
@@ -309,8 +329,7 @@ class Settings:
     RATE_LIMIT_ENABLED: bool = os.getenv("RATE_LIMIT_ENABLED", "true").lower() == "true"
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_REQUESTS_PER_MINUTE", "60"))
     RATE_LIMIT_BURST: int = int(os.getenv("RATE_LIMIT_BURST", "10"))
-    
-    # Rate limits por região
+
     REGIONAL_RATE_LIMITS: Dict[str, int] = {
         "SP": 100,
         "PT": 80,
@@ -350,111 +369,152 @@ class Settings:
     LOCKER_REGISTRY_JSON: str = os.getenv("LOCKER_REGISTRY_JSON", "").strip()
 
     # ------------------------------------------------------------------
+    # Helpers internos
+    # ------------------------------------------------------------------
+    def _backend_value(self, attr_name: str) -> str:
+        value = getattr(self, attr_name, self.RUNTIME_BASE_URL)
+        return value or self.RUNTIME_BASE_URL
+
+    def _path_value(self, attr_name: str) -> str:
+        value = getattr(self, attr_name, "")
+        return value or ""
+
+    # ------------------------------------------------------------------
     # Propriedades calculadas
     # ------------------------------------------------------------------
     @property
     def REGIONAL_BACKENDS(self) -> Dict[str, str]:
         """Mapeamento de regiões para URLs de backend"""
-        backends = {
+        mapping = {
             # América Latina
-            "BR": self.BACKEND_BR,
-            "SP": self.BACKEND_SP,
-            "RJ": self.BACKEND_RJ,
-            "MG": self.BACKEND_MG,
-            "RS": self.BACKEND_RS,
-            "BA": self.BACKEND_BA,
-            "MX": self.BACKEND_MX,
-            "AR": self.BACKEND_AR,
-            "CO": self.BACKEND_CO,
-            "CL": self.BACKEND_CL,
-            "PE": self.BACKEND_PE,
+            "BR": "BACKEND_BR",
+            "SP": "BACKEND_SP",
+            "RJ": "BACKEND_RJ",
+            "MG": "BACKEND_MG",
+            "RS": "BACKEND_RS",
+            "BA": "BACKEND_BA",
+            "MX": "BACKEND_MX",
+            "AR": "BACKEND_AR",
+            "CO": "BACKEND_CO",
+            "CL": "BACKEND_CL",
+            "PE": "BACKEND_PE",
+            "EC": "BACKEND_EC",
+            "UY": "BACKEND_UY",
+            "PY": "BACKEND_PY",
+            "BO": "BACKEND_BO",
+            "VE": "BACKEND_VE",
+            "CR": "BACKEND_CR",
+            "PA": "BACKEND_PA",
+            "DO": "BACKEND_DO",
+
             # América do Norte
-            "US_NY": self.BACKEND_US_NY,
-            "US_CA": self.BACKEND_US_CA,
-            "US_TX": self.BACKEND_US_TX,
-            "CA_ON": self.BACKEND_CA_ON,
+            "US_NY": "BACKEND_US_NY",
+            "US_CA": "BACKEND_US_CA",
+            "US_TX": "BACKEND_US_TX",
+            "US_FL": "BACKEND_US_FL",
+            "US_IL": "BACKEND_US_IL",
+            "CA_ON": "BACKEND_CA_ON",
+            "CA_QC": "BACKEND_CA_QC",
+            "CA_BC": "BACKEND_CA_BC",
+
             # Europa
-            "PT": self.BACKEND_PT,
-            "ES": self.BACKEND_ES,
-            "FR": self.BACKEND_FR,
-            "DE": self.BACKEND_DE,
-            "UK": self.BACKEND_UK,
-            "IT": self.BACKEND_IT,
-            "NL": self.BACKEND_NL,
-            "BE": self.BACKEND_BE,
-            "CH": self.BACKEND_CH,
-            "SE": self.BACKEND_SE,
-            "NO": self.BACKEND_NO,
-            "DK": self.BACKEND_DK,
-            "FI": self.BACKEND_FI,
-            "IE": self.BACKEND_IE,
-            "AT": self.BACKEND_AT,
-            "PL": self.BACKEND_PL,
-            "CZ": self.BACKEND_CZ,
-            "GR": self.BACKEND_GR,
-            "HU": self.BACKEND_HU,
-            "RO": self.BACKEND_RO,
-            "RU": self.BACKEND_RU,
-            "TR": self.BACKEND_TR,
+            "PT": "BACKEND_PT",
+            "ES": "BACKEND_ES",
+            "FR": "BACKEND_FR",
+            "DE": "BACKEND_DE",
+            "UK": "BACKEND_UK",
+            "IT": "BACKEND_IT",
+            "NL": "BACKEND_NL",
+            "BE": "BACKEND_BE",
+            "CH": "BACKEND_CH",
+            "SE": "BACKEND_SE",
+            "NO": "BACKEND_NO",
+            "DK": "BACKEND_DK",
+            "FI": "BACKEND_FI",
+            "IE": "BACKEND_IE",
+            "AT": "BACKEND_AT",
+            "PL": "BACKEND_PL",
+            "CZ": "BACKEND_CZ",
+            "GR": "BACKEND_GR",
+            "HU": "BACKEND_HU",
+            "RO": "BACKEND_RO",
+            "RU": "BACKEND_RU",
+            "TR": "BACKEND_TR",
+
             # África
-            "ZA": self.BACKEND_ZA,
-            "NG": self.BACKEND_NG,
-            "KE": self.BACKEND_KE,
-            "EG": self.BACKEND_EG,
-            "MA": self.BACKEND_MA,
-            "GH": self.BACKEND_GH,
-            "TZ": self.BACKEND_TZ,
-            "UG": self.BACKEND_UG,
+            "ZA": "BACKEND_ZA",
+            "NG": "BACKEND_NG",
+            "KE": "BACKEND_KE",
+            "EG": "BACKEND_EG",
+            "MA": "BACKEND_MA",
+            "GH": "BACKEND_GH",
+            "SN": "BACKEND_SN",
+            "CI": "BACKEND_CI",
+            "TZ": "BACKEND_TZ",
+            "UG": "BACKEND_UG",
+            "RW": "BACKEND_RW",
+            "MZ": "BACKEND_MZ",
+            "AO": "BACKEND_AO",
+            "DZ": "BACKEND_DZ",
+            "TN": "BACKEND_TN",
+
             # Ásia
-            "CN": self.BACKEND_CN,
-            "JP": self.BACKEND_JP,
-            "KR": self.BACKEND_KR,
-            "TH": self.BACKEND_TH,
-            "ID": self.BACKEND_ID,
-            "SG": self.BACKEND_SG,
-            "PH": self.BACKEND_PH,
-            "VN": self.BACKEND_VN,
-            "MY": self.BACKEND_MY,
+            "CN": "BACKEND_CN",
+            "JP": "BACKEND_JP",
+            "KR": "BACKEND_KR",
+            "TH": "BACKEND_TH",
+            "ID": "BACKEND_ID",
+            "SG": "BACKEND_SG",
+            "PH": "BACKEND_PH",
+            "VN": "BACKEND_VN",
+            "MY": "BACKEND_MY",
+
             # Oriente Médio
-            "AE": self.BACKEND_AE,
-            "SA": self.BACKEND_SA,
-            "QA": self.BACKEND_QA,
-            "KW": self.BACKEND_KW,
+            "AE": "BACKEND_AE",
+            "SA": "BACKEND_SA",
+            "QA": "BACKEND_QA",
+            "KW": "BACKEND_KW",
+            "BH": "BACKEND_BH",
+            "OM": "BACKEND_OM",
+            "JO": "BACKEND_JO",
+
             # Oceania
-            "AU": self.BACKEND_AU,
-            "NZ": self.BACKEND_NZ,
+            "AU": "BACKEND_AU",
+            "NZ": "BACKEND_NZ",
         }
-        # Filtra apenas backends definidos (não vazios)
-        return {k: v for k, v in backends.items() if v}
+
+        backends = {region: self._backend_value(attr) for region, attr in mapping.items()}
+        return {key: value for key, value in backends.items() if value}
 
     @property
     def REGIONAL_PATHS(self) -> Dict[str, str]:
         """Mapeamento de regiões para paths específicos"""
-        return {
-            "BR": self.BACKEND_BR_PATH,
-            "SP": self.BACKEND_SP_PATH,
-            "PT": self.BACKEND_PT_PATH,
-            "MX": self.BACKEND_MX_PATH,
-            "AR": self.BACKEND_AR_PATH,
-            "CO": self.BACKEND_CO_PATH,
-            "CL": self.BACKEND_CL_PATH,
-            "US_NY": self.BACKEND_US_NY_PATH,
-            "UK": self.BACKEND_UK_PATH,
-            "CN": self.BACKEND_CN_PATH,
-            "JP": self.BACKEND_JP_PATH,
-            "SG": self.BACKEND_SG_PATH,
-            "AE": self.BACKEND_AE_PATH,
-            "AU": self.BACKEND_AU_PATH,
-            "NG": self.BACKEND_NG_PATH,
-            "KE": self.BACKEND_KE_PATH,
-            "RU": self.BACKEND_RU_PATH,
-            "TR": self.BACKEND_TR_PATH,
+        mapping = {
+            "BR": "BACKEND_BR_PATH",
+            "SP": "BACKEND_SP_PATH",
+            "PT": "BACKEND_PT_PATH",
+            "MX": "BACKEND_MX_PATH",
+            "AR": "BACKEND_AR_PATH",
+            "CO": "BACKEND_CO_PATH",
+            "CL": "BACKEND_CL_PATH",
+            "US_NY": "BACKEND_US_NY_PATH",
+            "UK": "BACKEND_UK_PATH",
+            "CN": "BACKEND_CN_PATH",
+            "JP": "BACKEND_JP_PATH",
+            "SG": "BACKEND_SG_PATH",
+            "AE": "BACKEND_AE_PATH",
+            "AU": "BACKEND_AU_PATH",
+            "NG": "BACKEND_NG_PATH",
+            "KE": "BACKEND_KE_PATH",
+            "RU": "BACKEND_RU_PATH",
+            "TR": "BACKEND_TR_PATH",
         }
+        return {region: self._path_value(attr) for region, attr in mapping.items()}
 
     @property
     def ALL_SUPPORTED_REGIONS(self) -> List[str]:
         """Lista de todas as regiões suportadas"""
-        return list(RegionCode.__members__.keys())
+        return [member.value for member in RegionCode]
 
     @property
     def ACTIVE_REGIONS(self) -> List[str]:
@@ -464,16 +524,18 @@ class Settings:
     def get_regional_url(self, region: str) -> str:
         """Obtém URL do backend para uma região específica"""
         reg = (region or "").upper().strip()
-        
+
         if not reg:
             raise ValueError("Region cannot be empty")
-        
+
         url = self.REGIONAL_BACKENDS.get(reg)
         if not url:
-            # Fallback para runtime base URL
-            logger.warning(f"No backend URL configured for region {reg}, using runtime base URL")
+            logger.warning(
+                "No backend URL configured for region %s, using runtime base URL",
+                reg,
+            )
             return self.RUNTIME_BASE_URL
-        
+
         return url.rstrip("/")
 
     def get_regional_path(self, region: str) -> str:
@@ -491,7 +553,6 @@ class Settings:
         reg = (region or "").upper().strip()
         if reg in self.SQLITE_REGIONAL_PATHS:
             return self.SQLITE_REGIONAL_PATHS[reg]
-        # Fallback para path padrão com região
         return f"/data/sqlite/gateway/events_{reg.lower()}.db"
 
     def get_legacy_locker_id(self, region: str) -> Optional[str]:
@@ -519,28 +580,6 @@ class Settings:
     def locker_registry(self) -> Dict[str, Dict[str, Any]]:
         """
         Registry de lockers com suporte global.
-        Formato esperado do JSON:
-        {
-            "LOCKER_001": {
-                "region": "SP",
-                "backend_region": "SP",
-                "active": true,
-                "payment_methods": ["pix", "creditCard"],
-                "channels": ["online", "kiosk"],
-                "timezone": "America/Sao_Paulo",
-                "max_slots": 100
-            },
-            "LOCKER_CN_001": {
-                "region": "CN",
-                "backend_region": "CN",
-                "active": true,
-                "payment_methods": ["alipay", "wechat_pay"],
-                "channels": ["online"],
-                "timezone": "Asia/Shanghai",
-                "max_slots": 200,
-                "qr_required": true
-            }
-        }
         """
         raw = self.LOCKER_REGISTRY_JSON
         if not raw:
@@ -647,7 +686,6 @@ class Settings:
         return cfg.get("max_slots", 100)
 
 
-# Instância singleton
 settings = Settings()
 
 # ------------------------------------------------------------------
@@ -660,6 +698,7 @@ GATEWAY_ID = settings.GATEWAY_ID
 GATEWAY_LOG_DIR = settings.GATEWAY_LOG_DIR
 LOG_HASH_SALT = settings.LOG_HASH_SALT
 
+BACKEND_BR = settings.BACKEND_BR
 BACKEND_SP = settings.BACKEND_SP
 BACKEND_PT = settings.BACKEND_PT
 REGIONAL_BACKENDS = settings.REGIONAL_BACKENDS
@@ -673,6 +712,7 @@ MQTT_PORT = settings.MQTT_PORT
 ANTIFRAUD_ACTIVE_PEPPER_VERSION = settings.ANTIFRAUD_ACTIVE_PEPPER_VERSION
 ANTIFRAUD_PEPPER_V1 = settings.ANTIFRAUD_PEPPER_V1
 ANTIFRAUD_PEPPER_V2 = settings.ANTIFRAUD_PEPPER_V2
+ANTIFRAUD_PEPPER_V3 = settings.ANTIFRAUD_PEPPER_V3
 
 # ------------------------------------------------------------------
 # Novas exports para compatibilidade com código atualizado
