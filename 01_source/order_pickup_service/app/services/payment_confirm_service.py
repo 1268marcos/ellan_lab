@@ -1,25 +1,92 @@
 # 01_source/order_pickup_service/app/services/payment_confirm_service.py
+# 02/04/2026 - Enhanced Version with Global Markets Support
+# veja o final do arquivo
+
 from __future__ import annotations
 
 import hashlib
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional, Dict, Tuple
+from enum import Enum
 
 from sqlalchemy.orm import Session
 
-from app.models.allocation import Allocation
+from app.models.allocation import Allocation, AllocationState
 from app.models.domain_event_outbox import DomainEventOutbox
 from app.models.fiscal_document import FiscalDocument
-from app.models.order import Order
+from app.models.order import Order, PaymentMethod, OrderChannel, PaymentStatus
 from app.services.domain_event_outbox_service import enqueue_order_paid_event
-
 from app.services import backend_client
-
 
 logger = logging.getLogger(__name__)
 
+
+# ==================== Enums e Constantes ====================
+
+class FiscalDocumentType(str, Enum):
+    """Tipos de documento fiscal por região"""
+    NFE = "NFE"  # Brasil - Nota Fiscal Eletrônica
+    NFC_E = "NFC_E"  # Brasil - NFC-e (Cupom Fiscal Eletrônico)
+    SAT = "SAT"  # Brasil - Sistema Autenticador e Transmissor
+    FISCAL_RECEIPT_SIMULATED = "FISCAL_RECEIPT_SIMULATED"  # Simulado
+    INVOICE = "INVOICE"  # Europa/Ásia - Fatura comercial
+    TAX_INVOICE = "TAX_INVOICE"  # Singapura/Austrália
+    RECEIPT = "RECEIPT"  # EUA/Canadá - Recibo simples
+    ETR = "ETR"  # Emirados Árabes - Electronic Tax Register
+
+
+class DocumentDeliveryMode(str, Enum):
+    """Modo de entrega do documento fiscal"""
+    PRINT = "PRINT"  # Impressão local
+    SEND = "SEND"    # Envio por email/SMS
+    BOTH = "BOTH"    # Ambos
+    QR_CODE = "QR_CODE"  # QR Code para download
+
+
+# Configurações fiscais por região
+REGION_FISCAL_CONFIG = {
+    # Brasil
+    "SP": {"document_type": FiscalDocumentType.NFE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    "RJ": {"document_type": FiscalDocumentType.NFE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    "MG": {"document_type": FiscalDocumentType.NFE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    "RS": {"document_type": FiscalDocumentType.NFE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    "BA": {"document_type": FiscalDocumentType.NFE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    
+    # Portugal
+    "PT": {"document_type": FiscalDocumentType.INVOICE, "delivery_mode": DocumentDeliveryMode.SEND},
+    
+    # México
+    "MX": {"document_type": FiscalDocumentType.INVOICE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    
+    # Argentina
+    "AR": {"document_type": FiscalDocumentType.INVOICE, "delivery_mode": DocumentDeliveryMode.PRINT},
+    
+    # China
+    "CN": {"document_type": FiscalDocumentType.INVOICE, "delivery_mode": DocumentDeliveryMode.QR_CODE},
+    
+    # Japão
+    "JP": {"document_type": FiscalDocumentType.INVOICE, "delivery_mode": DocumentDeliveryMode.BOTH},
+    
+    # Singapura
+    "SG": {"document_type": FiscalDocumentType.TAX_INVOICE, "delivery_mode": DocumentDeliveryMode.SEND},
+    
+    # Austrália
+    "AU": {"document_type": FiscalDocumentType.TAX_INVOICE, "delivery_mode": DocumentDeliveryMode.SEND},
+    
+    # Emirados Árabes
+    "AE": {"document_type": FiscalDocumentType.ETR, "delivery_mode": DocumentDeliveryMode.QR_CODE},
+    
+    # EUA
+    "US": {"document_type": FiscalDocumentType.RECEIPT, "delivery_mode": DocumentDeliveryMode.SEND},
+    
+    # Padrão
+    "DEFAULT": {"document_type": FiscalDocumentType.FISCAL_RECEIPT_SIMULATED, "delivery_mode": DocumentDeliveryMode.PRINT},
+}
+
+
+# ==================== Funções Utilitárias ====================
 
 def _utc_now_naive() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -31,11 +98,61 @@ def _enum_value_or_raw(value) -> str | None:
     return getattr(value, "value", value)
 
 
-def _build_fiscal_receipt_code(*, order: Order) -> str:
+def _get_region_base(region: str) -> str:
+    """Extrai base da região (primeiros 2 caracteres)"""
+    region_upper = region.upper()
+    if region_upper.startswith("US_"):
+        return "US"
+    elif region_upper.startswith("CA_"):
+        return "CA"
+    elif len(region_upper) >= 2:
+        return region_upper[:2]
+    return region_upper
+
+
+def _get_fiscal_config(region: str) -> Dict[str, Any]:
+    """Retorna configuração fiscal para a região"""
+    region_base = _get_region_base(region)
+    config = REGION_FISCAL_CONFIG.get(region_base, REGION_FISCAL_CONFIG["DEFAULT"])
+    return config
+
+
+def _build_fiscal_receipt_code(
+    *, 
+    order: Order, 
+    region: str,
+    sequence: Optional[int] = None
+) -> str:
+    """Gera código de recibo fiscal baseado na região"""
     channel = _enum_value_or_raw(order.channel) or "UNK"
-    digest = hashlib.sha256(f"{channel}:{order.id}".encode("utf-8")).hexdigest()[:12].upper()
-    prefix = "KSK" if channel == "KIOSK" else "ONL"
-    return f"{prefix}-{digest}"
+    region_base = _get_region_base(region)
+    
+    # Prefixos por região
+    prefix_map = {
+        "BR": "BR",
+        "PT": "PT",
+        "MX": "MX",
+        "AR": "AR",
+        "CN": "CN",
+        "JP": "JP",
+        "SG": "SG",
+        "AE": "AE",
+        "AU": "AU",
+        "US": "US",
+        "DEFAULT": "DF",
+    }
+    
+    prefix = prefix_map.get(region_base, prefix_map["DEFAULT"])
+    channel_prefix = "KSK" if channel == "KIOSK" else "ONL"
+    
+    # Gera hash do order_id
+    digest = hashlib.sha256(f"{prefix}:{channel}:{order.id}".encode("utf-8")).hexdigest()[:8].upper()
+    
+    # Adiciona sequência se fornecida
+    if sequence:
+        return f"{prefix}-{channel_prefix}-{digest}-{sequence:04d}"
+    
+    return f"{prefix}-{channel_prefix}-{digest}"
 
 
 def _build_fiscal_simulation_payload(
@@ -44,23 +161,43 @@ def _build_fiscal_simulation_payload(
     allocation: Allocation,
     pickup,
     currency: str,
+    transaction_id: Optional[str] = None,
 ) -> dict[str, Any]:
-    receipt_code = _build_fiscal_receipt_code(order=order)
-
+    """Constrói payload de simulação fiscal com suporte regional"""
+    
+    # Obtém configuração fiscal da região
+    fiscal_config = _get_fiscal_config(order.region)
+    
+    receipt_code = _build_fiscal_receipt_code(
+        order=order,
+        region=order.region,
+    )
+    
+    # Determina target de envio
     send_target = (
         getattr(order, "receipt_email", None)
         or getattr(order, "guest_email", None)
         or getattr(order, "receipt_phone", None)
         or getattr(order, "guest_phone", None)
     )
-
+    
     channel = _enum_value_or_raw(order.channel)
     region = str(getattr(order, "region", "") or "").strip().upper()
     payment_method = _enum_value_or_raw(getattr(order, "payment_method", None))
-
-    document_type = "NFE" if region == "SP" else "FISCAL_RECEIPT_SIMULATED"
-    delivery_mode = "PRINT" if channel == "KIOSK" else "SEND"
-
+    
+    document_type = fiscal_config["document_type"].value
+    delivery_mode = fiscal_config["delivery_mode"].value
+    
+    # Ajusta para KIOSK
+    if channel == "KIOSK" and delivery_mode == "SEND":
+        delivery_mode = "PRINT"
+    
+    # Ajusta para regiões que exigem QR Code
+    if delivery_mode == "QR_CODE":
+        qr_code_url = f"/public/fiscal/qr/{receipt_code}"
+    else:
+        qr_code_url = None
+    
     return {
         "mode": "SIMULATED",
         "requested": True,
@@ -71,18 +208,20 @@ def _build_fiscal_simulation_payload(
         "delivery_mode": delivery_mode,
         "send_status": (
             "SIMULATED_QUEUED"
-            if (delivery_mode == "SEND" and send_target)
+            if (delivery_mode in ["SEND", "BOTH"] and send_target)
             else "SIMULATED_NOT_REQUESTED"
         ),
         "send_target": send_target,
         "print_status": (
             "SIMULATED_AVAILABLE"
-            if delivery_mode == "PRINT"
+            if delivery_mode in ["PRINT", "BOTH"]
             else "SIMULATED_NOT_APPLICABLE"
         ),
         "print_site_path": f"/public/fiscal/print/{receipt_code}",
         "json_site_path": f"/public/fiscal/by-code/{receipt_code}",
+        "qr_code_url": qr_code_url,
         "print_label": "Use este código no site de impressão do comprovante/cupom simulado.",
+        "transaction_id": transaction_id,
         "order": {
             "id": order.id,
             "channel": channel,
@@ -112,16 +251,12 @@ def _build_fiscal_simulation_payload(
     }
 
 
-def apply_payment_confirmation(
-    *,
-    db: Session,
+def _validate_payment_confirmation(
     order: Order,
-    transaction_id: str | None,
-    payment_method,
     amount_cents: int | None,
     currency: str | None,
-    source: str,
 ) -> None:
+    """Valida dados da confirmação de pagamento"""
     if order is None:
         raise ValueError("order obrigatório")
 
@@ -138,20 +273,58 @@ def apply_payment_confirmation(
 
     if not currency or not str(currency).strip():
         raise ValueError("currency obrigatória")
+    
+    # Verifica se pedido já foi pago
+    if order.payment_status == PaymentStatus.APPROVED:
+        logger.warning(f"Order already paid: {order.id}")
+        raise ValueError(f"Pedido {order.id} já foi pago anteriormente")
 
+
+# ==================== Funções Principais ====================
+
+def apply_payment_confirmation(
+    *,
+    db: Session,
+    order: Order,
+    transaction_id: str | None,
+    payment_method,
+    amount_cents: int | None,
+    currency: str | None,
+    source: str,
+) -> None:
+    """
+    Aplica confirmação de pagamento ao pedido.
+    Suporta múltiplos métodos de pagamento e regiões.
+    """
+    # Validação
+    _validate_payment_confirmation(order, amount_cents, currency)
+    
+    # Atualiza método de pagamento se fornecido
     if payment_method:
         order.payment_method = payment_method
 
+    # Atualiza transaction_id
     if transaction_id and str(transaction_id).strip():
         order.gateway_transaction_id = str(transaction_id).strip()
 
     if not order.gateway_transaction_id:
         order.gateway_transaction_id = f"{source}-{order.id}"
 
+    # Atualiza timestamps
     if not getattr(order, "paid_at", None):
         order.paid_at = _utc_now_naive()
+    
+    # Atualiza moeda
+    if currency:
+        order.currency = str(currency).strip().upper()
 
-    order.mark_payment_approved()
+    # Marca pagamento como aprovado
+    order.mark_payment_approved(transaction_id=order.gateway_transaction_id)
+
+    # Marca pedido como pago
+    order.mark_as_paid()
+
+    db.commit()
 
     logger.info(
         "payment_confirmation_applied",
@@ -162,6 +335,7 @@ def apply_payment_confirmation(
             "transaction_id": order.gateway_transaction_id,
             "amount_cents": order.amount_cents,
             "currency": str(currency).strip().upper(),
+            "region": order.region,
         },
     )
 
@@ -174,7 +348,12 @@ def emit_order_paid_and_simulate_fiscal(
     pickup,
     currency: str,
     source: str,
+    transaction_id: Optional[str] = None,
 ) -> dict[str, Any]:
+    """
+    Emite evento de pagamento e simula documento fiscal.
+    Suporta diferentes formatos fiscais por região.
+    """
     if order is None:
         raise ValueError("order obrigatório")
 
@@ -184,8 +363,10 @@ def emit_order_paid_and_simulate_fiscal(
     if not currency or not str(currency).strip():
         raise ValueError("currency obrigatória")
 
-    event_key = f"order.paid:{order.id}"
+    # Gera event key única
+    event_key = f"order.paid:{order.id}:{order.paid_at.isoformat() if order.paid_at else 'now'}"
 
+    # Verifica se evento já existe
     existing = (
         db.query(DomainEventOutbox)
         .filter(DomainEventOutbox.event_key == event_key)
@@ -194,6 +375,7 @@ def emit_order_paid_and_simulate_fiscal(
 
     event_already_exists = existing is not None
 
+    # Enfileira evento se necessário
     if not existing:
         enqueue_order_paid_event(
             db,
@@ -201,7 +383,7 @@ def emit_order_paid_and_simulate_fiscal(
             region=order.region,
             channel=_enum_value_or_raw(order.channel),
             payment_method=_enum_value_or_raw(order.payment_method),
-            transaction_id=order.gateway_transaction_id,
+            transaction_id=order.gateway_transaction_id or transaction_id,
             amount_cents=order.amount_cents,
             currency=str(currency).strip().upper(),
             locker_id=(pickup.locker_id if pickup else order.totem_id),
@@ -223,6 +405,7 @@ def emit_order_paid_and_simulate_fiscal(
                 "source": source,
                 "channel": _enum_value_or_raw(order.channel),
                 "amount_cents": order.amount_cents,
+                "region": order.region,
             },
         )
     else:
@@ -236,8 +419,13 @@ def emit_order_paid_and_simulate_fiscal(
             },
         )
 
+    # Normaliza moeda
     currency_norm = str(currency).strip().upper()
+    
+    # Obtém configuração fiscal da região
+    fiscal_config = _get_fiscal_config(order.region)
 
+    # Verifica se documento fiscal já existe
     existing_fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
@@ -246,14 +434,24 @@ def emit_order_paid_and_simulate_fiscal(
 
     if existing_fiscal:
         fiscal = existing_fiscal.payload_json
+        logger.info(
+            "fiscal_document_already_exists",
+            extra={
+                "order_id": order.id,
+                "receipt_code": existing_fiscal.receipt_code,
+            },
+        )
     else:
+        # Constrói payload fiscal
         fiscal = _build_fiscal_simulation_payload(
             order=order,
             allocation=allocation,
             pickup=pickup,
             currency=currency_norm,
+            transaction_id=transaction_id,
         )
 
+        # Cria documento fiscal
         fiscal_doc = FiscalDocument(
             id=str(uuid.uuid4()),
             order_id=order.id,
@@ -280,8 +478,13 @@ def emit_order_paid_and_simulate_fiscal(
                 "order_id": order.id,
                 "receipt_code": fiscal["receipt_code"],
                 "channel": _enum_value_or_raw(order.channel),
+                "region": order.region,
+                "document_type": fiscal["document_type"],
             },
         )
+
+    # Commit final
+    db.commit()
 
     logger.info(
         "payment_confirm_fiscal_simulated",
@@ -290,6 +493,7 @@ def emit_order_paid_and_simulate_fiscal(
             "receipt_code": fiscal["receipt_code"],
             "delivery_mode": fiscal["delivery_mode"],
             "source": source,
+            "region": order.region,
         },
     )
 
@@ -298,7 +502,6 @@ def emit_order_paid_and_simulate_fiscal(
         "event_already_exists": event_already_exists,
         "fiscal": fiscal,
     }
-
 
 
 def confirm_payment_and_emit_event(
@@ -310,15 +513,23 @@ def confirm_payment_and_emit_event(
     amount_cents: int | None,
     currency: str | None,
     source: str,
+    transaction_id: Optional[str] = None,
+    skip_locker_commit: bool = False,
 ) -> dict[str, Any]:
-
+    """
+    Confirma pagamento, commita no runtime e emite eventos.
+    Função principal para fluxo de confirmação de pagamento.
+    
+    Args:
+        skip_locker_commit: Para testes ou quando o commit já foi feito
+    """
     # =========================
-    # 1. valida + aplica pagamento
+    # 1. Valida + aplica pagamento
     # =========================
     apply_payment_confirmation(
         db=db,
         order=order,
-        transaction_id=getattr(order, "gateway_transaction_id", None),
+        transaction_id=transaction_id or getattr(order, "gateway_transaction_id", None),
         payment_method=getattr(order, "payment_method", None),
         amount_cents=amount_cents,
         currency=currency,
@@ -326,31 +537,41 @@ def confirm_payment_and_emit_event(
     )
 
     # =========================
-    # 🔥 2. COMMIT NO RUNTIME (CRÍTICO)
+    # 2. Commit no runtime (se necessário)
     # =========================
-    try:
-        backend_client.locker_commit(
-            region=order.region,
-            allocation_id=allocation.id,
-        )
-    except Exception as e:
-        logger.error(
-            "locker_commit_failed",
-            extra={
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "error": str(e),
-            },
-        )
-        raise
+    if not skip_locker_commit:
+        try:
+            backend_client.locker_commit(
+                region=order.region,
+                allocation_id=allocation.id,
+            )
+            logger.info(
+                "locker_commit_success",
+                extra={
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "region": order.region,
+                },
+            )
+        except Exception as e:
+            logger.error(
+                "locker_commit_failed",
+                extra={
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "region": order.region,
+                    "error": str(e),
+                },
+            )
+            raise
 
     # =========================
-    # 3. atualizar estado local
+    # 3. Atualiza estado local
     # =========================
     allocation.mark_reserved_paid_pending_pickup()
 
     # =========================
-    # 4. emitir evento + fiscal
+    # 4. Emite evento + fiscal
     # =========================
     return emit_order_paid_and_simulate_fiscal(
         db=db,
@@ -359,4 +580,180 @@ def confirm_payment_and_emit_event(
         pickup=pickup,
         currency=str(currency or "").strip().upper(),
         source=source,
+        transaction_id=transaction_id,
     )
+
+
+# ==================== Funções Adicionais ====================
+
+def refund_payment(
+    *,
+    db: Session,
+    order: Order,
+    amount_cents: Optional[int] = None,
+    reason: str,
+    source: str,
+) -> Dict[str, Any]:
+    """
+    Processa reembolso de pagamento.
+    """
+    if order.payment_status != PaymentStatus.APPROVED:
+        raise ValueError(f"Order {order.id} not in APPROVED state for refund")
+    
+    refund_amount = amount_cents or order.amount_cents
+    
+    if refund_amount > order.amount_cents:
+        raise ValueError(f"Refund amount {refund_amount} exceeds order amount {order.amount_cents}")
+    
+    # Marca como reembolsado
+    if refund_amount == order.amount_cents:
+        order.mark_payment_refunded()
+    else:
+        order.payment_status = PaymentStatus.PARTIALLY_REFUNDED
+        if order.metadata is None:
+            order.metadata = {}
+        order.metadata["refunded_amount"] = refund_amount
+        order.metadata["refund_reason"] = reason
+        order.metadata["refund_source"] = source
+    
+    db.commit()
+    
+    logger.info(
+        "payment_refunded",
+        extra={
+            "order_id": order.id,
+            "refund_amount": refund_amount,
+            "reason": reason,
+            "source": source,
+        },
+    )
+    
+    return {
+        "order_id": order.id,
+        "refund_amount": refund_amount,
+        "refunded_at": _utc_now_naive().isoformat(),
+        "status": order.payment_status.value,
+    }
+
+
+def get_fiscal_document_by_order(
+    db: Session,
+    order_id: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Recupera documento fiscal de um pedido.
+    """
+    fiscal = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id == order_id)
+        .first()
+    )
+    
+    if fiscal:
+        return fiscal.payload_json
+    
+    return None
+
+
+def regenerate_fiscal_document(
+    db: Session,
+    order: Order,
+    allocation: Allocation,
+    pickup,
+    currency: str,
+) -> Dict[str, Any]:
+    """
+    Regenera documento fiscal (útil para reimpressão).
+    """
+    # Remove documento existente
+    existing = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id == order.id)
+        .first()
+    )
+    
+    if existing:
+        db.delete(existing)
+        db.flush()
+    
+    # Gera novo documento
+    result = emit_order_paid_and_simulate_fiscal(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+        currency=currency,
+        source="regenerate",
+    )
+    
+    logger.info(f"Fiscal document regenerated for order {order.id}")
+    
+    return result
+
+"""
+
+1. Suporte Fiscal por Região:
+FiscalDocumentType: Tipos de documento por região (NFE, NFC-e, SAT, INVOICE, TAX_INVOICE, ETR, RECEIPT)
+
+DocumentDeliveryMode: Modos de entrega (PRINT, SEND, BOTH, QR_CODE)
+
+REGION_FISCAL_CONFIG: Configurações específicas para cada mercado
+
+2. Código de Recibo Regional:
+Prefixos específicos por região (BR, PT, MX, CN, JP, SG, AE, AU, US)
+
+Hash baseado na região para unicidade
+
+Suporte a sequência numérica
+
+3. Validações Aprimoradas:
+_validate_payment_confirmation(): Validação centralizada
+
+Verificação de pagamento duplicado
+
+Validação de moeda e valores
+
+4. QR Code para Documentos Fiscais:
+Suporte a QR Code para China e Emirados Árabes
+
+URL de QR Code na resposta
+
+5. Funções Adicionais:
+refund_payment(): Processamento de reembolso (total/parcial)
+
+get_fiscal_document_by_order(): Consulta de documento fiscal
+
+regenerate_fiscal_document(): Regeneração de documento
+
+6. Suporte a Reembolso Parcial:
+Reembolso total ou parcial
+
+Metadados para controle
+
+Status PARTIALLY_REFUNDED
+
+7. Logging Aprimorado:
+Logs com contexto regional
+
+Informações de documento fiscal
+
+Tracking de eventos
+
+8. Parâmetro skip_locker_commit:
+Útil para testes
+
+Quando o commit já foi realizado externamente
+
+9. Event Key Única:
+Inclui timestamp para unicidade
+
+Previne duplicação de eventos
+
+10. Compatibilidade:
+Mantém funções existentes
+
+Adiciona novos parâmetros opcionais
+
+Sem breaking changes
+
+"""

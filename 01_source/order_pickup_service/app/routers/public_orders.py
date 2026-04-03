@@ -1,28 +1,36 @@
 # 01_source/order_pickup_service/app/routers/public_orders.py
+# 02/04/2026 - Enhanced Version with Global Markets Support
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, List, Dict
 import hashlib
 import secrets
+import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
-
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app.core.auth_dep import get_current_public_user, get_current_user  # 🔥 ALTERAÇÃO: Importar get_current_user do auth_dep
-
+from app.core.auth_dep import get_current_public_user, get_current_user
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
-from app.models.order import Order, OrderStatus
+from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
-from app.schemas.orders import CreateOrderIn, OrderOut
-from app.services.order_creation_service import create_order_core
+from app.schemas.orders import CreateOrderIn, OnlineRegion, OnlinePaymentMethod
+from app.services.order_creation_service import create_order_core, CreateOrderCoreResult
 
+# ==================== Importações adicionais ====================
+from app.models.allocation import Allocation
+
+# Configuração de logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
+
+# ==================== Funções Utilitárias ====================
 
 def _dt_iso(value: datetime | None) -> str | None:
     if value is None:
@@ -31,6 +39,7 @@ def _dt_iso(value: datetime | None) -> str | None:
 
 
 def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
+    """Serializa pedido para resposta da API"""
     return {
         "id": order.id,
         "order_id": order.id,
@@ -59,38 +68,151 @@ def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict
             f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
         ),
         "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
+        "customer_phone": order.guest_phone,
+        "customer_email": getattr(order, "customer_email", None),
     }
 
 
 def _hash_token(token: str) -> str:
+    """Gera hash SHA256 do token"""
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def _generate_public_access_token() -> str:
-    return secrets.token_urlsafe(32)
-
-
-def generate_public_token():
+def _generate_public_access_token() -> tuple[str, str]:
+    """Gera token de acesso público e seu hash"""
     token = secrets.token_urlsafe(32)
     token_hash = hashlib.sha256(token.encode()).hexdigest()
     return token, token_hash
 
-class PublicCreateOrderRequest(BaseModel):
-    region: str = Field(..., min_length=2, max_length=8)
-    sku_id: str = Field(..., min_length=1, max_length=255)
-    totem_id: str = Field(..., min_length=1, max_length=255)
-    desired_slot: int = Field(..., ge=1, le=999)
-    payment_method: str = Field(..., min_length=1, max_length=64)
-    amount_cents: int | None = Field(default=None, ge=1)
-    card_type: str | None = Field(default=None, max_length=32)
-    customer_phone: str | None = Field(default=None, max_length=64)
-    wallet_provider: str | None = Field(default=None, max_length=64)
-    consent_marketing: bool = False
-
 
 def _resolve_guest_session_id(device_fp: str | None) -> str | None:
+    """Resolve guest session ID a partir do device fingerprint"""
     value = str(device_fp or "").strip()
     return value or None
+
+
+def _validate_payment_method_for_region(
+    payment_method: str, 
+    region: str
+) -> None:
+    """Valida se o método de pagamento é compatível com a região"""
+    # Mapeamento de métodos por região
+    region_methods = {
+        # Brasil
+        "SP": {"pix", "boleto", "creditCard", "debitCard", "giftCard", 
+               "apple_pay", "google_pay", "mercado_pago_wallet"},
+        "RJ": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "MG": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "RS": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "BA": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        
+        # Portugal
+        "PT": {"mbway", "multibanco_reference", "creditCard", "debitCard", 
+               "giftCard", "apple_pay", "google_pay"},
+        
+        # México
+        "MX": {"oxxo", "spei", "creditCard", "debitCard", "giftCard"},
+        
+        # Argentina
+        "AR": {"rapipago", "pagofacil", "creditCard", "debitCard"},
+        
+        # China
+        "CN": {"alipay", "wechat_pay", "unionpay", "creditCard", "debitCard"},
+        
+        # Japão
+        "JP": {"paypay", "line_pay", "rakuten_pay", "konbini", "creditCard"},
+        
+        # Tailândia
+        "TH": {"promptpay", "truemoney", "creditCard"},
+        
+        # Indonésia
+        "ID": {"go_pay", "ovo", "dana", "creditCard"},
+        
+        # Singapura
+        "SG": {"grabpay", "dbs_paylah", "creditCard"},
+        
+        # Filipinas
+        "PH": {"gcash", "paymaya", "creditCard"},
+        
+        # Emirados Árabes
+        "AE": {"tabby", "payby", "creditCard"},
+        
+        # Turquia
+        "TR": {"troy", "bkm_express", "creditCard"},
+        
+        # Rússia
+        "RU": {"mir", "yoomoney", "creditCard"},
+        
+        # Austrália
+        "AU": {"afterpay", "zip", "bpay", "creditCard"},
+        
+        # África do Sul
+        "ZA": {"yoco", "paystack", "creditCard"},
+        
+        # Quênia
+        "KE": {"m_pesa", "airtel_money", "creditCard"},
+        
+        # Nigéria
+        "NG": {"paystack", "flutterwave", "creditCard"},
+    }
+    
+    # Extrai base da região (primeiros 2 caracteres para regiões compostas)
+    region_base = region[:2] if len(region) >= 2 else region
+    
+    allowed_methods = region_methods.get(region, region_methods.get(region_base, set()))
+    
+    if allowed_methods and payment_method not in allowed_methods:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "PAYMENT_METHOD_NOT_ALLOWED_IN_REGION",
+                "message": f"Método de pagamento {payment_method} não é suportado na região {region}",
+                "region": region,
+                "payment_method": payment_method,
+                "allowed_methods": list(allowed_methods),
+            },
+        )
+
+
+def _validate_amount_for_region(amount_cents: int, region: str) -> None:
+    """Valida se o valor está dentro dos limites da região"""
+    # Limites por região (em centavos)
+    limits = {
+        "BR": {"min": 1, "max": 500000},      # R$ 5.000
+        "PT": {"min": 1, "max": 100000},      # € 1.000
+        "MX": {"min": 1, "max": 200000},      # MX$ 2.000
+        "CN": {"min": 1, "max": 1000000},     # ¥ 10.000
+        "JP": {"min": 1, "max": 1000000},     # ¥ 10.000
+        "US": {"min": 1, "max": 100000},      # $ 1.000
+        "AE": {"min": 1, "max": 500000},      # AED 5.000
+        "AU": {"min": 1, "max": 100000},      # AU$ 1.000
+        "default": {"min": 1, "max": 100000},
+    }
+    
+    region_base = region[:2] if len(region) >= 2 else region
+    region_limits = limits.get(region_base, limits["default"])
+    
+    if amount_cents < region_limits["min"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "AMOUNT_BELOW_MINIMUM",
+                "message": f"Valor mínimo para região {region} é {region_limits['min']} centavos",
+                "min_amount": region_limits["min"],
+                "amount_cents": amount_cents,
+            },
+        )
+    
+    if amount_cents > region_limits["max"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "AMOUNT_EXCEEDS_LIMIT",
+                "message": f"Valor máximo para região {region} é {region_limits['max']} centavos",
+                "max_amount": region_limits["max"],
+                "amount_cents": amount_cents,
+            },
+        )
 
 
 def _get_order_for_public_access(
@@ -101,6 +223,7 @@ def _get_order_for_public_access(
     guest_session_id: str | None,
     public_token: str | None,
 ) -> Order | None:
+    """Recupera pedido para acesso público com diferentes métodos de autenticação"""
     base_query = db.query(Order).filter(Order.id == order_id)
 
     if current_user is not None:
@@ -133,7 +256,10 @@ def _list_orders_for_public_access(
     limit: int,
     offset: int,
     status_value: str | None,
+    region: str | None = None,
+    payment_method: str | None = None,
 ) -> tuple[list[Order], int]:
+    """Lista pedidos para acesso público com filtros"""
     if current_user is None and not guest_session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -170,6 +296,16 @@ def _list_orders_for_public_access(
                 },
             ) from exc
         query = query.filter(Order.status == status_enum)
+    
+    if region:
+        query = query.filter(Order.region == region)
+    
+    if payment_method:
+        try:
+            payment_method_enum = PaymentMethod(payment_method)
+            query = query.filter(Order.payment_method == payment_method_enum)
+        except ValueError:
+            pass  # Ignora método inválido
 
     total = query.count()
 
@@ -190,16 +326,24 @@ def _create_public_order_via_existing_flow(
     idempotency_key: str,
     device_fp: str,
     request: Request,
-    # 🔥 ALTERAÇÃO: Adicionado parâmetro current_user com Depends
-    # ERRO current_user: User = Depends(get_current_user),
-    current_user: User,  # 🔥 ALTERAÇÃO: Remover Depends daqui, receber como parâmetro
+    current_user: User,
 ) -> dict[str, Any]:
+    """Cria pedido público utilizando o fluxo existente"""
     _ = idempotency_key
     _ = device_fp
     _ = request
 
+    # Valida método de pagamento para a região
+    _validate_payment_method_for_region(payload.payment_method, payload.region)
+    
+    # Valida valor para a região
+    if payload.amount_cents:
+        _validate_amount_for_region(payload.amount_cents, payload.region)
+
+    # Converte payload para CreateOrderIn
     create_payload = CreateOrderIn.model_validate(payload.model_dump())
 
+    # Chama core de criação
     result = create_order_core(
         db=db,
         region=create_payload.region.value,
@@ -207,21 +351,26 @@ def _create_public_order_via_existing_flow(
         totem_id=create_payload.totem_id,
         desired_slot=create_payload.desired_slot,
         payment_method_value=create_payload.payment_method.value,
-        card_type_value=create_payload.card_type.value if create_payload.card_type else None,
         amount_cents_input=create_payload.amount_cents,
         guest_phone=create_payload.customer_phone,
-        user_id=current_user.id,  # 🔥 ALTERAÇÃO: Salvar ownership com user_id do usuário autenticado
+        user_id=current_user.id,
+        payment_interface=create_payload.payment_interface.value if create_payload.payment_interface else None,
+        wallet_provider=create_payload.wallet_provider.value if create_payload.wallet_provider else None,
+        customer_email=getattr(payload, 'customer_email', None),
+        device_id=device_fp,
+        ip_address=request.client.host if request.client else None,
     )
 
     order = result.order
     allocation = result.allocation
 
-    public_access_token = _generate_public_access_token()
+    # Gera token de acesso público
+    public_access_token, public_access_token_hash = _generate_public_access_token()
 
-    # 🔥 ALTERAÇÃO: Garantir que o user_id está definido
-    order.user_id = current_user.id  # Salvar ownership
+    # Atualiza pedido com informações adicionais
+    order.user_id = current_user.id
     order.guest_session_id = guest_session_id
-    order.public_access_token_hash = _hash_token(public_access_token)
+    order.public_access_token_hash = public_access_token_hash
     order.guest_phone = payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
     order.consent_marketing = 1 if payload.consent_marketing else 0
     order.touch()
@@ -229,6 +378,12 @@ def _create_public_order_via_existing_flow(
     db.add(order)
     db.commit()
     db.refresh(order)
+
+    logger.info(
+        f"Public order created - order_id={order.id}, "
+        f"user_id={current_user.id}, region={payload.region}, "
+        f"payment_method={payload.payment_method}, amount={order.amount_cents}"
+    )
 
     return {
         "order_id": order.id,
@@ -240,23 +395,116 @@ def _create_public_order_via_existing_flow(
             "allocation_id": allocation.id,
             "slot": allocation.slot,
             "ttl_sec": result.ttl_sec,
+            "expires_at": _dt_iso(result.payment_timeout_at) if result.payment_timeout_at else None,
         },
         "public_access_token": public_access_token,
         "guest_session_id": guest_session_id,
-        "user_id": order.user_id,  # 🔥 ALTERAÇÃO: Incluir user_id na resposta
+        "user_id": order.user_id,
+        "region": order.region,
     }
 
 
-@router.post("/")
+# ==================== Schemas ====================
+
+class PublicCreateOrderRequest(BaseModel):
+    """Request para criação de pedido público"""
+    region: str = Field(..., min_length=2, max_length=8, description="Código da região")
+    sku_id: str = Field(..., min_length=1, max_length=255)
+    totem_id: str = Field(..., min_length=1, max_length=255)
+    desired_slot: int = Field(..., ge=1, le=9999, description="Slot desejado")
+    payment_method: str = Field(..., min_length=1, max_length=64)
+    payment_interface: Optional[str] = Field(default=None, max_length=32)
+    amount_cents: Optional[int] = Field(default=None, ge=1)
+    customer_phone: Optional[str] = Field(default=None, max_length=64)
+    customer_email: Optional[str] = Field(default=None, max_length=255)
+    wallet_provider: Optional[str] = Field(default=None, max_length=64)
+    consent_marketing: bool = False
+    
+    @field_validator("region")
+    @classmethod
+    def validate_region(cls, v: str) -> str:
+        region_upper = v.strip().upper()
+        valid_regions = {
+            # América Latina
+            "SP", "RJ", "MG", "RS", "BA", "BR", "MX", "AR", "CO", "CL", "PE",
+            "EC", "UY", "PY", "BO", "VE", "CR", "PA", "DO",
+            # América do Norte
+            "US_NY", "US_CA", "US_TX", "US_FL", "US_IL", "CA_ON", "CA_QC", "CA_BC",
+            # Europa
+            "PT", "ES", "FR", "DE", "UK", "IT", "NL", "BE", "CH", "SE",
+            "NO", "DK", "FI", "IE", "AT", "PL", "CZ", "GR", "HU", "RO", "RU", "TR",
+            # África
+            "ZA", "NG", "KE", "EG", "MA", "GH", "SN", "CI", "TZ", "UG", "RW", "MZ", "AO", "DZ", "TN",
+            # Ásia
+            "CN", "JP", "KR", "TH", "ID", "SG", "PH", "VN", "MY",
+            # Oriente Médio
+            "AE", "SA", "QA", "KW", "BH", "OM", "JO",
+            # Oceania
+            "AU", "NZ",
+        }
+        if region_upper not in valid_regions:
+            raise ValueError(f"Região inválida: {v}")
+        return region_upper
+    
+    @field_validator("payment_method")
+    @classmethod
+    def validate_payment_method(cls, v: str) -> str:
+        valid_methods = {
+            "pix", "boleto", "creditCard", "debitCard", "giftCard", "prepaidCard",
+            "apple_pay", "google_pay", "samsung_pay", "mercado_pago_wallet",
+            "mbway", "multibanco_reference", "sofort", "ideal", "bancontact",
+            "alipay", "wechat_pay", "paypay", "line_pay", "rakuten_pay",
+            "promptpay", "truemoney", "go_pay", "ovo", "dana", "grabpay",
+            "gcash", "paymaya", "tabby", "afterpay", "zip", "m_pesa",
+            "airtel_money", "mtn_money", "troy", "mir", "yoomoney",
+        }
+        if v.lower() not in valid_methods:
+            raise ValueError(f"Método de pagamento inválido: {v}")
+        return v.lower()
+
+
+class PublicOrderListResponse(BaseModel):
+    """Resposta para listagem de pedidos públicos"""
+    items: List[Dict[str, Any]]
+    pagination: Dict[str, int]
+    filters: Dict[str, Any]
+    access_mode: Dict[str, Any]
+
+
+class PublicOrderCreateResponse(BaseModel):
+    """Resposta para criação de pedido público"""
+    order_id: str
+    channel: str
+    status: str
+    amount_cents: int
+    payment_method: Optional[str]
+    allocation: Dict[str, Any]
+    public_access_token: str
+    guest_session_id: str
+    user_id: str
+    region: str
+
+
+# ==================== Endpoints ====================
+
+@router.post("/", response_model=PublicOrderCreateResponse)
 def create_public_order(
     payload: PublicCreateOrderRequest,
     request: Request,
     db: Session = Depends(get_db),
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     device_fp: str = Header(..., alias="X-Device-Fingerprint"),
-    current_user: User = Depends(get_current_user),  # 🔥 ALTERAÇÃO: Usar get_current_user do auth_dep
+    current_user: User = Depends(get_current_user),
 ):
-    # 🔥 ALTERAÇÃO: Verificar se o usuário está autenticado
+    """
+    Cria um novo pedido público.
+    
+    Requer:
+    - Autenticação do usuário
+    - Idempotency-Key header
+    - X-Device-Fingerprint header
+    """
+    # Verifica autenticação
     if not current_user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -266,8 +514,8 @@ def create_public_order(
             },
         )
 
+    # Valida device fingerprint
     guest_session_id = _resolve_guest_session_id(device_fp)
-
     if not guest_session_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -277,6 +525,7 @@ def create_public_order(
             },
         )
 
+    # Valida idempotency key
     if not str(idempotency_key or "").strip():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -286,6 +535,35 @@ def create_public_order(
             },
         )
 
+    # Verifica duplicata por idempotency key
+    existing_order = db.query(Order).filter(
+        Order.idempotency_key == idempotency_key
+    ).first()
+    
+    if existing_order:
+        logger.info(f"Idempotency key hit: {idempotency_key}")
+        # Retorna pedido existente
+        allocation = db.query(Allocation).filter(
+            Allocation.order_id == existing_order.id
+        ).first()
+        
+        return {
+            "order_id": existing_order.id,
+            "channel": existing_order.channel.value,
+            "status": existing_order.status.value,
+            "amount_cents": existing_order.amount_cents,
+            "payment_method": existing_order.payment_method.value if existing_order.payment_method else None,
+            "allocation": {
+                "allocation_id": allocation.id if allocation else None,
+                "slot": allocation.slot if allocation else None,
+                "ttl_sec": None,
+            },
+            "public_access_token": None,
+            "guest_session_id": existing_order.guest_session_id,
+            "user_id": existing_order.user_id,
+            "region": existing_order.region,
+        }
+
     return _create_public_order_via_existing_flow(
         db=db,
         payload=payload,
@@ -293,7 +571,7 @@ def create_public_order(
         idempotency_key=idempotency_key,
         device_fp=device_fp,
         request=request,
-        current_user=current_user,  # 🔥 ALTERAÇÃO: Passar current_user para a função
+        current_user=current_user,
     )
 
 
@@ -302,10 +580,20 @@ def list_my_public_orders(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status_value: str | None = Query(default=None, alias="status"),
+    region: str | None = Query(default=None, description="Filtrar por região"),
+    payment_method: str | None = Query(default=None, description="Filtrar por método de pagamento"),
     current_user: User | None = Depends(get_current_public_user),
     db: Session = Depends(get_db),
     device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
 ):
+    """
+    Lista pedidos públicos do usuário atual.
+    
+    Suporta:
+    - Autenticação por usuário
+    - Autenticação por guest session (X-Device-Fingerprint)
+    - Filtros por status, região e método de pagamento
+    """
     guest_session_id = _resolve_guest_session_id(device_fp)
 
     items, total = _list_orders_for_public_access(
@@ -315,8 +603,11 @@ def list_my_public_orders(
         limit=limit,
         offset=offset,
         status_value=status_value,
+        region=region,
+        payment_method=payment_method,
     )
 
+    # Busca documentos fiscais
     order_ids = [order.id for order in items]
     fiscal_docs = (
         db.query(FiscalDocument)
@@ -336,9 +627,13 @@ def list_my_public_orders(
             "total": total,
             "limit": limit,
             "offset": offset,
+            "has_next": offset + limit < total,
+            "has_prev": offset > 0,
         },
         "filters": {
             "status": status_value,
+            "region": region,
+            "payment_method": payment_method,
         },
         "access_mode": {
             "user_id": current_user.id if current_user else None,
@@ -356,6 +651,14 @@ def get_my_public_order(
     public_token_query: str | None = Query(default=None, alias="token"),
     public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
 ):
+    """
+    Obtém detalhes de um pedido público específico.
+    
+    Suporta acesso via:
+    - Usuário autenticado (owner)
+    - Guest session (X-Device-Fingerprint)
+    - Token público (query ou header)
+    """
     guest_session_id = _resolve_guest_session_id(device_fp)
     public_token = public_token_header or public_token_query
 
@@ -380,20 +683,18 @@ def get_my_public_order(
             },
         )
 
-    # 🔐 GET ORDER (CRÍTICO) - Verificar ownership
-    # Se o usuário está autenticado, garantir que o pedido pertence a ele
-    if current_user and order.user_id != current_user.id:
+    # Verificação de ownership adicional para usuário autenticado
+    if current_user and order.user_id and order.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={
                 "type": "ORDER_NOT_FOUND",
                 "message": "Pedido não encontrado",
                 "order_id": order_id,
-                "user_id": current_user.id,
-                "order_user_id": order.user_id,
             },
         )
 
+    # Busca documento fiscal
     fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
@@ -401,3 +702,72 @@ def get_my_public_order(
     )
 
     return _serialize_order(order, fiscal=fiscal)
+
+
+@router.post("/{order_id}/cancel")
+def cancel_public_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+):
+    """
+    Cancela um pedido público.
+    
+    Apenas o owner do pedido pode cancelar.
+    """
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    
+    # Busca pedido
+    order = _get_order_for_public_access(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=None,
+    )
+    
+    if not order:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido não encontrado",
+            },
+        )
+    
+    # Verifica ownership
+    if current_user and order.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "type": "CANCEL_NOT_ALLOWED",
+                "message": "Você não tem permissão para cancelar este pedido",
+            },
+        )
+    
+    # Verifica se pode cancelar
+    if order.status not in [OrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_FAILED]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "type": "CANCEL_NOT_ALLOWED",
+                "message": f"Pedido em status {order.status.value} não pode ser cancelado",
+                "current_status": order.status.value,
+            },
+        )
+    
+    # Atualiza status
+    order.status = OrderStatus.CANCELLED
+    order.touch()
+    db.commit()
+    
+    logger.info(f"Public order cancelled - order_id={order_id}, user_id={current_user.id}")
+    
+    return {
+        "order_id": order.id,
+        "status": order.status.value,
+        "message": "Pedido cancelado com sucesso",
+    }
+
+
