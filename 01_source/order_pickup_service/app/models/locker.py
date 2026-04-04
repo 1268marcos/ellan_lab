@@ -5,7 +5,7 @@ from __future__ import annotations
 
 """
 Modelo completo de Lockers com suporte a:
-- Multi-região (SP, PT, ES, RJ)
+- Multi-região (SP, PT, ES, RJ, + mundo)
 - Multi-tenant (operadores terceiros)
 - Configuração de slots (P, M, G, XG)
 - Compatibilidade com produtos e categorias
@@ -212,6 +212,23 @@ class Locker(Base):
     tenant_id = Column(String(64), nullable=True, index=True)    # Dono do contrato
     is_rented = Column(Boolean, nullable=False, default=False)   # Se é alugado para terceiro
 
+    # ==================== RETIRADA / TOKEN ====================
+
+    # Instruções de localização física detalhada
+    finding_instructions = Column(Text, nullable=True)
+
+    # Tamanho do código de retirada (4 a 12)
+    pickup_code_length = Column(Integer, nullable=False, default=6)
+
+    # Política de reutilização do token
+    pickup_reuse_policy = Column(String(32), nullable=False, default="NO_REUSE")
+
+    # Janela de reuso (segundos)
+    pickup_reuse_window_sec = Column(Integer, nullable=True)
+
+    # Quantidade máxima de reaberturas
+    pickup_max_reopens = Column(Integer, nullable=False, default=0)
+
     # ==================== METADADOS ====================
     metadata_json = Column(Text, nullable=True)  # Configs extras em JSON
 
@@ -254,6 +271,13 @@ class Locker(Base):
             ],
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "finding_instructions": self.finding_instructions,
+            "pickup_config": {
+                "code_length": self.pickup_code_length,
+                "reuse_policy": self.pickup_reuse_policy,
+                "reuse_window_sec": self.pickup_reuse_window_sec,
+                "max_reopens": self.pickup_max_reopens,
+            },
         }
         
         if include_address:

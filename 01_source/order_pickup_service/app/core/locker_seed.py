@@ -1,41 +1,53 @@
-# completo (dados + produtos)
 # 01_source/order_pickup_service/app/core/locker_seed.py
 """
-Seed inicial completo: Lockers, Operadores, Categorias de Produtos e Configurações.
+Seed inicial completo: Lockers, Operadores, Categorias de Produtos, Configurações
+e Capability Catalog (Bloco 12).
 
-Explicação das adições
-BAKED_GOODS: Para cookies e bolos mais estáveis (sem creme), permitidos em lockers normais.
-CAKES_TARTS: Bolos e tortas doces com recheio/creme – precisam de refrigeração para evitar derretimento ou mofo.
-EMPADAS_PIES: Empadas (salgadas ou doces) – semi-perecíveis, exigem frio.
-FOOD_DRY e SNACKS: Genéricos para itens secos/embalados do seu negócio.
-Mantive campos como requires_temp_control para lockers especiais (ex: "refrigerated" ou "none").
+Este seed mantém todos os dados originais e adiciona suporte completo ao
+Capability Catalog, incluindo:
+- CapabilityProfileMethodInterface
+- CapabilityProfileMethodRequirement
+- CapabilityProfileTarget
+- E todas as outras tabelas do Bloco 12
 
-Medicamentos: restrição crítica: medicamentos, especialmente os que requerem refrigeração, não devem ser enviados por correio ou armazenados em lockers padrão
-
-Itens Proibidos e de Alto risco:
-Dinheiro em Espécie: Mesmo em pequenas quantias, não é recomendado. Lockers não são cofres bancários. 
-Animais Vivos: Totalmente proibido por questões éticas e sanitárias. 
-Documentos Roubados ou Falsificados: Proibidos por lei.
-
-PHARMACY, dividida em novas categorias (ANVISA e INFARMED):
-PHARMACY_PRESCRIPTION_MEDS (Medicamentos com Prescrição): Deve ser proibido em lockers padrão.  Esses itens são de alto risco, muitas vezes controlados, e podem exigir temperaturas específicas. A entrega deve ser feita com assinatura e verificação de identidade, geralmente em mãos.
-PHARMACY_OTC_MEDS (Medicamentos sem Prescrição - Over-the-Counter): Pode ser permitido em lockers padrão, como analgésicos comuns, vitaminas e medicamentos para resfriado.  A exigência de ID pode ser opcional, dependendo do valor e do fornecedor. 
-Anterior para Farmácia - {"category": "PHARMACY", "allowed": True, "requires_id": False},
-
+Data: 04/04/2026
 """
 
 from sqlalchemy.orm import Session
 from app.models.locker import Locker, LockerSlotConfig, LockerOperator
 from app.models.product_locker_config import ProductLockerConfig, ProductCategory
+from app.models.capability import (
+    CapabilityRegion,
+    CapabilityChannel,
+    CapabilityContext,
+    PaymentMethodCatalog,
+    PaymentInterfaceCatalog,
+    WalletProviderCatalog,
+    CapabilityRequirementCatalog,
+    CapabilityProfile,
+    CapabilityProfileMethod,
+    CapabilityProfileMethodInterface,
+    CapabilityProfileMethodRequirement,
+    CapabilityProfileAction,
+    CapabilityProfileConstraint,
+    CapabilityProfileTarget,
+    CapabilityProfileSnapshot,
+)
 from datetime import datetime, timezone
+import json
+import hashlib
 
 
 def log(msg: str):
     print(f"[SEED] {msg}")
 
 
+# ============================================================
+# 1. CATEGORIAS DE PRODUTOS (ORIGINAL COMPLETO)
+# ============================================================
+
 def seed_product_categories(db: Session):
-    """Popula categorias mestre de produtos - Versão ampliada"""
+    """Popula categorias mestre de produtos - Versão ampliada original"""
     categories = [
         # ============================================================
         # ELETRÔNICOS E TECNOLOGIA
@@ -47,8 +59,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="ENHANCED",
             is_hazardous=False,
-            # max_value=500000,  # R$ 5.000,00
-            # requires_id=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="ELECTRONICS_ACCESSORIES",
@@ -57,7 +68,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # max_value=30000,  # R$ 300,00
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -70,6 +81,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="FASHION_LUXURY",
@@ -78,8 +90,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # max_value=500000,  # R$ 5.000,00
-            # requires_id=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="FOOTWEAR",
@@ -88,6 +99,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="ACCESSORIES",
@@ -96,6 +108,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -108,6 +121,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="BEAUTY_PREMIUM",
@@ -116,8 +130,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="ENHANCED",
             is_hazardous=False,
-            # max_value=100000,  # R$ 1.000,00
-            # requires_id=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="HYGIENE",
@@ -126,6 +139,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="ORAL_HYGIENE",
@@ -134,6 +148,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -146,8 +161,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # requires_age_verification=True,
-            # requires_id=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="PHARMACY_PRESCRIPTION_MEDS",
@@ -156,9 +170,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="REFRIGERATED",
             default_security_level="HIGH",
             is_hazardous=False,
-            # requires_age_verification=True,
-            # requires_id=True,
-            # requires_signature=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="MEDICAL_SUPPLIES",
@@ -167,6 +179,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="VITAMINS_SUPPLEMENTS",
@@ -175,6 +188,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -187,6 +201,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="REFRIGERATED",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="FOOD_FROZEN",
@@ -195,6 +210,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="FROZEN",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="BAKED_GOODS",
@@ -203,7 +219,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # max_value=20000,  # R$ 200,00
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="CAKES_TARTS",
@@ -212,6 +228,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="REFRIGERATED",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="EMPADAS_PIES",
@@ -220,6 +237,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="REFRIGERATED",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="FOOD_DRY",
@@ -228,7 +246,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # max_value=15000,  # R$ 150,00
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="SNACKS",
@@ -237,6 +255,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="BEVERAGES",
@@ -245,7 +264,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # max_value=10000,  # R$ 100,00
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="BEVERAGES_ALCOHOLIC",
@@ -254,8 +273,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
-            # requires_age_verification=True,
-            # max_value=50000,  # R$ 500,00
+            requires_age_verification=True,
         ),
         
         # ============================================================
@@ -268,8 +286,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # requires_id=True,
-            # requires_signature=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="STATIONERY",
@@ -278,6 +295,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -290,6 +308,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="HOME_DECOR",
@@ -298,6 +317,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="CLEANING_SUPPLIES",
@@ -305,7 +325,8 @@ def seed_product_categories(db: Session):
             description="Detergentes, desinfetantes, produtos químicos domésticos",
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
-            is_hazardous=True,  # Produtos químicos
+            is_hazardous=True,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -318,6 +339,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="BABY_FOOD",
@@ -326,6 +348,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="TOYS",
@@ -334,6 +357,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -346,6 +370,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="SUPPLEMENTS_SPORTS",
@@ -354,6 +379,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -366,6 +392,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="PET_FOOD",
@@ -374,6 +401,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -386,9 +414,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # max_value=1000000,  # R$ 10.000,00
-            # requires_id=True,
-            # requires_signature=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="JEWELRY",
@@ -397,8 +423,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # max_value=500000,  # R$ 5.000,00
-            # requires_id=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="WATCHES",
@@ -407,6 +432,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="ENHANCED",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         
         # ============================================================
@@ -419,6 +445,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="MONEY",
@@ -427,8 +454,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # requires_id=True,
-            # requires_signature=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="ANIMALS_ALIVE",
@@ -437,8 +463,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=False,
-            # requires_id=True,
-            # requires_signature=True,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="WEAPONS",
@@ -447,9 +472,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="HIGH",
             is_hazardous=True,
-            # requires_id=True,
-            # requires_signature=True,
-            # requires_age_verification=True,
+            requires_age_verification=True,
         ),
         
         # ============================================================
@@ -462,6 +485,7 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
         ProductCategory(
             id="TICKETS",
@@ -470,21 +494,28 @@ def seed_product_categories(db: Session):
             default_temperature_zone="AMBIENT",
             default_security_level="STANDARD",
             is_hazardous=False,
+            requires_age_verification=False,
         ),
     ]
     
+    new_count = 0
     for cat in categories:
         existing = db.query(ProductCategory).filter(ProductCategory.id == cat.id).first()
         if not existing:
             db.add(cat)
+            new_count += 1
             log(f"Categoria adicionada: {cat.id} - {cat.name}")
     
     db.commit()
-    log(f"Seed concluído: {len([c for c in categories if not db.query(ProductCategory).filter(ProductCategory.id == c.id).first()])} novas categorias inseridas")
+    log(f"Seed de categorias concluído: {new_count} novas categorias inseridas")
 
+
+# ============================================================
+# 2. OPERADORES DE LOCKERS (ORIGINAL COMPLETO)
+# ============================================================
 
 def seed_operators(db: Session):
-    """Popula operadores de lockers - Versão ampliada para múltiplos países."""
+    """Popula operadores de lockers - Versão ampliada original para múltiplos países"""
     
     operators = [
         # ============================================================
@@ -501,6 +532,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-LOGGI-001",
@@ -513,6 +546,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-SHOP-001",
@@ -525,6 +560,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-PHARMA-001",
@@ -537,6 +574,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.02,
             currency="BRL",
+            sla_pickup_hours=24,
+            sla_return_hours=12,
         ),
         LockerOperator(
             id="OP-MELI-001",
@@ -549,18 +588,22 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-ATACADAO-001",
             name="Atacadão Partner",
             document="44.444.444/0001-44",
-            email="contato@atacadao.com,br",
+            email="contato@atacadao.com.br",
             phone="+5511912340011",            
             operator_type="ECOMMERCE",
             country="BR",
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-CORREIOS-001",
@@ -573,6 +616,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-SHOPEE-001",
@@ -585,6 +630,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-AMAZON-001",
@@ -597,6 +644,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-MAGALU-001",
@@ -609,6 +658,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-VIAVAREJO-001",
@@ -621,6 +672,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-RAPPI-001",
@@ -633,6 +686,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-IFOOD-001",
@@ -645,6 +700,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="BRL",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         
         # ============================================================
@@ -661,6 +718,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-LIDL-001",
@@ -673,6 +732,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-SANTOBURACO-001",
@@ -685,6 +746,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-EGIRO-001",
@@ -697,6 +760,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-WORTEN-001",
@@ -709,6 +774,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-CTTPT-001",
@@ -721,6 +788,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-DPD-001",
@@ -733,6 +802,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-UPS-001",
@@ -745,6 +816,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-GLS-001",
@@ -757,6 +830,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-UBER-001",
@@ -769,6 +844,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-GLOVO-001",
@@ -781,6 +858,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-BOLT-001",
@@ -793,6 +872,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-FNAC-001",
@@ -805,6 +886,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-PINGODOECE-001",
@@ -817,6 +900,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-CONTINENTE-001",
@@ -829,10 +914,12 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         
         # ============================================================
-        # OPERADORES ESPANHA (NOVOS)
+        # OPERADORES ESPANHA
         # ============================================================
         LockerOperator(
             id="OP-SEUR-001",
@@ -845,6 +932,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-MRW-001",
@@ -857,6 +946,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-DHL-ES-001",
@@ -869,6 +960,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-CORREOS-ES-001",
@@ -881,6 +974,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-AMAZON-ES-001",
@@ -893,6 +988,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-ELCORTE-001",
@@ -905,6 +1002,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-MEDIA-ES-001",
@@ -917,6 +1016,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-ZARA-001",
@@ -929,6 +1030,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-GLOVO-ES-001",
@@ -941,6 +1044,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-JUSTEAT-ES-001",
@@ -953,6 +1058,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=48,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-CARREFOUR-ES-001",
@@ -965,6 +1072,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-MERCABAR-ES-001",
@@ -977,6 +1086,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.02,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-PACK-001",
@@ -989,6 +1100,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-TOUS-001",
@@ -1001,6 +1114,8 @@ def seed_operators(db: Session):
             active=True,
             commission_rate=0.01,
             currency="EUR",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         
         # ============================================================
@@ -1017,6 +1132,8 @@ def seed_operators(db: Session):
             active=False,
             commission_rate=0.01,
             currency="MXN",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-MEX-AMZN-001",
@@ -1028,7 +1145,10 @@ def seed_operators(db: Session):
             country="MX",
             active=False,
             commission_rate=0.01,
-            currency="MXN",        ),
+            currency="MXN",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
+        ),
         LockerOperator(
             id="OP-MEX-MELI-001",
             name="Mercado Libre México",
@@ -1039,7 +1159,10 @@ def seed_operators(db: Session):
             country="MX",
             active=False,
             commission_rate=0.01,
-            currency="MXN",        ),
+            currency="MXN",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
+        ),
         
         # ============================================================
         # OPERADORES COLÔMBIA (FUTURO)
@@ -1054,18 +1177,23 @@ def seed_operators(db: Session):
             country="CO",
             active=False,
             commission_rate=0.01,
-            currency="COP",        ),
+            currency="COP",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
+        ),
         LockerOperator(
             id="OP-COL-MELI-001",
             name="Mercado Libre Colombia",
             document="CO987654321",
-             email="contato@mercadolibre.co",
+            email="contato@mercadolibre.co",
             phone="+5781230001",
             operator_type="ECOMMERCE",
             country="CO",
             active=False,
             commission_rate=0.01,
-            currency="COP",            
+            currency="COP",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         
         # ============================================================
@@ -1082,6 +1210,8 @@ def seed_operators(db: Session):
             active=False,
             commission_rate=0.01,
             currency="ARS",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
         LockerOperator(
             id="OP-ARG-MELI-001",
@@ -1094,108 +1224,109 @@ def seed_operators(db: Session):
             active=False,
             commission_rate=0.01,
             currency="ARS",
+            sla_pickup_hours=72,
+            sla_return_hours=24,
         ),
     ]
     
-    # Contadores para logging
-    new_operators = 0
-    updated_operators = 0
-    
-    for op_data in operators:
-        existing = db.query(LockerOperator).filter(LockerOperator.id == op_data.id).first()
+    new_count = 0
+    for op in operators:
+        existing = db.query(LockerOperator).filter(LockerOperator.id == op.id).first()
         if not existing:
-            db.add(op_data)
-            print(f"➕ Operador adicionado: {op_data.id} - {op_data.name} ({op_data.country})")
+            db.add(op)
+            new_count += 1
+            log(f"Operador adicionado: {op.id} - {op.name} ({op.country})")
     
     db.commit()
+    log(f"Seed de operadores concluído: {new_count} novos operadores inseridos")
 
+
+# ============================================================
+# 3. CONFIGURAÇÕES PADRÃO DE PRODUTOS (ORIGINAL COMPLETO)
+# ============================================================
+
+DEFAULT_PRODUCT_CONFIGS = [
+    # ==================== ELETRÔNICOS ====================
+    {"category": "ELECTRONICS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "ELECTRONICS_ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== MODA ====================
+    {"category": "FASHION", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "FASHION_LUXURY", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "FOOTWEAR", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== BELEZA ====================
+    {"category": "BEAUTY", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "BEAUTY_PREMIUM", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "ORAL_HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== SAÚDE ====================
+    {"category": "PHARMACY_OTC_MEDS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": False, "temperature_zone": "REFRIGERATED"},
+    {"category": "MEDICAL_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "VITAMINS_SUPPLEMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== ALIMENTOS ====================
+    {"category": "FOOD_PERISHABLE", "allowed": False, "temperature_zone": "REFRIGERATED"},
+    {"category": "FOOD_FROZEN", "allowed": False, "temperature_zone": "FROZEN"},
+    {"category": "BAKED_GOODS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "CAKES_TARTS", "allowed": False, "temperature_zone": "REFRIGERATED"},
+    {"category": "EMPADAS_PIES", "allowed": False, "temperature_zone": "REFRIGERATED"},
+    {"category": "FOOD_DRY", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "SNACKS", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== BEBIDAS ====================
+    {"category": "BEVERAGES", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "BEVERAGES_ALCOHOLIC", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== DOCUMENTOS ====================
+    {"category": "DOCUMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "STATIONERY", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== CASA ====================
+    {"category": "HOME_APPLIANCES", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "HOME_DECOR", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "CLEANING_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== BEBÊS ====================
+    {"category": "BABY_PRODUCTS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "BABY_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "TOYS", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== ESPORTES ====================
+    {"category": "SPORTS_EQUIPMENT", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "SUPPLEMENTS_SPORTS", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== PET ====================
+    {"category": "PET_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "PET_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== ALTO VALOR ====================
+    {"category": "HIGH_VALUE", "allowed": False, "temperature_zone": "AMBIENT"},
+    {"category": "JEWELRY", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "WATCHES", "allowed": True, "temperature_zone": "AMBIENT"},
+    
+    # ==================== PRODUTOS ESPECIAIS ====================
+    {"category": "HAZARDOUS", "allowed": False, "temperature_zone": "AMBIENT"},
+    {"category": "MONEY", "allowed": False, "temperature_zone": "AMBIENT"},
+    {"category": "ANIMALS_ALIVE", "allowed": False, "temperature_zone": "AMBIENT"},
+    {"category": "WEAPONS", "allowed": False, "temperature_zone": "AMBIENT"},
+    
+    # ==================== SERVIÇOS ====================
+    {"category": "GIFT_CARDS", "allowed": True, "temperature_zone": "AMBIENT"},
+    {"category": "TICKETS", "allowed": True, "temperature_zone": "AMBIENT"},
+]
+
+
+# ============================================================
+# 4. LOCKERS (ORIGINAL COMPLETO)
+# ============================================================
 
 def seed_lockers(db: Session):
-    """Popula lockers com configurações de produtos - Versão completa e consistente"""
+    """Popula lockers com configurações de produtos - Versão original completa"""
     
-    # ============================================================
-    # CONFIGURAÇÕES PADRÃO DE PRODUTOS (TODAS AS CATEGORIAS) - locker_seed_legacy_v02_completa.py ATENÇÃO
-    # ============================================================
-   
-    default_product_configs = [
-        # ==================== ELETRÔNICOS ====================
-        {"category": "ELECTRONICS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ELECTRONICS_ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== MODA ====================
-        {"category": "FASHION", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "FASHION_LUXURY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "FOOTWEAR", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ACCESSORIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== BELEZA ====================
-        {"category": "BEAUTY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BEAUTY_PREMIUM", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "ORAL_HYGIENE", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== SAÚDE ====================
-        {"category": "PHARMACY_OTC_MEDS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "MEDICAL_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "VITAMINS_SUPPLEMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== ALIMENTOS ====================
-        {"category": "FOOD_PERISHABLE", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "FOOD_FROZEN", "allowed": False, "temperature_zone": "FROZEN"},
-        {"category": "BAKED_GOODS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "CAKES_TARTS", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "EMPADAS_PIES", "allowed": False, "temperature_zone": "REFRIGERATED"},
-        {"category": "FOOD_DRY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "SNACKS", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== BEBIDAS ====================
-        {"category": "BEVERAGES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BEVERAGES_ALCOHOLIC", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== DOCUMENTOS ====================
-        {"category": "DOCUMENTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "STATIONERY", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== CASA ====================
-        {"category": "HOME_APPLIANCES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "HOME_DECOR", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "CLEANING_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== BEBÊS ====================
-        {"category": "BABY_PRODUCTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "BABY_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "TOYS", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== ESPORTES ====================
-        {"category": "SPORTS_EQUIPMENT", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "SUPPLEMENTS_SPORTS", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== PET ====================
-        {"category": "PET_SUPPLIES", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "PET_FOOD", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== ALTO VALOR ====================
-        {"category": "HIGH_VALUE", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "JEWELRY", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "WATCHES", "allowed": True, "temperature_zone": "AMBIENT"},
-        
-        # ==================== PRODUTOS ESPECIAIS ====================
-        {"category": "HAZARDOUS", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "MONEY", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "ANIMALS_ALIVE", "allowed": False, "temperature_zone": "AMBIENT"},
-        {"category": "WEAPONS", "allowed": False, "temperature_zone": "AMBIENT"},
-        
-        # ==================== SERVIÇOS ====================
-        {"category": "GIFT_CARDS", "allowed": True, "temperature_zone": "AMBIENT"},
-        {"category": "TICKETS", "allowed": True, "temperature_zone": "AMBIENT"},
-    ]
-
-
-
-
-
-
     # ==================== LOCKERS - SÃO PAULO ====================
     lockers_sp = [
         {
@@ -1211,6 +1342,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": True,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": True,
             "active": True,
             "slots": [
                 {"size": "P", "count": 8, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1236,6 +1371,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": False,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": False,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": True,
             "slots": [
                 {"size": "P", "count": 10, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1243,8 +1382,8 @@ def seed_lockers(db: Session):
                 {"size": "G", "count": 4, "width_cm": 30, "height_cm": 40, "depth_cm": 40, "max_weight_kg": 10},
             ],
             "product_overrides": [
-                {"category": "BAKED_GOODS", "allowed": True, "max_value": 20000},
-                {"category": "FOOD_DRY", "allowed": True, "max_value": 15000},
+                {"category": "BAKED_GOODS", "allowed": True},
+                {"category": "FOOD_DRY", "allowed": True},
                 {"category": "SNACKS", "allowed": True},
             ]
         },
@@ -1261,6 +1400,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": False,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": False,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": True,
             "slots": [
                 {"size": "P", "count": 30, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1282,6 +1425,10 @@ def seed_lockers(db: Session):
             "security_level": "HIGH",
             "has_camera": True,
             "has_alarm": True,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": True,
             "active": True,
             "slots": [
                 {"size": "P", "count": 10, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1290,10 +1437,10 @@ def seed_lockers(db: Session):
                 {"size": "XG", "count": 4, "width_cm": 50, "height_cm": 60, "depth_cm": 40, "max_weight_kg": 20},
             ],
             "product_overrides": [
-                {"category": "HIGH_VALUE", "allowed": True, "max_value": 2000000},
-                {"category": "DOCUMENTS", "allowed": True, "requires_signature": True, "requires_id": True},
-                {"category": "ELECTRONICS", "allowed": True, "max_value": 500000, "requires_id": True},
-                {"category": "JEWELRY", "allowed": True, "max_value": 1000000, "requires_id": True},
+                {"category": "HIGH_VALUE", "allowed": True},
+                {"category": "DOCUMENTS", "allowed": True},
+                {"category": "ELECTRONICS", "allowed": True},
+                {"category": "JEWELRY", "allowed": True},
             ]
         },
         {
@@ -1304,11 +1451,15 @@ def seed_lockers(db: Session):
             "state": "SP",
             "country": "BR",
             "timezone": "America/Sao_Paulo",
-            "operator_id": "OP-ELLAN-001",
+            "operator_id": "OP-PHARMA-001",
             "temperature_zone": "REFRIGERATED",
-            "security_level": "STANDARD",
+            "security_level": "ENHANCED",
             "has_camera": True,
-            "has_alarm": False,
+            "has_alarm": True,
+            "has_kiosk": True,
+            "has_printer": False,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": True,
             "slots": [
                 {"size": "P", "count": 12, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 3},
@@ -1342,6 +1493,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": True,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": True,
             "active": True,
             "slots": [
                 {"size": "P", "count": 8, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1364,6 +1519,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": False,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": False,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": True,
             "slots": [
                 {"size": "P", "count": 10, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1374,7 +1533,7 @@ def seed_lockers(db: Session):
                 {"category": "FOOD_PERISHABLE", "allowed": True},
                 {"category": "CAKES_TARTS", "allowed": True},
                 {"category": "EMPADAS_PIES", "allowed": True},
-                {"category": "BEVERAGES", "allowed": True, "max_value": 10000},
+                {"category": "BEVERAGES", "allowed": True},
             ]
         },
         {
@@ -1390,6 +1549,10 @@ def seed_lockers(db: Session):
             "security_level": "ENHANCED",
             "has_camera": True,
             "has_alarm": True,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": True,
             "slots": [
                 {"size": "P", "count": 15, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1397,7 +1560,7 @@ def seed_lockers(db: Session):
             ],
             "product_overrides": [
                 {"category": "PHARMACY_OTC_MEDS", "allowed": True},
-                {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": True, "requires_id": True, "requires_signature": True},
+                {"category": "PHARMACY_PRESCRIPTION_MEDS", "allowed": True},
                 {"category": "VITAMINS_SUPPLEMENTS", "allowed": True},
                 {"category": "MEDICAL_SUPPLIES", "allowed": True},
                 {"category": "ELECTRONICS", "allowed": False},
@@ -1414,14 +1577,18 @@ def seed_lockers(db: Session):
             "display_name": "Madrid Centro - Locker 001",
             "region": "ES",
             "city": "Madrid",
-            "state": None,
+            "state": "Madrid",
             "country": "ES",
             "timezone": "Europe/Madrid",
-            "operator_id": "OP-ELLAN-001",
+            "operator_id": "OP-CORREOS-ES-001",
             "temperature_zone": "AMBIENT",
             "security_level": "STANDARD",
             "has_camera": True,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": True,
             "active": False,
             "slots": [
                 {"size": "P", "count": 8, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1443,6 +1610,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": True,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": True,
+            "has_card_reader": True,
+            "has_nfc": True,
             "active": False,
             "slots": [
                 {"size": "P", "count": 16, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1464,6 +1635,10 @@ def seed_lockers(db: Session):
             "security_level": "STANDARD",
             "has_camera": False,
             "has_alarm": False,
+            "has_kiosk": True,
+            "has_printer": False,
+            "has_card_reader": True,
+            "has_nfc": False,
             "active": False,
             "slots": [
                 {"size": "P", "count": 10, "width_cm": 10, "height_cm": 10, "depth_cm": 40, "max_weight_kg": 2},
@@ -1474,34 +1649,35 @@ def seed_lockers(db: Session):
         },
     ]
 
-    # ==================== CRIAÇÃO DOS LOCKERS ====================
     all_lockers = lockers_sp + lockers_pt + lockers_future
 
+    new_count = 0
     for locker_data in all_lockers:
         existing = db.query(Locker).filter(Locker.id == locker_data["id"]).first()
         if existing:
-            print(f"Locker {locker_data['id']} já existe, pulando...")
+            log(f"Locker {locker_data['id']} já existe, pulando...")
             continue
 
-        # Extrai slots e overrides
         slots_config = locker_data.pop("slots", [])
         product_overrides = locker_data.pop("product_overrides", [])
         
-        # Cria o locker
         locker = Locker(
             **locker_data,
+            slots_count=sum(s["count"] for s in slots_config),
+            slots_available=sum(s["count"] for s in slots_config),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc)
         )
         db.add(locker)
         db.flush()
 
-        # Cria configurações de slots
+        # Configurações de slots
         for slot in slots_config:
             slot_config = LockerSlotConfig(
                 locker_id=locker.id,
                 slot_size=slot["size"],
                 slot_count=slot["count"],
+                available_count=slot["count"],
                 width_cm=slot.get("width_cm"),
                 height_cm=slot.get("height_cm"),
                 depth_cm=slot.get("depth_cm"),
@@ -1511,23 +1687,20 @@ def seed_lockers(db: Session):
             )
             db.add(slot_config)
 
-        # Cria configurações de produtos (default + overrides)
-        for default_config in default_product_configs:
-            # Verifica se há override para esta categoria
+        # Configurações de produtos
+        for default_config in DEFAULT_PRODUCT_CONFIGS:
             override = next(
                 (o for o in product_overrides if o["category"] == default_config["category"]), 
                 {}
             )
             
-            # Merge do default com override
             config = {**default_config, **override}
             
-            # Validação de compatibilidade de temperatura
+            # Validação de temperatura
             if config["temperature_zone"] != "ANY":
                 if locker.temperature_zone != config["temperature_zone"]:
-                    # Se o locker não suporta a temperatura necessária, força allowed=False
                     if config["allowed"]:
-                        print(f"AVISO: Locker {locker.id} não suporta {config['temperature_zone']} para categoria {config['category']}. Desabilitando.")
+                        log(f"AVISO: Locker {locker.id} não suporta {config['temperature_zone']} para categoria {config['category']}. Desabilitando.")
                     config["allowed"] = False
             
             product_config = ProductLockerConfig(
@@ -1535,22 +1708,1276 @@ def seed_lockers(db: Session):
                 category=config["category"],
                 allowed=config["allowed"],
                 temperature_zone=config.get("temperature_zone", locker.temperature_zone),
-                # max_value=config.get("max_value"),
-                # requires_signature=config.get("requires_signature", False),
-                # requires_id=config.get("requires_id", False),
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )
             db.add(product_config)
         
-        print(f"Locker {locker.id} criado com {len(slots_config)} slots e {len(default_product_configs)} configurações de produto")
+        new_count += 1
+        log(f"Locker {locker.id} criado com {len(slots_config)} slots")
 
     db.commit()
-    print(f"✅ Seed concluído: {len(all_lockers)} lockers processados")
+    log(f"Seed de lockers concluído: {new_count} novos lockers inseridos")
 
+
+# ============================================================
+# 5. CAPABILITY CATALOG - REGIÕES
+# ============================================================
+
+def seed_capability_regions(db: Session):
+    """Popula regiões do catálogo de capabilities"""
+    
+    regions = [
+        CapabilityRegion(
+            code="SP",
+            name="São Paulo",
+            country_code="BR",
+            continent="América do Sul",
+            default_currency="BRL",
+            default_timezone="America/Sao_Paulo",
+            default_locale="pt-BR",
+            is_active=True,
+        ),
+        CapabilityRegion(
+            code="RJ",
+            name="Rio de Janeiro",
+            country_code="BR",
+            continent="América do Sul",
+            default_currency="BRL",
+            default_timezone="America/Sao_Paulo",
+            default_locale="pt-BR",
+            is_active=True,
+        ),
+        CapabilityRegion(
+            code="PR",
+            name="Paraná",
+            country_code="BR",
+            continent="América do Sul",
+            default_currency="BRL",
+            default_timezone="America/Sao_Paulo",
+            default_locale="pt-BR",
+            is_active=True,
+        ),
+        CapabilityRegion(
+            code="PT",
+            name="Portugal",
+            country_code="PT",
+            continent="Europa",
+            default_currency="EUR",
+            default_timezone="Europe/Lisbon",
+            default_locale="pt-PT",
+            is_active=True,
+        ),
+        CapabilityRegion(
+            code="ES",
+            name="Espanha",
+            country_code="ES",
+            continent="Europa",
+            default_currency="EUR",
+            default_timezone="Europe/Madrid",
+            default_locale="es-ES",
+            is_active=True,
+        ),
+        CapabilityRegion(
+            code="MX",
+            name="México",
+            country_code="MX",
+            continent="América do Norte",
+            default_currency="MXN",
+            default_timezone="America/Mexico_City",
+            default_locale="es-MX",
+            is_active=False,
+        ),
+        CapabilityRegion(
+            code="CO",
+            name="Colômbia",
+            country_code="CO",
+            continent="América do Sul",
+            default_currency="COP",
+            default_timezone="America/Bogota",
+            default_locale="es-CO",
+            is_active=False,
+        ),
+        CapabilityRegion(
+            code="AR",
+            name="Argentina",
+            country_code="AR",
+            continent="América do Sul",
+            default_currency="ARS",
+            default_timezone="America/Argentina/Buenos_Aires",
+            default_locale="es-AR",
+            is_active=False,
+        ),
+    ]
+    
+    new_count = 0
+    for region in regions:
+        existing = db.query(CapabilityRegion).filter(CapabilityRegion.code == region.code).first()
+        if not existing:
+            db.add(region)
+            new_count += 1
+            log(f"Região adicionada: {region.code} - {region.name}")
+    
+    db.commit()
+    log(f"Seed de regiões concluído: {new_count} novas regiões inseridas")
+
+
+# ============================================================
+# 6. CAPABILITY CATALOG - CANAIS
+# ============================================================
+
+def seed_capability_channels(db: Session):
+    """Popula canais do catálogo de capabilities"""
+    
+    channels = [
+        CapabilityChannel(code="online", name="Online / Web / App", is_active=True),
+        CapabilityChannel(code="kiosk", name="KIOSK / Totem físico", is_active=True),
+        CapabilityChannel(code="api", name="API direta (parceiros B2B)", is_active=True),
+        CapabilityChannel(code="partner", name="Parceiro integrado", is_active=True),
+        CapabilityChannel(code="staff", name="Operação manual por staff", is_active=True),
+    ]
+    
+    new_count = 0
+    for channel in channels:
+        existing = db.query(CapabilityChannel).filter(CapabilityChannel.code == channel.code).first()
+        if not existing:
+            db.add(channel)
+            new_count += 1
+            log(f"Canal adicionado: {channel.code} - {channel.name}")
+    
+    db.commit()
+    log(f"Seed de canais concluído: {new_count} novos canais inseridos")
+
+
+# ============================================================
+# 7. CAPABILITY CATALOG - CONTEXTOS
+# ============================================================
+
+def seed_capability_contexts(db: Session):
+    """Popula contextos do catálogo de capabilities"""
+    
+    channels = {c.code: c for c in db.query(CapabilityChannel).all()}
+    
+    contexts = [
+        # Kiosk contexts
+        CapabilityContext(
+            channel_id=channels["kiosk"].id,
+            code="purchase",
+            name="Compra presencial",
+            description="Compra com pagamento no KIOSK",
+            is_active=True,
+        ),
+        CapabilityContext(
+            channel_id=channels["kiosk"].id,
+            code="pickup",
+            name="Retirada de pedido",
+            description="Retirada de pedido online no KIOSK",
+            is_active=True,
+        ),
+        CapabilityContext(
+            channel_id=channels["kiosk"].id,
+            code="operator_pickup",
+            name="Retirada assistida",
+            description="Retirada assistida por operador",
+            is_active=True,
+        ),
+        CapabilityContext(
+            channel_id=channels["kiosk"].id,
+            code="logistics_handover",
+            name="Entrega de parceiro logístico",
+            description="Depósito de encomenda por parceiro logístico",
+            is_active=True,
+        ),
+        CapabilityContext(
+            channel_id=channels["kiosk"].id,
+            code="return_dropoff",
+            name="Devolução de item",
+            description="Devolução de produto no KIOSK",
+            is_active=True,
+        ),
+        # Online contexts
+        CapabilityContext(
+            channel_id=channels["online"].id,
+            code="checkout",
+            name="Checkout online",
+            description="Compra no e-commerce com pagamento online",
+            is_active=True,
+        ),
+        CapabilityContext(
+            channel_id=channels["online"].id,
+            code="pickup_schedule",
+            name="Agendamento de retirada",
+            description="Agendamento de retirada de pedido",
+            is_active=True,
+        ),
+        # Partner contexts
+        CapabilityContext(
+            channel_id=channels["partner"].id,
+            code="webhook_payment",
+            name="Pagamento via webhook",
+            description="Notificação de pagamento via webhook",
+            is_active=True,
+        ),
+        # Staff contexts
+        CapabilityContext(
+            channel_id=channels["staff"].id,
+            code="manual_release",
+            name="Liberação manual",
+            description="Liberação manual de gaveta por staff",
+            is_active=True,
+        ),
+    ]
+    
+    new_count = 0
+    for context in contexts:
+        existing = db.query(CapabilityContext).filter(
+            CapabilityContext.channel_id == context.channel_id,
+            CapabilityContext.code == context.code
+        ).first()
+        if not existing:
+            db.add(context)
+            new_count += 1
+            log(f"Contexto adicionado: {context.code}")
+    
+    db.commit()
+    log(f"Seed de contextos concluído: {new_count} novos contextos inseridos")
+
+
+# ============================================================
+# 8. CAPABILITY CATALOG - MÉTODOS DE PAGAMENTO
+# ============================================================
+
+def seed_payment_methods(db: Session):
+    """Popula métodos de pagamento do catálogo"""
+    
+    methods = [
+        PaymentMethodCatalog(
+            code="pix",
+            name="PIX",
+            family="bank_transfer",
+            is_wallet=False,
+            is_card=False,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=True,
+            is_instant=True,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="creditCard",
+            name="Cartão de Crédito",
+            family="card",
+            is_wallet=False,
+            is_card=True,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=True,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="debitCard",
+            name="Cartão de Débito",
+            family="card",
+            is_wallet=False,
+            is_card=True,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=True,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="boleto",
+            name="Boleto Bancário",
+            family="bank_transfer",
+            is_wallet=False,
+            is_card=False,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=True,
+            is_instant=False,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="cash",
+            name="Dinheiro",
+            family="cash",
+            is_wallet=False,
+            is_card=False,
+            is_bnpl=False,
+            is_cash_like=True,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="voucher",
+            name="Voucher",
+            family="voucher",
+            is_wallet=False,
+            is_card=False,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="mbway",
+            name="MB Way",
+            family="digital_wallet",
+            is_wallet=True,
+            is_card=False,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=True,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="apple_pay",
+            name="Apple Pay",
+            family="digital_wallet",
+            is_wallet=True,
+            is_card=True,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=False,
+            is_active=True,
+        ),
+        PaymentMethodCatalog(
+            code="google_pay",
+            name="Google Pay",
+            family="digital_wallet",
+            is_wallet=True,
+            is_card=True,
+            is_bnpl=False,
+            is_cash_like=False,
+            is_bank_transfer=False,
+            is_instant=False,
+            requires_redirect=False,
+            is_active=True,
+        ),
+    ]
+    
+    new_count = 0
+    for method in methods:
+        existing = db.query(PaymentMethodCatalog).filter(PaymentMethodCatalog.code == method.code).first()
+        if not existing:
+            db.add(method)
+            new_count += 1
+            log(f"Método de pagamento adicionado: {method.code}")
+    
+    db.commit()
+    log(f"Seed de métodos de pagamento concluído: {new_count} novos métodos inseridos")
+
+
+# ============================================================
+# 9. CAPABILITY CATALOG - INTERFACES DE PAGAMENTO
+# ============================================================
+
+def seed_payment_interfaces(db: Session):
+    """Popula interfaces de pagamento do catálogo"""
+    
+    interfaces = [
+        PaymentInterfaceCatalog(
+            code="qr_code",
+            name="QR Code",
+            interface_type="digital",
+            requires_hw=False,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="chip",
+            name="Chip (EMV)",
+            interface_type="physical",
+            requires_hw=True,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="nfc",
+            name="NFC / Contactless",
+            interface_type="physical",
+            requires_hw=True,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="magnetic",
+            name="Trato magnético",
+            interface_type="physical",
+            requires_hw=True,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="deep_link",
+            name="Deep Link (App)",
+            interface_type="digital",
+            requires_hw=False,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="web_token",
+            name="Token Web",
+            interface_type="digital",
+            requires_hw=False,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="manual",
+            name="Digitação manual",
+            interface_type="physical",
+            requires_hw=False,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="barcode",
+            name="Código de barras",
+            interface_type="physical",
+            requires_hw=False,
+            is_active=True,
+        ),
+        PaymentInterfaceCatalog(
+            code="kiosk_pinpad",
+            name="PinPad no KIOSK",
+            interface_type="physical",
+            requires_hw=True,
+            is_active=True,
+        ),
+    ]
+    
+    new_count = 0
+    for interface in interfaces:
+        existing = db.query(PaymentInterfaceCatalog).filter(PaymentInterfaceCatalog.code == interface.code).first()
+        if not existing:
+            db.add(interface)
+            new_count += 1
+            log(f"Interface de pagamento adicionada: {interface.code}")
+    
+    db.commit()
+    log(f"Seed de interfaces de pagamento concluído: {new_count} novas interfaces inseridas")
+
+
+# ============================================================
+# 10. CAPABILITY CATALOG - WALLET PROVIDERS
+# ============================================================
+
+def seed_wallet_providers(db: Session):
+    """Popula wallet providers do catálogo"""
+    
+    providers = [
+        WalletProviderCatalog(code="applePay", name="Apple Pay", is_active=True),
+        WalletProviderCatalog(code="googlePay", name="Google Pay", is_active=True),
+        WalletProviderCatalog(code="mercadoPago", name="Mercado Pago", is_active=True),
+        WalletProviderCatalog(code="wechatPay", name="WeChat Pay", is_active=True),
+        WalletProviderCatalog(code="alipay", name="Alipay", is_active=True),
+        WalletProviderCatalog(code="mPesa", name="M-Pesa", is_active=True),
+        WalletProviderCatalog(code="mbway", name="MB Way", is_active=True),
+        WalletProviderCatalog(code="picpay", name="PicPay", is_active=True),
+        WalletProviderCatalog(code="pagseguro", name="PagSeguro", is_active=True),
+    ]
+    
+    new_count = 0
+    for provider in providers:
+        existing = db.query(WalletProviderCatalog).filter(WalletProviderCatalog.code == provider.code).first()
+        if not existing:
+            db.add(provider)
+            new_count += 1
+            log(f"Wallet provider adicionado: {provider.code}")
+    
+    db.commit()
+    log(f"Seed de wallet providers concluído: {new_count} novos providers inseridos")
+
+
+# ============================================================
+# 11. CAPABILITY CATALOG - REQUISITOS
+# ============================================================
+
+def seed_capability_requirements(db: Session):
+    """Popula requisitos do catálogo de capabilities"""
+    
+    requirements = [
+        CapabilityRequirementCatalog(
+            code="amount_cents",
+            name="Valor em centavos",
+            data_type="integer",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="customer_phone",
+            name="Telefone do cliente",
+            data_type="phone",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="customer_email",
+            name="E-mail do cliente",
+            data_type="email",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="customer_phone_or_email",
+            name="Telefone OU e-mail",
+            data_type="any_of",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="installments",
+            name="Número de parcelas",
+            data_type="integer",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="age_confirmation",
+            name="Confirmação de maioridade",
+            data_type="boolean",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="wallet_provider",
+            name="Provider da wallet",
+            data_type="enum",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="qr_code_content",
+            name="Conteúdo do QR Code",
+            data_type="string",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="device_id",
+            name="ID do dispositivo",
+            data_type="string",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="ip_address",
+            name="Endereço IP do cliente",
+            data_type="string",
+            is_active=True,
+        ),
+        CapabilityRequirementCatalog(
+            code="card_token",
+            name="Token do cartão",
+            data_type="string",
+            is_active=True,
+        ),
+    ]
+    
+    new_count = 0
+    for req in requirements:
+        existing = db.query(CapabilityRequirementCatalog).filter(
+            CapabilityRequirementCatalog.code == req.code
+        ).first()
+        if not existing:
+            db.add(req)
+            new_count += 1
+            log(f"Requisito adicionado: {req.code}")
+    
+    db.commit()
+    log(f"Seed de requisitos concluído: {new_count} novos requisitos inseridos")
+
+
+# ============================================================
+# 12. CAPABILITY CATALOG - PERFIS
+# ============================================================
+
+def seed_capability_profiles(db: Session):
+    """Popula perfis do catálogo de capabilities"""
+    
+    regions = {r.code: r for r in db.query(CapabilityRegion).all()}
+    channels = {c.code: c for c in db.query(CapabilityChannel).all()}
+    
+    # Build contexts map
+    contexts = {}
+    for ctx in db.query(CapabilityContext).all():
+        channel = db.query(CapabilityChannel).filter(CapabilityChannel.id == ctx.channel_id).first()
+        if channel:
+            contexts[f"{channel.code}:{ctx.code}"] = ctx
+    
+    profiles = [
+        # SP - Kiosk - Purchase
+        CapabilityProfile(
+            region_id=regions["SP"].id,
+            channel_id=channels["kiosk"].id,
+            context_id=contexts["kiosk:purchase"].id,
+            profile_code="SP:kiosk:purchase",
+            name="São Paulo - Kiosk Compra Presencial",
+            priority=100,
+            currency="BRL",
+            is_active=True,
+        ),
+        # SP - Kiosk - Pickup
+        CapabilityProfile(
+            region_id=regions["SP"].id,
+            channel_id=channels["kiosk"].id,
+            context_id=contexts["kiosk:pickup"].id,
+            profile_code="SP:kiosk:pickup",
+            name="São Paulo - Kiosk Retirada",
+            priority=100,
+            currency="BRL",
+            is_active=True,
+        ),
+        # SP - Online - Checkout
+        CapabilityProfile(
+            region_id=regions["SP"].id,
+            channel_id=channels["online"].id,
+            context_id=contexts["online:checkout"].id,
+            profile_code="SP:online:checkout",
+            name="São Paulo - Online Checkout",
+            priority=100,
+            currency="BRL",
+            is_active=True,
+        ),
+        # PT - Kiosk - Purchase
+        CapabilityProfile(
+            region_id=regions["PT"].id,
+            channel_id=channels["kiosk"].id,
+            context_id=contexts["kiosk:purchase"].id,
+            profile_code="PT:kiosk:purchase",
+            name="Portugal - Kiosk Compra Presencial",
+            priority=100,
+            currency="EUR",
+            is_active=True,
+        ),
+        # PT - Kiosk - Pickup
+        CapabilityProfile(
+            region_id=regions["PT"].id,
+            channel_id=channels["kiosk"].id,
+            context_id=contexts["kiosk:pickup"].id,
+            profile_code="PT:kiosk:pickup",
+            name="Portugal - Kiosk Retirada",
+            priority=100,
+            currency="EUR",
+            is_active=True,
+        ),
+        # PT - Online - Checkout
+        CapabilityProfile(
+            region_id=regions["PT"].id,
+            channel_id=channels["online"].id,
+            context_id=contexts["online:checkout"].id,
+            profile_code="PT:online:checkout",
+            name="Portugal - Online Checkout",
+            priority=100,
+            currency="EUR",
+            is_active=True,
+        ),
+        # ES - Kiosk - Purchase
+        CapabilityProfile(
+            region_id=regions["ES"].id,
+            channel_id=channels["kiosk"].id,
+            context_id=contexts["kiosk:purchase"].id,
+            profile_code="ES:kiosk:purchase",
+            name="Espanha - Kiosk Compra Presencial",
+            priority=100,
+            currency="EUR",
+            is_active=False,
+        ),
+    ]
+    
+    new_count = 0
+    for profile in profiles:
+        existing = db.query(CapabilityProfile).filter(
+            CapabilityProfile.profile_code == profile.profile_code
+        ).first()
+        if not existing:
+            db.add(profile)
+            new_count += 1
+            log(f"Perfil adicionado: {profile.profile_code}")
+    
+    db.commit()
+    log(f"Seed de perfis concluído: {new_count} novos perfis inseridos")
+
+
+# ============================================================
+# 13. CAPABILITY CATALOG - MÉTODOS POR PERFIL
+# ============================================================
+
+def seed_profile_methods(db: Session):
+    """Popula métodos de pagamento por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    methods = {m.code: m for m in db.query(PaymentMethodCatalog).all()}
+    wallet_providers = {wp.code: wp for wp in db.query(WalletProviderCatalog).all()}
+    
+    profile_methods = [
+        # SP:kiosk:purchase
+        {"profile_code": "SP:kiosk:purchase", "method_code": "pix", "sort_order": 10, "is_default": True, "max_installments": 1},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "sort_order": 20, "is_default": False, "max_installments": 12},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "debitCard", "sort_order": 30, "is_default": False, "max_installments": 1},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "cash", "sort_order": 40, "is_default": False, "max_installments": 1},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "voucher", "sort_order": 50, "is_default": False, "max_installments": 1},
+        
+        # SP:kiosk:pickup
+        {"profile_code": "SP:kiosk:pickup", "method_code": "pix", "sort_order": 10, "is_default": True, "max_installments": 1},
+        
+        # SP:online:checkout
+        {"profile_code": "SP:online:checkout", "method_code": "pix", "sort_order": 10, "is_default": True, "max_installments": 1},
+        {"profile_code": "SP:online:checkout", "method_code": "creditCard", "sort_order": 20, "is_default": False, "max_installments": 12},
+        {"profile_code": "SP:online:checkout", "method_code": "boleto", "sort_order": 30, "is_default": False, "max_installments": 1},
+        
+        # PT:kiosk:purchase
+        {"profile_code": "PT:kiosk:purchase", "method_code": "creditCard", "sort_order": 10, "is_default": True, "max_installments": 12},
+        {"profile_code": "PT:kiosk:purchase", "method_code": "debitCard", "sort_order": 20, "is_default": False, "max_installments": 1},
+        {"profile_code": "PT:kiosk:purchase", "method_code": "mbway", "sort_order": 30, "is_default": False, "max_installments": 1},
+        {"profile_code": "PT:kiosk:purchase", "method_code": "cash", "sort_order": 40, "is_default": False, "max_installments": 1},
+        
+        # PT:online:checkout
+        {"profile_code": "PT:online:checkout", "method_code": "creditCard", "sort_order": 10, "is_default": True, "max_installments": 12},
+        {"profile_code": "PT:online:checkout", "method_code": "mbway", "sort_order": 20, "is_default": False, "max_installments": 1},
+    ]
+    
+    new_count = 0
+    for pm in profile_methods:
+        profile = profiles.get(pm["profile_code"])
+        method = methods.get(pm["method_code"])
+        if not profile or not method:
+            log(f"AVISO: Perfil {pm['profile_code']} ou método {pm['method_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileMethod).filter(
+            CapabilityProfileMethod.profile_id == profile.id,
+            CapabilityProfileMethod.payment_method_id == method.id
+        ).first()
+        
+        if not existing:
+            # Verifica se precisa de wallet provider
+            wallet_provider_id = None
+            if pm["method_code"] in ["apple_pay", "google_pay"]:
+                wp_code = "applePay" if pm["method_code"] == "apple_pay" else "googlePay"
+                wallet_provider = wallet_providers.get(wp_code)
+                wallet_provider_id = wallet_provider.id if wallet_provider else None
+            
+            db.add(CapabilityProfileMethod(
+                profile_id=profile.id,
+                payment_method_id=method.id,
+                sort_order=pm["sort_order"],
+                is_default=pm["is_default"],
+                is_active=True,
+                max_installments=pm["max_installments"],
+                wallet_provider_id=wallet_provider_id,
+            ))
+            new_count += 1
+            log(f"Método {pm['method_code']} adicionado ao perfil {pm['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de métodos por perfil concluído: {new_count} novas associações inseridas")
+
+
+# ============================================================
+# 14. CAPABILITY CATALOG - INTERFACES POR MÉTODO
+# ============================================================
+
+def seed_profile_method_interfaces(db: Session):
+    """Popula interfaces válidas para cada método por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    methods = {m.code: m for m in db.query(PaymentMethodCatalog).all()}
+    interfaces = {i.code: i for i in db.query(PaymentInterfaceCatalog).all()}
+    
+    # Get profile_method associations
+    profile_methods = {}
+    for pm in db.query(CapabilityProfileMethod).all():
+        profile = db.query(CapabilityProfile).filter(CapabilityProfile.id == pm.profile_id).first()
+        method = db.query(PaymentMethodCatalog).filter(PaymentMethodCatalog.id == pm.payment_method_id).first()
+        if profile and method:
+            key = f"{profile.profile_code}:{method.code}"
+            profile_methods[key] = pm
+    
+    method_interfaces = [
+        # Pix interfaces
+        {"profile_code": "SP:kiosk:purchase", "method_code": "pix", "interface_code": "qr_code", "sort_order": 10, "is_default": True},
+        {"profile_code": "SP:online:checkout", "method_code": "pix", "interface_code": "qr_code", "sort_order": 10, "is_default": True},
+        {"profile_code": "SP:online:checkout", "method_code": "pix", "interface_code": "deep_link", "sort_order": 20, "is_default": False},
+        
+        # Credit Card interfaces
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "interface_code": "chip", "sort_order": 10, "is_default": True},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "interface_code": "nfc", "sort_order": 20, "is_default": False},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "interface_code": "kiosk_pinpad", "sort_order": 30, "is_default": False},
+        {"profile_code": "SP:online:checkout", "method_code": "creditCard", "interface_code": "web_token", "sort_order": 10, "is_default": True},
+        
+        # Debit Card interfaces
+        {"profile_code": "SP:kiosk:purchase", "method_code": "debitCard", "interface_code": "chip", "sort_order": 10, "is_default": True},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "debitCard", "interface_code": "nfc", "sort_order": 20, "is_default": False},
+        
+        # Cash interfaces
+        {"profile_code": "SP:kiosk:purchase", "method_code": "cash", "interface_code": "manual", "sort_order": 10, "is_default": True},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "cash", "interface_code": "barcode", "sort_order": 20, "is_default": False},
+        
+        # MB Way interfaces
+        {"profile_code": "PT:kiosk:purchase", "method_code": "mbway", "interface_code": "qr_code", "sort_order": 10, "is_default": True},
+        {"profile_code": "PT:online:checkout", "method_code": "mbway", "interface_code": "deep_link", "sort_order": 10, "is_default": True},
+    ]
+    
+    new_count = 0
+    for mi in method_interfaces:
+        key = f"{mi['profile_code']}:{mi['method_code']}"
+        profile_method = profile_methods.get(key)
+        interface = interfaces.get(mi["interface_code"])
+        
+        if not profile_method or not interface:
+            log(f"AVISO: ProfileMethod {key} ou interface {mi['interface_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileMethodInterface).filter(
+            CapabilityProfileMethodInterface.profile_method_id == profile_method.id,
+            CapabilityProfileMethodInterface.payment_interface_id == interface.id
+        ).first()
+        
+        if not existing:
+            db.add(CapabilityProfileMethodInterface(
+                profile_method_id=profile_method.id,
+                payment_interface_id=interface.id,
+                sort_order=mi["sort_order"],
+                is_default=mi["is_default"],
+                is_active=True,
+            ))
+            new_count += 1
+            log(f"Interface {mi['interface_code']} adicionada ao método {mi['method_code']} no perfil {mi['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de interfaces por método concluído: {new_count} novas associações inseridas")
+
+
+# ============================================================
+# 15. CAPABILITY CATALOG - REQUISITOS POR MÉTODO
+# ============================================================
+
+def seed_profile_method_requirements(db: Session):
+    """Popula requisitos para cada método por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    methods = {m.code: m for m in db.query(PaymentMethodCatalog).all()}
+    requirements = {r.code: r for r in db.query(CapabilityRequirementCatalog).all()}
+    
+    # Get profile_method associations
+    profile_methods = {}
+    for pm in db.query(CapabilityProfileMethod).all():
+        profile = db.query(CapabilityProfile).filter(CapabilityProfile.id == pm.profile_id).first()
+        method = db.query(PaymentMethodCatalog).filter(PaymentMethodCatalog.id == pm.payment_method_id).first()
+        if profile and method:
+            key = f"{profile.profile_code}:{method.code}"
+            profile_methods[key] = pm
+    
+    method_requirements = [
+        # Pix requirements
+        {"profile_code": "SP:kiosk:purchase", "method_code": "pix", "requirement_code": "amount_cents", "is_required": True, "scope": "request"},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "pix", "requirement_code": "qr_code_content", "is_required": True, "scope": "session"},
+        {"profile_code": "SP:online:checkout", "method_code": "pix", "requirement_code": "amount_cents", "is_required": True, "scope": "request"},
+        
+        # Credit Card requirements
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "requirement_code": "amount_cents", "is_required": True, "scope": "request"},
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "requirement_code": "installments", "is_required": False, "scope": "request"},
+        {"profile_code": "SP:online:checkout", "method_code": "creditCard", "requirement_code": "amount_cents", "is_required": True, "scope": "request"},
+        {"profile_code": "SP:online:checkout", "method_code": "creditCard", "requirement_code": "card_token", "is_required": True, "scope": "session"},
+        
+        # Age verification for alcohol
+        {"profile_code": "SP:kiosk:purchase", "method_code": "creditCard", "requirement_code": "age_confirmation", "is_required": False, "scope": "request"},
+        
+        # Cash requirements
+        {"profile_code": "SP:kiosk:purchase", "method_code": "cash", "requirement_code": "amount_cents", "is_required": True, "scope": "request"},
+    ]
+    
+    new_count = 0
+    for mr in method_requirements:
+        key = f"{mr['profile_code']}:{mr['method_code']}"
+        profile_method = profile_methods.get(key)
+        requirement = requirements.get(mr["requirement_code"])
+        
+        if not profile_method or not requirement:
+            log(f"AVISO: ProfileMethod {key} ou requisito {mr['requirement_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileMethodRequirement).filter(
+            CapabilityProfileMethodRequirement.profile_method_id == profile_method.id,
+            CapabilityProfileMethodRequirement.requirement_id == requirement.id
+        ).first()
+        
+        if not existing:
+            db.add(CapabilityProfileMethodRequirement(
+                profile_method_id=profile_method.id,
+                requirement_id=requirement.id,
+                is_required=mr["is_required"],
+                requirement_scope=mr["scope"],
+            ))
+            new_count += 1
+            log(f"Requisito {mr['requirement_code']} adicionado ao método {mr['method_code']} no perfil {mr['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de requisitos por método concluído: {new_count} novas associações inseridas")
+
+
+# ============================================================
+# 16. CAPABILITY CATALOG - AÇÕES POR PERFIL
+# ============================================================
+
+def seed_profile_actions(db: Session):
+    """Popula ações por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    
+    profile_actions = [
+        # Kiosk actions
+        {"profile_code": "SP:kiosk:purchase", "action_code": "create_order", "label": "Iniciar pedido", "action_type": "NAVIGATION", "sort_order": 10},
+        {"profile_code": "SP:kiosk:purchase", "action_code": "start_payment", "label": "Iniciar pagamento", "action_type": "PAYMENT", "sort_order": 20},
+        {"profile_code": "SP:kiosk:purchase", "action_code": "identify_customer", "label": "Identificar cliente", "action_type": "IDENTIFICATION", "sort_order": 30},
+        {"profile_code": "SP:kiosk:purchase", "action_code": "scan_product", "label": "Escanear produto", "action_type": "HARDWARE", "sort_order": 40},
+        
+        {"profile_code": "SP:kiosk:pickup", "action_code": "enter_pickup_code", "label": "Digitar código de retirada", "action_type": "IDENTIFICATION", "sort_order": 10},
+        {"profile_code": "SP:kiosk:pickup", "action_code": "scan_pickup_qr", "label": "Escanear QR de retirada", "action_type": "IDENTIFICATION", "sort_order": 20},
+        {"profile_code": "SP:kiosk:pickup", "action_code": "open_slot", "label": "Abrir gaveta", "action_type": "HARDWARE", "sort_order": 30},
+        
+        {"profile_code": "PT:kiosk:purchase", "action_code": "create_order", "label": "Iniciar pedido", "action_type": "NAVIGATION", "sort_order": 10},
+        {"profile_code": "PT:kiosk:purchase", "action_code": "start_payment", "label": "Iniciar pagamento", "action_type": "PAYMENT", "sort_order": 20},
+        
+        {"profile_code": "PT:kiosk:pickup", "action_code": "enter_pickup_code", "label": "Digitar código de retirada", "action_type": "IDENTIFICATION", "sort_order": 10},
+        {"profile_code": "PT:kiosk:pickup", "action_code": "scan_pickup_qr", "label": "Escanear QR de retirada", "action_type": "IDENTIFICATION", "sort_order": 20},
+        
+        # Online actions
+        {"profile_code": "SP:online:checkout", "action_code": "checkout", "label": "Finalizar compra", "action_type": "PAYMENT", "sort_order": 10},
+        {"profile_code": "SP:online:checkout", "action_code": "select_payment_method", "label": "Selecionar método de pagamento", "action_type": "PAYMENT", "sort_order": 20},
+        {"profile_code": "SP:online:checkout", "action_code": "apply_voucher", "label": "Aplicar voucher", "action_type": "OPERATION", "sort_order": 30},
+        
+        {"profile_code": "PT:online:checkout", "action_code": "checkout", "label": "Finalizar compra", "action_type": "PAYMENT", "sort_order": 10},
+        {"profile_code": "PT:online:checkout", "action_code": "select_payment_method", "label": "Selecionar método de pagamento", "action_type": "PAYMENT", "sort_order": 20},
+    ]
+    
+    new_count = 0
+    for pa in profile_actions:
+        profile = profiles.get(pa["profile_code"])
+        if not profile:
+            log(f"AVISO: Perfil {pa['profile_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileAction).filter(
+            CapabilityProfileAction.profile_id == profile.id,
+            CapabilityProfileAction.action_code == pa["action_code"]
+        ).first()
+        
+        if not existing:
+            db.add(CapabilityProfileAction(
+                profile_id=profile.id,
+                action_code=pa["action_code"],
+                label=pa["label"],
+                action_type=pa["action_type"],
+                sort_order=pa["sort_order"],
+                is_active=True,
+            ))
+            new_count += 1
+            log(f"Ação {pa['action_code']} adicionada ao perfil {pa['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de ações por perfil concluído: {new_count} novas ações inseridas")
+
+
+# ============================================================
+# 17. CAPABILITY CATALOG - CONSTRAINTS POR PERFIL
+# ============================================================
+
+def seed_profile_constraints(db: Session):
+    """Popula constraints por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    
+    profile_constraints = [
+        # Kiosk constraints
+        {"profile_code": "SP:kiosk:purchase", "code": "prepayment_timeout_sec", "value_json": json.dumps(300)},
+        {"profile_code": "SP:kiosk:purchase", "code": "max_amount_cents", "value_json": json.dumps(500000)},
+        {"profile_code": "SP:kiosk:purchase", "code": "min_amount_cents", "value_json": json.dumps(100)},
+        {"profile_code": "SP:kiosk:purchase", "code": "allow_guest_checkout", "value_json": json.dumps(True)},
+        {"profile_code": "SP:kiosk:purchase", "code": "max_active_orders_per_user", "value_json": json.dumps(3)},
+        
+        {"profile_code": "SP:kiosk:pickup", "code": "pickup_window_sec", "value_json": json.dumps(86400)},  # 24 horas
+        {"profile_code": "SP:kiosk:pickup", "code": "max_pickup_attempts", "value_json": json.dumps(5)},
+        
+        {"profile_code": "PT:kiosk:purchase", "code": "prepayment_timeout_sec", "value_json": json.dumps(300)},
+        {"profile_code": "PT:kiosk:purchase", "code": "max_amount_cents", "value_json": json.dumps(500000)},
+        {"profile_code": "PT:kiosk:purchase", "code": "allow_guest_checkout", "value_json": json.dumps(False)},
+        
+        {"profile_code": "PT:kiosk:pickup", "code": "pickup_window_sec", "value_json": json.dumps(172800)},  # 48 horas
+        
+        # Online constraints
+        {"profile_code": "SP:online:checkout", "code": "max_amount_cents", "value_json": json.dumps(1000000)},
+        {"profile_code": "SP:online:checkout", "code": "requires_identity_validation", "value_json": json.dumps(False)},
+        {"profile_code": "SP:online:checkout", "code": "allow_guest_checkout", "value_json": json.dumps(True)},
+        
+        {"profile_code": "PT:online:checkout", "code": "max_amount_cents", "value_json": json.dumps(500000)},
+        {"profile_code": "PT:online:checkout", "code": "allow_guest_checkout", "value_json": json.dumps(False)},
+    ]
+    
+    new_count = 0
+    for pc in profile_constraints:
+        profile = profiles.get(pc["profile_code"])
+        if not profile:
+            log(f"AVISO: Perfil {pc['profile_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileConstraint).filter(
+            CapabilityProfileConstraint.profile_id == profile.id,
+            CapabilityProfileConstraint.code == pc["code"]
+        ).first()
+        
+        if not existing:
+            db.add(CapabilityProfileConstraint(
+                profile_id=profile.id,
+                code=pc["code"],
+                value_json=pc["value_json"],
+            ))
+            new_count += 1
+            log(f"Constraint {pc['code']} adicionada ao perfil {pc['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de constraints por perfil concluído: {new_count} novas constraints inseridas")
+
+
+# ============================================================
+# 18. CAPABILITY CATALOG - TARGETS POR PERFIL
+# ============================================================
+
+def seed_profile_targets(db: Session):
+    """Popula targets (overrides) por perfil"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    lockers = {l.id: l for l in db.query(Locker).all()}
+    
+    profile_targets = [
+        # Override para locker refrigerado específico
+        {
+            "profile_code": "SP:kiosk:purchase",
+            "target_type": "LOCKER",
+            "target_key": "SP-VILAOLIMPIA-FOOD-LK-001",
+            "locker_id": "SP-VILAOLIMPIA-FOOD-LK-001",
+            "metadata": {"temperature_override": "REFRIGERATED"}
+        },
+        # Override para operador específico
+        {
+            "profile_code": "SP:kiosk:purchase",
+            "target_type": "OPERATOR",
+            "target_key": "OP-PHARMA-001",
+            "locker_id": None,
+            "metadata": {"special_rules": "pharmacy_only"}
+        },
+        # Override para tenant específico
+        {
+            "profile_code": "SP:online:checkout",
+            "target_type": "TENANT",
+            "target_key": "tenant_pharmacy_001",
+            "locker_id": None,
+            "metadata": {"requires_prescription": True}
+        },
+    ]
+    
+    new_count = 0
+    for pt in profile_targets:
+        profile = profiles.get(pt["profile_code"])
+        locker = lockers.get(pt["locker_id"]) if pt["locker_id"] else None
+        
+        if not profile:
+            log(f"AVISO: Perfil {pt['profile_code']} não encontrado")
+            continue
+        
+        existing = db.query(CapabilityProfileTarget).filter(
+            CapabilityProfileTarget.profile_id == profile.id,
+            CapabilityProfileTarget.target_type == pt["target_type"],
+            CapabilityProfileTarget.target_key == pt["target_key"]
+        ).first()
+        
+        if not existing:
+            db.add(CapabilityProfileTarget(
+                profile_id=profile.id,
+                target_type=pt["target_type"],
+                target_key=pt["target_key"],
+                locker_id=locker.id if locker else None,
+                is_active=True,
+                metadata_json=pt["metadata"],
+            ))
+            new_count += 1
+            log(f"Target {pt['target_type']}:{pt['target_key']} adicionado ao perfil {pt['profile_code']}")
+    
+    db.commit()
+    log(f"Seed de targets por perfil concluído: {new_count} novos targets inseridos")
+
+
+# ============================================================
+# 19. CAPABILITY CATALOG - SNAPSHOTS
+# ============================================================
+
+def seed_profile_snapshots(db: Session):
+    """Popula snapshots de perfil (versão desnormalizada para KIOSK)"""
+    
+    profiles = {p.profile_code: p for p in db.query(CapabilityProfile).all()}
+    
+    new_count = 0
+    for profile_code, profile in profiles.items():
+        # Verifica se já existe um snapshot publicado
+        existing = db.query(CapabilityProfileSnapshot).filter(
+            CapabilityProfileSnapshot.profile_id == profile.id,
+            CapabilityProfileSnapshot.status == "PUBLISHED"
+        ).first()
+        
+        if not existing:
+            # Busca ações ativas do perfil
+            actions = db.query(CapabilityProfileAction).filter(
+                CapabilityProfileAction.profile_id == profile.id,
+                CapabilityProfileAction.is_active == True
+            ).all()
+            
+            # Busca métodos ativos do perfil
+            profile_methods = db.query(CapabilityProfileMethod).filter(
+                CapabilityProfileMethod.profile_id == profile.id,
+                CapabilityProfileMethod.is_active == True
+            ).all()
+            
+            methods_data = []
+            for pm in profile_methods:
+                method = db.query(PaymentMethodCatalog).filter(
+                    PaymentMethodCatalog.id == pm.payment_method_id
+                ).first()
+                if method:
+                    # Busca interfaces para este método
+                    interfaces = db.query(CapabilityProfileMethodInterface).filter(
+                        CapabilityProfileMethodInterface.profile_method_id == pm.id,
+                        CapabilityProfileMethodInterface.is_active == True
+                    ).all()
+                    
+                    methods_data.append({
+                        "code": method.code,
+                        "name": method.name,
+                        "family": method.family,
+                        "is_default": pm.is_default,
+                        "max_installments": pm.max_installments,
+                        "interfaces": [{"code": pi.payment_interface.code} for pi in interfaces if pi.payment_interface],
+                    })
+            
+            # Snapshot completo
+            snapshot_json = {
+                "profile_code": profile_code,
+                "name": profile.name,
+                "currency": profile.currency,
+                "actions": [
+                    {"code": a.action_code, "label": a.label, "type": a.action_type}
+                    for a in actions
+                ],
+                "payment_methods": methods_data,
+            }
+            
+            # Calcula hash do snapshot
+            snapshot_str = json.dumps(snapshot_json, sort_keys=True)
+            snapshot_hash = hashlib.sha256(snapshot_str.encode()).hexdigest()
+            
+            db.add(CapabilityProfileSnapshot(
+                profile_id=profile.id,
+                profile_code=profile_code,
+                resolved_json=snapshot_json,
+                snapshot_hash=snapshot_hash,
+                version=1,
+                status="PUBLISHED",
+                published_at=datetime.now(timezone.utc),
+                generated_by="seed_script",
+            ))
+            new_count += 1
+            log(f"Snapshot criado para perfil {profile_code}")
+    
+    db.commit()
+    log(f"Seed de snapshots concluído: {new_count} novos snapshots inseridos")
+
+
+# ============================================================
+# 20. FUNÇÃO PRINCIPAL
+# ============================================================
 
 def run_full_seed(db: Session):
-    """Executa todo o seed na ordem correta."""
+    """Executa todo o seed na ordem correta"""
+    
+    log("🚀 Iniciando seed completo do banco de dados...")
+    log("=" * 60)
+    
+    # 1. Tabelas base (ordem respeitando FKs)
+    log("\n📦 1. Seed de Categorias de Produtos")
     seed_product_categories(db)
+    
+    log("\n🏢 2. Seed de Operadores")
     seed_operators(db)
+    
+    log("\n📬 3. Seed de Lockers e Configurações")
     seed_lockers(db)
+    
+    # 2. Capability Catalog - Tabelas base
+    log("\n🌍 4. Seed de Regiões")
+    seed_capability_regions(db)
+    
+    log("\n📡 5. Seed de Canais")
+    seed_capability_channels(db)
+    
+    log("\n🎯 6. Seed de Contextos")
+    seed_capability_contexts(db)
+    
+    log("\n💳 7. Seed de Métodos de Pagamento")
+    seed_payment_methods(db)
+    
+    log("\n🖥️ 8. Seed de Interfaces de Pagamento")
+    seed_payment_interfaces(db)
+    
+    log("\n👛 9. Seed de Wallet Providers")
+    seed_wallet_providers(db)
+    
+    log("\n📋 10. Seed de Requisitos")
+    seed_capability_requirements(db)
+    
+    # 3. Capability Catalog - Tabelas de relacionamento
+    log("\n📁 11. Seed de Perfis")
+    seed_capability_profiles(db)
+    
+    log("\n🔗 12. Seed de Métodos por Perfil")
+    seed_profile_methods(db)
+    
+    log("\n🔌 13. Seed de Interfaces por Método")
+    seed_profile_method_interfaces(db)
+    
+    log("\n⚠️ 14. Seed de Requisitos por Método")
+    seed_profile_method_requirements(db)
+    
+    log("\n⚡ 15. Seed de Ações por Perfil")
+    seed_profile_actions(db)
+    
+    log("\n🚧 16. Seed de Constraints por Perfil")
+    seed_profile_constraints(db)
+    
+    log("\n🎯 17. Seed de Targets por Perfil")
+    seed_profile_targets(db)
+    
+    log("\n📸 18. Seed de Snapshots")
+    seed_profile_snapshots(db)
+    
+    log("\n" + "=" * 60)
+    log("✅ Seed completo finalizado com sucesso!")
+
+
+# ============================================================
+# EXECUÇÃO DIRETA (para testes)
+# ============================================================
+
+if __name__ == "__main__":
+    import sys
+    import os
+    
+    # Adiciona o caminho do projeto ao sys.path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    
+    from app.core.db import SessionLocal
+    
+    db = SessionLocal()
+    try:
+        run_full_seed(db)
+    finally:
+        db.close()

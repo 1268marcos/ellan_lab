@@ -61,22 +61,6 @@ def _assert_required_schema() -> None:
         "locker_operators",
         "product_locker_configs",
         "product_categories",
-        # Tabelas de capability catalog
-        "capability_region",
-        "capability_channel",
-        "capability_context",
-        "payment_method_catalog",
-        "payment_interface_catalog",
-        "wallet_provider_catalog",
-        "capability_requirement_catalog",
-        "capability_profile",
-        "capability_profile_method",
-        "capability_profile_method_interface",
-        "capability_profile_method_requirement",
-        "capability_profile_action",
-        "capability_profile_constraint",
-        "capability_profile_target",
-        "capability_profile_snapshot",
     }
 
     missing_tables = sorted(required_tables - tables)
@@ -125,21 +109,6 @@ def _assert_required_schema() -> None:
         "updated_at",
         "public_access_token_hash",
         "currency",
-        "site_id",
-        "tenant_id",
-        "ecommerce_partner_id",
-        "partner_order_ref",
-        "sku_description",
-        "slot_size",
-        "card_last4",
-        "card_brand",
-        "installments",
-        "guest_name",
-        "consent_analytics",
-        "cancelled_at",
-        "cancel_reason",
-        "refunded_at",
-        "refund_reason",
     }
 
     required_allocations_columns = {
@@ -151,10 +120,6 @@ def _assert_required_schema() -> None:
         "locked_until",
         "created_at",
         "updated_at",
-        "slot_size",
-        "allocated_at",
-        "released_at",
-        "release_reason",
     }
 
     required_users_columns = {
@@ -168,10 +133,6 @@ def _assert_required_schema() -> None:
         "phone_verified",
         "created_at",
         "updated_at",
-        "locale",
-        "totp_secret_ref",
-        "totp_enabled",
-        "anonymized_at",
     }
 
     required_auth_sessions_columns = {
@@ -207,12 +168,6 @@ def _assert_required_schema() -> None:
         "sent_at",
         "delivered_at",
         "failed_at",
-        "pickup_id",
-        "delivery_id",
-        "rental_id",
-        "locale",
-        "provider_status",
-        "error_detail",
     }
 
     required_fiscal_documents_columns = {
@@ -233,15 +188,6 @@ def _assert_required_schema() -> None:
         "issued_at",
         "created_at",
         "updated_at",
-        "tenant_id",
-        "tax_amount_cents",
-        "tax_breakdown_json",
-        "sent_at",
-        "printed_at",
-        "xml_signed",
-        "chave_acesso",
-        "cancelled_at",
-        "cancel_reason",
     }
 
     required_lockers_columns = {
@@ -278,12 +224,6 @@ def _assert_required_schema() -> None:
         "metadata_json",
         "created_at",
         "updated_at",
-        "slots_available",
-        "geolocation_wkt",
-        "has_kiosk",
-        "has_printer",
-        "has_card_reader",
-        "has_nfc",
     }
 
     required_locker_slot_configs_columns = {
@@ -298,10 +238,6 @@ def _assert_required_schema() -> None:
         "max_weight_kg",
         "created_at",
         "updated_at",
-        "width_mm",
-        "height_mm",
-        "depth_mm",
-        "max_weight_g",
     }
 
     required_locker_operators_columns = {
@@ -316,12 +252,6 @@ def _assert_required_schema() -> None:
         "currency",
         "created_at",
         "updated_at",
-        "country",
-        "contract_start_at",
-        "contract_end_at",
-        "contract_ref",
-        "sla_pickup_hours",
-        "sla_return_hours",
     }
 
     required_product_locker_configs_columns = {
@@ -345,13 +275,6 @@ def _assert_required_schema() -> None:
         "notes",
         "created_at",
         "updated_at",
-        "min_value_cents",
-        "max_value_cents",
-        "max_weight_g",
-        "max_width_mm",
-        "max_height_mm",
-        "max_depth_mm",
-        "requires_id_check",
     }
 
     required_product_categories_columns = {
@@ -365,7 +288,6 @@ def _assert_required_schema() -> None:
         "requires_age_verification",
         "created_at",
         "updated_at",
-        "max_weight_g",
     }
 
     missing_orders_columns = sorted(required_orders_columns - set(orders_columns.keys()))
@@ -483,9 +405,6 @@ def _assert_required_schema() -> None:
         "idx_orders_status_picked_up",
         "idx_orders_totem_picked_up",
         "idx_orders_public_access_token_hash",
-        "ix_orders_user_id",
-        "ix_orders_ecommerce_partner",
-        "ix_orders_pickup_deadline",
     }
 
     required_allocations_indexes = {
@@ -499,10 +418,6 @@ def _assert_required_schema() -> None:
         "ux_notification_logs_dedupe",
         "ix_notification_logs_next_attempt_at",
         "ix_notification_logs_status_next_attempt_at",
-        "ix_notif_order",
-        "ix_notif_pickup",
-        "ix_notif_delivery",
-        "ix_notif_next_attempt",
     }
 
     required_lockers_indexes = {
@@ -510,9 +425,6 @@ def _assert_required_schema() -> None:
         "idx_lockers_site_id",
         "idx_lockers_active",
         "idx_lockers_operator",
-        "ix_lockers_tenant_id",
-        "ix_lockers_machine_id",
-        "ix_lockers_lat_lng",
     }
 
     required_locker_slot_configs_indexes = {
@@ -641,32 +553,13 @@ def init_db():
     # 🔥 PRODUCT CONFIG
     from app.models.product_locker_config import ProductLockerConfig, ProductCategory  # noqa: F401
 
-    # 🔥 CAPABILITY CATALOG (BLOCO 12)
-    from app.models.capability import (  # noqa: F401
-        CapabilityRegion,
-        CapabilityChannel,
-        CapabilityContext,
-        PaymentMethodCatalog,
-        PaymentInterfaceCatalog,
-        WalletProviderCatalog,
-        CapabilityRequirementCatalog,
-        CapabilityProfile,
-        CapabilityProfileMethod,
-        CapabilityProfileMethodInterface,
-        CapabilityProfileMethodRequirement,
-        CapabilityProfileAction,
-        CapabilityProfileConstraint,
-        CapabilityProfileTarget,
-        CapabilityProfileSnapshot,
-    )
-
     # =========================
     # 1. MIGRATIONS PRIMEIRO
     # =========================
     _run_startup_migrations_if_enabled()
 
     # =========================
-    # 2. CREATE TABLES (fallback - comentado)
+    # 2. CREATE TABLES (fallback)
     # =========================
     # Base.metadata.create_all(bind=engine)
 
@@ -676,9 +569,11 @@ def init_db():
     _assert_required_schema()
 
     # =========================
-    # 4. SEED
+    # 3. SEED
     # =========================
+
     _run_seed_if_needed()
+
 
 
 def _run_seed_if_needed():

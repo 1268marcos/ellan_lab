@@ -23,6 +23,8 @@ from app.routers.public_orders import router as public_orders_router
 from app.routers.public_pickup import router as public_pickup_router
 from app.routers.public_fiscal import router as public_fiscal_router
 
+from app.routers.payment_capabilities import router as payment_capabilities_router
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
 
@@ -47,6 +49,8 @@ app.include_router(public_fiscal_router)
 # Routers de health
 app.include_router(health_router, tags=["Health"])
 app.include_router(internal_health_router, tags=["Internal"])
+
+app.include_router(payment_capabilities_router)
 
 # CORS
 app.add_middleware(

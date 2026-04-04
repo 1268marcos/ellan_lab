@@ -9,6 +9,7 @@ from typing import Optional
 
 from sqlalchemy import Column, DateTime, Enum, Index, String, Integer, Boolean, Float
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 
 from app.core.db import Base
 
@@ -336,7 +337,13 @@ class Order(Base):
     # Produto e locker
     totem_id = Column(String, nullable=False)
     sku_id = Column(String, nullable=False)
-    
+        
+    items = relationship(
+        "OrderItem",
+        back_populates="order",
+        cascade="all, delete-orphan",
+    )
+
     # Valores
     amount_cents = Column(Integer, nullable=False)
     currency = Column(String, nullable=True, default="BRL")  # Adicionado

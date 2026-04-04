@@ -1,11 +1,63 @@
 # 01_source/order_pickup_service/app/core/db_migrations.py
-# 03/04/2026 - adicionar coluna 'currency' na tabela 'orders'
+#
+# Estratégia de banco de dados:
+#   PRIMARY  → PostgreSQL (produção, cloud, back-office)
+#   FALLBACK → SQLite    (KIOSK local — resiliência offline, replicação assíncrona separada)
+#
+# Convenções:
+#   - IDs: VARCHAR(36) compatível com UUID v4
+#   - Timestamps: TIMESTAMPTZ (PostgreSQL) / TIMESTAMP WITH TIME ZONE (SQLite)
+#   - Monetário: INTEGER (centavos) + VARCHAR(8) currency — nunca FLOAT
+#   - JSON: JSONB (PostgreSQL) / TEXT (SQLite)
+#   - Booleanos: BOOLEAN
+#   - Migrações rastreadas em `schema_migrations`
+#
+# Ordem de criação de tabelas (respeita FK):
+#   1. schema_migrations
+#   2. users
+#   3. auth_sessions
+#   4. locker_operators
+#   5. lockers
+#   6. locker_slot_configs
+#   7. locker_slots
+#   8. locker_telemetry
+#   9. product_categories
+#  10. product_locker_configs
+#  11. rental_plans
+#  12. rental_contracts
+#  13. logistics_partners
+#  14. ecommerce_partners
+#  15. webhook_endpoints
+#  16. webhook_deliveries
+#  17. orders
+#  18. payment_transactions
+#  19. allocations
+#  20. pickups
+#  21. pickup_tokens
+#  22. inbound_deliveries
+#  23. fiscal_documents
+#  24. notification_logs
+#  25. domain_event_outbox
+#  26. privacy_consents
+#  27. data_deletion_requests
 
 from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
 
 from sqlalchemy import inspect, text
 
 from app.core.db import engine
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Helpers de inspeção (dialect-agnóstico)
+# ---------------------------------------------------------------------------
+
+def _dialect(conn) -> str:
+    return conn.dialect.name  # 'postgresql' | 'sqlite'
 
 
 def _has_table(inspector, table_name: str) -> bool:
@@ -13,1351 +65,2232 @@ def _has_table(inspector, table_name: str) -> bool:
 
 
 def _has_column(inspector, table_name: str, column_name: str) -> bool:
-    cols = inspector.get_columns(table_name)
-    return any(col["name"] == column_name for col in cols)
+    return any(
+        col["name"] == column_name
+        for col in inspector.get_columns(table_name)
+    )
 
 
 def _has_index(inspector, table_name: str, index_name: str) -> bool:
-    indexes = inspector.get_indexes(table_name)
-    return any(idx["name"] == index_name for idx in indexes)
+    return any(
+        idx["name"] == index_name
+        for idx in inspector.get_indexes(table_name)
+    )
 
 
-def _sqlite_table_sql(conn, table_name: str) -> str | None:
-    row = conn.execute(
+def _jsonb_or_text(conn) -> str:
+    """Retorna JSONB em PostgreSQL, TEXT em SQLite."""
+    return "JSONB" if _dialect(conn) == "postgresql" else "TEXT"
+
+
+def _ts(conn) -> str:
+    """Tipo de timestamp com fuso horário."""
+    return "TIMESTAMPTZ" if _dialect(conn) == "postgresql" else "TIMESTAMP WITH TIME ZONE"
+
+
+# ---------------------------------------------------------------------------
+# Versionamento de migrações
+# ---------------------------------------------------------------------------
+
+MIGRATIONS: dict[str, str] = {}
+"""Registro de todas as migrations em ordem. Chave = nome único, Valor = SQL ou sentinela."""
+
+
+def _migration_applied(conn, name: str) -> bool:
+    try:
+        row = conn.execute(
+            text("SELECT 1 FROM schema_migrations WHERE name = :name"),
+            {"name": name},
+        ).fetchone()
+        return row is not None
+    except Exception:
+        return False
+
+
+def _mark_migration(conn, name: str) -> None:
+    conn.execute(
         text(
-            """
-            SELECT sql
-              FROM sqlite_master
-             WHERE type = 'table'
-               AND name = :table_name
-            """
+            "INSERT INTO schema_migrations (name, applied_at) "
+            "VALUES (:name, :ts) ON CONFLICT (name) DO NOTHING"
         ),
-        {"table_name": table_name},
-    ).fetchone()
-    return row[0] if row and row[0] else None
+        {"name": name, "ts": datetime.now(timezone.utc)},
+    )
 
 
-def _normalize_sql(sql: str | None) -> str:
-    return " ".join((sql or "").lower().split())
-
-
-def _sqlite_users_id_needs_rebuild_to_text(conn) -> bool:
-    sql = _normalize_sql(_sqlite_table_sql(conn, "users"))
-    if not sql:
-        return False
-
-    return "id varchar(36)" not in sql and "id text" not in sql and "id varchar" not in sql
-
-
-def _sqlite_orders_user_id_needs_rebuild_to_text(conn) -> bool:
-    sql = _normalize_sql(_sqlite_table_sql(conn, "orders"))
-    if not sql:
-        return False
-
-    return "user_id varchar(36)" not in sql and "user_id text" not in sql and "user_id varchar" not in sql
-
-
-def _sqlite_auth_sessions_user_id_needs_rebuild_to_text(conn) -> bool:
-    sql = _normalize_sql(_sqlite_table_sql(conn, "auth_sessions"))
-    if not sql:
-        return False
-
-    return "user_id varchar(36)" not in sql and "user_id text" not in sql and "user_id varchar" not in sql
-
-
-def _sqlite_pickups_needs_rebuild_for_final_model(conn) -> bool:
-    sql = _normalize_sql(_sqlite_table_sql(conn, "pickups"))
-    if not sql:
-        return False
-
-    required_fragments = [
-        "channel",
-        "locker_id",
-        "machine_id",
-        "slot",
-        "operator_id",
-        "tenant_id",
-        "site_id",
-        "lifecycle_stage",
-        "activated_at",
-        "ready_at",
-        "door_opened_at",
-        "item_removed_at",
-        "door_closed_at",
-        "expired_at",
-        "cancelled_at",
-        "cancel_reason",
-        "correlation_id",
-        "source_event_id",
-        "sensor_event_id",
-        "notes",
-    ]
-
-    return not all(fragment in sql for fragment in required_fragments)
-
-
-def _rebuild_users_sqlite_to_text_id(conn, applied: list[str]) -> None:
-    inspector = inspect(conn)
-    existing = {col["name"] for col in inspector.get_columns("users")}
-
-    conn.execute(text("PRAGMA foreign_keys=OFF"))
-
-    conn.execute(
-        text(
-            """
-            CREATE TABLE users_new (
-                id VARCHAR(36) NOT NULL PRIMARY KEY,
-                full_name VARCHAR(255) NOT NULL,
-                email VARCHAR(255) NOT NULL,
-                phone VARCHAR(32) NULL,
-                password_hash VARCHAR(255) NOT NULL,
-                is_active BOOLEAN NOT NULL,
-                email_verified BOOLEAN NOT NULL,
-                phone_verified BOOLEAN NOT NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-            )
-            """
+def _ensure_schema_migrations(conn) -> None:
+    """Cria a tabela de controle de versão de migrations (idempotente)."""
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            name       VARCHAR(255) PRIMARY KEY,
+            applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    )
+    """))
 
-    full_name_expr = (
-        "full_name"
-        if "full_name" in existing
-        else ("name" if "name" in existing else "email")
-    )
-    phone_expr = "phone" if "phone" in existing else "NULL"
-    password_hash_expr = "password_hash" if "password_hash" in existing else "''"
-    is_active_expr = "COALESCE(is_active, 1)" if "is_active" in existing else "1"
-    email_verified_expr = (
-        "COALESCE(email_verified, 0)" if "email_verified" in existing else "0"
-    )
-    phone_verified_expr = (
-        "COALESCE(phone_verified, 0)" if "phone_verified" in existing else "0"
-    )
-    created_at_expr = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in existing else "CURRENT_TIMESTAMP"
-    updated_at_expr = "COALESCE(updated_at, CURRENT_TIMESTAMP)" if "updated_at" in existing else "CURRENT_TIMESTAMP"
 
-    conn.execute(
-        text(
-            f"""
-            INSERT INTO users_new (
-                id,
-                full_name,
-                email,
-                phone,
-                password_hash,
-                is_active,
-                email_verified,
-                phone_verified,
-                created_at,
-                updated_at
-            )
-            SELECT
-                CAST(id AS TEXT),
-                {full_name_expr},
-                email,
-                {phone_expr},
-                {password_hash_expr},
-                {is_active_expr},
-                {email_verified_expr},
-                {phone_verified_expr},
-                {created_at_expr},
-                {updated_at_expr}
-            FROM users
-            """
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 1 — Tabelas de identidade e sessão
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_users(conn, applied: list[str]) -> None:
+    name = "users.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS users (
+            id                  VARCHAR(36)  NOT NULL PRIMARY KEY,
+            full_name           VARCHAR(255) NOT NULL,
+            email               VARCHAR(255) NOT NULL,
+            phone               VARCHAR(32),
+            password_hash       VARCHAR(255) NOT NULL,
+            is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
+            email_verified      BOOLEAN      NOT NULL DEFAULT FALSE,
+            phone_verified      BOOLEAN      NOT NULL DEFAULT FALSE,
+            -- LGPD: preferência de idioma para comunicações
+            locale              VARCHAR(10)  NOT NULL DEFAULT 'pt-BR',
+            -- 2FA
+            totp_secret_ref     VARCHAR(255),          -- referência ao vault
+            totp_enabled        BOOLEAN      NOT NULL DEFAULT FALSE,
+            -- Soft-delete LGPD (anonimização)
+            anonymized_at       TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    )
-
-    conn.execute(text("DROP TABLE users"))
-    conn.execute(text("ALTER TABLE users_new RENAME TO users"))
-    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_email ON users (email)"))
+    """))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email ON users (email) "
+        "WHERE anonymized_at IS NULL"
+    ))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_phone ON users (phone)"))
-    conn.execute(text("PRAGMA foreign_keys=ON"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    applied.append("users.sqlite_table_rebuild_text_id")
 
-
-def _rebuild_orders_sqlite_user_id_to_text(conn, applied: list[str]) -> None:
-    inspector = inspect(conn)
-    existing = {col["name"] for col in inspector.get_columns("orders")}
-
-    conn.execute(text("PRAGMA foreign_keys=OFF"))
-
-    conn.execute(
-        text(
-            """
-            CREATE TABLE orders_new (
-                id VARCHAR NOT NULL PRIMARY KEY,
-                user_id VARCHAR(36) NULL,
-                channel VARCHAR(6) NOT NULL,
-                region VARCHAR NOT NULL,
-                totem_id VARCHAR NOT NULL,
-                sku_id VARCHAR NOT NULL,
-                amount_cents INTEGER NOT NULL,
-                status VARCHAR(18) NOT NULL,
-                gateway_transaction_id VARCHAR NULL,
-                payment_method VARCHAR(21) NULL,
-                payment_status VARCHAR(30) NOT NULL,
-                card_type VARCHAR(10) NULL,
-                payment_updated_at TIMESTAMP WITH TIME ZONE NULL,
-                paid_at TIMESTAMP WITH TIME ZONE NULL,
-                pickup_deadline_at TIMESTAMP WITH TIME ZONE NULL,
-                picked_up_at TIMESTAMP WITH TIME ZONE NULL,
-                guest_session_id VARCHAR NULL,
-                receipt_email VARCHAR NULL,
-                receipt_phone VARCHAR NULL,
-                consent_marketing INTEGER NOT NULL,
-                guest_phone VARCHAR NULL,
-                guest_email VARCHAR NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-            )
-            """
+def _create_auth_sessions(conn, applied: list[str]) -> None:
+    name = "auth_sessions.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            id                  BIGSERIAL    PRIMARY KEY,
+            user_id             VARCHAR(36)  NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            session_token_hash  VARCHAR(255) NOT NULL,
+            user_agent          VARCHAR(500),
+            ip_address          VARCHAR(64),
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            expires_at          TIMESTAMPTZ  NOT NULL,
+            revoked_at          TIMESTAMPTZ
         )
-    )
+    """))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_auth_sessions_token_hash "
+        "ON auth_sessions (session_token_hash)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_auth_sessions_user_id "
+        "ON auth_sessions (user_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_auth_sessions_expires_at "
+        "ON auth_sessions (expires_at) WHERE revoked_at IS NULL"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    gateway_transaction_id_expr = (
-        "gateway_transaction_id" if "gateway_transaction_id" in existing else "NULL"
-    )
-    payment_method_expr = "payment_method" if "payment_method" in existing else "NULL"
-    payment_status_expr = (
-        "COALESCE(payment_status, 'CREATED')" if "payment_status" in existing else "'CREATED'"
-    )
-    card_type_expr = "card_type" if "card_type" in existing else "NULL"
-    payment_updated_at_expr = (
-        "payment_updated_at" if "payment_updated_at" in existing else "NULL"
-    )
-    paid_at_expr = "paid_at" if "paid_at" in existing else "NULL"
-    pickup_deadline_at_expr = (
-        "pickup_deadline_at" if "pickup_deadline_at" in existing else "NULL"
-    )
-    picked_up_at_expr = "picked_up_at" if "picked_up_at" in existing else "NULL"
-    guest_session_id_expr = (
-        "guest_session_id" if "guest_session_id" in existing else "NULL"
-    )
-    receipt_email_expr = "receipt_email" if "receipt_email" in existing else "NULL"
-    receipt_phone_expr = "receipt_phone" if "receipt_phone" in existing else "NULL"
-    consent_marketing_expr = (
-        "COALESCE(consent_marketing, 0)" if "consent_marketing" in existing else "0"
-    )
-    guest_phone_expr = "guest_phone" if "guest_phone" in existing else "NULL"
-    guest_email_expr = "guest_email" if "guest_email" in existing else "NULL"
-    updated_at_expr = "COALESCE(updated_at, created_at)" if "updated_at" in existing else "created_at"
 
-    conn.execute(
-        text(
-            f"""
-            INSERT INTO orders_new (
-                id,
-                user_id,
-                channel,
-                region,
-                totem_id,
-                sku_id,
-                amount_cents,
-                status,
-                gateway_transaction_id,
-                payment_method,
-                payment_status,
-                card_type,
-                payment_updated_at,
-                paid_at,
-                pickup_deadline_at,
-                picked_up_at,
-                guest_session_id,
-                receipt_email,
-                receipt_phone,
-                consent_marketing,
-                guest_phone,
-                guest_email,
-                created_at,
-                updated_at
-            )
-            SELECT
-                id,
-                CASE
-                    WHEN user_id IS NULL THEN NULL
-                    ELSE CAST(user_id AS TEXT)
-                END,
-                channel,
-                region,
-                totem_id,
-                sku_id,
-                amount_cents,
-                status,
-                {gateway_transaction_id_expr},
-                {payment_method_expr},
-                {payment_status_expr},
-                {card_type_expr},
-                {payment_updated_at_expr},
-                {paid_at_expr},
-                {pickup_deadline_at_expr},
-                {picked_up_at_expr},
-                {guest_session_id_expr},
-                {receipt_email_expr},
-                {receipt_phone_expr},
-                {consent_marketing_expr},
-                {guest_phone_expr},
-                {guest_email_expr},
-                created_at,
-                {updated_at_expr}
-            FROM orders
-            """
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 2 — Operadores, Lockers e Slots
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_locker_operators(conn, applied: list[str]) -> None:
+    name = "locker_operators.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS locker_operators (
+            id                  VARCHAR(64)  PRIMARY KEY,
+            name                VARCHAR(128) NOT NULL,
+            document            VARCHAR(32),           -- CNPJ/CPF
+            email               VARCHAR(128),
+            phone               VARCHAR(32),
+            -- LOGISTICS = transportadora, ECOMMERCE = loja, OWN = próprio
+            operator_type       VARCHAR(32)  NOT NULL DEFAULT 'LOGISTICS',
+            country             VARCHAR(2)   NOT NULL DEFAULT 'BR',
+            active              BOOLEAN      NOT NULL DEFAULT TRUE,
+            -- Comissionamento
+            commission_rate     NUMERIC(6,4),          -- ex: 0.0350 = 3,5%
+            currency            VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+            -- Contrato
+            contract_start_at   TIMESTAMPTZ,
+            contract_end_at     TIMESTAMPTZ,
+            contract_ref        VARCHAR(255),
+            -- Configuração de SLA
+            sla_pickup_hours    INTEGER      NOT NULL DEFAULT 72,
+            sla_return_hours    INTEGER      NOT NULL DEFAULT 24,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    )
-
-    conn.execute(text("DROP TABLE orders"))
-    conn.execute(text("ALTER TABLE orders_new RENAME TO orders"))
-
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_status ON orders (status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_channel_status ON orders (channel, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_region_status ON orders (region, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_region_totem_status ON orders (region, totem_id, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_region_totem_created_at ON orders (region, totem_id, created_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_paid_at ON orders (paid_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_picked_up_at ON orders (picked_up_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_status_picked_up ON orders (status, picked_up_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_orders_totem_picked_up ON orders (totem_id, picked_up_at)"))
-
-    conn.execute(text("PRAGMA foreign_keys=ON"))
-
-    applied.append("orders.sqlite_table_rebuild_user_id_text")
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_locker_operators_document "
+        "ON locker_operators (document)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
 
 
-def _rebuild_auth_sessions_sqlite_user_id_to_text(conn, applied: list[str]) -> None:
-    inspector = inspect(conn)
-    existing = {col["name"] for col in inspector.get_columns("auth_sessions")}
+def _create_lockers(conn, applied: list[str]) -> None:
+    name = "lockers.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    jsonb = _jsonb_or_text(conn)
+    conn.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS lockers (
+            id                      VARCHAR(36)   PRIMARY KEY,
 
-    conn.execute(text("PRAGMA foreign_keys=OFF"))
+            -- Identificação
+            display_name            VARCHAR(255),
+            external_id             VARCHAR(100),         -- ID no sistema do operador
+            machine_id              VARCHAR(100),         -- ID físico do hardware
 
-    conn.execute(
-        text(
-            """
-            CREATE TABLE auth_sessions_new (
-                id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
-                user_id VARCHAR(36) NOT NULL,
-                session_token_hash VARCHAR(255) NOT NULL,
-                user_agent VARCHAR(500) NULL,
-                ip_address VARCHAR(64) NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                revoked_at TIMESTAMP WITH TIME ZONE NULL,
-                FOREIGN KEY(user_id) REFERENCES users (id)
-            )
-            """
+            -- Relacionamentos
+            operator_id             VARCHAR(64)   REFERENCES locker_operators(id),
+            tenant_id               VARCHAR(100),         -- Para SaaS multi-tenant
+            site_id                 VARCHAR(100),
+
+            -- Geografia
+            region                  VARCHAR(10)   NOT NULL,
+            timezone                VARCHAR(50)   NOT NULL DEFAULT 'America/Sao_Paulo',
+            country                 VARCHAR(2)    NOT NULL DEFAULT 'BR',
+            address_line            VARCHAR(255),
+            address_number          VARCHAR(50),
+            address_extra           VARCHAR(255),
+            district                VARCHAR(100),
+            city                    VARCHAR(100),
+            state                   VARCHAR(100),
+            postal_code             VARCHAR(20),
+            latitude                DOUBLE PRECISION,
+            longitude               DOUBLE PRECISION,
+            -- PostGIS-ready (ativar quando disponível): GEOMETRY(Point, 4326)
+            geolocation_wkt         VARCHAR(100),         -- WKT fallback: 'POINT(lng lat)'
+
+            -- Capacidade e dimensões
+            slots_count             INTEGER       NOT NULL DEFAULT 0,
+            slots_available         INTEGER       NOT NULL DEFAULT 0,
+
+            -- Operação
+            active                  BOOLEAN       NOT NULL DEFAULT TRUE,
+            allowed_channels        VARCHAR(100),         -- 'ONLINE,KIOSK'
+            allowed_payment_methods VARCHAR(255),
+            access_hours            TEXT,                 -- JSON com horários por dia
+
+            -- Recursos físicos
+            has_alarm               BOOLEAN       NOT NULL DEFAULT FALSE,
+            has_camera              BOOLEAN       NOT NULL DEFAULT FALSE,
+            has_kiosk               BOOLEAN       NOT NULL DEFAULT FALSE,
+            has_printer             BOOLEAN       NOT NULL DEFAULT FALSE,
+            has_card_reader         BOOLEAN       NOT NULL DEFAULT FALSE,
+            has_nfc                 BOOLEAN       NOT NULL DEFAULT FALSE,
+            is_rented               BOOLEAN       NOT NULL DEFAULT FALSE,
+
+            -- Classificação
+            security_level          VARCHAR(50),          -- STANDARD, HIGH, VAULT
+            temperature_zone        VARCHAR(50),          -- AMBIENT, REFRIGERATED, FROZEN
+
+            -- Metadados livres
+            description             TEXT,
+            metadata_json           {jsonb},
+
+            created_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ   NOT NULL DEFAULT NOW()
         )
-    )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_active      ON lockers (active)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_operator    ON lockers (operator_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_region      ON lockers (region)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_site_id     ON lockers (site_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_tenant_id   ON lockers (tenant_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_machine_id  ON lockers (machine_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_lockers_lat_lng     ON lockers (latitude, longitude)"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    conn.execute(
-        text(
-            f"""
-            INSERT INTO auth_sessions_new (
-                id,
-                user_id,
-                session_token_hash,
-                user_agent,
-                ip_address,
-                created_at,
-                expires_at,
-                revoked_at
-            )
-            SELECT
-                id,
-                CAST(user_id AS TEXT),
-                session_token_hash,
-                {"user_agent" if "user_agent" in existing else "NULL"},
-                {"ip_address" if "ip_address" in existing else "NULL"},
-                created_at,
-                expires_at,
-                {"revoked_at" if "revoked_at" in existing else "NULL"}
-            FROM auth_sessions
-            """
+
+def _create_locker_slot_configs(conn, applied: list[str]) -> None:
+    """Configuração estática de tamanhos disponíveis por locker."""
+    name = "locker_slot_configs.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS locker_slot_configs (
+            id              BIGSERIAL    PRIMARY KEY,
+            locker_id       VARCHAR(36)  NOT NULL REFERENCES lockers(id) ON DELETE CASCADE,
+            -- XS, S, M, L, XL, XXL — padronizado com InPost/DHL
+            slot_size       VARCHAR(8)   NOT NULL,
+            slot_count      INTEGER      NOT NULL DEFAULT 0,
+            available_count INTEGER      NOT NULL DEFAULT 0,
+            -- Dimensões internas da gaveta
+            width_mm        INTEGER,
+            height_mm        INTEGER,
+            depth_mm        INTEGER,
+            max_weight_g    INTEGER,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (locker_id, slot_size)
         )
-    )
-
-    conn.execute(text("DROP TABLE auth_sessions"))
-    conn.execute(text("ALTER TABLE auth_sessions_new RENAME TO auth_sessions"))
-    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_auth_sessions_session_token_hash ON auth_sessions (session_token_hash)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_auth_sessions_user_id ON auth_sessions (user_id)"))
-    conn.execute(text("PRAGMA foreign_keys=ON"))
-
-    applied.append("auth_sessions.sqlite_table_rebuild_user_id_text")
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_slot_configs_locker "
+        "ON locker_slot_configs (locker_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
 
 
-def _rebuild_pickups_sqlite_final_model(conn, applied: list[str]) -> None:
-    inspector = inspect(conn)
-    existing = {col["name"] for col in inspector.get_columns("pickups")}
-
-    conn.execute(text("PRAGMA foreign_keys=OFF"))
-
-    conn.execute(
-        text(
-            """
-            CREATE TABLE pickups_new (
-                id VARCHAR NOT NULL PRIMARY KEY,
-                order_id VARCHAR NOT NULL UNIQUE,
-                channel TEXT NOT NULL,
-                region VARCHAR NOT NULL,
-                locker_id VARCHAR NULL,
-                machine_id VARCHAR NULL,
-                slot VARCHAR NULL,
-                operator_id VARCHAR NULL,
-                tenant_id VARCHAR NULL,
-                site_id VARCHAR NULL,
-                status VARCHAR(16) NOT NULL,
-                lifecycle_stage VARCHAR(24) NOT NULL,
-                current_token_id VARCHAR NULL,
-                activated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                ready_at TIMESTAMP WITH TIME ZONE NULL,
-                expires_at TIMESTAMP WITH TIME ZONE NULL,
-                door_opened_at TIMESTAMP WITH TIME ZONE NULL,
-                item_removed_at TIMESTAMP WITH TIME ZONE NULL,
-                door_closed_at TIMESTAMP WITH TIME ZONE NULL,
-                redeemed_at TIMESTAMP WITH TIME ZONE NULL,
-                redeemed_via VARCHAR(16) NULL,
-                expired_at TIMESTAMP WITH TIME ZONE NULL,
-                cancelled_at TIMESTAMP WITH TIME ZONE NULL,
-                cancel_reason VARCHAR NULL,
-                correlation_id VARCHAR NULL,
-                source_event_id VARCHAR NULL,
-                sensor_event_id VARCHAR NULL,
-                notes VARCHAR NULL,
-                created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                FOREIGN KEY(order_id) REFERENCES orders (id)
-            )
-            """
+def _create_locker_slots(conn, applied: list[str]) -> None:
+    """Estado real-time de cada gaveta física."""
+    name = "locker_slots.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS locker_slots (
+            id                    VARCHAR(36)  PRIMARY KEY,
+            locker_id             VARCHAR(36)  NOT NULL REFERENCES lockers(id),
+            -- Label físico na porta: '01A', 'B-03', etc.
+            slot_label            VARCHAR(20)  NOT NULL,
+            slot_size             VARCHAR(8)   NOT NULL,
+            -- AVAILABLE | OCCUPIED | BLOCKED | MAINTENANCE | RESERVED
+            status                VARCHAR(20)  NOT NULL DEFAULT 'AVAILABLE',
+            occupied_since        TIMESTAMPTZ,
+            -- FKs preenchidas quando ocupada
+            current_allocation_id VARCHAR(36),
+            current_delivery_id   VARCHAR(36),
+            current_rental_id     VARCHAR(36),
+            -- Auditoria de hardware
+            last_opened_at        TIMESTAMPTZ,
+            last_closed_at        TIMESTAMPTZ,
+            -- Código de falha do firmware
+            fault_code            VARCHAR(50),
+            fault_detail          TEXT,
+            created_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (locker_id, slot_label)
         )
-    )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_locker_slots_locker_status ON locker_slots (locker_id, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_locker_slots_status        ON locker_slots (status)"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    region_expr = "region" if "region" in existing else "'PT'"
-    status_expr = "COALESCE(status, 'ACTIVE')" if "status" in existing else "'ACTIVE'"
-    current_token_expr = "current_token_id" if "current_token_id" in existing else "NULL"
-    expires_at_expr = "expires_at" if "expires_at" in existing else "NULL"
-    redeemed_at_expr = "redeemed_at" if "redeemed_at" in existing else "NULL"
-    redeemed_via_expr = "redeemed_via" if "redeemed_via" in existing else "NULL"
-    created_at_expr = "COALESCE(created_at, CURRENT_TIMESTAMP)" if "created_at" in existing else "CURRENT_TIMESTAMP"
-    updated_at_expr = "COALESCE(updated_at, CURRENT_TIMESTAMP)" if "updated_at" in existing else "CURRENT_TIMESTAMP"
 
-    channel_expr = """
-        CASE
-            WHEN EXISTS (
-                SELECT 1
-                  FROM orders o
-                 WHERE o.id = pickups.order_id
-                   AND o.channel = 'KIOSK'
-            ) THEN 'KIOSK'
-            ELSE 'ONLINE'
-        END
+def _create_locker_telemetry(conn, applied: list[str]) -> None:
+    """Eventos de sensor/IoT por locker — série temporal, append-only."""
+    name = "locker_telemetry.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    jsonb = _jsonb_or_text(conn)
+    conn.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS locker_telemetry (
+            id                  BIGSERIAL    PRIMARY KEY,
+            locker_id           VARCHAR(36)  NOT NULL,
+            -- DOOR_OPEN | DOOR_CLOSE | TEMP_ALERT | HUMIDITY_ALERT |
+            -- POWER_FAIL | POWER_RESTORED | TAMPER | LOCK_FAIL | CONNECTIVITY
+            event_type          VARCHAR(50)  NOT NULL,
+            slot_label          VARCHAR(20),
+            temperature_celsius NUMERIC(5,2),
+            humidity_pct        NUMERIC(5,2),
+            battery_pct         NUMERIC(5,2),
+            voltage_mv          INTEGER,
+            signal_rssi         INTEGER,
+            -- Firmware
+            firmware_version    VARCHAR(50),
+            raw_payload_json    {jsonb},
+            occurred_at         TIMESTAMPTZ  NOT NULL,
+            received_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    # Série temporal: sempre consultas por locker + janela de tempo
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_locker_telemetry_locker_time "
+        "ON locker_telemetry (locker_id, occurred_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_locker_telemetry_event_time "
+        "ON locker_telemetry (event_type, occurred_at DESC)"
+    ))
+    # Dica: usar TimescaleDB ou particionamento por mês em produção
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 3 — Produtos e Regras de Compatibilidade
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_product_categories(conn, applied: list[str]) -> None:
+    name = "product_categories.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_categories (
+            id                       VARCHAR(64)  PRIMARY KEY,
+            name                     VARCHAR(128) NOT NULL,
+            description              TEXT,
+            parent_category          VARCHAR(64)  REFERENCES product_categories(id),
+            -- Temperatura padrão: AMBIENT | REFRIGERATED | FROZEN
+            default_temperature_zone VARCHAR(32)  NOT NULL DEFAULT 'AMBIENT',
+            -- Segurança: STANDARD | HIGH | VAULT
+            default_security_level   VARCHAR(32)  NOT NULL DEFAULT 'STANDARD',
+            -- Restrições
+            is_hazardous             BOOLEAN      NOT NULL DEFAULT FALSE,
+            requires_age_verification BOOLEAN     NOT NULL DEFAULT FALSE,
+            max_weight_g             INTEGER,
+            created_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at               TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_product_categories_parent "
+        "ON product_categories (parent_category)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_product_locker_configs(conn, applied: list[str]) -> None:
+    """Regras de compatibilidade produto × locker. Criada APÓS product_categories."""
+    name = "product_locker_configs.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_locker_configs (
+            id                  BIGSERIAL    PRIMARY KEY,
+            locker_id           VARCHAR(36)  NOT NULL REFERENCES lockers(id) ON DELETE CASCADE,
+            category            VARCHAR(64)  NOT NULL REFERENCES product_categories(id),
+            subcategory         VARCHAR(64),
+            allowed             BOOLEAN      NOT NULL DEFAULT TRUE,
+            temperature_zone    VARCHAR(32)  NOT NULL DEFAULT 'ANY',
+            min_value_cents     BIGINT,
+            max_value_cents     BIGINT,
+            max_weight_g        INTEGER,
+            max_width_mm        INTEGER,
+            max_height_mm       INTEGER,
+            max_depth_mm        INTEGER,
+            requires_signature  BOOLEAN      NOT NULL DEFAULT FALSE,
+            requires_id_check   BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_fragile          BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_hazardous        BOOLEAN      NOT NULL DEFAULT FALSE,
+            priority            INTEGER      NOT NULL DEFAULT 100,
+            notes               TEXT,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (locker_id, category)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_product_cfg_locker   ON product_locker_configs (locker_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_product_cfg_category ON product_locker_configs (category)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 4 — Aluguel de Slots (Caso de Uso 3)
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_rental_plans(conn, applied: list[str]) -> None:
+    name = "rental_plans.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_plans (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            -- NULL = plano global; preenchido = plano exclusivo do locker
+            locker_id           VARCHAR(36)  REFERENCES lockers(id),
+            -- NULL = qualquer tamanho
+            slot_size           VARCHAR(8),
+            name                VARCHAR(128) NOT NULL,
+            description         TEXT,
+            -- HOURLY | DAILY | WEEKLY | MONTHLY | YEARLY
+            billing_cycle       VARCHAR(20)  NOT NULL,
+            amount_cents        INTEGER      NOT NULL,
+            currency            VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+            -- Duração máxima contratável (NULL = ilimitado)
+            max_duration_days   INTEGER,
+            -- Carência em horas para renovação automática
+            grace_period_hours  INTEGER      NOT NULL DEFAULT 24,
+            active              BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_plans_locker ON rental_plans (locker_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_contracts(conn, applied: list[str]) -> None:
+    name = "rental_contracts.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_contracts (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            locker_id           VARCHAR(36)  NOT NULL REFERENCES lockers(id),
+            slot_label          VARCHAR(20)  NOT NULL,
+            plan_id             VARCHAR(36)  REFERENCES rental_plans(id),
+            tenant_id           VARCHAR(100),
+
+            -- Locatário (pode ser user cadastrado ou guest)
+            renter_user_id      VARCHAR(36)  REFERENCES users(id),
+            renter_name         VARCHAR(255),
+            renter_document     VARCHAR(32),   -- CPF/CNPJ
+            renter_phone        VARCHAR(32),
+            renter_email        VARCHAR(128),
+
+            -- Financeiro
+            amount_cents        INTEGER      NOT NULL,
+            currency            VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+            billing_cycle       VARCHAR(20)  NOT NULL,
+            next_billing_at     TIMESTAMPTZ,
+            auto_renew          BOOLEAN      NOT NULL DEFAULT FALSE,
+
+            -- Vigência
+            -- PENDING | ACTIVE | SUSPENDED | OVERDUE | ENDED | CANCELLED
+            status              VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            started_at          TIMESTAMPTZ,
+            ends_at             TIMESTAMPTZ,
+            cancelled_at        TIMESTAMPTZ,
+            cancel_reason       VARCHAR(255),
+            ended_at            TIMESTAMPTZ,
+
+            -- Acesso
+            access_pin_hash     VARCHAR(255),  -- PIN da gaveta durante o aluguel
+            access_token_ref    VARCHAR(255),  -- referência a pickup_tokens se aplicável
+
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_locker_slot   ON rental_contracts (locker_id, slot_label)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_status        ON rental_contracts (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_renter_user   ON rental_contracts (renter_user_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_next_billing  ON rental_contracts (next_billing_at) WHERE status = 'ACTIVE'"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 5 — Parceiros Logísticos (Caso de Uso 4)
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_logistics_partners(conn, applied: list[str]) -> None:
+    name = "logistics_partners.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_partners (
+            id                      VARCHAR(36)  PRIMARY KEY,
+            name                    VARCHAR(128) NOT NULL,
+            -- 'CORREIOS' | 'DHL' | 'JADLOG' | 'FEDEX' | 'SHOPEE_XPRESS' etc.
+            code                    VARCHAR(32)  NOT NULL UNIQUE,
+            -- WEBHOOK | POLLING | MANUAL | SFTP
+            integration_type        VARCHAR(30)  NOT NULL,
+            api_base_url            VARCHAR(500),
+            tracking_url_template   VARCHAR(500), -- ex: 'https://rastreio.xyz/{code}'
+            -- Auth: OAUTH2 | API_KEY | BASIC | MTLS
+            auth_type               VARCHAR(20),
+            -- Referência ao Vault (nunca armazenar credencial inline)
+            credentials_secret_ref  VARCHAR(255),
+            -- SLA padrão: horas máximas para o destinatário retirar
+            default_sla_hours       INTEGER      NOT NULL DEFAULT 72,
+            -- Horas antes do prazo para enviar 1º lembrete
+            reminder_hours_before   INTEGER      NOT NULL DEFAULT 24,
+            active                  BOOLEAN      NOT NULL DEFAULT TRUE,
+            country                 VARCHAR(2)   NOT NULL DEFAULT 'BR',
+            created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_inbound_deliveries(conn, applied: list[str]) -> None:
     """
-
-    lifecycle_expr = """
-        CASE
-            WHEN COALESCE(status, 'ACTIVE') = 'REDEEMED' THEN 'COMPLETED'
-            WHEN COALESCE(status, 'ACTIVE') = 'EXPIRED' THEN 'EXPIRED'
-            WHEN COALESCE(status, 'ACTIVE') = 'CANCELLED' THEN 'CANCELLED'
-            ELSE 'READY_FOR_PICKUP'
-        END
+    Encomendas depositadas por parceiros logísticos aguardando retirada pelo destinatário.
+    Fluxo: parceiro deposita → destinatário notificado → destinatário retira (ou devolve).
     """
+    name = "inbound_deliveries.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    jsonb = _jsonb_or_text(conn)
+    conn.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS inbound_deliveries (
+            id                      VARCHAR(36)  PRIMARY KEY,
+            logistics_partner_id    VARCHAR(36)  NOT NULL REFERENCES logistics_partners(id),
+            locker_id               VARCHAR(36)  NOT NULL REFERENCES lockers(id),
+            slot_label              VARCHAR(20),
 
-    locker_id_expr = """
-        (
-            SELECT COALESCE(a.locker_id, o.totem_id)
-              FROM orders o
-              LEFT JOIN allocations a ON a.order_id = o.id
-             WHERE o.id = pickups.order_id
-             LIMIT 1
+            -- Rastreamento
+            tracking_code           VARCHAR(128) NOT NULL,
+            barcode                 VARCHAR(128),
+            partner_order_ref       VARCHAR(128), -- ID do pedido no sistema do parceiro
+
+            -- Destinatário
+            recipient_name          VARCHAR(255),
+            recipient_document      VARCHAR(32),
+            recipient_phone         VARCHAR(32),
+            recipient_email         VARCHAR(128),
+
+            -- Pacote
+            weight_g                INTEGER,
+            width_mm                INTEGER,
+            height_mm               INTEGER,
+            depth_mm                INTEGER,
+            declared_value_cents    INTEGER,
+            currency                VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+            requires_signature      BOOLEAN      NOT NULL DEFAULT FALSE,
+            requires_id_check       BOOLEAN      NOT NULL DEFAULT FALSE,
+
+            -- Ciclo de vida
+            -- PENDING | STORED | NOTIFIED | PICKED_UP | RETURNED | EXPIRED | LOST
+            status                  VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            stored_at               TIMESTAMPTZ,
+            first_notified_at       TIMESTAMPTZ,
+            last_notified_at        TIMESTAMPTZ,
+            notification_count      INTEGER      NOT NULL DEFAULT 0,
+            pickup_deadline_at      TIMESTAMPTZ,
+            picked_up_at            TIMESTAMPTZ,
+            returned_at             TIMESTAMPTZ,
+            return_reason           VARCHAR(255),
+
+            -- Token de retirada (gerado ao armazenar)
+            pickup_token_id         VARCHAR(36),
+
+            -- Payload bruto do parceiro para disputas
+            carrier_payload_json    {jsonb},
+
+            created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    """
+    """))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_inbound_tracking ON inbound_deliveries (logistics_partner_id, tracking_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inbound_locker_status ON inbound_deliveries (locker_id, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inbound_status         ON inbound_deliveries (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inbound_deadline       ON inbound_deliveries (pickup_deadline_at) WHERE status NOT IN ('PICKED_UP', 'RETURNED', 'EXPIRED')"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_inbound_recipient_phone ON inbound_deliveries (recipient_phone)"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    machine_id_expr = """
-        (
-            SELECT o.totem_id
-              FROM orders o
-             WHERE o.id = pickups.order_id
-             LIMIT 1
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 6 — Parceiros de E-commerce (Caso de Uso 5)
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_ecommerce_partners(conn, applied: list[str]) -> None:
+    name = "ecommerce_partners.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ecommerce_partners (
+            id                      VARCHAR(36)  PRIMARY KEY,
+            name                    VARCHAR(128) NOT NULL,
+            -- 'SHOPEE' | 'MERCADOLIVRE' | 'AMAZON' | 'MAGALU' etc.
+            code                    VARCHAR(32)  NOT NULL UNIQUE,
+            -- API_PUSH | WEBHOOK | SFTP | MANUAL
+            integration_type        VARCHAR(30)  NOT NULL,
+            api_base_url            VARCHAR(500),
+            -- Referência ao Vault
+            credentials_secret_ref  VARCHAR(255),
+            webhook_secret_ref      VARCHAR(255),
+            -- Financeiro
+            revenue_share_pct       NUMERIC(6,4),  -- % da transação
+            currency                VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+            -- SLA contratado para retirada (em horas)
+            sla_pickup_hours        INTEGER      NOT NULL DEFAULT 72,
+            active                  BOOLEAN      NOT NULL DEFAULT TRUE,
+            country                 VARCHAR(2)   NOT NULL DEFAULT 'BR',
+            created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    """
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    slot_expr = """
-        (
-            SELECT CAST(a.slot AS TEXT)
-              FROM allocations a
-             WHERE a.order_id = pickups.order_id
-             ORDER BY a.created_at DESC, a.id DESC
-             LIMIT 1
+
+def _create_webhook_endpoints(conn, applied: list[str]) -> None:
+    name = "webhook_endpoints.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS webhook_endpoints (
+            id              VARCHAR(36)  PRIMARY KEY,
+            -- ECOMMERCE | LOGISTICS | PAYMENT | RENTAL | INTERNAL
+            partner_type    VARCHAR(20)  NOT NULL,
+            partner_id      VARCHAR(36)  NOT NULL,
+            url             VARCHAR(500) NOT NULL,
+            -- CSV dos eventos inscritos: 'order.paid,pickup.redeemed'
+            events          TEXT         NOT NULL,
+            secret_ref      VARCHAR(255),
+            -- Algoritmo de assinatura: HMAC_SHA256 | HMAC_SHA512
+            signing_algo    VARCHAR(20)  NOT NULL DEFAULT 'HMAC_SHA256',
+            active          BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    """
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_webhook_ep_partner ON webhook_endpoints (partner_type, partner_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    ready_at_expr = """
-        CASE
-            WHEN COALESCE(status, 'ACTIVE') IN ('ACTIVE', 'REDEEMED')
-            THEN COALESCE(created_at, CURRENT_TIMESTAMP)
-            ELSE NULL
-        END
-    """
 
-    expired_at_expr = """
-        CASE
-            WHEN COALESCE(status, 'ACTIVE') = 'EXPIRED'
-            THEN COALESCE(expires_at, updated_at, created_at, CURRENT_TIMESTAMP)
-            ELSE NULL
-        END
-    """
-
-    cancelled_at_expr = """
-        CASE
-            WHEN COALESCE(status, 'ACTIVE') = 'CANCELLED'
-            THEN COALESCE(updated_at, created_at, CURRENT_TIMESTAMP)
-            ELSE NULL
-        END
-    """
-
-    conn.execute(
-        text(
-            f"""
-            INSERT INTO pickups_new (
-                id,
-                order_id,
-                channel,
-                region,
-                locker_id,
-                machine_id,
-                slot,
-                operator_id,
-                tenant_id,
-                site_id,
-                status,
-                lifecycle_stage,
-                current_token_id,
-                activated_at,
-                ready_at,
-                expires_at,
-                door_opened_at,
-                item_removed_at,
-                door_closed_at,
-                redeemed_at,
-                redeemed_via,
-                expired_at,
-                cancelled_at,
-                cancel_reason,
-                correlation_id,
-                source_event_id,
-                sensor_event_id,
-                notes,
-                created_at,
-                updated_at
-            )
-            SELECT
-                id,
-                order_id,
-                {channel_expr},
-                {region_expr},
-                {locker_id_expr},
-                {machine_id_expr},
-                {slot_expr},
-                NULL,
-                NULL,
-                NULL,
-                {status_expr},
-                {lifecycle_expr},
-                {current_token_expr},
-                {created_at_expr},
-                {ready_at_expr},
-                {expires_at_expr},
-                NULL,
-                NULL,
-                NULL,
-                {redeemed_at_expr},
-                {redeemed_via_expr},
-                {expired_at_expr},
-                {cancelled_at_expr},
-                NULL,
-                NULL,
-                NULL,
-                NULL,
-                NULL,
-                {created_at_expr},
-                {updated_at_expr}
-            FROM pickups
-            """
+def _create_webhook_deliveries(conn, applied: list[str]) -> None:
+    name = "webhook_deliveries.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS webhook_deliveries (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            endpoint_id         VARCHAR(36)  NOT NULL REFERENCES webhook_endpoints(id),
+            event_name          VARCHAR(100) NOT NULL,
+            aggregate_type      VARCHAR(50),
+            aggregate_id        VARCHAR(36),
+            payload_json        TEXT         NOT NULL,
+            -- PENDING | DELIVERED | FAILED | SKIPPED
+            status              VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            attempt_count       INTEGER      NOT NULL DEFAULT 0,
+            max_attempts        INTEGER      NOT NULL DEFAULT 5,
+            last_status_code    INTEGER,
+            last_response_body  TEXT,
+            last_attempt_at     TIMESTAMPTZ,
+            next_attempt_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            delivered_at        TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
-    )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_webhook_del_status_next  ON webhook_deliveries (status, next_attempt_at) WHERE status IN ('PENDING', 'FAILED')"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_webhook_del_endpoint      ON webhook_deliveries (endpoint_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_webhook_del_aggregate     ON webhook_deliveries (aggregate_type, aggregate_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
-    conn.execute(text("DROP TABLE pickups"))
-    conn.execute(text("ALTER TABLE pickups_new RENAME TO pickups"))
 
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_order_id ON pickups (order_id)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_status ON pickups (status)"))
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 7 — Pedidos e Pagamentos
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_orders(conn, applied: list[str]) -> None:
+    name = "orders.create_table_v3"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id                          VARCHAR(36)  PRIMARY KEY,
+
+            -- Usuário (NULL = guest)
+            user_id                     VARCHAR(36)  REFERENCES users(id),
+
+            -- Origem
+            -- ONLINE | KIOSK | API | PARTNER
+            channel                     VARCHAR(10)  NOT NULL,
+            region                      VARCHAR(10)  NOT NULL,
+            totem_id                    VARCHAR(36)  NOT NULL,   -- locker físico
+            site_id                     VARCHAR(100),
+            tenant_id                   VARCHAR(100),
+
+            -- Parceiro de e-commerce (se aplicável)
+            ecommerce_partner_id        VARCHAR(36)  REFERENCES ecommerce_partners(id),
+            partner_order_ref           VARCHAR(128),
+
+            -- Produto/SKU
+            sku_id                      VARCHAR(128) NOT NULL,
+            sku_description             VARCHAR(255),
+            slot_size                   VARCHAR(8),
+
+            -- Financeiro
+            amount_cents                INTEGER      NOT NULL,
+            currency                    VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+
+            -- Status geral do pedido
+            -- CREATED | PAID | READY | PICKED_UP | CANCELLED | REFUNDED | EXPIRED
+            status                      VARCHAR(20)  NOT NULL DEFAULT 'CREATED',
+
+            -- Pagamento
+            -- CREATED | PENDING | APPROVED | DECLINED | REFUNDED | CHARGEBACK | CANCELLED
+            payment_status              VARCHAR(30)  NOT NULL DEFAULT 'CREATED',
+            payment_method              VARCHAR(30),   -- CREDIT_CARD | DEBIT_CARD | PIX | CASH | WALLET
+            card_type                   VARCHAR(10),   -- VISA | MASTER | ELO | AMEX
+            card_last4                  VARCHAR(4),
+            card_brand                  VARCHAR(20),
+            installments                INTEGER      NOT NULL DEFAULT 1,
+            gateway_transaction_id      VARCHAR(128),
+            payment_updated_at          TIMESTAMPTZ,
+            paid_at                     TIMESTAMPTZ,
+
+            -- Prazos
+            pickup_deadline_at          TIMESTAMPTZ,
+            picked_up_at                TIMESTAMPTZ,
+
+            -- Acesso público sem autenticação (e.g., link de status no e-mail)
+            public_access_token_hash    VARCHAR(255),
+
+            -- Dados de guest
+            guest_session_id            VARCHAR(128),
+            guest_name                  VARCHAR(255),
+            guest_email                 VARCHAR(255),
+            guest_phone                 VARCHAR(32),
+
+            -- Recibo
+            receipt_email               VARCHAR(255),
+            receipt_phone               VARCHAR(32),
+
+            -- LGPD
+            consent_marketing           BOOLEAN      NOT NULL DEFAULT FALSE,
+            consent_analytics           BOOLEAN      NOT NULL DEFAULT FALSE,
+
+            -- Cancelamento/devolução
+            cancelled_at                TIMESTAMPTZ,
+            cancel_reason               VARCHAR(255),
+            refunded_at                 TIMESTAMPTZ,
+            refund_reason               VARCHAR(255),
+
+            created_at                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at                  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_status                ON orders (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_channel_status        ON orders (channel, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_region_status         ON orders (region, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_region_totem_status   ON orders (region, totem_id, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_region_totem_created  ON orders (region, totem_id, created_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_paid_at               ON orders (paid_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_picked_up_at          ON orders (picked_up_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_status_picked_up      ON orders (status, picked_up_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_totem_picked_up       ON orders (totem_id, picked_up_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_user_id               ON orders (user_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_ecommerce_partner     ON orders (ecommerce_partner_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_public_token_hash     ON orders (public_access_token_hash)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_orders_pickup_deadline       ON orders (pickup_deadline_at) WHERE status NOT IN ('PICKED_UP','CANCELLED','REFUNDED','EXPIRED')"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_payment_transactions(conn, applied: list[str]) -> None:
+    """
+    Trilha de auditoria de cada tentativa de pagamento — necessário para
+    PCI-DSS, chargebacks e reconciliação financeira.
+    """
+    name = "payment_transactions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS payment_transactions (
+            id                      VARCHAR(36)  PRIMARY KEY,
+            order_id                VARCHAR(36)  NOT NULL REFERENCES orders(id),
+
+            -- Gateway: STRIPE | CIELO | STONE | ADYEN | PAGARME | MERCADOPAGO | REDE
+            gateway                 VARCHAR(50)  NOT NULL,
+            gateway_transaction_id  VARCHAR(128),
+            gateway_idempotency_key VARCHAR(128),
+
+            -- Valor
+            amount_cents            INTEGER      NOT NULL,
+            currency                VARCHAR(8)   NOT NULL DEFAULT 'BRL',
+
+            -- Método: CREDIT_CARD | DEBIT_CARD | PIX | CASH | VOUCHER | WALLET
+            payment_method          VARCHAR(30)  NOT NULL,
+            card_brand              VARCHAR(20),
+            card_last4              VARCHAR(4),
+            card_type               VARCHAR(10),
+            installments            INTEGER      NOT NULL DEFAULT 1,
+
+            -- NSU/AUT para conciliação com a adquirente
+            nsu                     VARCHAR(50),
+            authorization_code      VARCHAR(50),
+
+            -- Status: INITIATED | PENDING | APPROVED | DECLINED | REFUNDED |
+            --         CHARGEBACK | CANCELLED | TIMEOUT | ERROR
+            status                  VARCHAR(20)  NOT NULL DEFAULT 'INITIATED',
+            error_code              VARCHAR(100),
+            error_message           TEXT,
+
+            -- Payload bruto para disputas — nunca remover
+            raw_request_json        TEXT,
+            raw_response_json       TEXT,
+
+            -- Timestamps
+            initiated_at            TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            approved_at             TIMESTAMPTZ,
+            settled_at              TIMESTAMPTZ,
+            refunded_at             TIMESTAMPTZ,
+            refund_reason           VARCHAR(255),
+            refund_amount_cents     INTEGER,
+            chargeback_at           TIMESTAMPTZ,
+            chargeback_reason       VARCHAR(255),
+
+            created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_payment_tx_order      ON payment_transactions (order_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_payment_tx_status     ON payment_transactions (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_payment_tx_gateway_id ON payment_transactions (gateway, gateway_transaction_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_payment_tx_nsu        ON payment_transactions (nsu)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 8 — Alocações e Pickups
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_allocations(conn, applied: list[str]) -> None:
+    name = "allocations.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS allocations (
+            id          VARCHAR(36)  PRIMARY KEY,
+            order_id    VARCHAR(36)  NOT NULL REFERENCES orders(id),
+            locker_id   VARCHAR(36)  NOT NULL REFERENCES lockers(id),
+            slot        VARCHAR(20)  NOT NULL,
+            slot_size   VARCHAR(8),
+            -- PENDING | CONFIRMED | RELEASED | FAILED
+            state       VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            allocated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            released_at  TIMESTAMPTZ,
+            release_reason VARCHAR(255),
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_alloc_order_id          ON allocations (order_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_alloc_state             ON allocations (state)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_alloc_locker_slot_state ON allocations (locker_id, slot, state)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_alloc_created_at        ON allocations (created_at)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_pickups(conn, applied: list[str]) -> None:
+    name = "pickups.create_table_v3"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pickups (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            order_id            VARCHAR(36)  NOT NULL UNIQUE REFERENCES orders(id),
+
+            -- Contexto de canal e localização
+            -- ONLINE | KIOSK | API | PARTNER
+            channel             VARCHAR(10)  NOT NULL,
+            region              VARCHAR(10)  NOT NULL,
+            locker_id           VARCHAR(36)  REFERENCES lockers(id),
+            machine_id          VARCHAR(100),
+            slot                VARCHAR(20),
+            operator_id         VARCHAR(64)  REFERENCES locker_operators(id),
+            tenant_id           VARCHAR(100),
+            site_id             VARCHAR(100),
+
+            -- Estado
+            -- ACTIVE | REDEEMED | EXPIRED | CANCELLED
+            status              VARCHAR(16)  NOT NULL DEFAULT 'ACTIVE',
+            -- AWAITING_PAYMENT | READY_FOR_PICKUP | IN_PROGRESS |
+            -- COMPLETED | EXPIRED | CANCELLED
+            lifecycle_stage     VARCHAR(24)  NOT NULL DEFAULT 'AWAITING_PAYMENT',
+
+            -- Token de acesso atual
+            current_token_id    VARCHAR(36),
+
+            -- Timestamps de ciclo de vida granular (auditoria e KPI)
+            activated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            ready_at            TIMESTAMPTZ,     -- quando a gaveta ficou pronta
+            expires_at          TIMESTAMPTZ,
+            door_opened_at      TIMESTAMPTZ,     -- sensor: porta aberta
+            item_removed_at     TIMESTAMPTZ,     -- sensor: item retirado
+            door_closed_at      TIMESTAMPTZ,     -- sensor: porta fechada
+            redeemed_at         TIMESTAMPTZ,     -- confirmação do pickup
+            -- KIOSK | QR_CODE | PIN | NFC | APP | STAFF
+            redeemed_via        VARCHAR(16),
+            expired_at          TIMESTAMPTZ,
+            cancelled_at        TIMESTAMPTZ,
+            cancel_reason       VARCHAR(255),
+
+            -- Rastreabilidade de eventos
+            correlation_id      VARCHAR(36),
+            source_event_id     VARCHAR(36),
+            sensor_event_id     VARCHAR(36),
+            notes               TEXT,
+
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_order_id       ON pickups (order_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_status         ON pickups (status)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_channel_status ON pickups (channel, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_region_status ON pickups (region, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_locker_status ON pickups (locker_id, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_region_status  ON pickups (region, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_locker_status  ON pickups (locker_id, status)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_machine_status ON pickups (machine_id, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_slot_status ON pickups (slot, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_operator_status ON pickups (operator_id, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_tenant_status ON pickups (tenant_id, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_site_status ON pickups (site_id, status)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_expires_at ON pickups (expires_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_redeemed_at ON pickups (redeemed_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_created_at ON pickups (created_at)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_lifecycle_stage ON pickups (lifecycle_stage)"))
-
-    conn.execute(text("PRAGMA foreign_keys=ON"))
-
-    applied.append("pickups.sqlite_table_rebuild_final_model")
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_slot_status    ON pickups (slot, status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_operator       ON pickups (operator_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_tenant         ON pickups (tenant_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_site           ON pickups (site_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_expires_at     ON pickups (expires_at) WHERE status = 'ACTIVE'"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_redeemed_at   ON pickups (redeemed_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_created_at    ON pickups (created_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickups_lifecycle      ON pickups (lifecycle_stage)"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
 
-def ensure_locker_indexes(engine):
-    """Garante a criação dos índices essenciais para a tabela lockers."""
-    with engine.connect() as conn:
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lockers_active ON lockers (active)"
-        ))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lockers_operator ON lockers (operator_id)"
-        ))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lockers_region ON lockers (region)"
-        ))
-        conn.execute(text(
-            "CREATE INDEX IF NOT EXISTS idx_lockers_site_id ON lockers (site_id)"
-        ))
-        conn.commit()
+def _create_pickup_tokens(conn, applied: list[str]) -> None:
+    """
+    Tokens de acesso à gaveta — histórico completo por pickup.
+    Suporta QR Code, PIN numérico, NFC e link profundo para app.
+    """
+    name = "pickup_tokens.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pickup_tokens (
+            id              VARCHAR(36)  PRIMARY KEY,
+            pickup_id       VARCHAR(36)  NOT NULL REFERENCES pickups(id) ON DELETE CASCADE,
+
+            -- QR_CODE | PIN | NFC | BARCODE | DEEP_LINK | STAFF_OVERRIDE
+            token_type      VARCHAR(20)  NOT NULL DEFAULT 'QR_CODE',
+
+            -- Hash do segredo — nunca armazenar o token em claro
+            token_hash      VARCHAR(255) NOT NULL UNIQUE,
+
+            -- Controle de uso
+            is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+            attempt_count   INTEGER      NOT NULL DEFAULT 0,
+            max_attempts    INTEGER      NOT NULL DEFAULT 5,
+
+            -- Tempos
+            issued_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            expires_at      TIMESTAMPTZ,
+            first_used_at   TIMESTAMPTZ,
+            last_used_at    TIMESTAMPTZ,
+            revoked_at      TIMESTAMPTZ,
+            revoke_reason   VARCHAR(100),
+
+            -- Quem gerou (sistema, operador, staff)
+            issued_by       VARCHAR(100),
+
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickup_tokens_pickup   ON pickup_tokens (pickup_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickup_tokens_active   ON pickup_tokens (pickup_id, is_active) WHERE is_active = TRUE"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pickup_tokens_expires  ON pickup_tokens (expires_at) WHERE is_active = TRUE"))
+    _mark_migration(conn, name)
+    applied.append(name)
 
 
-def ensure_domain_event_outbox_table(engine):
-    with engine.connect() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS domain_event_outbox (
-                id VARCHAR PRIMARY KEY,
-                event_key VARCHAR(255) NOT NULL,
-                aggregate_type VARCHAR(100),
-                aggregate_id VARCHAR(100),
-                event_name VARCHAR(100),
-                event_version INTEGER,
-                status VARCHAR(50),
-                payload_json TEXT,
-                occurred_at TIMESTAMP,
-                published_at TIMESTAMP,
-                last_error TEXT,
-                created_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP NOT NULL
-            )
-        """))
-        conn.commit()
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 9 — Documentos Fiscais e Notificações
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_fiscal_documents(conn, applied: list[str]) -> None:
+    name = "fiscal_documents.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS fiscal_documents (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            order_id            VARCHAR(36)  NOT NULL UNIQUE REFERENCES orders(id),
+
+            -- CUPOM_FISCAL | NF-E | NFC-E | SAT | BOLETO | RECEIPT_INTL
+            document_type       VARCHAR(50)  NOT NULL,
+            receipt_code        VARCHAR(64)  NOT NULL UNIQUE,
+
+            -- Contexto
+            channel             VARCHAR(20),
+            region              VARCHAR(10),
+            tenant_id           VARCHAR(100),
+
+            -- Financeiro
+            amount_cents        INTEGER      NOT NULL,
+            currency            VARCHAR(10)  NOT NULL DEFAULT 'BRL',
+            tax_amount_cents    INTEGER,
+            tax_breakdown_json  TEXT,
+
+            -- Entrega
+            -- EMAIL | SMS | PRINT | WHATSAPP | NONE
+            delivery_mode       VARCHAR(20),
+            send_status         VARCHAR(50),
+            send_target         VARCHAR(255),
+            sent_at             TIMESTAMPTZ,
+
+            -- Impressão física (KIOSK/totem)
+            print_status        VARCHAR(50),
+            print_site_path     VARCHAR(255),
+            printed_at          TIMESTAMPTZ,
+
+            -- Payload completo do documento (XML NF-e, JSON SAT, etc.)
+            payload_json        TEXT         NOT NULL,
+            xml_signed          TEXT,         -- XML assinado da NF-e/NFC-e
+            chave_acesso        VARCHAR(64),  -- chave de acesso SEFAZ
+
+            issued_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            cancelled_at        TIMESTAMPTZ,
+            cancel_reason       VARCHAR(255),
+
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_fiscal_docs_receipt  ON fiscal_documents (receipt_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_fiscal_docs_issued   ON fiscal_documents (issued_at)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_notification_logs(conn, applied: list[str]) -> None:
+    name = "notification_logs.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS notification_logs (
+            id                      VARCHAR(36)  PRIMARY KEY,
+
+            -- Referências
+            order_id                VARCHAR(36)  REFERENCES orders(id),
+            pickup_id               VARCHAR(36)  REFERENCES pickups(id),
+            delivery_id             VARCHAR(36)  REFERENCES inbound_deliveries(id),
+            rental_id               VARCHAR(36)  REFERENCES rental_contracts(id),
+
+            -- EMAIL | SMS | WHATSAPP | PUSH | WEBHOOK
+            channel                 VARCHAR(20)  NOT NULL,
+            template_key            VARCHAR(100) NOT NULL,
+            destination_value       VARCHAR(255),
+            locale                  VARCHAR(10)  NOT NULL DEFAULT 'pt-BR',
+
+            -- Deduplicação: hash do (channel + template + destino + conteúdo chave)
+            dedupe_key              VARCHAR(255) NOT NULL UNIQUE,
+
+            -- Payload enviado
+            payload_json            TEXT,
+
+            -- QUEUED | PROCESSING | SENT | FAILED | SKIPPED | BOUNCED
+            status                  VARCHAR(20)  NOT NULL DEFAULT 'QUEUED',
+
+            attempt_count           INTEGER      NOT NULL DEFAULT 0,
+            max_attempts            INTEGER      NOT NULL DEFAULT 3,
+            processing_started_at   TIMESTAMPTZ,
+            last_attempt_at         TIMESTAMPTZ,
+            next_attempt_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            sent_at                 TIMESTAMPTZ,
+
+            -- Resposta do provider
+            provider_message_id     VARCHAR(255),
+            provider_status         VARCHAR(50),
+            error_detail            TEXT,
+
+            created_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notif_status_next    ON notification_logs (status, next_attempt_at) WHERE status IN ('QUEUED', 'FAILED')"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notif_order          ON notification_logs (order_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notif_pickup         ON notification_logs (pickup_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notif_delivery       ON notification_logs (delivery_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_notif_next_attempt   ON notification_logs (next_attempt_at)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 10 — Outbox (Event-Driven / Saga)
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_domain_event_outbox(conn, applied: list[str]) -> None:
+    name = "domain_event_outbox.create_table_v2"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS domain_event_outbox (
+            id              VARCHAR(36)  PRIMARY KEY,
+            event_key       VARCHAR(255) NOT NULL,
+            aggregate_type  VARCHAR(100),
+            aggregate_id    VARCHAR(100),
+            event_name      VARCHAR(100),
+            event_version   INTEGER      NOT NULL DEFAULT 1,
+            -- PENDING | PUBLISHED | FAILED | DEAD
+            status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            payload_json    TEXT,
+            occurred_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            published_at    TIMESTAMPTZ,
+            attempt_count   INTEGER      NOT NULL DEFAULT 0,
+            last_error      TEXT,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_outbox_status_occurred ON domain_event_outbox (status, occurred_at) WHERE status = 'PENDING'"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_outbox_aggregate        ON domain_event_outbox (aggregate_type, aggregate_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 11 — LGPD / GDPR
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _create_privacy_consents(conn, applied: list[str]) -> None:
+    name = "privacy_consents.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_consents (
+            id                  VARCHAR(36)  PRIMARY KEY,
+            -- Usuário identificado ou identificador de guest/sessão
+            user_id             VARCHAR(36)  REFERENCES users(id),
+            guest_identifier    VARCHAR(255),
+            -- MARKETING | ANALYTICS | THIRD_PARTY | ESSENTIAL
+            consent_type        VARCHAR(50)  NOT NULL,
+            granted             BOOLEAN      NOT NULL,
+            -- Onde foi coletado
+            channel             VARCHAR(20),
+            ip_address          VARCHAR(64),
+            user_agent          VARCHAR(500),
+            -- Versão da política aceita
+            policy_version      VARCHAR(20),
+            -- Linha do tempo
+            granted_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            revoked_at          TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_consents_user       ON privacy_consents (user_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_consents_guest      ON privacy_consents (guest_identifier)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_consents_type       ON privacy_consents (consent_type)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_data_deletion_requests(conn, applied: list[str]) -> None:
+    name = "data_deletion_requests.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS data_deletion_requests (
+            id              VARCHAR(36)  PRIMARY KEY,
+            user_id         VARCHAR(36)  REFERENCES users(id),
+            requested_by    VARCHAR(255),  -- email ou ID do solicitante
+            -- PENDING | IN_PROGRESS | COMPLETED | REJECTED
+            status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+            -- Motivo da solicitação (por boa prática LGPD)
+            reason          VARCHAR(255),
+            -- Se rejeitado, motivo legal (ex: obrigação fiscal)
+            rejection_reason TEXT,
+            requested_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            completed_at    TIMESTAMPTZ,
+            notes           TEXT,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_deletion_req_user   ON data_deletion_requests (user_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_deletion_req_status ON data_deletion_requests (status)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO 12 — Capability Catalog (Payment / Channel / Context)
+#
+# Propósito: base canônica de configuração de capacidades por região,
+# canal e contexto. Substitui enums gigantes, mapas hardcoded no router,
+# paymentProfile.js, validação paralela no public_orders.py e
+# lógica local no RegionPage.jsx.
+#
+# Princípio:
+#   PostgreSQL  = verdade do catálogo operacional
+#   backend     = interpreta e expõe
+#   frontend    = consome
+#   KIOSK       = recebe snapshot resolvida, não consulta essas tabelas
+#
+# Ordem de criação (respeita FKs):
+#   1.  capability_region
+#   2.  capability_channel
+#   3.  capability_context
+#   4.  payment_method_catalog
+#   5.  payment_interface_catalog
+#   6.  wallet_provider_catalog
+#   7.  capability_profile
+#   8.  capability_profile_method
+#   9.  capability_profile_method_interface
+#   10. capability_requirement_catalog
+#   11. capability_profile_method_requirement
+#   12. capability_profile_action
+#   13. capability_profile_constraint
+#   14. capability_profile_target
+#   15. capability_profile_snapshot   ← novo: snapshot resolvida para KIOSK
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+
+def _create_capability_region(conn, applied: list[str]) -> None:
+    """
+    Regiões de negócio configuráveis.
+    Evita ENUM de banco — regiões crescem sem migration estrutural.
+    Exemplos de code: SP, RJ, PT, CN, JP, AE, UK, AR
+    """
+    name = "capability_region.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_region (
+            id               BIGSERIAL    PRIMARY KEY,
+            code             VARCHAR(20)  NOT NULL UNIQUE,
+            name             VARCHAR(120) NOT NULL,
+            country_code     VARCHAR(10),           -- ISO 3166-1 alpha-2: BR, PT, CN...
+            continent        VARCHAR(60),
+            -- Moeda padrão desta região (ISO 4217)
+            default_currency VARCHAR(10)  NOT NULL,
+            -- Fuso horário padrão da região
+            default_timezone VARCHAR(50)  NOT NULL DEFAULT 'America/Sao_Paulo',
+            -- Locale padrão para comunicações
+            default_locale   VARCHAR(10)  NOT NULL DEFAULT 'pt-BR',
+            is_active        BOOLEAN      NOT NULL DEFAULT TRUE,
+            metadata_json    JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            created_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cap_region_country ON capability_region (country_code)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_channel(conn, applied: list[str]) -> None:
+    """
+    Canal macro de operação.
+    Exemplos: online, kiosk, api, partner, staff
+    """
+    name = "capability_channel.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_channel (
+            id          BIGSERIAL    PRIMARY KEY,
+            code        VARCHAR(50)  NOT NULL UNIQUE,
+            name        VARCHAR(120) NOT NULL,
+            description TEXT,
+            is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+    # Seed dos canais base (idempotente)
+    conn.execute(text("""
+        INSERT INTO capability_channel (code, name) VALUES
+            ('online',  'Online / Web / App'),
+            ('kiosk',   'KIOSK / Totem físico'),
+            ('api',     'API direta (parceiros B2B)'),
+            ('partner', 'Parceiro integrado'),
+            ('staff',   'Operação manual por staff')
+        ON CONFLICT (code) DO NOTHING
+    """))
+
+
+def _create_capability_context(conn, applied: list[str]) -> None:
+    """
+    Contexto operacional dentro de um canal.
+
+    NOTA DE DESIGN: contextos são channel-scoped intencionalmente.
+    'pickup' no kiosk e 'pickup' no online têm fluxos distintos.
+    O UNIQUE (channel_id, code) garante que o mesmo código semântico
+    pode existir em canais diferentes sem colisão.
+
+    Exemplos:
+      kiosk  + purchase           → compra presencial com pagamento
+      kiosk  + pickup             → retirada de pedido online
+      kiosk  + operator_pickup    → retirada assistida por operador
+      kiosk  + logistics_handover → entrega de parceiro logístico
+      kiosk  + return_dropoff     → devolução de item
+      online + checkout           → compra web/app com pagamento
+      online + pickup_schedule    → agendamento de retirada
+    """
+    name = "capability_context.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_context (
+            id          BIGSERIAL    PRIMARY KEY,
+            channel_id  BIGINT       NOT NULL REFERENCES capability_channel(id),
+            code        VARCHAR(80)  NOT NULL,
+            name        VARCHAR(120) NOT NULL,
+            description TEXT,
+            is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (channel_id, code)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cap_context_channel ON capability_context (channel_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_payment_method_catalog(conn, applied: list[str]) -> None:
+    """
+    Catálogo global de métodos de pagamento.
+    Exemplos: pix, creditCard, debitCard, mbway, alipay, wechat_pay,
+              konbini, m_pesa, boleto, voucher, cash, bnpl_tabby
+    """
+    name = "payment_method_catalog.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS payment_method_catalog (
+            id                BIGSERIAL    PRIMARY KEY,
+            code              VARCHAR(80)  NOT NULL UNIQUE,
+            name              VARCHAR(120) NOT NULL,
+            -- Família de agrupamento para UI: card | digital_wallet | bank_transfer |
+            --   cash | bnpl | voucher | crypto | mobile_money
+            family            VARCHAR(80),
+            -- Flags de classificação (consultáveis sem parsear JSON)
+            is_wallet         BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_card           BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_bnpl           BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_cash_like      BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_bank_transfer  BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_instant        BOOLEAN      NOT NULL DEFAULT FALSE,  -- PIX, MB Way
+            requires_redirect BOOLEAN      NOT NULL DEFAULT FALSE,  -- 3DS, bank_link
+            -- Campos extras livres
+            metadata_json     JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            is_active         BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pmc_family ON payment_method_catalog (family)"))
+
+    # Seed de métodos comuns (idempotente)
+    conn.execute(text("""
+        INSERT INTO payment_method_catalog
+            (code, name, family, is_instant, is_bank_transfer, is_card, is_wallet, is_cash_like)
+        VALUES
+            ('pix',           'PIX',              'bank_transfer',  TRUE,  TRUE,  FALSE, FALSE, FALSE),
+            ('creditCard',    'Cartão de Crédito', 'card',          FALSE, FALSE, TRUE,  FALSE, FALSE),
+            ('debitCard',     'Cartão de Débito',  'card',          FALSE, FALSE, TRUE,  FALSE, FALSE),
+            ('boleto',        'Boleto Bancário',   'bank_transfer',  FALSE, TRUE,  FALSE, FALSE, FALSE),
+            ('cash',          'Dinheiro',           'cash',          FALSE, FALSE, FALSE, FALSE, TRUE),
+            ('voucher',       'Voucher',            'voucher',       FALSE, FALSE, FALSE, FALSE, FALSE),
+            ('mbway',         'MB Way',             'digital_wallet', TRUE, FALSE, FALSE, TRUE,  FALSE),
+            ('alipay',        'Alipay',             'digital_wallet', FALSE,FALSE, FALSE, TRUE,  FALSE),
+            ('wechat_pay',    'WeChat Pay',         'digital_wallet', FALSE,FALSE, FALSE, TRUE,  FALSE),
+            ('apple_pay',     'Apple Pay',          'digital_wallet', FALSE,FALSE, TRUE,  TRUE,  FALSE),
+            ('google_pay',    'Google Pay',         'digital_wallet', FALSE,FALSE, TRUE,  TRUE,  FALSE),
+            ('mercado_pago',  'Mercado Pago',       'digital_wallet', FALSE,FALSE, FALSE, TRUE,  FALSE),
+            ('konbini',       'Konbini',            'cash',           FALSE,FALSE, FALSE, FALSE, TRUE),
+            ('m_pesa',        'M-Pesa',             'mobile_money',   FALSE,FALSE, FALSE, TRUE,  FALSE),
+            ('tabby',         'Tabby (BNPL)',        'bnpl',           FALSE,FALSE, FALSE, FALSE, FALSE)
+        ON CONFLICT (code) DO NOTHING
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_payment_interface_catalog(conn, applied: list[str]) -> None:
+    """
+    Catálogo global de interfaces de interação com o método de pagamento.
+    Exemplos: qr_code, chip, nfc, deep_link, web_token, manual, ussd,
+              barcode, bank_link, kiosk_pinpad
+    """
+    name = "payment_interface_catalog.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS payment_interface_catalog (
+            id              BIGSERIAL    PRIMARY KEY,
+            code            VARCHAR(80)  NOT NULL UNIQUE,
+            name            VARCHAR(120) NOT NULL,
+            -- physical | digital | hybrid
+            interface_type  VARCHAR(60),
+            -- Requer hardware físico no terminal?
+            requires_hw     BOOLEAN      NOT NULL DEFAULT FALSE,
+            metadata_json   JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    conn.execute(text("""
+        INSERT INTO payment_interface_catalog (code, name, interface_type, requires_hw) VALUES
+            ('qr_code',       'QR Code',            'digital',  FALSE),
+            ('chip',          'Chip (EMV)',           'physical', TRUE),
+            ('nfc',           'NFC / Contactless',   'physical', TRUE),
+            ('magnetic',      'Trato magnético',     'physical', TRUE),
+            ('deep_link',     'Deep Link (App)',      'digital',  FALSE),
+            ('web_token',     'Token Web',           'digital',  FALSE),
+            ('manual',        'Digitação manual',    'physical', FALSE),
+            ('ussd',          'USSD',                'digital',  FALSE),
+            ('barcode',       'Código de barras',    'physical', FALSE),
+            ('bank_link',     'Internet Banking',    'digital',  FALSE),
+            ('kiosk_pinpad',  'PinPad no KIOSK',    'physical', TRUE)
+        ON CONFLICT (code) DO NOTHING
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_wallet_provider_catalog(conn, applied: list[str]) -> None:
+    """
+    Catálogo global de wallet providers.
+    Separado de payment_method para suportar casos onde o método é
+    'wallet' mas o provider varia (Apple Pay vs Google Pay no mesmo checkout).
+    """
+    name = "wallet_provider_catalog.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS wallet_provider_catalog (
+            id            BIGSERIAL    PRIMARY KEY,
+            code          VARCHAR(80)  NOT NULL UNIQUE,
+            name          VARCHAR(120) NOT NULL,
+            metadata_json JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    conn.execute(text("""
+        INSERT INTO wallet_provider_catalog (code, name) VALUES
+            ('applePay',     'Apple Pay'),
+            ('googlePay',    'Google Pay'),
+            ('mercadoPago',  'Mercado Pago'),
+            ('wechatPay',    'WeChat Pay'),
+            ('alipay',       'Alipay'),
+            ('mPesa',        'M-Pesa'),
+            ('tabby',        'Tabby'),
+            ('mbway',        'MB Way'),
+            ('picpay',       'PicPay'),
+            ('pagseguro',    'PagSeguro')
+        ON CONFLICT (code) DO NOTHING
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_requirement_catalog(conn, applied: list[str]) -> None:
+    """
+    Catálogo dos requisitos possíveis para um método de pagamento.
+    Evita que requisitos fiquem apenas em JSON opaco.
+    Exemplos: amount_cents, customer_phone, national_id, wallet_provider,
+              qr_code_content, device_id, ip_address
+    """
+    name = "capability_requirement_catalog.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_requirement_catalog (
+            id          BIGSERIAL    PRIMARY KEY,
+            code        VARCHAR(100) NOT NULL UNIQUE,
+            name        VARCHAR(120) NOT NULL,
+            -- string | integer | boolean | enum | phone | email | document_id | any_of
+            data_type   VARCHAR(40)  NOT NULL,
+            description TEXT,
+            is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    conn.execute(text("""
+        INSERT INTO capability_requirement_catalog (code, name, data_type) VALUES
+            ('amount_cents',                  'Valor em centavos',          'integer'),
+            ('customer_phone',                'Telefone do cliente',         'phone'),
+            ('customer_email',                'E-mail do cliente',           'email'),
+            ('customer_phone_or_email',       'Telefone OU e-mail',          'any_of'),
+            ('wallet_provider',               'Provider da wallet',          'enum'),
+            ('qr_code_content',               'Conteúdo do QR Code',         'string'),
+            ('konbini_code',                  'Código Konbini',              'string'),
+            ('ussd_session_id',               'ID de sessão USSD',           'string'),
+            ('national_id',                   'Documento de identidade',     'document_id'),
+            ('turkish_id',                    'TC Kimlik No (Turquia)',       'string'),
+            ('device_id',                     'ID do dispositivo',           'string'),
+            ('ip_address',                    'Endereço IP do cliente',      'string'),
+            ('installments',                  'Número de parcelas',          'integer'),
+            ('card_token',                    'Token do cartão',             'string'),
+            ('billing_address',               'Endereço de cobrança',        'string'),
+            ('age_confirmation',              'Confirmação de maioridade',   'boolean')
+        ON CONFLICT (code) DO NOTHING
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile(conn, applied: list[str]) -> None:
+    """
+    Combinação canônica de (região, canal, contexto).
+    É o ponto central de toda a árvore de capabilities.
+
+    Exemplos de profile_code (gerado, não editável):
+      SP:kiosk:purchase
+      SP:kiosk:pickup
+      SP:online:checkout
+      PT:online:checkout
+      CN:kiosk:purchase
+
+    valid_from / valid_until permitem transições de perfil sem janela
+    de manutenção — pedidos em andamento continuam no perfil antigo.
+    """
+    name = "capability_profile.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile (
+            id           BIGSERIAL    PRIMARY KEY,
+            region_id    BIGINT       NOT NULL REFERENCES capability_region(id),
+            channel_id   BIGINT       NOT NULL REFERENCES capability_channel(id),
+            context_id   BIGINT       NOT NULL REFERENCES capability_context(id),
+
+            -- Gerado pelo backend: '<region_code>:<channel_code>:<context_code>'
+            -- Imutável após criação — usado como referência externa estável
+            profile_code VARCHAR(160) NOT NULL UNIQUE,
+
+            name         VARCHAR(180) NOT NULL,
+
+            -- Prioridade de resolução quando múltiplos perfis se aplicam
+            priority     INTEGER      NOT NULL DEFAULT 100,
+
+            -- Moeda padrão deste perfil (pode divergir da região, ex: duty-free)
+            currency     VARCHAR(10)  NOT NULL,
+
+            -- Vigência — permite transições sem janela de manutenção
+            valid_from   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            valid_until  TIMESTAMPTZ,             -- NULL = vigente indefinidamente
+
+            is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
+            metadata_json JSONB       NOT NULL DEFAULT '{}'::JSONB,
+
+            created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+            UNIQUE (region_id, channel_id, context_id)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cap_profile_region  ON capability_profile (region_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cap_profile_channel ON capability_profile (channel_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cap_profile_active  ON capability_profile (is_active, valid_from, valid_until)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_method(conn, applied: list[str]) -> None:
+    """
+    Métodos de pagamento permitidos dentro de um perfil.
+    Tabela central do catálogo de pagamentos.
+
+    Campos financeiros críticos são colunas explícitas (não JSON)
+    para permitir índices, validação e queries diretas.
+    """
+    name = "capability_profile_method.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_method (
+            id                  BIGSERIAL    PRIMARY KEY,
+            profile_id          BIGINT       NOT NULL REFERENCES capability_profile(id) ON DELETE CASCADE,
+            payment_method_id   BIGINT       NOT NULL REFERENCES payment_method_catalog(id),
+
+            label               VARCHAR(120),    -- label localizado para UI
+            sort_order          INTEGER      NOT NULL DEFAULT 100,
+            is_default          BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
+
+            -- Wallet provider quando aplicável (Apple Pay, Google Pay, etc.)
+            wallet_provider_id  BIGINT       REFERENCES wallet_provider_catalog(id),
+
+            -- Limites financeiros — colunas explícitas (não enterrar em JSON)
+            min_amount_cents    INTEGER,
+            max_amount_cents    INTEGER,
+            max_installments    INTEGER      NOT NULL DEFAULT 1,
+
+            -- Exige pre-autorização antes de exibir?
+            requires_preauth    BOOLEAN      NOT NULL DEFAULT FALSE,
+
+            -- Configurações extras que não cabem como coluna
+            rules_json          JSONB        NOT NULL DEFAULT '{}'::JSONB,
+
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+
+            UNIQUE (profile_id, payment_method_id)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cpm_profile  ON capability_profile_method (profile_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cpm_method   ON capability_profile_method (payment_method_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_cpm_active   ON capability_profile_method (profile_id, is_active)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_method_interface(conn, applied: list[str]) -> None:
+    """
+    Interfaces válidas para um método dentro de um perfil.
+
+    Exemplos:
+      pix        em SP:kiosk:purchase  → qr_code
+      creditCard em SP:kiosk:purchase  → chip, nfc, manual, kiosk_pinpad
+      mbway      em PT:online:checkout → qr_code, web_token, deep_link
+    """
+    name = "capability_profile_method_interface.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_method_interface (
+            id                   BIGSERIAL    PRIMARY KEY,
+            profile_method_id    BIGINT       NOT NULL REFERENCES capability_profile_method(id) ON DELETE CASCADE,
+            payment_interface_id BIGINT       NOT NULL REFERENCES payment_interface_catalog(id),
+            sort_order           INTEGER      NOT NULL DEFAULT 100,
+            is_default           BOOLEAN      NOT NULL DEFAULT FALSE,
+            is_active            BOOLEAN      NOT NULL DEFAULT TRUE,
+            config_json          JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (profile_method_id, payment_interface_id)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpmi_method ON capability_profile_method_interface (profile_method_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_method_requirement(conn, applied: list[str]) -> None:
+    """
+    Requisitos de dados para um método dentro de um perfil.
+    Evita transformar tudo em JSON opaco e permite validação server-side
+    sem lógica hardcoded.
+
+    requirement_scope:
+      request   → enviado na requisição de pagamento
+      session   → disponível na sessão (já coletado antes)
+      hardware  → depende do hardware do terminal
+    """
+    name = "capability_profile_method_requirement.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_method_requirement (
+            id                  BIGSERIAL    PRIMARY KEY,
+            profile_method_id   BIGINT       NOT NULL REFERENCES capability_profile_method(id) ON DELETE CASCADE,
+            requirement_id      BIGINT       NOT NULL REFERENCES capability_requirement_catalog(id),
+            is_required         BOOLEAN      NOT NULL DEFAULT TRUE,
+            -- request | session | hardware
+            requirement_scope   VARCHAR(40)  NOT NULL DEFAULT 'request',
+            -- Regras de validação (ex: min/max length, regex, allowed values)
+            validation_json     JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (profile_method_id, requirement_id)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpmr_method ON capability_profile_method_requirement (profile_method_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_action(conn, applied: list[str]) -> None:
+    """
+    Ações operacionais que o KIOSK/frontend deve expor em cada perfil.
+    Não todo contexto é 'pagar' — pickup, returns e staff têm fluxos próprios.
+
+    Exemplos:
+      create_order        → iniciar pedido
+      start_payment       → iniciar cobrança
+      identify_customer   → verificar identidade
+      enter_pickup_code   → digitar código de retirada
+      scan_pickup_qr      → escanear QR de retirada
+      operator_release    → liberação manual por operador
+      open_empty_slot     → abrir gaveta vazia (manutenção)
+      return_item         → iniciar devolução
+
+    action_type categoriza a ação para o engine de comportamento:
+      PAYMENT | NAVIGATION | HARDWARE | IDENTIFICATION | OPERATION
+    """
+    name = "capability_profile_action.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_action (
+            id           BIGSERIAL    PRIMARY KEY,
+            profile_id   BIGINT       NOT NULL REFERENCES capability_profile(id) ON DELETE CASCADE,
+            action_code  VARCHAR(80)  NOT NULL,
+            label        VARCHAR(120) NOT NULL,
+            -- PAYMENT | NAVIGATION | HARDWARE | IDENTIFICATION | OPERATION
+            action_type  VARCHAR(40)  NOT NULL DEFAULT 'OPERATION',
+            sort_order   INTEGER      NOT NULL DEFAULT 100,
+            is_active    BOOLEAN      NOT NULL DEFAULT TRUE,
+            -- Pré-condição para exibir a ação (ex: {"requires_auth": true})
+            precondition_json JSONB   NOT NULL DEFAULT '{}'::JSONB,
+            -- Config de UX (ícone, cor, timeout de tela)
+            config_json  JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (profile_id, action_code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpa_profile ON capability_profile_action (profile_id, is_active)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_constraint(conn, applied: list[str]) -> None:
+    """
+    Constraints contextuais do perfil — regras de negócio que variam
+    por região/canal/contexto e não pertencem ao método de pagamento.
+
+    Exemplos de code:
+      pickup_window_sec           → janela máxima de retirada em segundos
+      prepayment_timeout_sec      → timeout de pagamento no KIOSK
+      alloc_ttl_sec               → TTL da alocação de slot
+      max_amount_cents            → limite de valor por transação
+      min_amount_cents            → valor mínimo por transação
+      requires_identity_validation → validação de CPF/ID obrigatória
+      max_active_orders_per_user  → limite de pedidos simultâneos
+      allow_guest_checkout        → permite checkout sem cadastro
+    """
+    name = "capability_profile_constraint.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_constraint (
+            id          BIGSERIAL    PRIMARY KEY,
+            profile_id  BIGINT       NOT NULL REFERENCES capability_profile(id) ON DELETE CASCADE,
+            code        VARCHAR(100) NOT NULL,
+            -- Valor como JSONB para suportar scalar, array e objeto
+            value_json  JSONB        NOT NULL,
+            description TEXT,
+            created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (profile_id, code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpconstraint_profile ON capability_profile_constraint (profile_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_target(conn, applied: list[str]) -> None:
+    """
+    Override de perfil por entidade específica (tenant, operador, site,
+    locker, modelo de hardware). Permite comportamento diferenciado sem
+    criar um perfil inteiramente novo.
+
+    target_type: TENANT | OPERATOR | SITE | LOCKER | LOCKER_MODEL | PARTNER
+
+    locker_id é coluna explícita (FK) para o caso mais comum de override
+    por locker físico. Os demais casos usam target_type + target_key.
+
+    Estratégia de resolução (no backend):
+      1. Busca perfil por (region, channel, context, locker_id)
+      2. Fallback para (region, channel, context, operator_id)
+      3. Fallback para (region, channel, context) — perfil base
+    """
+    name = "capability_profile_target.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_target (
+            id            BIGSERIAL    PRIMARY KEY,
+            profile_id    BIGINT       NOT NULL REFERENCES capability_profile(id) ON DELETE CASCADE,
+            -- TENANT | OPERATOR | SITE | LOCKER | LOCKER_MODEL | PARTNER
+            target_type   VARCHAR(40)  NOT NULL,
+            -- Chave do alvo (ID do tenant, código do operador, etc.)
+            target_key    VARCHAR(120) NOT NULL,
+            -- FK explícita para locker (caso mais comum de override)
+            locker_id     VARCHAR(36)  REFERENCES lockers(id),
+            is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+            metadata_json JSONB        NOT NULL DEFAULT '{}'::JSONB,
+            created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            UNIQUE (profile_id, target_type, target_key)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpt_target     ON capability_profile_target (target_type, target_key)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cpt_locker_id  ON capability_profile_target (locker_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_capability_profile_snapshot(conn, applied: list[str]) -> None:
+    """
+    Snapshot resolvida e desnormalizada do perfil — para o KIOSK.
+
+    O KIOSK NÃO deve consultar as tabelas capability_* em runtime.
+    O backend resolve o perfil completo e publica um snapshot JSON
+    que o KIOSK consome offline. Isso garante operação mesmo sem
+    conectividade com o PostgreSQL principal.
+
+    Fluxo:
+      1. Backoffice edita tabelas capability_*
+      2. Evento dispara resolução do perfil
+      3. Backend serializa perfil resolvido em resolved_json
+      4. KIOSK faz pull periódico deste snapshot
+      5. KIOSK usa snapshot localmente — sem queries ao Postgres
+
+    snapshot_hash permite ao KIOSK detectar mudanças sem baixar o payload.
+    """
+    name = "capability_profile_snapshot.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS capability_profile_snapshot (
+            id              BIGSERIAL    PRIMARY KEY,
+            profile_id      BIGINT       NOT NULL REFERENCES capability_profile(id),
+            profile_code    VARCHAR(160) NOT NULL,
+            -- Locker-specific ou NULL (snapshot global do perfil)
+            locker_id       VARCHAR(36)  REFERENCES lockers(id),
+            -- JSON resolvido e desnormalizado — o que o KIOSK lê
+            resolved_json   JSONB        NOT NULL,
+            -- SHA-256 do resolved_json para detecção de mudança
+            snapshot_hash   VARCHAR(64)  NOT NULL,
+            -- Versão incremental para ordenação
+            version         INTEGER      NOT NULL DEFAULT 1,
+            -- DRAFT | PUBLISHED | SUPERSEDED
+            status          VARCHAR(20)  NOT NULL DEFAULT 'DRAFT',
+            published_at    TIMESTAMPTZ,
+            superseded_at   TIMESTAMPTZ,
+            generated_by    VARCHAR(100),  -- serviço/job que gerou
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cap_snapshot_profile_status "
+        "ON capability_profile_snapshot (profile_id, status)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cap_snapshot_locker "
+        "ON capability_profile_snapshot (locker_id, status)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_cap_snapshot_code_status "
+        "ON capability_profile_snapshot (profile_code, status)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+# ---------------------------------------------------------------------------
+# Sequência do Bloco 12 — para incluir em _POSTGRES_MIGRATION_STEPS
+# ---------------------------------------------------------------------------
+#
+# Adicione estas entradas ao final de _POSTGRES_MIGRATION_STEPS no arquivo
+# principal, após _create_data_deletion_requests:
+#
+#     _create_capability_region,
+#     _create_capability_channel,
+#     _create_capability_context,
+#     _create_payment_method_catalog,
+#     _create_payment_interface_catalog,
+#     _create_wallet_provider_catalog,
+#     _create_capability_requirement_catalog,
+#     _create_capability_profile,
+#     _create_capability_profile_method,
+#     _create_capability_profile_method_interface,
+#     _create_capability_profile_method_requirement,
+#     _create_capability_profile_action,
+#     _create_capability_profile_constraint,
+#     _create_capability_profile_target,
+#     _create_capability_profile_snapshot,
+#
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# BLOCO LEGACY — SQLite (apenas para ambiente KIOSK offline)
+# NOTA: este bloco existe exclusivamente para manter o KIOSK operacional
+# quando não houver conectividade com o PostgreSQL principal.
+# Um serviço de replicação externo (a implementar) sincronizará os dados
+# para o PostgreSQL ao restabelecer a conexão.
+# Não adicionar novos schemas neste bloco — evoluir apenas o Postgres.
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+def _kiosk_sqlite_ensure_core_tables(conn, applied: list[str]) -> None:
+    """
+    Garante as tabelas mínimas para operação KIOSK offline em SQLite.
+    Schema propositalmente simplificado — apenas o essencial para:
+      - registrar pedidos
+      - registrar pagamentos
+      - emitir tokens de retirada
+      - registrar pickups
+    Tudo mais será sincronizado pelo serviço de replicação.
+    """
+    # orders
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS orders (
+            id              TEXT PRIMARY KEY,
+            channel         TEXT NOT NULL DEFAULT 'KIOSK',
+            region          TEXT NOT NULL,
+            totem_id        TEXT NOT NULL,
+            sku_id          TEXT NOT NULL,
+            amount_cents    INTEGER NOT NULL,
+            currency        TEXT NOT NULL DEFAULT 'BRL',
+            status          TEXT NOT NULL DEFAULT 'CREATED',
+            payment_status  TEXT NOT NULL DEFAULT 'CREATED',
+            payment_method  TEXT,
+            guest_name      TEXT,
+            guest_email     TEXT,
+            guest_phone     TEXT,
+            consent_marketing INTEGER NOT NULL DEFAULT 0,
+            synced_at       TIMESTAMP,   -- preenchido pelo serviço de replicação
+            created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    # payment_transactions (simplificado)
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS payment_transactions (
+            id                      TEXT PRIMARY KEY,
+            order_id                TEXT NOT NULL,
+            gateway                 TEXT NOT NULL,
+            gateway_transaction_id  TEXT,
+            amount_cents            INTEGER NOT NULL,
+            currency                TEXT NOT NULL DEFAULT 'BRL',
+            payment_method          TEXT NOT NULL,
+            status                  TEXT NOT NULL DEFAULT 'INITIATED',
+            raw_response_json       TEXT,
+            initiated_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            approved_at             TIMESTAMP,
+            synced_at               TIMESTAMP,
+            created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    # pickups
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pickups (
+            id              TEXT PRIMARY KEY,
+            order_id        TEXT NOT NULL UNIQUE,
+            slot            TEXT,
+            status          TEXT NOT NULL DEFAULT 'ACTIVE',
+            lifecycle_stage TEXT NOT NULL DEFAULT 'READY_FOR_PICKUP',
+            activated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at      TIMESTAMP,
+            redeemed_at     TIMESTAMP,
+            redeemed_via    TEXT,
+            synced_at       TIMESTAMP,
+            created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    # pickup_tokens
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS pickup_tokens (
+            id            TEXT PRIMARY KEY,
+            pickup_id     TEXT NOT NULL,
+            token_type    TEXT NOT NULL DEFAULT 'QR_CODE',
+            token_hash    TEXT NOT NULL UNIQUE,
+            is_active     INTEGER NOT NULL DEFAULT 1,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts  INTEGER NOT NULL DEFAULT 5,
+            issued_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at    TIMESTAMP,
+            used_at       TIMESTAMP,
+            synced_at     TIMESTAMP,
+            created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    # outbox para replicação assíncrona
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS sync_outbox (
+            id              TEXT PRIMARY KEY,
+            table_name      TEXT NOT NULL,
+            record_id       TEXT NOT NULL,
+            operation       TEXT NOT NULL,  -- INSERT | UPDATE | DELETE
+            payload_json    TEXT,
+            synced_at       TIMESTAMP,
+            created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_orders_status   ON orders (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_pickups_status  ON pickups (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_sync_pending    ON sync_outbox (synced_at) WHERE synced_at IS NULL"))
+
+    applied.append("kiosk_sqlite.core_tables")
+
+
+# ---------------------------------------------------------------------------
+# ══════════════════════════════════════════════════════════════════════════
+# ENTRY POINTS PRINCIPAIS
+# ══════════════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+
+# Sequência canônica de criação para PostgreSQL.
+# A ordem respeita todas as FKs.
+_POSTGRES_MIGRATION_STEPS = [
+    _create_users,
+    _create_auth_sessions,
+    _create_locker_operators,
+    _create_lockers,
+    _create_locker_slot_configs,
+    _create_locker_slots,
+    _create_locker_telemetry,
+    _create_product_categories,
+    _create_product_locker_configs,
+    _create_rental_plans,
+    _create_rental_contracts,
+    _create_logistics_partners,
+    _create_ecommerce_partners,
+    _create_webhook_endpoints,
+    _create_webhook_deliveries,
+    _create_orders,
+    _create_payment_transactions,
+    _create_allocations,
+    _create_pickups,
+    _create_pickup_tokens,
+    _create_inbound_deliveries,
+    _create_fiscal_documents,
+    _create_notification_logs,
+    _create_domain_event_outbox,
+    _create_privacy_consents,
+    _create_data_deletion_requests,
+
+    # BLOCO 12
+    _create_capability_region,
+    _create_capability_channel,
+    _create_capability_context,
+    _create_payment_method_catalog,
+    _create_payment_interface_catalog,
+    _create_wallet_provider_catalog,
+    _create_capability_requirement_catalog,
+    _create_capability_profile,
+    _create_capability_profile_method,
+    _create_capability_profile_method_interface,
+    _create_capability_profile_method_requirement,
+    _create_capability_profile_action,
+    _create_capability_profile_constraint,
+    _create_capability_profile_target,
+    _create_capability_profile_snapshot,
+
+]
+
+
+def run_migrations(conn) -> list[str]:
+    """
+    Ponto de entrada único para criação/evolução do schema.
+
+    PostgreSQL → executa todas as migrations em sequência, rastreando cada
+                 uma em schema_migrations (idempotente por design).
+    SQLite     → executa apenas as tabelas mínimas para operação KIOSK.
+
+    Retorna a lista de migrations aplicadas nesta execução.
+    """
+    applied: list[str] = []
+    dialect = conn.dialect.name
+
+    if dialect == "postgresql":
+        _ensure_schema_migrations(conn)
+        for step in _POSTGRES_MIGRATION_STEPS:
+            try:
+                step(conn, applied)
+            except Exception as exc:
+                logger.error("Migration falhou em %s: %s", step.__name__, exc)
+                raise
+
+    elif dialect == "sqlite":
+        # Modo KIOSK: schema mínimo para operação offline
+        _kiosk_sqlite_ensure_core_tables(conn, applied)
+
+    else:
+        raise RuntimeError(f"Dialect não suportado: {dialect}")
+
+    return applied
 
 
 def migrate_order_pickup_schema() -> dict:
     """
-    Migração alinhada ao domínio atual:
-
-    - IDs textuais/UUID
-    - users.id -> TEXT
-    - orders.user_id -> TEXT
-    - auth_sessions.user_id -> TEXT
-    - pickups -> modelo final com auditoria, sensores e SaaS
+    Executa as migrations completas usando o engine configurado.
+    Chamada durante o startup do serviço.
     """
-
-    applied: list[str] = []
-
-    with engine.begin() as conn:
-        inspector = inspect(conn)
-        dialect = engine.dialect.name
-
-        # =========================
-        # SQLITE REBUILDS ESTRUTURAIS
-        # =========================
-        if dialect == "sqlite":
-            if _has_table(inspector, "users") and _sqlite_users_id_needs_rebuild_to_text(conn):
-                _rebuild_users_sqlite_to_text_id(conn, applied)
-                inspector = inspect(conn)
-
-            if _has_table(inspector, "orders") and _sqlite_orders_user_id_needs_rebuild_to_text(conn):
-                _rebuild_orders_sqlite_user_id_to_text(conn, applied)
-                inspector = inspect(conn)
-
-            if _has_table(inspector, "auth_sessions") and _sqlite_auth_sessions_user_id_needs_rebuild_to_text(conn):
-                _rebuild_auth_sessions_sqlite_user_id_to_text(conn, applied)
-                inspector = inspect(conn)
-
-            if _has_table(inspector, "pickups") and _sqlite_pickups_needs_rebuild_for_final_model(conn):
-                _rebuild_pickups_sqlite_final_model(conn, applied)
-                inspector = inspect(conn)
-
-        # =========================
-        # USERS — colunas complementares
-        # =========================
-        if _has_table(inspector, "users"):
-            if not _has_column(inspector, "users", "full_name"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN full_name VARCHAR(255)"))
-                applied.append("users.full_name")
-
-            if not _has_column(inspector, "users", "phone"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN phone VARCHAR(32)"))
-                applied.append("users.phone")
-
-            if not _has_column(inspector, "users", "password_hash"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
-                applied.append("users.password_hash")
-
-            if not _has_column(inspector, "users", "is_active"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN"))
-                conn.execute(text("UPDATE users SET is_active = 1 WHERE is_active IS NULL"))
-                applied.append("users.is_active")
-
-            if not _has_column(inspector, "users", "email_verified"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN email_verified BOOLEAN"))
-                conn.execute(text("UPDATE users SET email_verified = 0 WHERE email_verified IS NULL"))
-                applied.append("users.email_verified")
-
-            if not _has_column(inspector, "users", "phone_verified"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN phone_verified BOOLEAN"))
-                conn.execute(text("UPDATE users SET phone_verified = 0 WHERE phone_verified IS NULL"))
-                applied.append("users.phone_verified")
-
-            if not _has_column(inspector, "users", "created_at"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN created_at TIMESTAMP WITH TIME ZONE"))
-                conn.execute(text("UPDATE users SET created_at = CURRENT_TIMESTAMP WHERE created_at IS NULL"))
-                applied.append("users.created_at")
-
-            if not _has_column(inspector, "users", "updated_at"):
-                conn.execute(text("ALTER TABLE users ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
-                conn.execute(text("UPDATE users SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL"))
-                applied.append("users.updated_at")
-
-        inspector = inspect(conn)
-
-        # =========================
-        # ORDERS — colunas complementares
-        # =========================
-        if _has_table(inspector, "orders"):
-            if not _has_column(inspector, "orders", "payment_status"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN payment_status VARCHAR(64)"))
-                conn.execute(
-                    text(
-                        """
-                        UPDATE orders
-                           SET payment_status = CASE
-                               WHEN paid_at IS NOT NULL THEN 'APPROVED'
-                               ELSE 'CREATED'
-                           END
-                         WHERE payment_status IS NULL
-                        """
-                    )
-                )
-                applied.append("orders.payment_status")
-
-            if not _has_column(inspector, "orders", "card_type"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN card_type VARCHAR(64)"))
-                applied.append("orders.card_type")
-
-            if not _has_column(inspector, "orders", "payment_updated_at"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN payment_updated_at TIMESTAMP WITH TIME ZONE"))
-                conn.execute(
-                    text(
-                        """
-                        UPDATE orders
-                           SET payment_updated_at = COALESCE(paid_at, created_at)
-                         WHERE payment_updated_at IS NULL
-                        """
-                    )
-                )
-                applied.append("orders.payment_updated_at")
-
-            if not _has_column(inspector, "orders", "updated_at"):
-                conn.execute(text("ALTER TABLE orders ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
-                conn.execute(
-                    text(
-                        """
-                        UPDATE orders
-                           SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP)
-                         WHERE updated_at IS NULL
-                        """
-                    )
-                )
-                applied.append("orders.updated_at")
-                
-            # 🔥 NOVO BLOCO:
-            if not _has_column(inspector, "orders", "public_access_token_hash"):
-                conn.execute(
-                    text("ALTER TABLE orders ADD COLUMN public_access_token_hash VARCHAR")
-                )
-                applied.append("orders.public_access_token_hash")
-
-            # 🔥 NOVO BLOCO: coluna currency
-            if not _has_column(inspector, "orders", "currency"):
-                conn.execute(
-                    text("ALTER TABLE orders ADD COLUMN currency VARCHAR(8) DEFAULT 'BRL'")
-                )
-                # Backfill para registros existentes (opcional, mas recomendado)
-                conn.execute(
-                    text("UPDATE orders SET currency = 'BRL' WHERE currency IS NULL")
-                )
-                applied.append("orders.currency")
-
-            inspector = inspect(conn)
-
-            if not _has_index(inspector, "orders", "idx_orders_public_access_token_hash"):
-                conn.execute(
-                    text(
-                        "CREATE INDEX idx_orders_public_access_token_hash "
-                        "ON orders (public_access_token_hash)"
-                    )
-                )
-                applied.append("orders.idx_orders_public_access_token_hash")
-
-        inspector = inspect(conn)
-
-        # =========================
-        # ALLOCATIONS — colunas complementares
-        # =========================
-        if _has_table(inspector, "allocations"):
-            if not _has_column(inspector, "allocations", "locker_id"):
-                conn.execute(text("ALTER TABLE allocations ADD COLUMN locker_id VARCHAR"))
-                applied.append("allocations.locker_id")
-
-            if not _has_column(inspector, "allocations", "updated_at"):
-                conn.execute(text("ALTER TABLE allocations ADD COLUMN updated_at TIMESTAMP WITH TIME ZONE"))
-                conn.execute(
-                    text(
-                        """
-                        UPDATE allocations
-                           SET updated_at = COALESCE(created_at, CURRENT_TIMESTAMP)
-                         WHERE updated_at IS NULL
-                        """
-                    )
-                )
-                applied.append("allocations.updated_at")
-
-        inspector = inspect(conn)
-
-        # =========================
-        # PICKUPS — garantir colunas finais se tabela já estiver próxima do alvo
-        # =========================
-        if _has_table(inspector, "pickups"):
-            pickup_columns_to_add = {
-                "channel": "ALTER TABLE pickups ADD COLUMN channel VARCHAR(8)",
-                "locker_id": "ALTER TABLE pickups ADD COLUMN locker_id VARCHAR",
-                "machine_id": "ALTER TABLE pickups ADD COLUMN machine_id VARCHAR",
-                "slot": "ALTER TABLE pickups ADD COLUMN slot VARCHAR",
-                "operator_id": "ALTER TABLE pickups ADD COLUMN operator_id VARCHAR",
-                "tenant_id": "ALTER TABLE pickups ADD COLUMN tenant_id VARCHAR",
-                "site_id": "ALTER TABLE pickups ADD COLUMN site_id VARCHAR",
-                "lifecycle_stage": "ALTER TABLE pickups ADD COLUMN lifecycle_stage VARCHAR(24)",
-                "activated_at": "ALTER TABLE pickups ADD COLUMN activated_at TIMESTAMP WITH TIME ZONE",
-                "ready_at": "ALTER TABLE pickups ADD COLUMN ready_at TIMESTAMP WITH TIME ZONE",
-                "door_opened_at": "ALTER TABLE pickups ADD COLUMN door_opened_at TIMESTAMP WITH TIME ZONE",
-                "item_removed_at": "ALTER TABLE pickups ADD COLUMN item_removed_at TIMESTAMP WITH TIME ZONE",
-                "door_closed_at": "ALTER TABLE pickups ADD COLUMN door_closed_at TIMESTAMP WITH TIME ZONE",
-                "expired_at": "ALTER TABLE pickups ADD COLUMN expired_at TIMESTAMP WITH TIME ZONE",
-                "cancelled_at": "ALTER TABLE pickups ADD COLUMN cancelled_at TIMESTAMP WITH TIME ZONE",
-                "cancel_reason": "ALTER TABLE pickups ADD COLUMN cancel_reason VARCHAR",
-                "correlation_id": "ALTER TABLE pickups ADD COLUMN correlation_id VARCHAR",
-                "source_event_id": "ALTER TABLE pickups ADD COLUMN source_event_id VARCHAR",
-                "sensor_event_id": "ALTER TABLE pickups ADD COLUMN sensor_event_id VARCHAR",
-                "notes": "ALTER TABLE pickups ADD COLUMN notes VARCHAR",
-            }
-
-            for col, ddl in pickup_columns_to_add.items():
-                if not _has_column(inspector, "pickups", col):
-                    conn.execute(text(ddl))
-                    applied.append(f"pickups.{col}")
-
-            conn.execute(text("UPDATE pickups SET channel = 'ONLINE' WHERE channel IS NULL"))
-            conn.execute(text("UPDATE pickups SET lifecycle_stage = 'READY_FOR_PICKUP' WHERE lifecycle_stage IS NULL"))
-            conn.execute(text("UPDATE pickups SET activated_at = COALESCE(created_at, CURRENT_TIMESTAMP) WHERE activated_at IS NULL"))
-            conn.execute(text("UPDATE pickups SET ready_at = COALESCE(created_at, CURRENT_TIMESTAMP) WHERE ready_at IS NULL AND status IN ('ACTIVE', 'REDEEMED')"))
-            conn.execute(text("UPDATE pickups SET expired_at = COALESCE(expires_at, updated_at, created_at, CURRENT_TIMESTAMP) WHERE expired_at IS NULL AND status = 'EXPIRED'"))
-            conn.execute(text("UPDATE pickups SET cancelled_at = COALESCE(updated_at, created_at, CURRENT_TIMESTAMP) WHERE cancelled_at IS NULL AND status = 'CANCELLED'"))
-
-        inspector = inspect(conn)
-
-        # =========================
-        # BACKFILL allocations.locker_id
-        # =========================
-        if _has_table(inspector, "orders") and _has_table(inspector, "allocations") and _has_column(inspector, "allocations", "locker_id"):
-            conn.execute(
-                text(
-                    """
-                    UPDATE allocations
-                       SET locker_id = (
-                           SELECT orders.totem_id
-                             FROM orders
-                            WHERE orders.id = allocations.order_id
-                       )
-                     WHERE locker_id IS NULL
-                    """
-                )
-            )
-            applied.append("allocations.locker_id_backfill_from_orders")
-
-        # =========================
-        # BACKFILL pickups context
-        # =========================
-        inspector = inspect(conn)
-        if _has_table(inspector, "pickups") and _has_table(inspector, "orders"):
-            if _has_column(inspector, "pickups", "channel"):
-                conn.execute(
-                    text(
-                        """
-                        UPDATE pickups
-                           SET channel = (
-                               SELECT CASE
-                                   WHEN orders.channel = 'KIOSK' THEN 'KIOSK'::pickupchannel
-                                   ELSE 'ONLINE'::pickupchannel
-                               END
-                                 FROM orders
-                                WHERE orders.id = pickups.order_id
-                           )::pickupchannel
-                         WHERE channel IS NULL
-                        """
-                    )
-                )
-                applied.append("pickups.channel_backfill_from_orders")
-
-            if _has_column(inspector, "pickups", "machine_id"):
-                conn.execute(
-                    text(
-                        """
-                        UPDATE pickups
-                           SET machine_id = (
-                               SELECT orders.totem_id
-                                 FROM orders
-                                WHERE orders.id = pickups.order_id
-                           )
-                         WHERE machine_id IS NULL
-                        """
-                    )
-                )
-                applied.append("pickups.machine_id_backfill_from_orders")
-
-            if _has_column(inspector, "pickups", "locker_id"):
-                conn.execute(
-                    text(
-                        """
-                        UPDATE pickups
-                           SET locker_id = COALESCE(
-                               (
-                                   SELECT allocations.locker_id
-                                     FROM allocations
-                                    WHERE allocations.order_id = pickups.order_id
-                                    ORDER BY allocations.created_at DESC, allocations.id DESC
-                                    LIMIT 1
-                               ),
-                               (
-                                   SELECT orders.totem_id
-                                     FROM orders
-                                    WHERE orders.id = pickups.order_id
-                               )
-                           )
-                         WHERE locker_id IS NULL
-                        """
-                    )
-                )
-                applied.append("pickups.locker_id_backfill")
-
-            if _has_column(inspector, "pickups", "slot"):
-                conn.execute(
-                    text(
-                        """
-                        UPDATE pickups
-                           SET slot = (
-                               SELECT CAST(allocations.slot AS TEXT)
-                                 FROM allocations
-                                WHERE allocations.order_id = pickups.order_id
-                                ORDER BY allocations.created_at DESC, allocations.id DESC
-                                LIMIT 1
-                           )
-                         WHERE slot IS NULL
-                        """
-                    )
-                )
-                applied.append("pickups.slot_backfill")
-
-        # =========================
-        # INDEXES - ORDERS
-        # =========================
-        order_indexes = [
-            ("orders", "idx_orders_status", "CREATE INDEX idx_orders_status ON orders (status)"),
-            ("orders", "idx_orders_channel_status", "CREATE INDEX idx_orders_channel_status ON orders (channel, status)"),
-            ("orders", "idx_orders_region_status", "CREATE INDEX idx_orders_region_status ON orders (region, status)"),
-            ("orders", "idx_orders_region_totem_status", "CREATE INDEX idx_orders_region_totem_status ON orders (region, totem_id, status)"),
-            ("orders", "idx_orders_region_totem_created_at", "CREATE INDEX idx_orders_region_totem_created_at ON orders (region, totem_id, created_at)"),
-            ("orders", "idx_orders_paid_at", "CREATE INDEX idx_orders_paid_at ON orders (paid_at)"),
-            ("orders", "idx_orders_picked_up_at", "CREATE INDEX idx_orders_picked_up_at ON orders (picked_up_at)"),
-            ("orders", "idx_orders_status_picked_up", "CREATE INDEX idx_orders_status_picked_up ON orders (status, picked_up_at)"),
-            ("orders", "idx_orders_totem_picked_up", "CREATE INDEX idx_orders_totem_picked_up ON orders (totem_id, picked_up_at)"),
-        ]
-
-        allocation_indexes = [
-            ("allocations", "idx_allocations_order_id", "CREATE INDEX idx_allocations_order_id ON allocations (order_id)"),
-            ("allocations", "idx_allocations_state", "CREATE INDEX idx_allocations_state ON allocations (state)"),
-            ("allocations", "idx_allocations_locker_slot_state", "CREATE INDEX idx_allocations_locker_slot_state ON allocations (locker_id, slot, state)"),
-            ("allocations", "idx_allocations_created_at", "CREATE INDEX idx_allocations_created_at ON allocations (created_at)"),
-        ]
-
-        pickup_indexes = [
-            ("pickups", "ix_pickups_order_id", "CREATE INDEX ix_pickups_order_id ON pickups (order_id)"),
-            ("pickups", "ix_pickups_status", "CREATE INDEX ix_pickups_status ON pickups (status)"),
-            ("pickups", "ix_pickups_channel_status", "CREATE INDEX ix_pickups_channel_status ON pickups (channel, status)"),
-            ("pickups", "ix_pickups_region_status", "CREATE INDEX ix_pickups_region_status ON pickups (region, status)"),
-            ("pickups", "ix_pickups_locker_status", "CREATE INDEX ix_pickups_locker_status ON pickups (locker_id, status)"),
-            ("pickups", "ix_pickups_machine_status", "CREATE INDEX ix_pickups_machine_status ON pickups (machine_id, status)"),
-            ("pickups", "ix_pickups_slot_status", "CREATE INDEX ix_pickups_slot_status ON pickups (slot, status)"),
-            ("pickups", "ix_pickups_operator_status", "CREATE INDEX ix_pickups_operator_status ON pickups (operator_id, status)"),
-            ("pickups", "ix_pickups_tenant_status", "CREATE INDEX ix_pickups_tenant_status ON pickups (tenant_id, status)"),
-            ("pickups", "ix_pickups_site_status", "CREATE INDEX ix_pickups_site_status ON pickups (site_id, status)"),
-            ("pickups", "ix_pickups_expires_at", "CREATE INDEX ix_pickups_expires_at ON pickups (expires_at)"),
-            ("pickups", "ix_pickups_redeemed_at", "CREATE INDEX ix_pickups_redeemed_at ON pickups (redeemed_at)"),
-            ("pickups", "ix_pickups_created_at", "CREATE INDEX ix_pickups_created_at ON pickups (created_at)"),
-            ("pickups", "ix_pickups_lifecycle_stage", "CREATE INDEX ix_pickups_lifecycle_stage ON pickups (lifecycle_stage)"),
-        ]
-
-        for table_name, index_name, ddl in order_indexes + allocation_indexes + pickup_indexes:
-            inspector = inspect(conn)
-            if _has_table(inspector, table_name) and not _has_index(inspector, table_name, index_name):
-                conn.execute(text(ddl))
-                applied.append(index_name)
-
-
-        # =========================
-        # FISCAL DOCUMENTS
-        # =========================
-        inspector = inspect(conn)
-
-        if not _has_table(inspector, "fiscal_documents"):
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE fiscal_documents (
-                        id VARCHAR PRIMARY KEY,
-                        order_id VARCHAR NOT NULL UNIQUE,
-                        receipt_code VARCHAR(64) NOT NULL UNIQUE,
-                        document_type VARCHAR(50) NOT NULL,
-                        channel VARCHAR(20),
-                        region VARCHAR(10),
-                        amount_cents INTEGER NOT NULL,
-                        currency VARCHAR(10) NOT NULL,
-                        delivery_mode VARCHAR(20),
-                        send_status VARCHAR(50),
-                        send_target VARCHAR(255),
-                        print_status VARCHAR(50),
-                        print_site_path VARCHAR(255),
-                        payload_json TEXT NOT NULL,
-                        issued_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-                    )
-                    """
-                )
-            )
-
-            applied.append("fiscal_documents.create_table")
-
-
-        # =========================
-        # NOTIFICATION LOGS
-        # =========================
-        inspector = inspect(conn)
-
-        if _has_table(inspector, "notification_logs"):
-            if not _has_column(inspector, "notification_logs", "destination_value"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN destination_value VARCHAR(255)"))
-                applied.append("notification_logs.destination_value")
-
-            if not _has_column(inspector, "notification_logs", "attempt_count"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN attempt_count INTEGER"))
-                conn.execute(text("UPDATE notification_logs SET attempt_count = 0 WHERE attempt_count IS NULL"))
-                applied.append("notification_logs.attempt_count")
-
-            if not _has_column(inspector, "notification_logs", "payload_json"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN payload_json TEXT"))
-                applied.append("notification_logs.payload_json")
-
-            if not _has_column(inspector, "notification_logs", "dedupe_key"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN dedupe_key VARCHAR(255)"))
-                applied.append("notification_logs.dedupe_key")
-
-            if not _has_column(inspector, "notification_logs", "processing_started_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN processing_started_at TIMESTAMP WITH TIME ZONE"))
-                applied.append("notification_logs.processing_started_at")
-
-            if not _has_column(inspector, "notification_logs", "last_attempt_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN last_attempt_at TIMESTAMP WITH TIME ZONE"))
-                applied.append("notification_logs.last_attempt_at")
-
-            if not _has_column(inspector, "notification_logs", "next_attempt_at"):
-                conn.execute(text("ALTER TABLE notification_logs ADD COLUMN next_attempt_at TIMESTAMP WITH TIME ZONE"))
-                applied.append("notification_logs.next_attempt_at")
-
-            conn.execute(
-                text(
-                    """
-                    UPDATE notification_logs
-                       SET dedupe_key =
-                           COALESCE(channel, '') || '|' ||
-                           COALESCE(template_key, '') || '|' ||
-                           COALESCE(destination_value, '') || '|' ||
-                           COALESCE(payload_json->>'receipt_code', '')
-                     WHERE dedupe_key IS NULL
-                        OR dedupe_key = '';
-                    """
-                )
-            )
-            applied.append("notification_logs.dedupe_key_backfill")
-
-            conn.execute(
-                text(
-                    """
-                    UPDATE notification_logs
-                       SET next_attempt_at = COALESCE(next_attempt_at, created_at, CURRENT_TIMESTAMP)
-                     WHERE status IN ('QUEUED', 'FAILED')
-                    """
-                )
-            )
-            applied.append("notification_logs.next_attempt_at_backfill")
-
-            inspector = inspect(conn)
-
-            if not _has_index(inspector, "notification_logs", "ux_notification_logs_dedupe"):
-                conn.execute(
-                    text(
-                        """
-                        CREATE UNIQUE INDEX ux_notification_logs_dedupe
-                        ON notification_logs (dedupe_key)
-                        """
-                    )
-                )
-                applied.append("notification_logs.ux_notification_logs_dedupe")
-
-            inspector = inspect(conn)
-
-            if not _has_index(inspector, "notification_logs", "ix_notification_logs_next_attempt_at"):
-                conn.execute(
-                    text(
-                        """
-                        CREATE INDEX ix_notification_logs_next_attempt_at
-                        ON notification_logs (next_attempt_at)
-                        """
-                    )
-                )
-                applied.append("notification_logs.ix_notification_logs_next_attempt_at")
-
-            inspector = inspect(conn)
-
-            if not _has_index(inspector, "notification_logs", "ix_notification_logs_status_next_attempt_at"):
-                conn.execute(
-                    text(
-                        """
-                        CREATE INDEX ix_notification_logs_status_next_attempt_at
-                        ON notification_logs (status, next_attempt_at)
-                        """
-                    )
-                )
-                applied.append("notification_logs.ix_notification_logs_status_next_attempt_at")
-
-        # =========================
-        # OUTBOX TABLE
-        # =========================
-        ensure_domain_event_outbox_table(engine)
-
-        # =========================
-        # LOCKER TABLE/INDEXES
-        # =========================
-        # ensure_lockers_table(engine)
-        ensure_locker_indexes(engine)
-
-        applied.append("lockers.indexes_ensured")
-
-    return {
-        "ok": True,
-        "applied": applied,
-    }
-
-
-def run_migrations(conn):
-    """Executa migrations completas do order_pickup_service."""
-    
-    # ==========================================
-    # TABELA: lockers
-    # ==========================================
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS lockers (
-            id VARCHAR PRIMARY KEY,
-
-            region VARCHAR(10) NOT NULL,
-            display_name VARCHAR(255),
-
-            slots_count INTEGER NOT NULL,
-            active BOOLEAN NOT NULL DEFAULT TRUE,
-
-            allowed_channels VARCHAR(100),
-            allowed_payment_methods VARCHAR(255),
-
-            timezone VARCHAR(50),
-            site_id VARCHAR(100),
-
-            access_hours TEXT,
-            address_line VARCHAR(255),
-            address_number VARCHAR(50),
-            address_extra VARCHAR(255),
-            district VARCHAR(100),
-            city VARCHAR(100),
-            state VARCHAR(100),
-            country VARCHAR(100),
-            postal_code VARCHAR(50),
-
-            latitude DOUBLE PRECISION,
-            longitude DOUBLE PRECISION,
-
-            description TEXT,
-            external_id VARCHAR(100),
-
-            has_alarm BOOLEAN DEFAULT FALSE,
-            has_camera BOOLEAN DEFAULT FALSE,
-            is_rented BOOLEAN DEFAULT FALSE,
-
-            machine_id VARCHAR(100),
-            tenant_id VARCHAR(100),
-
-            metadata_json JSONB,
-
-            security_level VARCHAR(50),
-            temperature_zone VARCHAR(50),
-
-            operator_id VARCHAR(100),
-
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL
+    try:
+        with engine.begin() as conn:
+            applied = run_migrations(conn)
+
+        logger.info(
+            "Migrations concluídas. %d aplicadas: %s",
+            len(applied),
+            applied or "nenhuma (schema já atualizado)",
         )
-    """))
+        return {"ok": True, "applied": applied}
 
-    # ==========================================
-    # TABELA: locker_slot_configs
-    # ==========================================
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS locker_slot_configs (
-            id BIGSERIAL PRIMARY KEY,
-            locker_id VARCHAR(64) NOT NULL REFERENCES lockers(id),
-            slot_size VARCHAR(8) NOT NULL,
-            slot_count INTEGER NOT NULL DEFAULT 0,
-            available_count INTEGER,
-            width_cm INTEGER,
-            height_cm INTEGER,
-            depth_cm INTEGER,
-            max_weight_kg FLOAT,
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-        )
-    """))
-
-    # ==========================================
-    # TABELA: locker_operators
-    # ==========================================
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS locker_operators (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(128) NOT NULL,
-            document VARCHAR(32),
-            email VARCHAR(128),
-            phone VARCHAR(32),
-            operator_type VARCHAR(32) NOT NULL DEFAULT 'LOGISTICS',
-            country VARCHAR(2) NOT NULL DEFAULT 'BR',
-            active BOOLEAN NOT NULL DEFAULT TRUE,
-            commission_rate FLOAT,
-            currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-        )
-    """))
-
-    # ==========================================
-    # TABELA: product_locker_configs
-    # ==========================================
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS product_locker_configs (
-            id BIGSERIAL PRIMARY KEY,
-            locker_id VARCHAR(64) NOT NULL REFERENCES lockers(id),
-            category VARCHAR(64) NOT NULL REFERENCES product_categories(id), 
-            subcategory VARCHAR(64),
-            allowed BOOLEAN NOT NULL DEFAULT TRUE,
-            temperature_zone VARCHAR(32) NOT NULL DEFAULT 'ANY',
-            min_value BIGINT,
-            max_value BIGINT,
-            max_weight_kg FLOAT,
-            max_width_cm INTEGER,
-            max_height_cm INTEGER,
-            max_depth_cm INTEGER,
-            requires_signature BOOLEAN NOT NULL DEFAULT FALSE,
-            requires_id BOOLEAN NOT NULL DEFAULT FALSE,
-            is_fragile BOOLEAN NOT NULL DEFAULT FALSE,
-            is_hazardous BOOLEAN NOT NULL DEFAULT FALSE,
-            priority INTEGER NOT NULL DEFAULT 100,
-            notes TEXT,
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-        )
-    """))
-
-    conn.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS uq_locker_category "
-        "ON product_locker_configs (locker_id, category)"
-    ))
-
-    # ==========================================
-    # TABELA: product_categories
-    # ==========================================
-    conn.execute(text("""
-        CREATE TABLE IF NOT EXISTS product_categories (
-            id VARCHAR(64) PRIMARY KEY,
-            name VARCHAR(128) NOT NULL,
-            description TEXT,
-            parent_category VARCHAR(64),
-            default_temperature_zone VARCHAR(32) NOT NULL DEFAULT 'AMBIENT',
-            default_security_level VARCHAR(32) NOT NULL DEFAULT 'STANDARD',
-            is_hazardous BOOLEAN NOT NULL DEFAULT FALSE,
-            requires_age_verification BOOLEAN NOT NULL DEFAULT FALSE,
-            created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-            updated_at TIMESTAMP WITH TIME ZONE NOT NULL
-        )
-    """))
-
-    # ==========================================
-    # ÍNDICES
-    # ==========================================
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_region ON lockers (region)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_site_id ON lockers (site_id)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_active ON lockers (active)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lockers_operator ON lockers (operator_id)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_locker_slot_locker ON locker_slot_configs (locker_id)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_operator_document ON locker_operators (document)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_config_locker ON product_locker_configs (locker_id)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_config_category ON product_locker_configs (category)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_product_categories_parent ON product_categories (parent_category)"))
+    except Exception as exc:
+        logger.exception("Erro fatal durante migrations: %s", exc)
+        return {"ok": False, "error": str(exc), "applied": []}
 
 
 def _run_startup_migrations_if_enabled():
     """
-    Executa as migrações iniciais se habilitadas.
-    Esta função deve ser chamada durante a inicialização do serviço.
+    Wrapper de startup — mantido para compatibilidade com chamadas existentes.
     """
-    # Executa a migração principal do schema
-    result = migrate_order_pickup_schema()
-
-    # 🔥 ADICIONE ISSO AQUI (CRÍTICO)
-    from app.core.db import engine
-    
-    # Executa a criação das tabelas adicionais via run_migrations
-    with engine.begin() as conn:
-        run_migrations(conn)
-    
-    # Garante os índices adicionais da tabela lockers
-    ensure_locker_indexes(engine)
-    
-    return result
+    return migrate_order_pickup_schema()
 
 
 if __name__ == "__main__":
+    import json
     result = _run_startup_migrations_if_enabled()
-    print(result)
+    print(json.dumps(result, indent=2, ensure_ascii=False))
