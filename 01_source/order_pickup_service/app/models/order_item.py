@@ -50,6 +50,9 @@ class OrderItem(Base):
     quantity = Column(Integer, nullable=False, default=1)
     unit_amount_cents = Column(Integer, nullable=False)
     total_amount_cents = Column(Integer, nullable=False)
+    # unit_price_cents = Column(Integer, nullable=False)
+    # total_price_cents = Column(Integer, nullable=False)
+    # currency = Column(String, nullable=False, default="BRL")
 
     # logística física
     slot_preference = Column(Integer, nullable=True)
