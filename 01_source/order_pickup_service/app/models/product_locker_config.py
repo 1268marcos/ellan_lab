@@ -43,10 +43,10 @@ class ProductLockerConfig(Base):
     # max_value = Column(BigInteger, nullable=True)
     
     # ==================== PESO E DIMENSÕES ====================
-    max_weight_kg = Column(Float, nullable=True)
-    max_width_cm = Column(Integer, nullable=True)
-    max_height_cm = Column(Integer, nullable=True)
-    max_depth_cm = Column(Integer, nullable=True)
+    max_weight_g = Column(Integer, nullable=True)
+    max_width_mm = Column(Integer, nullable=True)
+    max_height_mm = Column(Integer, nullable=True)
+    max_depth_mm = Column(Integer, nullable=True)
     
     # ==================== REQUISITOS ESPECIAIS ====================
     # requires_signature = Column(Boolean, nullable=False, default=False)

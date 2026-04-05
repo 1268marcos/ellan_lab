@@ -89,6 +89,66 @@ def _ts(conn) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Auto-heal helpers (produção)
+# ---------------------------------------------------------------------------
+
+def _quote_ident(name: str) -> str:
+    """
+    Quote mínimo e seguro para identificadores SQL simples.
+    """
+    return '"' + name.replace('"', '""') + '"'
+
+
+def _ensure_column(conn, table_name: str, column_name: str, ddl: str) -> None:
+    """
+    Garante que uma coluna exista. Idempotente e seguro para startup.
+    ddl exemplo: "TIMESTAMPTZ", "VARCHAR(255)", "BOOLEAN NOT NULL DEFAULT FALSE"
+    """
+    inspector = inspect(conn)
+    if not _has_table(inspector, table_name):
+        return
+    if _has_column(inspector, table_name, column_name):
+        return
+
+    logger.warning(
+        "[AUTO-HEAL] adicionando coluna %s.%s %s",
+        table_name,
+        column_name,
+        ddl,
+    )
+    conn.execute(
+        text(
+            f"ALTER TABLE {_quote_ident(table_name)} "
+            f"ADD COLUMN {_quote_ident(column_name)} {ddl}"
+        )
+    )
+
+
+def _ensure_index(conn, table_name: str, index_name: str, create_sql: str) -> None:
+    """
+    Garante que um índice exista.
+    create_sql deve ser um CREATE INDEX IF NOT EXISTS ... completo.
+    """
+    inspector = inspect(conn)
+    if not _has_table(inspector, table_name):
+        return
+    if _has_index(inspector, table_name, index_name):
+        return
+
+    logger.warning("[AUTO-HEAL] criando índice %s em %s", index_name, table_name)
+    conn.execute(text(create_sql))
+
+
+def _ensure_columns(conn, table_name: str, columns: dict[str, str]) -> None:
+    """
+    Garante várias colunas numa mesma tabela.
+    columns = {"coluna": "DDL"}
+    """
+    for column_name, ddl in columns.items():
+        _ensure_column(conn, table_name, column_name, ddl)
+
+
+# ---------------------------------------------------------------------------
 # Versionamento de migrações
 # ---------------------------------------------------------------------------
 
@@ -125,6 +185,221 @@ def _ensure_schema_migrations(conn) -> None:
             applied_at TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         )
     """))
+
+
+# ---------------------------------------------------------------------------
+# Auto-heal de compatibilidade de schema
+# ---------------------------------------------------------------------------
+
+def _ensure_users_columns(conn) -> None:
+    _ensure_columns(conn, "users", {
+        "locale": "VARCHAR(10) NOT NULL DEFAULT 'pt-BR'",
+        "totp_secret_ref": "VARCHAR(255)",
+        "totp_enabled": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "anonymized_at": "TIMESTAMPTZ",
+    })
+    _ensure_index(
+        conn,
+        "users",
+        "ux_users_email",
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email "
+        "ON users (email) WHERE anonymized_at IS NULL",
+    )
+
+
+def _ensure_locker_operators_columns(conn) -> None:
+    _ensure_columns(conn, "locker_operators", {
+        "contract_start_at": "TIMESTAMPTZ",
+        "contract_end_at": "TIMESTAMPTZ",
+        "contract_ref": "VARCHAR(255)",
+        "sla_pickup_hours": "INTEGER NOT NULL DEFAULT 72",
+        "sla_return_hours": "INTEGER NOT NULL DEFAULT 24",
+    })
+
+
+def _ensure_lockers_columns(conn) -> None:
+    _ensure_columns(conn, "lockers", {
+        "site_id": "VARCHAR(100)",
+        "tenant_id": "VARCHAR(100)",
+        "geolocation_wkt": "VARCHAR(100)",
+        "slots_available": "INTEGER NOT NULL DEFAULT 0",
+        "has_kiosk": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "has_printer": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "has_card_reader": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "has_nfc": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "finding_instructions": "TEXT",
+        "pickup_code_length": "INTEGER NOT NULL DEFAULT 6",
+        "pickup_reuse_policy": "VARCHAR(32) NOT NULL DEFAULT 'NO_REUSE'",
+        "pickup_reuse_window_sec": "INTEGER",
+        "pickup_max_reopens": "INTEGER NOT NULL DEFAULT 0",
+    })
+
+
+def _ensure_locker_slot_configs_columns(conn) -> None:
+    _ensure_columns(conn, "locker_slot_configs", {
+        "width_mm": "INTEGER",
+        "height_mm": "INTEGER",
+        "depth_mm": "INTEGER",
+        "max_weight_g": "INTEGER",
+    })
+
+
+def _ensure_orders_columns(conn) -> None:
+    json_type = _jsonb_or_text(conn)
+    _ensure_columns(conn, "orders", {
+        "site_id": "VARCHAR(100)",
+        "tenant_id": "VARCHAR(100)",
+        "ecommerce_partner_id": "VARCHAR(36)",
+        "partner_order_ref": "VARCHAR(128)",
+        "sku_description": "VARCHAR(255)",
+        "slot_size": "VARCHAR(8)",
+        "card_brand": "VARCHAR(20)",
+        "card_last4": "VARCHAR(4)",
+        "installments": "INTEGER NOT NULL DEFAULT 1",
+        "guest_name": "VARCHAR(255)",
+        "consent_analytics": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "cancelled_at": "TIMESTAMPTZ",
+        "cancel_reason": "VARCHAR(255)",
+        "refunded_at": "TIMESTAMPTZ",
+        "refund_reason": "VARCHAR(255)",
+        "payment_interface": "VARCHAR(32)",
+        "wallet_provider": "VARCHAR(64)",
+        "device_id": "VARCHAR(128)",
+        "ip_address": "VARCHAR(64)",
+        "user_agent": "VARCHAR(500)",
+        "idempotency_key": "VARCHAR(255)",
+        "order_metadata": json_type,
+    })
+    _ensure_index(
+        conn,
+        "orders",
+        "ix_orders_pickup_deadline",
+        "CREATE INDEX IF NOT EXISTS ix_orders_pickup_deadline "
+        "ON orders (pickup_deadline_at) "
+        "WHERE status NOT IN ('PICKED_UP','CANCELLED','REFUNDED','EXPIRED')",
+    )
+
+
+def _ensure_allocations_columns(conn) -> None:
+    _ensure_columns(conn, "allocations", {
+        "slot_size": "VARCHAR(8)",
+        "allocated_at": "TIMESTAMPTZ NOT NULL DEFAULT NOW()",
+        "released_at": "TIMESTAMPTZ",
+        "release_reason": "VARCHAR(255)",
+    })
+
+
+def _ensure_pickup_tokens_columns(conn) -> None:
+    _ensure_columns(conn, "pickup_tokens", {
+        "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+    })
+    _ensure_index(
+        conn,
+        "pickup_tokens",
+        "ix_pickup_tokens_active",
+        "CREATE INDEX IF NOT EXISTS ix_pickup_tokens_active "
+        "ON pickup_tokens (pickup_id, is_active) WHERE is_active = TRUE",
+    )
+
+
+def _ensure_notification_logs_columns(conn) -> None:
+    _ensure_columns(conn, "notification_logs", {
+        "pickup_id": "VARCHAR(36)",
+        "delivery_id": "VARCHAR(36)",
+        "rental_id": "VARCHAR(36)",
+        "provider_status": "VARCHAR(100)",
+        "error_detail": "TEXT",
+        "locale": "VARCHAR(10)",
+    })
+    _ensure_index(
+        conn,
+        "notification_logs",
+        "ix_notif_pickup",
+        "CREATE INDEX IF NOT EXISTS ix_notif_pickup ON notification_logs (pickup_id)",
+    )
+
+
+def _ensure_fiscal_documents_columns(conn) -> None:
+    json_type = _jsonb_or_text(conn)
+    xml_type = "TEXT"
+    _ensure_columns(conn, "fiscal_documents", {
+        "tenant_id": "VARCHAR(100)",
+        "tax_amount_cents": "INTEGER",
+        "tax_breakdown_json": json_type,
+        "sent_at": "TIMESTAMPTZ",
+        "printed_at": "TIMESTAMPTZ",
+        "xml_signed": xml_type,
+        "chave_acesso": "VARCHAR(64)",
+        "cancelled_at": "TIMESTAMPTZ",
+        "cancel_reason": "VARCHAR(255)",
+    })
+
+
+def _ensure_payment_method_catalog_columns(conn) -> None:
+    _ensure_columns(conn, "payment_method_catalog", {
+        "is_instant": "BOOLEAN NOT NULL DEFAULT FALSE",
+    })
+
+
+def _ensure_payment_interface_catalog_columns(conn) -> None:
+    _ensure_columns(conn, "payment_interface_catalog", {
+        "requires_hw": "BOOLEAN NOT NULL DEFAULT FALSE",
+    })
+
+
+def _ensure_capability_profile_columns(conn) -> None:
+    _ensure_columns(conn, "capability_profile", {
+        "valid_from": "TIMESTAMPTZ",
+        "valid_until": "TIMESTAMPTZ",
+    })
+    _ensure_index(
+        conn,
+        "capability_profile",
+        "ix_cap_profile_active",
+        "CREATE INDEX IF NOT EXISTS ix_cap_profile_active "
+        "ON capability_profile (is_active, valid_from, valid_until)",
+    )
+
+
+def _ensure_capability_profile_target_columns(conn) -> None:
+    _ensure_columns(conn, "capability_profile_target", {
+        "locker_id": "VARCHAR(64)",
+    })
+    _ensure_index(
+        conn,
+        "capability_profile_target",
+        "ix_cpt_locker_id",
+        "CREATE INDEX IF NOT EXISTS ix_cpt_locker_id "
+        "ON capability_profile_target (locker_id)",
+    )
+
+
+def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
+    """
+    Corrige drift de schema antes do assert rígido.
+    Idempotente e seguro para execução em todo startup.
+    """
+    name = "schema.auto_heal_legacy_v1"
+    if _migration_applied(conn, name):
+        # mesmo se já marcado, continua rodando porque pode haver drift novo
+        pass
+
+    _ensure_users_columns(conn)
+    _ensure_locker_operators_columns(conn)
+    _ensure_lockers_columns(conn)
+    _ensure_locker_slot_configs_columns(conn)
+    _ensure_orders_columns(conn)
+    _ensure_allocations_columns(conn)
+    _ensure_pickup_tokens_columns(conn)
+    _ensure_notification_logs_columns(conn)
+    _ensure_fiscal_documents_columns(conn)
+    _ensure_payment_method_catalog_columns(conn)
+    _ensure_payment_interface_catalog_columns(conn)
+    _ensure_capability_profile_columns(conn)
+    _ensure_capability_profile_target_columns(conn)
+
+    _mark_migration(conn, name)
+    applied.append(name)
 
 
 # ---------------------------------------------------------------------------
@@ -2231,20 +2506,13 @@ _POSTGRES_MIGRATION_STEPS = [
 
 
 def run_migrations(conn) -> list[str]:
-    """
-    Ponto de entrada único para criação/evolução do schema.
-
-    PostgreSQL → executa todas as migrations em sequência, rastreando cada
-                 uma em schema_migrations (idempotente por design).
-    SQLite     → executa apenas as tabelas mínimas para operação KIOSK.
-
-    Retorna a lista de migrations aplicadas nesta execução.
-    """
     applied: list[str] = []
     dialect = conn.dialect.name
 
     if dialect == "postgresql":
         _ensure_schema_migrations(conn)
+        _auto_heal_legacy_schema(conn, applied)
+
         for step in _POSTGRES_MIGRATION_STEPS:
             try:
                 step(conn, applied)
@@ -2253,13 +2521,13 @@ def run_migrations(conn) -> list[str]:
                 raise
 
     elif dialect == "sqlite":
-        # Modo KIOSK: schema mínimo para operação offline
         _kiosk_sqlite_ensure_core_tables(conn, applied)
-
     else:
         raise RuntimeError(f"Dialect não suportado: {dialect}")
 
     return applied
+
+
 
 
 def migrate_order_pickup_schema() -> dict:
@@ -2289,6 +2557,57 @@ def _run_startup_migrations_if_enabled():
     """
     return migrate_order_pickup_schema()
 
+
+
+# ENGINE DE AUTO-CORREÇÃO
+def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
+    """
+    Garante que colunas existam na tabela.
+    columns = { "coluna": "TIPO SQL" }
+    """
+    inspector = inspect(conn)
+
+    existing = {col["name"] for col in inspector.get_columns(table)}
+
+    for col, ddl in columns.items():
+        if col not in existing:
+            logger.warning(f"[AUTO-MIGRATE] adicionando coluna {table}.{col}")
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
+
+
+def _ensure_locker_operators_columns(conn):
+    _ensure_columns(conn, "locker_operators", {
+        "contract_start_at": "TIMESTAMPTZ",
+        "contract_end_at": "TIMESTAMPTZ",
+        "contract_ref": "VARCHAR(255)",
+        "sla_pickup_hours": "INTEGER DEFAULT 72",
+        "sla_return_hours": "INTEGER DEFAULT 24",
+    })
+
+def _ensure_lockers_columns(conn):
+    _ensure_columns(conn, "lockers", {
+        "geolocation_wkt": "VARCHAR(100)",
+        "slots_available": "INTEGER DEFAULT 0",
+        "has_kiosk": "BOOLEAN DEFAULT FALSE",
+        "has_printer": "BOOLEAN DEFAULT FALSE",
+        "has_card_reader": "BOOLEAN DEFAULT FALSE",
+        "has_nfc": "BOOLEAN DEFAULT FALSE",
+    })
+
+def _ensure_slot_configs_columns(conn):
+    _ensure_columns(conn, "locker_slot_configs", {
+        "width_mm": "INTEGER",
+        "height_mm": "INTEGER",
+        "depth_mm": "INTEGER",
+        "max_weight_g": "INTEGER",
+    })    
+
+def _ensure_capability_columns(conn):
+    _ensure_columns(conn, "capability_profile_target", {
+        "locker_id": "VARCHAR(64)",
+    })
+
+    
 
 if __name__ == "__main__":
     import json

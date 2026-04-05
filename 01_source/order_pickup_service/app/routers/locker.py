@@ -138,10 +138,10 @@ def create_locker(locker_data: LockerCreateSchema, db: Session = Depends(get_db)
                 locker_id=locker.id,
                 slot_size=slot.slot_size,
                 slot_count=slot.slot_count,
-                width_cm=slot.dimensions.width_cm if slot.dimensions else None,
-                height_cm=slot.dimensions.height_cm if slot.dimensions else None,
-                depth_cm=slot.dimensions.depth_cm if slot.dimensions else None,
-                max_weight_kg=slot.dimensions.max_weight_kg if slot.dimensions else None,
+                width_mm=slot.dimensions.width_mm if slot.dimensions else None,
+                height_mm=slot.dimensions.height_mm if slot.dimensions else None,
+                depth_mm=slot.dimensions.depth_mm if slot.dimensions else None,
+                max_weight_g=slot.dimensions.max_weight_g if slot.dimensions else None,
             )
             db.add(slot_config)
     

@@ -131,10 +131,10 @@ class LockerSlotConfig(Base):
     available_count = Column(Integer, nullable=True)  # Disponível em tempo real (pode ser NULL = usa slot_count)
     
     # Dimensões Físicas (cm)
-    width_cm = Column(Integer, nullable=True)
-    height_cm = Column(Integer, nullable=True)
-    depth_cm = Column(Integer, nullable=True)
-    max_weight_kg = Column(Float, nullable=True)
+    width_mm = Column(Integer, nullable=True)
+    height_mm = Column(Integer, nullable=True)
+    depth_mm = Column(Integer, nullable=True)
+    max_weight_g = Column(Integer, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
