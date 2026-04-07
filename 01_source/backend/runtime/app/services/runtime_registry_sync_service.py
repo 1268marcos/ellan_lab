@@ -208,7 +208,7 @@ def _fetch_central_payment_methods(
 
     grouped: dict[str, list[str]] = {}
     for row in rows:
-        grouped.setdefault(str(row["locker_id"]), []).append(str(row["method"]).upper())
+        grouped.setdefault(str(row["locker_id"]), []).append(str(row["method"]))
 
     return grouped
 

@@ -77,6 +77,8 @@ class Allocation(Base):
     # KIOSK: tende a ficar None após commit/abertura
     locked_until = Column(DateTime, nullable=True)
 
+    ttl_seconds = Column(Integer, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime,

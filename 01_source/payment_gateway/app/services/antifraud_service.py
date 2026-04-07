@@ -131,6 +131,27 @@ _antifraud_cache = AntifraudCache()
 
 # ==================== Funções Utilitárias ====================
 
+def _normalize_input(
+    *,
+    region: Optional[str] = None,
+    regiao: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    metodo: Optional[str] = None,
+    amount_cents: Optional[int] = None,
+    valor: Optional[float] = None,
+    slot: Optional[int] = None,
+    porta: Optional[int] = None,
+) -> Dict[str, Any]:
+    return {
+        "regiao": regiao or region,
+        "metodo": metodo or payment_method,
+        "valor": valor if valor is not None else (
+            amount_cents / 100 if amount_cents is not None else None
+        ),
+        "porta": porta if porta is not None else slot,
+    }
+
+
 def _generate_transaction_id(regiao: str, locker_id: str, timestamp: datetime) -> str:
     """Gera ID único para transação"""
     data = f"{regiao}:{locker_id}:{timestamp.isoformat()}"
@@ -388,11 +409,15 @@ def _get_recommendations(decision: AntifraudDecision, signals: List[FraudSignal]
 
 def check_antifraud(
     *,
-    regiao: str,
-    canal: str,
-    metodo: str,
-    valor: float,
-    porta: int,
+    regiao: Optional[str] = None,
+    canal: Optional[str] = None,
+    metodo: Optional[str] = None,
+    valor: Optional[float] = None,
+    porta: Optional[int] = None,
+    region: Optional[str] = None,
+    payment_method: Optional[str] = None,
+    amount_cents: Optional[int] = None,
+    slot: Optional[int] = None,
     payment_interface: Optional[str] = None,
     device_known: bool = False,
     velocity: Optional[Dict[str, int]] = None,
@@ -415,7 +440,24 @@ def check_antifraud(
     - Detecção de padrões de fraude
     - Autenticação adaptativa (challenge)
     """
-    
+        
+    normalized = _normalize_input(
+        region=region,
+        regiao=regiao,
+        payment_method=payment_method,
+        metodo=metodo,
+        amount_cents=amount_cents,
+        valor=valor,
+        slot=slot,
+        porta=porta,
+    )
+
+    regiao = normalized["regiao"]
+    metodo = normalized["metodo"]
+    valor = normalized["valor"]
+    porta = normalized["porta"]
+
+
     # Normalização
     regiao_u = (regiao or "").strip().upper()
     canal_u = (canal or "").strip().upper()

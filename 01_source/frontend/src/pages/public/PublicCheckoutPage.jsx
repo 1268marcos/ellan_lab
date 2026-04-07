@@ -202,7 +202,7 @@ function normalizeLockerItem(locker) {
     display_name: locker?.display_name || locker?.locker_id || "",
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
     payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((item) => String(item).trim().toUpperCase())
+      ? locker.payment_methods.map((item) => String(item).trim()) //.toUpperCase()
       : [],
     active: Boolean(locker?.active),
     address,

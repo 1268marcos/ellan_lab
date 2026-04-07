@@ -44,143 +44,148 @@ class PaymentMethod(str, enum.Enum):
     """Métodos de pagamento - Expandido para mercados globais"""
     
     # Brasil
-    PIX = "PIX"
-    BOLETO = "BOLETO"
+    pix = "pix"
+    boleto = "boleto"
     
     # Cartões
-    CREDIT_CARD = "CREDIT_CARD"
-    DEBIT_CARD = "DEBIT_CARD"
-    GIFT_CARD = "GIFT_CARD"
-    PREPAID_CARD = "PREPAID_CARD"
+    # credit_card = "credit_card"
+    # debit_card = "debit_card"
+    # gift_card = "gift_card"
+    # prepaid_card = "prepaid_card"
+
+    creditCard = "creditCard"
+    debitCard = "debitCard"
+    giftCard = "giftCard"
+    prepaidCard = "prepaidCard"
     
     # Legacy (para compatibilidade)
-    CARTAO = "CARTAO"  # Mantido para compatibilidade
+    # cartao = "cartao"  # Mantido para compatibilidade
     
     # América Latina
-    MERCADO_PAGO_WALLET = "MERCADO_PAGO_WALLET"
-    OXXO = "OXXO"
-    SPEI = "SPEI"
-    RAPIPAGO = "RAPIPAGO"
-    PAGOFACIL = "PAGOFACIL"
-    SERVIPAG = "SERVIPAG"
-    KHIPU = "KHIPU"
-    EFECTY = "EFECTY"
-    PSE = "PSE"
+    mercado_pago_wallet = "mercado_pago_wallet"
+    oxxo = "oxxo"
+    spei = "spei"
+    rapipago = "rapipago"
+    pagofacil = "pagofacil"
+    servipag = "servipag"
+    khipu = "khipu"
+    efecty = "efecty"
+    pse = "pse"
     
     # América do Norte
-    ACH = "ACH"
-    VENMO = "VENMO"
-    CASHAPP = "CASHAPP"
-    ZELLE = "ZELLE"
-    INTERAC = "INTERAC"
+    ach = "ach"
+    venmo = "venmo"
+    cashapp = "cashapp"
+    zelle = "zelle"
+    interac = "interac"
     
     # Europa
-    MBWAY = "MBWAY"
-    MULTIBANCO_REFERENCE = "MULTIBANCO_REFERENCE"
-    SOFORT = "SOFORT"
-    GIROPAY = "GIROPAY"
-    KLARNA = "KLARNA"
-    TRUSTLY = "TRUSTLY"
-    IDEAL = "IDEAL"
-    BANCONTACT = "BANCONTACT"
-    TWINT = "TWINT"
-    VIABILL = "VIABILL"
-    MOBILEPAY = "MOBILEPAY"
-    BLIK = "BLIK"
-    PRZELEWY24 = "PRZELEWY24"
-    SATISPAY = "SATISPAY"
-    SEPA = "SEPA"
-    PAYPAL = "PAYPAL"
-    REVOLUT = "REVOLUT"
+    mbway = "mbway"
+    multibanco_reference = "multibanco_reference"
+    sofort = "sofort"
+    giropay = "giropay"
+    klarna = "klarna"
+    trustly = "trustly"
+    ideal = "ideal"
+    bancontact = "bancontact"
+    twint = "twint"
+    viabill = "viabill"
+    mobilepay = "mobilepay"
+    blik = "blik"
+    przelewy24 = "przelewy24"
+    satispay = "satispay"
+    sepa = "sepa"
+    paypal = "paypal"
+    revolut = "revolut"
     
     # Wallets digitais
-    NFC = "NFC"
-    APPLE_PAY = "APPLE_PAY"
-    GOOGLE_PAY = "GOOGLE_PAY"
-    SAMSUNG_PAY = "SAMSUNG_PAY"
+    nfc = "nfc"
+    apple_pay = "apple_pay"
+    google_pay = "google_pay"
+    samsung_pay = "samsung_pay"
     
     # África
-    M_PESA = "M_PESA"
-    AIRTEL_MONEY = "AIRTEL_MONEY"
-    MTN_MONEY = "MTN_MONEY"
-    ORANGE_MONEY = "ORANGE_MONEY"
-    VODAFONE_CASH = "VODAFONE_CASH"
-    PAYSTACK = "PAYSTACK"
-    FLUTTERWAVE = "FLUTTERWAVE"
-    YOCO = "YOCO"
+    m_pesa = "m_pesa"
+    airtel_money = "airtel_money"
+    mtn_money = "mtn_money"
+    orange_money = "orange_money"
+    vodafone_cash = "vodafone_cash"
+    paystack = "paystack"
+    flutterwave = "flutterwave"
+    yoco = "yoco"
     
     # China
-    ALIPAY = "ALIPAY"
-    WECHAT_PAY = "WECHAT_PAY"
-    UNIONPAY = "UNIONPAY"
-    DCEP = "DCEP"  # Yuan digital
+    alipay = "alipay"
+    wechat_pay = "wechat_pay"
+    unionpay = "unionpay"
+    dcep = "dcep"  # Yuan digital
     
     # Japão
-    PAYPAY = "PAYPAY"
-    LINE_PAY = "LINE_PAY"
-    RAKUTEN_PAY = "RAKUTEN_PAY"
-    MERPAY = "MERPAY"
-    KONBINI = "KONBINI"
+    paypay = "paypay"
+    line_pay = "line_pay"
+    rakuten_pay = "rakuten_pay"
+    merpay = "merpay"
+    konbini = "konbini"
     
     # Coreia do Sul
-    KAKAO_PAY = "KAKAO_PAY"
-    NAVER_PAY = "NAVER_PAY"
-    TOSS = "TOSS"
+    kakao_pay = "kakao_pay"
+    naver_pay = "naver_pay"
+    toss = "toss"
     
     # Tailândia
-    PROMPTPAY = "PROMPTPAY"
-    TRUEMONEY = "TRUEMONEY"
+    promptpay = "promptpay"
+    truemoney = "truemoney"
     
     # Indonésia
-    GO_PAY = "GO_PAY"
-    OVO = "OVO"
-    DANA = "DANA"
+    go_pay = "go_pay"
+    ovo = "ovo"
+    dana = "dana"
     
     # Singapura
-    GRABPAY = "GRABPAY"
-    DBS_PAYLAH = "DBS_PAYLAH"
+    grabpay = "grabpay"
+    dbs_paylah = "dbs_paylah"
     
     # Filipinas
-    GCASH = "GCASH"
-    PAYMAYA = "PAYMAYA"
+    gcash = "gcash"
+    paymaya = "paymaya"
     
     # Emirados Árabes
-    TABBY = "TABBY"
-    PAYBY = "PAYBY"
+    tabby = "tabby"
+    payby = "payby"
     
     # Turquia
-    TROY = "TROY"
-    BKM_EXPRESS = "BKM_EXPRESS"
+    troy = "troy"
+    bkm_express = "bkm_express"
     
     # Rússia
-    MIR = "MIR"
-    YOOMONEY = "YOOMONEY"
-    QIWI = "QIWI"
-    WEBMONEY = "WEBMONEY"
+    mir = "mir"
+    yoomoney = "yoomoney"
+    qiwi = "qiwi"
+    webmoney = "webmoney"
     
     # Austrália
-    AFTERPAY = "AFTERPAY"
-    ZIP = "ZIP"
-    BPAY = "BPAY"
-    POLI = "POLI"
+    afterpay = "afterpay"
+    zip = "zip"
+    bpay = "bpay"
+    poli = "poli"
     
     # Globais
-    CRYPTO = "CRYPTO"
-    CASH_ON_DELIVERY = "CASH_ON_DELIVERY"
-    BANK_TRANSFER = "BANK_TRANSFER"
-    DIRECT_DEBIT = "DIRECT_DEBIT"
+    crypto = "crypto"
+    cash_on_delivery = "cash_on_delivery"
+    bank_transfer = "bank_transfer"
+    direct_debit = "direct_debit"
     
     @property
     def requires_wallet_provider(self) -> bool:
         """Verifica se o método requer um provedor de carteira"""
         wallet_methods = {
-            self.APPLE_PAY, self.GOOGLE_PAY, self.SAMSUNG_PAY,
-            self.MERCADO_PAGO_WALLET, self.PAYPAL, self.VENMO,
-            self.CASHAPP, self.ZELLE, self.REVOLUT, self.ALIPAY,
-            self.WECHAT_PAY, self.PAYPAY, self.LINE_PAY, self.KAKAO_PAY,
-            self.GO_PAY, self.OVO, self.DANA, self.GRABPAY, self.GCASH,
-            self.PAYMAYA, self.TABBY, self.AFTERPAY, self.ZIP,
-            self.M_PESA, self.AIRTEL_MONEY, self.MTN_MONEY, self.YOOMONEY
+            self.apple_pay, self.google_pay, self.samsung_pay,
+            self.mercado_pago_wallet, self.paypal, self.venmo,
+            self.cashapp, self.zelle, self.revolut, self.alipay,
+            self.wechat_pay, self.paypay, self.line_pay, self.kakao_pay,
+            self.go_pay, self.ovo, self.dana, self.grabpay, self.gcash,
+            self.paymaya, self.tabby, self.afterpay, self.zip,
+            self.m_pesa, self.airtel_money, self.mtn_money, self.yoomoney
         }
         return self in wallet_methods
     
@@ -188,11 +193,11 @@ class PaymentMethod(str, enum.Enum):
     def is_instant(self) -> bool:
         """Verifica se o método é instantâneo"""
         instant_methods = {
-            self.PIX, self.CREDIT_CARD, self.DEBIT_CARD, self.PREPAID_CARD,
-            self.APPLE_PAY, self.GOOGLE_PAY, self.SAMSUNG_PAY,
-            self.MERCADO_PAGO_WALLET, self.PAYPAL, self.VENMO,
-            self.CASHAPP, self.ALIPAY, self.WECHAT_PAY, self.PAYPAY,
-            self.M_PESA, self.GCASH, self.PAYMAYA
+            self.pix, self.creditCard, self.debitCard, self.prepaidCard, self.giftCard,
+            self.apple_pay, self.google_pay, self.samsung_pay,
+            self.mercado_pago_wallet, self.paypal, self.venmo,
+            self.cashapp, self.alipay, self.wechat_pay, self.paypay,
+            self.m_pesa, self.gcash, self.paymaya
         }
         return self in instant_methods
     
@@ -200,7 +205,7 @@ class PaymentMethod(str, enum.Enum):
     def is_bnpl(self) -> bool:
         """Verifica se é Buy Now Pay Later"""
         bnpl_methods = {
-            self.KLARNA, self.AFTERPAY, self.ZIP, self.TABBY
+            self.klarna, self.afterpay, self.zip, self.tabby
         }
         return self in bnpl_methods
     
@@ -208,15 +213,26 @@ class PaymentMethod(str, enum.Enum):
     def region(self) -> str:
         """Retorna a região primária do método"""
         region_map = {
-            self.PIX: "BR", self.BOLETO: "BR",
-            self.MBWAY: "PT", self.MULTIBANCO_REFERENCE: "PT",
-            self.OXXO: "MX", self.SPEI: "MX",
-            self.ALIPAY: "CN", self.WECHAT_PAY: "CN",
-            self.PAYPAY: "JP", self.KONBINI: "JP",
-            self.M_PESA: "KE", self.GCASH: "PH",
-            self.AFTERPAY: "AU", self.ZIP: "AU",
+            self.pix: "BR", 
+            self.boleto: "BR",
+            self.mbway: "PT", 
+            self.multibanco_reference: "PT",
+            self.oxxo: "MX", 
+            self.spei: "MX",
+            self.alipay: "CN", 
+            self.wechat_pay: "CN",
+            self.paypay: "JP", 
+            self.konbini: "JP",
+            self.m_pesa: "KE", 
+            self.gcash: "PH",
+            self.afterpay: "AU", 
+            self.zip: "AU",
         }
         return region_map.get(self, "GLOBAL")
+
+
+
+
 
 
 class CardType(str, enum.Enum):
@@ -436,8 +452,12 @@ class Order(Base):
         """Marca pagamento como recusado"""
         self.payment_status = PaymentStatus.DECLINED
         self.payment_updated_at = datetime.now(timezone.utc)
-        if reason and self.metadata:
-            self.metadata["decline_reason"] = reason
+        # if reason and self.metadata:
+        #     self.metadata["decline_reason"] = reason
+        if reason:
+            self.order_metadata = self.order_metadata or {}
+            self.order_metadata["decline_reason"] = reason
+            
         self.touch()
     
     def mark_payment_expired(self) -> None:

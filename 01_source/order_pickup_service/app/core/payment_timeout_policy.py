@@ -1,6 +1,8 @@
 # 01_source/order_pickup_service/app/core/payment_timeout_policy.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
 # Veja no fim do arquivo - 7. Políticas Específicas
+# 06/04/2026 - Deixa de ser usado no KIOSK / Em ONLINE deve causar erro
+#
 
 from __future__ import annotations
 

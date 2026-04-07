@@ -793,17 +793,17 @@ services:
   # PGADMIN - Interface Web gráfica (provisório na fase desenvolvimento)
   # Como usar?   http://localhost:5050 e configure a conexão com postgres_central (hostname do container)
   # =========================
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: pgadmin
-    restart: unless-stopped
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
-    ports:
-      - "5050:80"
-    depends_on:
-    - postgres_central
-    networks:
-      - locker-network
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: pgadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@admin.com
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #   - postgres_central
+  #   networks:
+  #     - locker-network

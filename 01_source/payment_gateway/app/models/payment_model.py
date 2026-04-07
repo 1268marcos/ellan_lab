@@ -1,5 +1,6 @@
 # 01_source/payment_gateway/app/models/payment_model.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
+# 07/04/2026 - Aceitar simultaneamente: payload legado / payload novo do frontend
 
 from typing import Any, Dict, Literal, Optional, Union
 from datetime import datetime

@@ -1,14 +1,17 @@
 # 01_source/order_pickup_service/app/services/order_creation_service.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
+# 05/04/2026 - Resolvendo Hardcoded
+# 05/04/2026 - Corrigido para usar capability profile do banco como source of truth
+# 06/04/2026 - Ajuste order_creation_service
 
 from __future__ import annotations
 
 import logging
 import re
 import uuid
-from typing import Optional, Dict, Any, List
+from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from requests import HTTPError
@@ -16,15 +19,18 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.lifecycle_client import LifecycleClientError
-from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
+# from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus, PaymentMethod
 from app.services import backend_client
 from app.services.lifecycle_integration import register_prepayment_timeout_deadline
 from app.services.locker_service import validate_locker_for_order
+from app.services.payment_capability_service import get_payment_capabilities
 
-# ==================== Importações necessárias ====================
-from datetime import timedelta
+from app.services.payment_resolution_service import resolve_payment_ui_code
+
+from app.services.capability_constraint_service import get_capability_constraint
+
 
 # ==================== Constantes e Patterns ====================
 
@@ -83,6 +89,13 @@ REGION_LIMITS = {
     "default": {"max_amount": 100000, "min_slot": 1, "max_slot": 999},
 }
 
+ONLINE_CAPABILITY_CONTEXT_CANDIDATES = (
+    "ORDER_CREATION",
+    "ONLINE_ORDER_CREATION",
+    "ONLINE_CHECKOUT",
+    "CHECKOUT",
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -102,36 +115,48 @@ def normalize_upper_list(values: list[str] | None) -> list[str]:
 
 def get_region_base(region: str) -> str:
     """Extrai base da região (primeiros 2 caracteres)"""
-    region_upper = region.upper()
+    region_upper = str(region or "").upper()
     if region_upper.startswith("US_"):
         return "US"
-    elif region_upper.startswith("CA_"):
+    if region_upper.startswith("CA_"):
         return "CA"
-    elif len(region_upper) >= 2:
+    if len(region_upper) >= 2:
         return region_upper[:2]
     return region_upper
 
 
 def resolve_online_prepayment_ttl_sec(
-    *, 
-    region: str, 
+    *,
+    db: Session,
+    region: str,
     payment_method: str,
-    amount_cents: Optional[int] = None
+    amount_cents: Optional[int] = None,
 ) -> int:
     """Resolve TTL com base na região, método e valor"""
-    ttl_sec = resolve_prepayment_timeout_seconds(
-        region_code=region,
-        order_channel=OrderChannel.ONLINE.value,
-        payment_method=payment_method,
-    )
+    # ttl_sec = resolve_prepayment_timeout_seconds(
+    #     region_code=region,
+    #     order_channel=OrderChannel.ONLINE.value,
+    #     payment_method=payment_method,
+    # )
+    # talvez seja necessário corrigir para:
+    # ttl_sec = capabilities["constraints"].get("prepayment_timeout_sec")
+    # 01_source/order_pickup_service/app/routers/kiosk.py
 
+    ttl_sec = get_capability_constraint(
+        db=db,
+        region=region,
+        channel=OrderChannel.ONLINE.value,
+        context="CHECKOUT",  # ou seu contexto correto
+        code="prepayment_timeout_sec",
+    )  
+
+    
     # Ajuste baseado no valor para métodos específicos
     if amount_cents and payment_method in {"boleto", "bank_transfer"}:
-        # Valores altos têm TTL maior para boleto/transferência
-        if amount_cents >= 50000:  # R$ 500 ou equivalente
-            ttl_sec = max(ttl_sec, 48 * 60 * 60)  # 48 horas
-        elif amount_cents >= 10000:  # R$ 100 ou equivalente
-            ttl_sec = max(ttl_sec, 24 * 60 * 60)  # 24 horas
+        if amount_cents >= 50000:
+            ttl_sec = max(ttl_sec, 48 * 60 * 60)
+        elif amount_cents >= 10000:
+            ttl_sec = max(ttl_sec, 24 * 60 * 60)
 
     if int(ttl_sec) <= 0:
         raise HTTPException(
@@ -149,37 +174,6 @@ def resolve_online_prepayment_ttl_sec(
     return int(ttl_sec)
 
 
-def resolve_payment_method_enum(method_value: str) -> PaymentMethod:
-    """Resolve enum do método de pagamento com suporte a novos métodos"""
-    try:
-        return PaymentMethod(method_value)
-    except ValueError as exc:
-        # Mapeamento de aliases para compatibilidade
-        aliases = {
-            "apple_pay": PaymentMethod.APPLE_PAY,
-            "google_pay": PaymentMethod.GOOGLE_PAY,
-            "mercado_pago_wallet": PaymentMethod.MERCADO_PAGO_WALLET,
-            "mbway": PaymentMethod.MBWAY,
-            "multibanco_reference": PaymentMethod.MULTIBANCO_REFERENCE,
-            "alipay": PaymentMethod.ALIPAY,
-            "wechat_pay": PaymentMethod.WECHAT_PAY,
-            "m_pesa": PaymentMethod.M_PESA,
-            "gcash": PaymentMethod.GCASH,
-            "paymaya": PaymentMethod.PAYMAYA,
-        }
-        
-        if method_value in aliases:
-            return aliases[method_value]
-        
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "UNSUPPORTED_PAYMENT_METHOD",
-                "message": f"Método de pagamento não suportado no pedido ONLINE: {method_value}",
-            },
-        ) from exc
-
-
 def validate_locker_id_format(locker_id: str, region: Optional[str] = None) -> str:
     """Valida formato do locker_id para diferentes regiões"""
     raw = str(locker_id or "").strip().upper()
@@ -193,19 +187,15 @@ def validate_locker_id_format(locker_id: str, region: Optional[str] = None) -> s
             },
         )
 
-    # Tenta validar com padrão de desenvolvimento primeiro
     if LOCKER_ID_PATTERNS["DEV"].match(raw):
         return raw
 
-    # Se região fornecida, usa padrão específico
     if region:
         region_base = get_region_base(region)
-        if region_base in LOCKER_ID_PATTERNS:
-            if LOCKER_ID_PATTERNS[region_base].match(raw):
-                return raw
+        if region_base in LOCKER_ID_PATTERNS and LOCKER_ID_PATTERNS[region_base].match(raw):
+            return raw
 
-    # Tenta todos os padrões
-    for pattern_name, pattern in LOCKER_ID_PATTERNS.items():
+    for _, pattern in LOCKER_ID_PATTERNS.items():
         if pattern.match(raw):
             return raw
 
@@ -261,7 +251,7 @@ def validate_amount_for_region(amount_cents: int, region: str) -> None:
     """Valida se o valor está dentro dos limites da região"""
     region_base = get_region_base(region)
     limits = REGION_LIMITS.get(region_base, REGION_LIMITS["default"])
-    
+
     if amount_cents > limits["max_amount"]:
         raise HTTPException(
             status_code=400,
@@ -278,7 +268,7 @@ def validate_slot_for_region(slot: int, region: str) -> None:
     """Valida se o slot está dentro dos limites da região"""
     region_base = get_region_base(region)
     limits = REGION_LIMITS.get(region_base, REGION_LIMITS["default"])
-    
+
     if slot < limits["min_slot"] or slot > limits["max_slot"]:
         raise HTTPException(
             status_code=400,
@@ -309,8 +299,9 @@ def compensate_failed_online_creation(
     except Exception as exc:
         release_error = exc
         logger.exception(
-            f"online_order_compensation_release_failed - order_id={order.id}, "
-            f"allocation_id={allocation.id}"
+            "online_order_compensation_release_failed - order_id=%s, allocation_id=%s",
+            order.id,
+            allocation.id,
         )
 
     try:
@@ -320,13 +311,253 @@ def compensate_failed_online_creation(
     except Exception:
         db.rollback()
         logger.exception(
-            f"online_order_compensation_db_failed - order_id={order.id}, "
-            f"allocation_id={allocation.id}"
+            "online_order_compensation_db_failed - order_id=%s, allocation_id=%s",
+            order.id,
+            allocation.id,
         )
         raise
 
     if release_error is not None:
         raise release_error
+
+
+def _get_online_capabilities(
+    *,
+    db: Session,
+    region: str,
+) -> dict:
+    for context_code in ONLINE_CAPABILITY_CONTEXT_CANDIDATES:
+        capabilities = get_payment_capabilities(
+            db=db,
+            region=region,
+            channel=OrderChannel.ONLINE.value,
+            context=context_code,
+        )
+        if capabilities.get("found"):
+            return capabilities
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "PAYMENT_CAPABILITY_PROFILE_NOT_FOUND",
+            "message": (
+                "Nenhum capability profile ativo encontrado para ONLINE na região informada."
+            ),
+            "region": region,
+            "channel": OrderChannel.ONLINE.value,
+            "contexts_tried": list(ONLINE_CAPABILITY_CONTEXT_CANDIDATES),
+        },
+    )
+
+
+def _normalize_method_candidates(raw_value: str | None) -> set[str]:
+    raw = str(raw_value or "").strip()
+    lowered = raw.lower()
+    uppered = raw.upper()
+    compact = lowered.replace("-", "_").replace(" ", "_")
+    return {raw, lowered, uppered, compact}
+
+
+def _normalize_interface_candidates(raw_value: str | None) -> set[str]:
+    raw = str(raw_value or "").strip()
+    lowered = raw.lower()
+    uppered = raw.upper()
+    compact = lowered.replace("-", "_").replace(" ", "_")
+    return {raw, lowered, uppered, compact}
+
+
+def _extract_rule_aliases(method_payload: dict) -> set[str]:
+    rules = method_payload.get("rules") or {}
+    aliases: set[str] = set()
+
+    candidate_keys = (
+        "aliases",
+        "alias",
+        "accepted_inputs",
+        "accepted_values",
+        "external_codes",
+        "legacy_codes",
+    )
+
+    for key in candidate_keys:
+        value = rules.get(key)
+        if isinstance(value, list):
+            for item in value:
+                aliases.update(_normalize_method_candidates(str(item)))
+        elif isinstance(value, str):
+            aliases.update(_normalize_method_candidates(value))
+
+    return aliases
+
+
+def _resolve_method_from_capabilities(
+    *,
+    capabilities: dict,
+    payment_method_value: str,
+) -> dict:
+    requested_candidates = _normalize_method_candidates(payment_method_value)
+
+    for method_payload in capabilities.get("methods", []):
+        method_code = str(method_payload.get("method") or "").strip()
+        method_label = str(method_payload.get("label") or "").strip()
+
+        known_candidates = set()
+        known_candidates.update(_normalize_method_candidates(method_code))
+        if method_label:
+            known_candidates.update(_normalize_method_candidates(method_label))
+        known_candidates.update(_extract_rule_aliases(method_payload))
+
+        if requested_candidates & known_candidates:
+            return method_payload
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "UNSUPPORTED_PAYMENT_METHOD",
+            "message": f"Método de pagamento não suportado no pedido ONLINE: {payment_method_value}",
+            "requested": payment_method_value,
+            "allowed": [m.get("method") for m in capabilities.get("methods", [])],
+        },
+    )
+
+
+def _resolve_interface_from_method(
+    *,
+    method_payload: dict,
+    payment_interface: str | None,
+) -> str | None:
+    interfaces = method_payload.get("interfaces") or []
+    if not interfaces:
+        return None
+
+    if payment_interface:
+        requested_candidates = _normalize_interface_candidates(payment_interface)
+
+        for interface_payload in interfaces:
+            interface_code = str(interface_payload.get("code") or "").strip()
+            interface_label = str(interface_payload.get("label") or "").strip()
+
+            known_candidates = set()
+            known_candidates.update(_normalize_interface_candidates(interface_code))
+            if interface_label:
+                known_candidates.update(_normalize_interface_candidates(interface_label))
+
+            if requested_candidates & known_candidates:
+                return interface_code
+
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "UNSUPPORTED_PAYMENT_INTERFACE",
+                "message": f"Interface de pagamento não suportada: {payment_interface}",
+                "payment_method": method_payload.get("method"),
+                "allowed_interfaces": [item.get("code") for item in interfaces],
+            },
+        )
+
+    for interface_payload in interfaces:
+        if bool(interface_payload.get("default")):
+            return str(interface_payload.get("code") or "").strip() or None
+
+    first_code = str(interfaces[0].get("code") or "").strip()
+    return first_code or None
+
+
+def _validate_method_requirements(
+    *,
+    method_payload: dict,
+    amount_cents_input: int | None,
+    guest_phone: str | None,
+    wallet_provider: str | None,
+) -> None:
+    requirements = method_payload.get("requirements") or []
+
+    for requirement in requirements:
+        if not bool(requirement.get("required")):
+            continue
+
+        code = str(requirement.get("code") or "").strip().lower()
+
+        if code in {"customer_phone", "phone", "guest_phone"} and not str(guest_phone or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "MISSING_REQUIRED_FIELD",
+                    "message": "customer_phone é obrigatório para o método de pagamento selecionado.",
+                    "requirement": code,
+                    "payment_method": method_payload.get("method"),
+                },
+            )
+
+        if code in {"wallet_provider", "wallet"} and not str(wallet_provider or "").strip():
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "MISSING_REQUIRED_FIELD",
+                    "message": "wallet_provider é obrigatório para o método de pagamento selecionado.",
+                    "requirement": code,
+                    "payment_method": method_payload.get("method"),
+                },
+            )
+
+        if code in {"amount_cents", "amount"} and amount_cents_input is None:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "MISSING_REQUIRED_FIELD",
+                    "message": "amount_cents é obrigatório para o método de pagamento selecionado.",
+                    "requirement": code,
+                    "payment_method": method_payload.get("method"),
+                },
+            )
+
+    rules = method_payload.get("rules") or {}
+
+    if bool(rules.get("requires_amount_input")) and amount_cents_input is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "MISSING_REQUIRED_FIELD",
+                "message": "amount_cents é obrigatório para o método de pagamento selecionado.",
+                "payment_method": method_payload.get("method"),
+            },
+        )
+
+    if bool(rules.get("requires_customer_phone")) and not str(guest_phone or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "MISSING_REQUIRED_FIELD",
+                "message": "customer_phone é obrigatório para o método de pagamento selecionado.",
+                "payment_method": method_payload.get("method"),
+            },
+        )
+
+    if bool(rules.get("requires_wallet_provider")) and not str(wallet_provider or "").strip():
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "MISSING_REQUIRED_FIELD",
+                "message": "wallet_provider é obrigatório para o método de pagamento selecionado.",
+                "payment_method": method_payload.get("method"),
+            },
+        )
+
+
+def _resolve_payment_method_enum_from_db(method_code: str) -> PaymentMethod:
+    try:
+        return PaymentMethod(method_code)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "UNSUPPORTED_PAYMENT_METHOD_ENUM",
+                "message": (
+                    "O método retornado pelo capability profile não existe no enum PaymentMethod."
+                ),
+                "payment_method": method_code,
+            },
+        ) from exc
 
 
 # ==================== Função Principal ====================
@@ -342,6 +573,7 @@ def create_order_core(
     amount_cents_input: int | None,
     guest_phone: str | None,
     user_id: str | None,
+    card_type_value: Optional[str] = None,
     payment_interface: Optional[str] = None,
     wallet_provider: Optional[str] = None,
     customer_email: Optional[str] = None,
@@ -349,41 +581,100 @@ def create_order_core(
     ip_address: Optional[str] = None,
 ) -> CreateOrderCoreResult:
     """
-    Criação de pedido ONLINE com suporte a mercados globais.
-    
+    Criação de pedido ONLINE com source of truth no capability profile do banco.
+
     Fluxo:
-    1. Validação de formato do locker_id
-    2. Validação do locker no runtime
-    3. Validação de slot por região
-    4. Validação de valor por região
-    5. Cálculo de TTL baseado em região/método/valor
-    6. Consulta de pricing (ou usa valor fornecido)
-    7. Alocação no runtime
-    8. Persistência no banco de dados
-    9. Registro no lifecycle
+    1. Validar locker_id
+    2. Resolver capability profile ONLINE na região
+    3. Resolver método/interface/requisitos pelo banco
+    4. Validar locker no runtime usando método/interface resolvidos
+    5. Validar slot
+    6. Resolver pricing
+    7. Calcular TTL
+    8. Alocar slot no runtime
+    9. Persistir order/allocation
+    10. Registrar lifecycle
     """
-    
     # =========================
     # 1. VALIDAR LOCKER ID
     # =========================
     totem_id = validate_locker_id_format(totem_id, region)
 
     # =========================
-    # 2. VALIDAR LOCKER (SOURCE OF TRUTH)
+    # 2. CAPABILITIES (SOURCE OF TRUTH)
     # =========================
-    locker = validate_locker_for_order(
+    # capabilities = _get_online_capabilities(
+    #     db=db,
+    #     region=region,
+    # )
+
+    # method_payload = _resolve_method_from_capabilities(
+    #     capabilities=capabilities,
+    #     payment_method_value=payment_method_value,
+    # )
+
+    # resolved_method_code = str(method_payload.get("method") or "").strip()
+    # if not resolved_method_code:
+    #     raise HTTPException(
+    #         status_code=400,
+    #         detail={
+    #             "type": "INVALID_CAPABILITY_METHOD",
+    #             "message": "Capability profile retornou método sem code.",
+    #             "region": region,
+    #             "channel": OrderChannel.ONLINE.value,
+    #         },
+    #     )
+
+    # resolved_payment_interface = _resolve_interface_from_method(
+    #     method_payload=method_payload,
+    #     payment_interface=payment_interface,
+    # )
+
+    # resolved_wallet_provider = wallet_provider
+    # if not resolved_wallet_provider:
+    #     wallet_provider_payload = method_payload.get("wallet_provider")
+    #     if isinstance(wallet_provider_payload, dict):
+    #         resolved_wallet_provider = wallet_provider_payload.get("code")
+
+    # _validate_method_requirements(
+    #     method_payload=method_payload,
+    #     amount_cents_input=amount_cents_input,
+    #     guest_phone=guest_phone,
+    #     wallet_provider=resolved_wallet_provider,
+    # )
+
+    # payment_method = _resolve_payment_method_enum_from_db(resolved_method_code)
+
+
+    # novo (banco)
+    resolved_payment = resolve_payment_ui_code(
+        db=db,
+        raw_payment_method=payment_method_value,
+        raw_payment_interface=payment_interface,
+        raw_wallet_provider=wallet_provider,
+    )
+
+    payment_method_value = resolved_payment["payment_method"]
+    payment_interface = resolved_payment["payment_interface"]
+    wallet_provider = resolved_payment["wallet_provider"]
+
+    # payment_method = payment_method_value # marcos
+    payment_method = _resolve_payment_method_enum_from_db(payment_method_value) 
+
+
+
+
+    # =========================
+    # 3. VALIDAR LOCKER (SOURCE OF TRUTH)
+    # =========================
+    validate_locker_for_order(
         db=db,
         locker_id=totem_id,
         region=region,
-        channel="ONLINE",
-        payment_method=payment_method_value,
-        payment_interface=payment_interface,
+        channel=OrderChannel.ONLINE.value,
+        payment_method=resolved_payment["payment_method"],  # ❌ STRING - marcos isso pode ser um erro aqui
+        payment_interface=resolved_payment["payment_interface"],
     )
-
-    # =========================
-    # 3. ENUMS
-    # =========================
-    payment_method = resolve_payment_method_enum(payment_method_value)
 
     # =========================
     # 4. SLOT OBRIGATÓRIO
@@ -418,8 +709,7 @@ def create_order_core(
                 "desired_slot": desired_slot,
             },
         )
-    
-    # Valida slot por região
+
     validate_slot_for_region(desired_slot, region)
 
     # =========================
@@ -463,11 +753,10 @@ def create_order_core(
 
         amount_cents = _extract_pricing_amount_cents(pricing)
 
-    # Valida valor por região
     validate_amount_for_region(amount_cents, region)
 
     # =========================
-    # 6. TTL (USADO NO BACKEND CENTRAL / LIFECYCLE)
+    # 6. TTL
     # =========================
     alloc_ttl_sec = resolve_online_prepayment_ttl_sec(
         region=region,
@@ -476,7 +765,7 @@ def create_order_core(
     )
 
     # =========================
-    # 7. ALLOCATION NO RUNTIME (EXECUÇÃO PURA)
+    # 7. ALLOCATION NO RUNTIME
     # =========================
     request_id = str(uuid.uuid4())
 
@@ -539,7 +828,6 @@ def create_order_core(
             },
         ) from exc
 
-    # defesa extra: runtime executor não pode trocar o slot decidido
     if slot != desired_slot:
         try:
             backend_client.locker_release(
@@ -549,7 +837,8 @@ def create_order_core(
             )
         except Exception:
             logger.exception(
-                f"allocation_slot_mismatch_release_failed - allocation_id={allocation_id}"
+                "allocation_slot_mismatch_release_failed - allocation_id=%s",
+                allocation_id,
             )
 
         raise HTTPException(
@@ -577,14 +866,17 @@ def create_order_core(
         sku_id=sku_id,
         amount_cents=int(amount_cents),
         status=OrderStatus.PAYMENT_PENDING,
-        payment_method=payment_method,
+        payment_method=payment_method, # enum ✅
         guest_phone=guest_phone,
         customer_email=customer_email,
         device_id=device_id,
         ip_address=ip_address,
-        payment_interface=payment_interface,
-        wallet_provider=wallet_provider,
+        # payment_method=resolved_payment["payment_method"], # ❌ STRING
+        payment_interface=resolved_payment["payment_interface"],
     )
+
+    if card_type_value is not None and hasattr(order, "card_type"):
+        setattr(order, "card_type", card_type_value)
 
     payment_timeout_at = datetime.utcnow() + timedelta(seconds=alloc_ttl_sec)
 
@@ -617,7 +909,8 @@ def create_order_core(
             )
         except Exception:
             logger.exception(
-                f"online_order_db_failure_release_failed - allocation_id={allocation_id}"
+                "online_order_db_failure_release_failed - allocation_id=%s",
+                allocation_id,
             )
 
         raise HTTPException(
@@ -648,7 +941,9 @@ def create_order_core(
         )
     except LifecycleClientError as exc:
         logger.exception(
-            f"lifecycle_register_failed - order_id={order.id}, allocation_id={allocation.id}"
+            "lifecycle_register_failed - order_id=%s, allocation_id=%s",
+            order.id,
+            allocation.id,
         )
         compensate_failed_online_creation(
             db=db,
@@ -668,10 +963,16 @@ def create_order_core(
         ) from exc
 
     logger.info(
-        f"Order created successfully - order_id={order.id}, "
-        f"allocation_id={allocation.id}, region={region}, "
-        f"payment_method={payment_method.value}, amount={amount_cents}, "
-        f"ttl_sec={alloc_ttl_sec}"
+        "Order created successfully - order_id=%s, allocation_id=%s, region=%s, "
+        "payment_method=%s, amount=%s, ttl_sec=%s, payment_interface=%s, wallet_provider=%s",
+        order.id,
+        allocation.id,
+        region,
+        payment_method.value,
+        amount_cents,
+        alloc_ttl_sec,
+        resolved_payment["payment_interface"],
+        resolved_payment["wallet_provider"],
     )
 
     return CreateOrderCoreResult(
@@ -730,7 +1031,7 @@ def create_order_with_mbway(
                 "message": "MBWAY só está disponível em Portugal",
             },
         )
-    
+
     return create_order_core(
         db=db,
         region=region,
@@ -765,7 +1066,7 @@ def create_order_with_alipay(
                 "message": "Alipay só está disponível na China",
             },
         )
-    
+
     return create_order_core(
         db=db,
         region=region,
@@ -802,7 +1103,7 @@ def create_order_with_mpesa(
                 "message": f"M-PESA só está disponível em: {', '.join(allowed_regions)}",
             },
         )
-    
+
     return create_order_core(
         db=db,
         region=region,

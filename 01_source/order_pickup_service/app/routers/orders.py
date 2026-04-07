@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/routers/orders.py
 # Router: /orders (ONLINE)
 # Aqui faz pedido ONLINE
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
@@ -21,6 +22,15 @@ def create_order(
     db: Session = Depends(get_db),
     user=Depends(get_current_user_or_dev),
 ):
+    """
+    CREATE ORDER (ONLINE)
+
+    Corrigido para:
+    - Usar capability profile (sem if / sem hardcoded)
+    - Passar TODOS os campos necessários para o service
+    - Não perder payment_interface / wallet_provider
+    """
+
     resolved_user_id = getattr(user, "id", None)
     resolved_user_id = str(resolved_user_id) if resolved_user_id is not None else None
 
@@ -30,11 +40,25 @@ def create_order(
         sku_id=payload.sku_id,
         totem_id=payload.totem_id,
         desired_slot=payload.desired_slot,
+
+        # 🔴 IMPORTANTE: valor direto do payload (será resolvido via DB)
         payment_method_value=payload.payment_method.value,
+
+        # 🔴 NOVO: card_type suportado corretamente
         card_type_value=payload.card_type.value if payload.card_type else None,
+
+        # 🔴 IMPORTANTE: não confiar no frontend (service resolve se None)
         amount_cents_input=payload.amount_cents,
+
         guest_phone=payload.customer_phone,
         user_id=resolved_user_id,
+
+        # 🔴 NOVOS CAMPOS (antes ignorados)
+        payment_interface=payload.payment_interface,
+        wallet_provider=payload.wallet_provider,
+        customer_email=payload.customer_email,
+        device_id=payload.device_id,
+        ip_address=payload.ip_address,
     )
 
     order = result.order
@@ -65,6 +89,12 @@ def list_orders(
     db: Session = Depends(get_db),
     user=Depends(get_current_user_or_dev),
 ):
+    """
+    LIST ORDERS
+
+    Mantido (já estava correto)
+    """
+
     page = max(1, page)
     page_size = max(1, min(page_size, 100))
     offset = (page - 1) * page_size
@@ -149,3 +179,4 @@ def list_orders(
         has_next=has_next,
         has_prev=has_prev,
     )
+

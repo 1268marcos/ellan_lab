@@ -81,206 +81,12 @@ function normalizeLockerItem(locker) {
     slots: Number(slotCountFromRuntime || 0),
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
     payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((item) => String(item).toUpperCase())
+      ? locker.payment_methods.map((item) => String(item).trim())
       : [],
     address,
     active: Boolean(locker?.active),
   };
 }
-
-// function getDefaultPaymentMethod(locker, region) {
-//   const methods = Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
-//   if (methods.length > 0) return methods[0];
-//   return region === "PT" ? "MBWAY" : "PIX";
-// }
-
-// function paymentMethodLabel(method) {
-//   const labels = {
-//     PIX: "PIX",
-//     CARTAO_CREDITO: "Cartão de Crédito",
-//     CARTAO_DEBITO: "Cartão de Débito",
-//     CARTAO_PRESENTE: "Cartão Presente",
-//     CARTAO: "Cartão",
-//     MBWAY: "MB WAY",
-//     MULTIBANCO_REFERENCE: "Referência Multibanco",
-//     NFC: "NFC",
-//     APPLE_PAY: "Apple Pay",
-//     GOOGLE_PAY: "Google Pay",
-//     MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
-//   };
-//   return labels[method] || method || "-";
-// }
-
-function gatewayMethodForUiMethod(method) {
-  if (method === "CARTAO_CREDITO") return "CARTAO";
-  if (method === "CARTAO_DEBITO") return "CARTAO";
-  if (method === "CARTAO_PRESENTE") return "CARTAO";
-  return method;
-}
-
-function cardTypeForUiMethod(method) {
-  if (method === "CARTAO_CREDITO") return "creditCard";
-  if (method === "CARTAO_DEBITO") return "debitCard";
-  if (method === "CARTAO_PRESENTE") return "giftCard";
-  return null;
-}
-
-function mapPaymentMethodToBackend(uiMethod) {
-  const mapping = {
-    // Cartões → usam camelCase
-    "CARTAO_CREDITO": "creditCard",
-    "CARTAO_DEBITO": "debitCard",
-    "CARTAO_PRESENTE": "giftCard",
-    "CARTAO": "creditCard", // fallback, se necessário
-
-    // Carteiras digitais → snake_case
-    "APPLE_PAY": "apple_pay",
-    "GOOGLE_PAY": "google_pay",
-    "MERCADO_PAGO_WALLET": "mercado_pago_wallet",
-
-    // PIX e outros → minúsculas ou snake_case conforme backend
-    "PIX": "pix",
-    "MBWAY": "mbway",
-    "MULTIBANCO_REFERENCE": "multibanco_reference",
-    "NFC": "nfc",
-  };
-  
-  return mapping[uiMethod] || uiMethod.toLowerCase();
-}
-
-
-/**
- * Mapeia o método de pagamento + região para a interface de pagamento correta
- * Baseado nas regras do schema KioskOrderCreateIn
- */
-function mapPaymentInterface(paymentMethod, region) {
-  // Regras por método de pagamento
-  const rules = {
-    // Cartões físicos
-    "CARTAO_CREDITO": "chip",      // padrão para cartão
-    "CARTAO_DEBITO": "chip",
-    "CARTAO_PRESENTE": "manual",
-    "CARTAO": "chip",              // fallback
-    
-    // PIX e Boleto (Brasil) → QR Code
-    "PIX": "qr_code",
-    "BOLETO": "qr_code",
-    
-    // Portugal
-    "MBWAY": "qr_code",            // ou "web_token"
-    "MULTIBANCO_REFERENCE": "qr_code",
-    
-    // Carteiras digitais globais
-    "APPLE_PAY": "nfc",
-    "GOOGLE_PAY": "nfc",
-    "SAMSUNG_PAY": "nfc",
-    "MERCADO_PAGO_WALLET": "qr_code",
-    "PAYPAL": "web_token",
-    
-    // China
-    "ALIPAY": "qr_code",
-    "WECHAT_PAY": "qr_code",
-    "UNIONPAY": "qr_code",
-    
-    // Japão
-    "PAYPAY": "qr_code",
-    "LINE_PAY": "qr_code",
-    "RAKUTEN_PAY": "qr_code",
-    "KONBINI": "barcode",
-    
-    // Tailândia
-    "PROMPTPAY": "qr_code",
-    
-    // Indonésia
-    "GO_PAY": "qr_code",
-    "OVO": "qr_code",
-    "DANA": "qr_code",
-    
-    // Singapura
-    "GRABPAY": "qr_code",
-    "DBS_PAYLAH": "qr_code",
-    
-    // Filipinas
-    "GCASH": "qr_code",
-    "PAYMAYA": "qr_code",
-    
-    // África (M-PESA)
-    "M_PESA": "ussd",
-    "AIRTEL_MONEY": "ussd",
-    "MTN_MONEY": "ussd",
-    
-    // Rússia
-    "MIR": "chip",
-    "YOOMONEY": "web_token",
-    
-    // Austrália
-    "AFTERPAY": "web_token",
-    "ZIP": "web_token",
-    "BPAY": "qr_code",
-    
-    // Outros
-    "NFC": "nfc",
-    "CRYPTO": "qr_code",
-  };
-
-  // Retorna a interface mapeada ou fallback seguro
-  return rules[paymentMethod] || "manual";
-}
-
-
-
-/**
- * Verifica se o método requer wallet_provider
- */
-function KioskPaymentMethod_requiresWalletProvider(method) {
-  const wallets = [
-    "APPLE_PAY", "GOOGLE_PAY", "SAMSUNG_PAY", "MERCADO_PAGO_WALLET",
-    "PAYPAL", "VENMO", "CASHAPP", "M_PESA", "AIRTEL_MONEY", "MTN_MONEY",
-    "ALIPAY", "WECHAT_PAY", "PAYPAY", "LINE_PAY", "RAKUTEN_PAY",
-    "GO_PAY", "OVO", "DANA", "GRABPAY", "GCASH", "PAYMAYA", "TABBY", "YOOMONEY"
-  ];
-  return wallets.includes(method);
-}
-
-/**
- * Mapeia método UI para wallet_provider do backend
- */
-function mapWalletProvider(method) {
-  const mapping = {
-    "APPLE_PAY": "applePay",
-    "GOOGLE_PAY": "googlePay",
-    "SAMSUNG_PAY": "samsungPay",
-    "MERCADO_PAGO_WALLET": "mercadoPago",
-    "PAYPAL": "paypal",
-    "VENMO": "venmo",
-    "CASHAPP": "cashapp",
-    "M_PESA": "mPesa",
-    "AIRTEL_MONEY": "airtelMoney",
-    "MTN_MONEY": "mtnMoney",
-    "ALIPAY": "alipay",
-    "WECHAT_PAY": "wechatPay",
-    "PAYPAY": "paypay",
-    "LINE_PAY": "linePay",
-    "RAKUTEN_PAY": "rakutenPay",
-    "GO_PAY": "goPay",
-    "OVO": "ovo",
-    "DANA": "dana",
-    "GRABPAY": "grabpay",
-    "GCASH": "gcash",
-    "PAYMAYA": "paymaya",
-    "TABBY": "tabby",
-    "YOOMONEY": "yoomoney",
-  };
-  return mapping[method] || null;
-}
-
-
-
-
-
-
-
-
 
 
 function formatAddress(locker) {
@@ -730,50 +536,27 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       return;
     }
 
-    if (!isCatalogItemSelectable(selectedCatalogItem)) {
-      setErr("A gaveta selecionada não está disponível operacionalmente.");
-      return;
-    }
-
     if (!paymentMethod) {
       setErr("Selecione um método de pagamento.");
       return;
     }
 
-    if (paymentMethod === "CARTAO" && !paymentExtras.cardType) {
-      setErr("Escolha se o cartão é crédito ou débito.");
-      return;
-    }
-
-    // if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
-    //   setErr("Informe o telefone para o pagamento MB WAY.");
-    //   return;
-    // }
-    if (requiresCustomerPhone(paymentMethod) && !paymentExtras.customerPhone.trim()) {
-      setErr("Informe o telefone exigido para esse método de pagamento.");
-      return;
-    }
-
     setErr(null);
-    setCreateResp(null);
-    setPaymentResp(null);
-    setGatewayPaymentResp(null);
-    setPendingPaymentContext(null);
-    setIdentifyResp(null);
-
     setLoadingCreate(true);
-    try {
-      const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
-      const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-      const payload = buildKioskOrderPayload({
+    try {
+      const payload = {
         region,
-        totemId,
-        skuId: selectedCatalogItem.sku_id,
-        slot: selectedCatalogItem.slot,
-        uiMethod: paymentMethod,
-        customerPhone: paymentExtras.customerPhone,
-      });
+        totem_id: totemId,
+        sku_id: selectedCatalogItem.sku_id,
+        desired_slot: selectedCatalogItem.slot,
+
+        // 🔴 SEM MAP
+        payment_method: paymentMethod,
+
+        // 🔴 OPCIONAL (backend valida via capability)
+        customer_phone: paymentExtras.customerPhone || null,
+      };
 
       const res = await fetch(createUrl, {
         method: "POST",
@@ -785,6 +568,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       });
 
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new Error(parseErrorPayload(data));
       }
@@ -804,66 +588,24 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       return;
     }
 
-    if (!selectedCatalogItem?.slot) {
-      setErr("Selecione uma gaveta/produto antes de iniciar o pagamento.");
-      return;
-    }
-
-    if (!selectedLocker) {
-      setErr("Selecione um locker antes de iniciar o pagamento.");
-      return;
-    }
-
-    const mappedCardType = cardTypeForUiMethod(paymentMethod);
-
-    // if (paymentMethod === "MBWAY" && !paymentExtras.customerPhone.trim()) {
-    //   setErr("Informe o telefone para o pagamento MB WAY.");
-    //   return;
-    // }
-    if (requiresCustomerPhone(paymentMethod) && !paymentExtras.customerPhone.trim()) {
-      setErr("Informe o telefone exigido para esse método de pagamento.");
-      return;
-    }
-
     setErr(null);
-    setPaymentResp(null);
-    setGatewayPaymentResp(null);
-    setPendingPaymentContext(null);
-
     setLoadingGatewayPayment(true);
+
     try {
-      const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
-      const mappedCardType = cardTypeForUiMethod(paymentMethod);
-
-      const payload = buildGatewayPaymentPayload({
+      const payload = {
         region,
-        orderId: currentOrderId,
-        lockerId: totemId,
+        order_id: currentOrderId,
+        locker_id: totemId,
         slot: selectedCatalogItem.slot,
-        amountCents: selectedCatalogItem.amount_cents,
-        uiMethod: paymentMethod,
-        customerPhone: paymentExtras.customerPhone,
-      });
 
-      if (mappedCardType) {
-        payload.card_type = mappedCardType;
-      }      
+        // 🔴 SEM MAP
+        payment_method: paymentMethod,
 
-      if (paymentMethod === "MBWAY") {
-        payload.customer_phone = paymentExtras.customerPhone.trim();
-      }
+        // 🔴 valor vem do backend (mas pode enviar)
+        amount_cents: selectedCatalogItem.amount_cents,
 
-      if (paymentMethod === "APPLE_PAY") {
-        payload.wallet_provider = "applePay";
-      }
-
-      if (paymentMethod === "GOOGLE_PAY") {
-        payload.wallet_provider = "googlePay";
-      }
-
-      if (paymentMethod === "MERCADO_PAGO_WALLET") {
-        payload.wallet_provider = "mercadoPago";
-      }
+        customer_phone: paymentExtras.customerPhone || null,
+      };
 
       const res = await fetch(gatewayPaymentUrl, {
         method: "POST",
@@ -876,6 +618,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       });
 
       const data = await res.json().catch(() => ({}));
+
       if (!res.ok) {
         throw new Error(parseErrorPayload(data));
       }

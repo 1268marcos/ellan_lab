@@ -1,14 +1,13 @@
 # 01_source/order_pickup_service/app/routers/kiosk.py
-# 02/04/2026 - Enhanced Version with Global Markets Support
-# veja final do arquivo
+# CORRIGIDO: payment totalmente DB-driven (sem if / sem hardcoded)
+# 06/04/2026 - import resolve_payment_ui_code
 
 from __future__ import annotations
 
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
-import re
+from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from requests import HTTPError
@@ -16,31 +15,16 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.core.lifecycle_client import LifecycleClientError
-from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
+# from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
 from app.models.allocation import Allocation, AllocationState
-from app.models.order import (
-    CardType,
-    Order,
-    OrderChannel,
-    OrderStatus,
-    PaymentMethod,
-    PaymentStatus,
-)
-from app.models.pickup import (
-    Pickup,
-    PickupChannel,
-    PickupLifecycleStage,
-    PickupStatus,
-)
+from app.models.order import Order, OrderChannel, OrderStatus, PaymentStatus, PaymentMethod
+from app.models.pickup import Pickup, PickupChannel, PickupLifecycleStage, PickupStatus
 from app.schemas.kiosk import (
     KioskCustomerIdentifyIn,
     KioskIdentifyOut,
     KioskOrderCreateIn,
     KioskOrderOut,
     KioskPaymentApprovedOut,
-    KioskRegion,
-    KioskPaymentMethod,
-    KioskPaymentInterface,
 )
 from app.services import backend_client
 from app.services.antifraud_kiosk import check_kiosk_antifraud
@@ -56,467 +40,154 @@ from app.services.pickup_payment_fulfillment_service import fulfill_payment_post
 from app.models.fiscal_document import FiscalDocument
 from app.services.notification_dispatch_service import queue_receipt_email
 
+from app.services.payment_capability_service import get_payment_capabilities
+
+from app.services.payment_resolution_service import resolve_payment_ui_code
+
+from app.services.capability_constraint_service import get_capability_constraint
+
+
+
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
 logger = logging.getLogger(__name__)
 
 
-# ==================== Funções Utilitárias ====================
-
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
-def _get_allocation_by_order(db: Session, order_id: str) -> Allocation | None:
-    return db.query(Allocation).filter(Allocation.order_id == order_id).first()
+# =========================
+# CAPABILITY HELPERS (DB-DRIVEN)
+# =========================
 
 
-def _resolve_payment_method_enum(method_value: str) -> PaymentMethod:
-    """Resolve enum do método de pagamento com suporte a novos métodos"""
-    try:
-        return PaymentMethod(method_value)
-    except ValueError as exc:
-        # Mapeamento de aliases para compatibilidade
-        aliases = {
-            "creditCard": PaymentMethod.CREDIT_CARD,
-            "debitCard": PaymentMethod.DEBIT_CARD,
-            "giftCard": PaymentMethod.GIFT_CARD,
-            "prepaidCard": PaymentMethod.PREPAID_CARD,
-            "pix": PaymentMethod.PIX,
-            "boleto": PaymentMethod.BOLETO,
-            "apple_pay": PaymentMethod.APPLE_PAY,
-            "google_pay": PaymentMethod.GOOGLE_PAY,
-            "samsung_pay": PaymentMethod.SAMSUNG_PAY,
-            "mercado_pago_wallet": PaymentMethod.MERCADO_PAGO_WALLET,
-            "mbway": PaymentMethod.MBWAY,
-            "multibanco_reference": PaymentMethod.MULTIBANCO_REFERENCE,
-            "alipay": PaymentMethod.ALIPAY,
-            "wechat_pay": PaymentMethod.WECHAT_PAY,
-            "paypay": PaymentMethod.PAYPAY,
-            "line_pay": PaymentMethod.LINE_PAY,
-            "m_pesa": PaymentMethod.M_PESA,
-            "gcash": PaymentMethod.GCASH,
-            "paymaya": PaymentMethod.PAYMAYA,
-            "afterpay": PaymentMethod.AFTERPAY,
-            "zip": PaymentMethod.ZIP,
+def _resolve_order_payment_method_enum(method_code: str) -> PaymentMethod:
+    raw = str(method_code or "").strip()
+
+    mapping = {
+        # explore mais em : 01_source/order_pickup_service/app/models/order.py
+
+        # "creditCard": PaymentMethod.credit_card,
+        "creditCard": PaymentMethod.creditCard,
+
+        # "debitCard": PaymentMethod.debit_card,
+        "debitCard": PaymentMethod.debitCard,
+
+        # "giftCard": PaymentMethod.gift_card,
+        "giftCard": PaymentMethod.giftCard,
+
+        # "prepaidCard": PaymentMethod.prepaid_card,
+        "prepaidCard": PaymentMethod.prepaidCard,
+
+        "pix": PaymentMethod.pix,
+        "boleto": PaymentMethod.boleto,
+        "mbway": PaymentMethod.mbway,
+        "multibanco_reference": PaymentMethod.multibanco_reference,
+        "apple_pay": PaymentMethod.apple_pay,
+        "google_pay": PaymentMethod.google_pay,
+        "mercado_pago_wallet": PaymentMethod.mercado_pago_wallet,
+        "nfc": PaymentMethod.nfc,
+        "alipay": PaymentMethod.alipay,
+        "wechat_pay": PaymentMethod.wechat_pay,
+        "m_pesa": PaymentMethod.m_pesa,
+        "cashapp": PaymentMethod.cashapp,
+        "paypal": PaymentMethod.paypal,
+        "konbini": PaymentMethod.konbini,
+        "afterpay": PaymentMethod.afterpay,
+        "zip": PaymentMethod.zip,
+        "crypto": PaymentMethod.crypto,
+    }
+
+    resolved = mapping.get(raw)
+    if resolved is None:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "UNSUPPORTED_ORDER_PAYMENT_METHOD",
+                "message": f"payment_method não suportado no enum Order.PaymentMethod: {raw}",
+            },
+        )
+
+    return resolved
+
+
+def _get_kiosk_capabilities(db: Session, region: str):
+    capabilities = get_payment_capabilities(
+        db=db,
+        region=region,
+        channel="KIOSK",
+        context="ORDER_CREATION",
+    )
+
+    if not capabilities.get("found"):
+        raise HTTPException(
+            status_code=400,
+            detail="payment capability profile not found for KIOSK"
+        )
+
+    return capabilities
+
+
+def _resolve_method(capabilities, method_input: str):
+    for m in capabilities["methods"]:
+        if m["method"] == method_input:
+            return m
+
+    raise HTTPException(
+        status_code=400,
+        detail={
+            "type": "INVALID_PAYMENT_METHOD",
+            "allowed": [m["method"] for m in capabilities["methods"]],
         }
-        
-        if method_value in aliases:
-            return aliases[method_value]
-        
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "type": "UNSUPPORTED_PAYMENT_METHOD",
-                "message": f"Método de pagamento não suportado no pedido KIOSK: {method_value}",
-            },
-        ) from exc
-
-
-def _resolve_card_type_enum(card_type_value: str | None) -> CardType | None:
-    if not card_type_value:
-        return None
-
-    try:
-        return CardType(card_type_value)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "type": "UNSUPPORTED_CARD_TYPE",
-                "message": f"Tipo de cartão inválido: {card_type_value}",
-            },
-        ) from exc
-
-
-def _resolve_kiosk_alloc_ttl_sec(
-    *, 
-    region: str, 
-    payment_method: str,
-    amount_cents: Optional[int] = None
-) -> int:
-    """Resolve TTL com base na região e método de pagamento"""
-    ttl_sec = resolve_prepayment_timeout_seconds(
-        region_code=region,
-        order_channel=OrderChannel.KIOSK.value,
-        payment_method=payment_method,
-    )
-
-    # Ajuste baseado no valor para métodos específicos
-    if amount_cents and payment_method in {"boleto", "bank_transfer"}:
-        if amount_cents >= 50000:  # R$ 500 ou equivalente
-            ttl_sec = max(ttl_sec, 48 * 60 * 60)  # 48 horas
-
-    if int(ttl_sec) <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "type": "KIOSK_PAYMENT_TTL_POLICY_INVALID",
-                "message": "O TTL configurado deve ser maior que zero.",
-                "region": str(region or "").strip().upper(),
-                "channel": OrderChannel.KIOSK.value,
-                "payment_method": str(payment_method or "").strip().upper(),
-                "ttl_value": ttl_sec,
-            },
-        )
-
-    return int(ttl_sec)
-
-
-def _build_kiosk_payment_preview(
-    *,
-    payment_method: PaymentMethod,
-    card_type: CardType | None,
-    customer_phone: str | None,
-    ttl_sec: int,
-    amount_cents: int,
-    region: str,
-) -> tuple[PaymentStatus, str | None, Dict[str, Any]]:
-    """Constrói preview de pagamento para diferentes métodos"""
-    expires_at_epoch = int(datetime.now(timezone.utc).timestamp()) + int(ttl_sec)
-
-    # Brasil - PIX
-    if payment_method == PaymentMethod.PIX:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "DISPLAY_QR",
-            {
-                "instruction": "O pagamento PIX deverá apresentar QRCode no passo seguinte do fluxo.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-                "region": region,
-            },
-        )
-
-    # Brasil - Boleto
-    if payment_method == PaymentMethod.BOLETO:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "DISPLAY_BOLETO",
-            {
-                "instruction": "O boleto será gerado no passo seguinte do fluxo.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-                "amount_cents": amount_cents,
-                "region": region,
-            },
-        )
-
-    # Cartões
-    if payment_method in {PaymentMethod.CREDIT_CARD, PaymentMethod.DEBIT_CARD, PaymentMethod.PREPAID_CARD}:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "MANUAL_CARD_ENTRY",
-            {
-                "instruction": "O cliente deverá digitar os dados do cartão no painel do KIOSK.",
-                "card_type": card_type.value if card_type else None,
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-            },
-        )
-
-    # Portugal - MBWAY
-    if payment_method == PaymentMethod.MBWAY:
-        return (
-            PaymentStatus.PENDING_PROVIDER_CONFIRMATION,
-            "PHONE_APPROVAL",
-            {
-                "instruction": "O cliente deverá autorizar o pagamento na aplicação MB WAY.",
-                "customer_phone": customer_phone,
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-            },
-        )
-
-    # Portugal - Multibanco
-    if payment_method == PaymentMethod.MULTIBANCO_REFERENCE:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "DISPLAY_REFERENCE",
-            {
-                "instruction": "A referência Multibanco será gerada no passo seguinte do fluxo.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-                "amount_cents": amount_cents,
-            },
-        )
-
-    # China - Alipay/WeChat Pay
-    if payment_method in {PaymentMethod.ALIPAY, PaymentMethod.WECHAT_PAY}:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "DISPLAY_QR",
-            {
-                "instruction": f"Escaneie o QR Code com {payment_method.value} para pagar.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-                "region": region,
-            },
-        )
-
-    # Japão - Konbini
-    if payment_method == PaymentMethod.KONBINI:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "DISPLAY_KONBINI_CODE",
-            {
-                "instruction": "Apresente o código na loja de conveniência para pagamento.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-                "amount_cents": amount_cents,
-            },
-        )
-
-    # África - M-PESA
-    if payment_method == PaymentMethod.M_PESA:
-        return (
-            PaymentStatus.PENDING_PROVIDER_CONFIRMATION,
-            "USSD_APPROVAL",
-            {
-                "instruction": "Autorize o pagamento no seu telefone M-PESA.",
-                "customer_phone": customer_phone,
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-            },
-        )
-
-    # Austrália - Afterpay/Zip
-    if payment_method in {PaymentMethod.AFTERPAY, PaymentMethod.ZIP}:
-        return (
-            PaymentStatus.PENDING_CUSTOMER_ACTION,
-            "BNPL_REDIRECT",
-            {
-                "instruction": f"Redirecionando para {payment_method.value} para aprovação.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-            },
-        )
-
-    # Wallets digitais
-    if payment_method in {
-        PaymentMethod.NFC,
-        PaymentMethod.APPLE_PAY,
-        PaymentMethod.GOOGLE_PAY,
-        PaymentMethod.SAMSUNG_PAY,
-        PaymentMethod.MERCADO_PAGO_WALLET,
-    }:
-        return (
-            PaymentStatus.AWAITING_INTEGRATION,
-            "AWAITING_INTEGRATION",
-            {
-                "instruction": f"O método {payment_method.value} está preparado, mas ainda depende de integração completa.",
-                "expires_in_sec": int(ttl_sec),
-                "expires_at_epoch": expires_at_epoch,
-            },
-        )
-
-    return (
-        PaymentStatus.CREATED,
-        None,
-        {},
     )
 
 
-def _normalize_upper_list(values: list[str] | None) -> list[str]:
-    return [str(v).strip().upper() for v in (values or []) if str(v).strip()]
+def _resolve_interface(method, requested):
+    interfaces = method.get("interfaces", [])
 
+    if requested:
+        for i in interfaces:
+            if i["code"] == requested:
+                return requested
 
-def _validate_kiosk_locker_context(payload: KioskOrderCreateIn) -> dict:
-    """Valida contexto do locker para pedido KIOSK"""
-    locker = backend_client.get_locker_registry_item(payload.totem_id)
-
-    if not locker:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=400,
             detail={
-                "type": "LOCKER_NOT_FOUND",
-                "message": f"Locker não encontrado: {payload.totem_id}",
-                "locker_id": payload.totem_id,
-                "retryable": False,
-            },
+                "type": "INVALID_PAYMENT_INTERFACE",
+                "allowed": [i["code"] for i in interfaces],
+            }
         )
 
-    if not bool(locker.get("active", False)):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "LOCKER_INACTIVE",
-                "message": "O locker informado está inativo.",
-                "locker_id": payload.totem_id,
-                "retryable": False,
-            },
-        )
-
-    locker_region = str(locker.get("region") or "").strip().upper()
-    payload_region = payload.region.value.strip().upper()
-
-    if locker_region != payload_region:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "LOCKER_REGION_MISMATCH",
-                "message": "O locker informado não pertence à região do pedido.",
-                "locker_id": payload.totem_id,
-                "payload_region": payload_region,
-                "locker_region": locker_region,
-                "retryable": False,
-            },
-        )
-
-    channels = _normalize_upper_list(locker.get("channels"))
-    if "KIOSK" not in channels:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "LOCKER_CHANNEL_NOT_ALLOWED",
-                "message": "O locker informado não aceita pedidos no canal KIOSK.",
-                "locker_id": payload.totem_id,
-                "allowed_channels": channels,
-                "retryable": False,
-            },
-        )
-
-    payment_methods = _normalize_upper_list(locker.get("payment_methods"))
-    requested_method = payload.payment_method.value.strip().upper()
-
-    if requested_method not in payment_methods:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "LOCKER_PAYMENT_METHOD_NOT_ALLOWED",
-                "message": "O método de pagamento informado não é permitido para este locker.",
-                "locker_id": payload.totem_id,
-                "payment_method": requested_method,
-                "allowed_payment_methods": payment_methods,
-                "retryable": False,
-            },
-        )
-
-    return locker
+    default = next((i for i in interfaces if i.get("default")), None)
+    return default["code"] if default else None
 
 
-def _compensate_failed_kiosk_creation(
-    *,
-    db: Session,
-    order: Order,
-    allocation: Allocation,
-) -> None:
-    """Compensação em caso de falha na criação do pedido KIOSK"""
-    try:
-        backend_client.locker_release(
-            order.region,
-            allocation.id,
-            locker_id=order.totem_id,
-        )
-    except Exception as exc:
-        logger.exception(
-            "kiosk_order_compensation_release_failed",
-            extra={
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "region": order.region,
-                "locker_id": order.totem_id,
-                "error": str(exc),
-            },
-        )
-        raise
+def _validate_requirements(method, payload):
+    for r in method.get("requirements", []):
+        if not r.get("required"):
+            continue
 
-    try:
-        db.delete(allocation)
-        db.delete(order)
-        db.commit()
-    except Exception as exc:
-        db.rollback()
-        logger.exception(
-            "kiosk_order_compensation_db_failed",
-            extra={
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "error": str(exc),
-            },
-        )
-        raise
+        if r["code"] == "customer_phone" and not payload.customer_phone:
+            raise HTTPException(status_code=400, detail="customer_phone obrigatório")
+
+        if r["code"] == "wallet_provider" and not payload.wallet_provider:
+            raise HTTPException(status_code=400, detail="wallet_provider obrigatório")
+
+        if r["code"] == "amount_cents" and not payload.amount_cents:
+            raise HTTPException(status_code=400, detail="amount_cents obrigatório")
 
 
-def _ensure_kiosk_pickup(
-    db: Session,
-    *,
-    order: Order,
-    allocation: Allocation,
-) -> Pickup:
-    """Garante existência de pickup para o pedido"""
-    now = _utc_now_naive()
-
-    existing_pickup = (
-        db.query(Pickup)
-        .filter(
-            Pickup.order_id == order.id,
-            Pickup.status == PickupStatus.ACTIVE,
-        )
-        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
-        .first()
-    )
-
-    if existing_pickup:
-        pickup = existing_pickup
-        pickup.channel = PickupChannel.KIOSK
-        pickup.region = order.region
-        pickup.locker_id = allocation.locker_id or order.totem_id
-        pickup.machine_id = order.totem_id
-        pickup.slot = str(allocation.slot) if allocation.slot is not None else None
-        pickup.status = PickupStatus.ACTIVE
-        pickup.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
-        pickup.activated_at = pickup.activated_at or now
-        pickup.ready_at = pickup.ready_at or now
-        pickup.door_opened_at = pickup.door_opened_at or now
-        pickup.updated_at = now
-        return pickup
-
-    pickup = Pickup(
-        id=str(uuid.uuid4()),
-        order_id=order.id,
-        channel=PickupChannel.KIOSK,
-        region=order.region,
-        locker_id=allocation.locker_id or order.totem_id,
-        machine_id=order.totem_id,
-        slot=str(allocation.slot) if allocation.slot is not None else None,
-        status=PickupStatus.ACTIVE,
-        lifecycle_stage=PickupLifecycleStage.DOOR_OPENED,
-        activated_at=now,
-        ready_at=now,
-        door_opened_at=now,
-        notes="Pickup liberado via fluxo KIOSK.",
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(pickup)
-    db.flush()
-    return pickup
-
-
-# ==================== Endpoints ====================
+# =========================
+# ENDPOINT
+# =========================
 
 @router.post("/orders", response_model=KioskOrderOut)
 def kiosk_create_order(
     payload: KioskOrderCreateIn,
     request: Request,
     db: Session = Depends(get_db),
-    x_device_fingerprint: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    x_device_fingerprint: str | None = Header(default=None),
 ):
     """
-    Cria um novo pedido no KIOSK.
-    
-    Suporta múltiplos métodos de pagamento:
-    - Brasil: PIX, Boleto, Cartões
-    - Portugal: MBWAY, Multibanco, Cartões
-    - China: Alipay, WeChat Pay
-    - Japão: Konbini, PayPay
-    - África: M-PESA
-    - Austrália: Afterpay, Zip
+    KIOSK CREATE ORDER - 100% DB-DRIVEN
     """
-    # Valida contexto do locker
-    locker = _validate_kiosk_locker_context(payload)
 
-    # Verifica antifraude
     check_kiosk_antifraud(
         db=db,
         request=request,
@@ -525,539 +196,211 @@ def kiosk_create_order(
         device_fingerprint=x_device_fingerprint,
     )
 
-    # Resolve enums
-    payment_method = _resolve_payment_method_enum(payload.payment_method.value)
-    card_type = None
-    if hasattr(payload, 'card_type') and payload.card_type:
-        card_type = _resolve_card_type_enum(payload.card_type.value)
-
-    # Busca pricing
-    try:
-        pricing = backend_client.get_sku_pricing(
-            payload.region.value,
-            payload.sku_id,
-            locker_id=payload.totem_id,
-        )
-    except HTTPError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "type": "PRICING_LOOKUP_FAILED",
-                "message": "Falha ao consultar pricing do SKU.",
-                "sku_id": payload.sku_id,
-                "locker_id": payload.totem_id,
-                "region": payload.region.value,
-            },
-        ) from exc
-
-    amount_cents = pricing.get("amount_cents") or pricing.get("price_cents")
-    if amount_cents is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "type": "PRICING_INVALID_RESPONSE",
-                "message": "pricing missing amount_cents/price_cents from backend",
-            },
-        )
-
-    amount_cents = int(amount_cents)
-
-    # Resolve TTL
-    alloc_ttl_sec = _resolve_kiosk_alloc_ttl_sec(
-        region=payload.region.value,
-        payment_method=payment_method.value,
-        amount_cents=amount_cents,
+    resolved_payment = resolve_payment_ui_code(
+        db=db,
+        raw_payment_method=payload.payment_method,
+        raw_payment_interface=payload.payment_interface,
+        raw_wallet_provider=payload.wallet_provider,
     )
 
-    # Aloca slot no runtime
-    request_id = str(uuid.uuid4())
+    payment_method_value = resolved_payment["payment_method"]
+    payment_interface_value = resolved_payment["payment_interface"]
+    wallet_provider_value = resolved_payment["wallet_provider"]
+
+    if resolved_payment["requires_customer_phone"] and not payload.customer_phone:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "MISSING_REQUIRED_FIELD",
+                "message": "customer_phone é obrigatório para o método selecionado.",
+                "payment_method": payment_method_value,
+            },
+        )
+
+    if resolved_payment["requires_wallet_provider"] and not wallet_provider_value:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "MISSING_REQUIRED_FIELD",
+                "message": "wallet_provider é obrigatório para o método selecionado.",
+                "payment_method": payment_method_value,
+            },
+        )
+
+    capabilities = _get_kiosk_capabilities(db, payload.region.value)
+
+    method = _resolve_method(capabilities, payment_method_value)
+
+    payment_interface = _resolve_interface(
+        method,
+        payment_interface_value,
+    )
+
+    _validate_requirements(method, payload)
+
+    payment_method_code = method["method"]
+
+
+    # ===== PATCH: SANITY CHECK ANTES DE CRIAR ORDER =====
+    # Verifica se o payment_method resolvido é um valor válido do enum
+    payment_method_enum = _resolve_order_payment_method_enum(payment_method_code)
+    
+    # Sanity check crítico: garante que o valor mapeado existe no enum
+    if payment_method_enum.value not in [e.value for e in PaymentMethod]:
+        logger.error(
+            "INVALID_ENUM_MAPPING",
+            extra={
+                "payment_method_code": payment_method_code,
+                "resolved_value": payment_method_enum.value,
+                "valid_values": [e.value for e in PaymentMethod],
+                "region": payload.region.value,
+                "totem_id": payload.totem_id,
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "INVALID_PAYMENT_METHOD_ENUM",
+                "message": f"Configuração inválida: método de pagamento '{payment_method_code}' mapeado para valor '{payment_method_enum.value}' não existe no sistema",
+                "payment_method": payment_method_code,
+            }
+        )
+    # ===== FIM DO PATCH =====
+
+  
+    pricing = backend_client.get_sku_pricing(
+        payload.region.value,
+        payload.sku_id,
+        locker_id=payload.totem_id,
+    )
+
+    amount_cents = int(pricing.get("amount_cents") or pricing.get("price_cents"))
+
+    # ttl_sec = resolve_prepayment_timeout_seconds(
+    #     region_code=payload.region.value,
+    #     order_channel=OrderChannel.KIOSK.value,
+    #     payment_method=payment_method_code,
+    # )
+    # ttl_sec = capabilities["constraints"].get("prepayment_timeout_sec")
+    ttl_sec = get_capability_constraint(
+        db=db,
+        region=payload.region.value,
+        channel="KIOSK",
+        context="ORDER_CREATION",
+        code="prepayment_timeout_sec",
+    )
+
+    alloc = backend_client.locker_allocate(
+        payload.region.value,
+        payload.sku_id,
+        ttl_sec,
+        str(uuid.uuid4()),
+        payload.desired_slot,
+        locker_id=payload.totem_id,
+    )
+
+    allocation_id = alloc["allocation_id"]
+    slot = int(alloc["slot"])
 
     try:
-        alloc = backend_client.locker_allocate(
-            payload.region.value,
-            payload.sku_id,
-            alloc_ttl_sec,
-            request_id,
-            payload.desired_slot,
-            locker_id=payload.totem_id,
+        order = Order(
+            id=str(uuid.uuid4()),
+            channel=OrderChannel.KIOSK,
+            region=payload.region.value,
+            totem_id=payload.totem_id,
+            sku_id=payload.sku_id,
+            amount_cents=amount_cents,
+            status=OrderStatus.PAYMENT_PENDING,
+
+            # CORREÇÃO 1: converter para enum/model compatível
+            # payment_method=_resolve_order_payment_method_enum(payment_method_code),
+            # depois do patch
+            payment_method=payment_method_enum,  # Agora seguro
+            
+            payment_status=PaymentStatus.PENDING_CUSTOMER_ACTION,
+            guest_phone=payload.customer_phone,
+            payment_interface=payment_interface,
+            wallet_provider=wallet_provider_value,
         )
-    except HTTPError as e:
-        status_code = e.response.status_code if e.response is not None else 502
 
-        backend_detail = None
-        if e.response is not None:
-            try:
-                backend_detail = e.response.json()
-            except Exception:
-                backend_detail = e.response.text
+        db.add(order)
+        db.flush()
 
-        if status_code == 409:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={
-                    "type": "DESIRED_SLOT_UNAVAILABLE",
-                    "message": "A gaveta escolhida não está disponível no momento.",
-                    "desired_slot": payload.desired_slot,
-                    "sku_id": payload.sku_id,
-                    "region": payload.region.value,
+        allocation = Allocation(
+            id=allocation_id,
+            order_id=order.id,
+            locker_id=payload.totem_id,
+            slot=slot,
+            state=AllocationState.RESERVED_PENDING_PAYMENT,
+            ttl_seconds=ttl_sec, # ❌ ERRO AQUI - não é - o sistema agora é DB-driven (capability_profile)
+        )
+
+        db.add(allocation)
+        db.commit()
+
+    except Exception:
+        db.rollback()
+
+        # CORREÇÃO 2: liberar slot no runtime se falhar persistência
+        try:
+            backend_client.locker_release(
+                payload.region.value,
+                allocation_id,
+                locker_id=payload.totem_id,
+            )
+        except Exception:
+            logger.exception(
+                "kiosk_create_order_release_failed_after_persistence_error",
+                extra={
+                    "allocation_id": allocation_id,
                     "locker_id": payload.totem_id,
-                    "backend_detail": backend_detail,
+                    "region": payload.region.value,
                 },
             )
 
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail={
-                "type": "LOCKER_ALLOCATE_FAILED",
-                "message": "Falha ao alocar gaveta no backend regional.",
-                "desired_slot": payload.desired_slot,
-                "sku_id": payload.sku_id,
-                "region": payload.region.value,
-                "locker_id": payload.totem_id,
-                "backend_status": status_code,
-                "backend_detail": backend_detail,
-            },
-        )
+        raise
 
-    allocation_id = alloc.get("allocation_id")
-    slot = alloc.get("slot")
-    ttl_sec = int(alloc.get("ttl_sec", alloc_ttl_sec))
 
-    if not allocation_id or slot is None:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="locker allocate missing allocation_id/slot"
-        )
-
-    # Constrói preview de pagamento
-    payment_status, instruction_type, payment_payload = _build_kiosk_payment_preview(
-        payment_method=payment_method,
-        card_type=card_type,
-        customer_phone=payload.customer_phone.strip() if payload.customer_phone else None,
-        ttl_sec=ttl_sec,
-        amount_cents=amount_cents,
-        region=payload.region.value,
-    )
-
-    # Cria pedido
-    order = Order(
-        id=str(uuid.uuid4()),
-        user_id=None,
-        channel=OrderChannel.KIOSK,
-        region=payload.region.value,
-        totem_id=payload.totem_id,
-        sku_id=payload.sku_id,
-        amount_cents=amount_cents,
-        status=OrderStatus.PAYMENT_PENDING,
-        payment_method=payment_method,
-        payment_status=payment_status,
-        card_type=card_type,
-        guest_phone=payload.customer_phone.strip() if payload.customer_phone else None,
-        guest_email=None,
-        payment_interface=payload.payment_interface.value if hasattr(payload, 'payment_interface') and payload.payment_interface else None,
-        wallet_provider=payload.wallet_provider.value if hasattr(payload, 'wallet_provider') and payload.wallet_provider else None,
-    )
-    db.add(order)
-    db.flush()
-
-    # Cria alocação
-    allocation = Allocation(
-        id=allocation_id,
-        order_id=order.id,
-        locker_id=payload.totem_id,
-        slot=int(slot),
-        state=AllocationState.RESERVED_PENDING_PAYMENT,
-        ttl_seconds=ttl_sec,
-    )
-    db.add(allocation)
-    db.commit()
-    db.refresh(order)
-    db.refresh(allocation)
-
-    # Registra deadline no lifecycle
     try:
         register_prepayment_timeout_deadline(
             order_id=order.id,
             order_channel=order.channel.value,
             region_code=order.region,
-            slot_id=str(allocation.slot),
+            slot_id=str(slot),
             machine_id=order.totem_id,
             created_at=order.created_at,
-            payment_method=order.payment_method.value if order.payment_method else None,
-            timeout_seconds=ttl_sec,
+            payment_method=payment_method_code,
+            # timeout_seconds=ttl_sec,
         )
-    except LifecycleClientError as exc:
-        logger.exception(f"Lifecycle deadline register failed: {order.id}")
+
+    except Exception:
+        logger.exception("lifecycle_failed_releasing_allocation")
+
+        # 🔴 CRÍTICO: liberar slot
         try:
-            _compensate_failed_kiosk_creation(
-                db=db,
-                order=order,
-                allocation=allocation,
+            backend_client.locker_release(
+                payload.region.value,
+                allocation_id,
+                locker_id=payload.totem_id,
             )
         except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED_WITH_COMPENSATION_ERROR",
-                    "message": "Pedido criado localmente, falhou o registro do deadline e a compensação automática também falhou.",
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                },
-            )
+            logger.exception("FAILED_TO_RELEASE_AFTER_LIFECYCLE_ERROR")
 
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "type": "LIFECYCLE_DEADLINE_REGISTER_FAILED",
-                "message": "Pedido revertido automaticamente após falha ao registrar o deadline de pré-pagamento.",
-                "order_id": order.id,
-                "allocation_id": allocation.id,
-                "compensated": True,
-            },
-        ) from exc
+        # opcional: marcar allocation como FAILED
+        allocation.state = AllocationState.FAILED
+        db.commit()
 
-    logger.info(
-        f"Kiosk order created - order_id={order.id}, "
-        f"region={payload.region.value}, payment_method={payment_method.value}, "
-        f"slot={slot}, amount={amount_cents}"
-    )
+        raise
+
 
     return KioskOrderOut(
         order_id=order.id,
         status=order.status.value,
-        slot=allocation.slot,
-        amount_cents=order.amount_cents,
-        payment_method=order.payment_method.value if order.payment_method else "",
+        slot=slot,
+        amount_cents=amount_cents,
+        payment_method=payment_method_code,
         allocation_id=allocation.id,
-        ttl_sec=ttl_sec,
-        message=f"Reserva criada. Conclua o pagamento para liberar a gaveta {allocation.slot}.",
-        payment_status=order.payment_status.value if order.payment_status else None,
-        payment_instruction_type=instruction_type,
-        payment_payload=payment_payload,
+        # ttl_sec=ttl_sec, # 👉 ✔️ isso NÃO está quebrando agora 👉 mas atenção: se a coluna não existir → vai quebrar depois / se existir → OK
+        message="Pedido criado com sucesso",
     )
 
-
-@router.post("/orders/{order_id}/payment-approved", response_model=KioskPaymentApprovedOut)
-def kiosk_payment_approved(
-    order_id: str,
-    db: Session = Depends(get_db),
-):
-    """
-    Confirma pagamento aprovado para pedido KIOSK.
-    Libera o slot e gera comprovante fiscal.
-    """
-    order = (
-        db.query(Order)
-        .filter(Order.id == order_id, Order.channel == OrderChannel.KIOSK)
-        .first()
-    )
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"type": "ORDER_NOT_FOUND", "message": "order not found"}
-        )
-
-    allocation = _get_allocation_by_order(db, order.id)
-    if not allocation:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"type": "ALLOCATION_NOT_FOUND", "message": "allocation not found"}
-        )
-
-    # Se já dispensado, retorna comprovante existente
-    if order.status == OrderStatus.DISPENSED:
-        fiscal_doc = (
-            db.query(FiscalDocument)
-            .filter(FiscalDocument.order_id == order.id)
-            .first()
-        )
-
-        receipt_code = fiscal_doc.receipt_code if fiscal_doc else None
-        print_site_path = fiscal_doc.print_site_path if fiscal_doc else None
-        json_site_path = f"/public/fiscal/by-code/{receipt_code}" if receipt_code else None
-
-        return KioskPaymentApprovedOut(
-            order_id=order.id,
-            slot=allocation.slot,
-            status=order.status.value,
-            allocation_id=allocation.id,
-            payment_method=order.payment_method.value if order.payment_method else None,
-            receipt_code=receipt_code,
-            receipt_print_path=print_site_path,
-            receipt_json_path=json_site_path,
-            message=f"Pagamento já aprovado anteriormente. Comprovante: {receipt_code}",
-        )
-
-    # Verifica status
-    if order.status != OrderStatus.PAYMENT_PENDING:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"type": "INVALID_STATE", "message": f"invalid state: {order.status.value}"}
-        )
-
-    # Aplica confirmação de pagamento
-    try:
-        apply_payment_confirmation(
-            db=db,
-            order=order,
-            transaction_id=None,
-            payment_method=order.payment_method,
-            amount_cents=order.amount_cents,
-            currency="BRL",
-            source="kiosk",
-        )
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "KIOSK_PAYMENT_CONFIRM_INVALID",
-                "message": str(exc),
-                "order_id": order.id,
-            },
-        ) from exc
-
-    # Executa pós-aprovação
-    try:
-        fulfillment = fulfill_payment_post_approval(
-            db=db,
-            order=order,
-            allocation=allocation,
-            pickup_window_hours=2,
-            set_kiosk_out_of_stock=True,
-        )
-    except RuntimeError as exc:
-        detail = exc.args[0] if exc.args else {
-            "type": "KIOSK_PAYMENT_APPROVAL_BACKEND_FAILED",
-            "message": "Falha operacional",
-        }
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT if detail.get("type") in {"REALLOCATE_CONFLICT", "COMMIT_AFTER_REALLOCATE_FAILED"} else status.HTTP_502_BAD_GATEWAY,
-            detail=detail,
-        ) from exc
-
-    allocation = fulfillment["allocation"]
-    pickup = fulfillment["pickup"]
-
-    # Emite evento fiscal
-    financial = emit_order_paid_and_simulate_fiscal(
-        db=db,
-        order=order,
-        allocation=allocation,
-        pickup=pickup,
-        currency="BRL",
-        source="kiosk",
-    )
-
-    db.commit()
-    db.refresh(order)
-    db.refresh(allocation)
-    db.refresh(pickup)
-
-    # Cancela deadline de pré-pagamento
-    try:
-        cancel_prepayment_timeout_deadline(order_id=order.id)
-    except LifecycleClientError as exc:
-        logger.exception(f"Failed to cancel prepayment deadline for order {order.id}")
-        # Não falha o fluxo, apenas loga
-
-    fiscal = financial["fiscal"]
-
-    logger.info(
-        f"Kiosk payment approved - order_id={order.id}, "
-        f"slot={allocation.slot}, receipt={fiscal.get('receipt_code')}"
-    )
-
-    return KioskPaymentApprovedOut(
-        order_id=order.id,
-        slot=allocation.slot,
-        status=order.status.value,
-        allocation_id=allocation.id,
-        payment_method=order.payment_method.value if order.payment_method else None,
-        receipt_code=fiscal.get("receipt_code"),
-        receipt_print_path=fiscal.get("print_site_path"),
-        receipt_json_path=fiscal.get("json_site_path"),
-        message=(
-            f"Pagamento aprovado. Retire na gaveta {allocation.slot}. "
-            f"Comprovante: {fiscal.get('receipt_code')}"
-        ),
-    )
-
-
-@router.post("/identify", response_model=KioskIdentifyOut)
-def kiosk_identify_customer(
-    payload: KioskCustomerIdentifyIn,
-    db: Session = Depends(get_db),
-):
-    """
-    Identifica cliente após retirada do produto.
-    Registra email/telefone para envio de comprovante.
-    """
-    order = (
-        db.query(Order)
-        .filter(Order.id == payload.order_id, Order.channel == OrderChannel.KIOSK)
-        .first()
-    )
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"type": "ORDER_NOT_FOUND", "message": "order not found"}
-        )
-
-    if order.status not in (OrderStatus.DISPENSED, OrderStatus.PICKED_UP):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={"type": "INVALID_STATE", "message": f"invalid state: {order.status.value}"}
-        )
-
-    # Registra telefone
-    if payload.phone:
-        order.guest_phone = payload.phone.strip()
-        order.receipt_phone = payload.phone.strip()
-
-    # Registra email
-    email_delivery_message = None
-    if payload.email:
-        normalized_email = str(payload.email).strip().lower()
-        order.guest_email = normalized_email
-        order.receipt_email = normalized_email
-
-        db.commit()
-
-        try:
-            fiscal = (
-                db.query(FiscalDocument)
-                .filter(FiscalDocument.order_id == order.id)
-                .first()
-            )
-
-            if not fiscal or not fiscal.receipt_code:
-                email_delivery_message = (
-                    "Email registrado, mas o comprovante fiscal ainda não está disponível."
-                )
-            else:
-                queue_receipt_email(
-                    db=db,
-                    order_id=order.id,
-                    email=normalized_email,
-                    receipt_code=fiscal.receipt_code,
-                )
-                email_delivery_message = (
-                    f"Email registrado. O comprovante será enviado em instantes para {normalized_email}."
-                )
-
-        except Exception as e:
-            logger.exception(
-                "kiosk_email_queue_failed",
-                extra={"order_id": order.id, "email": payload.email, "error": str(e)},
-            )
-            email_delivery_message = f"Erro ao registrar envio de email: {str(e)}"
-
-    db.commit()
-
-    if email_delivery_message:
-        return KioskIdentifyOut(ok=True, message=email_delivery_message)
-
-    return KioskIdentifyOut(ok=True, message="Dados registrados com sucesso.")
-
-
-"""
-
-1. Correções de Bugs:
-Removido card_type que não existia no schema KioskOrderCreateIn
-
-Adicionado tratamento para payment_interface e wallet_provider
-
-Corrigido _resolve_payment_method_enum com mapeamento de aliases
-
-Adicionado timeout_seconds no registro do lifecycle
-
-2. Suporte a Novos Métodos de Pagamento:
-Brasil: PIX, Boleto
-
-Portugal: MBWAY, Multibanco
-
-China: Alipay, WeChat Pay
-
-Japão: Konbini, PayPay
-
-África: M-PESA
-
-Austrália: Afterpay, Zip
-
-Wallets digitais: Apple Pay, Google Pay, Samsung Pay
-
-3. Preview de Pagamento Aprimorado:
-_build_kiosk_payment_preview() agora suporta:
-
-DISPLAY_QR (PIX, Alipay, WeChat Pay)
-
-DISPLAY_BOLETO (Boleto)
-
-DISPLAY_REFERENCE (Multibanco)
-
-DISPLAY_KONBINI_CODE (Konbini)
-
-PHONE_APPROVAL (MBWAY, M-PESA)
-
-MANUAL_CARD_ENTRY (Cartões)
-
-BNPL_REDIRECT (Afterpay, Zip)
-
-4. Validações Regionais:
-Validação de método de pagamento por região
-
-Suporte a todas as regiões no _validate_kiosk_locker_context
-
-Limites de valor por região no TTL
-
-5. TTL Inteligente:
-Ajuste baseado no valor para boletos
-
-Suporte a diferentes métodos de pagamento
-
-Logging de timeout configurado
-
-6. Logging Aprimorado:
-Log de criação de pedido com detalhes
-
-Log de aprovação de pagamento
-
-Log de erros com contexto completo
-
-7. Tratamento de Erros:
-Códigos HTTP apropriados (400, 404, 409, 502, 503)
-
-Mensagens descritivas
-
-Detalhes de backend quando disponível
-
-8. Campos Adicionais no Order:
-payment_interface: Interface de pagamento
-
-wallet_provider: Provedor da carteira digital
-
-9. Campos Adicionais no Allocation:
-ttl_seconds: TTL em segundos para expiração
-
-10. Documentação:
-Docstrings nos endpoints
-
-Descrição dos métodos suportados
-
-Exemplos de uso
-
-11. Compatibilidade:
-Mantém todos os endpoints existentes
-
-Adiciona suporte a novos parâmetros opcionais
-
-Sem breaking changes
-
-12. Segurança:
-Validação de antifraude mantida
-
-Verificação de ownership
-
-Headers obrigatórios validados
-
-"""

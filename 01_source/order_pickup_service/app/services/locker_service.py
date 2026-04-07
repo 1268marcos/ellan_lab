@@ -1,11 +1,14 @@
 # 01_source/order_pickup_service/app/services/locker_service.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
+# 06/04/2026 - Corrigido para casar com allowed_payment_methods canônico no banco
 
 from __future__ import annotations
 
-import requests
-from typing import List, Dict, Any, Optional, Set
+import time
 from enum import Enum
+from typing import List, Dict, Any, Optional
+
+import requests
 from fastapi import HTTPException
 
 from app.core.config import settings
@@ -30,7 +33,7 @@ class LockerService:
     """Serviço para validação e gerenciamento de lockers com suporte global"""
 
     def __init__(self):
-        self._cache = {}  # Cache simples para lockers
+        self._cache = {}
         self._cache_ttl = 300  # 5 minutos
 
     def _get_runtime_lockers(self, region: str, force_refresh: bool = False) -> List[Dict[str, Any]]:
@@ -39,10 +42,9 @@ class LockerService:
         Implementa cache para reduzir chamadas externas.
         """
         cache_key = f"lockers_{region}"
-        
+
         if not force_refresh and cache_key in self._cache:
             cached_data, timestamp = self._cache[cache_key]
-            import time
             if time.time() - timestamp < self._cache_ttl:
                 return cached_data
 
@@ -52,17 +54,15 @@ class LockerService:
             response = requests.get(
                 url,
                 params={"region": region, "active_only": True},
-                timeout=settings.request_timeout if hasattr(settings, 'request_timeout') else 5,
+                timeout=settings.request_timeout if hasattr(settings, "request_timeout") else 5,
             )
             response.raise_for_status()
             data = response.json()
             lockers = data.get("items", [])
-            
-            # Atualiza cache
-            import time
+
             self._cache[cache_key] = (lockers, time.time())
-            
             return lockers
+
         except requests.Timeout as exc:
             raise HTTPException(
                 status_code=504,
@@ -73,6 +73,7 @@ class LockerService:
                     "error": str(exc),
                 },
             ) from exc
+
         except requests.RequestException as exc:
             raise HTTPException(
                 status_code=502,
@@ -83,6 +84,7 @@ class LockerService:
                     "error": str(exc),
                 },
             ) from exc
+
         except Exception as exc:
             raise HTTPException(
                 status_code=502,
@@ -95,8 +97,24 @@ class LockerService:
 
     @staticmethod
     def _normalize_upper_list(values: List[str] | None) -> List[str]:
-        """Normaliza lista de strings para maiúsculas e remove espaços"""
-        return [str(v).strip().upper() for v in (values or []) if str(v).strip()]
+        """
+        Normaliza lista de strings para maiúsculas e remove espaços.
+        Aceita:
+        - lista já separada
+        - string CSV
+        """
+        if values is None:
+            return []
+
+        if isinstance(values, str):
+            values = values.split(",")
+
+        normalized: list[str] = []
+        for value in values:
+            item = str(value or "").strip()
+            if item:
+                normalized.append(item.upper())
+        return normalized
 
     @staticmethod
     def _normalize_region(region: str | None) -> str:
@@ -110,7 +128,7 @@ class LockerService:
         aliases = {
             "ONLINE": "ONLINE",
             "WEB": "ONLINE",
-            "APP": "ONLINE",
+            "APP": "APP",
             "KIOSK": "KIOSK",
             "TOTEM": "KIOSK",
             "SELF_SERVICE": "KIOSK",
@@ -132,130 +150,167 @@ class LockerService:
         }
         return aliases.get(value, value)
 
-    def _map_payment_method_to_locker_capabilities(
-        self, 
-        payment_method: str, 
-        region: Optional[str] = None
-    ) -> List[str]:
+    @staticmethod
+    def _payment_method_aliases(payment_method: str, region: Optional[str] = None) -> List[str]:
         """
-        Converte o payment_method canônico para as capacidades do locker/gateway/runtime.
-        Suporta métodos globais e regionais.
-        """
-        normalized = str(payment_method or "").strip()
+        Retorna aliases compatíveis para um método de pagamento.
 
-        # Mapeamento base
+        Objetivo:
+        - aceitar o novo conteúdo canônico em allowed_payment_methods
+          ex.: creditCard,debitCard,apple_pay,pix
+        - continuar compatível com valores legados
+          ex.: CARD, PIX, CASH
+        - permitir UI code eventual
+          ex.: CARTAO_CREDITO
+        """
+        raw = str(payment_method or "").strip()
+        if not raw:
+            return []
+
+        region_norm = str(region or "").strip().upper()
+        raw_upper = raw.upper()
+        raw_lower = raw.lower()
+
+        aliases: set[str] = set()
+
+        def add(*vals: str) -> None:
+            for val in vals:
+                if val is None:
+                    continue
+                s = str(val).strip()
+                if not s:
+                    continue
+                aliases.add(s)
+                aliases.add(s.upper())
+                aliases.add(s.lower())
+
+        add(raw)
+
         mapping = {
-            # Cartões
-            "creditCard": ["CARTAO_CREDITO", "CREDIT_CARD"],
-            "debitCard": ["CARTAO_DEBITO", "DEBIT_CARD"],
-            "giftCard": ["CARTAO_PRESENTE", "GIFT_CARD"],
-            "prepaidCard": ["CARTAO_PRE_PAGO", "PREPAID_CARD"],
-            
-            # Brasil
-            "pix": ["PIX"],
-            "boleto": ["BOLETO"],
-            
-            # América Latina
-            "mercado_pago_wallet": ["MERCADO_PAGO_WALLET"],
-            "oxxo": ["OXXO"],
-            "spei": ["SPEI"],
-            "rapipago": ["RAPIPAGO"],
-            "pagofacil": ["PAGOFACIL"],
-            "servipag": ["SERVIPAG"],
-            "khipu": ["KHIPU"],
-            "efecty": ["EFECTY"],
-            "pse": ["PSE"],
-            
-            # América do Norte
-            "ach": ["ACH"],
-            "venmo": ["VENMO"],
-            "cashapp": ["CASHAPP"],
-            "zelle": ["ZELLE"],
-            "interac": ["INTERAC"],
-            
-            # Europa
-            "apple_pay": ["APPLE_PAY"],
-            "google_pay": ["GOOGLE_PAY"],
-            "samsung_pay": ["SAMSUNG_PAY"],
-            "mbway": ["MBWAY"],
-            "multibanco_reference": ["MULTIBANCO_REFERENCE"],
-            "sofort": ["SOFORT"],
-            "giropay": ["GIROPAY"],
-            "klarna": ["KLARNA"],
-            "ideal": ["IDEAL"],
-            "bancontact": ["BANCONTACT"],
-            "twint": ["TWINT"],
-            "mobilepay": ["MOBILEPAY"],
-            "blik": ["BLIK"],
-            "paypal": ["PAYPAL"],
-            
-            # África
-            "m_pesa": ["M_PESA"],
-            "airtel_money": ["AIRTEL_MONEY"],
-            "mtn_money": ["MTN_MONEY"],
-            "orange_money": ["ORANGE_MONEY"],
-            "vodafone_cash": ["VODAFONE_CASH"],
-            "paystack": ["PAYSTACK"],
-            "flutterwave": ["FLUTTERWAVE"],
-            
-            # China
-            "alipay": ["ALIPAY"],
-            "wechat_pay": ["WECHAT_PAY"],
-            "unionpay": ["UNIONPAY"],
-            
-            # Japão
-            "paypay": ["PAYPAY"],
-            "line_pay": ["LINE_PAY"],
-            "rakuten_pay": ["RAKUTEN_PAY"],
-            "konbini": ["KONBINI"],
-            
-            # Tailândia
-            "promptpay": ["PROMPTPAY"],
-            "truemoney": ["TRUEMONEY"],
-            
-            # Indonésia
-            "go_pay": ["GO_PAY"],
-            "ovo": ["OVO"],
-            "dana": ["DANA"],
-            
-            # Singapura
-            "grabpay": ["GRABPAY"],
-            "dbs_paylah": ["DBS_PAYLAH"],
-            
-            # Filipinas
-            "gcash": ["GCASH"],
-            "paymaya": ["PAYMAYA"],
-            
-            # Emirados Árabes
-            "tabby": ["TABBY"],
-            "payby": ["PAYBY"],
-            
-            # Turquia
-            "troy": ["TROY"],
-            "bkm_express": ["BKM_EXPRESS"],
-            
-            # Rússia
-            "mir": ["MIR"],
-            "yoomoney": ["YOOMONEY"],
-            
-            # Austrália
-            "afterpay": ["AFTERPAY"],
-            "zip": ["ZIP"],
-            "bpay": ["BPAY"],
+            # cartões
+            "creditcard": ["creditCard", "CREDIT_CARD", "CARTAO_CREDITO", "CARD"],
+            "debitcard": ["debitCard", "DEBIT_CARD", "CARTAO_DEBITO", "CARD"],
+            "giftcard": ["giftCard", "GIFT_CARD", "CARTAO_PRESENTE", "CARD"],
+            "prepaidcard": ["prepaidCard", "PREPAID_CARD", "CARTAO_PRE_PAGO", "CARD"],
+
+            # brasil / latam
+            "pix": ["pix", "PIX"],
+            "boleto": ["boleto", "BOLETO"],
+            "mercado_pago_wallet": ["mercado_pago_wallet", "MERCADO_PAGO_WALLET"],
+            "oxxo": ["oxxo", "OXXO"],
+            "spei": ["spei", "SPEI"],
+            "rapipago": ["rapipago", "RAPIPAGO"],
+
+            # norte américa
+            "venmo": ["venmo", "VENMO"],
+            "cashapp": ["cashapp", "CASHAPP"],
+            "interac": ["interac", "INTERAC"],
+
+            # europa
+            "apple_pay": ["apple_pay", "APPLE_PAY"],
+            "google_pay": ["google_pay", "GOOGLE_PAY"],
+            "samsung_pay": ["samsung_pay", "SAMSUNG_PAY"],
+            "mbway": ["mbway", "MBWAY"],
+            "multibanco_reference": ["multibanco_reference", "MULTIBANCO_REFERENCE"],
+            "sofort": ["sofort", "SOFORT"],
+            "ideal": ["ideal", "IDEAL"],
+            "bancontact": ["bancontact", "BANCONTACT"],
+            "twint": ["twint", "TWINT"],
+            "mobilepay": ["mobilepay", "MOBILEPAY"],
+            "blik": ["blik", "BLIK"],
+            "paypal": ["paypal", "PAYPAL"],
+
+            # áfrica
+            "m_pesa": ["m_pesa", "M_PESA"],
+            "airtel_money": ["airtel_money", "AIRTEL_MONEY"],
+            "mtn_money": ["mtn_money", "MTN_MONEY"],
+
+            # china
+            "alipay": ["alipay", "ALIPAY"],
+            "wechat_pay": ["wechat_pay", "WECHAT_PAY"],
+            "unionpay": ["unionpay", "UNIONPAY"],
+
+            # japão
+            "paypay": ["paypay", "PAYPAY"],
+            "line_pay": ["line_pay", "LINE_PAY"],
+            "rakuten_pay": ["rakuten_pay", "RAKUTEN_PAY"],
+            "konbini": ["konbini", "KONBINI"],
+
+            # sea
+            "promptpay": ["promptpay", "PROMPTPAY"],
+            "truemoney": ["truemoney", "TRUEMONEY"],
+            "go_pay": ["go_pay", "GO_PAY"],
+            "ovo": ["ovo", "OVO"],
+            "dana": ["dana", "DANA"],
+            "grabpay": ["grabpay", "GRABPAY"],
+            "dbs_paylah": ["dbs_paylah", "DBS_PAYLAH"],
+            "gcash": ["gcash", "GCASH"],
+            "paymaya": ["paymaya", "PAYMAYA"],
+
+            # mea / eu east / oceania
+            "tabby": ["tabby", "TABBY"],
+            "payby": ["payby", "PAYBY"],
+            "troy": ["troy", "TROY"],
+            "bkm_express": ["bkm_express", "BKM_EXPRESS"],
+            "mir": ["mir", "MIR"],
+            "yoomoney": ["yoomoney", "YOOMONEY"],
+            "afterpay": ["afterpay", "AFTERPAY"],
+            "zip": ["zip", "ZIP"],
+            "bpay": ["bpay", "BPAY"],
+
+            # outros
+            "crypto": ["crypto", "CRYPTO"],
+            "nfc": ["nfc", "NFC"],
+            "cash": ["cash", "CASH"],
+            "card": ["CARD", "card"],
         }
 
-        # Retorna capacidades mapeadas ou o método original em maiúsculo
-        return mapping.get(normalized, [normalized.upper()])
+        compact = raw_lower.replace("-", "_").replace(" ", "")
+        compact = compact.replace("_", "")
+        # tenta chave compacta
+        for key, vals in mapping.items():
+            key_compact = key.replace("_", "")
+            if raw_lower == key or raw_upper == key.upper() or compact == key_compact:
+                add(*vals)
+                break
+
+        # umbrella para cartões no dado legado do locker
+        card_family_inputs = {
+            "creditcard",
+            "debitcard",
+            "giftcard",
+            "prepaidcard",
+            "cartaocredito",
+            "cartaodebito",
+            "cartaopresente",
+            "cartaoprepago",
+        }
+        if compact in card_family_inputs:
+            add("CARD")
+
+        # umbrella region-specific optional aliases
+        if region_norm in {"SP", "RJ", "MG", "RS", "BA", "PR"} and compact in {"pix", "boleto"}:
+            add(raw_upper)
+
+        return list(aliases)
+
+    def _map_payment_method_to_locker_capabilities(
+        self,
+        payment_method: str,
+        region: Optional[str] = None,
+    ) -> List[str]:
+        """
+        Mantido por compatibilidade.
+        Agora retorna aliases compatíveis com o novo allowed_payment_methods canônico.
+        """
+        return self._payment_method_aliases(payment_method, region)
 
     def _validate_region_support(self, region: str, channel_type: str) -> None:
         """
         Valida se a região é suportada para o canal específico.
         """
-        from app.schemas.orders import OnlineRegion
-        from app.schemas.kiosk import KioskRegion
-        
         all_regions = set([r.value for r in OnlineRegion]) | set([r.value for r in KioskRegion])
-        
+
         if region not in all_regions:
             raise HTTPException(
                 status_code=400,
@@ -271,10 +326,10 @@ class LockerService:
         """
         Valida se o locker está online e em modo de operação normal.
         """
-        status = locker.get("status", "").upper()
-        is_online = locker.get("is_online", False)
+        status = str(locker.get("status", "") or "").upper()
+        is_online = locker.get("is_online", True)
         is_maintenance = locker.get("is_maintenance", False)
-        
+
         if not is_online or status == "OFFLINE":
             raise HTTPException(
                 status_code=503,
@@ -285,7 +340,7 @@ class LockerService:
                     "status": status,
                 },
             )
-        
+
         if is_maintenance or status == "MAINTENANCE":
             raise HTTPException(
                 status_code=503,
@@ -297,18 +352,18 @@ class LockerService:
             )
 
     def _validate_slot_availability(
-        self, 
-        locker: Dict[str, Any], 
-        desired_slot: Optional[int] = None
+        self,
+        locker: Dict[str, Any],
+        desired_slot: Optional[int] = None,
     ) -> Dict[str, Any]:
         """
         Valida disponibilidade de slot no locker.
         """
         available_slots = locker.get("available_slots", [])
         total_slots = locker.get("total_slots", 0)
-        
+
         if desired_slot is not None:
-            if desired_slot < 1 or desired_slot > total_slots:
+            if total_slots and (desired_slot < 1 or desired_slot > total_slots):
                 raise HTTPException(
                     status_code=400,
                     detail={
@@ -318,8 +373,8 @@ class LockerService:
                         "total_slots": total_slots,
                     },
                 )
-            
-            if desired_slot not in available_slots:
+
+            if available_slots and desired_slot not in available_slots:
                 raise HTTPException(
                     status_code=409,
                     detail={
@@ -329,21 +384,13 @@ class LockerService:
                         "available_slots": available_slots,
                     },
                 )
-            
+
             return {"allocated_slot": desired_slot}
-        
-        # Se não especificado, retorna o primeiro slot disponível
+
         if available_slots:
             return {"allocated_slot": available_slots[0]}
-        
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": LockerServiceErrorType.SLOT_UNAVAILABLE,
-                "message": "Nenhum slot disponível no momento",
-                "locker_id": locker.get("locker_id"),
-            },
-        )
+
+        return {"allocated_slot": None}
 
     def validate_locker_for_order(
         self,
@@ -361,23 +408,19 @@ class LockerService:
         Valida se o locker está disponível para o pedido.
         Retorna o locker validado com informações de slot.
         """
-        # Normaliza parâmetros
         normalized_region = self._normalize_region(region)
         normalized_channel = self._normalize_channel(channel)
         normalized_fulfillment = self._normalize_fulfillment_type(fulfillment_type or "RESERVATION")
-        
-        # Valida suporte da região
+
         self._validate_region_support(normalized_region, normalized_channel)
-        
-        # Busca lockers da região
+
         lockers = self._get_runtime_lockers(normalized_region)
-        
-        # Encontra o locker específico
+
         locker = next(
             (item for item in lockers if item.get("locker_id") == locker_id),
             None,
         )
-        
+
         if not locker:
             raise HTTPException(
                 status_code=404,
@@ -388,11 +431,9 @@ class LockerService:
                     "region": normalized_region,
                 },
             )
-        
-        # Valida status do locker
+
         self._validate_locker_status(locker)
-        
-        # Valida canal
+
         allowed_channels = self._normalize_upper_list(locker.get("channels"))
         if normalized_channel not in allowed_channels:
             raise HTTPException(
@@ -405,8 +446,7 @@ class LockerService:
                     "allowed_channels": allowed_channels,
                 },
             )
-        
-        # Valida tipo de fulfillment
+
         allowed_fulfillment = self._normalize_upper_list(locker.get("fulfillment_types"))
         if allowed_fulfillment and normalized_fulfillment not in allowed_fulfillment:
             raise HTTPException(
@@ -419,34 +459,35 @@ class LockerService:
                     "allowed_types": allowed_fulfillment,
                 },
             )
-        
-        # Valida método de pagamento
+
         raw_methods = locker.get("payment_methods") or locker.get("allowed_payment_methods") or []
         allowed_methods = self._normalize_upper_list(raw_methods)
-        
+
         normalized_inputs = self._map_payment_method_to_locker_capabilities(
-            payment_method, 
-            normalized_region
+            payment_method,
+            normalized_region,
         )
-        
-        if not any(item in allowed_methods for item in normalized_inputs):
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": LockerServiceErrorType.PAYMENT_METHOD_NOT_ALLOWED,
-                    "message": f"Método {payment_method} não permitido em {locker_id} para região {normalized_region}",
-                    "locker_id": locker_id,
-                    "payment_method": payment_method,
-                    "region": normalized_region,
-                    "allowed_methods": allowed_methods,
-                    "normalized_input": normalized_inputs,
-                },
-            )
-        
-        # Valida interface de pagamento (se o locker tem restrições)
+        normalized_inputs_upper = {str(item).strip().upper() for item in normalized_inputs if str(item).strip()}
+
+        if allowed_methods:
+            matched = any(candidate in allowed_methods for candidate in normalized_inputs_upper)
+            if not matched:
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "type": LockerServiceErrorType.PAYMENT_METHOD_NOT_ALLOWED,
+                        "message": f"Método {payment_method} não permitido em {locker_id} para região {normalized_region}",
+                        "locker_id": locker_id,
+                        "payment_method": payment_method,
+                        "region": normalized_region,
+                        "allowed_methods": allowed_methods,
+                        "normalized_input": sorted(normalized_inputs_upper),
+                    },
+                )
+
         allowed_interfaces = self._normalize_upper_list(locker.get("payment_interfaces"))
         if allowed_interfaces and payment_interface:
-            normalized_interface = payment_interface.upper()
+            normalized_interface = str(payment_interface).strip().upper()
             if normalized_interface not in allowed_interfaces:
                 raise HTTPException(
                     status_code=409,
@@ -458,11 +499,9 @@ class LockerService:
                         "allowed_interfaces": allowed_interfaces,
                     },
                 )
-        
-        # Valida disponibilidade de slot
+
         slot_result = self._validate_slot_availability(locker, desired_slot)
-        
-        # Retorna locker enriquecido com informações do slot
+
         return {
             "locker": locker,
             "allocated_slot": slot_result["allocated_slot"],
@@ -481,12 +520,12 @@ class LockerService:
         """
         normalized_region = self._normalize_region(region)
         lockers = self._get_runtime_lockers(normalized_region)
-        
+
         locker = next(
             (item for item in lockers if item.get("locker_id") == locker_id),
             None,
         )
-        
+
         if not locker:
             raise HTTPException(
                 status_code=404,
@@ -497,7 +536,7 @@ class LockerService:
                     "region": normalized_region,
                 },
             )
-        
+
         return locker
 
     def get_available_lockers(
@@ -511,29 +550,30 @@ class LockerService:
         """
         normalized_region = self._normalize_region(region)
         lockers = self._get_runtime_lockers(normalized_region)
-        
-        # Filtra lockers online
-        lockers = [l for l in lockers if l.get("is_online", False)]
-        
-        # Filtra por canal
+
+        lockers = [l for l in lockers if l.get("is_online", True)]
+
         if channel:
             normalized_channel = self._normalize_channel(channel)
             lockers = [
-                l for l in lockers 
+                l for l in lockers
                 if normalized_channel in self._normalize_upper_list(l.get("channels"))
             ]
-        
-        # Filtra por método de pagamento
+
         if payment_method:
             normalized_methods = self._map_payment_method_to_locker_capabilities(payment_method, region)
-            lockers = [
-                l for l in lockers
-                if any(
-                    m in self._normalize_upper_list(l.get("payment_methods") or l.get("allowed_payment_methods") or [])
-                    for m in normalized_methods
+            normalized_methods_upper = {str(m).strip().upper() for m in normalized_methods if str(m).strip()}
+
+            filtered_lockers = []
+            for locker in lockers:
+                locker_methods = self._normalize_upper_list(
+                    locker.get("payment_methods") or locker.get("allowed_payment_methods") or []
                 )
-            ]
-        
+                if any(m in locker_methods for m in normalized_methods_upper):
+                    filtered_lockers.append(locker)
+
+            lockers = filtered_lockers
+
         return lockers
 
     def invalidate_cache(self, region: Optional[str] = None) -> None:
@@ -547,7 +587,6 @@ class LockerService:
             self._cache.clear()
 
 
-# Instância singleton do serviço
 _locker_service_instance = None
 
 
@@ -559,7 +598,6 @@ def get_locker_service() -> LockerService:
     return _locker_service_instance
 
 
-# Funções de compatibilidade (mantêm a interface original)
 def validate_locker_for_order(
     *,
     db,
@@ -582,11 +620,9 @@ def validate_locker_for_order(
         payment_method=payment_method,
         payment_interface=payment_interface,
     )
-    # Retorna apenas o locker para compatibilidade com código existente
     return result["locker"]
 
 
-# Funções auxiliares adicionais para compatibilidade
 def _get_runtime_lockers(region: str) -> list[dict]:
     """Função de compatibilidade para código existente"""
     service = get_locker_service()

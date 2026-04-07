@@ -1,7 +1,13 @@
 # 01_source/order_pickup_service/app/schemas/kiosk.py
-# 02/04/2026 - Enhanced Version with Global Markets
+# Corrigido para aceitar UI_CODE no backend
+# Corrigido para normalizar automaticamente payment_method/payment_interface
+# Corrigido para não quebrar o router atual
+# 06/04/2026 - Remoção dicionários hardcoded do schema
 
-from datetime import datetime
+from __future__ import annotations
+
+# from enum import Enum
+# from typing import Any, Dict, Optional
 from enum import Enum
 from typing import Any, Dict, Optional, List
 from re import compile as re_compile
@@ -168,11 +174,11 @@ class KioskPaymentMethod(str, Enum):
     DEBIT_CARD = "debitCard"
     GIFT_CARD = "giftCard"
     PREPAID_CARD = "prepaidCard"
-    
+
     # Brasil
     PIX = "pix"
     BOLETO = "boleto"
-    
+
     # América Latina
     MERCADO_PAGO_WALLET = "mercado_pago_wallet"
     OXXO = "oxxo"  # México
@@ -183,7 +189,7 @@ class KioskPaymentMethod(str, Enum):
     VENMO = "venmo"
     CASHAPP = "cashapp"
     INTERAC = "interac"  # Canadá
-    
+
     # Europa
     MBWAY = "mbway"  # Portugal
     MULTIBANCO_REFERENCE = "multibanco_reference"  # Portugal
@@ -193,43 +199,41 @@ class KioskPaymentMethod(str, Enum):
     TWINT = "twint"  # Suíça
     MOBILEPAY = "mobilepay"  # Dinamarca, Finlândia
     BLIK = "blik"  # Polônia
-    
-    # Reino Unido
-    PAYPAL = "paypal"
-    
+    PAYPAL = "paypal"  # Reino Unido
+
     # África
     M_PESA = "m_pesa"
     AIRTEL_MONEY = "airtel_money"
     MTN_MONEY = "mtn_money"
-    
+
     # China
     ALIPAY = "alipay"
     WECHAT_PAY = "wechat_pay"
     UNIONPAY = "unionpay"
-    
+
     # Japão
-    PAYPAY = "paypay"
+    # PAYPAY = "paypay"
     LINE_PAY = "line_pay"
     RAKUTEN_PAY = "rakuten_pay"
     KONBINI = "konbini"  # Pagamento em lojas de conveniência
-    
+
     # Tailândia
     PROMPTPAY = "promptpay"
     TRUEMONEY = "truemoney"
-    
+
     # Indonésia
     GO_PAY = "go_pay"
     OVO = "ovo"
     DANA = "dana"
-    
+
     # Singapura
     GRABPAY = "grabpay"
     DBS_PAYLAH = "dbs_paylah"
-    
+
     # Filipinas
     GCASH = "gcash"
     PAYMAYA = "paymaya"
-    
+
     # Emirados Árabes
     TABBY = "tabby"  # BNPL
     PAYBY = "payby"
@@ -241,16 +245,17 @@ class KioskPaymentMethod(str, Enum):
     # Rússia
     MIR = "mir"
     YOOMONEY = "yoomoney"
-    
+
     # Austrália
     AFTERPAY = "afterpay"
     ZIP = "zip"
     BPAY = "bpay"
-    
+
     # Wallets globais
     APPLE_PAY = "apple_pay"
     GOOGLE_PAY = "google_pay"
     SAMSUNG_PAY = "samsung_pay"
+
     CRYPTO = "crypto"
 
     @classmethod
@@ -273,12 +278,14 @@ class KioskPaymentInterface(str, Enum):
     MAGNETIC_STRIPE = "magnetic_stripe"
     CONTACTLESS = "contactless"
     BIOMETRIC = "biometric"
-    
+    PHONE_APP = "phone_app"
+
     # Interfaces digitais
     QR_CODE = "qr_code"
     WEB_TOKEN = "web_token"
     DEEP_LINK = "deep_link"
     API = "api"
+    WEB_REDIRECT = "web_redirect"
     
     # Interfaces manuais
     MANUAL = "manual"
@@ -291,6 +298,15 @@ class KioskPaymentInterface(str, Enum):
     BARCODE = "barcode"  # Indonésia, Filipinas, Japão
     VOICE = "voice"  # Voice payments
 
+    REFERENCE = "reference"
+
+
+class KioskCardType(str, Enum):
+    CREDIT = "creditCard"
+    DEBIT = "debitCard"
+    GIFT = "giftCard"
+    PREPAID = "prepaidCard"
+
 
 class KioskWalletProvider(str, Enum):
     # Internacionais
@@ -298,23 +314,23 @@ class KioskWalletProvider(str, Enum):
     GOOGLE_PAY = "googlePay"
     SAMSUNG_PAY = "samsungPay"
     PAYPAL = "paypal"
-    
+
     # América Latina
     MERCADO_PAGO = "mercadoPago"
-    PICPAY = "picpay"
-    
+    PIC_PAY = "picpay"
+
     # América do Norte
     VENMO = "venmo"
     CASHAPP = "cashapp"
     ZELLE = "zelle"
-    
+
     # Europa
     REVOLUT = "revolut"
     MBWAY = "mbway"
     TWINT = "twint"
     MOBILEPAY = "mobilepay"
     BLIK = "blik"
-    
+
     # África
     M_PESA = "mPesa"
     AIRTEL_MONEY = "airtelMoney"
@@ -323,7 +339,7 @@ class KioskWalletProvider(str, Enum):
     # China
     ALIPAY = "alipay"
     WECHAT_PAY = "wechatPay"
-    
+
     # Japão
     PAYPAY = "paypay"
     LINE_PAY = "linePay"
@@ -336,19 +352,18 @@ class KioskWalletProvider(str, Enum):
     GO_PAY = "goPay"
     OVO = "ovo"
     DANA = "dana"
-    
+
     # Singapura
     GRABPAY = "grabpay"
     DBS_PAYLAH = "dbsPaylah"
-    
+
     # Filipinas
     GCASH = "gcash"
     PAYMAYA = "paymaya"
-    
+
     # Emirados Árabes
     TABBY = "tabby"
-    PAYBY = "payby"
-    
+
     # Turquia
     BKM_EXPRESS = "bkmExpress"
     
@@ -360,40 +375,190 @@ class KioskWalletProvider(str, Enum):
     ZIP = "zip"
 
 
+UI_CODE_TO_CANONICAL_METHOD: dict[str, str] = {
+    "PIX": "pix",
+    "CARTAO_CREDITO": "creditCard",
+    "CARTAO_DEBITO": "debitCard",
+    "CARTAO_PRESENTE": "giftCard",
+    "CARTAO_PRE_PAGO": "prepaidCard",
+    "MBWAY": "mbway",
+    "MULTIBANCO_REFERENCE": "multibanco_reference",
+    "NFC": "nfc",
+    "APPLE_PAY": "apple_pay",
+    "GOOGLE_PAY": "google_pay",
+    "SAMSUNG_PAY": "samsung_pay",
+    "MERCADO_PAGO_WALLET": "mercado_pago_wallet",
+    "PAYPAL": "paypal",
+    "M_PESA": "m_pesa",
+    "AIRTEL_MONEY": "airtel_money",
+    "MTN_MONEY": "mtn_money",
+    "ALIPAY": "alipay",
+    "WECHAT_PAY": "wechat_pay",
+    "PAYPAY": "paypay",
+    "LINE_PAY": "line_pay",
+    "RAKUTEN_PAY": "rakuten_pay",
+    "KONBINI": "konbini",
+    "GO_PAY": "go_pay",
+    "OVO": "ovo",
+    "DANA": "dana",
+    "GRABPAY": "grabpay",
+    "GCASH": "gcash",
+    "PAYMAYA": "paymaya",
+    "TABBY": "tabby",
+    "YOOMONEY": "yoomoney",
+    "AFTERPAY": "afterpay",
+    "ZIP": "zip",
+    "BPAY": "bpay",
+    "BOLETO": "boleto",
+    "CRYPTO": "crypto",
+}
+
+DEFAULT_INTERFACE_BY_METHOD: dict[str, str] = {
+    "creditCard": "chip",
+    "debitCard": "chip",
+    "giftCard": "manual",
+    "prepaidCard": "manual",
+    "pix": "qr_code",
+    "boleto": "barcode",
+    "mercado_pago_wallet": "qr_code",
+    "oxxo": "barcode",
+    "spei": "web_token",
+    "rapipago": "barcode",
+    "venmo": "web_token",
+    "cashapp": "web_token",
+    "interac": "web_token",
+    "mbway": "phone_app",
+    "multibanco_reference": "reference",
+    "sofort": "web_redirect",
+    "ideal": "web_redirect",
+    "bancontact": "web_redirect",
+    "twint": "web_token",
+    "mobilepay": "web_token",
+    "blik": "web_token",
+    "paypal": "web_redirect",
+    "m_pesa": "ussd",
+    "airtel_money": "ussd",
+    "mtn_money": "ussd",
+    "alipay": "qr_code",
+    "wechat_pay": "qr_code",
+    "unionpay": "chip",
+    "paypay": "qr_code",
+    "line_pay": "qr_code",
+    "rakuten_pay": "qr_code",
+    "konbini": "barcode",
+    "promptpay": "qr_code",
+    "truemoney": "qr_code",
+    "go_pay": "qr_code",
+    "ovo": "qr_code",
+    "dana": "qr_code",
+    "grabpay": "qr_code",
+    "dbs_paylah": "qr_code",
+    "gcash": "qr_code",
+    "paymaya": "qr_code",
+    "tabby": "web_redirect",
+    "payby": "web_redirect",
+    "troy": "chip",
+    "bkm_express": "web_redirect",
+    "mir": "chip",
+    "yoomoney": "web_redirect",
+    "afterpay": "web_redirect",
+    "zip": "web_redirect",
+    "bpay": "reference",
+    "apple_pay": "nfc",
+    "google_pay": "nfc",
+    "samsung_pay": "nfc",
+    "crypto": "qr_code",
+}
+
+DEFAULT_WALLET_PROVIDER_BY_METHOD: dict[str, str] = {
+    "apple_pay": "applePay",
+    "google_pay": "googlePay",
+    "samsung_pay": "samsungPay",
+    "mercado_pago_wallet": "mercadoPago",
+    "paypal": "paypal",
+    "venmo": "venmo",
+    "cashapp": "cashapp",
+    "m_pesa": "mPesa",
+    "airtel_money": "airtelMoney",
+    "mtn_money": "mtnMoney",
+    "alipay": "alipay",
+    "wechat_pay": "wechatPay",
+    "paypay": "paypay",
+    "line_pay": "linePay",
+    "rakuten_pay": "rakutenPay",
+    "go_pay": "goPay",
+    "ovo": "ovo",
+    "dana": "dana",
+    "grabpay": "grabpay",
+    "gcash": "gcash",
+    "paymaya": "paymaya",
+    "tabby": "tabby",
+    "yoomoney": "yoomoney",
+}
+
+PHONE_REQUIRED_METHODS = {
+    "mbway",
+    "m_pesa",
+    "airtel_money",
+    "mtn_money",
+    "go_pay",
+    "ovo",
+    "dana",
+    "gcash",
+    "paymaya",
+}
+
+WALLET_PROVIDER_REQUIRED_METHODS = set(DEFAULT_WALLET_PROVIDER_BY_METHOD.keys())
+
+
+def _normalize_method_input(value: Any) -> Any:
+    if value is None:
+        return value
+
+    raw = str(value).strip()
+    if not raw:
+        return raw
+
+    if raw in UI_CODE_TO_CANONICAL_METHOD:
+        return UI_CODE_TO_CANONICAL_METHOD[raw]
+
+    upper = raw.upper()
+    if upper in UI_CODE_TO_CANONICAL_METHOD:
+        return UI_CODE_TO_CANONICAL_METHOD[upper]
+
+    return raw
+
+
+def _normalize_interface_input(value: Any) -> Any:
+    if value is None:
+        return value
+    raw = str(value).strip()
+    return raw or None
+
+
+def _normalize_wallet_provider_input(value: Any) -> Any:
+    if value is None:
+        return value
+    raw = str(value).strip()
+    return raw or None
+
+
 class KioskOrderCreateIn(BaseModel):
-    region: KioskRegion = Field(..., examples=["PT", "BR", "CN", "JP"])
-    sales_channel: KioskSalesChannel = Field(default=KioskSalesChannel.KIOSK)
-    fulfillment_type: KioskFulfillmentType = Field(default=KioskFulfillmentType.INSTANT)
+    region: KioskRegion = Field(..., examples=["SP", "PT", "CN", "JP"])
+    totem_id: str = Field(..., examples=["SP-CARAPICUIBA-JDMARILU-LK-001"])
+    sku_id: str = Field(..., examples=["cookie_laranja"])
 
-    totem_id: str = Field(..., examples=["PT-MAIA-CENTRO-LK-001", "CN-BJ-CBD-001"])
-    sku_id: str = Field(..., examples=["bolo_laranja_algarve", "product_123"])
+    payment_method: str
+    payment_interface: Optional[str] = None
+    desired_slot: int | None = Field(default=None, ge=1)
 
-    payment_method: KioskPaymentMethod
-    payment_interface: KioskPaymentInterface
+    card_type: Optional[str] = None
+    customer_phone: Optional[str] = Field(default=None, examples=["+5511999999999", "+351912345678"])
+    wallet_provider: Optional[str] = None
 
-    desired_slot: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=999,
-        description="Slot físico do locker (validado dinamicamente no backend/runtime)",
-    )
-    amount_cents: Optional[int] = Field(default=None, gt=0, le=999999999)
-
-    customer_phone: Optional[str] = Field(default=None, examples=["+351912345678"])
-    customer_email: Optional[EmailStr] = Field(default=None, examples=["customer@example.com"])
-    wallet_provider: Optional[KioskWalletProvider] = None
-    
-    # Campos específicos por região
-    national_id: Optional[str] = Field(default=None, description="ID Nacional (China, Japão, Coreia)")
-    qr_code_content: Optional[str] = Field(default=None, description="Conteúdo do QR code")
-    konbini_code: Optional[str] = Field(default=None, description="Código para pagamento em konbini - Japão")
-    ussd_session_id: Optional[str] = Field(default=None, description="USSD session ID - África")
-    emirates_id: Optional[str] = Field(default=None, description="Emirates ID - UAE")
-    turkish_id: Optional[str] = Field(default=None, description="Turkish ID number")
-    
-    # Campos para validação
-    device_id: Optional[str] = Field(default=None, description="Device identifier")
-    language: Optional[str] = Field(default="en", description="Idioma da interface do kiosk")
+    sales_channel: Optional[str] = None
+    fulfillment_type: Optional[str] = None
+    amount_cents: Optional[int] = Field(default=None, gt=0)
 
     @field_validator("totem_id")
     @classmethod
@@ -401,8 +566,6 @@ class KioskOrderCreateIn(BaseModel):
         normalized = (value or "").strip().upper()
         if not normalized:
             raise ValueError("totem_id é obrigatório.")
-        if len(normalized) > 50:
-            raise ValueError("totem_id deve ter menos de 50 caracteres.")
         return normalized
 
     @field_validator("sku_id")
@@ -411,9 +574,23 @@ class KioskOrderCreateIn(BaseModel):
         normalized = (value or "").strip()
         if not normalized:
             raise ValueError("sku_id é obrigatório.")
-        if len(normalized) > 100:
-            raise ValueError("sku_id deve ter menos de 100 caracteres.")
         return normalized
+
+    @field_validator("payment_method")
+    @classmethod
+    def validate_payment_method(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("payment_method é obrigatório.")
+        return normalized
+
+    @field_validator("payment_interface")
+    @classmethod
+    def normalize_payment_interface(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @field_validator("customer_phone")
     @classmethod
@@ -421,276 +598,47 @@ class KioskOrderCreateIn(BaseModel):
         if value is None:
             return None
         normalized = value.strip()
-        # Validação de formato internacional
-        phone_pattern = re_compile(r'^\+[1-9]\d{1,14}$')
-        if normalized and not phone_pattern.match(normalized):
-            raise ValueError("customer_phone deve estar no formato internacional (ex: +5511999999999)")
         return normalized or None
 
-    @model_validator(mode="after")
-    def validate_payment_context(self) -> "KioskOrderCreateIn":
-        if self.sales_channel not in {KioskSalesChannel.KIOSK, KioskSalesChannel.SELF_SERVICE}:
-            raise ValueError("sales_channel inválido para operação em quiosque.")
+    @field_validator("wallet_provider")
+    @classmethod
+    def normalize_wallet_provider(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
-        if self.fulfillment_type not in {KioskFulfillmentType.INSTANT, KioskFulfillmentType.LOCKER_DISPENSE}:
-            raise ValueError("fulfillment_type inválido para pedido KIOSK.")
 
-        # Validações específicas por região - Brasil
-        brazil_regions = {KioskRegion.SP, KioskRegion.RJ, KioskRegion.MG, 
-                         KioskRegion.RS, KioskRegion.BA}
-        
-        if self.payment_method == KioskPaymentMethod.PIX:
-            if self.region not in brazil_regions:
-                raise ValueError(f"pix só pode ser utilizado nas regiões do Brasil: {', '.join([r.value for r in brazil_regions])}")
+class KioskOrderOut(BaseModel):
+    order_id: str
+    status: str
+    slot: int
+    amount_cents: int
+    payment_method: str
+    allocation_id: str
+    ttl_sec: int | None = None
+    message: str
+    payment_status: Optional[str] = None
+    payment_instruction_type: Optional[str] = None
+    payment_payload: Dict[str, Any] = Field(default_factory=dict)
 
-        if self.payment_method == KioskPaymentMethod.BOLETO:
-            if self.region not in brazil_regions:
-                raise ValueError(f"boleto só pode ser utilizado nas regiões do Brasil")
 
-        # México
-        if self.payment_method in {KioskPaymentMethod.OXXO, KioskPaymentMethod.SPEI}:
-            if self.region != KioskRegion.MX:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado no México (MX).")
-
-        # Argentina
-        if self.payment_method == KioskPaymentMethod.RAPIPAGO:
-            if self.region != KioskRegion.AR:
-                raise ValueError("rapipago só pode ser utilizado na Argentina (AR).")
-
-        # Portugal
-        if self.payment_method == KioskPaymentMethod.MBWAY:
-            if self.region != KioskRegion.PT:
-                raise ValueError("mbway só pode ser utilizado na região PT.")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para pagamento mbway.")
-
-        if self.payment_method == KioskPaymentMethod.MULTIBANCO_REFERENCE:
-            if self.region != KioskRegion.PT:
-                raise ValueError("multibanco_reference só pode ser utilizado na região PT.")
-
-        # China
-        if self.payment_method in {KioskPaymentMethod.ALIPAY, KioskPaymentMethod.WECHAT_PAY, 
-                                   KioskPaymentMethod.UNIONPAY}:
-            if self.region != KioskRegion.CN:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado na China (CN).")
-            if not self.qr_code_content:
-                raise ValueError("qr_code_content é obrigatório para pagamentos na China.")
-            if self.payment_interface != KioskPaymentInterface.QR_CODE:
-                raise ValueError("Pagamentos na China exigem payment_interface = qr_code.")
-
-        # Japão
-        if self.payment_method in {KioskPaymentMethod.PAYPAY, KioskPaymentMethod.LINE_PAY,
-                                   KioskPaymentMethod.RAKUTEN_PAY}:
-            if self.region != KioskRegion.JP:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado no Japão (JP).")
-            
-        if self.payment_method == KioskPaymentMethod.KONBINI:
-            if self.region != KioskRegion.JP:
-                raise ValueError("konbini só pode ser utilizado no Japão (JP).")
-            if not self.konbini_code:
-                raise ValueError("konbini_code é obrigatório para pagamento em lojas de conveniência.")
-            if self.payment_interface != KioskPaymentInterface.BARCODE:
-                raise ValueError("konbini exige payment_interface = barcode.")
-
-        # Tailândia
-        if self.payment_method == KioskPaymentMethod.PROMPTPAY:
-            if self.region != KioskRegion.TH:
-                raise ValueError("promptpay só pode ser utilizado na Tailândia (TH).")
-            if not self.qr_code_content:
-                raise ValueError("qr_code_content é obrigatório para PromptPay.")
-            if self.payment_interface != KioskPaymentInterface.QR_CODE:
-                raise ValueError("PromptPay exige payment_interface = qr_code.")
-
-        # Indonésia
-        if self.payment_method in {KioskPaymentMethod.GO_PAY, KioskPaymentMethod.OVO, 
-                                   KioskPaymentMethod.DANA}:
-            if self.region != KioskRegion.ID:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado na Indonésia (ID).")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para carteiras digitais da Indonésia.")
-
-        # Singapura
-        if self.payment_method in {KioskPaymentMethod.GRABPAY, KioskPaymentMethod.DBS_PAYLAH}:
-            if self.region != KioskRegion.SG:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado em Singapura (SG).")
-
-        # Filipinas
-        if self.payment_method in {KioskPaymentMethod.GCASH, KioskPaymentMethod.PAYMAYA}:
-            if self.region != KioskRegion.PH:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado nas Filipinas (PH).")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para GCash/PayMaya.")
-
-        # Emirados Árabes
-        if self.payment_method in {KioskPaymentMethod.TABBY, KioskPaymentMethod.PAYBY}:
-            if self.region != KioskRegion.AE:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado nos Emirados Árabes (AE).")
-            if self.payment_method == KioskPaymentMethod.TABBY and not self.customer_email:
-                raise ValueError("customer_email é obrigatório para Tabby.")
-
-        # Turquia
-        if self.payment_method in {KioskPaymentMethod.TROY, KioskPaymentMethod.BKM_EXPRESS}:
-            if self.region != KioskRegion.TR:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado na Turquia (TR).")
-            if not self.turkish_id:
-                raise ValueError("turkish_id é obrigatório para pagamentos na Turquia.")
-
-        # Rússia
-        if self.payment_method in {KioskPaymentMethod.MIR, KioskPaymentMethod.YOOMONEY}:
-            if self.region != KioskRegion.RU:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado na Rússia (RU).")
-            if not self.national_id:
-                raise ValueError("national_id é obrigatório para pagamentos na Rússia.")
-
-        # Austrália
-        if self.payment_method in {KioskPaymentMethod.AFTERPAY, KioskPaymentMethod.ZIP, 
-                                   KioskPaymentMethod.BPAY}:
-            if self.region != KioskRegion.AU:
-                raise ValueError(f"{self.payment_method.value} só pode ser utilizado na Austrália (AU).")
-
-        # África - M-PESA
-        african_regions = {KioskRegion.KE, KioskRegion.TZ, KioskRegion.UG, KioskRegion.RW}
-        if self.payment_method == KioskPaymentMethod.M_PESA:
-            if self.region not in african_regions:
-                raise ValueError(f"m_pesa só pode ser utilizado na África Oriental: {', '.join([r.value for r in african_regions])}")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para m_pesa.")
-            if not self.ussd_session_id:
-                raise ValueError("ussd_session_id é obrigatório para m_pesa.")
-            if self.payment_interface != KioskPaymentInterface.USSD:
-                raise ValueError("m_pesa exige payment_interface = ussd.")
-
-        # Validações de interface para cartões
-        if self.payment_method in {
-            KioskPaymentMethod.CREDIT_CARD,
-            KioskPaymentMethod.DEBIT_CARD,
-            KioskPaymentMethod.GIFT_CARD,
-            KioskPaymentMethod.PREPAID_CARD,
-        }:
-            valid_interfaces = {
-                KioskPaymentInterface.CHIP,
-                KioskPaymentInterface.NFC,
-                KioskPaymentInterface.MANUAL,
-                KioskPaymentInterface.CONTACTLESS,
-                KioskPaymentInterface.MAGNETIC_STRIPE,
-            }
-            if self.payment_interface not in valid_interfaces:
-                raise ValueError(
-                    f"payment_interface incompatível com o método {self.payment_method.value}. "
-                    f"Interfaces permitidas: {', '.join([i.value for i in valid_interfaces])}"
-                )
-
-        # PIX no kiosk
-        if self.payment_method == KioskPaymentMethod.PIX:
-            if self.payment_interface != KioskPaymentInterface.QR_CODE:
-                raise ValueError("pix no kiosk exige payment_interface = qr_code.")
-
-        # Boleto no kiosk
-        if self.payment_method == KioskPaymentMethod.BOLETO:
-            if self.payment_interface != KioskPaymentInterface.QR_CODE:
-                raise ValueError("boleto no kiosk exige payment_interface = qr_code.")
-
-        # MB Way
-        if self.payment_method == KioskPaymentMethod.MBWAY:
-            valid_interfaces = {
-                KioskPaymentInterface.QR_CODE,
-                KioskPaymentInterface.WEB_TOKEN,
-            }
-            if self.payment_interface not in valid_interfaces:
-                raise ValueError(f"mbway exige payment_interface: {', '.join([i.value for i in valid_interfaces])}")
-
-        # Multibanco
-        if self.payment_method == KioskPaymentMethod.MULTIBANCO_REFERENCE:
-            valid_interfaces = {
-                KioskPaymentInterface.QR_CODE,
-                KioskPaymentInterface.MANUAL,
-            }
-            if self.payment_interface not in valid_interfaces:
-                raise ValueError(f"multibanco_reference exige payment_interface: {', '.join([i.value for i in valid_interfaces])}")
-
-        # Carteiras digitais
-        if KioskPaymentMethod.requires_wallet_provider(self.payment_method):
-            valid_interfaces = {
-                KioskPaymentInterface.NFC,
-                KioskPaymentInterface.WEB_TOKEN,
-                KioskPaymentInterface.QR_CODE,
-                KioskPaymentInterface.DEEP_LINK,
-                KioskPaymentInterface.FACE_RECOGNITION,
-                KioskPaymentInterface.FINGERPRINT,
-            }
-            
-            if self.payment_interface not in valid_interfaces:
-                raise ValueError(
-                    f"payment_interface incompatível com o método {self.payment_method.value}. "
-                    f"Interfaces permitidas: {', '.join([i.value for i in valid_interfaces])}"
-                )
-
-            if not self.wallet_provider:
-                raise ValueError("wallet_provider é obrigatório para carteiras digitais.")
-
-            # Mapeamento de provedores esperados
-            expected_provider_map = {
-                KioskPaymentMethod.APPLE_PAY: KioskWalletProvider.APPLE_PAY,
-                KioskPaymentMethod.GOOGLE_PAY: KioskWalletProvider.GOOGLE_PAY,
-                KioskPaymentMethod.SAMSUNG_PAY: KioskWalletProvider.SAMSUNG_PAY,
-                KioskPaymentMethod.MERCADO_PAGO_WALLET: KioskWalletProvider.MERCADO_PAGO,
-                KioskPaymentMethod.PAYPAL: KioskWalletProvider.PAYPAL,
-                KioskPaymentMethod.VENMO: KioskWalletProvider.VENMO,
-                KioskPaymentMethod.CASHAPP: KioskWalletProvider.CASHAPP,
-                KioskPaymentMethod.M_PESA: KioskWalletProvider.M_PESA,
-                KioskPaymentMethod.ALIPAY: KioskWalletProvider.ALIPAY,
-                KioskPaymentMethod.WECHAT_PAY: KioskWalletProvider.WECHAT_PAY,
-                KioskPaymentMethod.PAYPAY: KioskWalletProvider.PAYPAY,
-                KioskPaymentMethod.LINE_PAY: KioskWalletProvider.LINE_PAY,
-                KioskPaymentMethod.GO_PAY: KioskWalletProvider.GO_PAY,
-                KioskPaymentMethod.OVO: KioskWalletProvider.OVO,
-                KioskPaymentMethod.GRABPAY: KioskWalletProvider.GRABPAY,
-                KioskPaymentMethod.GCASH: KioskWalletProvider.GCASH,
-                KioskPaymentMethod.TABBY: KioskWalletProvider.TABBY,
-            }
-            
-            expected_provider = expected_provider_map.get(self.payment_method)
-            if expected_provider and self.wallet_provider != expected_provider:
-                raise ValueError(
-                    f"wallet_provider incompatível com o método {self.payment_method.value}. "
-                    f"Esperado: {expected_provider.value}"
-                )
-
-        # Validação para métodos que NÃO devem ter wallet_provider
-        if not KioskPaymentMethod.requires_wallet_provider(self.payment_method) and self.wallet_provider is not None:
-            raise ValueError("wallet_provider só pode ser informado para carteiras digitais.")
-
-        # customer_phone permitido apenas para métodos específicos
-        methods_allowing_phone = {
-            KioskPaymentMethod.MBWAY, KioskPaymentMethod.M_PESA, KioskPaymentMethod.AIRTEL_MONEY,
-            KioskPaymentMethod.MTN_MONEY, KioskPaymentMethod.GO_PAY, KioskPaymentMethod.OVO,
-            KioskPaymentMethod.DANA, KioskPaymentMethod.GCASH, KioskPaymentMethod.PAYMAYA
-        }
-        
-        if self.customer_phone is not None and self.payment_method not in methods_allowing_phone:
-            raise ValueError(f"customer_phone só pode ser informado para métodos: {', '.join([m.value for m in methods_allowing_phone])}")
-
-        # Validação de amount_cents
-        if self.payment_method not in {KioskPaymentMethod.GIFT_CARD} and self.amount_cents is None:
-            if self.payment_method != KioskPaymentMethod.GIFT_CARD:
-                raise ValueError(f"amount_cents é obrigatório para {self.payment_method.value}")
-
-        # Face recognition
-        if self.payment_interface == KioskPaymentInterface.FACE_RECOGNITION:
-            if self.region != KioskRegion.CN:
-                raise ValueError("Face recognition só pode ser utilizado na China.")
-            if not self.national_id:
-                raise ValueError("national_id é obrigatório para face recognition.")
-
-        return self
+class KioskPaymentApprovedOut(BaseModel):
+    order_id: str
+    slot: int
+    status: str
+    allocation_id: str
+    payment_method: Optional[str] = None
+    receipt_code: Optional[str] = None
+    receipt_print_path: Optional[str] = None
+    receipt_json_path: Optional[str] = None
+    message: str
 
 
 class KioskCustomerIdentifyIn(BaseModel):
     order_id: str
-    phone: Optional[str] = Field(default=None, examples=["+351912345678"])
+    phone: Optional[str] = None
     email: Optional[EmailStr] = None
-    qr_code: Optional[str] = Field(default=None, description="QR code para identificação")
-    national_id: Optional[str] = Field(default=None, description="ID nacional para identificação")
 
     @field_validator("order_id")
     @classmethod
@@ -706,89 +654,9 @@ class KioskCustomerIdentifyIn(BaseModel):
         if value is None:
             return None
         normalized = value.strip()
-        if normalized and not re_compile(r'^\+[1-9]\d{1,14}$').match(normalized):
-            raise ValueError("phone deve estar no formato internacional")
         return normalized or None
-
-    @model_validator(mode="after")
-    def validate_identification(self) -> "KioskCustomerIdentifyIn":
-        if not any([self.phone, self.email, self.qr_code, self.national_id]):
-            raise ValueError("É necessário fornecer pelo menos um método de identificação: phone, email, qr_code ou national_id")
-        return self
-
-
-class KioskOrderOut(BaseModel):
-    order_id: str
-    status: str
-    slot: int
-    amount_cents: int
-    payment_method: str
-    payment_interface: Optional[str] = None
-    allocation_id: str
-    ttl_sec: int
-    message: str
-    region: Optional[str] = None
-    currency: Optional[str] = None
-
-    payment_status: Optional[str] = None
-    payment_instruction_type: Optional[str] = None
-    payment_payload: Dict[str, Any] = Field(default_factory=dict)
-    
-    qr_code_url: Optional[str] = None
-    konbini_code: Optional[str] = None
-    ussd_code: Optional[str] = None
-
-
-class KioskPaymentApprovedOut(BaseModel):
-    order_id: str
-    slot: int
-    status: str
-    allocation_id: str
-    payment_method: Optional[str] = None
-    payment_interface: Optional[str] = None
-    region: Optional[str] = None
-
-    receipt_code: Optional[str] = None
-    receipt_print_path: Optional[str] = None
-    receipt_json_path: Optional[str] = None
-    
-    digital_receipt_url: Optional[str] = None
-    sms_sent: bool = False
-    email_sent: bool = False
-
-    message: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
 
 
 class KioskIdentifyOut(BaseModel):
     ok: bool
     message: str
-    order_id: Optional[str] = None
-    customer_name: Optional[str] = None
-    slot: Optional[int] = None
-    status: Optional[str] = None
-
-
-class KioskHealthCheckOut(BaseModel):
-    """Modelo para health check do kiosk"""
-    status: str
-    version: str
-    region: Optional[str] = None
-    totem_id: Optional[str] = None
-    online: bool = True
-    last_ping: datetime = Field(default_factory=datetime.utcnow)
-
-
-class KioskInventoryCheckIn(BaseModel):
-    """Modelo para verificar disponibilidade de produtos no kiosk"""
-    totem_id: str
-    sku_ids: List[str] = Field(..., min_items=1, max_items=50)
-    region: KioskRegion
-
-
-class KioskInventoryCheckOut(BaseModel):
-    """Resposta da verificação de inventário"""
-    totem_id: str
-    available_products: Dict[str, int] = Field(default_factory=dict)
-    unavailable_products: List[str] = Field(default_factory=list)
-    last_updated: datetime

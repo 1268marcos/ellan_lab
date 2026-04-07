@@ -1,20 +1,42 @@
 // 01_source/frontend/src/features/locker-dashboard/components/PaymentPanel.jsx
+// 05/04/2026
 
 import React from "react";
 
 function paymentMethodLabel(method) {
+  // Mapeamento baseado nos codes do banco
   const labels = {
     PIX: "PIX",
-    CARTAO: "Cartão",
+    CREDIT_CARD: "Cartão de Crédito",
+    DEBIT_CARD: "Cartão de Débito",
     MBWAY: "MB WAY",
     MULTIBANCO_REFERENCE: "Referência Multibanco",
     NFC: "NFC",
     APPLE_PAY: "Apple Pay",
     GOOGLE_PAY: "Google Pay",
     MERCADO_PAGO_WALLET: "Mercado Pago Wallet",
+    PAYPAL: "PayPal",
+    BOLETO: "Boleto",
   };
 
   return labels[method] || method || "-";
+}
+
+function isCardPayment(paymentMethod) {
+  // Verifica se o método de pagamento é do tipo cartão
+  // Baseado no campo is_card do banco
+  const cardMethods = ["CREDIT_CARD", "DEBIT_CARD"];
+  return cardMethods.includes(paymentMethod);
+}
+
+function isWalletPayment(paymentMethod) {
+  // Verifica se é wallet (is_wallet = true no banco)
+  const walletMethods = ["MERCADO_PAGO_WALLET", "PAYPAL", "APPLE_PAY", "GOOGLE_PAY"];
+  return walletMethods.includes(paymentMethod);
+}
+
+function isMBWayPayment(paymentMethod) {
+  return paymentMethod === "MBWAY";
 }
 
 export default function PaymentPanel({
@@ -72,8 +94,8 @@ export default function PaymentPanel({
             }}
           >
             {(availablePaymentMethods || []).map((method) => (
-              <option key={method} value={method}>
-                {paymentMethodLabel(method)}
+              <option key={method.code || method} value={method.code || method}>
+                {paymentMethodLabel(method.code || method)}
               </option>
             ))}
           </select>
@@ -97,7 +119,8 @@ export default function PaymentPanel({
           />
         </label>
 
-        {payMethod === "CARTAO" ? (
+        {/* Cartão - agora baseado no is_card do banco */}
+        {isCardPayment(payMethod) ? (
           <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
             <span style={{ fontWeight: 700 }}>Tipo do cartão</span>
             <select
@@ -112,13 +135,14 @@ export default function PaymentPanel({
                 color: "white",
               }}
             >
-              <option value="creditCard">Crédito</option>
-              <option value="debitCard">Débito</option>
+              <option value="CREDIT_CARD">Crédito</option>
+              <option value="DEBIT_CARD">Débito</option>
             </select>
           </label>
         ) : null}
 
-        {payMethod === "MBWAY" ? (
+        {/* MB WAY */}
+        {isMBWayPayment(payMethod) ? (
           <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
             <span style={{ fontWeight: 700 }}>Telefone MB WAY</span>
             <input
@@ -137,7 +161,8 @@ export default function PaymentPanel({
           </label>
         ) : null}
 
-        {isWalletMethodSelected ? (
+        {/* Wallets */}
+        {isWalletPayment(payMethod) ? (
           <div
             style={{
               fontSize: 12,
@@ -147,7 +172,7 @@ export default function PaymentPanel({
               border: "1px solid rgba(27,88,131,0.35)",
             }}
           >
-            Wallet provider: <b>{walletProvider || "-"}</b>
+            Wallet provider: <b>{walletProvider || payMethod || "-"}</b>
           </div>
         ) : null}
       </div>

@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/services/lifecycle_integration.py
 # 02/04/2026 - Enhanced Version with Asia, Middle East, Eastern Europe & Oceania Support
 # veja fim do arquivo
+# 06/04/2026 - Ajustar _calculate_reminder_schedule
 
 from __future__ import annotations
 
@@ -396,6 +397,10 @@ def _calculate_reminder_schedule(
     
     for interval_minutes in intervals:
         reminder_time = deadline_at - timedelta(minutes=interval_minutes)
+
+        if reminder_time.tzinfo is None:
+            reminder_time = reminder_time.replace(tzinfo=timezone.utc)
+        
         if reminder_time > datetime.now(timezone.utc):
             reminders.append(reminder_time)
     
@@ -453,7 +458,7 @@ def register_prepayment_timeout_deadline(
             machine_id=machine_id,
             deadline_at=deadline_at_str,
             payment_method=payment_method,
-            metadata=region_metadata,
+            # metadata=region_metadata,
         )
         
         logger.info(

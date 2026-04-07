@@ -26,7 +26,7 @@ export function normalizeLockerItem(locker) {
     slots: Number(locker?.slots || 24),
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
     payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((m) => String(m).toUpperCase())
+      ? locker.payment_methods.map((m) => String(m).trim()) //.toUpperCase()
       : [],
     active: Boolean(locker?.active),
     address,
