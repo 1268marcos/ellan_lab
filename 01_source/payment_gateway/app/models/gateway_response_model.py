@@ -1,4 +1,5 @@
 # 01_source/payment_gateway/app/models/gateway_response_model.py
+# 07/04/2026 - ajuste do model de resposta
 
 from typing import Any, Dict, List, Literal, Optional
 
@@ -81,7 +82,8 @@ class LockerAddressInfo(BaseModel):
 class LockerInfo(BaseModel):
     locker_id: str
     region: str
-    site_id: str
+    # site_id: str
+    site_id: Optional[str] = None
     display_name: str
     backend_region: str
     slots: int
@@ -110,6 +112,7 @@ class ErrorInfo(BaseModel):
     type: str
     message: str
     retryable: bool = False
+    details: Optional[Dict[str, Any]] = None
 
 
 class GatewayPaymentResponse(BaseModel):

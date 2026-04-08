@@ -1,8 +1,12 @@
 // 01_source/frontend/src/pages/RegionPage.jsx
+// 07/04/2026 - resposta JSON rico para rejected - extractGatewayDebugInfo 
+
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 
 import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
+
+import { extractGatewayDebugInfo } from "../features/locker-dashboard/utils/dashboardPaymentUtils.js";
 
 import {
   buildGatewayPaymentPayload,
@@ -12,6 +16,8 @@ import {
   requiresCustomerPhone,
 } from "../utils/paymentProfile";
 
+import CardVirtualKeyboard from "../components/CardVirtualKeyboard.jsx";
+import CvvVirtualKeyboard from "../components/CvvVirtualKeyboard.jsx";
 
 
 const ORDER_PICKUP_BASE =
@@ -245,7 +251,62 @@ function parseErrorPayload(data) {
   return safeJsonStringify(data);
 }
 
+
+// Função auxiliar para detectar bandeira (adicione antes do componente RegionPage)
+const detectCardBrandGlobal = (cardNumber) => {
+  const cleaned = cardNumber.replace(/\D/g, "");
+  if (!cleaned) return "";
+  
+  // China - UnionPay
+  if (/^62/.test(cleaned) || /^81/.test(cleaned)) return "UNIONPAY";
+  
+  // Brasil
+  if (/^(4011|4312|4389|4514|4576|5041|5067|5090|6277|6362|6363|6504|6505|6506|6507|6508|6509|6516|6550)/.test(cleaned)) return "ELO";
+  if (/^(3841|6062|6370|6372|6376|6388|6390|6399)/.test(cleaned)) return "HIPERCARD";
+  if (/^50[0-9]/.test(cleaned)) return "AURA";
+  
+  // América do Norte
+  if (/^4/.test(cleaned)) return "VISA";
+  if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) return "MASTERCARD";
+  if (/^3[47]/.test(cleaned)) return "AMEX";
+  if (/^6(011|5|4[4-9]|22[1-9])/.test(cleaned)) return "DISCOVER";
+  if (/^3(0[0-5]|[68])/.test(cleaned)) return "DINERS";
+  
+  // Japão
+  if (/^35(2[8-9]|[3-8][0-9])/.test(cleaned)) return "JCB";
+  
+  // Europa
+  if (/^(50|56|57|58|6[0-9])/.test(cleaned)) return "MAESTRO";
+  
+  // Índia
+  if (/^(60|65|81|82|508|509)/.test(cleaned)) return "RUPAY";
+  
+  // França
+  if (/^([1-9][0-9]{3})/.test(cleaned) && cleaned.length === 16) return "CB";
+  
+  // Alemanha
+  if (/^6799/.test(cleaned)) return "GIROCARD";
+  
+  // Austrália
+  if (/^(60|61|62|63|64|65)/.test(cleaned)) return "EFTPOS";
+  
+  // Canadá
+  if (/^45/.test(cleaned)) return "INTERAC";
+  
+  // Turquia
+  if (/^9792/.test(cleaned)) return "TROY";
+  
+  // Outros
+  if (/^1/.test(cleaned)) return "UATP";
+  
+  return "";
+};
+
+
+
 export default function RegionPage({ region, mode = "kiosk" }) {
+  const [isCardKeyboardOpen, setIsCardKeyboardOpen] = useState(false);
+  
   const [availableLockers, setAvailableLockers] = useState([]);
   const [lockersLoading, setLockersLoading] = useState(false);
   const [lockersError, setLockersError] = useState("");
@@ -309,6 +370,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     [pendingPaymentContext, createResp, paymentMethod]
   );
 
+  const gatewayDebug = useMemo(
+    () => (gatewayPaymentResp ? extractGatewayDebugInfo(gatewayPaymentResp) : null),
+    [gatewayPaymentResp]
+  );
+
   const pendingSecondsRemaining = displayedPendingContext?.expires_at_epoch
     ? Math.max(0, Number(displayedPendingContext.expires_at_epoch) - nowEpochSec())
     : null;
@@ -316,6 +382,20 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const pendingExpired =
     pendingSecondsRemaining != null && Number(pendingSecondsRemaining) <= 0;
 
+  const [cardData, setCardData] = useState({
+    card_number: "",
+    cvv: "",
+    card_type: "",
+    bin: "",
+    issuer: "",
+  });
+
+  const [isCvvKeyboardOpen, setIsCvvKeyboardOpen] = useState(false);
+
+
+
+
+  
   useEffect(() => {
     fetchLockersOnce();
   }, [region]);
@@ -605,6 +685,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         amount_cents: selectedCatalogItem.amount_cents,
 
         customer_phone: paymentExtras.customerPhone || null,
+
+        card_type: cardData.card_type || null,
+        bin: cardData.bin || null,
+        issuer: cardData.issuer || null,
+
       };
 
       const res = await fetch(gatewayPaymentUrl, {
@@ -968,6 +1053,118 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               </select>
             </label>
 
+
+
+
+            {["creditCard", "debitCard"].includes(paymentMethod) && (
+              <div style={cardSectionStyle}>
+                <label style={labelStyle}>
+                  💳 Dados do Cartão
+                </label>
+                
+                {/* Botão principal que mostra o resumo dos dados */}
+                <button
+                  onClick={() => setIsCardKeyboardOpen(true)}
+                  style={cardSummaryButton}
+                  type="button"
+                >
+                  <div style={cardSummaryContent}>
+                    <div style={cardIconContainer}>
+                      {cardData.card_type ? (
+                        <span style={cardTypeIcon(cardData.card_type)}>
+                          {cardData.card_type}
+                        </span>
+                      ) : (
+                        <span style={cardPlaceholderIcon}>💳</span>
+                      )}
+                    </div>
+                    
+                    <div style={cardDetailsContainer}>
+                      <div style={cardNumberDisplay}>
+                        {cardData.card_number && cardData.card_number.length > 0 ? (
+                          <>
+                            <span style={cardMaskText}>**** **** **** </span>
+                            <span style={cardLastDigits}>{cardData.card_number.slice(-4)}</span>
+                          </>
+                        ) : (
+                          <span style={cardPlaceholderText}>Digitar número do cartão</span>
+                        )}
+                      </div>
+                      
+                      <div style={cardCvvDisplay}>
+                        {cardData.cvv && cardData.cvv.length > 0 ? (
+                          <>
+                            <span style={cvvLabel}>CVV:</span>
+                            <span style={cvvMaskText}>***</span>
+                          </>
+                        ) : (
+                          <span style={cvvPlaceholder}>Digitar CVV</span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div style={editIconContainer}>
+                      <span style={editIcon}>✏️</span>
+                    </div>
+                  </div>
+                </button>
+
+
+                {cardData.card_number && cardData.card_number.length > 0 && (
+                  <button
+                    onClick={() => setIsCvvKeyboardOpen(true)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 16px",
+                      backgroundColor: "rgba(255, 255, 255, 0.05)",
+                      border: `1px solid ${cardData.cvv ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.15)"}`,
+                      borderRadius: "12px",
+                      cursor: "pointer",
+                      width: "100%"
+                    }}
+                    type="button"
+                  >
+                    <span style={{ fontSize: "18px" }}>🔐</span>
+                    <span style={{
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: cardData.cvv ? "#10b981" : "#b0b8c5",
+                      flex: 1,
+                      textAlign: "left",
+                      marginLeft: "12px"
+                    }}>
+                      CVV: {cardData.cvv ? "***" : "Digitar"}
+                    </span>
+                    <span style={{ fontSize: "20px", opacity: 0.6 }}>✏️</span>
+                  </button>
+                )}
+
+
+
+
+                {/* Indicador de status */}
+                {(cardData.card_number || cardData.cvv) && (
+                  <div style={cardStatusContainer}>
+                    <span style={cardStatusIcon(cardData.card_number && cardData.cvv)}>
+                      {cardData.card_number && cardData.cvv ? "✅" : "⚠️"}
+                    </span>
+                    <span style={cardStatusText}>
+                      {cardData.card_number && cardData.cvv 
+                        ? "Dados do cartão preenchidos" 
+                        : cardData.card_number 
+                          ? "Falta o CVV" 
+                          : "Falta o número do cartão"}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+
+
+
             {paymentMethod === "MBWAY" ? (
               <label style={labelStyle}>
                 Telefone MB WAY
@@ -1058,8 +1255,15 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           </div>
 
           {gatewayPaymentResp ? (
-            <div style={okBoxStyle}>
+            <div
+              style={
+                gatewayPaymentResp.result === "rejected"
+                  ? rejectedBoxStyle
+                  : okBoxStyle
+              }
+            >
               <strong>Resposta do gateway</strong>
+
               <div style={summaryListStyle}>
                 <div><b>result:</b> {gatewayPaymentResp.result || "-"}</div>
                 <div><b>status:</b> {gatewayPaymentResp.payment?.status || "-"}</div>
@@ -1067,8 +1271,48 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                 <div><b>metodo:</b> {gatewayPaymentResp.payment?.metodo || "-"}</div>
                 <div><b>transaction_id:</b> {gatewayPaymentResp.payment?.transaction_id || "-"}</div>
               </div>
+
+              {gatewayPaymentResp.result === "rejected" ? (
+                <div style={gatewayDebugCardStyle}>
+                  <strong>Motivo técnico da rejeição</strong>
+
+                  <div style={summaryListStyle}>
+                    <div><b>error.type:</b> {gatewayDebug?.errorType || "-"}</div>
+                    <div><b>error.message:</b> {gatewayDebug?.errorMessage || "-"}</div>
+                    <div><b>error.retryable:</b> {String(gatewayDebug?.retryable ?? "-")}</div>
+                    <div><b>anti_replay.status:</b> {gatewayDebug?.antiReplayStatus || "-"}</div>
+                    <div><b>severity:</b> {gatewayDebug?.severity || "-"}</div>
+                    <div><b>severity_code:</b> {gatewayDebug?.severityCode || "-"}</div>
+                    <div><b>risk.decision:</b> {gatewayDebug?.riskDecision || "-"}</div>
+                    <div><b>risk.score:</b> {gatewayDebug?.riskScore ?? "-"}</div>
+                    <div><b>locker_id:</b> {gatewayDebug?.lockerId || "-"}</div>
+                    <div><b>request_id:</b> {gatewayDebug?.requestId || "-"}</div>
+                  </div>
+
+                  {gatewayDebug?.riskReasons?.length ? (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <b>risk.reasons:</b>
+                      {gatewayDebug.riskReasons.map((reason, idx) => (
+                        <div key={`${reason.code}-${idx}`} style={gatewayReasonItemStyle}>
+                          <div><b>code:</b> {reason.code}</div>
+                          <div><b>weight:</b> {reason.weight}</div>
+                          <div><b>detail:</b> {reason.detail || "-"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  <details>
+                    <summary style={{ cursor: "pointer" }}>Ver JSON bruto</summary>
+                    <pre style={jsonBoxStyle}>
+                      {JSON.stringify(gatewayPaymentResp, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ) : null}
             </div>
           ) : null}
+
 
           {displayedPendingContext ? (
             <div style={pendingCardStyle}>
@@ -1242,6 +1486,44 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           <pre style={errorBoxStyle}>{String(err)}</pre>
         </section>
       ) : null}
+
+
+      <CardVirtualKeyboard
+        isOpen={isCardKeyboardOpen}
+        value={cardData.card_number}
+        onChange={(formattedNumber) => {
+          const cleanNumber = formattedNumber.replace(/\D/g, "");
+          const cardType = detectCardBrandGlobal(cleanNumber);
+          
+          setCardData(prev => ({
+            ...prev,
+            card_number: cleanNumber,
+            bin: cleanNumber.slice(0, 6),
+            card_type: cardType,
+          }));
+        }}
+        onClose={() => setIsCardKeyboardOpen(false)}
+      />
+
+
+      <CvvVirtualKeyboard
+        isOpen={isCvvKeyboardOpen}
+        value={cardData.cvv}
+        onChange={(cvvNumber) => {
+          setCardData(prev => ({
+            ...prev,
+            cvv: cvvNumber
+          }));
+        }}
+        onClose={() => setIsCvvKeyboardOpen(false)}
+        cardBrand={(() => {
+          const brand = detectCardBrandGlobal(cardData.card_number);
+          return brand ? { cvvLength: brand === "AMEX" ? 4 : 3 } : null;
+        })()}
+      />
+
+
+
 
       <EmailReceiptModal
         isOpen={emailModalOpen}
@@ -1450,6 +1732,36 @@ const okBoxStyle = {
   gap: 10,
 };
 
+
+const rejectedBoxStyle = {
+  padding: 14,
+  borderRadius: 12,
+  background: "rgba(239,68,68,0.16)",
+  border: "1px solid rgba(239,68,68,0.34)",
+  display: "grid",
+  gap: 10,
+};
+
+const gatewayDebugCardStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(15,23,42,0.42)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  display: "grid",
+  gap: 12,
+};
+
+const gatewayReasonItemStyle = {
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  display: "grid",
+  gap: 4,
+  fontSize: 13,
+};
+
+
 const errorBoxStyle = {
   padding: 14,
   borderRadius: 12,
@@ -1509,3 +1821,260 @@ const pendingQrPanelStyle = {
   borderRadius: 12,
   background: "#fff",
 };
+
+const keyboardTriggerButton = {
+  position: "absolute",
+  right: "8px",
+  top: "50%",
+  transform: "translateY(-50%)",
+  background: "rgba(27, 88, 131, 0.8)",
+  border: "none",
+  borderRadius: "8px",
+  padding: "6px 10px",
+  cursor: "pointer",
+  fontSize: "16px",
+  color: "#fff"
+};
+
+
+
+const cardInputButtonContainer = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px",
+  marginTop: "8px"
+};
+
+const cardKeyboardTriggerButton = {
+  padding: "14px 20px",
+  backgroundColor: "#1b5883",
+  border: "none",
+  borderRadius: "12px",
+  color: "#fff",
+  fontWeight: 700,
+  fontSize: "16px",
+  cursor: "pointer",
+  transition: "all 0.2s",
+  width: "100%"
+};
+
+const cardPreviewContainer = {
+  padding: "12px",
+  backgroundColor: "rgba(255, 255, 255, 0.05)",
+  borderRadius: "10px",
+  border: "1px solid rgba(255, 255, 255, 0.1)"
+};
+
+const cardPreviewText = {
+  fontSize: "13px",
+  color: "#b0b8c5",
+  marginBottom: "4px"
+};
+
+const cardTypeBadge = {
+  display: "inline-block",
+  padding: "4px 8px",
+  backgroundColor: "#1f7a3f",
+  borderRadius: "6px",
+  fontSize: "11px",
+  fontWeight: 600,
+  marginTop: "6px"
+};
+
+
+// Estilos para a seção do cartão
+const cardSectionStyle = {
+  gridColumn: "1 / -1",
+  display: "flex",
+  flexDirection: "column",
+  gap: "12px"
+};
+
+const cardSummaryButton = {
+  width: "100%",
+  padding: "16px",
+  backgroundColor: "rgba(255, 255, 255, 0.05)",
+  border: "2px solid rgba(255, 255, 255, 0.15)",
+  borderRadius: "16px",
+  cursor: "pointer",
+  transition: "all 0.2s ease",
+  textAlign: "left",
+  position: "relative",
+  overflow: "hidden"
+};
+
+const cardSummaryContent = {
+  display: "flex",
+  alignItems: "center",
+  gap: "16px",
+  flexWrap: "wrap"
+};
+
+const cardIconContainer = {
+  flexShrink: 0
+};
+
+const cardTypeIcon = (type) => {
+  const colors = {
+    VISA: "#1a73e8",
+    MASTERCARD: "#eb001b",
+    AMEX: "#006fcf",
+    ELO: "#ff6600",
+    HIPERCARD: "#b31b1b",
+    UNIONPAY: "#e60012",
+    JCB: "#1d9a3a",
+    DISCOVER: "#ff6000",
+    DINERS: "#0079c1",
+    AURA: "#f39c12",
+    MAESTRO: "#0099cc",
+    RUPAY: "#6f42c1"
+  };
+  
+  return {
+    display: "inline-block",
+    padding: "8px 12px",
+    backgroundColor: colors[type] || "#6c757d",
+    borderRadius: "10px",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#fff",
+    letterSpacing: "0.5px"
+  };
+};
+
+const cardPlaceholderIcon = {
+  display: "inline-block",
+  padding: "8px 12px",
+  backgroundColor: "rgba(255, 255, 255, 0.1)",
+  borderRadius: "10px",
+  fontSize: "20px"
+};
+
+const cardDetailsContainer = {
+  flex: 1,
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px"
+};
+
+const cardNumberDisplay = {
+  fontSize: "16px",
+  fontWeight: 600,
+  fontFamily: "monospace",
+  letterSpacing: "1px"
+};
+
+const cardMaskText = {
+  color: "#b0b8c5"
+};
+
+const cardLastDigits = {
+  color: "#f5f7fa",
+  fontSize: "18px",
+  fontWeight: 800
+};
+
+const cardPlaceholderText = {
+  color: "#8b95a5",
+  fontSize: "14px",
+  fontWeight: 400
+};
+
+const cardCvvDisplay = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  fontSize: "14px"
+};
+
+const cvvLabel = {
+  color: "#8b95a5",
+  fontWeight: 600
+};
+
+const cvvMaskText = {
+  color: "#f5f7fa",
+  fontWeight: 700,
+  letterSpacing: "1px"
+};
+
+const cvvPlaceholder = {
+  color: "#8b95a5",
+  fontSize: "13px"
+};
+
+const editIconContainer = {
+  flexShrink: 0
+};
+
+const editIcon = {
+  fontSize: "20px",
+  opacity: 0.6,
+  transition: "opacity 0.2s"
+};
+
+const cardStatusContainer = {
+  display: "flex",
+  alignItems: "center",
+  gap: "8px",
+  padding: "8px 12px",
+  backgroundColor: "rgba(255, 193, 7, 0.1)",
+  borderRadius: "10px",
+  fontSize: "12px"
+};
+
+const cardStatusIcon = (isComplete) => ({
+  fontSize: "14px",
+  color: isComplete ? "#10b981" : "#f59e0b"
+});
+
+const cardStatusText = {
+  color: "#b0b8c5",
+  fontSize: "12px"
+};
+
+// Efeito hover para o botão (adicione no CSS global ou use styled-components)
+const cardSummaryButtonHover = {
+  backgroundColor: "rgba(255, 255, 255, 0.08)",
+  borderColor: "rgba(255, 255, 255, 0.25)",
+  transform: "translateY(-2px)"
+};
+
+// Adicione também um tooltip informativo (opcional)
+const cardTooltip = {
+  position: "absolute",
+  bottom: "100%",
+  left: "50%",
+  transform: "translateX(-50%)",
+  marginBottom: "8px",
+  padding: "6px 12px",
+  backgroundColor: "#1a1f2a",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  borderRadius: "8px",
+  fontSize: "11px",
+  color: "#b0b8c5",
+  whiteSpace: "nowrap",
+  zIndex: 10
+};
+
+
+// Estilos para CVV
+const cvvSectionStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "8px"
+};
+
+
+
+const cvvFilledStyle = {
+  color: "#10b981",
+  letterSpacing: "2px"
+};
+
+const cvvEmptyStyle = {
+  color: "#8b95a5"
+};
+
+
+

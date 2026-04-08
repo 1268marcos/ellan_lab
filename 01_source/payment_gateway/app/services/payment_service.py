@@ -1,4 +1,7 @@
 # 01_source/payment_gateway/app/services/payment_service.py
+# 07/04/2026 - enriquecimento do erro no pagamento
+# 07/04/2026 - correção serialização datetime / created_at
+
 import hashlib
 import json
 import time
@@ -317,6 +320,8 @@ def _call_backend_paid_pending_pickup(locker_id: str, porta: int) -> tuple[str, 
     locker_effect = client.set_state(porta=porta, state="PAID_PENDING_PICKUP")
     return backend_url, {"status": "ok", "locker": locker_effect}
 
+def normalize_method(value: str) -> str:
+    return (value or "").strip().upper()
 
 def process_payment(data, request: Request, idempotency_key: str, device_fp: str, request_id: str | None):
     sqlite = SQLiteService(settings.SQLITE_PATH)
@@ -327,7 +332,11 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
 
     region = data.regiao.upper()
     canal = data.canal.upper()
-    metodo = data.metodo.upper()
+    
+    # metodo = data.metodo.upper()
+    # metodo = (data.metodo or "").strip().upper()
+    metodo = normalize_method(data.metodo)
+
     valor = float(data.valor)
     porta = int(data.porta)
     card_type = getattr(data, "card_type", None)
@@ -346,6 +355,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             endpoint=endpoint,
             audit_event_id=audit_event_id,
         )
+
         resp.update(
             {
                 "result": "rejected",
@@ -353,6 +363,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "type": "LOCKER_CONTEXT_INVALID",
                     "message": str(exc),
                     "retryable": False,
+                    "details": locker_registry.debug_context(getattr(data, "locker_id", None)),
                 },
                 "anti_replay": {
                     "status": "not_evaluated",
@@ -407,7 +418,11 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         }
     )
 
-    payload_obj = data.model_dump() if hasattr(data, "model_dump") else data.dict()
+    payload_obj = (
+        data.model_dump(mode="json")
+        if hasattr(data, "model_dump")
+        else data.dict()
+    )
     payload_canon = canonical_json(payload_obj)
     payload_hash = sha256_prefixed(payload_canon)
 

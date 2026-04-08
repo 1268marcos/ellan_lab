@@ -1,6 +1,17 @@
 # 01_source/order_pickup_service/app/routers/kiosk.py
 # CORRIGIDO: payment totalmente DB-driven (sem if / sem hardcoded)
 # 06/04/2026 - import resolve_payment_ui_code
+# 08/04/2026 - criação : def kiosk_payment_approved(
+# 08/04/2026 - correção : OrderStatus.PAID para PaymentStatus.PAID
+#              a correção mudou para PaymentStatus.CONFIRMED
+# 08/04/2026 - order.status representa estado logístico e order.payment_status representa estado financeiro
+# ALERTA/ATENÇÃO: SOBRE requires_confirmation PROBLEMA OCULTO (IMPORTANTE)
+#                 → NÃO deveria chamar payment-approved
+#                 → deveria aguardar confirmação do cliente (3DS / OTP / etc)
+# Nesse momento o fluxo atual:
+# requires_confirmation → frontend chama payment-approved, portanto, CONFIRMED é simulação
+# isso é errado conceitualmente
+
 
 from __future__ import annotations
 
@@ -32,10 +43,9 @@ from app.services.lifecycle_integration import (
     cancel_prepayment_timeout_deadline,
     register_prepayment_timeout_deadline,
 )
-from app.services.payment_confirm_service import (
-    apply_payment_confirmation,
-    emit_order_paid_and_simulate_fiscal,
-)
+
+from app.services.payment_confirm_service import confirm_payment_and_emit_event
+
 from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 from app.models.fiscal_document import FiscalDocument
 from app.services.notification_dispatch_service import queue_receipt_email
@@ -402,5 +412,111 @@ def kiosk_create_order(
         allocation_id=allocation.id,
         # ttl_sec=ttl_sec, # 👉 ✔️ isso NÃO está quebrando agora 👉 mas atenção: se a coluna não existir → vai quebrar depois / se existir → OK
         message="Pedido criado com sucesso",
+    )
+
+
+
+
+
+
+@router.post("/orders/{order_id}/payment-approved", response_model=KioskPaymentApprovedOut)
+def kiosk_payment_approved(
+    order_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Confirma pagamento do pedido KIOSK.
+    No fluxo atual, requires_confirmation -> payment-approved é uma simulação controlada.
+    Fluxo consistente com DB + lifecycle + fiscal + fulfillment.
+    """
+
+    order = db.get(Order, order_id)
+
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "ORDER_NOT_FOUND", "order_id": order_id},
+        )
+
+    # ✅ CORRETO - CONFIRMED (simulação)
+    if order.payment_status == PaymentStatus.CONFIRMED:
+        return KioskPaymentApprovedOut(
+            order_id=order.id,
+            status="already_paid",
+        )
+
+    # =========================
+    # CONFIRMAÇÃO COMPLETA (CORRETA)
+    # =========================
+    allocation = (
+        db.query(Allocation)
+        .filter(Allocation.order_id == order.id)
+        .first()
+    )
+
+    if not allocation:
+        raise HTTPException(
+            status_code=500,
+            detail={"type": "ALLOCATION_NOT_FOUND", "order_id": order.id},
+        )
+
+    # ✅ cancelar timeout
+    try:
+        cancel_prepayment_timeout_deadline(
+            order_id=order.id,
+            reason="payment_confirmed",
+            metadata={"source": "kiosk_payment_approved"},
+        )
+    except Exception as e:
+        logger.exception("FAILED_CANCEL_TIMEOUT")
+
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "FAILED_CANCEL_TIMEOUT",
+                "order_id": order_id,
+                "error": str(e),
+            },
+        )
+
+
+    # evolução logística correta para o modelo atual
+    # order.status = OrderStatus.PAID_PENDING_PICKUP
+
+
+    # =========================
+    # 1. CONFIRMAÇÃO FINANCEIRA (OBRIGATÓRIO)
+    # =========================
+
+    result = confirm_payment_and_emit_event(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup=None,
+        amount_cents=order.amount_cents,
+        currency="BRL",
+        source="kiosk_simulation",
+        transaction_id=f"kiosk-{order.id}",
+    )
+
+    # =========================
+    # 2. FULFILLMENT (locker + pickup)
+    # =========================
+
+    fulfill_payment_post_approval(
+        db=db,
+        order=order,
+        allocation=allocation,  # 🔥 ESTAVA FALTANDO
+    )
+
+    db.commit()
+    db.refresh(order)
+
+    return KioskPaymentApprovedOut(
+        order_id=order.id,
+        status="paid",
+        allocation_id=allocation.id,
+        slot=allocation.slot,
+        message="Pagamento confirmado e produto liberado com sucesso",
     )
 

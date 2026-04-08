@@ -1,14 +1,25 @@
+# 01_source/payment_gateway/app/core/hashing.py
+# 07/04/2026 - ajuste canonical_json para aceitar objetos como datetime
+
 import json
 import hashlib
 from typing import Any, Dict
 
 
-def canonical_json(obj: Dict[str, Any]) -> str:
-    """
-    JSON canônico para hash/idempotency: ordena chaves e remove espaços.
-    """
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+# def canonical_json(obj: Dict[str, Any]) -> str:
+#     """
+#     JSON canônico para hash/idempotency: ordena chaves e remove espaços.
+#     """
+#     return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
+def canonical_json(obj):
+    return json.dumps(
+        obj,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
 
 def sha256_hex(data: str) -> str:
     return hashlib.sha256(data.encode("utf-8")).hexdigest()

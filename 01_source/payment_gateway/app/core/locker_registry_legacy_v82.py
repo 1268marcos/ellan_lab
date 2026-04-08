@@ -1,6 +1,5 @@
 # 01_source/payment_gateway/app/core/locker_registry.py
 # 07/04/2026 - eliminado o registry legado como fonte principal e alinhando o gateway 100% ao runtime
-# 07/04/2026 - novo código
 
 from __future__ import annotations
 
@@ -10,10 +9,22 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from app.core.config import settings
-from app.services.postgres_capability_service import (
-    CapabilityServiceError,
-    PostgresCapabilityService,
-)
+
+
+VALID_REGIONS = {"SP", "PT"}
+VALID_CHANNELS = {"ONLINE", "KIOSK"}
+
+# Métodos canônicos internos do gateway
+CANONICAL_PAYMENT_METHODS = {
+    "PIX",
+    "CARTAO",
+    "MBWAY",
+    "MULTIBANCO_REFERENCE",
+    "NFC",
+    "APPLE_PAY",
+    "GOOGLE_PAY",
+    "MERCADO_PAGO_WALLET",
+}
 
 
 class LockerRegistryError(ValueError):
@@ -68,9 +79,8 @@ def _canonical_payment_method(value: Any) -> str:
         return ""
 
     method_map = {
-        "PIX": "PIX",
-        "PIx": "PIX",
-
+        # cartões -> CARTAO
+        "CARTAO": "CARTAO",
         "CREDITCARD": "CARTAO",
         "DEBITCARD": "CARTAO",
         "GIFTCARD": "CARTAO",
@@ -79,7 +89,6 @@ def _canonical_payment_method(value: Any) -> str:
         "DEBIT_CARD": "CARTAO",
         "GIFT_CARD": "CARTAO",
         "PREPAID_CARD": "CARTAO",
-        "CARTAO": "CARTAO",
         "CARTAO_CREDITO": "CARTAO",
         "CARTAO_DEBITO": "CARTAO",
         "CARTAO_PRESENTE": "CARTAO",
@@ -87,16 +96,22 @@ def _canonical_payment_method(value: Any) -> str:
         "CARTÃO_DEBITO": "CARTAO",
         "CARTÃO_PRESENTE": "CARTAO",
 
+        # pix
+        "PIX": "PIX",
+
+        # pt/eu
         "MBWAY": "MBWAY",
         "MULTIBANCO_REFERENCE": "MULTIBANCO_REFERENCE",
         "MULTIBANCO": "MULTIBANCO_REFERENCE",
 
+        # wallets / integrações planejadas
         "NFC": "NFC",
         "APPLE_PAY": "APPLE_PAY",
         "GOOGLE_PAY": "GOOGLE_PAY",
         "MERCADO_PAGO_WALLET": "MERCADO_PAGO_WALLET",
         "MERCADO_PAGO": "MERCADO_PAGO_WALLET",
     }
+
     return method_map.get(raw, raw)
 
 
@@ -112,16 +127,30 @@ class LockerAddress:
     country: Optional[str]
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "LockerAddress":
+    def from_runtime_item(cls, item: Dict[str, Any]) -> "LockerAddress":
+        address = item.get("address")
+
+        if isinstance(address, dict):
+            return cls(
+                address=_nullable_str(address.get("address")),
+                number=_nullable_str(address.get("number")),
+                additional_information=_nullable_str(address.get("additional_information")),
+                locality=_nullable_str(address.get("locality")),
+                city=_nullable_str(address.get("city")),
+                federative_unit=_nullable_str(address.get("federative_unit")),
+                postal_code=_nullable_str(address.get("postal_code")),
+                country=_nullable_str(address.get("country")),
+            )
+
         return cls(
-            address=_nullable_str(data.get("address")),
-            number=_nullable_str(data.get("number")),
-            additional_information=_nullable_str(data.get("additional_information")),
-            locality=_nullable_str(data.get("locality")),
-            city=_nullable_str(data.get("city")),
-            federative_unit=_nullable_str(data.get("federative_unit")),
-            postal_code=_nullable_str(data.get("postal_code")),
-            country=_nullable_str(data.get("country")),
+            address=_nullable_str(item.get("address")),
+            number=_nullable_str(item.get("number")),
+            additional_information=_nullable_str(item.get("additional_information")),
+            locality=_nullable_str(item.get("locality")),
+            city=_nullable_str(item.get("city")),
+            federative_unit=_nullable_str(item.get("state") or item.get("federative_unit")),
+            postal_code=_nullable_str(item.get("postal_code")),
+            country=_nullable_str(item.get("country")),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -146,51 +175,98 @@ class LockerConfig:
     backend_region: str
     slots: int
     channels: List[str]
-    payment_methods: List[str]
+    payment_methods: List[str]  # armazenados em formato canônico interno
     active: bool
     address: LockerAddress
-    source: str
 
     @classmethod
-    def from_row(cls, item: Dict[str, Any], source: str) -> "LockerConfig":
-        locker_id = _normalize_upper_str(item.get("locker_id"))
+    def from_runtime_item(cls, item: Dict[str, Any]) -> "LockerConfig":
+        locker_id = str(
+            item.get("locker_id")
+            or item.get("id")
+            or item.get("machine_id")
+            or ""
+        ).strip().upper()
+
         if not locker_id:
-            raise LockerRegistryError(f"Locker sem locker_id (source={source}).")
+            raise LockerRegistryError("Locker do runtime sem locker_id.")
 
         region = _normalize_upper_str(item.get("region"))
-        if not region:
-            raise LockerRegistryError(f"Locker {locker_id}: region ausente.")
+        if region not in VALID_REGIONS:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: region inválida no runtime: {region!r}"
+            )
 
-        backend_region = _normalize_upper_str(
-            item.get("backend_region") or item.get("region")
-        ) or region
+        backend_region = _normalize_upper_str(item.get("backend_region") or item.get("region"))
+        if backend_region not in VALID_REGIONS:
+            backend_region = region
 
-        slots = int(item.get("slots") or 0)
+        display_name = str(item.get("display_name") or locker_id).strip()
+        site_id = _nullable_str(item.get("site_id"))
+
+        slots_raw = (
+            item.get("slot_count_total")
+            or item.get("slots_count")
+            or item.get("slots")
+            or 0
+        )
+        try:
+            slots = int(slots_raw)
+        except Exception as exc:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: campo slots inválido: {slots_raw!r}"
+            ) from exc
+
         if slots < 1:
-            raise LockerRegistryError(f"Locker {locker_id}: slots inválido.")
+            raise LockerRegistryError(
+                f"Locker {locker_id}: campo slots deve ser maior que zero."
+            )
 
-        channels = _dedupe_preserve_order(
-            [_normalize_upper_str(v) for v in (item.get("channels") or [])]
+        channels_raw = item.get("allowed_channels") or item.get("channels") or ["ONLINE", "KIOSK"]
+        channels = [_normalize_upper_str(v) for v in channels_raw]
+        channels = _dedupe_preserve_order(channels)
+
+        if not channels:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: lista channels vazia."
+            )
+
+        invalid_channels = [c for c in channels if c not in VALID_CHANNELS]
+        if invalid_channels:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: channels inválidos: {invalid_channels!r}"
+            )
+
+        methods_raw = (
+            item.get("payment_methods")
+            or item.get("allowed_payment_methods")
+            or []
         )
-        payment_methods = _dedupe_preserve_order(
-            [
-                _canonical_payment_method(v)
-                for v in (item.get("payment_methods") or [])
-            ]
-        )
+        payment_methods = [_canonical_payment_method(v) for v in methods_raw]
+        payment_methods = _dedupe_preserve_order([m for m in payment_methods if m])
+
+        if not payment_methods:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: lista payment_methods vazia."
+            )
+
+        invalid_methods = [m for m in payment_methods if m not in CANONICAL_PAYMENT_METHODS]
+        if invalid_methods:
+            raise LockerRegistryError(
+                f"Locker {locker_id}: payment_methods inválidos após normalização: {invalid_methods!r}"
+            )
 
         return cls(
             locker_id=locker_id,
             region=region,
-            site_id=item.get("site_id"),
-            display_name=str(item.get("display_name") or locker_id).strip(),
+            site_id=site_id,
+            display_name=display_name,
             backend_region=backend_region,
             slots=slots,
             channels=channels,
             payment_methods=payment_methods,
-            active=bool(item.get("active")),
-            address=LockerAddress.from_dict(item.get("address") or {}),
-            source=source,
+            active=bool(item.get("active", False)),
+            address=LockerAddress.from_runtime_item(item),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -205,22 +281,24 @@ class LockerConfig:
             "payment_methods": list(self.payment_methods),
             "active": self.active,
             "address": self.address.to_dict(),
-            "source": self.source,
         }
 
 
 class LockerRegistry:
     """
-    Ordem de resolução:
-    1. Postgres central
-    2. runtime HTTP
-    3. cache stale em memória
+    Registry canônico de lockers do gateway.
+
+    Fonte única:
+    - backend_runtime /internal/runtime/lockers
+
+    Responsabilidades:
+    - carregar lockers do runtime
+    - resolver fallback legado apenas para ausência de locker_id
+    - validar compatibilidade entre locker, região, canal e método de pagamento
     """
 
     def __init__(self) -> None:
-        self._cap = PostgresCapabilityService()
         self._lockers: Dict[str, LockerConfig] = {}
-        self._last_source: str = "empty"
 
     def _runtime_url(self) -> str:
         return f"{settings.RUNTIME_BASE_URL.rstrip('/')}/internal/runtime/lockers"
@@ -232,25 +310,19 @@ class LockerRegistry:
             headers["X-Internal-Token"] = token
         return headers
 
-    def _extract_runtime_items(self, payload: Any) -> List[Dict[str, Any]]:
+    def _extract_items(self, payload: Any) -> List[Dict[str, Any]]:
         if isinstance(payload, list):
             return [item for item in payload if isinstance(item, dict)]
         if isinstance(payload, dict) and isinstance(payload.get("items"), list):
             return [item for item in payload["items"] if isinstance(item, dict)]
         return []
 
-    def _load_from_postgres(self) -> Dict[str, LockerConfig]:
-        snapshot = self._cap.get_snapshot()
-        parsed: Dict[str, LockerConfig] = {}
-        for locker_id, row in snapshot.lockers.items():
-            cfg = LockerConfig.from_row(row, source="postgres")
-            parsed[locker_id] = cfg
-        return parsed
+    def _load_registry(self) -> Dict[str, LockerConfig]:
+        url = self._runtime_url()
 
-    def _load_from_runtime(self) -> Dict[str, LockerConfig]:
         try:
             response = requests.get(
-                self._runtime_url(),
+                url,
                 headers=self._runtime_headers(),
                 timeout=getattr(settings, "CONNECTION_TIMEOUT_SEC", 10),
             )
@@ -265,80 +337,60 @@ class LockerRegistry:
                 f"Resposta inválida do runtime ao carregar lockers: {exc}"
             ) from exc
 
+        items = self._extract_items(payload)
         parsed: Dict[str, LockerConfig] = {}
-        for item in self._extract_runtime_items(payload):
-            row = {
-                "locker_id": item.get("locker_id") or item.get("id") or item.get("machine_id"),
-                "region": item.get("region"),
-                "site_id": item.get("site_id"),
-                "display_name": item.get("display_name"),
-                "backend_region": item.get("backend_region") or item.get("region"),
-                "slots": item.get("slot_count_total") or item.get("slots_count") or item.get("slots"),
-                "channels": item.get("allowed_channels") or item.get("channels") or ["ONLINE", "KIOSK"],
-                "payment_methods": item.get("payment_methods") or item.get("allowed_payment_methods") or [],
-                "active": item.get("active", False),
-                "address": item.get("address") or {
-                    "address": item.get("address"),
-                    "number": item.get("number"),
-                    "additional_information": item.get("additional_information"),
-                    "locality": item.get("locality"),
-                    "city": item.get("city"),
-                    "federative_unit": item.get("state") or item.get("federative_unit"),
-                    "postal_code": item.get("postal_code"),
-                    "country": item.get("country"),
-                },
-            }
-            cfg = LockerConfig.from_row(row, source="runtime")
+
+        for item in items:
+            cfg = LockerConfig.from_runtime_item(item)
             parsed[cfg.locker_id] = cfg
 
         return parsed
 
-    def refresh(self) -> None:
-        try:
-            lockers = self._load_from_postgres()
-            self._lockers = lockers
-            self._last_source = "postgres"
-            return
-        except CapabilityServiceError:
-            pass
-        except Exception:
-            pass
-
-        try:
-            lockers = self._load_from_runtime()
-            self._lockers = lockers
-            self._last_source = "runtime"
-            return
-        except Exception:
-            pass
-
-        if self._lockers:
-            self._last_source = "stale_cache"
-            return
-
-        raise LockerRegistryError(
-            "Não foi possível carregar lockers de Postgres nem runtime, e não há cache local."
-        )
-
     def _ensure_loaded(self) -> None:
         if not self._lockers:
-            self.refresh()
+            self._lockers = self._load_registry()
 
-    def current_source(self) -> str:
-        self._ensure_loaded()
-        return self._last_source
+    def refresh(self) -> None:
+        self._lockers = self._load_registry()
 
     def all(self) -> Dict[str, LockerConfig]:
         self._ensure_loaded()
         return dict(self._lockers)
 
+    def all_public_summaries(self) -> List[Dict[str, Any]]:
+        self._ensure_loaded()
+        return [cfg.to_dict() for cfg in self._lockers.values()]
+
+    def list_by_region(self, region: str) -> Dict[str, LockerConfig]:
+        self._ensure_loaded()
+        region_u = _normalize_upper_str(region)
+        return {
+            locker_id: cfg
+            for locker_id, cfg in self._lockers.items()
+            if cfg.region == region_u
+        }
+
+    def list_public_summaries_by_region(self, region: str) -> List[Dict[str, Any]]:
+        self._ensure_loaded()
+        region_u = _normalize_upper_str(region)
+        return [
+            cfg.to_dict()
+            for cfg in self._lockers.values()
+            if cfg.region == region_u
+        ]
+
     def get(self, locker_id: str) -> LockerConfig:
         self._ensure_loaded()
-        normalized = _normalize_upper_str(locker_id)
+        normalized = str(locker_id or "").strip().upper()
         cfg = self._lockers.get(normalized)
         if not cfg:
             raise LockerNotFoundError(f"Locker não encontrado: {locker_id!r}")
         return cfg
+
+    def exists(self, locker_id: str) -> bool:
+        self._ensure_loaded()
+        normalized = str(locker_id or "").strip().upper()
+        return normalized in self._lockers
 
     def resolve_locker_id(
         self,
@@ -349,7 +401,7 @@ class LockerRegistry:
     ) -> str:
         self._ensure_loaded()
 
-        explicit = _normalize_upper_str(locker_id)
+        explicit = str(locker_id or "").strip().upper()
         if explicit:
             return explicit
 
@@ -364,15 +416,51 @@ class LockerRegistry:
 
         legacy = settings.get_legacy_locker_id(region_u)
         if legacy:
-            return _normalize_upper_str(legacy)
+            return str(legacy).strip().upper()
 
         default_locker = settings.DEFAULT_LOCKER_ID
         if default_locker:
-            return _normalize_upper_str(default_locker)
+            return str(default_locker).strip().upper()
 
         raise LockerNotFoundError(
             f"locker_id ausente e nenhum fallback legado configurado para a região {region_u}."
         )
+
+    def ensure_active(self, locker_id: str) -> LockerConfig:
+        cfg = self.get(locker_id)
+        if not cfg.active:
+            raise LockerInactiveError(f"Locker inativo: {locker_id}")
+        return cfg
+
+    def ensure_region(self, locker_id: str, region: str) -> LockerConfig:
+        cfg = self.get(locker_id)
+        region_u = _normalize_upper_str(region)
+
+        if cfg.region != region_u:
+            raise LockerRegionMismatchError(
+                f"Locker {locker_id} pertence à região {cfg.region}, não à região {region_u}."
+            )
+        return cfg
+
+    def ensure_channel_allowed(self, locker_id: str, channel: str) -> LockerConfig:
+        cfg = self.get(locker_id)
+        channel_u = _normalize_upper_str(channel)
+
+        if channel_u not in cfg.channels:
+            raise LockerChannelNotAllowedError(
+                f"Canal {channel_u} não permitido para o locker {locker_id}."
+            )
+        return cfg
+
+    def ensure_payment_method_allowed(self, locker_id: str, payment_method: str) -> LockerConfig:
+        cfg = self.get(locker_id)
+        payment_method_u = _canonical_payment_method(payment_method)
+
+        if payment_method_u not in cfg.payment_methods:
+            raise LockerPaymentMethodNotAllowedError(
+                f"Método {payment_method_u} não permitido para o locker {locker_id}."
+            )
+        return cfg
 
     def validate_context(
         self,
@@ -410,26 +498,22 @@ class LockerRegistry:
         return cfg
 
     def get_backend_region(self, locker_id: str) -> str:
-        return self.get(locker_id).backend_region
+        cfg = self.get(locker_id)
+        return cfg.backend_region
 
     def get_backend_url(self, locker_id: str) -> str:
-        return settings.get_regional_url(self.get_backend_region(locker_id))
+        backend_region = self.get_backend_region(locker_id)
+        return settings.get_regional_url(backend_region)
+
+    def get_address_dict(self, locker_id: str) -> Dict[str, Any]:
+        cfg = self.get(locker_id)
+        return cfg.address.to_dict()
 
     def get_public_summary(self, locker_id: str) -> Dict[str, Any]:
-        return self.get(locker_id).to_dict()
-
-    def debug_context(self, locker_id: Optional[str]) -> Dict[str, Any]:
-        normalized = _normalize_upper_str(locker_id)
-        cfg = self._lockers.get(normalized) if normalized else None
-        return {
-            "requested_locker_id": locker_id,
-            "normalized_locker_id": normalized or None,
-            "registry_source": self._last_source,
-            "exists_in_registry": bool(cfg),
-            "known_lockers_sample": sorted(list(self._lockers.keys()))[:20],
-            "locker_summary": cfg.to_dict() if cfg else None,
-        }
+        cfg = self.get(locker_id)
+        return cfg.to_dict()
 
 
 locker_registry = LockerRegistry()
+
 

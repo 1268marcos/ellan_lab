@@ -539,10 +539,19 @@ def confirm_payment_and_emit_event(
     # =========================
     # 2. Commit no runtime (se necessário)
     # =========================
+
+
     if not skip_locker_commit:
+        # 🔒 sanity check (produção)
+        if not allocation.locker_id:
+            raise ValueError(
+                f"locker_id ausente na allocation {allocation.id}"
+            )
+
         try:
             backend_client.locker_commit(
                 region=order.region,
+                locker_id=allocation.locker_id,  # 🔥 ESSENCIAL
                 allocation_id=allocation.id,
             )
             logger.info(
@@ -550,6 +559,7 @@ def confirm_payment_and_emit_event(
                 extra={
                     "order_id": order.id,
                     "allocation_id": allocation.id,
+                    "locker_id": allocation.locker_id, 
                     "region": order.region,
                 },
             )
@@ -559,6 +569,7 @@ def confirm_payment_and_emit_event(
                 extra={
                     "order_id": order.id,
                     "allocation_id": allocation.id,
+                    "locker_id": allocation.locker_id, 
                     "region": order.region,
                     "error": str(e),
                 },

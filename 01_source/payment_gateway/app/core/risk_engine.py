@@ -1,6 +1,8 @@
 # 01_source/payment_gateway/app/core/risk_engine.py
 # 02/04/2026 - Enhanced Version with Industry Standards & Global Markets
 # Veja anotações no fim deste arquivo
+# 07/04/2026 - alteração na assinatura em evaluate_risk
+# 08/04/2026 - return factors
 
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 from enum import Enum
@@ -11,6 +13,21 @@ import hashlib
 import re
 
 from app.core.policies import get_policy_by_region
+
+
+DEFAULT_RISK_CONFIG = {
+    "max_amount": 2000,
+    "allowed_methods": {
+        "pix",
+        "creditCard",
+        "debitCard",
+        "giftCard",
+    },
+    "risk_threshold_block": 85,
+    "risk_threshold_challenge": 60,
+}
+
+
 
 
 # ==================== Enums e Tipos ====================
@@ -124,6 +141,51 @@ class RiskContext:
 
 def _normalize_upper(value: Optional[str]) -> str:
     return (value or "").strip().upper()
+
+
+def _normalize_method(value: str) -> str:
+    """
+    Normaliza método para formato canônico do engine
+    """
+    v = (value or "").strip().lower()
+
+    mapping = {
+        "creditcard": "creditCard",
+        "debitcard": "debitCard",
+        "giftcard": "giftCard",
+        "pix": "pix",
+    }
+
+    return mapping.get(v, v)
+
+
+
+def _get_risk_config(region: str) -> dict:
+    """
+    Resolve config de risco:
+    1. tenta policy oficial
+    2. fallback seguro (produção)
+    """
+
+    try:
+        policy = get_policy_by_region(region)
+    except Exception:
+        policy = None
+
+    if policy:
+        return {
+            "max_amount": policy.get("limits", {}).get("max_amount", 2000),
+            "allowed_methods": {
+                _normalize_method(m) for m in policy.get("allowed_methods", [])
+            } or DEFAULT_RISK_CONFIG["allowed_methods"],
+            "risk_threshold_block": policy.get("thresholds", {}).get("block", 85),
+            "risk_threshold_challenge": policy.get("thresholds", {}).get("challenge", 60),
+        }
+
+    # 🔴 fallback profissional (NUNCA bloquear tudo)
+    return DEFAULT_RISK_CONFIG
+
+
 
 
 def _is_brazil_region(region: str) -> bool:
@@ -516,10 +578,21 @@ def _validate_behavioral_risk(
     payment_method: str,
     channel: str,
     interface: Optional[str],
-    region: str
+    region: str,
+    signals: dict, # 🔴 NOVO
 ) -> List[RiskFactor]:
     """Valida risco comportamental (fraude patterns)"""
     factors = []
+
+    def is_foreign_ip():
+        return signals.get("ip_country") not in {"BR", None}
+
+    def is_wrong_region():
+        locker = signals.get("locker") or {}
+        return locker.get("address", {}).get("country") != "BR"
+
+    def is_new_device():
+        return signals.get("device_trusted") is False
     
     # Combinações suspeitas
     suspicious_combinations = [
@@ -551,16 +624,83 @@ def _validate_behavioral_risk(
     ]
     
     for methods, channel_req, condition, weight, detail in suspicious_combinations:
-        if payment_method in methods:
-            if channel_req == "ANY" or channel_req == channel:
-                factors.append(RiskFactor(
-                    code=f"SUSPICIOUS_COMBINATION_{payment_method.upper()}",
-                    weight=weight,
-                    detail=detail,
-                    category=RiskCategory.BEHAVIORAL,
-                ))
-    
+        # if payment_method in methods:
+        #     if channel_req == "ANY" or channel_req == channel:
+        #         factors.append(RiskFactor(
+        #             code=f"SUSPICIOUS_COMBINATION_{payment_method.upper()}",
+        #             weight=weight,
+        #             detail=detail,
+        #             category=RiskCategory.BEHAVIORAL,
+        #         ))
+        if payment_method not in methods:
+            continue
+
+        if channel_req != "ANY" and channel_req != channel:
+            continue
+
+        # 🔴 AQUI ESTÁ A CORREÇÃO REAL
+        condition_ok = False
+
+        if condition == "FOREIGN_IP":
+            condition_ok = is_foreign_ip()
+
+        elif condition == "WRONG_REGION":
+            condition_ok = is_wrong_region()
+
+        elif condition == "NEW_DEVICE":
+            condition_ok = is_new_device()
+
+        elif condition == "ANY":
+            condition_ok = True
+
+        if not condition_ok:
+            continue
+
+        factors.append(RiskFactor(
+            code=f"SUSPICIOUS_COMBINATION_{payment_method.upper()}",
+            weight=weight,
+            detail=detail,
+            category=RiskCategory.BEHAVIORAL,
+        ))
+
     return factors
+
+
+
+def _is_brazil_context(signals: dict) -> bool:
+    region = signals.get("region")
+    locker = signals.get("locker") or {}
+
+    return (
+        region == "SP"
+        or (region and region.startswith("BR"))
+        or locker.get("address", {}).get("country") == "BR"
+    )
+
+
+def _validate_pix_behavior(signals: dict, factors: list):
+    if signals.get("payment_method") != "pix":
+        return
+
+    # 🔴 só bloqueia fora do Brasil
+    if not _is_brazil_context(signals):
+        factors.append(RiskFactor(
+            code="PIX_OUTSIDE_BRAZIL",
+            weight=40,
+            detail="PIX fora do Brasil",
+            category=RiskCategory.BEHAVIORAL,
+        ))
+
+    # 🟢 KIOSK reduz risco
+    if signals.get("channel") == "KIOSK":
+        factors.append(RiskFactor(
+            code="KIOSK_TRUSTED_ENV",
+            weight=-15,
+            detail="Ambiente controlado KIOSK",
+            category=RiskCategory.CONTEXTUAL,
+        ))
+
+
 
 
 def _validate_compliance_risk(region: str, amount: float, payment_method: str) -> List[RiskFactor]:
@@ -589,6 +729,143 @@ def _validate_compliance_risk(region: str, amount: float, payment_method: str) -
     return factors
 
 
+# função nova para risco de cartão/BIN/emissor
+def _validate_card_risk(
+    payment_method: str,
+    card_type: str,
+    bin_number: str,
+    issuer: str,
+    region: str,
+    amount: float,
+) -> List[RiskFactor]:
+    """
+    Regras reais de risco para cartão/BIN/emissor.
+    Sem dependência externa por enquanto, mas preparada para catálogos/listas.
+    """
+    factors: List[RiskFactor] = []
+
+    method_u = (payment_method or "").strip()
+    card_type_u = (card_type or "").strip().upper()
+    issuer_s = (issuer or "").strip()
+    bin_s = "".join(ch for ch in str(bin_number or "") if ch.isdigit())
+
+    card_methods = {"creditCard", "debitCard", "giftCard", "prepaidCard"}
+    if method_u not in card_methods:
+        return factors
+
+    # 1) card_type ausente em transação de cartão
+    if not card_type_u:
+        factors.append(RiskFactor(
+            code="CARD_TYPE_MISSING",
+            weight=10,
+            detail="Transação de cartão sem card_type informado",
+            category=RiskCategory.METHOD,
+        ))
+
+    # 2) Gift / prepaid têm risco maior
+    if card_type_u in {"GIFT", "GIFTCARD"} or method_u == "giftCard":
+        factors.append(RiskFactor(
+            code="GIFT_CARD_RISK",
+            weight=22,
+            detail="Gift card possui risco elevado para fraude e abuso",
+            category=RiskCategory.METHOD,
+        ))
+
+    if card_type_u in {"PREPAID", "PREPAIDCARD"} or method_u == "prepaidCard":
+        factors.append(RiskFactor(
+            code="PREPAID_CARD_RISK",
+            weight=18,
+            detail="Cartão pré-pago possui rastreabilidade reduzida",
+            category=RiskCategory.METHOD,
+        ))
+
+    # 3) BIN inválido / incompleto
+    if bin_s:
+        if len(bin_s) < 6:
+            factors.append(RiskFactor(
+                code="BIN_TOO_SHORT",
+                weight=20,
+                detail=f"BIN informado com tamanho inválido: {len(bin_s)}",
+                category=RiskCategory.AUTHENTICATION,
+            ))
+    elif method_u in {"creditCard", "debitCard"}:
+        # Para cartão tradicional, ausência de BIN merece atenção
+        factors.append(RiskFactor(
+            code="BIN_MISSING",
+            weight=8,
+            detail="BIN não informado para transação de cartão",
+            category=RiskCategory.AUTHENTICATION,
+        ))
+
+    # 4) BIN de teste / sandbox / placeholders muito comuns
+    suspicious_test_bins = {
+        "411111",
+        "424242",
+        "555555",
+        "400000",
+        "401288",
+    }
+    if bin_s[:6] in suspicious_test_bins:
+        factors.append(RiskFactor(
+            code="TEST_BIN_DETECTED",
+            weight=35,
+            detail=f"BIN de teste/sandbox detectado: {bin_s[:6]}",
+            category=RiskCategory.AUTHENTICATION,
+        ))
+
+    # 5) Valor alto com cartão presente/gift/prepaid
+    if amount >= 300 and card_type_u in {"GIFT", "GIFTCARD", "PREPAID", "PREPAIDCARD"}:
+        factors.append(RiskFactor(
+            code="HIGH_AMOUNT_RISKY_CARD_TYPE",
+            weight=20,
+            detail=f"Valor alto ({amount}) com tipo de cartão mais sensível",
+            category=RiskCategory.VALUE,
+        ))
+
+    # 6) Emissor ausente em cartão tradicional
+    if method_u in {"creditCard", "debitCard"} and not issuer_s:
+        factors.append(RiskFactor(
+            code="ISSUER_MISSING",
+            weight=6,
+            detail="Issuer não informado para transação de cartão",
+            category=RiskCategory.AUTHENTICATION,
+        ))
+
+    # 7) Emissores de teste / placeholders
+    issuer_lower = issuer_s.lower()
+    suspicious_issuers = {"test", "sandbox", "fake", "mock"}
+    if issuer_lower in suspicious_issuers:
+        factors.append(RiskFactor(
+            code="SUSPICIOUS_ISSUER",
+            weight=30,
+            detail=f"Emissor suspeito informado: {issuer_s}",
+            category=RiskCategory.AUTHENTICATION,
+        ))
+
+    # 8) Pequeno bônus de confiança se temos BIN válido + issuer preenchido
+    if len(bin_s) >= 6 and issuer_s and method_u in {"creditCard", "debitCard"}:
+        factors.append(RiskFactor(
+            code="CARD_METADATA_PRESENT",
+            weight=-4,
+            detail="BIN e issuer presentes melhoram rastreabilidade",
+            category=RiskCategory.AUTHENTICATION,
+            is_positive=True,
+        ))
+
+    # 9) Regra regional simples: cartões gift/prepaid em KIOSK no Brasil merecem atenção extra
+    if region in {"SP", "RJ", "MG", "RS", "BA", "BR"} and card_type_u in {"GIFT", "GIFTCARD", "PREPAID", "PREPAIDCARD"}:
+        factors.append(RiskFactor(
+            code="BRAZIL_KIOSK_RISKY_CARD_PROFILE",
+            weight=10,
+            detail="Perfil de cartão mais sensível para operação local no Brasil",
+            category=RiskCategory.BEHAVIORAL,
+        ))
+
+    return factors
+
+
+
+
 # ==================== Função Principal ====================
 
 def evaluate_risk(
@@ -607,6 +884,7 @@ def evaluate_risk(
     integration_status: str = "ACTIVE",
     customer_phone_verified: bool = False,
     customer_email_verified: bool = False,
+    **kwargs,
 ) -> Dict[str, Any]:
     """
     Avalia risco de uma transação de pagamento seguindo padrões da indústria:
@@ -615,13 +893,25 @@ def evaluate_risk(
     - ISO 31000 (Risk Management)
     """
     
+    config = _get_risk_config(region)
+
     # Normalização
     region_u = _normalize_upper(region)
     canal_u = _normalize_upper(canal)
-    metodo_v = (metodo or "").strip()
+    # metodo_v = (metodo or "").strip()
+    metodo_v = _normalize_method(metodo)
     interface_u = _normalize_upper(payment_interface)
     anti_replay_u = _normalize_upper(anti_replay_status)
     integration_u = _normalize_upper(integration_status)
+
+    # ==============================
+    # Compatibilidade futura (EXTENSÃO)     
+    # (não obrigatório usar agora — apenas disponível)
+    # Compatibilidade futura / enriquecimento antifraude
+    # ==============================
+    card_type = _normalize_upper(kwargs.get("card_type"))
+    bin_number = str(kwargs.get("bin") or kwargs.get("bin_number") or "").strip()
+    issuer = str(kwargs.get("issuer") or "").strip()
     
     # Validações básicas
     basic_risk_factors = []
@@ -684,7 +974,25 @@ def evaluate_risk(
     
     # Inicializa pontuação de risco
     risk_score = RiskScore(value=0, level=RiskLevel.LOW)
-    
+
+
+
+
+    # normalized_method = metodo_v.lower()
+
+    #if normalized_method not in config["allowed_methods"]:
+    if metodo_v not in config["allowed_methods"]:
+        risk_score.add_factor(RiskFactor(
+            code="METHOD_NOT_ALLOWED",
+            weight=40,
+            detail=f"Método não permitido para região: {metodo_v}",
+            category=RiskCategory.METHOD,
+        ))
+
+
+
+
+
     # Adiciona fatores básicos
     for factor in basic_risk_factors:
         risk_score.add_factor(factor)
@@ -698,6 +1006,21 @@ def evaluate_risk(
         category=RiskCategory.METHOD,
     ))
     
+
+
+
+
+    # Adiciona fatores específicos de cartão / BIN / issuer
+    for factor in _validate_card_risk(
+        payment_method=metodo_v,
+        card_type=card_type,
+        bin_number=bin_number,
+        issuer=issuer,
+        region=region_u,
+        amount=valor,
+    ):
+        risk_score.add_factor(factor)
+
     # Adiciona fatores de interface
     if interface_u:
         interface_weight, interface_reason = _get_interface_risk_weight(interface_u)
@@ -731,9 +1054,20 @@ def evaluate_risk(
     # Adiciona fatores de integração
     for factor in _validate_integration_risk(integration_u, metodo_v):
         risk_score.add_factor(factor)
-    
+
+
+
+    signals = {
+        "region": region_u,
+        "channel": canal_u,
+        "payment_method": metodo_v,
+        "device_trusted": True,  # fallback seguro
+        "ip_country": "BR",      # fallback seguro
+        "locker": kwargs.get("locker") or {},
+    }
+
     # Adiciona fatores comportamentais
-    for factor in _validate_behavioral_risk(metodo_v, canal_u, interface_u, region_u):
+    for factor in _validate_behavioral_risk(metodo_v, canal_u, interface_u, region_u, signals, ):
         risk_score.add_factor(factor)
     
     # Adiciona fatores de compliance
@@ -745,13 +1079,29 @@ def evaluate_risk(
     final_score = min(100, int(risk_score.value * multiplier))
     
     # Obtém políticas da região
-    policy = get_policy_by_region(region_u)
-    thresholds = policy.get("thresholds", {"block_min": 70, "challenge_min": 40})
-    
-    # Decide ação baseada na pontuação
-    if final_score >= thresholds.get("block_min", 70):
+    try:
+        policy = get_policy_by_region(region_u) or {}
+    except Exception:
+        policy = {}
+
+
+    # 🔐 thresholds com fallback seguro (produção)
+    block_threshold = (
+        policy.get("thresholds", {}).get("block")
+        or config.get("risk_threshold_block")
+        or 85
+    )
+
+    challenge_threshold = (
+        policy.get("thresholds", {}).get("challenge")
+        or config.get("risk_threshold_challenge")
+        or 60
+    )
+
+    # 🔥 decisão baseada em config dinâmica (SEM hardcode)
+    if final_score >= block_threshold:
         decision = RiskDecision.BLOCK
-    elif final_score >= thresholds.get("challenge_min", 40):
+    elif final_score >= challenge_threshold:
         decision = RiskDecision.CHALLENGE
     elif final_score >= 20:
         decision = RiskDecision.REVIEW
@@ -779,10 +1129,18 @@ def evaluate_risk(
                 "device_5m": velocity.get("device_5m", 0),
                 "porta_5m": velocity.get("porta_5m", 0),
             },
+            "card_metadata": {
+                "card_type": card_type or None,
+                "bin_prefix": (bin_number[:6] if bin_number else None),
+                "issuer": issuer or None,
+            },
             "risk_multiplier": multiplier,
         },
         "policy": policy,
         "evaluation_timestamp": datetime.utcnow().isoformat(),
+        "card_type": card_type or None,
+        "bin": (bin_number[:6] if bin_number else None),
+        "issuer": issuer or None,
     }
     
     return response

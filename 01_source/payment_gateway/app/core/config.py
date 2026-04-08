@@ -116,6 +116,16 @@ class RegionCode(str, Enum):
 
 
 class Settings:
+
+    CENTRAL_POSTGRES_DSN: Optional[str] = (
+        os.getenv("PAYMENT_GATEWAY_POSTGRES_DSN")
+        or os.getenv("CENTRAL_POSTGRES_DSN")
+    )
+
+    PAYMENT_GATEWAY_CAPABILITY_CACHE_TTL_SEC: int = int(
+        os.getenv("PAYMENT_GATEWAY_CAPABILITY_CACHE_TTL_SEC", "10")
+    )
+
     # ------------------------------------------------------------------
     # Runtime (fonte única para lockers)
     # ------------------------------------------------------------------

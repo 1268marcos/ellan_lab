@@ -1,4 +1,5 @@
 // 01_source/frontend/src/features/locker-dashboard/services/operationalPaymentService.js
+// 08/04/2026
 
 import { buildAuthHeaders } from "../utils/dashboardPaymentUtils.js";
 
@@ -39,7 +40,18 @@ export async function executeGatewayPayment({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  return text ? JSON.parse(text) : {};
+  const data = text ? JSON.parse(text) : {};
+
+  // 🔴 PATCH AQUI
+  if (data.result === "requires_confirmation") {
+    return {
+      ...data,
+      ui_status: "pending_action",
+      ui_message: "Pagamento requer confirmação adicional",
+    };
+  }
+
+  return data;
 }
 
 export async function confirmOperationalPayment({

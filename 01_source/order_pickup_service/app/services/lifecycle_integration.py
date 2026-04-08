@@ -502,20 +502,24 @@ def cancel_prepayment_timeout_deadline(
 ) -> Dict[str, Any]:
     """
     Cancela deadline de pré-pagamento com registro de motivo
+    
+    O LifecycleClient atual aceita apenas order_id.
+    reason/metadata ficam preservados para logging e compatibilidade futura.
     """
     client = LifecycleClient()
 
     try:
         result = client.cancel_prepayment_deadline(
             order_id=order_id,
-            reason=reason,
-            metadata=metadata,
+            # reason=reason, # nao excluir veja acima
+            # metadata=metadata, # nao excluir veja acima
         )
         logger.info(
             "lifecycle_deadline_cancelled",
             extra={
                 "order_id": order_id,
                 "reason": reason,
+                "metadata": metadata,
                 "result": result,
             },
         )
@@ -524,7 +528,11 @@ def cancel_prepayment_timeout_deadline(
     except LifecycleClientError:
         logger.exception(
             "lifecycle_deadline_cancel_failed",
-            extra={"order_id": order_id},
+            extra={
+                "order_id": order_id, 
+                "reason": reason, 
+                "metadata": metadata, 
+            },
         )
         raise
 

@@ -1,4 +1,5 @@
 // 01_source/frontend/src/features/locker-dashboard/utils/dashboardPaymentUtils.js
+// 07/04/2026 - patch utilitário
 
 import { DIGITAL_WALLET_PROVIDER_BY_METHOD } from "./dashboardConstants.js";
 
@@ -82,3 +83,44 @@ export function extractPendingPaymentData(gatewayData) {
     raw: gatewayData,
   };
 }
+
+
+export function extractGatewayDebugInfo(gatewayData) {
+  const error = gatewayData?.error || {};
+  const antiReplay = gatewayData?.anti_replay || {};
+  const risk = gatewayData?.risk || {};
+  const locker = gatewayData?.locker || {};
+  const reasons = Array.isArray(risk?.reasons) ? risk.reasons : [];
+
+  return {
+    errorType: error?.type || null,
+    errorMessage: error?.message || null,
+    retryable:
+      typeof error?.retryable === "boolean" ? error.retryable : null,
+
+    antiReplayStatus: antiReplay?.status || null,
+    idempotencyKey: antiReplay?.idempotency_key || null,
+    payloadHash: antiReplay?.payload_hash || null,
+    originalPayloadHash: antiReplay?.original_payload_hash || null,
+
+    riskDecision: risk?.decision || null,
+    riskScore:
+      typeof risk?.score === "number" ? risk.score : null,
+    riskReasons: reasons.map((item) => ({
+      code: item?.code || "-",
+      weight: item?.weight ?? "-",
+      detail: item?.detail || "",
+    })),
+
+    severity: gatewayData?.severity || null,
+    severityCode: gatewayData?.severity_code || null,
+
+    lockerId: locker?.locker_id || null,
+    requestId: gatewayData?.request_id || null,
+
+    raw: gatewayData || {},
+  };
+}
+
+
+

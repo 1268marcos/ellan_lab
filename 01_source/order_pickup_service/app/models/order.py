@@ -256,6 +256,9 @@ class PaymentStatus(str, enum.Enum):
     AWAITING_INTEGRATION = "AWAITING_INTEGRATION"
     REFUNDED = "REFUNDED"      # Adicionado
     PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"  # Adicionado
+    AUTHORIZED = "AUTHORIZED"  # Adicionado
+    CONFIRMED = "CONFIRMED"  # Adicionado
+
     
     @property
     def is_terminal(self) -> bool:

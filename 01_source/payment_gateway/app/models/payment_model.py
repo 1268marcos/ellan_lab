@@ -388,7 +388,7 @@ class PaymentRequest(BaseModel):
     customer_phone: Optional[str] = None
     customer_email: Optional[str] = None
     wallet_provider: Optional[WalletProviderType] = None
-    
+
     # Campos específicos por região
     national_id: Optional[str] = Field(default=None, description="ID Nacional (China, Japão, Coreia)")
     qr_code_content: Optional[str] = Field(default=None, description="Conteúdo do QR code")
@@ -397,266 +397,234 @@ class PaymentRequest(BaseModel):
     emirates_id: Optional[str] = Field(default=None, description="Emirates ID - UAE")
     turkish_id: Optional[str] = Field(default=None, description="Turkish ID number")
     inn_number: Optional[str] = Field(default=None, description="INN tax number - Rússia")
-    
+
     # Metadados e tracking
     metadata: Dict[str, Any] = Field(default_factory=dict)
     device_id: Optional[str] = None
     ip_address: Optional[str] = None
     user_agent: Optional[str] = None
-    
+
     # Timestamps
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
-    
+
+    model_config = {
+        "extra": "allow",
+    }
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_new_and_legacy_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        payload = dict(data)
+
+        def pick(*keys, default=None):
+            for key in keys:
+                value = payload.get(key)
+                if value is not None and value != "":
+                    return value
+            return default
+
+        # -----------------------------
+        # Compat estrutural: novo -> legado
+        # -----------------------------
+        payload["regiao"] = pick("regiao", "region", "regional_code")
+        payload["canal"] = pick("canal", "channel", "sales_channel", default="KIOSK")
+        payload["porta"] = pick("porta", "slot", "slot_number", "drawer", "gaveta")
+        payload["locker_id"] = pick("locker_id", "lockerId", "totem_id", "totemId", "machine_id")
+        payload["order_id"] = pick("order_id", "orderId")
+
+        # interface
+        payload["interface"] = pick(
+            "interface",
+            "payment_interface",
+            "paymentInterface",
+            "interface_type",
+            "interfaceType",
+            default="api",
+        )
+
+        # amount -> valor
+        if pick("valor") is not None:
+            payload["valor"] = pick("valor")
+        elif pick("amount") is not None:
+            payload["valor"] = pick("amount")
+        elif pick("amount_cents") is not None:
+            try:
+                payload["valor"] = float(pick("amount_cents")) / 100.0
+            except (TypeError, ValueError):
+                payload["valor"] = pick("amount_cents")
+
+        # payment method -> metodo
+        raw_method = pick("metodo", "payment_method", "paymentMethod", "method", "payment_type")
+
+        
+        method_map = {
+            # novo padrão frontend
+            "PIX": "pix",
+            "CREDIT_CARD": "creditCard",
+            "DEBIT_CARD": "debitCard",
+            "GIFT_CARD": "giftCard",
+            "APPLE_PAY": "apple_pay",
+            "GOOGLE_PAY": "google_pay",
+            "MBWAY": "mbway",
+            "MULTIBANCO_REFERENCE": "multibanco_reference",
+            "MERCADO_PAGO_WALLET": "mercado_pago_wallet",
+
+            # variantes textuais comuns
+            "credit_card": "creditCard",
+            "CARTAO_CREDITO": "creditCard",
+            "debit_card": "debitCard",
+            "CARTAO_DEBITO": "debitCard",
+            "gift_card": "giftCard",
+            "credito": "creditCard",
+            "debito": "debitCard",
+            "cartao_credito": "creditCard",
+            "cartao_debito": "debitCard",
+            "cartão_credito": "creditCard",
+            "cartão_debito": "debitCard",
+            "mercado_pago": "mercado_pago_wallet",
+            "multibanco": "multibanco_reference",
+        }
+
+
+        """
+        method_map = {
+            # frontend novo -> formato legado do service
+            "PIX": "PIX",
+            "CREDIT_CARD": "DEBIT_OR_CREDIT_CARD",
+            "DEBIT_CARD": "DEBIT_OR_CREDIT_CARD",
+            "GIFT_CARD": "GIFT_CARD",
+            "APPLE_PAY": "APPLE_PAY",
+            "GOOGLE_PAY": "GOOGLE_PAY",
+            "MBWAY": "MBWAY",
+            "MULTIBANCO_REFERENCE": "MULTIBANCO_REFERENCE",
+            "MERCADO_PAGO_WALLET": "MERCADO_PAGO_WALLET",
+
+            # legado camelCase / snake_case -> formato legado do service
+            "creditCard": "DEBIT_OR_CREDIT_CARD",
+            "debitCard": "DEBIT_OR_CREDIT_CARD",
+            "giftCard": "GIFT_CARD",
+            "apple_pay": "APPLE_PAY",
+            "google_pay": "GOOGLE_PAY",
+            "mbway": "MBWAY",
+            "multibanco_reference": "MULTIBANCO_REFERENCE",
+            "mercado_pago_wallet": "MERCADO_PAGO_WALLET",
+
+            # variantes textuais comuns
+            "credit_card": "DEBIT_OR_CREDIT_CARD",
+            "debit_card": "DEBIT_OR_CREDIT_CARD",
+            "gift_card": "GIFT_CARD",
+            "credito": "DEBIT_OR_CREDIT_CARD",
+            "debito": "DEBIT_OR_CREDIT_CARD",
+            "cartao_credito": "DEBIT_OR_CREDIT_CARD",
+            "cartao_debito": "DEBIT_OR_CREDIT_CARD",
+            "cartão_credito": "DEBIT_OR_CREDIT_CARD",
+            "cartão_debito": "DEBIT_OR_CREDIT_CARD",
+            "mercado_pago": "MERCADO_PAGO_WALLET",
+            "multibanco": "MULTIBANCO_REFERENCE",
+        }
+        """
+
+
+        if isinstance(raw_method, str):
+            payload["metodo"] = method_map.get(raw_method, method_map.get(raw_method.upper(), raw_method))
+        else:
+            payload["metodo"] = raw_method
+
+        # wallet provider
+        raw_wallet_provider = pick("wallet_provider", "walletProvider")
+        wallet_provider_map = {
+            "APPLE_PAY": "applePay",
+            "GOOGLE_PAY": "googlePay",
+            "MERCADO_PAGO": "mercadoPago",
+            "MERCADO_PAGO_WALLET": "mercadoPago",
+        }
+        if isinstance(raw_wallet_provider, str):
+            payload["wallet_provider"] = wallet_provider_map.get(
+                raw_wallet_provider,
+                wallet_provider_map.get(raw_wallet_provider.upper(), raw_wallet_provider),
+            )
+        elif raw_wallet_provider is not None:
+            payload["wallet_provider"] = raw_wallet_provider
+
+        # customer aliases
+        payload["customer_phone"] = pick("customer_phone", "customerPhone", "phone")
+        payload["customer_email"] = pick("customer_email", "customerEmail", "email")
+
+        # garantir currency automaticamente
+        # if not payload.get("currency") and payload.get("regiao"):
+        #     payload["currency"] = get_currency_for_region(payload["regiao"])
+
+        if not payload.get("currency") and payload.get("regiao"):
+            payload["currency"] = get_currency_for_region(str(payload["regiao"]).strip().upper())
+
+        # metadata: preserva e enriquece
+        metadata = payload.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+
+        for extra_key in [
+            "amount_cents",
+            "sales_channel",
+            "payment_method",
+            "paymentMethod",
+            "payment_interface",
+            "paymentInterface",
+            "slot",
+            "slot_number",
+            "totem_id",
+            "totemId",
+            "lockerId",
+            "channel",
+            "region",
+        ]:
+            if extra_key in payload and extra_key not in metadata:
+                metadata[extra_key] = payload.get(extra_key)
+
+        payload["metadata"] = metadata
+
+        return payload
+
     @field_validator("locker_id")
     @classmethod
     def validate_locker_id(cls, value: str) -> str:
-        normalized = (value or "").strip()
-        if not normalized:
-            raise ValueError("locker_id é obrigatório.")
-        if len(normalized) > 50:
-            raise ValueError("locker_id deve ter menos de 50 caracteres.")
-        return normalized
+        value = str(value or "").strip()
+        if not value:
+            raise ValueError("locker_id é obrigatório")
+        return value
 
-    @field_validator("order_id")
+    @field_validator("regiao")
     @classmethod
-    def normalize_order_id(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        normalized = value.strip()
-        return normalized or None
+    def normalize_region(cls, value):
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
-    @field_validator("customer_phone")
+    @field_validator("canal")
     @classmethod
-    def normalize_customer_phone(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        normalized = value.strip()
-        # Validação básica de formato internacional
-        if normalized and not normalized.startswith('+'):
-            raise ValueError("customer_phone deve estar no formato internacional (ex: +5511999999999)")
-        return normalized or None
+    def normalize_channel(cls, value):
+        if isinstance(value, str):
+            return value.strip().upper()
+        return value
 
-    @field_validator("customer_email")
+    @field_validator("interface")
     @classmethod
-    def normalize_customer_email(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
-        normalized = value.strip().lower()
-        if normalized and '@' not in normalized:
-            raise ValueError("customer_email deve ser um email válido")
-        return normalized or None
+    def normalize_interface(cls, value):
+        if isinstance(value, str):
+            return value.strip()
+        return value
 
     @field_validator("currency")
     @classmethod
-    def normalize_currency(cls, value: Optional[str]) -> Optional[str]:
+    def normalize_currency(cls, value):
         if value is None:
-            return None
-        normalized = value.strip().upper()
-        if len(normalized) != 3:
-            raise ValueError("currency deve ser um código ISO 4217 de 3 letras")
-        return normalized or None
-
-    @model_validator(mode="after")
-    def validate_payment_request(self) -> "PaymentRequest":
-        # Define moeda padrão se não fornecida
-        if not self.currency:
-            self.currency = get_currency_for_region(self.regiao)
-        
-        # ==================== BRASIL ====================
-        brazil_regions = {"SP", "RJ", "MG", "RS", "BA", "BR"}
-        
-        if self.metodo == "pix":
-            if self.regiao not in brazil_regions:
-                raise ValueError(f"pix só pode ser utilizado nas regiões do Brasil: {', '.join(brazil_regions)}.")
-        
-        if self.metodo == "boleto":
-            if self.regiao not in brazil_regions:
-                raise ValueError(f"boleto só pode ser utilizado nas regiões do Brasil.")
-        
-        # ==================== PORTUGAL ====================
-        if self.metodo == "mbway":
-            if self.regiao != "PT":
-                raise ValueError("mbway só pode ser utilizado na região PT.")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para pagamentos mbway.")
-        
-        if self.metodo == "multibanco_reference":
-            if self.regiao != "PT":
-                raise ValueError("multibanco_reference só pode ser utilizado na região PT.")
-        
-        # ==================== MÉXICO ====================
-        if self.metodo in {"oxxo", "spei"}:
-            if self.regiao != "MX":
-                raise ValueError(f"{self.metodo} só pode ser utilizado no México (MX).")
-        
-        # ==================== ARGENTINA ====================
-        if self.metodo in {"rapipago", "pagofacil"}:
-            if self.regiao != "AR":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Argentina (AR).")
-        
-        # ==================== CHINA ====================
-        if self.metodo in {"alipay", "wechat_pay", "unionpay", "dcep"}:
-            if self.regiao != "CN":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na China (CN).")
-            if not self.qr_code_content:
-                raise ValueError("qr_code_content é obrigatório para pagamentos na China.")
-            if self.interface not in {"qr_code", "face_recognition", "fingerprint"}:
-                raise ValueError(f"{self.metodo} exige interface qr_code, face_recognition ou fingerprint.")
-        
-        # ==================== JAPÃO ====================
-        if self.metodo in {"paypay", "line_pay", "rakuten_pay", "merpay"}:
-            if self.regiao != "JP":
-                raise ValueError(f"{self.metodo} só pode ser utilizado no Japão (JP).")
-        
-        if self.metodo == "konbini":
-            if self.regiao != "JP":
-                raise ValueError("konbini só pode ser utilizado no Japão (JP).")
-            if not self.konbini_code:
-                raise ValueError("konbini_code é obrigatório para pagamentos em lojas de conveniência.")
-            if self.interface != "barcode":
-                raise ValueError("konbini exige interface barcode.")
-        
-        # ==================== TAILÂNDIA ====================
-        if self.metodo == "promptpay":
-            if self.regiao != "TH":
-                raise ValueError("promptpay só pode ser utilizado na Tailândia (TH).")
-            if not self.qr_code_content:
-                raise ValueError("qr_code_content é obrigatório para PromptPay.")
-            if self.interface != "qr_code":
-                raise ValueError("PromptPay exige interface qr_code.")
-        
-        # ==================== INDONÉSIA ====================
-        if self.metodo in {"go_pay", "ovo", "dana"}:
-            if self.regiao != "ID":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Indonésia (ID).")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para carteiras digitais da Indonésia.")
-        
-        # ==================== FILIPINAS ====================
-        if self.metodo in {"gcash", "paymaya"}:
-            if self.regiao != "PH":
-                raise ValueError(f"{self.metodo} só pode ser utilizado nas Filipinas (PH).")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para GCash/PayMaya.")
-        
-        # ==================== EMIRADOS ÁRABES ====================
-        if self.metodo in {"tabby", "payby"}:
-            if self.regiao != "AE":
-                raise ValueError(f"{self.metodo} só pode ser utilizado nos Emirados Árabes (AE).")
-            if self.metodo == "tabby" and not self.customer_email:
-                raise ValueError("customer_email é obrigatório para Tabby.")
-        
-        # ==================== TURQUIA ====================
-        if self.metodo in {"troy", "bkm_express"}:
-            if self.regiao != "TR":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Turquia (TR).")
-            if not self.turkish_id:
-                raise ValueError("turkish_id é obrigatório para pagamentos na Turquia.")
-        
-        # ==================== RÚSSIA ====================
-        if self.metodo in {"mir", "sberbank_online"}:
-            if self.regiao != "RU":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Rússia (RU).")
-            if not self.national_id and not self.inn_number:
-                raise ValueError("national_id ou inn_number é obrigatório para pagamentos na Rússia.")
-        
-        # ==================== AUSTRÁLIA ====================
-        if self.metodo in {"afterpay", "zip"}:
-            if self.regiao != "AU":
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Austrália (AU).")
-        
-        # ==================== ÁFRICA ====================
-        african_regions = {"KE", "TZ", "UG", "RW", "ZA", "NG", "GH"}
-        
-        if self.metodo == "m_pesa":
-            if self.regiao not in {"KE", "TZ", "UG", "RW"}:
-                raise ValueError(f"m_pesa só pode ser utilizado na África Oriental: KE, TZ, UG, RW.")
-            if not self.customer_phone:
-                raise ValueError("customer_phone é obrigatório para m_pesa.")
-            if not self.ussd_session_id:
-                raise ValueError("ussd_session_id é obrigatório para m_pesa.")
-            if self.interface != "ussd":
-                raise ValueError("m_pesa exige interface ussd.")
-        
-        if self.metodo in {"airtel_money", "mtn_money"}:
-            if self.regiao not in {"NG", "KE", "UG"}:
-                raise ValueError(f"{self.metodo} só pode ser utilizado na Nigéria, Quênia ou Uganda.")
-            if not self.customer_phone:
-                raise ValueError(f"customer_phone é obrigatório para {self.metodo}.")
-        
-        # ==================== CARTÕES ====================
-        if self.metodo in {"creditCard", "debitCard", "giftCard", "prepaidCard"}:
-            valid_interfaces = {"nfc", "chip", "web_token", "manual", "contactless", "magnetic_stripe"}
-            if self.interface not in valid_interfaces:
-                raise ValueError(
-                    f"payment_interface incompatível com o método {self.metodo}. "
-                    f"Interfaces permitidas: {', '.join(valid_interfaces)}"
-                )
-        
-        # ==================== CARTEIRAS DIGITAIS ====================
-        if requires_wallet_provider(self.metodo):
-            valid_interfaces = {
-                "nfc", "qr_code", "web_token", "deep_link", "api",
-                "face_recognition", "fingerprint"
-            }
-            
-            if self.interface not in valid_interfaces:
-                raise ValueError(
-                    f"payment_interface incompatível com o método {self.metodo}. "
-                    f"Interfaces permitidas: {', '.join(valid_interfaces)}"
-                )
-            
-            if not self.wallet_provider:
-                raise ValueError("wallet_provider é obrigatório para carteiras digitais.")
-            
-            expected_provider = get_expected_wallet_provider(self.metodo)
-            if expected_provider and self.wallet_provider != expected_provider:
-                raise ValueError(
-                    f"wallet_provider incompatível com o método {self.metodo}. "
-                    f"Esperado: {expected_provider}"
-                )
-        
-        # Validação para métodos que NÃO devem ter wallet_provider
-        if not requires_wallet_provider(self.metodo) and self.wallet_provider is not None:
-            raise ValueError("wallet_provider só pode ser informado para carteiras digitais.")
-        
-        # ==================== VALIDAÇÕES DE INTERFACE POR MÉTODO ====================
-        
-        # PIX
-        if self.metodo == "pix":
-            if self.interface not in {"qr_code", "web_token", "deep_link"}:
-                raise ValueError("pix exige interface qr_code, web_token ou deep_link.")
-        
-        # Boleto
-        if self.metodo == "boleto":
-            if self.interface not in {"qr_code", "web_token", "manual", "deep_link"}:
-                raise ValueError("boleto exige interface qr_code, web_token, deep_link ou manual.")
-        
-        # MB Way
-        if self.metodo == "mbway":
-            if self.interface not in {"qr_code", "web_token", "deep_link"}:
-                raise ValueError("mbway exige interface qr_code, web_token ou deep_link.")
-        
-        # Multibanco
-        if self.metodo == "multibanco_reference":
-            if self.interface not in {"qr_code", "manual", "web_token", "bank_link"}:
-                raise ValueError("multibanco_reference exige interface qr_code, manual, web_token ou bank_link.")
-        
-        # USSD
-        if self.interface == "ussd":
-            if self.regiao not in african_regions:
-                raise ValueError("USSD só pode ser utilizado na África.")
-            if not self.ussd_session_id:
-                raise ValueError("ussd_session_id é obrigatório para interface USSD.")
-        
-        # Face Recognition
-        if self.interface == "face_recognition":
-            if self.regiao != "CN":
-                raise ValueError("Face recognition só pode ser utilizado na China.")
-            if not self.national_id:
-                raise ValueError("national_id é obrigatório para face recognition.")
-        
-        return self
+            return value
+        if isinstance(value, str):
+            value = value.strip().upper()
+            return value or None
+        return value
 
 
 class PaymentResponse(BaseModel):

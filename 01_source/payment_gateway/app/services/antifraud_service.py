@@ -1,6 +1,7 @@
 # 01_source/payment_gateway/app/services/antifraud_service.py
 # 02/04/2026 - Enhanced Version with Industry Standards
 # Veja fim do arquivo
+# 07/04/2026 - tornar antifraude compatível
 
 from typing import Any, Dict, Optional, List, Tuple
 from enum import Enum
