@@ -1,0 +1,23 @@
+-- Insert new product categories
+INSERT INTO public.product_categories (id, name, description, parent_category, default_temperature_zone, default_security_level, is_hazardous, requires_age_verification, requires_id, requires_signature, created_at, updated_at) VALUES
+('BEVERAGES_HOT', 'Bebidas Quentes', 'Cafés, chás, chocolates quentes e outras bebidas quentes', 'BEVERAGES', 'HOT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('BEVERAGES_COLD', 'Bebidas Geladas', 'Sucos naturais, smoothies, águas aromatizadas', 'BEVERAGES', 'REFRIGERATED', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('BREAKFAST', 'Café da Manhã', 'Pães, croissants, bolos, iogurtes e frutas', 'FOOD_PERISHABLE', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('SANDWICHES', 'Sanduíches', 'Sanduíches naturais, wraps, burgers', 'FOOD_PERISHABLE', 'REFRIGERATED', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('SALADS', 'Saladas', 'Saladas frescas com proteínas', 'FOOD_PERISHABLE', 'REFRIGERATED', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('PASTA', 'Massas', 'Massas frescas e molhos', 'FOOD_PERISHABLE', 'REFRIGERATED', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('JAPANESE', 'Culinária Japonesa', 'Sushis, temakis, combinados', 'FOOD_PERISHABLE', 'REFRIGERATED', 'ENHANCED', false, false, false, false, NOW(), NOW()),
+('HEALTH_SUPPLEMENTS', 'Suplementos Alimentares', 'Whey protein, vitaminas, colágeno', 'VITAMINS_SUPPLEMENTS', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('ENERGY_DRINKS', 'Bebidas Energéticas', 'Red Bull, Monster, Gatorade', 'BEVERAGES', 'AMBIENT', 'STANDARD', false, true, false, false, NOW(), NOW()),
+('ALCOHOLIC_BEER', 'Cervejas', 'Cervejas artesanais e comerciais', 'BEVERAGES_ALCOHOLIC', 'REFRIGERATED', 'STANDARD', false, true, true, false, NOW(), NOW()),
+('ALCOHOLIC_WINE', 'Vinhos', 'Vinhos tintos, brancos, rosés e espumantes', 'BEVERAGES_ALCOHOLIC', 'AMBIENT', 'ENHANCED', false, true, true, false, NOW(), NOW()),
+('ELECTRONICS_WEARABLES', 'Wearables', 'Smartwatches, fitness trackers, fones', 'ELECTRONICS', 'AMBIENT', 'HIGH', false, false, false, false, NOW(), NOW()),
+('ELECTRONICS_AUDIO', 'Áudio', 'Fones de ouvido, caixas de som', 'ELECTRONICS_ACCESSORIES', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('BEAUTY_SKINCARE', 'Skincare', 'Cremes, séruns, protetores solares', 'BEAUTY', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('BEAUTY_MAKEUP', 'Maquiagem', 'Bases, batons, sombras', 'BEAUTY', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('PETS_DOG', 'Produtos para Cães', 'Rações, petiscos, brinquedos', 'PET_SUPPLIES', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('PETS_CAT', 'Produtos para Gatos', 'Rações, petiscos, arranhadores', 'PET_SUPPLIES', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('HOME_CLEANING', 'Limpeza Doméstica', 'Detergentes, desinfetantes, esponjas', 'CLEANING_SUPPLIES', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('OFFICE_SUPPLIES', 'Material de Escritório', 'Canetas, papéis, grampeadores', 'STATIONERY', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('GIFT_CARDS_DIGITAL', 'Gift Cards Digitais', 'Vouchers para streaming, jogos, apps', 'GIFT_CARDS', 'AMBIENT', 'STANDARD', false, false, false, false, NOW(), NOW()),
+('MEDICAL_EQUIPMENT', 'Equipamentos Médicos', 'Medidores de pressão, glicosímetros', 'MEDICAL_SUPPLIES', 'AMBIENT', 'ENHANCED', false, false, false, false, NOW(), NOW());

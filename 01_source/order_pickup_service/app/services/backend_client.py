@@ -1,4 +1,5 @@
 # 01_source/order_pickup_service/app/services/backend_client.py
+# 08/04/2026 - EM def locker_set_state INCLUIDO NOVOS EM payload
 
 from __future__ import annotations
 
@@ -209,6 +210,9 @@ def locker_set_state(
     url = f"{_runtime_base()}/locker/slots/{int(slot)}/set-state"
 
     payload = {
+        "region": region,
+        "totem_id": locker_id,
+        "slot": slot,
         "state": normalized_state,
     }
     if product_id is not None:

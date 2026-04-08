@@ -25,7 +25,7 @@ logger = logging.getLogger("backend_runtime")
 
 app = FastAPI(
     title="ELLAN Backend Operacional Canônico - runtime operacional multi-locker",
-    version="1.0.2",
+    version="1.0.3",
 )
 
 

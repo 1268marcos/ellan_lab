@@ -1,4 +1,6 @@
 # 01_source/backend/runtime/app/core/constants/slot_states.py
+# 08/04/2026 - explicação da matrix de estados para SLOT_STATES
+
 """
 Constantes para runtime (locker físico)
 ✔ KIOSK vs ONLINE consistentes
@@ -14,6 +16,12 @@ O correto é: frontend ← API → backend
 Nunca: frontend → constants backend
 
 STATE DE HARDWARE ≠ STATE DE PEDIDO
+
+Ao ocorrer: (veja a mudança para o SLOT_STATE)
+- expiração de pré-pagamento: AVAILABLE
+- retirada concluída: OUT_OF_STOCK
+- produto pago mas não retirado em 2h: não pode ir automaticamente para OUT_OF_STOCK, porque o item ainda está lá, logo, passa para AVAILABLE
+
 """
 
 from typing import Final, Tuple, Literal
@@ -23,10 +31,10 @@ from typing import Final, Tuple, Literal
 # ============================================================================
 
 SLOT_STATES: Final[Tuple[str, ...]] = (
-    "AVAILABLE",
-    "RESERVED",
-    "PAID_PENDING_PICKUP",
-    "OUT_OF_STOCK",
+    "AVAILABLE",           # há produto naquela gaveta e ele pode ser vendido
+    "RESERVED",            # há produto, mas reservado
+    "PAID_PENDING_PICKUP", # há produto, pago, aguardando retirada
+    "OUT_OF_STOCK",        # a gaveta ficou sem item vendável porque o item unitário saiu dali
 )
 
 SlotState = Literal[

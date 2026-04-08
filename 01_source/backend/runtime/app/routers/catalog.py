@@ -1,28 +1,12 @@
 # 01_source/backend/runtime/app/routers/catalog.py
+# 08/04/2026
 
 from __future__ import annotations
-
-"""
-Objetivo
-
-Transformar em camada transitória:
-
-manter catálogo mock se precisar
-mas parar de assumir 24 slots fixos
-slot plan deve ser coerente com a topologia do locker
-idealmente, depois, migrar SKU e disponibilidade para fonte central/configurável
-
-No início pode continuar mockado, mas:
-
-não deve assumir 24 slots fixos
-deve respeitar topologia por locker
-depois pode evoluir para catálogo real por locker
-"""
-
 
 from fastapi import APIRouter, Header, Request
 from typing import List
 
+from app.services.slot_projection_service import project_slots
 from app.schemas.catalog import CatalogSkuOut, CatalogSlotOut
 from app.services.catalog_service import (
     list_catalog_skus,
@@ -31,6 +15,15 @@ from app.services.catalog_service import (
 )
 
 router = APIRouter(prefix="/catalog", tags=["catalog"])
+
+
+@router.get("/slots-projected")
+def list_slots_projected(
+    x_locker_id: str | None = Header(default=None, alias="X-Locker-Id"),
+):
+    return project_slots(
+        x_locker_id=x_locker_id,
+    )
 
 
 @router.get("/skus", response_model=List[CatalogSkuOut])
@@ -59,3 +52,4 @@ def list_slots(
     x_locker_id: str | None = Header(default=None, alias="X-Locker-Id"),
 ):
     return list_catalog_slots(x_locker_id=x_locker_id)
+

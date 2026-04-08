@@ -5,7 +5,8 @@ from pathlib import Path
 
 DEFAULT_DB_PATH = os.getenv(
     "EVENTS_DB_PATH",
-    str(Path.home() / "ellan_lab" / "03_data" / "sqlite" / "backend_sp" / "events.db"),
+    str(Path.home() / "ellan_lab" / "03_data" / "sqlite" / "runtime" / "events.db"),
+    # "backend_sp"
 )
 
 _conn = None
