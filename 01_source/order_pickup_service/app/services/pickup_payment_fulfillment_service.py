@@ -413,13 +413,18 @@ def _reallocate_if_needed(
     ttl_sec = region_config.get("pickup_window_hours", 72) * 3600 if region_config else 120
 
     try:
+        # 🔥 recuperar slot original (CRÍTICO)
+        original_slot = allocation.slot
+
         alloc = backend_client.locker_allocate(
             order.region,
             order.sku_id,
             ttl_sec=ttl_sec,
             request_id=request_id,
+            desired_slot=int(original_slot),  # 🔥 FIX
             locker_id=order.totem_id,
         )
+
     except requests.HTTPError as e:
         status = getattr(e.response, "status_code", None)
 
@@ -430,35 +435,39 @@ def _reallocate_if_needed(
             except Exception:
                 backend_detail = e.response.text
 
+        # 🔥 
+        """
+        O if status == 409 abaixo:
+        
+        tenta commit
+            se der 409, tenta somente a mesma gaveta
+            se a mesma gaveta não puder ser recuperada:
+            falha controlada
+            pede novo pedido
+            não troca para “qualquer slot”
+        
+        Regra final
+            ou realoca a mesma gaveta, ou falha. Não escolher outra automaticamente.
+        
+        ISSO É O COMPORTAMENTO CORRETO
+        
+        Ao usar desired_slot=None, significa seleção automática de qualquer slot, e isso contraria sua regra de negócio (1 slot = 1 produto)
+        """
         if status == 409:
             raise RuntimeError(
                 {
                     "type": "REALLOCATE_CONFLICT",
-                    "message": "A reserva original expirou e não foi possível realocar uma nova gaveta.",
+                    "message": "A reserva expirou e não foi possível realocar a mesma gaveta.",
                     "order_id": order.id,
                     "region": order.region,
                     "locker_id": order.totem_id,
                     "sku_id": order.sku_id,
-                    "retryable": True,
-                    "action": "create_new_order",
+                    "slot": allocation.slot,
                     "backend_detail": backend_detail,
                 }
             )
-
-        raise RuntimeError(
-            {
-                "type": "REALLOCATE_FAILED",
-                "message": "Falha ao tentar realocar gaveta no backend.",
-                "order_id": order.id,
-                "region": order.region,
-                "locker_id": order.totem_id,
-                "sku_id": order.sku_id,
-                "backend_status": status,
-                "backend_detail": backend_detail,
-            }
-        )
-
-    new_allocation_id = alloc.get("allocation_id")
+    
+    new_allocation_id = alloc.get("allocation_id") or f"al_{request_id.replace('-', '')}"
     new_slot = alloc.get("slot")
 
     if not new_allocation_id or new_slot is None:
@@ -469,6 +478,15 @@ def _reallocate_if_needed(
                 "order_id": order.id,
             }
         )
+
+    try:
+        backend_client.locker_release(
+            order.region,
+            allocation.id,
+            locker_id=order.totem_id,
+        )
+    except Exception:
+        pass  # não quebrar fluxo
 
     allocation.mark_released()
 
@@ -640,6 +658,9 @@ def fulfill_payment_post_approval(
             status = getattr(e.response, "status_code", None)
 
             if status == 409:
+                
+                original_slot = allocation.slot
+
                 allocation = _reallocate_if_needed(
                     db, 
                     order=order, 
@@ -805,6 +826,9 @@ def fulfill_payment_post_approval(
         status = getattr(e.response, "status_code", None)
 
         if status == 409:
+
+            original_slot = allocation.slot
+
             allocation = _reallocate_if_needed(
                 db, 
                 order=order, 

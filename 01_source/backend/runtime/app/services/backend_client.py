@@ -1,4 +1,4 @@
-# 01_source/order_pickup_service/app/services/backend_client.py
+# 01_source/backend/runtime/app/services/backend_client.py
 # 01/04/2026
 
 from __future__ import annotations
@@ -109,17 +109,21 @@ def locker_allocate(
         raise ValueError("locker_id is required for runtime allocate")
 
     if desired_slot is None:
-        raise ValueError("desired_slot is required for runtime allocate")
-
-    slot = int(desired_slot)
+        slot = None
+    else:
+        slot = int(desired_slot)
+    
     allocation_id = f"al_{request_id.replace('-', '')}"
 
     url = f"{_runtime_base()}/locker/allocate"
 
     payload = {
-        "slot": slot,
+        # "slot": slot,
         "allocation_id": allocation_id,
     }
+
+    if slot is not None:
+        payload["slot"] = slot
 
     response = requests.post(
         url,
@@ -234,8 +238,13 @@ def locker_set_state(
     url = f"{_runtime_base()}/locker/slots/{int(slot)}/set-state"
 
     payload = {
+        # "slot": slot,
         "state": normalized_state,
     }
+
+    if slot is not None:
+        payload["slot"] = slot
+
     if product_id is not None:
         payload["product_id"] = product_id
 

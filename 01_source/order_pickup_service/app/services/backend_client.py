@@ -85,19 +85,23 @@ def locker_allocate(
         raise ValueError("locker_id is required for runtime allocate")
 
     if desired_slot is None:
-        raise ValueError("desired_slot is required for runtime allocate")
-
-    slot = int(desired_slot)
+        slot = None
+    else:
+        slot = int(desired_slot)
+    
     allocation_id = f"al_{request_id.replace('-', '')}"
 
     url = f"{_runtime_base()}/locker/allocate"
 
     payload = {
-        "slot": slot,
+        # "slot": slot,
         "allocation_id": allocation_id,
         "ttl_seconds": ttl_sec,
         "request_id": request_id,
     }
+    
+    if slot is not None:
+        payload["slot"] = slot
 
     response = requests.post(
         url,

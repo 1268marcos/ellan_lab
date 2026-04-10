@@ -147,6 +147,25 @@ function formatEpochDateTime(epochSec, region) {
   }
 }
 
+function resolveReservationExpiryEpoch(createResp) {
+  if (!createResp) return null;
+
+  if (createResp.allocation_expires_at_epoch != null) {
+    return Number(createResp.allocation_expires_at_epoch);
+  }
+
+  if (createResp.expires_at_epoch != null) {
+    return Number(createResp.expires_at_epoch);
+  }
+
+  if (createResp.created_at_epoch != null && createResp.ttl_sec != null) {
+    return Number(createResp.created_at_epoch) + Number(createResp.ttl_sec);
+  }
+
+  return null;
+}
+
+
 function extractPendingPaymentContext(gatewayData) {
   const payment = gatewayData?.payment || {};
   const payload = payment?.payload || {};
@@ -373,6 +392,23 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const pendingExpired =
     pendingSecondsRemaining != null && Number(pendingSecondsRemaining) <= 0;
 
+  const reservationExpiresAtEpoch = useMemo(
+    () => resolveReservationExpiryEpoch(createResp),
+    [createResp]
+  );
+
+  const reservationSecondsRemaining =
+    reservationExpiresAtEpoch != null
+      ? Math.max(0, Number(reservationExpiresAtEpoch) - nowEpochSec())
+      : null;
+
+  const reservationExpired =
+    reservationSecondsRemaining != null && Number(reservationSecondsRemaining) <= 0;    
+
+
+
+
+
   const [cardData, setCardData] = useState({
     card_number: "",
     cvv: "",
@@ -558,15 +594,26 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     };
   }, [selectedLockerId, runtimeCatalogSlotsUrl, runtimeLockerSlotsUrl]);
 
+
+
   useEffect(() => {
-    if (!displayedPendingContext?.expires_at_epoch) return;
+    const hasReservationTimer = reservationExpiresAtEpoch != null;
+    const hasPendingTimer = displayedPendingContext?.expires_at_epoch != null;
+
+    if (!hasReservationTimer && !hasPendingTimer) return;
 
     const interval = setInterval(() => {
       setTick((prev) => prev + 1);
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [displayedPendingContext?.expires_at_epoch]);
+  }, [reservationExpiresAtEpoch, displayedPendingContext?.expires_at_epoch]);
+
+
+
+
+
+
 
   async function fetchLockersOnce() {
     setLockersLoading(true);
@@ -1197,9 +1244,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                 <div style={validationMessageStyle}>⚠️ {getValidationMessage()}</div>
               )}
 
+
               {createResp && (
                 <div style={okBoxStyle}>
                   <strong>Pedido criado com sucesso</strong>
+
                   <div style={summaryListStyle}>
                     <div><b>order_id:</b> {createResp.order_id}</div>
                     <div><b>allocation_id:</b> {createResp.allocation_id}</div>
@@ -1211,10 +1260,33 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                     <div><b>ttl_sec:</b> {createResp.ttl_sec}</div>
                     <div><b>status:</b> {createResp.status}</div>
                   </div>
-                  {createResp.payment_payload && Object.keys(createResp.payment_payload).length > 0 && (<pre style={jsonBoxStyle}>{JSON.stringify(createResp.payment_payload, null, 2)}</pre>)}
+
+                  {reservationSecondsRemaining != null && (
+                    <div style={reservationExpired ? timerExpiredBoxStyle : timerInfoBoxStyle}>
+                      <strong>
+                        {reservationExpired ? "Reserva da gaveta expirada" : "Reserva da gaveta ativa"}
+                      </strong>
+
+                      <div style={summaryListStyle}>
+                        <div><b>Tempo restante para concluir a compra:</b> {formatRemaining(reservationSecondsRemaining)}</div>
+                        <div><b>Expira em:</b> {formatEpochDateTime(reservationExpiresAtEpoch, region)}</div>
+                        <div><b>Regra:</b> após expirar, a gaveta volta para AVAILABLE</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {createResp.payment_payload && Object.keys(createResp.payment_payload).length > 0 && (
+                    <pre style={jsonBoxStyle}>{JSON.stringify(createResp.payment_payload, null, 2)}</pre>
+                  )}
+
                   <div style={messageStyle}>{createResp.message}</div>
                 </div>
               )}
+
+
+
+
+
             </>
           )}
         </section>
@@ -1306,9 +1378,12 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                     <div><b>método:</b> {displayedPendingContext.method || "-"}</div>
                     <div><b>status:</b> {displayedPendingContext.status || "-"}</div>
                     <div><b>instruction_type:</b> {displayedPendingContext.instruction_type || "-"}</div>
-                    <div><b>expira em:</b> {formatEpochDateTime(displayedPendingContext.expires_at_epoch, region)}</div>
-                    <div><b>tempo restante:</b> {pendingSecondsRemaining == null ? "-" : formatRemaining(pendingSecondsRemaining)}</div>
+                    <div><b>Pagamento expira em:</b> {formatEpochDateTime(displayedPendingContext.expires_at_epoch, region)}</div>
+                    <div><b>Tempo restante para pagar:</b> {pendingSecondsRemaining == null ? "-" : formatRemaining(pendingSecondsRemaining)}</div>
                   </div>
+
+
+
                   {displayedPendingContext.instruction && <div style={infoNoticeStyle}>{displayedPendingContext.instruction}</div>}
                   {displayedPendingContext.qr_code_image_base64 && (
                     <div style={pendingPaymentGridStyle}>
@@ -1498,6 +1573,12 @@ const jsonBoxStyle = { margin: 0, padding: 12, borderRadius: 12, background: "rg
 const summaryListStyle = { display: "grid", gap: 4, fontSize: 13 };
 const messageStyle = { fontSize: 13, opacity: 0.95 };
 const pendingCardStyle = { padding: 14, borderRadius: 12, background: "rgba(250,204,21,0.12)", border: "1px solid rgba(250,204,21,0.34)", display: "grid", gap: 12 };
+
+
+const timerInfoBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(59,130,246,0.14)", border: "1px solid rgba(59,130,246,0.34)", display: "grid", gap: 10 };
+const timerExpiredBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(239,68,68,0.16)", border: "1px solid rgba(239,68,68,0.34)", display: "grid", gap: 10 };
+
+
 const infoNoticeStyle = { padding: 12, borderRadius: 12, background: "rgba(255,255,255,0.06)", fontSize: 13 };
 const pendingPaymentGridStyle = { display: "grid", gridTemplateColumns: "220px 1fr", gap: 16 };
 const pendingQrPanelStyle = { display: "grid", placeItems: "center", padding: 16, borderRadius: 12, background: "#fff" };

@@ -13,6 +13,7 @@
 # requires_confirmation → frontend chama payment-approved, portanto, CONFIRMED é simulação. Isso é errado conceitualmente
 # requires_confirmation → aguardar webhook / confirmação real. Isso é o correto
 # 09/04/2026 - ADICIONADO SUPORTE A ATTEMPT (NÚMERO DE TENTATIVAS)
+# 10/04/2026 - FIX CRÍTICO — PERSISTIR ALOCAÇÃO NO ORDER
 
 from __future__ import annotations
 
@@ -392,6 +393,10 @@ def kiosk_create_order(
 
         db.add(order)
         db.flush()
+
+        # 🔥 FIX CRÍTICO — PERSISTIR ALOCAÇÃO NO ORDER
+        order.slot = slot
+        order.allocation_id = allocation_id
 
         allocation = Allocation(
             id=allocation_id,

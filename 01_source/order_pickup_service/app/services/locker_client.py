@@ -1,4 +1,6 @@
 # 01_source/order_pickup_service/app/services/locker_client.py
+# 10/04/2026 - revisado / não tem lógica - funciona como um proxy
+
 """
 Compat layer para integração com backend regional do locker.
 

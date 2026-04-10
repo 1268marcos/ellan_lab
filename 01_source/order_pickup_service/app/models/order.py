@@ -409,6 +409,11 @@ class Order(Base):
     ip_address = Column(String, nullable=True)  # Adicionado
     user_agent = Column(String, nullable=True)  # Adicionado
     
+    # Persistência
+    slot = Column(Integer, nullable=True)
+    allocation_id = Column(String, nullable=True)
+    allocation_expires_at = Column(DateTime, nullable=True)
+
     # Idempotência
     idempotency_key = Column(String, nullable=True, unique=True)  # Adicionado
     
