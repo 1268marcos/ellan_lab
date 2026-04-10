@@ -389,9 +389,11 @@ def emit_order_paid_and_simulate_fiscal(
     order: Order,
     allocation: Allocation,
     pickup,
+    amount_cents,
     currency: str,
     source: str,
     transaction_id: Optional[str] = None,
+    skip_locker_commit,
     attempt: int = 1,
 ) -> dict[str, Any]:
     """

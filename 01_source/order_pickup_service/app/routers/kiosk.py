@@ -46,7 +46,11 @@ from app.services.lifecycle_integration import (
     register_prepayment_timeout_deadline,
 )
 
-from app.services.payment_confirm_service import confirm_payment_and_emit_event
+from app.services.payment_confirm_service import (
+    confirm_payment_and_emit_event,
+    apply_payment_confirmation,
+    emit_order_paid_and_simulate_fiscal,
+)
 
 from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 from app.services.notification_dispatch_service import queue_receipt_email
@@ -221,7 +225,15 @@ def kiosk_identify(
     if existing_fiscal and existing_fiscal.receipt_code:
         receipt_code = existing_fiscal.receipt_code
     else:
-        receipt_code = f"SIM-{order.id[:8].upper()}"
+        # receipt_code = f"SIM-{order.id[:8].upper()}"
+        if not existing_fiscal or not existing_fiscal.receipt_code:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "FISCAL_NOT_AVAILABLE",
+                    "order_id": order.id,
+                },
+            )
 
     # dispara envio (fila)
     try:
@@ -485,13 +497,24 @@ def _finalize_kiosk_payment(
         )
 
     # 🔥 fluxo simulado
+    # if allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
+    #     order.payment_status = PaymentStatus.APPROVED
+    # 
+    #     if hasattr(OrderStatus, "PAID"):
+    #         order.status = OrderStatus.PAID
+    # 
+    #     db.flush()
     if allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
-        order.payment_status = PaymentStatus.APPROVED
+        apply_payment_confirmation(
+            db=db,
+            order=order,
+            transaction_id=f"sim-{order.id}",
+            payment_method=order.payment_method,
+            amount_cents=order.amount_cents,
+            currency=order.currency or "BRL",
+            source="simulation",
+        )
 
-        if hasattr(OrderStatus, "PAID"):
-            order.status = OrderStatus.PAID
-
-        db.flush()
 
     # 🔥 cancelar deadline
     try:
@@ -557,73 +580,20 @@ def _finalize_kiosk_payment(
         if isinstance(payload_json, dict):
             attempt = _extract_attempt_from_fiscal(payload_json) + 1
 
-    # 🔥 confirmação pagamento
-    try:
-        result = confirm_payment_and_emit_event(
-            db=db,
-            order=order,
-            allocation=allocation,
-            pickup=pickup,
-            amount_cents=order.amount_cents,
-            currency=order.currency or "BRL",
-            source=source,
-            transaction_id=f"{source}-{order.id}",
-            attempt=attempt,
-        )
+    financial = emit_order_paid_and_simulate_fiscal(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+        amount_cents=order.amount_cents, # novo
+        currency=order.currency or "BRL",
+        source=source,
+        transaction_id=order.gateway_transaction_id, # novo
+        skip_locker_commit=True,  # já feito antes novo
+        attempt=attempt, # novo
+    )
 
-    except ValueError as e:
-        if "já foi pago anteriormente" in str(e):
-            logger.warning(
-                "IDEMPOTENT_PAYMENT_CONFIRM",
-                extra={"order_id": order.id},
-            )
-
-            existing_fiscal = (
-                db.query(FiscalDocument)
-                .filter(FiscalDocument.order_id == order.id)
-                .order_by(FiscalDocument.attempt.desc())
-                .first()
-            )
-
-            if existing_fiscal:
-                payload = existing_fiscal.payload_json or {}
-
-                # fallback defensivo se payload_json não tiver receipt_code
-                if not payload.get("receipt_code") and existing_fiscal.receipt_code:
-                    payload["receipt_code"] = existing_fiscal.receipt_code
-
-                return KioskPaymentApprovedOut(
-                    order_id=order.id,
-                    slot=allocation.slot,
-                    status="already_paid",
-                    allocation_id=allocation.id,
-                    payment_method=order.payment_method,
-                    receipt_code=payload.get("receipt_code"),
-                    receipt_print_path=payload.get("print_site_path"),
-                    receipt_json_path=payload.get("json_site_path"),
-                    message="Pagamento já confirmado anteriormente",
-                )
-
-            # 🔥 não existe fiscal persistido: devolve fallback simulado sem quebrar
-            fallback_receipt_code = f"SIM-{order.id[:8].upper()}"
-
-            return KioskPaymentApprovedOut(
-                order_id=order.id,
-                slot=allocation.slot,
-                status="already_paid",
-                allocation_id=allocation.id,
-                payment_method=order.payment_method,
-                receipt_code=fallback_receipt_code,
-                receipt_print_path=None,
-                receipt_json_path=None,
-                message="Pagamento já confirmado anteriormente (sem fiscal persistido)",
-            )
-
-        raise
-
-
-    # 🔥 fiscal obrigatório
-    fiscal = result.get("fiscal") or {}
+    fiscal = financial["fiscal"]
 
     if not fiscal:
         raise HTTPException(
@@ -643,8 +613,8 @@ def _finalize_kiosk_payment(
         fiscal["receipt_code"] = existing_fiscal.receipt_code
 
     # fallback final só para ambiente simulado/dev
-    if not fiscal.get("receipt_code"):
-        fiscal["receipt_code"] = f"SIM-{order.id[:8].upper()}"
+    # if not fiscal.get("receipt_code"):
+    #     fiscal["receipt_code"] = f"SIM-{order.id[:8].upper()}"
 
 
     # 🔥 fulfillment
