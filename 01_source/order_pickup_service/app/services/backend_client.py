@@ -95,6 +95,8 @@ def locker_allocate(
     payload = {
         "slot": slot,
         "allocation_id": allocation_id,
+        "ttl_seconds": ttl_sec,
+        "request_id": request_id,
     }
 
     response = requests.post(
