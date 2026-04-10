@@ -35,6 +35,13 @@ def _normalize_receipt_code(receipt_code: str) -> str:
 
 def _serialize_fiscal_document(doc: FiscalDocument) -> dict:
     payload = doc.payload_json or {}
+
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+
     status = payload.get("mode") or "SIMULATED"
 
     order_payload = _safe_payload_section(payload, "order")

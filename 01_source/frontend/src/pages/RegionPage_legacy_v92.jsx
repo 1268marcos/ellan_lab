@@ -1,6 +1,6 @@
 // 01_source/frontend/src/pages/RegionPage.jsx
 // 07/04/2026 - resposta JSON rico para rejected - extractGatewayDebugInfo 
-// 09/04/2026 - COM VALIDAÇÃO DE CAMPOS, FLUXO UX PROGRESSIVO E SIMULAÇÃO DE IMPRESSÃO
+// 09/04/2026 - COM VALIDAÇÃO DE CAMPOS E FLUXO UX PROGRESSIVO
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
@@ -339,13 +339,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const [hasCompletedPayment, setHasCompletedPayment] = useState(false);
   const [isFormValid, setIsFormValid] = useState(false);
 
-  // Estados para simulação de impressão
-  const [printModalOpen, setPrintModalOpen] = useState(false);
-  const [printCountdown, setPrintCountdown] = useState(10);
-  const [printPhase, setPrintPhase] = useState("idle");
-  const printTimerRef = useRef(null);
-  const printCloseTimerRef = useRef(null);
-
   const createUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/orders`, []);
   const identifyUrl = useMemo(() => `${ORDER_PICKUP_BASE}/kiosk/identify`, []);
   const gatewayPaymentUrl = useMemo(() => `${GATEWAY_BASE}/gateway/pagamento`, []);
@@ -425,57 +418,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     return "";
   };
 
-  // Funções para simulação de impressão
-  function clearPrintSimulationTimers() {
-    if (printTimerRef.current) {
-      clearInterval(printTimerRef.current);
-      printTimerRef.current = null;
-    }
-    if (printCloseTimerRef.current) {
-      clearTimeout(printCloseTimerRef.current);
-      printCloseTimerRef.current = null;
-    }
-  }
-
-  function closePrintSimulation() {
-    clearPrintSimulationTimers();
-    setPrintModalOpen(false);
-    setPrintCountdown(10);
-    setPrintPhase("idle");
-  }
-
-  function startPrintSimulation() {
-    if (!receiptCode) {
-      setErr("Comprovante fiscal indisponível para impressão.");
-      return;
-    }
-
-    clearPrintSimulationTimers();
-    setErr(null);
-    setPrintCountdown(10);
-    setPrintPhase("printing");
-    setPrintModalOpen(true);
-
-    printTimerRef.current = setInterval(() => {
-      setPrintCountdown((prev) => {
-        if (prev <= 1) {
-          clearPrintSimulationTimers();
-          setPrintPhase("ready");
-          printCloseTimerRef.current = setTimeout(() => {
-            closePrintSimulation();
-          }, 2000);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }
-
-  useEffect(() => {
-    return () => {
-      clearPrintSimulationTimers();
-    };
-  }, []);
 
   useEffect(() => {
     fetchLockersOnce();
@@ -841,49 +783,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     }
   }
 
-
-  async function approveKioskPaymentSimulated() {
-    if (hasCompletedPayment){
-      return;
-    }
-
-    if (!currentOrderId) {
-      setErr("Crie primeiro um pedido KIOSK.");
-      return;
-    }
-
-    setErr(null);
-    setPaymentResp(null);
-    setLoadingPayment(true);
-
-    try {
-      const url = `${ORDER_PICKUP_BASE}/kiosk/orders/${currentOrderId}/payment-simulate-approved`;
-
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(parseErrorPayload(data));
-      }
-
-      setPendingPaymentContext(null);
-      setPaymentResp(data);
-      setHasCompletedPayment(true);
-      await fetchCatalogSlots(true);
-    } catch (e) {
-      setErr(String(e?.message || e));
-      setHasCompletedPayment(false);
-    } finally {
-      setLoadingPayment(false);
-    }
-  }
-
-
   async function identifyCustomer() {
     if (!currentOrderId) {
       setErr("Crie primeiro um pedido KIOSK.");
@@ -1234,12 +1133,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           ) : (
             <>
               <div style={subtleStyle}>
-                Fluxo operacional:<br />
-                1. criar pedido KIOSK<br />
-                2. iniciar pagamento no gateway<br />
-                3. se ficar pendente, mostrar QR/código<br />
-                4. usar <b>Confirmar pagamento real</b> quando houver confirmação financeira real<br />
-                5. usar <b>Simular pagamento concluído (modo dev)</b> apenas em ambiente de desenvolvimento
+                Fluxo operacional:<br />1. criar pedido KIOSK<br />2. iniciar pagamento no gateway<br />3. se ficar pendente, mostrar QR/código<br />4. simular conclusão do pagamento
               </div>
 
               <div style={{marginTop: 12, display: "grid", gap: 6}}>
@@ -1250,40 +1144,13 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               </div>
 
               <div style={{display: "flex", gap: 12, flexWrap: "wrap", marginTop: 14}}>
-                <button
-                  onClick={initiateKioskPayment}
-                  disabled={loadingGatewayPayment || !currentOrderId || !isFormValid}
-                  style={{
-                    ...buttonSecondaryStyle,
-                    opacity: (!currentOrderId || !isFormValid) ? 0.5 : 1,
-                    cursor: (!currentOrderId || !isFormValid) ? "not-allowed" : "pointer",
-                  }}
-                >
+                <button onClick={initiateKioskPayment} disabled={loadingGatewayPayment || !currentOrderId || !isFormValid} style={{...buttonSecondaryStyle, opacity: (!currentOrderId || !isFormValid) ? 0.5 : 1, cursor: (!currentOrderId || !isFormValid) ? "not-allowed" : "pointer"}}>
                   {loadingGatewayPayment ? "Iniciando..." : "Iniciar pagamento no gateway"}
                 </button>
-
-                <button
-                  onClick={approveKioskPayment}
-                  disabled={loadingPayment || !currentOrderId}
-                  style={buttonPrimaryStyle}
-                >
-                  {loadingPayment ? "Confirmando..." : "Confirmar pagamento real"}
-                </button>
-
-                <button
-                  onClick={approveKioskPaymentSimulated}
-                  disabled={loadingPayment || !currentOrderId || hasCompletedPayment}
-                  style={{
-                    ...buttonSecondaryStyle,
-                    background: "rgba(245, 158, 11, 0.18)",
-                    border: "1px solid rgba(245, 158, 11, 0.45)",
-                  }}
-                >
-                  {loadingPayment ? "Simulando..." : "Simular pagamento concluído (modo dev)"}
+                <button onClick={approveKioskPayment} disabled={loadingPayment || !currentOrderId} style={buttonPrimaryStyle}>
+                  {loadingPayment ? "Confirmando..." : "Simular pagamento concluído"}
                 </button>
               </div>
-
-
 
               {gatewayPaymentResp && (
                 <div style={gatewayPaymentResp.result === "rejected" ? rejectedBoxStyle : okBoxStyle}>
@@ -1325,44 +1192,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               {paymentResp && (
                 <div style={okBoxStyle}>
                   <strong>Pagamento confirmado</strong>
-                  
-                  <div style={summaryListStyle}>
-                    <div><b>order_id:</b> {paymentResp.order_id}</div>
-                    <div><b>allocation_id:</b> {paymentResp.allocation_id}</div>
-                    <div><b>slot:</b> {paymentResp.slot}</div>
-                    <div><b>status:</b> {paymentResp.status}</div>
-                    <div><b>payment_method:</b> {paymentResp.payment_method || "-"}</div>
-                    <div><b>comprovante:</b> {receiptCode || "-"}</div>
-                  </div>
-
-                  {receiptCode && (
-                    <div style={{marginTop: 16, display: "grid", gap: 16}}>
-                      <div style={receiptTerminalBoxStyle}>
-                        <div style={receiptTerminalTitleStyle}>Comprovante fiscal</div>
-                        <div style={receiptCodeBigStyle}>{receiptCode}</div>
-                        <div style={receiptQrPanelStyle}>
-                          <QRCodeCanvas value={receiptCode} size={180} includeMargin={true} />
-                        </div>
-                        <div style={receiptTerminalHelpStyle}>
-                          Fotografe este código ou o QRCode para consultar o comprovante depois.
-                        </div>
-                      </div>
-
-                      <div style={{display: "flex", gap: 10, flexWrap: "wrap"}}>
-                        <button type="button" onClick={startPrintSimulation} style={buttonPrimaryStyle} disabled={printModalOpen}>
-                          {printModalOpen ? "Imprimindo..." : "Imprimir comprovante"}
-                        </button>
-                        <button type="button" onClick={() => {setEmailModalError(""); setEmailModalSuccess(""); setEmailModalOpen(true);}} style={buttonSecondaryStyle}>
-                          Receber por email/SMS
-                        </button>
-                        <button type="button" onClick={() => window.open(`${ORDER_PICKUP_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`, "_blank", "noopener,noreferrer")} style={buttonSecondaryStyle}>
-                          Ver JSON
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div style={messageStyle}>{paymentResp.message}</div>
+                  <pre style={jsonBoxStyle}>{JSON.stringify(paymentResp, null, 2)}</pre>
                 </div>
               )}
             </>
@@ -1400,6 +1230,13 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                 <pre style={jsonBoxStyle}>{JSON.stringify(identifyResp, null, 2)}</pre>
               </div>
             )}
+
+            {receiptCode && (
+              <div style={okBoxStyle}>
+                <strong>Receipt Code</strong>
+                <div style={{fontSize: 20, fontWeight: 800}}>{receiptCode}</div>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -1409,44 +1246,6 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           <h2 style={h2Style}>Erro</h2>
           <pre style={errorBoxStyle}>{String(err)}</pre>
         </section>
-      )}
-
-      {/* Modal de Simulação de Impressão */}
-      {printModalOpen && (
-        <div style={printModalOverlayStyle}>
-          <div style={printModalCardStyle}>
-            <div style={printModalHeaderStyle}>
-              <div style={printModalTitleStyle}>Simulação de impressão</div>
-              <button type="button" onClick={closePrintSimulation} style={printModalCloseButtonStyle}>Fechar</button>
-            </div>
-
-            <div style={printTicketStyle}>
-              <div style={printTicketBrandStyle}>ELLAN LAB LOCKER</div>
-              <div style={printTicketLineStyle}>COMPROVANTE FISCAL</div>
-              <div style={printTicketDividerStyle} />
-              <div style={printTicketRowStyle}><span>Região</span><strong>{region}</strong></div>
-              <div style={printTicketRowStyle}><span>Locker</span><strong>{totemId || "-"}</strong></div>
-              <div style={printTicketRowStyle}><span>Pedido</span><strong>{paymentResp?.order_id || "-"}</strong></div>
-              <div style={printTicketRowStyle}><span>Slot</span><strong>{paymentResp?.slot ?? "-"}</strong></div>
-              <div style={printTicketRowStyle}><span>Método</span><strong>{paymentResp?.payment_method || "-"}</strong></div>
-              <div style={printTicketRowStyle}><span>Valor</span><strong>{selectedCatalogItem ? formatMoney(selectedCatalogItem.amount_cents, selectedCatalogItem.currency) : "-"}</strong></div>
-              <div style={printTicketRowStyle}><span>Data/hora</span><strong>{new Date().toLocaleString(region === "SP" ? "pt-BR" : "pt-PT")}</strong></div>
-              <div style={printTicketDividerStyle} />
-              <div style={printTicketReceiptLabelStyle}>CÓDIGO DO COMPROVANTE</div>
-              <div style={printTicketReceiptCodeStyle}>{receiptCode}</div>
-              <div style={printTicketQrBoxStyle}><QRCodeCanvas value={receiptCode} size={120} includeMargin={true} /></div>
-            </div>
-
-            {printPhase === "printing" ? (
-              <div style={printStatusBoxStyle}>
-                <div style={printStatusTitleStyle}>Imprimindo comprovante...</div>
-                <div style={printStatusCountdownStyle}>{printCountdown}s</div>
-              </div>
-            ) : (
-              <div style={printReadyBoxStyle}>RETIRE O COMPROVANTE IMPRESSO</div>
-            )}
-          </div>
-        </div>
       )}
 
       <CardVirtualKeyboard isOpen={isCardKeyboardOpen} value={cardData.card_number} onChange={(formattedNumber) => {
@@ -1529,29 +1328,3 @@ const progressNumberStyle = { width: "24px", height: "24px", display: "flex", al
 const progressLabelStyle = { fontSize: "13px", fontWeight: 600, color: "#f8fafc" };
 const progressCheckStyle = { color: "#10b981", fontSize: "14px", fontWeight: "bold", marginLeft: "4px" };
 const progressLineStyle = (isActive) => ({ flex: 1, height: "2px", background: isActive ? "#1b5883" : "rgba(255,255,255,0.1)", minWidth: "20px" });
-
-// Estilos para impressão e receipt
-const receiptTerminalBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.10)", display: "grid", justifyItems: "center", textAlign: "center", gap: 12 };
-const receiptTerminalTitleStyle = { fontSize: 16, fontWeight: 700 };
-const receiptCodeBigStyle = { fontSize: 22, fontWeight: 800, letterSpacing: 1, padding: "10px 14px", borderRadius: 10, background: "rgba(255,255,255,0.08)", border: "1px dashed rgba(255,255,255,0.25)", wordBreak: "break-word" };
-const receiptQrPanelStyle = { padding: 12, borderRadius: 12, background: "#ffffff", display: "grid", placeItems: "center" };
-const receiptTerminalHelpStyle = { fontSize: 13, opacity: 0.85, maxWidth: 320, lineHeight: 1.4 };
-
-// Estilos para modal de impressão
-const printModalOverlayStyle = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.78)", display: "grid", placeItems: "center", zIndex: 9999, padding: 24 };
-const printModalCardStyle = { width: "100%", maxWidth: 420, background: "#11161c", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 18, boxShadow: "0 18px 48px rgba(0,0,0,0.45)", padding: 18, display: "grid", gap: 16 };
-const printModalHeaderStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 };
-const printModalTitleStyle = { fontSize: 18, fontWeight: 700 };
-const printModalCloseButtonStyle = { padding: "8px 10px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.14)", background: "#1b5883", color: "#fff", cursor: "pointer", fontWeight: 600 };
-const printTicketStyle = { background: "#ffffff", color: "#111", borderRadius: 12, padding: 14, display: "grid", gap: 8, fontFamily: '"Courier New", monospace', fontSize: 12 };
-const printTicketBrandStyle = { textAlign: "center", fontSize: 14, fontWeight: 700 };
-const printTicketLineStyle = { textAlign: "center", fontSize: 12 };
-const printTicketDividerStyle = { borderTop: "1px dashed #999", margin: "4px 0" };
-const printTicketRowStyle = { display: "flex", justifyContent: "space-between", gap: 12 };
-const printTicketReceiptLabelStyle = { textAlign: "center", fontSize: 11, marginTop: 4 };
-const printTicketReceiptCodeStyle = { textAlign: "center", fontSize: 16, fontWeight: 700, letterSpacing: 1, wordBreak: "break-word" };
-const printTicketQrBoxStyle = { display: "grid", placeItems: "center", marginTop: 8 };
-const printStatusBoxStyle = { borderRadius: 12, padding: 14, background: "rgba(27,88,131,0.16)", border: "1px solid rgba(27,88,131,0.34)", textAlign: "center" };
-const printStatusTitleStyle = { fontSize: 16, fontWeight: 700 };
-const printStatusCountdownStyle = { marginTop: 6, fontSize: 26, fontWeight: 800 };
-const printReadyBoxStyle = { borderRadius: 12, padding: 16, background: "rgba(31,122,63,0.18)", border: "1px solid rgba(31,122,63,0.36)", textAlign: "center", fontSize: 18, fontWeight: 800, letterSpacing: 0.4 };

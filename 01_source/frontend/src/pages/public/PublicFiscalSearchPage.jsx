@@ -223,7 +223,7 @@ export default function PublicFiscalSearchPage() {
           value={code}
           onChange={(e) => setCode(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ex.: KSK-57FC92582464"
+          placeholder="Ex.: BR-KSK-57FC9258"
           style={inputStyle}
         />
 

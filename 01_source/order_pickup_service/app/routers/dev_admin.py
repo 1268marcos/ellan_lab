@@ -26,7 +26,7 @@ def _ensure_dev_mode() -> None:
             status_code=403,
             detail={
                 "type": "DEV_MODE_REQUIRED",
-                "message": "Este endpoint só pode ser usado com DEV_BYPASS_AUTH=true. Veja 02_docker/.env",
+                "message": "Este endpoint só pode ser usado com DEV_BYPASS_AUTH=true. Veja 01_source/order_pickup_service/.env",
             },
         )
 

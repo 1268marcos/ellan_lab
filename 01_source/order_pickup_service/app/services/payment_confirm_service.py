@@ -1,11 +1,13 @@
 # 01_source/order_pickup_service/app/services/payment_confirm_service.py
 # 02/04/2026 - Enhanced Version with Global Markets Support
 # veja o final do arquivo
+# 09/04/2026 - Incluído número de tentativas
 
 from __future__ import annotations
 
 import hashlib
 import logging
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional, Dict, Tuple
@@ -99,13 +101,18 @@ def _enum_value_or_raw(value) -> str | None:
 
 
 def _get_region_base(region: str) -> str:
-    """Extrai base da região (primeiros 2 caracteres)"""
-    region_upper = region.upper()
+    region_upper = str(region or "").strip().upper()
+
+    if region_upper in {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA",
+        "MG", "MS", "MT", "PA", "PB", "PE", "PI", "PR", "RJ", "RN",
+        "RO", "RR", "RS", "SC", "SE", "SP", "TO"}:
+        return "BR"
+
     if region_upper.startswith("US_"):
         return "US"
-    elif region_upper.startswith("CA_"):
+    if region_upper.startswith("CA_"):
         return "CA"
-    elif len(region_upper) >= 2:
+    if len(region_upper) >= 2:
         return region_upper[:2]
     return region_upper
 
@@ -117,38 +124,72 @@ def _get_fiscal_config(region: str) -> Dict[str, Any]:
     return config
 
 
+def _ensure_unique_receipt_code(
+    db: Session,
+    receipt_code: str,
+    max_attempts: int = 3,
+) -> str:
+    """Garante que o receipt_code é único no banco"""
+    existing = db.query(FiscalDocument).filter(
+        FiscalDocument.receipt_code == receipt_code
+    ).first()
+    
+    if not existing:
+        return receipt_code
+    
+    # Se colidiu, tenta com hash diferente
+    for i in range(1, max_attempts + 1):
+        # Modifica o digest com um seed
+        parts = receipt_code.split('-')
+        if len(parts) >= 3:
+            # Adiciona sufixo de tentativa
+            new_code = f"{parts[0]}-{parts[1]}-{parts[2][:6]}{i:02d}"
+            if len(parts) == 4:
+                new_code = f"{new_code}-{parts[3]}"
+            
+            existing = db.query(FiscalDocument).filter(
+                FiscalDocument.receipt_code == new_code
+            ).first()
+            
+            if not existing:
+                return new_code
+    
+    # Fallback: adiciona UUID curto
+    return f"{receipt_code}-{uuid.uuid4().hex[:4].upper()}"
+
+
 def _build_fiscal_receipt_code(
     *, 
     order: Order, 
     region: str,
-    sequence: Optional[int] = None
+    sequence: Optional[int] = None,
+    attempt: int = 1,
 ) -> str:
-    """Gera código de recibo fiscal baseado na região"""
+    """Gera código de recibo fiscal baseado na região com validação de unicidade"""
     channel = _enum_value_or_raw(order.channel) or "UNK"
     region_base = _get_region_base(region)
     
-    # Prefixos por região
+    # Prefixos por região com fallback
     prefix_map = {
-        "BR": "BR",
-        "PT": "PT",
-        "MX": "MX",
-        "AR": "AR",
-        "CN": "CN",
-        "JP": "JP",
-        "SG": "SG",
-        "AE": "AE",
-        "AU": "AU",
-        "US": "US",
-        "DEFAULT": "DF",
+        "BR": "BR", "PT": "PT", "MX": "MX", 
+        "AR": "AR", "CN": "CN", "JP": "JP",
+        "SG": "SG", "AE": "AE", "AU": "AU", "US": "US"
     }
     
-    prefix = prefix_map.get(region_base, prefix_map["DEFAULT"])
+    prefix = prefix_map.get(region_base, "ZZ")  # ZZ = Default
+    
+    # Canal: KIOSK (KSK) ou ONLINE (ONL)
     channel_prefix = "KSK" if channel == "KIOSK" else "ONL"
     
-    # Gera hash do order_id
-    digest = hashlib.sha256(f"{prefix}:{channel}:{order.id}".encode("utf-8")).hexdigest()[:8].upper()
+    # Hash com timestamp para maior unicidade
+    timestamp = int(datetime.now().timestamp())
+    hash_input = f"{prefix}:{channel}:{order.id}:{attempt}:{timestamp}"
+    digest = hashlib.sha256(hash_input.encode("utf-8")).hexdigest()[:8].upper()
     
-    # Adiciona sequência se fornecida
+    # Adiciona tentativa no código para rastreabilidade
+    if attempt > 1:
+        return f"{prefix}-{channel_prefix}-{digest}-ATT{attempt:02d}"
+    
     if sequence:
         return f"{prefix}-{channel_prefix}-{digest}-{sequence:04d}"
     
@@ -162,6 +203,7 @@ def _build_fiscal_simulation_payload(
     pickup,
     currency: str,
     transaction_id: Optional[str] = None,
+    attempt: int = 1,
 ) -> dict[str, Any]:
     """Constrói payload de simulação fiscal com suporte regional"""
     
@@ -171,6 +213,7 @@ def _build_fiscal_simulation_payload(
     receipt_code = _build_fiscal_receipt_code(
         order=order,
         region=order.region,
+        attempt=attempt,
     )
     
     # Determina target de envio
@@ -349,6 +392,7 @@ def emit_order_paid_and_simulate_fiscal(
     currency: str,
     source: str,
     transaction_id: Optional[str] = None,
+    attempt: int = 1,
 ) -> dict[str, Any]:
     """
     Emite evento de pagamento e simula documento fiscal.
@@ -433,23 +477,57 @@ def emit_order_paid_and_simulate_fiscal(
     )
 
     if existing_fiscal:
-        fiscal = existing_fiscal.payload_json
-        logger.info(
-            "fiscal_document_already_exists",
-            extra={
-                "order_id": order.id,
-                "receipt_code": existing_fiscal.receipt_code,
-            },
-        )
-    else:
-        # Constrói payload fiscal
+        # Se já existe e é uma reimpressão (attempt > 1), permite regenerar
+        if attempt > 1:
+            logger.info(
+                "fiscal_document_regeneration_requested",
+                extra={
+                    "order_id": order.id,
+                    "old_receipt_code": existing_fiscal.receipt_code,
+                    "new_attempt": attempt,
+                },
+            )
+            # Remove documento existente para gerar novo
+            db.delete(existing_fiscal)
+            db.flush()
+            existing_fiscal = None
+        else:
+            fiscal = existing_fiscal.payload_json
+            logger.info(
+                "fiscal_document_already_exists",
+                extra={
+                    "order_id": order.id,
+                    "receipt_code": existing_fiscal.receipt_code,
+                },
+            )
+    
+    if not existing_fiscal:
+        # Constrói payload fiscal com attempt
         fiscal = _build_fiscal_simulation_payload(
             order=order,
             allocation=allocation,
             pickup=pickup,
             currency=currency_norm,
             transaction_id=transaction_id,
+            attempt=attempt,
         )
+        
+        # Garante unicidade do receipt_code
+        unique_receipt_code = _ensure_unique_receipt_code(db, fiscal["receipt_code"])
+        if unique_receipt_code != fiscal["receipt_code"]:
+            logger.warning(
+                "receipt_code_collision_resolved",
+                extra={
+                    "original_code": fiscal["receipt_code"],
+                    "resolved_code": unique_receipt_code,
+                    "order_id": order.id,
+                },
+            )
+            fiscal["receipt_code"] = unique_receipt_code
+            fiscal["print_site_path"] = f"/public/fiscal/print/{unique_receipt_code}"
+            fiscal["json_site_path"] = f"/public/fiscal/by-code/{unique_receipt_code}"
+            if fiscal.get("qr_code_url"):
+                fiscal["qr_code_url"] = f"/public/fiscal/qr/{unique_receipt_code}"
 
         # Cria documento fiscal
         fiscal_doc = FiscalDocument(
@@ -480,6 +558,7 @@ def emit_order_paid_and_simulate_fiscal(
                 "channel": _enum_value_or_raw(order.channel),
                 "region": order.region,
                 "document_type": fiscal["document_type"],
+                "attempt": attempt,
             },
         )
 
@@ -494,6 +573,7 @@ def emit_order_paid_and_simulate_fiscal(
             "delivery_mode": fiscal["delivery_mode"],
             "source": source,
             "region": order.region,
+            "attempt": attempt,
         },
     )
 
@@ -515,6 +595,7 @@ def confirm_payment_and_emit_event(
     source: str,
     transaction_id: Optional[str] = None,
     skip_locker_commit: bool = False,
+    attempt: int = 1,
 ) -> dict[str, Any]:
     """
     Confirma pagamento, commita no runtime e emite eventos.
@@ -522,6 +603,7 @@ def confirm_payment_and_emit_event(
     
     Args:
         skip_locker_commit: Para testes ou quando o commit já foi feito
+        attempt: Número da tentativa de emissão (1 = primeira, 2+ = reimpressão)
     """
     # =========================
     # 1. Valida + aplica pagamento
@@ -539,7 +621,6 @@ def confirm_payment_and_emit_event(
     # =========================
     # 2. Commit no runtime (se necessário)
     # =========================
-
 
     if not skip_locker_commit:
         # 🔒 sanity check (produção)
@@ -592,6 +673,7 @@ def confirm_payment_and_emit_event(
         currency=str(currency or "").strip().upper(),
         source=source,
         transaction_id=transaction_id,
+        attempt=attempt,
     )
 
 
@@ -675,31 +757,51 @@ def regenerate_fiscal_document(
 ) -> Dict[str, Any]:
     """
     Regenera documento fiscal (útil para reimpressão).
+    Incrementa o número de tentativas automaticamente.
     """
-    # Remove documento existente
+    # Busca documento existente para saber quantas tentativas já houve
     existing = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
         .first()
     )
     
+    # Calcula próximo número de tentativa
+    next_attempt = 1
     if existing:
-        db.delete(existing)
-        db.flush()
+        # Tenta extrair attempt do receipt_code existente
+        # Padrões: ATT02, ATT03, etc.
+        match = re.search(r'-ATT(\d{2})', existing.receipt_code)
+        if match:
+            last_attempt = int(match.group(1))
+            next_attempt = last_attempt + 1
+        else:
+            # Se não tem ATT, é a primeira tentativa
+            next_attempt = 2
     
-    # Gera novo documento
+    # Gera novo documento com attempt incrementado
     result = emit_order_paid_and_simulate_fiscal(
         db=db,
         order=order,
         allocation=allocation,
         pickup=pickup,
         currency=currency,
-        source="regenerate",
+        source=f"regenerate_attempt_{next_attempt}",
+        attempt=next_attempt,
     )
     
-    logger.info(f"Fiscal document regenerated for order {order.id}")
+    logger.info(
+        f"Fiscal document regenerated for order {order.id}",
+        extra={
+            "order_id": order.id,
+            "attempt": next_attempt,
+            "previous_receipt_code": existing.receipt_code if existing else None,
+        }
+    )
     
     return result
+
+
 
 """
 

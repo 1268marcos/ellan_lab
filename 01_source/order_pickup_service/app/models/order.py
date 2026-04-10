@@ -254,10 +254,10 @@ class PaymentStatus(str, enum.Enum):
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
     AWAITING_INTEGRATION = "AWAITING_INTEGRATION"
-    REFUNDED = "REFUNDED"      # Adicionado
-    PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"  # Adicionado
-    AUTHORIZED = "AUTHORIZED"  # Adicionado
-    CONFIRMED = "CONFIRMED"  # Adicionado
+    REFUNDED = "REFUNDED"                      # Adicionado no Postgres enum paymentstatus
+    PARTIALLY_REFUNDED = "PARTIALLY_REFUNDED"  # Adicionado no Postgres enum paymentstatus
+    AUTHORIZED = "AUTHORIZED"                  # Adicionado no Postgres enum paymentstatus
+    
 
     
     @property

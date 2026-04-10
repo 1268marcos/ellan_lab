@@ -1,12 +1,9 @@
 # 01_source/order_pickup_service/app/routers/internal.py
 # Router: /internal/* (protegido por X-Internal-Token)
-# 09/04/2026 - CORRIGIDO: Suporte a attempt (número de tentativas) para reimpressão fiscal
-# 09/04/2026 - CORRIGIDO: Import do FiscalDocument adicionado
 
 from __future__ import annotations
 
 import hashlib
-import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -20,7 +17,6 @@ from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
 from app.core.lifecycle_client import LifecycleClientError
 from app.models.allocation import Allocation, AllocationState
-from app.models.fiscal_document import FiscalDocument  # ← IMPORT ADICIONADO
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import (
     Pickup,
@@ -42,6 +38,7 @@ from app.services.pickup_event_publisher import (
     publish_pickup_cancelled,
 )
 
+# from app.services.payment_confirm_service import confirm_payment_and_emit_event
 from app.services.payment_confirm_service import (
     apply_payment_confirmation,
     emit_order_paid_and_simulate_fiscal,
@@ -133,6 +130,7 @@ def _build_pickup_context(order: Order, allocation: Allocation) -> dict:
         "region": order.region,
         "locker_id": locker_id,
         "machine_id": order.totem_id,
+        # "slot": str(allocation.slot) if allocation.slot is not None else None,
         "slot": allocation.slot if allocation.slot is not None else None,
         "operator_id": None,
         "tenant_id": None,
@@ -408,17 +406,6 @@ def _get_latest_pickup_by_order(db: Session, order_id: str) -> Optional[Pickup]:
     )
 
 
-def _extract_attempt_from_fiscal(fiscal_payload: dict) -> int:
-    """Extrai o número de tentativa do payload fiscal"""
-    receipt_code = fiscal_payload.get("receipt_code", "")
-    if not receipt_code:
-        return 1
-    match = re.search(r'-ATT(\d{2})', receipt_code)
-    if match:
-        return int(match.group(1))
-    return 1
-
-
 @router.get("/health")
 def internal_health(_=Depends(require_internal_token)):
     return {
@@ -432,7 +419,6 @@ def internal_health(_=Depends(require_internal_token)):
 def payment_confirm(
     order_id: str,
     payload: PaymentConfirmIn,
-    attempt: Optional[int] = 1,  # NOVO: parâmetro para número de tentativa
     _=Depends(require_internal_token),
     db: Session = Depends(get_db),
 ):
@@ -576,7 +562,7 @@ def payment_confirm(
         slot=pickup.slot,
     )
 
-    # 7. EMITIR EVENTO FINANCEIRO + FISCAL (com attempt)
+    # 7. EMITIR EVENTO FINANCEIRO + FISCAL
     financial = emit_order_paid_and_simulate_fiscal(
         db=db,
         order=order,
@@ -584,7 +570,6 @@ def payment_confirm(
         pickup=pickup,
         currency=payload.currency,
         source="internal",
-        attempt=attempt,  # ← PASSAR O attempt
     )
 
     db.commit()
@@ -634,7 +619,6 @@ def payment_confirm(
             "already_exists": financial["event_already_exists"],
         },
         "fiscal": financial["fiscal"],
-        "attempt": attempt,  # NOVO: retornar o número da tentativa
     }
     
 
@@ -756,12 +740,6 @@ def internal_order_status(
     allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
     pickup = _get_latest_pickup_by_order(db, order.id)
 
-    # Tenta extrair o número de tentativas do documento fiscal
-    fiscal_attempt = 1
-    fiscal = db.query(FiscalDocument).filter(FiscalDocument.order_id == order.id).first()
-    if fiscal and fiscal.payload_json:
-        fiscal_attempt = _extract_attempt_from_fiscal(fiscal.payload_json)
-
     return {
         "ok": True,
         "order": {
@@ -812,29 +790,4 @@ def internal_order_status(
             "sensor_event_id": pickup.sensor_event_id,
             "notes": pickup.notes,
         },
-        "fiscal_attempt": fiscal_attempt,  # NOVO: número de tentativas de emissão fiscal
     }
-
-
-"""
-09/04/2026
-
-✅ Adicionado parâmetro attempt: Optional[int] = 1 no endpoint payment_confirm
-
-✅ Passado attempt para emit_order_paid_and_simulate_fiscal
-
-✅ Adicionado attempt no retorno da API
-
-✅ Adicionada função _extract_attempt_from_fiscal para extrair tentativa do código fiscal
-
-✅ Adicionado fiscal_attempt no endpoint de status
-
-✅ Import do FiscalDocument adicionado na linha 21
-
-✅ Import do re adicionado para expressões regulares
-
-✅ Função _extract_attempt_from_fiscal criada para extrair o número da tentativa do código fiscal
-
-✅ Endpoint /orders/{order_id}/status agora retorna fiscal_attempt com o número de tentativas
-
-"""
