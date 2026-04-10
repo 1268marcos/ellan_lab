@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 1jIUqHKBllJwVEGQB1N9IfNtzdfH3plz7EKLJkheUvlQqDZ5tfadVdjZkEUCf7u
+\restrict HlNCzu54ZSSVHgBuQzJqxLDPgpyssOsUOAy55OOMRWf5Pb8imxesXKegigghY7r
 
 -- Dumped from database version 15.17 (Debian 15.17-1.pgdg13+1)
 -- Dumped by pg_dump version 15.17 (Debian 15.17-1.pgdg13+1)
@@ -190,7 +190,15 @@ CREATE TYPE public.paymentmethod AS ENUM (
     'NFC',
     'APPLE_PAY',
     'GOOGLE_PAY',
-    'MERCADO_PAGO_WALLET'
+    'MERCADO_PAGO_WALLET',
+    'creditCard',
+    'debitCard',
+    'pix',
+    'boleto',
+    'apple_pay',
+    'google_pay',
+    'cash',
+    'giftCard'
 );
 
 
@@ -209,7 +217,10 @@ CREATE TYPE public.paymentstatus AS ENUM (
     'EXPIRED',
     'FAILED',
     'CANCELLED',
-    'AWAITING_INTEGRATION'
+    'AWAITING_INTEGRATION',
+    'REFUNDED',
+    'PARTIALLY_REFUNDED',
+    'AUTHORIZED'
 );
 
 
@@ -274,6 +285,51 @@ CREATE TYPE public.pickupstatus AS ENUM (
 
 ALTER TYPE public.pickupstatus OWNER TO admin;
 
+--
+-- Name: get_active_fiscal_document(text); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.get_active_fiscal_document(p_order_id text) RETURNS TABLE(id text, receipt_code text, attempt integer, issued_at timestamp without time zone)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        fd.id,
+        fd.receipt_code,
+        fd.attempt,
+        fd.issued_at
+    FROM public.fiscal_documents fd
+    WHERE fd.order_id = p_order_id
+    ORDER BY fd.attempt DESC
+    LIMIT 1;
+END;
+$$;
+
+
+ALTER FUNCTION public.get_active_fiscal_document(p_order_id text) OWNER TO admin;
+
+--
+-- Name: get_latest_fiscal_attempt(text); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.get_latest_fiscal_attempt(p_order_id text) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    latest_attempt INTEGER;
+BEGIN
+    SELECT COALESCE(MAX(attempt), 0) INTO latest_attempt
+    FROM public.fiscal_documents
+    WHERE order_id = p_order_id;
+    
+    RETURN latest_attempt;
+END;
+$$;
+
+
+ALTER FUNCTION public.get_latest_fiscal_attempt(p_order_id text) OWNER TO admin;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -294,7 +350,8 @@ CREATE TABLE public.allocations (
     allocated_at timestamp with time zone,
     released_at timestamp with time zone,
     release_reason character varying(255),
-    slot_size character varying(20)
+    slot_size character varying(20),
+    ttl_seconds integer
 );
 
 
@@ -1045,7 +1102,11 @@ CREATE TABLE public.fiscal_documents (
     tax_amount_cents bigint,
     tax_breakdown_json jsonb,
     tenant_id character varying(64),
-    xml_signed bytea
+    xml_signed bytea,
+    attempt integer DEFAULT 1 NOT NULL,
+    previous_receipt_code character varying(64),
+    regenerated_at timestamp without time zone,
+    regenerate_reason character varying(255)
 );
 
 
@@ -1687,6 +1748,26 @@ ALTER SEQUENCE public.payment_method_catalog_id_seq OWNED BY public.payment_meth
 
 
 --
+-- Name: payment_method_ui_alias; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_method_ui_alias (
+    id text NOT NULL,
+    ui_code text NOT NULL,
+    canonical_method_code text NOT NULL,
+    default_payment_interface_code text,
+    default_wallet_provider_code text,
+    requires_customer_phone boolean DEFAULT false NOT NULL,
+    requires_wallet_provider boolean DEFAULT false NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    updated_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+
+ALTER TABLE public.payment_method_ui_alias OWNER TO admin;
+
+--
 -- Name: payment_transactions; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -1889,6 +1970,64 @@ ALTER SEQUENCE public.product_locker_configs_id_seq OWNED BY public.product_lock
 
 
 --
+-- Name: products; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.products (
+    id character varying(255) NOT NULL,
+    name character varying(255) NOT NULL,
+    description text,
+    amount_cents integer NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    category_id character varying(64),
+    width_mm integer,
+    height_mm integer,
+    depth_mm integer,
+    weight_g integer,
+    is_active boolean DEFAULT true NOT NULL,
+    requires_age_verification boolean DEFAULT false NOT NULL,
+    requires_id_check boolean DEFAULT false NOT NULL,
+    requires_signature boolean DEFAULT false NOT NULL,
+    is_hazardous boolean DEFAULT false NOT NULL,
+    is_fragile boolean DEFAULT false NOT NULL,
+    is_virtual boolean DEFAULT false NOT NULL,
+    metadata_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.products OWNER TO admin;
+
+--
+-- Name: TABLE products; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.products IS 'Central product catalog, aligning with sku_id used in orders and order_items.';
+
+
+--
+-- Name: COLUMN products.id; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.products.id IS 'SKU ID, matches orders.sku_id.';
+
+
+--
+-- Name: COLUMN products.amount_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.products.amount_cents IS 'Price in cents to avoid floating point errors.';
+
+
+--
+-- Name: COLUMN products.metadata_json; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.products.metadata_json IS 'Flexible JSON field for additional product attributes.';
+
+
+--
 -- Name: rental_contracts; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -2052,6 +2191,41 @@ CREATE TABLE public.users (
 
 
 ALTER TABLE public.users OWNER TO admin;
+
+--
+-- Name: vw_fiscal_documents_with_attempt; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_fiscal_documents_with_attempt AS
+ SELECT fiscal_documents.id,
+    fiscal_documents.order_id,
+    fiscal_documents.receipt_code,
+    fiscal_documents.document_type,
+    fiscal_documents.channel,
+    fiscal_documents.region,
+    fiscal_documents.amount_cents,
+    fiscal_documents.currency,
+    fiscal_documents.delivery_mode,
+    fiscal_documents.send_status,
+    fiscal_documents.send_target,
+    fiscal_documents.print_status,
+    fiscal_documents.print_site_path,
+    fiscal_documents.payload_json,
+    fiscal_documents.issued_at,
+    fiscal_documents.created_at,
+    fiscal_documents.updated_at,
+    fiscal_documents.attempt,
+    fiscal_documents.previous_receipt_code,
+    fiscal_documents.regenerated_at,
+    fiscal_documents.regenerate_reason,
+        CASE
+            WHEN (fiscal_documents.attempt = 1) THEN 'PRIMEIRA_EMISSAO'::text
+            ELSE 'REIMPRESSAO'::text
+        END AS emission_type
+   FROM public.fiscal_documents;
+
+
+ALTER TABLE public.vw_fiscal_documents_with_attempt OWNER TO admin;
 
 --
 -- Name: wallet_provider_catalog; Type: TABLE; Schema: public; Owner: admin
@@ -2523,14 +2697,6 @@ ALTER TABLE ONLY public.ecommerce_partners
 
 
 --
--- Name: fiscal_documents fiscal_documents_order_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
---
-
-ALTER TABLE ONLY public.fiscal_documents
-    ADD CONSTRAINT fiscal_documents_order_id_key UNIQUE (order_id);
-
-
---
 -- Name: fiscal_documents fiscal_documents_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -2715,6 +2881,22 @@ ALTER TABLE ONLY public.payment_method_catalog
 
 
 --
+-- Name: payment_method_ui_alias payment_method_ui_alias_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_method_ui_alias
+    ADD CONSTRAINT payment_method_ui_alias_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_method_ui_alias payment_method_ui_alias_ui_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_method_ui_alias
+    ADD CONSTRAINT payment_method_ui_alias_ui_code_key UNIQUE (ui_code);
+
+
+--
 -- Name: payment_transactions payment_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -2768,6 +2950,14 @@ ALTER TABLE ONLY public.product_categories
 
 ALTER TABLE ONLY public.product_locker_configs
     ADD CONSTRAINT product_locker_configs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: products products_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_pkey PRIMARY KEY (id);
 
 
 --
@@ -3021,6 +3211,13 @@ CREATE INDEX idx_door_state_machine_state ON public.door_state USING btree (mach
 
 
 --
+-- Name: idx_fiscal_order_attempt; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_fiscal_order_attempt ON public.fiscal_documents USING btree (order_id, attempt);
+
+
+--
 -- Name: idx_locker_slot_locker; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -3133,6 +3330,13 @@ CREATE INDEX idx_orders_totem_picked_up ON public.orders USING btree (totem_id, 
 
 
 --
+-- Name: idx_pmui_ui_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_pmui_ui_code ON public.payment_method_ui_alias USING btree (ui_code);
+
+
+--
 -- Name: idx_product_categories_parent; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -3151,6 +3355,27 @@ CREATE INDEX idx_product_config_category ON public.product_locker_configs USING 
 --
 
 CREATE INDEX idx_product_config_locker ON public.product_locker_configs USING btree (locker_id);
+
+
+--
+-- Name: idx_products_category; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_products_category ON public.products USING btree (category_id);
+
+
+--
+-- Name: idx_products_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_products_created_at ON public.products USING btree (created_at);
+
+
+--
+-- Name: idx_products_is_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_products_is_active ON public.products USING btree (is_active);
 
 
 --
@@ -4781,6 +5006,14 @@ ALTER TABLE ONLY public.product_locker_configs
 
 
 --
+-- Name: products products_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.products
+    ADD CONSTRAINT products_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.product_categories(id);
+
+
+--
 -- Name: rental_contracts rental_contracts_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -4840,5 +5073,5 @@ ALTER TABLE ONLY public.webhook_deliveries
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 1jIUqHKBllJwVEGQB1N9IfNtzdfH3plz7EKLJkheUvlQqDZ5tfadVdjZkEUCf7u
+\unrestrict HlNCzu54ZSSVHgBuQzJqxLDPgpyssOsUOAy55OOMRWf5Pb8imxesXKegigghY7r
 
