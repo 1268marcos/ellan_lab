@@ -1,6 +1,11 @@
 # 01_source/backend/billing_fiscal_service/app/workers/invoice_event_worker.py
 # Esse worker passa a consultar somente order.paid que ainda não têm 
 # invoice, evitando varrer histórico já materializado. 
+# 10/04/2026 - alteração de funções : _mark_processed() e _already_processed()
+# 10/04/2026 - exclusão da função: _get_events()
+# 11/04/2026 - inclusão de error_message em def _mark_processed()  
+
+
 from __future__ import annotations
 
 import logging
@@ -32,37 +37,89 @@ def _utc_now():
     return datetime.now(timezone.utc)
 
 
-def _get_events(db, batch_size):
-    return (
-        db.query(DomainEvent)
-        .filter(DomainEvent.aggregate_type == "order")
-        .filter(DomainEvent.event_name == "order.paid")
-        .order_by(DomainEvent.created_at.asc())
-        .limit(batch_size)
-        .all()
-    )
+# def _get_events(db, batch_size):
+#     return (
+#         db.query(DomainEvent)
+#         .filter(DomainEvent.aggregate_type == "order")
+#         .filter(DomainEvent.event_name == "order.paid")
+#         .order_by(DomainEvent.created_at.asc())
+#         .limit(batch_size)
+#         .all()
+#     )
 
 
+# def _already_processed(db, event_key: str) -> bool:
+#     return (
+#         db.query(ProcessedEvent)
+#         .filter(ProcessedEvent.event_key == event_key)
+#         .first()
+#         is not None
+#     )
 def _already_processed(db, event_key: str) -> bool:
-    return (
+    record = (
         db.query(ProcessedEvent)
         .filter(ProcessedEvent.event_key == event_key)
+        .order_by(ProcessedEvent.created_at.desc())
         .first()
-        is not None
     )
 
+    if record is None:
+        return False
 
+    status = str(record.status or "").upper()
+
+    # Só bloqueia se já concluiu com sucesso
+    if status == "PROCESSED":
+        return True
+
+    # DEAD também pode bloquear definitivamente
+    if status == "DEAD":
+        return True
+
+    # FAILED deve poder tentar de novo
+    return False
+
+
+
+
+
+# def _mark_processed(db, event, status: str, error: str | None = None):
+#     record = ProcessedEvent(
+#         event_key=event.event_key,
+#         order_id=str(event.aggregate_id),
+#         status=status,
+#         error_message=error,
+#         created_at=_utc_now(),
+#     )
+#     db.add(record)
+#     db.commit()
 def _mark_processed(db, event, status: str, error: str | None = None):
-    record = ProcessedEvent(
-        event_key=event.event_key,
-        order_id=str(event.aggregate_id),
-        status=status,
-        error_message=error,
-        created_at=_utc_now(),
-    )
-    db.add(record)
-    db.commit()
 
+    error_message = str(error) if error else None
+
+    if error_message and len(error_message) > 500:
+        error_message = error_message[:500]
+
+    record = (
+        db.query(ProcessedEvent)
+        .filter(ProcessedEvent.event_key == event.event_key)
+        .first()
+    )
+
+    if record is None:
+        record = ProcessedEvent(
+            event_key=event.event_key,
+            order_id=str(event.aggregate_id),
+            status=status,
+            error_message=error_message,
+            created_at=_utc_now(),
+        )
+        db.add(record)
+    else:
+        record.status = status
+        record.error_message = error
+
+    db.commit()
 
 
 
@@ -165,7 +222,15 @@ def run():
     while True:
         try:
             result = process_events_once(batch)
-            logger.info("invoice_event_worker_cycle", extra=result)
+            # logger.info("invoice_event_worker_cycle", extra=result)
+            logger.info(
+                "invoice_event_worker_cycle processed=%s skipped=%s failed=%s scanned=%s",
+                result["processed"],
+                result["skipped"],
+                result["failed"],
+                result["scanned"],
+            )
+
         except Exception:
             logger.exception("invoice_event_worker_cycle_failed")
 

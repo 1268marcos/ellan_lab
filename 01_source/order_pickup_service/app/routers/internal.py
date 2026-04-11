@@ -2,12 +2,15 @@
 # Router: /internal/* (protegido por X-Internal-Token)
 # 09/04/2026 - CORRIGIDO: Suporte a attempt (número de tentativas) para reimpressão fiscal
 # 09/04/2026 - CORRIGIDO: Import do FiscalDocument adicionado
+# 11/04/2026 - CORRIGIDO: receipt_code em def _extract_attempt_from_fiscal()
 
 from __future__ import annotations
 
 import hashlib
 import re
 import uuid
+import json
+
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -410,7 +413,16 @@ def _get_latest_pickup_by_order(db: Session, order_id: str) -> Optional[Pickup]:
 
 def _extract_attempt_from_fiscal(fiscal_payload: dict) -> int:
     """Extrai o número de tentativa do payload fiscal"""
+    # receipt_code = fiscal_payload.get("receipt_code", "")
+
+    if isinstance(fiscal_payload, str):
+        try:
+            fiscal_payload = json.loads(fiscal_payload)
+        except Exception:
+            fiscal_payload = {}
+
     receipt_code = fiscal_payload.get("receipt_code", "")
+
     if not receipt_code:
         return 1
     match = re.search(r'-ATT(\d{2})', receipt_code)

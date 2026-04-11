@@ -1,9 +1,14 @@
 # 01_source/order_pickup_service/app/workers/domain_event_outbox_worker.py
+# 10/04/2026 - revisão de payload / json
+
+
 from __future__ import annotations
 
 import logging
 import os
 import time
+import json
+
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -83,19 +88,33 @@ def _mark_failed(db: Session, row_id: str, error_message: str) -> None:
     row.updated_at = _utc_now_naive()
     db.commit()
 
-
 def _process_one(row: dict) -> None:
+    raw_payload = row["payload_json"]
+
+    if isinstance(raw_payload, str):
+        parsed_payload = json.loads(raw_payload)
+    elif isinstance(raw_payload, dict):
+        parsed_payload = raw_payload
+    else:
+        raise ValueError(
+            f"payload_json inválido para domain event outbox: type={type(raw_payload).__name__}"
+        )
+
     payload = {
         "event_key": row["event_key"],
         "aggregate_type": row["aggregate_type"],
         "aggregate_id": row["aggregate_id"],
         "event_name": row["event_name"],
         "event_version": row["event_version"],
-        "payload": row["payload_json"],
+        "payload": parsed_payload,
         "occurred_at": row["occurred_at"],
     }
+
     publish_domain_event(payload)
 
+
+
+    
 
 def run() -> None:
     logger.info("domain_event_outbox_worker_started")
@@ -137,7 +156,8 @@ def run() -> None:
                 finally:
                     db3.close()
 
-                logger.error(
+                # logger.error(
+                logger.exception(
                     "domain_event_outbox_publish_failed",
                     extra={
                         "event_key": row["event_key"],

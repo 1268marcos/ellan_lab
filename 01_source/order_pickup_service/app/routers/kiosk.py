@@ -680,9 +680,10 @@ def kiosk_payment_approved(
     raise HTTPException(
         status_code=400,
         detail={
-            "type": "PAYMENT_NOT_CONFIRMED",
+            "type": "PAYMENT_NOT_APPROVED",
             "order_id": order.id,
             "payment_status": order.payment_status.value,
+            "message": "Pagamento ainda não aprovado financeiramente. Use o endpoint simulado apenas em ambiente de desenvolvimento.",
         },
     )
 

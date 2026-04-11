@@ -166,6 +166,14 @@ function resolveReservationExpiryEpoch(createResp) {
 }
 
 
+function canUseRealPaymentConfirmation(gatewayPaymentResp) {
+  return (
+    gatewayPaymentResp?.result === "approved" ||
+    gatewayPaymentResp?.payment?.status === "APPROVED"
+  );
+}
+
+
 function extractPendingPaymentContext(gatewayData) {
   const payment = gatewayData?.payment || {};
   const payload = payment?.payload || {};
@@ -338,6 +346,11 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   const [identifyForm, setIdentifyForm] = useState(initialIdentify);
   const [paymentExtras, setPaymentExtras] = useState(initialPaymentExtras);
+
+  const canConfirmRealPayment = useMemo(
+    () => canUseRealPaymentConfirmation(gatewayPaymentResp),
+    [gatewayPaymentResp]
+  );
 
   const [loadingCreate, setLoadingCreate] = useState(false);
   const [loadingGatewayPayment, setLoadingGatewayPayment] = useState(false);
@@ -1336,11 +1349,24 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
                 <button
                   onClick={approveKioskPayment}
-                  disabled={loadingPayment || !currentOrderId}
-                  style={buttonPrimaryStyle}
+                  disabled={loadingPayment || !currentOrderId || !canConfirmRealPayment}
+                  style={{
+                    ...buttonPrimaryStyle,
+                    opacity: (!currentOrderId || !canConfirmRealPayment) ? 0.5 : 1,
+                    cursor: (!currentOrderId || !canConfirmRealPayment) ? "not-allowed" : "pointer",
+                  }}
+                  title={
+                    canConfirmRealPayment
+                      ? "Pagamento já aprovado financeiramente"
+                      : "Só habilita quando o gateway retornar APPROVED"
+                  }
                 >
                   {loadingPayment ? "Confirmando..." : "Confirmar pagamento real"}
                 </button>
+
+
+
+
 
                 <button
                   onClick={approveKioskPaymentSimulated}
@@ -1353,6 +1379,18 @@ export default function RegionPage({ region, mode = "kiosk" }) {
                 >
                   {loadingPayment ? "Simulando..." : "Simular pagamento concluído (modo dev)"}
                 </button>
+              
+              
+                {currentOrderId && !canConfirmRealPayment && (
+                  <div style={infoNoticeStyle}>
+                    ⚠️ O botão <b>Confirmar pagamento real</b> só deve ser usado quando o backend já tiver
+                    recebido confirmação financeira real e o gateway retornar <b>APPROVED</b>.
+                    No cenário atual sem integração real, use <b>Simular pagamento concluído (modo dev)</b>.
+                  </div>
+                )}              
+              
+              
+              
               </div>
 
 
