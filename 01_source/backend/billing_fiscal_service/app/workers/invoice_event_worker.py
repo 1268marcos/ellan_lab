@@ -3,8 +3,8 @@
 # invoice, evitando varrer histórico já materializado. 
 # 10/04/2026 - alteração de funções : _mark_processed() e _already_processed()
 # 10/04/2026 - exclusão da função: _get_events()
-# 11/04/2026 - inclusão de error_message em def _mark_processed()  
-
+# 11/04/2026 - inclusão de error_message em def _mark_processed() / endurecer mensagem de erro 
+# 11/04/2026 - aplicação de uma melhor blindagem de: except OrderPickupClientError para: except Exception
 
 from __future__ import annotations
 
@@ -94,7 +94,6 @@ def _already_processed(db, event_key: str) -> bool:
 #     db.add(record)
 #     db.commit()
 def _mark_processed(db, event, status: str, error: str | None = None):
-
     error_message = str(error) if error else None
 
     if error_message and len(error_message) > 500:
@@ -117,7 +116,7 @@ def _mark_processed(db, event, status: str, error: str | None = None):
         db.add(record)
     else:
         record.status = status
-        record.error_message = error
+        record.error_message = error_message
 
     db.commit()
 
@@ -168,34 +167,31 @@ def process_events_once(batch_size: int):
                 _mark_processed(db, event, "PROCESSED")
                 processed += 1
 
-            except OrderPickupClientError as exc:
+
+            except Exception as exc:
                 msg = str(exc).lower()
 
-                # 💀 TRATAR 404 COMO DEAD (E NÃO RETENTAR)
+                # 💀 DEAD definitivo
                 if "404" in msg or "order not found" in msg:
                     logger.warning(
-                        "invoice_event_order_not_found_dead",
-                        extra={"order_id": order_id},
+                        "invoice_event_order_not_found_dead order_id=%s event_key=%s",
+                        order_id,
+                        event.event_key,
                     )
 
                     _mark_processed(db, event, "DEAD", "order_not_found")
                     skipped += 1
-                    continue  # 🔥 IMPORTANTE
+                    continue
 
-                _mark_processed(db, event, "FAILED", str(exc))
-                failed += 1
-
-            except Exception as exc:
+                # ⚠️ erro transitório
                 _mark_processed(db, event, "FAILED", str(exc))
                 failed += 1
 
                 logger.exception(
-                    "invoice_event_worker_error",
-                    extra={
-                        "order_id": order_id,
-                        "event_key": event.event_key,
-                    },
-                )
+                    "invoice_event_worker_error order_id=%s event_key=%s",
+                    order_id,
+                    event.event_key,
+                )   
 
         return {
             "processed": processed,

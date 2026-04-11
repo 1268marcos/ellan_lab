@@ -1,6 +1,8 @@
 # 01_source/backend/billing_fiscal_service/app/workers/invoice_issue_worker.py
 # issue worker: só pega invoices elegíveis; tenta claim atômico, processa só se o claim for dele;
-# respeita next_retry_at; não conflita com outro worker igual 
+# respeita next_retry_at; não conflita com outro worker igual
+# 11/04/2026 - aplicar padrão de logs.
+
 from __future__ import annotations
 
 import logging
@@ -32,15 +34,24 @@ def process_batch_once(batch_size: int):
 
                 if result is None:
                     skipped += 1
+                    logger.info(
+                        "invoice_issue_worker_skipped invoice_id=%s reason=claim_not_acquired_or_not_eligible",
+                        invoice_id,
+                    )
                     continue
 
                 processed += 1
+                logger.info(
+                    "invoice_issue_worker_processed invoice_id=%s",
+                    invoice_id,
+                )
 
-            except Exception:
+            except Exception as exc:
                 failed += 1
                 logger.exception(
-                    "invoice_issue_worker_error",
-                    extra={"invoice_id": invoice_id},
+                    "invoice_issue_worker_error invoice_id=%s error=%s",
+                    invoice_id,
+                    str(exc),
                 )
 
         return {
@@ -63,14 +74,27 @@ def run():
     poll = int(os.getenv("INVOICE_ISSUE_POLL_SEC", "5"))
     batch = int(os.getenv("INVOICE_ISSUE_BATCH_SIZE", "50"))
 
-    logger.info("invoice_issue_worker_started")
+    logger.info(
+        "invoice_issue_worker_started poll_sec=%s batch_size=%s",
+        poll,
+        batch,
+    )
 
     while True:
         try:
             result = process_batch_once(batch)
-            logger.info("invoice_issue_worker_cycle", extra=result)
-        except Exception:
-            logger.exception("invoice_issue_worker_cycle_failed")
+            logger.info(
+                "invoice_issue_worker_cycle processed=%s skipped=%s failed=%s scanned=%s",
+                result["processed"],
+                result["skipped"],
+                result["failed"],
+                result["scanned"],
+            )
+        except Exception as exc:
+            logger.exception(
+                "invoice_issue_worker_cycle_failed error=%s",
+                str(exc),
+            )
 
         time.sleep(poll)
 

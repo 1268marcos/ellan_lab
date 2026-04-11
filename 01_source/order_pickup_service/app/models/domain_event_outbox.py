@@ -1,9 +1,11 @@
 # 01_source/order_pickup_service/app/models/domain_event_outbox.py
+# 11/04/2026 - adição de campos: retry_count, next_retry_at e processing_started_at
+
 from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Index, String, Text
+from sqlalchemy import Column, Integer, DateTime, Index, String, Text
 from sqlalchemy.dialects.sqlite import JSON
 from app.core.db import Base
 
@@ -32,6 +34,10 @@ class DomainEventOutbox(Base):
     published_at = Column(DateTime, nullable=True)
 
     last_error = Column(Text, nullable=True)
+
+    retry_count = Column(Integer, nullable=False, default=0)
+    next_retry_at = Column(DateTime(timezone=True), nullable=True)
+    processing_started_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(

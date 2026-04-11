@@ -3,6 +3,7 @@
 # 09/04/2026 - CORRIGIDO: Suporte a attempt (número de tentativas) para reimpressão fiscal
 # 09/04/2026 - CORRIGIDO: Import do FiscalDocument adicionado
 # 11/04/2026 - CORRIGIDO: receipt_code em def _extract_attempt_from_fiscal()
+# 11/04/2026 - melhorada a função def _extract_attempt_from_fiscal()
 
 from __future__ import annotations
 
@@ -411,9 +412,27 @@ def _get_latest_pickup_by_order(db: Session, order_id: str) -> Optional[Pickup]:
     )
 
 
-def _extract_attempt_from_fiscal(fiscal_payload: dict) -> int:
-    """Extrai o número de tentativa do payload fiscal"""
-    # receipt_code = fiscal_payload.get("receipt_code", "")
+# def _extract_attempt_from_fiscal(fiscal_payload: dict) -> int:
+#     """Extrai o número de tentativa do payload fiscal"""
+#     # receipt_code = fiscal_payload.get("receipt_code", "")
+# 
+#     if isinstance(fiscal_payload, str):
+#         try:
+#             fiscal_payload = json.loads(fiscal_payload)
+#         except Exception:
+#             fiscal_payload = {}
+# 
+#     receipt_code = fiscal_payload.get("receipt_code", "")
+# 
+#     if not receipt_code:
+#         return 1
+#     match = re.search(r'-ATT(\d{2})', receipt_code)
+#     if match:
+#         return int(match.group(1))
+#     return 1
+def _extract_attempt_from_fiscal(fiscal_payload: dict | str | None) -> int:
+    if not fiscal_payload:
+        return 1
 
     if isinstance(fiscal_payload, str):
         try:
@@ -421,14 +440,17 @@ def _extract_attempt_from_fiscal(fiscal_payload: dict) -> int:
         except Exception:
             fiscal_payload = {}
 
-    receipt_code = fiscal_payload.get("receipt_code", "")
-
-    if not receipt_code:
+    if not isinstance(fiscal_payload, dict):
         return 1
-    match = re.search(r'-ATT(\d{2})', receipt_code)
+
+    receipt_code = fiscal_payload.get("receipt_code", "")
+    match = re.search(r"-ATT(\d{2})", receipt_code)
     if match:
         return int(match.group(1))
     return 1
+
+
+
 
 
 @router.get("/health")

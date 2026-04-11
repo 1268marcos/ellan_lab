@@ -1,5 +1,7 @@
 # 01_source/backend/biling_fiscal_service/app/services/invoice_orchestrator.py
 # Arquivo preserva o endpoint manual como fallback, mas agora ele usa o mesmo mecanismo de lock/processamento dos workers.
+# 11/04/2026 - aplicação de patch de: raise Valuerror(str(exc)) para: raise OrderPickupClientError(str(exc))
+
 from __future__ import annotations
 
 import logging
@@ -178,7 +180,8 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
     try:
         snapshot = get_order_snapshot(normalized_order_id)
     except OrderPickupClientError as exc:
-        raise ValueError(str(exc)) from exc
+        # raise ValueError(str(exc)) from exc
+        raise OrderPickupClientError(str(exc)) from exc
 
     order = snapshot.get("order") or {}
     
