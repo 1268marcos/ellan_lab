@@ -1,5 +1,10 @@
 // 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx
 // ONLINE real usando gateway + runtime + order_pickup_service
+// 11/04/2026 - alteração de:  const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, {
+//   em uso, motivo: próprio router: faz assim - /public/orders  → fluxo público (resolve payment)
+//                                               /public/orders/ → fluxo interno (CreateOrderIn)
+//   bug é clássico FastAPI - A barra final muda o handler no FastAPI
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
@@ -7,9 +12,7 @@ import { useAuth } from "../../context/AuthContext";
 
 import {
   buildOnlineOrderPayload,
-  getDefaultPaymentMethod,
   paymentMethodLabel,
-  requiresCustomerPhone,
 } from "../../utils/paymentProfile";
 
 
@@ -127,19 +130,6 @@ function walletProviderForMethod(method) {
   return providers[method] || undefined;
 }
 
-function gatewayMethodForUiMethod(method) {
-  if (method === "CARTAO_CREDITO") return "CARTAO";
-  if (method === "CARTAO_DEBITO") return "CARTAO";
-  if (method === "CARTAO_PRESENTE") return "CARTAO";
-  return method;
-}
-
-function cardTypeForUiMethod(method) {
-  if (method === "CARTAO_CREDITO") return "creditCard";
-  if (method === "CARTAO_DEBITO") return "debitCard";
-  if (method === "CARTAO_PRESENTE") return "giftCard";
-  return null;
-}
 
 function getOrCreateDeviceFingerprint() {
   const key = "ellan_device_fp_v1";
@@ -393,27 +383,21 @@ export default function PublicCheckoutPage() {
     setSubmitError("");
     setCurrentStep(2);
 
-    const mappedPaymentMethod = gatewayMethodForUiMethod(paymentMethod);
-    const mappedCardType = cardTypeForUiMethod(paymentMethod);
 
-    // const payload = {
-    //   region,
-    //   sku_id: skuId,
-    //   totem_id: lockerId,
-    //   payment_method: mappedPaymentMethod,
-    //   desired_slot: slot,
-    // };
     const payload = buildOnlineOrderPayload({
       region,
       totemId: lockerId,
-      sku_id: skuId,
-      desired_slot: slot,
+      // sku_id: skuId,
+      // desired_slot: slot,
+      skuId: skuId,
+      slot: slot,
       uiMethod: paymentMethod,
       customerPhone,
     });
 
-    if (mappedCardType) {
-      payload.card_type = mappedCardType;
+    // 🔥 FIX OBRIGATÓRIO
+    if (!payload.payment_interface) {
+      payload.payment_interface = "web_token";
     }
 
     if (paymentMethod === "MBWAY") {

@@ -2,6 +2,7 @@
 // 03/04/2026
 // 05/04/2026 - CLEAN VERSION - ZERO REGRA DE PAGAMENTO
 // 06/04/2026 - Ajustado para exibir corretamente métodos canônicos vindos do backend
+// 11/04/2026 - ajuste function buildOnlineOrderPayload()
 
 export function paymentMethodLabel(method) {
   const key = String(method || "").trim();
@@ -117,9 +118,9 @@ export function buildOnlineOrderPayload({
   customerPhone = "",
 }) {
   return {
-    region,
-    sku_id: skuId,
-    totem_id: totemId,
+    region: String(region || "").trim().toUpperCase(),
+    sku_id: String(skuId || "").trim(),
+    totem_id: String(totemId || "").trim(),
     desired_slot: Number(slot),
     payment_method: String(uiMethod || "").trim(),
     customer_phone: customerPhone?.trim() || null,

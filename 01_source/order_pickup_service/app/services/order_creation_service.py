@@ -759,6 +759,7 @@ def create_order_core(
     # 6. TTL
     # =========================
     alloc_ttl_sec = resolve_online_prepayment_ttl_sec(
+        db=db,
         region=region,
         payment_method=payment_method.value,
         amount_cents=amount_cents,

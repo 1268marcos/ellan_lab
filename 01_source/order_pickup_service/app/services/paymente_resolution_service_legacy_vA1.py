@@ -1,13 +1,11 @@
 # 01_source/order_pickup_service/app/services/payment_resolution_service.py
 # 06/04/2026
-# 11/04/2026 - correção anterior PaymentMethodUiAlias.ui_code == raw_method.upper()
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.payment_method_ui_alias import PaymentMethodUiAlias
@@ -30,21 +28,18 @@ def resolve_payment_ui_code(
             },
         )
 
-    normalized_method = raw_method.strip()
-    normalized_method_upper = normalized_method.upper()
-
     alias = (
         db.query(PaymentMethodUiAlias)
         .filter(
             PaymentMethodUiAlias.is_active.is_(True),
-            func.upper(PaymentMethodUiAlias.ui_code) == normalized_method_upper,
+            PaymentMethodUiAlias.ui_code == raw_method.upper(),
         )
         .first()
     )
 
     if alias is None:
         return {
-            "payment_method": normalized_method,
+            "payment_method": raw_method,
             "payment_interface": str(raw_payment_interface).strip() if raw_payment_interface else None,
             "wallet_provider": str(raw_wallet_provider).strip() if raw_wallet_provider else None,
             "requires_customer_phone": False,
