@@ -142,21 +142,35 @@ def resolve_online_prepayment_ttl_sec(
     # ttl_sec = capabilities["constraints"].get("prepayment_timeout_sec")
     # 01_source/order_pickup_service/app/routers/kiosk.py
 
-    ttl_sec = get_capability_constraint(
+    # ttl_sec = get_capability_constraint(
+    #     db=db,
+    #     region=region,
+    #     channel=OrderChannel.ONLINE.value,
+    #     context="CHECKOUT",  # ou seu contexto correto
+    #     code="prepayment_timeout_sec",
+    # )  
+    # abaixo foi uma correção baseada em kiosk.py - def kiosk_create_order() - acima foi comentado
+    ttl_raw = get_capability_constraint(
         db=db,
         region=region,
         channel=OrderChannel.ONLINE.value,
         context="CHECKOUT",  # ou seu contexto correto
         code="prepayment_timeout_sec",
-    )  
+    )
+
+    # ttl_sec = int(ttl_raw["value"])
+    if isinstance(ttl_raw, dict):
+        ttl_sec = int(ttl_raw.get("value"))
+    else:
+        ttl_sec = int(ttl_raw)
 
     
     # Ajuste baseado no valor para métodos específicos
     if amount_cents and payment_method in {"boleto", "bank_transfer"}:
         if amount_cents >= 50000:
-            ttl_sec = max(ttl_sec, 48 * 60 * 60)
+            ttl_sec = max(ttl_sec, 48 * 60 * 60) # 2 dias = 48 h
         elif amount_cents >= 10000:
-            ttl_sec = max(ttl_sec, 24 * 60 * 60)
+            ttl_sec = max(ttl_sec, 24 * 60 * 60) # 1 dia = 24 h
 
     if int(ttl_sec) <= 0:
         raise HTTPException(

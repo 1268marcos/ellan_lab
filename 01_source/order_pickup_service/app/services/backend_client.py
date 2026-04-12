@@ -51,7 +51,19 @@ def get_locker_registry_item(locker_id: str) -> Optional[dict]:
     if response.status_code == 404:
         return None
 
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_get_locker_registry_item",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -68,7 +80,19 @@ def get_sku_pricing(region: str, sku_id: str, locker_id: str | None = None) -> d
         headers=_headers_for_internal_request(locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_get_sku_pricing",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -109,7 +133,19 @@ def locker_allocate(
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_allocate_failed",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -135,7 +171,19 @@ def locker_commit(
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_locker_commit",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+    
     return response.json()
 
 
@@ -160,7 +208,19 @@ def locker_release(
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_locker_release",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -177,7 +237,19 @@ def locker_open(region: str, slot: int, locker_id: str | None = None) -> dict:
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_locker_open",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -194,7 +266,19 @@ def locker_light_on(region: str, slot: int, locker_id: str | None = None) -> dic
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_locker_light_on",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()
 
 
@@ -230,5 +314,17 @@ def locker_set_state(
         headers=_headers_for_internal_request(normalized_locker_id),
         timeout=settings.backend_client_timeout_sec,
     )
-    response.raise_for_status()
+    # response.raise_for_status()
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_locker_set_state",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
     return response.json()

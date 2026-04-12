@@ -126,8 +126,10 @@ def _get_kiosk_capabilities(db: Session, region: str):
     capabilities = get_payment_capabilities(
         db=db,
         region=region,
-        channel="KIOSK",
-        context="ORDER_CREATION",
+        # channel="KIOSK",
+        # context="ORDER_CREATION",
+        channel="kiosk",
+        context="order_creation",
     )
 
     if not capabilities.get("found"):
@@ -355,13 +357,28 @@ def kiosk_create_order(
 
     amount_cents = int(pricing.get("amount_cents") or pricing.get("price_cents"))
 
-    ttl_sec = get_capability_constraint(
+    # ttl_sec = get_capability_constraint(
+    #     db=db,
+    #     region=payload.region.value,
+    #     # channel="KIOSK",
+    #     # context="ORDER_CREATION",
+    #     channel="kiosk",
+    #     context="order_creation",
+    #     code="prepayment_timeout_sec",
+    # )
+    ttl_raw = get_capability_constraint(
         db=db,
         region=payload.region.value,
-        channel="KIOSK",
-        context="ORDER_CREATION",
+        channel="kiosk",
+        context="order_creation",
         code="prepayment_timeout_sec",
     )
+
+    # ttl_sec = int(ttl_raw["value"])
+    if isinstance(ttl_raw, dict):
+        ttl_sec = int(ttl_raw.get("value"))
+    else:
+        ttl_sec = int(ttl_raw)
 
     alloc = backend_client.locker_allocate(
         payload.region.value,
