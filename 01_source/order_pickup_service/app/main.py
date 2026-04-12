@@ -25,6 +25,7 @@ from app.routers.public_fiscal import router as public_fiscal_router
 
 from app.routers.payment_capabilities import router as payment_capabilities_router
 
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
 
@@ -32,6 +33,7 @@ app = FastAPI(
     title="ELLAN Order Pickup Service",
     version=get_version(),
 )
+
 
 # Routers principais
 app.include_router(orders.router)
@@ -51,6 +53,9 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(internal_health_router, tags=["Internal"])
 
 app.include_router(payment_capabilities_router)
+
+
+
 
 # CORS
 app.add_middleware(

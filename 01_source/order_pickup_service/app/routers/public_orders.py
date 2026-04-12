@@ -26,6 +26,9 @@ from app.services.order_creation_service import create_order_core, CreateOrderCo
 # ==================== Importações adicionais ====================
 from app.models.allocation import Allocation
 
+from app.services.payment_resolution_service import resolve_payment_ui_code
+
+
 # Configuração de logging
 logger = logging.getLogger(__name__)
 
@@ -524,6 +527,22 @@ def create_public_order(
                 "message": "X-Device-Fingerprint é obrigatório.",
             },
         )
+
+    # ===============================
+    # NORMALIZAÇÃO SEGURA (SEM MIDDLEWARE)
+    # ===============================
+    resolved = resolve_payment_ui_code(
+        db=db,
+        raw_payment_method=payload.payment_method,
+        raw_payment_interface=payload.payment_interface,
+        raw_wallet_provider=payload.wallet_provider,
+    )
+
+    payload.payment_method = resolved.get("payment_method")
+    payload.payment_interface = resolved.get("payment_interface")
+    payload.wallet_provider = resolved.get("wallet_provider")
+
+
 
     # Valida idempotency key
     if not str(idempotency_key or "").strip():

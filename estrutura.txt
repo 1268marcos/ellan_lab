@@ -1,0 +1,667 @@
+.
+├── 01_source
+│   ├── backend
+│   │   ├── billing_fiscal_service
+│   │   │   ├── Dockerfile
+│   │   │   ├── app
+│   │   │   │   ├── api
+│   │   │   │   │   └── routes_invoice.py
+│   │   │   │   ├── core
+│   │   │   │   │   ├── config.py
+│   │   │   │   │   ├── db.py
+│   │   │   │   │   └── db_migrations.py
+│   │   │   │   ├── events
+│   │   │   │   │   └── invoice_events.py
+│   │   │   │   ├── integrations
+│   │   │   │   │   ├── lifecycle_client.py
+│   │   │   │   │   ├── order_pickup_client.py
+│   │   │   │   │   └── payment_client.py
+│   │   │   │   ├── main.py
+│   │   │   │   ├── models
+│   │   │   │   │   ├── base.py
+│   │   │   │   │   ├── external_domain_event.py
+│   │   │   │   │   ├── invoice_model.py
+│   │   │   │   │   └── processed_event.py
+│   │   │   │   ├── run_invoice_event_worker.py
+│   │   │   │   ├── schemas
+│   │   │   │   │   └── invoice_schema.py
+│   │   │   │   ├── services
+│   │   │   │   │   ├── aeat_es_service.py
+│   │   │   │   │   ├── at_pt_service.py
+│   │   │   │   │   ├── fiscal_router_service.py
+│   │   │   │   │   ├── invoice_event_worker.py
+│   │   │   │   │   ├── invoice_issue_service.py
+│   │   │   │   │   ├── invoice_orchestrator.py
+│   │   │   │   │   ├── invoice_processing_service.py
+│   │   │   │   │   ├── invoice_service.py
+│   │   │   │   │   ├── sefaz_sp_service.py
+│   │   │   │   │   └── tax_service.py
+│   │   │   │   ├── utils
+│   │   │   │   │   └── id_generator.py
+│   │   │   │   └── workers
+│   │   │   │       ├── invoice_event_worker.py
+│   │   │   │       └── invoice_issue_worker.py
+│   │   │   └── sql
+│   │   ├── order_lifecycle_service
+│   │   │   ├── Dockerfile
+│   │   │   ├── alembic
+│   │   │   │   ├── env.py
+│   │   │   │   ├── script.py.mako
+│   │   │   │   └── versions
+│   │   │   │       └── 0001_init_order_lifecycle.py
+│   │   │   ├── alembic.ini
+│   │   │   └── app
+│   │   │       ├── __init__.py
+│   │   │       ├── api
+│   │   │       │   └── routes_domain_events.py
+│   │   │       ├── core
+│   │   │       │   ├── __init__.py
+│   │   │       │   ├── config.py
+│   │   │       │   ├── db.py
+│   │   │       │   ├── db_migrations.py
+│   │   │       │   ├── internal_auth.py
+│   │   │       │   └── logging.py
+│   │   │       ├── main.py
+│   │   │       ├── models
+│   │   │       │   ├── __init__.py
+│   │   │       │   ├── base.py
+│   │   │       │   ├── lifecycle.py
+│   │   │       │   └── processed_event.py
+│   │   │       ├── routers
+│   │   │       │   ├── __init__.py
+│   │   │       │   ├── health.py
+│   │   │       │   ├── internal.py
+│   │   │       │   └── internal_pickup_health.py
+│   │   │       ├── schemas
+│   │   │       │   ├── __init__.py
+│   │   │       │   ├── analytics.py
+│   │   │       │   ├── analytics_breakdown.py
+│   │   │       │   ├── analytics_executive_summary.py
+│   │   │       │   ├── analytics_ranking.py
+│   │   │       │   ├── domain_events.py
+│   │   │       │   ├── health.py
+│   │   │       │   ├── internal.py
+│   │   │       │   └── pickup_events.py
+│   │   │       ├── services
+│   │   │       │   ├── __init__.py
+│   │   │       │   ├── deadline_engine.py
+│   │   │       │   ├── domain_event_service.py
+│   │   │       │   ├── event_publisher.py
+│   │   │       │   ├── pickup_analytics_projector.py
+│   │   │       │   ├── pickup_breakdown_service.py
+│   │   │       │   ├── pickup_executive_summary_service.py
+│   │   │       │   ├── pickup_health_service.py
+│   │   │       │   ├── pickup_metrics_service.py
+│   │   │       │   └── pickup_ranking_service.py
+│   │   │       └── workers
+│   │   │           ├── __init__.py
+│   │   │           └── prepayment_timeout_worker.py
+│   │   └── runtime
+│   │       ├── Dockerfile
+│   │       ├── app
+│   │       │   ├── __init__.py
+│   │       │   ├── core
+│   │       │   │   ├── __init__.py
+│   │       │   │   ├── antifraud_snapshot.py
+│   │       │   │   ├── antifraud_snapshot_verify.py
+│   │       │   │   ├── config.py
+│   │       │   │   ├── constants
+│   │       │   │   ├── db.py
+│   │       │   │   ├── errors.py
+│   │       │   │   ├── event_log.py
+│   │       │   │   ├── event_types.py
+│   │       │   │   ├── internal_auth.py
+│   │       │   │   ├── locker_runtime_resolver.py
+│   │       │   │   ├── mqtt_topics.py
+│   │       │   │   ├── slot_topology.py
+│   │       │   │   └── version.py
+│   │       │   ├── health
+│   │       │   ├── integrations
+│   │       │   │   ├── __init__.py
+│   │       │   │   ├── central_db_client.py
+│   │       │   │   └── mqtt_client.py
+│   │       │   ├── main.py
+│   │       │   ├── models
+│   │       │   │   └── __init__.py
+│   │       │   ├── repositories
+│   │       │   │   ├── __inti__.py
+│   │       │   │   ├── allocations_repo.py
+│   │       │   │   ├── door_state_repo.py
+│   │       │   │   ├── events_repo.py
+│   │       │   │   └── runtime_registry_repo.py
+│   │       │   ├── routers
+│   │       │   │   ├── __inti__.py
+│   │       │   │   ├── allocations.py
+│   │       │   │   ├── audit.py
+│   │       │   │   ├── audit_self_check.py
+│   │       │   │   ├── audit_snapshot.py
+│   │       │   │   ├── catalog.py
+│   │       │   │   ├── debug.py
+│   │       │   │   ├── dev_allocations.py
+│   │       │   │   ├── hardware.py
+│   │       │   │   ├── health.py
+│   │       │   │   ├── internal_runtime.py
+│   │       │   │   └── locker_state.py
+│   │       │   ├── schemas
+│   │       │   │   ├── __init__.py
+│   │       │   │   ├── allocations.py
+│   │       │   │   ├── audit.py
+│   │       │   │   ├── catalog.py
+│   │       │   │   ├── hardware.py
+│   │       │   │   ├── locker_state.py
+│   │       │   │   └── runtime_registry.py
+│   │       │   └── services
+│   │       │       ├── __init__.py
+│   │       │       ├── allocation_service.py
+│   │       │       ├── audit_service.py
+│   │       │       ├── backend_client.py
+│   │       │       ├── catalog_service.py
+│   │       │       ├── hardware_command_service.py
+│   │       │       ├── mqtt_listener.py
+│   │       │       ├── runtime_bootstrap_service.py
+│   │       │       ├── runtime_registry_schema_service.py
+│   │       │       ├── runtime_registry_service.py
+│   │       │       ├── runtime_registry_sync_service.py
+│   │       │       ├── slot_projection_service.py
+│   │       │       └── slot_state_service.py
+│   │       └── sql
+│   ├── commerce_hub
+│   │   ├── __init__.py
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── api
+│   │       │   ├── __init__.py
+│   │       │   ├── routers
+│   │       │   │   └── __init__.py
+│   │       │   └── schemas
+│   │       │       └── __init__.py
+│   │       ├── audit
+│   │       │   └── __init__.py
+│   │       ├── core
+│   │       │   └── __init__.py
+│   │       ├── integrations
+│   │       │   ├── __init__.py
+│   │       │   └── channels
+│   │       │       ├── __init__.py
+│   │       │       ├── amazon
+│   │       │       ├── ctt
+│   │       │       ├── ifood
+│   │       │       ├── magalu
+│   │       │       ├── mercadolivre
+│   │       │       └── worten
+│   │       └── observability
+│   │           └── __init__.py
+│   ├── fiscal_service
+│   ├── frontend
+│   │   ├── eslint.config.js
+│   │   ├── index.html
+│   │   ├── nul
+│   │   ├── public
+│   │   │   └── vite.svg
+│   │   ├── src
+│   │   │   ├── App.css
+│   │   │   ├── App.jsx
+│   │   │   ├── assets
+│   │   │   │   └── react.svg
+│   │   │   ├── components
+│   │   │   │   ├── CardVirtualKeyboard.jsx
+│   │   │   │   ├── CvvVirtualKeyboard.jsx
+│   │   │   │   ├── EmailReceiptModal.jsx
+│   │   │   │   ├── ManualPickupPanel.jsx
+│   │   │   │   ├── PickupHealthPanel.jsx
+│   │   │   │   ├── PickupQRCodePanel.jsx
+│   │   │   │   ├── VirtualKeyboard.jsx
+│   │   │   │   └── public
+│   │   │   │       ├── CheckoutSummary.jsx
+│   │   │   │       ├── LoginForm.jsx
+│   │   │   │       ├── OrderStatusBadge.jsx
+│   │   │   │       ├── PickupPanel.jsx
+│   │   │   │       ├── ProductCard.jsx
+│   │   │   │       ├── PublicHeader.jsx
+│   │   │   │       ├── PublicPickupCard.jsx
+│   │   │   │       └── RegisterForm.jsx
+│   │   │   ├── context
+│   │   │   │   └── AuthContext.jsx
+│   │   │   ├── features
+│   │   │   │   └── locker-dashboard
+│   │   │   │       ├── components
+│   │   │   │       ├── hooks
+│   │   │   │       ├── index.js
+│   │   │   │       ├── services
+│   │   │   │       └── utils
+│   │   │   ├── index.css
+│   │   │   ├── main.jsx
+│   │   │   ├── pages
+│   │   │   │   ├── DevLockerResetPage.jsx
+│   │   │   │   ├── LockerDashboard.jsx
+│   │   │   │   ├── PickupHealthPage.jsx
+│   │   │   │   ├── RegionPage.jsx
+│   │   │   │   └── public
+│   │   │   │       ├── PublicCatalogPage.jsx
+│   │   │   │       ├── PublicCheckoutPage.jsx
+│   │   │   │       ├── PublicFiscalSearchPage.jsx
+│   │   │   │       ├── PublicLandingPage.jsx
+│   │   │   │       ├── PublicLoginPage.jsx
+│   │   │   │       ├── PublicMyOrdersPage.jsx
+│   │   │   │       ├── PublicNotFoundPage.jsx
+│   │   │   │       ├── PublicOrderDetailPage.jsx
+│   │   │   │       ├── PublicPrivacyPolicyPage.jsx
+│   │   │   │       ├── PublicRegionHubPage.jsx
+│   │   │   │       ├── PublicRegisterPage.jsx
+│   │   │   │       ├── PublicSupportPage.jsx
+│   │   │   │       └── PublicTermsOfUsePage.jsx
+│   │   │   ├── services
+│   │   │   │   ├── authApi.js
+│   │   │   │   └── publicApi.js
+│   │   │   └── utils
+│   │   │       └── paymentProfile.js
+│   │   └── vite.config.js
+│   ├── locker_operations
+│   │   ├── __init__.py
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── api
+│   │       │   ├── __init__.py
+│   │       │   ├── routers
+│   │       │   │   ├── __init__.py
+│   │       │   │   ├── health.py
+│   │       │   │   └── lockers.py
+│   │       │   └── schemas
+│   │       │       ├── __init__.py
+│   │       │       └── locker.py
+│   │       ├── audit
+│   │       │   └── __init__.py
+│   │       ├── core
+│   │       │   ├── __init__.py
+│   │       │   ├── config.py
+│   │       │   ├── logging.py
+│   │       │   └── middleware.py
+│   │       ├── domain
+│   │       │   ├── __init__.py
+│   │       │   ├── allocations
+│   │       │   │   └── __init__.py
+│   │       │   ├── incidents
+│   │       │   │   └── __init__.py
+│   │       │   ├── lockers
+│   │       │   │   ├── __init__.py
+│   │       │   │   └── models.py
+│   │       │   ├── network
+│   │       │   │   └── __init__.py
+│   │       │   ├── slots
+│   │       │   │   └── __init__.py
+│   │       │   └── telemetry
+│   │       │       └── __init__.py
+│   │       ├── infrastructure
+│   │       │   ├── __init__.py
+│   │       │   └── db
+│   │       │       └── __init__.py
+│   │       ├── main.py
+│   │       └── observability
+│   │           └── __init__.py
+│   ├── logistics_service
+│   │   ├── __init__.py
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── api
+│   │       │   ├── __init__.py
+│   │       │   ├── routers
+│   │       │   │   └── __init__.py
+│   │       │   └── schemas
+│   │       │       └── __init__.py
+│   │       ├── audit
+│   │       │   └── __init__.py
+│   │       ├── core
+│   │       │   └── __init__.py
+│   │       ├── integrations
+│   │       │   ├── __init__.py
+│   │       │   └── carriers
+│   │       │       ├── __init__.py
+│   │       │       ├── dhl
+│   │       │       ├── fedex
+│   │       │       └── jadlog
+│   │       └── observability
+│   │           └── __init__.py
+│   ├── order_pickup_service
+│   │   ├── Dockerfile
+│   │   ├── app
+│   │   │   ├── core
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── auth_dep.py
+│   │   │   │   ├── auth_dev.py
+│   │   │   │   ├── config.py
+│   │   │   │   ├── db.py
+│   │   │   │   ├── db_migrations.py
+│   │   │   │   ├── db_super_migrations.py
+│   │   │   │   ├── db_super_rollback.py
+│   │   │   │   ├── internal_auth.py
+│   │   │   │   ├── lifecycle_client.py
+│   │   │   │   ├── lifecycle_events_client.py
+│   │   │   │   ├── lifecycle_integration.py
+│   │   │   │   ├── locker_seed.py
+│   │   │   │   ├── payment_timeout_policy.py
+│   │   │   │   ├── public_token.py
+│   │   │   │   ├── security.py
+│   │   │   │   ├── time.py
+│   │   │   │   └── version.py
+│   │   │   ├── database.py
+│   │   │   ├── health
+│   │   │   │   ├── credits.py
+│   │   │   │   ├── exceptions.py
+│   │   │   │   ├── health.py
+│   │   │   │   ├── internal.py
+│   │   │   │   ├── orders.py
+│   │   │   │   ├── pickup.py
+│   │   │   │   └── users.py
+│   │   │   ├── init_db.py
+│   │   │   ├── jobs
+│   │   │   │   ├── expiry.py
+│   │   │   │   └── lifecycle_events_consumer.py
+│   │   │   ├── main.py
+│   │   │   ├── models
+│   │   │   │   ├── allocation.py
+│   │   │   │   ├── auth_session.py
+│   │   │   │   ├── base.py
+│   │   │   │   ├── capability.py
+│   │   │   │   ├── credit.py
+│   │   │   │   ├── domain_event_outbox.py
+│   │   │   │   ├── fiscal_document.py
+│   │   │   │   ├── kiosk_antifraud_event.py
+│   │   │   │   ├── locker.py
+│   │   │   │   ├── login_otp.py
+│   │   │   │   ├── notification_log.py
+│   │   │   │   ├── order.py
+│   │   │   │   ├── order_item.py
+│   │   │   │   ├── payment_method_ui_alias.py
+│   │   │   │   ├── pickup.py
+│   │   │   │   ├── pickup_token.py
+│   │   │   │   ├── product_locker_config.py
+│   │   │   │   └── user.py
+│   │   │   ├── routers
+│   │   │   │   ├── auth.py
+│   │   │   │   ├── dev_admin.py
+│   │   │   │   ├── internal.py
+│   │   │   │   ├── kiosk.py
+│   │   │   │   ├── locker.py
+│   │   │   │   ├── orders.py
+│   │   │   │   ├── payment_capabilities.py
+│   │   │   │   ├── pickup.py
+│   │   │   │   ├── public_auth.py
+│   │   │   │   ├── public_catalog.py
+│   │   │   │   ├── public_fiscal.py
+│   │   │   │   ├── public_me.py
+│   │   │   │   ├── public_orders.py
+│   │   │   │   └── public_pickup.py
+│   │   │   ├── schemas
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── auth.py
+│   │   │   │   ├── common.py
+│   │   │   │   ├── credit.py
+│   │   │   │   ├── dev_admin.py
+│   │   │   │   ├── domain_events.py
+│   │   │   │   ├── internal.py
+│   │   │   │   ├── kiosk.py
+│   │   │   │   ├── locker.py
+│   │   │   │   ├── notification.py
+│   │   │   │   ├── order.py
+│   │   │   │   ├── orders.py
+│   │   │   │   ├── pickup.py
+│   │   │   │   ├── public_auth.py
+│   │   │   │   ├── public_me.py
+│   │   │   │   ├── public_orders.py
+│   │   │   │   ├── public_pickup.py
+│   │   │   │   └── user.py
+│   │   │   ├── services
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── antifraud_kiosk.py
+│   │   │   │   ├── auth_service.py
+│   │   │   │   ├── backend_client.py
+│   │   │   │   ├── capability_constraint_service.py
+│   │   │   │   ├── credits_service.py
+│   │   │   │   ├── domain_event_outbox_service.py
+│   │   │   │   ├── email_adapter_service.py
+│   │   │   │   ├── email_notification_service.py
+│   │   │   │   ├── email_service.py
+│   │   │   │   ├── expiry_job.py
+│   │   │   │   ├── fiscal_invoice_service.py
+│   │   │   │   ├── lifecycle_domain_event_client.py
+│   │   │   │   ├── lifecycle_integration.py
+│   │   │   │   ├── locker_client.py
+│   │   │   │   ├── locker_service.py
+│   │   │   │   ├── notification_dispatch_service.py
+│   │   │   │   ├── notification_service.py
+│   │   │   │   ├── order_creation_service.py
+│   │   │   │   ├── orders_service.py
+│   │   │   │   ├── payment_capability_service.py
+│   │   │   │   ├── payment_confirm_service.py
+│   │   │   │   ├── payment_resolution_service.py
+│   │   │   │   ├── pickup_event_publisher.py
+│   │   │   │   ├── pickup_payment_fulfillment_service.py
+│   │   │   │   ├── pickup_qr_service.py
+│   │   │   │   ├── pickup_service.py
+│   │   │   │   ├── public_order_service.py
+│   │   │   │   └── request_normalizer_service.py
+│   │   │   ├── templates
+│   │   │   │   └── email
+│   │   │   │       ├── order_created.html
+│   │   │   │       ├── payment_confirmed.html
+│   │   │   │       └── pickup_ready.html
+│   │   │   └── workers
+│   │   │       ├── domain_event_outbox_worker.py
+│   │   │       ├── notification_delivery_worker.py
+│   │   │       └── notification_worker.py
+│   │   └── sql
+│   ├── payment_gateway
+│   │   ├── Dockerfile
+│   │   ├── __init__.py
+│   │   ├── app
+│   │   │   ├── __init__.py
+│   │   │   ├── api
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── routers
+│   │   │   │   │   └── __init__.py
+│   │   │   │   └── schemas
+│   │   │   │       └── __init__.py
+│   │   │   ├── audit
+│   │   │   │   └── __init__.py
+│   │   │   ├── core
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── antifraud_snapshot.py
+│   │   │   │   ├── antifraud_snapshot_verify.py
+│   │   │   │   ├── config.py
+│   │   │   │   ├── event_log.py
+│   │   │   │   ├── event_types.py
+│   │   │   │   ├── hashing.py
+│   │   │   │   ├── locker_registry.py
+│   │   │   │   ├── policies.py
+│   │   │   │   ├── risk_engine.py
+│   │   │   │   ├── runtime_client.py
+│   │   │   │   └── version.py
+│   │   │   ├── domain
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── entities
+│   │   │   │   │   └── __init__.py
+│   │   │   │   └── services
+│   │   │   │       └── __init__.py
+│   │   │   ├── infrastructure
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── db
+│   │   │   │   │   └── __init__.py
+│   │   │   │   └── secrets
+│   │   │   │       └── __init__.py
+│   │   │   ├── integrations
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── payments
+│   │   │   │       ├── __init__.py
+│   │   │   │       ├── mercadopago
+│   │   │   │       └── stripe
+│   │   │   ├── main.py
+│   │   │   ├── models
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── gateway_response_model.py
+│   │   │   │   └── payment_model.py
+│   │   │   ├── observability
+│   │   │   │   └── __init__.py
+│   │   │   ├── routers
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── audit.py
+│   │   │   │   ├── audit_log.py
+│   │   │   │   ├── audit_snapshot.py
+│   │   │   │   ├── lockers.py
+│   │   │   │   ├── payment.py
+│   │   │   │   └── risk.py
+│   │   │   └── services
+│   │   │       ├── __init__.py
+│   │   │       ├── antifraud_service.py
+│   │   │       ├── device_registry_service.py
+│   │   │       ├── idempotency_service.py
+│   │   │       ├── locker_backend_client.py
+│   │   │       ├── payment_service.py
+│   │   │       ├── postgres_capability_service.py
+│   │   │       ├── risk_events_service.py
+│   │   │       └── sqlite_service.py
+│   │   └── sql
+│   ├── platform_core
+│   │   ├── __init__.py
+│   │   └── app
+│   │       ├── __init__.py
+│   │       ├── api
+│   │       │   ├── __init__.py
+│   │       │   ├── routers
+│   │       │   │   ├── __init__.py
+│   │       │   │   ├── health.py
+│   │       │   │   └── tenants.py
+│   │       │   └── schemas
+│   │       │       ├── __init__.py
+│   │       │       └── tenant.py
+│   │       ├── audit
+│   │       │   └── __init__.py
+│   │       ├── core
+│   │       │   ├── __init__.py
+│   │       │   ├── config.py
+│   │       │   ├── logging.py
+│   │       │   └── middleware.py
+│   │       ├── domain
+│   │       │   ├── __init__.py
+│   │       │   ├── iam
+│   │       │   │   └── __init__.py
+│   │       │   ├── licensing
+│   │       │   │   └── __init__.py
+│   │       │   ├── partners
+│   │       │   │   └── __init__.py
+│   │       │   └── tenants
+│   │       │       ├── __init__.py
+│   │       │       └── models.py
+│   │       ├── infrastructure
+│   │       │   ├── __init__.py
+│   │       │   └── db
+│   │       │       └── __init__.py
+│   │       ├── main.py
+│   │       └── observability
+│   │           └── __init__.py
+│   ├── shared_kernel
+│   │   ├── __init__.py
+│   │   ├── audit
+│   │   │   ├── __init__.py
+│   │   │   ├── audit_chain.py
+│   │   │   └── audit_context.py
+│   │   ├── auth
+│   │   │   └── __init__.py
+│   │   ├── compliance
+│   │   │   └── __init__.py
+│   │   ├── idempotency
+│   │   │   ├── __init__.py
+│   │   │   ├── keys.py
+│   │   │   └── store.py
+│   │   ├── observability
+│   │   │   ├── __init__.py
+│   │   │   ├── correlation_id.py
+│   │   │   └── request_id.py
+│   │   └── security
+│   │       ├── __init__.py
+│   │       ├── secret_redaction.py
+│   │       └── webhook_signatures.py
+│   └── simulator
+│       ├── Dockerfile
+│       ├── __init__.py
+│       ├── app
+│       │   ├── __init__.py
+│       │   └── main.py
+│       ├── carriers
+│       │   ├── __init__.py
+│       │   └── tracking_fixtures.py
+│       ├── channels
+│       │   ├── __init__.py
+│       │   └── order_fixtures.py
+│       └── payment_providers
+│           ├── __init__.py
+│           └── webhook_fixtures.py
+├── 02_docker
+│   ├── 02_docker
+│   │   └── postgres_central
+│   │       └── init
+│   ├── configs
+│   ├── docker-compose.yml
+│   ├── docker-compose.yml.save
+│   └── postgres_central
+│       └── init
+│           └── reset_db.sh
+├── 03_data
+│   ├── mqtt
+│   ├── postgres_central  [error opening dir]
+│   ├── postgres_pt
+│   ├── postgres_sp
+│   ├── redis_central
+│   │   └── dump.rdb
+│   ├── redis_pt
+│   │   └── dump.rdb
+│   ├── redis_sp
+│   │   └── dump.rdb
+│   └── sqlite
+│       ├── gateway
+│       │   ├── events.db
+│       │   ├── events.db.backup_20260315
+│       │   └── events.db.com_dados
+│       ├── order_pickup
+│       │   ├── orders - Copia.db:Zone.Identifier
+│       │   ├── orders.db
+│       │   ├── orders.db.backup_20260315
+│       │   ├── orders.db.backup_before_orders_user_id_integer
+│       │   ├── orders.db.backup_completo
+│       │   └── orders.db.com_dados
+│       └── runtime
+│           ├── events.db
+│           ├── events.db-shm
+│           └── events.db-wal
+├── 04_logs
+│   ├── antifraud
+│   ├── backend
+│   ├── gateway
+│   │   └── snapshots
+│   └── simulator
+├── 05_backups
+│   ├── daily
+│   │   ├── antifraud
+│   │   └── gateway
+│   └── weekly
+├── 06_exports
+│   ├── dashboards
+│   └── reports
+├── 07_tests
+│   ├── load
+│   └── stress
+├── bootstrap_safe.sh
+├── bootstrap_safe.sh:Zone.Identifier
+├── docs
+│   └── architecture
+├── migration_logs
+│   ├── run_20260310_105140
+│   │   └── tree_diff.patch
+│   ├── run_20260310_105306
+│   │   └── tree_diff.patch
+│   └── run_20260311_134925
+│       └── tree_diff.patch
+├── minha_chave
+├── minha_chave.pub
+└── secrets
+
+207 directories, 458 files

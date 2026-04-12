@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models.capability import (
@@ -122,9 +123,15 @@ def get_payment_capabilities(
         .join(CapabilityProfile.context)
         .filter(
             CapabilityProfile.is_active.is_(True),
-            CapabilityProfile.region.has(code=region),
-            CapabilityProfile.channel.has(code=channel),
-            CapabilityProfile.context.has(code=context),
+            # CapabilityProfile.region.has(code=region),
+            # CapabilityProfile.channel.has(code=channel),
+            # CapabilityProfile.context.has(code=context),
+            # func.lower(CapabilityProfile.region.has().property.mapper.class_.code) == region.lower(),
+            # func.lower(CapabilityProfile.channel.has().property.mapper.class_.code) == channel.lower(),
+            # func.lower(CapabilityProfile.context.has().property.mapper.class_.code) == context.lower(),
+            func.lower(CapabilityProfile.region.property.mapper.class_.code) == region.lower(),
+            func.lower(CapabilityProfile.channel.property.mapper.class_.code) == channel.lower(),
+            func.lower(CapabilityProfile.context.property.mapper.class_.code) == context.lower(),
         )
         .order_by(CapabilityProfile.priority.asc(), CapabilityProfile.id.asc())
         .first()

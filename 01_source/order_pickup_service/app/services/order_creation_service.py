@@ -90,10 +90,10 @@ REGION_LIMITS = {
 }
 
 ONLINE_CAPABILITY_CONTEXT_CANDIDATES = (
-    "ORDER_CREATION",
-    "ONLINE_ORDER_CREATION",
-    "ONLINE_CHECKOUT",
-    "CHECKOUT",
+    "checkout",
+    "order_creation",
+    "online_checkout",
+    "online_order_creation",
 )
 
 logger = logging.getLogger(__name__)
@@ -125,6 +125,37 @@ def get_region_base(region: str) -> str:
     return region_upper
 
 
+def _coerce_positive_int(value: object, *, field_name: str) -> int:
+    if isinstance(value, dict):
+        value = value.get("value")
+
+    try:
+        normalized = int(value)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "INVALID_RUNTIME_PRECONDITION",
+                "message": f"{field_name} inválido para chamada ao runtime.",
+                "field": field_name,
+                "raw_value": value,
+            },
+        ) from exc
+
+    if normalized <= 0:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "INVALID_RUNTIME_PRECONDITION",
+                "message": f"{field_name} deve ser maior que zero.",
+                "field": field_name,
+                "raw_value": value,
+            },
+        )
+
+    return normalized
+
+
 def resolve_online_prepayment_ttl_sec(
     *,
     db: Session,
@@ -132,40 +163,19 @@ def resolve_online_prepayment_ttl_sec(
     payment_method: str,
     amount_cents: Optional[int] = None,
 ) -> int:
-    """Resolve TTL com base na região, método e valor"""
-    # ttl_sec = resolve_prepayment_timeout_seconds(
-    #     region_code=region,
-    #     order_channel=OrderChannel.ONLINE.value,
-    #     payment_method=payment_method,
-    # )
-    # talvez seja necessário corrigir para:
-    # ttl_sec = capabilities["constraints"].get("prepayment_timeout_sec")
-    # 01_source/order_pickup_service/app/routers/kiosk.py
-
-    # ttl_sec = get_capability_constraint(
-    #     db=db,
-    #     region=region,
-    #     channel=OrderChannel.ONLINE.value,
-    #     context="CHECKOUT",  # ou seu contexto correto
-    #     code="prepayment_timeout_sec",
-    # )  
-    # abaixo foi uma correção baseada em kiosk.py - def kiosk_create_order() - acima foi comentado
     ttl_raw = get_capability_constraint(
         db=db,
         region=region,
-        channel=OrderChannel.ONLINE.value,
-        context="CHECKOUT",  # ou seu contexto correto
+        channel="online",
+        context="checkout",
         code="prepayment_timeout_sec",
     )
 
-    # ttl_sec = int(ttl_raw["value"])
     if isinstance(ttl_raw, dict):
         ttl_sec = int(ttl_raw.get("value"))
     else:
         ttl_sec = int(ttl_raw)
 
-    
-    # Ajuste baseado no valor para métodos específicos
     if amount_cents and payment_method in {"boleto", "bank_transfer"}:
         if amount_cents >= 50000:
             ttl_sec = max(ttl_sec, 48 * 60 * 60) # 2 dias = 48 h
@@ -179,7 +189,7 @@ def resolve_online_prepayment_ttl_sec(
                 "type": "ONLINE_PAYMENT_TTL_POLICY_INVALID",
                 "message": "O TTL configurado deve ser maior que zero.",
                 "region": region,
-                "channel": OrderChannel.ONLINE.value,
+                "channel": "online",
                 "payment_method": payment_method,
                 "ttl_value": ttl_sec,
             },
@@ -685,8 +695,8 @@ def create_order_core(
         db=db,
         locker_id=totem_id,
         region=region,
-        channel=OrderChannel.ONLINE.value,
-        payment_method=resolved_payment["payment_method"],  # ❌ STRING - marcos isso pode ser um erro aqui
+        channel="online",
+        payment_method=resolved_payment["payment_method"],
         payment_interface=resolved_payment["payment_interface"],
     )
 
@@ -772,11 +782,14 @@ def create_order_core(
     # =========================
     # 6. TTL
     # =========================
-    alloc_ttl_sec = resolve_online_prepayment_ttl_sec(
-        db=db,
-        region=region,
-        payment_method=payment_method.value,
-        amount_cents=amount_cents,
+    alloc_ttl_sec = _coerce_positive_int(
+        resolve_online_prepayment_ttl_sec(
+            db=db,
+            region=region,
+            payment_method=payment_method.value,
+            amount_cents=amount_cents,
+        ),
+        field_name="alloc_ttl_sec",
     )
 
     # =========================
