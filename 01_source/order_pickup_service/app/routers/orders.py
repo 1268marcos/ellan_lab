@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/routers/orders.py
 # Router: /orders (ONLINE)
 # Aqui faz pedido ONLINE
+# 13/04/2026 - inclusão da função def resolve_operational_status()
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -13,7 +14,46 @@ from app.models.pickup import Pickup
 from app.schemas.orders import CreateOrderIn, OrderListItemOut, OrderListOut, OrderOut
 from app.services.order_creation_service import create_order_core
 
+from datetime import datetime
+from datetime import timezone
+
+from app.services import backend_client
+
+
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+
+def resolve_operational_status(order: Order, allocation: Allocation | None) -> str:
+    
+    if order.status == OrderStatus.FAILED:
+        return "FAILED"
+
+    # 🔥 sem allocation → expirado
+    if not allocation:
+        return "EXPIRED"
+
+    # 🔥 runtime
+    try:
+        state = backend_client.get_allocation_state(
+            allocation.id,
+            locker_id=order.totem_id
+        )
+    except Exception:
+        return "UNKNOWN"
+
+    if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+        return "EXPIRED"
+
+    # 🔥 deadline
+    if order.pickup_deadline_at:
+        if order.pickup_deadline_at < datetime.now(timezone.utc):
+            return "EXPIRED"
+
+    return order.status.value
+
+
+
+
 
 
 @router.post("", response_model=OrderOut)
@@ -149,7 +189,8 @@ def list_orders(
                 user_id=normalized_user_id,
                 region=order.region,
                 channel=order.channel.value,
-                status=order.status.value,
+                # status=order.status.value,
+                status=resolve_operational_status(order, allocation),
                 sku_id=order.sku_id,
                 totem_id=order.totem_id,
                 locker_id=allocation.locker_id if allocation and allocation.locker_id else order.totem_id,

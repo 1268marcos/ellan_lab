@@ -1,0 +1,1 @@
+ALTER TYPE orderstatus ADD VALUE 'FAILED';

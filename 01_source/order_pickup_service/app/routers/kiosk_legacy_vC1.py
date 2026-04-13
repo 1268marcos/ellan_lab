@@ -14,7 +14,6 @@
 # requires_confirmation → aguardar webhook / confirmação real. Isso é o correto
 # 09/04/2026 - ADICIONADO SUPORTE A ATTEMPT (NÚMERO DE TENTATIVAS)
 # 10/04/2026 - FIX CRÍTICO — PERSISTIR ALOCAÇÃO NO ORDER
-# 13/04/2026 - CORREÇÃO FINAL — ORDEM DAS OPERAÇÕES (fulfill → deadline → confirmação)
 
 from __future__ import annotations
 
@@ -66,7 +65,6 @@ from app.services.capability_constraint_service import get_capability_constraint
 
 
 router = APIRouter(prefix="/kiosk", tags=["kiosk"])
-
 logger = logging.getLogger(__name__)
 
 
@@ -376,15 +374,11 @@ def kiosk_create_order(
         code="prepayment_timeout_sec",
     )
 
-    # 🔥 CORREÇÃO: TTL SEGURO com valor maior para desenvolvimento
+    # ttl_sec = int(ttl_raw["value"])
     if isinstance(ttl_raw, dict):
-        ttl_value = ttl_raw.get("value")
+        ttl_sec = int(ttl_raw.get("value"))
     else:
-        ttl_value = ttl_raw
-
-    ttl_sec = int(ttl_value) if ttl_value not in (None, "", 0, "0") else 1800 # (30 min) antes 120 (2 min)
-
-    logger.info(f"Using TTL of {ttl_sec} seconds for allocation")
+        ttl_sec = int(ttl_raw)
 
     alloc = backend_client.locker_allocate(
         payload.region.value,
@@ -492,24 +486,7 @@ def kiosk_create_order(
         message="Pedido criado com sucesso",
     )
 
-
-
-# =============================================================
-# FIX: _finalize_kiosk_payment — kiosk.py
-# Data: 2026-04-13
-# Bugs corrigidos:
-#   1. order.status = OrderStatus.FAILED quebrava db.flush() porque
-#      'FAILED' não existia no enum orderstatus do PostgreSQL.
-#      → Solução: rodar migration_add_failed_to_orderstatus.sql
-#        E remover db.flush() do bloco de realloc_error (flush dentro
-#        de except gera sessão suja mesmo com enum correto).
-#   2. except Exception as state_error engolia a exceção (inclusive
-#      HTTPException do bloco interno) e continuava execução com
-#      sessão SQLAlchemy em estado de rollback pendente.
-#      → Solução: re-raise HTTPException explicitamente;
-#        para outros erros, db.rollback() + re-raise.
-# =============================================================
-
+# novo
 def _finalize_kiosk_payment(
     *,
     order: Order,
@@ -530,7 +507,7 @@ def _finalize_kiosk_payment(
             detail={"type": "ALLOCATION_NOT_FOUND", "order_id": order.id},
         )
 
-    # fluxo real: só prossegue se já aprovado financeiramente
+    # 🔥 fluxo real
     if not allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
         raise HTTPException(
             status_code=400,
@@ -541,126 +518,14 @@ def _finalize_kiosk_payment(
             },
         )
 
-    # -----------------------------------------------------------------
-    # Verifica estado da alocação no backend ANTES do fulfillment
-    # FIX: separa except HTTPException do except genérico para não
-    #      engolir erros reais. db.rollback() antes de re-raise garante
-    #      sessão limpa para quem chamar acima.
-    # -----------------------------------------------------------------
-    try:
-        state = backend_client.get_allocation_state(
-            allocation.id,
-            locker_id=order.totem_id
-        )
-
-        logger.info(f"Allocation state check: {state} for allocation {allocation.id}")
-
-        if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
-            logger.warning(f"Allocation lost, attempting reallocation for order {order.id}")
-
-            try:
-                request_id = str(uuid.uuid4())
-                new_alloc = backend_client.locker_allocate(
-                    order.region,
-                    order.sku_id,
-                    ttl_sec=900,  # 15 minutos
-                    request_id=request_id,
-                    desired_slot=int(allocation.slot),
-                    locker_id=order.totem_id,
-                )
-
-                # Atualiza alocação no banco — flush só aqui (sem erros pendentes)
-                allocation.id = new_alloc["allocation_id"]
-                allocation.state = AllocationState.RESERVED_PENDING_PAYMENT
-                db.flush()
-
-                logger.info(f"Successfully reallocated same slot {allocation.slot} for order {order.id}")
-
-            except Exception as realloc_error:
-                logger.error(f"Failed to reallocate slot for order {order.id}: {realloc_error}")
-
-                # FIX 1: NÃO chamar db.flush() aqui — sessão pode estar suja.
-                # FIX 2: NÃO setar order.status = OrderStatus.FAILED antes da
-                #         migration_add_failed_to_orderstatus.sql ser aplicada.
-                #         Após a migration, pode reabilitar a linha abaixo se quiser:
-                #
-                #   order.status = OrderStatus.FAILED
-                #
-                # Por ora, rollback limpa a sessão antes de lançar a HTTPException.
-                db.rollback()
-
-                raise HTTPException(
-                    status_code=409,
-                    detail={
-                        "type": "ALLOCATION_LOST_CANNOT_REALLOCATE",
-                        "order_id": order.id,
-                        "allocation_id": allocation.id,
-                        "slot": allocation.slot,
-                        "message": "A gaveta não está mais disponível e não foi possível realocar. Por favor, crie um novo pedido.",
-                    }
-                )
-
-    except HTTPException:
-        # FIX: re-raise HTTPException gerada dentro do bloco acima.
-        # O except genérico abaixo NÃO deve capturá-la.
-        raise
-
-    except Exception as state_error:
-        # Erro de comunicação com o serviço de estado (rede, timeout, etc.)
-        # FIX: db.rollback() garante sessão limpa; re-raise para não
-        #      continuar com sessão em estado indeterminado.
-        logger.error(f"Error checking allocation state: {state_error}")
-        db.rollback()
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "type": "ALLOCATION_STATE_CHECK_FAILED",
-                "order_id": order.id,
-                "message": "Não foi possível verificar o estado da gaveta. Tente novamente.",
-                "error": str(state_error),
-            }
-        )
-
-    # -----------------------------------------------------------------
-    # fulfillment PRIMEIRO (abre gaveta, cria pickup)
-    # -----------------------------------------------------------------
-    try:
-        fulfill_result = fulfill_payment_post_approval(
-            db=db,
-            order=order,
-            allocation=allocation,
-        )
-    except RuntimeError as e:
-        error_dict = e.args[0] if e.args else {}
-        if error_dict.get('type') == 'ALLOCATION_LOST':
-            logger.error(f"Allocation lost during fulfillment: {error_dict}")
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": "ALLOCATION_LOST",
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                    "message": "A reserva da gaveta expirou. Por favor, crie um novo pedido.",
-                }
-            )
-        raise
-
-    # -----------------------------------------------------------------
-    # Cancela deadline DEPOIS do fulfill
-    # -----------------------------------------------------------------
-    try:
-        cancel_prepayment_timeout_deadline(
-            order_id=order.id,
-            reason="payment_confirmed" if not allow_force_confirm else "payment_simulated_confirmed",
-            metadata={"source": source},
-        )
-    except Exception:
-        logger.exception("FAILED_CANCEL_TIMEOUT")
-        # Não interrompe fluxo — fulfillment já foi confirmado
-
-    # -----------------------------------------------------------------
-    # Confirmação financeira por último (apenas no modo simulação)
-    # -----------------------------------------------------------------
+    # 🔥 fluxo simulado
+    # if allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
+    #     order.payment_status = PaymentStatus.APPROVED
+    # 
+    #     if hasattr(OrderStatus, "PAID"):
+    #         order.status = OrderStatus.PAID
+    # 
+    #     db.flush()
     if allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
         apply_payment_confirmation(
             db=db,
@@ -672,9 +537,26 @@ def _finalize_kiosk_payment(
             source="simulation",
         )
 
-    # -----------------------------------------------------------------
-    # Pickup (upsert)
-    # -----------------------------------------------------------------
+
+    # 🔥 cancelar deadline
+    try:
+        cancel_prepayment_timeout_deadline(
+            order_id=order.id,
+            reason="payment_confirmed" if not allow_force_confirm else "payment_simulated_confirmed",
+            metadata={"source": source},
+        )
+    except Exception as e:
+        logger.exception("FAILED_CANCEL_TIMEOUT")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "FAILED_CANCEL_TIMEOUT",
+                "order_id": order.id,
+                "error": str(e),
+            },
+        )
+
+    # 🔥 pickup
     existing_pickup = (
         db.query(Pickup)
         .filter(Pickup.order_id == order.id)
@@ -706,9 +588,7 @@ def _finalize_kiosk_payment(
         db.add(pickup)
         db.flush()
 
-    # -----------------------------------------------------------------
-    # Attempt fiscal
-    # -----------------------------------------------------------------
+    # 🔥 attempt
     existing_fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
@@ -727,12 +607,12 @@ def _finalize_kiosk_payment(
         order=order,
         allocation=allocation,
         pickup=pickup,
-        amount_cents=order.amount_cents,
+        amount_cents=order.amount_cents, # novo
         currency=order.currency or "BRL",
         source=source,
-        transaction_id=order.gateway_transaction_id,
-        skip_locker_commit=True,
-        attempt=attempt,
+        transaction_id=order.gateway_transaction_id, # novo
+        skip_locker_commit=True,  # já feito antes novo
+        attempt=attempt, # novo
     )
 
     fiscal = financial["fiscal"]
@@ -743,6 +623,7 @@ def _finalize_kiosk_payment(
             detail={"type": "FISCAL_MISSING", "order_id": order.id},
         )
 
+    # tenta reaproveitar o fiscal persistido mais recente
     existing_fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
@@ -752,6 +633,18 @@ def _finalize_kiosk_payment(
 
     if not fiscal.get("receipt_code") and existing_fiscal and existing_fiscal.receipt_code:
         fiscal["receipt_code"] = existing_fiscal.receipt_code
+
+    # fallback final só para ambiente simulado/dev
+    # if not fiscal.get("receipt_code"):
+    #     fiscal["receipt_code"] = f"SIM-{order.id[:8].upper()}"
+
+
+    # 🔥 fulfillment
+    fulfill_payment_post_approval(
+        db=db,
+        order=order,
+        allocation=allocation,
+    )
 
     db.commit()
     db.refresh(order)
@@ -835,7 +728,25 @@ def kiosk_payment_simulate_approved(
             detail={"type": "ORDER_NOT_FOUND", "order_id": order_id},
         )
 
-    # 🔥 seguir fluxo normal (sem duplicar cancel_prepayment_timeout_deadline)
+    # 🔥 2. cancelar timeout DEPOIS de garantir que order existe
+    try:
+        cancel_prepayment_timeout_deadline(
+            order_id=order.id,
+            reason="payment_simulated_confirmed",
+            metadata={"source": "simulate_endpoint"},
+        )
+    except Exception as e:
+        logger.exception("FAILED_CANCEL_TIMEOUT")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "FAILED_CANCEL_TIMEOUT",
+                "order_id": order.id,
+                "error": str(e),
+            },
+        )
+
+    # 🔥 3. seguir fluxo normal
     return _finalize_kiosk_payment(
         order=order,
         db=db,
@@ -843,3 +754,15 @@ def kiosk_payment_simulate_approved(
         allow_force_confirm=True,
     )
 
+
+
+
+"""
+09/04/2026
+
+✅ Adicionada função _extract_attempt_from_fiscal para extrair tentativa
+
+✅ No endpoint kiosk_payment_approved, busca documento fiscal existente e incrementa attempt
+
+✅ Passado attempt para confirm_payment_and_emit_event
+"""

@@ -1,7 +1,7 @@
 # 01_source/order_pickup_service/app/services/pickup_payment_fulfillment_service.py
 # 02/04/2026 - Enhanced Version with Asia, Middle East, Eastern Europe & Oceania Support
 # veja fim do arquivo
-# 13/04/2026 - FIX: BLOQUEAR REALLOCATE NO FLUXO KIOSK (409 error agora causa falha controlada)
+# 13/04/2026
 
 from __future__ import annotations
 
@@ -921,7 +921,7 @@ def fulfill_payment_post_approval(
             ),
         }
 
-    # 🔥 FLUXO KIOSK - CORRIGIDO: BLOQUEAR REALLOCATE
+    # Fluxo KIOSK
     order.pickup_deadline_at = None
     order.status = OrderStatus.DISPENSED
 
@@ -973,36 +973,82 @@ def fulfill_payment_post_approval(
     except requests.HTTPError as e:
         status = getattr(e.response, "status_code", None)
 
-        # 🔥 FIX CRÍTICO: KIOSK NÃO PODE REALLOCATE
-        # Se houver conflito (409), falha controlada em vez de tentar realocar
         if status == 409:
-            # Registra o erro para debugging
-            logger.error(
-                "KIOSK_COMMIT_CONFLICT",
-                extra={
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                    "region": order.region,
-                    "locker_id": order.totem_id,
-                    "slot": allocation.slot,
-                }
+
+            original_slot = allocation.slot
+
+            allocation = _reallocate_if_needed(
+                db, 
+                order=order, 
+                allocation=allocation,
+                region_config=region_config
             )
-            
-            # Marca o pedido como falho
-            order.status = OrderStatus.FAILED
-            db.flush()
-            
-            # Levanta exceção controlada
-            raise RuntimeError(
-                {
-                    "type": "KIOSK_COMMIT_CONFLICT",
-                    "message": "A reserva da gaveta não pôde ser confirmada no KIOSK.",
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                    "region": order.region,
-                    "locker_id": order.totem_id,
-                }
-            )
+            allocation.mark_opened_for_pickup()
+
+            try:
+
+                state = backend_client.get_allocation_state(
+                    allocation.id,
+                    locker_id=order.totem_id
+                )
+
+                if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+                    try:
+                        backend_client.locker_release(
+                            order.region,
+                            allocation.id,
+                            locker_id=order.totem_id,
+                        )
+                    except Exception:
+                        pass  # runtime já pode ter perdido mesmo
+
+                    order.status = OrderStatus.FAILED
+
+                    raise RuntimeError({
+                        "type": "ALLOCATION_LOST",
+                        "message": "A gaveta não está mais disponível para este pedido.",
+                        "allocation_id": allocation.id,
+                        "state": state,
+                        "locker_id": order.totem_id,
+                        "order_id": order.id,
+                    })
+
+                if state != "ALLOCATED":
+                    raise RuntimeError({
+                        "type": "INVALID_ALLOCATION_STATE",
+                        "state": state,
+                        "allocation_id": allocation.id,
+                        "order_id": order.id,
+                    })
+
+                backend_client.locker_commit(
+                    order.region,
+                    allocation.id,
+                    None,
+                    locker_id=order.totem_id,
+                )
+            except requests.HTTPError as e2:
+                status2 = getattr(e2.response, "status_code", None)
+
+                backend_detail = None
+                if e2.response is not None:
+                    try:
+                        backend_detail = e2.response.json()
+                    except Exception:
+                        backend_detail = e2.response.text
+
+                raise RuntimeError(
+                    {
+                        "type": "COMMIT_AFTER_REALLOCATE_FAILED",
+                        "message": "A gaveta foi realocada no fluxo KIOSK, mas o commit final falhou.",
+                        "order_id": order.id,
+                        "allocation_id": allocation.id,
+                        "region": order.region,
+                        "locker_id": order.totem_id,
+                        "backend_status": status2,
+                        "backend_detail": backend_detail,
+                    }
+                )
         else:
             backend_detail = None
             if e.response is not None:
@@ -1189,10 +1235,4 @@ Canais de notificação extensíveis
 
 Suporte a novos formatos de QR code
 
-9. CORREÇÃO 13/04/2026 - BLOQUEAR REALLOCATE NO KIOSK
-Quando ocorre erro 409 (conflito) no fluxo KIOSK:
-- Não tenta realocar a gaveta
-- Marca o pedido como FAILED
-- Levanta exceção controlada KIOSK_COMMIT_CONFLICT
-- Evita corrupção de estado operacional
 """

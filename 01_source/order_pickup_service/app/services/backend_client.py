@@ -141,7 +141,7 @@ def locker_allocate(
             error_body = response.text
 
         raise Exception({
-            "error": "runtime_allocate_failed",
+            "error": "runtime_failed_locker_allocate",
             "status_code": response.status_code,
             "body": error_body
         })
@@ -328,3 +328,45 @@ def locker_set_state(
         })
 
     return response.json()
+
+
+def get_allocation_state(
+    allocation_id: str,
+    locker_id: str | None = None,
+) -> str:
+    normalized_locker_id = _normalize_locker_id(locker_id)
+    if not normalized_locker_id:
+        raise ValueError("locker_id is required for allocation state")
+
+    normalized_allocation_id = str(allocation_id or "").strip()
+    if not normalized_allocation_id:
+        raise ValueError("allocation_id is required")
+
+    url = f"{_runtime_base()}/locker/allocations/{normalized_allocation_id}"
+
+    response = requests.get(
+        url,
+        headers=_headers_for_internal_request(normalized_locker_id),
+        timeout=settings.backend_client_timeout_sec,
+    )
+
+    if response.status_code == 404:
+        return "NOT_FOUND"
+
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_get_allocation_state",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
+    data = response.json()
+
+    return data.get("state")
+
+

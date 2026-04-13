@@ -776,6 +776,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         sku_id: selectedCatalogItem.sku_id,
         desired_slot: selectedCatalogItem.slot,
         payment_method: paymentMethod,
+        amount_cents: selectedCatalogItem.amount_cents,
         customer_phone: paymentExtras.customerPhone || null,
       };
 

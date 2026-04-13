@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict iLSqmRsZCTetn7WqvVaiAS5h0WbgLkCMUSlAWSZIhJQ42O3iuX4lK3scBuWky78
+\restrict jU7r200rxCM2EwT6e4dS4hqIa8b6Q7XkdkQ9xbclHn4hK7t7ohK1hDm9aa5Y5LO
 
 -- Dumped from database version 15.17 (Debian 15.17-1.pgdg13+1)
 -- Dumped by pg_dump version 15.17 (Debian 15.17-1.pgdg13+1)
@@ -160,7 +160,8 @@ CREATE TYPE public.orderstatus AS ENUM (
     'EXPIRED_CREDIT_50',
     'EXPIRED',
     'CANCELLED',
-    'REFUNDED'
+    'REFUNDED',
+    'FAILED'
 );
 
 
@@ -329,6 +330,22 @@ $$;
 
 
 ALTER FUNCTION public.get_latest_fiscal_attempt(p_order_id text) OWNER TO admin;
+
+--
+-- Name: set_row_updated_at(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.set_row_updated_at() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = now();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.set_row_updated_at() OWNER TO admin;
 
 SET default_tablespace = '';
 
@@ -990,6 +1007,23 @@ CREATE TABLE public.data_deletion_requests (
 ALTER TABLE public.data_deletion_requests OWNER TO admin;
 
 --
+-- Name: device_registry; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.device_registry (
+    device_hash text NOT NULL,
+    version text NOT NULL,
+    first_seen_at bigint NOT NULL,
+    last_seen_at bigint NOT NULL,
+    seen_count integer DEFAULT 1 NOT NULL,
+    flags_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT ck_device_registry_seen_count_positive CHECK ((seen_count >= 1))
+);
+
+
+ALTER TABLE public.device_registry OWNER TO admin;
+
+--
 -- Name: domain_event_outbox; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -1114,6 +1148,24 @@ CREATE TABLE public.fiscal_documents (
 
 
 ALTER TABLE public.fiscal_documents OWNER TO admin;
+
+--
+-- Name: idempotency_keys; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.idempotency_keys (
+    id text NOT NULL,
+    endpoint text NOT NULL,
+    idem_key text NOT NULL,
+    payload_hash text NOT NULL,
+    response_blob text NOT NULL,
+    status text NOT NULL,
+    created_at bigint NOT NULL,
+    expires_at bigint NOT NULL
+);
+
+
+ALTER TABLE public.idempotency_keys OWNER TO admin;
 
 --
 -- Name: inbound_deliveries; Type: TABLE; Schema: public; Owner: admin
@@ -1669,6 +1721,80 @@ CREATE TABLE public.orders (
 ALTER TABLE public.orders OWNER TO admin;
 
 --
+-- Name: payment_gateway_device_registry; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_gateway_device_registry (
+    device_hash text NOT NULL,
+    version text NOT NULL,
+    first_seen_at_epoch bigint NOT NULL,
+    last_seen_at_epoch bigint NOT NULL,
+    seen_count integer DEFAULT 1 NOT NULL,
+    region_code character varying(20),
+    locker_id character varying(120),
+    flags_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pg_gateway_device_seen_count_positive CHECK ((seen_count >= 1))
+);
+
+
+ALTER TABLE public.payment_gateway_device_registry OWNER TO admin;
+
+--
+-- Name: payment_gateway_idempotency_keys; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_gateway_idempotency_keys (
+    id text NOT NULL,
+    endpoint text NOT NULL,
+    idem_key text NOT NULL,
+    payload_hash text NOT NULL,
+    response_blob jsonb DEFAULT '{}'::jsonb NOT NULL,
+    status text NOT NULL,
+    region_code character varying(20),
+    sales_channel character varying(50),
+    request_fingerprint text,
+    created_at_epoch bigint NOT NULL,
+    expires_at_epoch bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pg_gateway_idem_expires_after_create CHECK ((expires_at_epoch >= created_at_epoch))
+);
+
+
+ALTER TABLE public.payment_gateway_idempotency_keys OWNER TO admin;
+
+--
+-- Name: payment_gateway_risk_events; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_gateway_risk_events (
+    id text NOT NULL,
+    request_id text NOT NULL,
+    event_type text NOT NULL,
+    decision text NOT NULL,
+    score integer NOT NULL,
+    policy_id text NOT NULL,
+    region_code character varying(20) NOT NULL,
+    locker_id character varying(120) NOT NULL,
+    slot integer NOT NULL,
+    audit_event_id text NOT NULL,
+    reasons_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    signals_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    metadata_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at_epoch bigint NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pg_gateway_risk_decision_values CHECK ((upper(decision) = ANY (ARRAY['ALLOW'::text, 'BLOCK'::text, 'CHALLENGE'::text]))),
+    CONSTRAINT ck_pg_gateway_risk_score_range CHECK (((score >= 0) AND (score <= 100))),
+    CONSTRAINT ck_pg_gateway_risk_slot_positive CHECK ((slot > 0))
+);
+
+
+ALTER TABLE public.payment_gateway_risk_events OWNER TO admin;
+
+--
 -- Name: payment_interface_catalog; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -2090,6 +2216,32 @@ CREATE TABLE public.rental_plans (
 
 
 ALTER TABLE public.rental_plans OWNER TO admin;
+
+--
+-- Name: risk_events; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.risk_events (
+    id text NOT NULL,
+    request_id text NOT NULL,
+    event_type text NOT NULL,
+    decision text NOT NULL,
+    score integer NOT NULL,
+    policy_id text NOT NULL,
+    region text NOT NULL,
+    locker_id text NOT NULL,
+    porta integer NOT NULL,
+    created_at bigint NOT NULL,
+    reasons_json jsonb DEFAULT '[]'::jsonb NOT NULL,
+    signals_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    audit_event_id text NOT NULL,
+    CONSTRAINT ck_decision_allowed_values CHECK ((upper(decision) = ANY (ARRAY['ALLOW'::text, 'BLOCK'::text, 'CHALLENGE'::text]))),
+    CONSTRAINT ck_risk_events_porta_positive CHECK ((porta > 0)),
+    CONSTRAINT ck_risk_events_score_range CHECK (((score >= 0) AND (score <= 100)))
+);
+
+
+ALTER TABLE public.risk_events OWNER TO admin;
 
 --
 -- Name: runtime_locker_features; Type: TABLE; Schema: public; Owner: admin
@@ -2663,6 +2815,14 @@ ALTER TABLE ONLY public.data_deletion_requests
 
 
 --
+-- Name: device_registry device_registry_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.device_registry
+    ADD CONSTRAINT device_registry_pkey PRIMARY KEY (device_hash);
+
+
+--
 -- Name: domain_event_outbox domain_event_outbox_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -2716,6 +2876,14 @@ ALTER TABLE ONLY public.fiscal_documents
 
 ALTER TABLE ONLY public.fiscal_documents
     ADD CONSTRAINT fiscal_documents_receipt_code_key UNIQUE (receipt_code);
+
+
+--
+-- Name: idempotency_keys idempotency_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.idempotency_keys
+    ADD CONSTRAINT idempotency_keys_pkey PRIMARY KEY (id);
 
 
 --
@@ -2855,6 +3023,30 @@ ALTER TABLE ONLY public.orders
 
 
 --
+-- Name: payment_gateway_device_registry payment_gateway_device_registry_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_gateway_device_registry
+    ADD CONSTRAINT payment_gateway_device_registry_pkey PRIMARY KEY (device_hash);
+
+
+--
+-- Name: payment_gateway_idempotency_keys payment_gateway_idempotency_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_gateway_idempotency_keys
+    ADD CONSTRAINT payment_gateway_idempotency_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: payment_gateway_risk_events payment_gateway_risk_events_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_gateway_risk_events
+    ADD CONSTRAINT payment_gateway_risk_events_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payment_interface_catalog payment_interface_catalog_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -2980,6 +3172,14 @@ ALTER TABLE ONLY public.rental_contracts
 
 ALTER TABLE ONLY public.rental_plans
     ADD CONSTRAINT rental_plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: risk_events risk_events_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.risk_events
+    ADD CONSTRAINT risk_events_pkey PRIMARY KEY (id);
 
 
 --
@@ -3840,6 +4040,13 @@ CREATE INDEX ix_deletion_req_user ON public.data_deletion_requests USING btree (
 
 
 --
+-- Name: ix_device_last_seen; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_device_last_seen ON public.device_registry USING btree (last_seen_at);
+
+
+--
 -- Name: ix_domain_events_aggregate_id; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -3879,6 +4086,13 @@ CREATE INDEX ix_fiscal_documents_chave_acesso ON public.fiscal_documents USING b
 --
 
 CREATE INDEX ix_fiscal_documents_tenant_id ON public.fiscal_documents USING btree (tenant_id);
+
+
+--
+-- Name: ix_idem_expires; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_idem_expires ON public.idempotency_keys USING btree (expires_at);
 
 
 --
@@ -4414,6 +4628,76 @@ CREATE INDEX ix_payment_tx_status ON public.payment_transactions USING btree (st
 
 
 --
+-- Name: ix_pg_gateway_device_last_seen_epoch; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_device_last_seen_epoch ON public.payment_gateway_device_registry USING btree (last_seen_at_epoch);
+
+
+--
+-- Name: ix_pg_gateway_device_region_locker; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_device_region_locker ON public.payment_gateway_device_registry USING btree (region_code, locker_id);
+
+
+--
+-- Name: ix_pg_gateway_idem_expires_epoch; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_idem_expires_epoch ON public.payment_gateway_idempotency_keys USING btree (expires_at_epoch);
+
+
+--
+-- Name: ix_pg_gateway_idem_region_channel; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_idem_region_channel ON public.payment_gateway_idempotency_keys USING btree (region_code, sales_channel);
+
+
+--
+-- Name: ix_pg_gateway_risk_created_at_epoch; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_created_at_epoch ON public.payment_gateway_risk_events USING btree (created_at_epoch);
+
+
+--
+-- Name: ix_pg_gateway_risk_decision; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_decision ON public.payment_gateway_risk_events USING btree (decision);
+
+
+--
+-- Name: ix_pg_gateway_risk_event_type; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_event_type ON public.payment_gateway_risk_events USING btree (event_type);
+
+
+--
+-- Name: ix_pg_gateway_risk_policy_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_policy_id ON public.payment_gateway_risk_events USING btree (policy_id);
+
+
+--
+-- Name: ix_pg_gateway_risk_region_locker_slot; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_region_locker_slot ON public.payment_gateway_risk_events USING btree (region_code, locker_id, slot);
+
+
+--
+-- Name: ix_pg_gateway_risk_request_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pg_gateway_risk_request_id ON public.payment_gateway_risk_events USING btree (request_id);
+
+
+--
 -- Name: ix_pickup_tokens_active; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4645,6 +4929,20 @@ CREATE INDEX ix_rental_status ON public.rental_contracts USING btree (status);
 
 
 --
+-- Name: ix_risk_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_risk_created_at ON public.risk_events USING btree (created_at);
+
+
+--
+-- Name: ix_risk_region_locker_porta; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_risk_region_locker_porta ON public.risk_events USING btree (region, locker_id, porta);
+
+
+--
 -- Name: ix_slot_cfg_dimensions; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4743,6 +5041,13 @@ CREATE UNIQUE INDEX ux_capability_profile_method_default_per_profile ON public.c
 
 
 --
+-- Name: ux_idem_endpoint_key; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ux_idem_endpoint_key ON public.idempotency_keys USING btree (endpoint, idem_key);
+
+
+--
 -- Name: ux_inbound_tracking; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4757,10 +5062,38 @@ CREATE UNIQUE INDEX ux_notification_logs_dedupe ON public.notification_logs USIN
 
 
 --
+-- Name: ux_pg_gateway_idem_endpoint_key; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ux_pg_gateway_idem_endpoint_key ON public.payment_gateway_idempotency_keys USING btree (endpoint, idem_key);
+
+
+--
 -- Name: ux_users_email; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE UNIQUE INDEX ux_users_email ON public.users USING btree (email) WHERE (anonymized_at IS NULL);
+
+
+--
+-- Name: payment_gateway_device_registry trg_pg_gateway_device_registry_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_pg_gateway_device_registry_updated_at BEFORE UPDATE ON public.payment_gateway_device_registry FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
+-- Name: payment_gateway_idempotency_keys trg_pg_gateway_idempotency_keys_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_pg_gateway_idempotency_keys_updated_at BEFORE UPDATE ON public.payment_gateway_idempotency_keys FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
+-- Name: payment_gateway_risk_events trg_pg_gateway_risk_events_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_pg_gateway_risk_events_updated_at BEFORE UPDATE ON public.payment_gateway_risk_events FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
 
 
 --
@@ -5079,5 +5412,5 @@ ALTER TABLE ONLY public.webhook_deliveries
 -- PostgreSQL database dump complete
 --
 
-\unrestrict iLSqmRsZCTetn7WqvVaiAS5h0WbgLkCMUSlAWSZIhJQ42O3iuX4lK3scBuWky78
+\unrestrict jU7r200rxCM2EwT6e4dS4hqIa8b6Q7XkdkQ9xbclHn4hK7t7ohK1hDm9aa5Y5LO
 
