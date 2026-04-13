@@ -378,6 +378,11 @@ services:
       - LOG_HASH_SALT=${LOG_HASH_SALT}
       - ANTIFRAUD_PEPPER=${ANTIFRAUD_PEPPER}
 
+      - MERCADOPAGO_ACCESS_TOKEN=${MERCADOPAGO_ACCESS_TOKEN}
+      - STRIPE_SECRET_KEY_PT=${STRIPE_SECRET_KEY_PT}
+      - STRIPE_SECRET_KEY_SP=${STRIPE_SECRET_KEY_SP}
+      - LOG_DIR=/logs
+
       # runtime operacional multi-locker
       - LOCKER_RUNTIME_INTERNAL=http://backend_runtime:8000
       - LOCKER_RUNTIME_HEALTH_PATH=/health
@@ -414,8 +419,8 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 3
-      start_period: 60s
+      retries: 4 # 3
+      start_period: 90s #60s
 
   # =========================
   # ORDER PICKUP SERVICE (sem backends legados)

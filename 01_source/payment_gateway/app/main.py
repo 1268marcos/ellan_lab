@@ -1,9 +1,12 @@
 # 01_source/payment_gateway/app/main.py
+# 12/04/2026 - uso de datetime
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import traceback
 import time
+from datetime import datetime
 
 from app.models.gateway_response_model import HealthResponse
 from app.routers.payment import router as payment_router
@@ -16,7 +19,7 @@ from app.routers.lockers import router as lockers_router
 
 app = FastAPI(
     title="ELLAN Payment Gateway (01_source/payment_gateway/app/main.py)",
-    version="1.0.0",
+    version="1.0.1",
 )
 
 app.add_middleware(
@@ -41,7 +44,18 @@ async def health():
     return {
         "status": "gateway_ok",
         "service": "payment_gateway",
-        "version": "1.0.0",
+        "version": "1.0.1",
+        "timestamp": datetime.utcnow().isoformat(),  # Adicionar timestamp
+    }
+
+
+# Rota raiz para teste básico
+@app.get("/")
+async def root():
+    return {
+        "service": "payment_gateway",
+        "status": "running",
+        "version": "1.0.1"
     }
 
 
@@ -61,10 +75,10 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "severity": "HIGH",
             "severity_code": "GATEWAY_UNHANDLED_EXCEPTION",
             "timestamp": time.time(),
-            # em prod você removeria stacktrace; em lab ajuda muito:
             "debug": {
                 "path": str(request.url.path),
                 "traceback": traceback.format_exc().splitlines()[-30:],
             },
         },
     )
+

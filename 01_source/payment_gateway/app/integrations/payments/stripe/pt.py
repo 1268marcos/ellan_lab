@@ -1,3 +1,6 @@
+# 01_source/payment_gateway/app/integrations/payments/stripe/pt.py
+
+
 from app.integrations.payments.stripe.client import StripeClient
 
 

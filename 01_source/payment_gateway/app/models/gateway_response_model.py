@@ -1,5 +1,6 @@
 # 01_source/payment_gateway/app/models/gateway_response_model.py
 # 07/04/2026 - ajuste do model de resposta
+# 12/04/2026 - inclusão timestamp em HealthResponse
 
 from typing import Any, Dict, List, Literal, Optional
 
@@ -145,4 +146,5 @@ class GatewayPaymentResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     service: str = "payment_gateway"
-    version: str = "1.0.0"
+    version: str = "1.0.1"
+    timestamp: Optional[str] = None

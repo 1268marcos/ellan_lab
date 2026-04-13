@@ -1,6 +1,7 @@
 # 01_source/payment_gateway/app/core/config.py
 # 02/04/2026 v4 - Global Market Support + startup hardening
 # veja fim do arquivo
+# 12/04/2026 - mercadopago e stripe
 
 import json
 import os
@@ -325,6 +326,19 @@ class Settings:
 
     REQUEST_TIMEOUT_SEC: int = int(os.getenv("REQUEST_TIMEOUT_SEC", "30"))
     CONNECTION_TIMEOUT_SEC: int = int(os.getenv("CONNECTION_TIMEOUT_SEC", "10"))
+
+    # ------------------------------------------------------------------
+    # Plataformas de recebimento
+    # ------------------------------------------------------------------
+    MERCADOPAGO_ACCESS_TOKEN: str = os.getenv("MERCADOPAGO_ACCESS_TOKEN", "")
+    STRIPE_SECRET_KEY_PT: str = os.getenv("STRIPE_SECRET_KEY_PT", "")
+    STRIPE_SECRET_KEY_SP: str = os.getenv("STRIPE_SECRET_KEY_SP", "")
+
+    # ------------------------------------------------------------------
+    # Logging
+    # ------------------------------------------------------------------
+    LOG_DIR: str = os.getenv("LOG_DIR", "/logs")  # <-- ADICIONAR
+    LOG_HASH_SALT: Optional[str] = os.getenv("LOG_HASH_SALT")  # <-- JÁ EXISTE, MAS MANTENHA    
 
     # ------------------------------------------------------------------
     # Webhooks
@@ -707,6 +721,8 @@ DEVICE_FP_VERSION = settings.DEVICE_FP_VERSION
 GATEWAY_ID = settings.GATEWAY_ID
 GATEWAY_LOG_DIR = settings.GATEWAY_LOG_DIR
 LOG_HASH_SALT = settings.LOG_HASH_SALT
+
+LOG_DIR = settings.LOG_DIR # <-- ADICIONAR
 
 BACKEND_BR = settings.BACKEND_BR
 BACKEND_SP = settings.BACKEND_SP

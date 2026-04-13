@@ -1,13 +1,28 @@
 # 01_source/payment_gateway/app/core/event_log.py
+# 12/04/2026
 
 from __future__ import annotations
 
 import json
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Literal, Any, Dict, Optional
 
 from app.core.hashing import sha256_prefixed, canonical_json
+
+
+# Definição dos tipos de evento
+GatewayEventType = Literal[
+    "GATEWAY_PAYMENT_SUBMITTED",
+    "GATEWAY_PAYMENT_PROCESSING", 
+    "GATEWAY_PAYMENT_APPROVED",
+    "GATEWAY_PAYMENT_REJECTED",
+    "GATEWAY_PAYMENT_BLOCKED",
+    "GATEWAY_PAYMENT_CANCELLED",  # <-- NOVO EVENTO ADICIONADO
+    "GATEWAY_WEBHOOK_RECEIVED",
+    "GATEWAY_RISK_ANALYSIS",
+    "GATEWAY_IDEMPOTENCY_HIT"
+]
 
 
 def _epoch() -> int:

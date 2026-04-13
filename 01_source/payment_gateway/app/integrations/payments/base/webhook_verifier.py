@@ -1,3 +1,6 @@
+# 01_source/payment_gateway/app/integrations/payments/base/webhook_verifier.py
+
+
 from shared_kernel.security.webhook_signatures import verify_hmac_sha256
 from app.integrations.payments.base.exceptions import PaymentWebhookVerificationError
 
