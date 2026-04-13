@@ -41,6 +41,147 @@ from app.services.notification_dispatch_service import (
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 from app.schemas.orders import OnlineRegion, OnlinePaymentMethod
 
+from app.integrations.payment_gateway_client import PaymentGatewayClient
+from app.repositories.order_repository import OrderRepository
+from app.repositories.allocation_repository import AllocationRepository
+from app.repositories.payment_instruction_repository import PaymentInstructionRepository
+
+
+# ========================================================================
+# MAIN SERVICE
+# ========================================================================
+
+class PickupPaymentFulfillmentService:
+
+    def __init__(self):
+        self.order_repo = OrderRepository()
+        self.allocation_repo = AllocationRepository()
+        self.pi_repo = PaymentInstructionRepository()
+        self.gateway = PaymentGatewayClient()
+
+    # ====================================================================
+    # KIOSK FLOW
+    # ====================================================================
+
+    def create_kiosk_order_with_payment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Fluxo completo:
+        1. cria pedido
+        2. aloca slot
+        3. cria payment_instruction
+        4. chama gateway
+        5. retorna resposta completa
+        """
+
+        # ----------------------------------------------------------------
+        # INPUT
+        # ----------------------------------------------------------------
+        region = payload["region"]
+        locker_id = payload["locker_id"]
+        sku_id = payload["sku_id"]
+        slot = payload["slot"]
+        payment_method = payload["payment_method"]
+        amount_cents = payload["amount_cents"]
+
+        # ----------------------------------------------------------------
+        # 1. CREATE ORDER
+        # ----------------------------------------------------------------
+        order = self.order_repo.create_order({
+            "region": region,
+            "locker_id": locker_id,
+            "sku_id": sku_id,
+            "amount_cents": amount_cents,
+            "payment_method": payment_method,
+            "status": "PAYMENT_PENDING",
+            "payment_status": "CREATED",
+            "channel": "KIOSK",
+            "created_at": _now(),
+        })
+
+        # ----------------------------------------------------------------
+        # 2. ALLOCATE SLOT (FAIL FAST)
+        # ----------------------------------------------------------------
+        allocation = self.allocation_repo.allocate({
+            "order_id": order["id"],
+            "locker_id": locker_id,
+            "slot": slot,
+            "ttl_seconds": 900,
+        })
+
+        if allocation["state"] != "RESERVED_PENDING_PAYMENT":
+            raise Exception({
+                "type": "ALLOCATION_FAILED",
+                "order_id": order["id"],
+                "allocation_state": allocation["state"],
+            })
+
+        # ----------------------------------------------------------------
+        # 3. CREATE PAYMENT INSTRUCTION
+        # ----------------------------------------------------------------
+        instruction_type = _resolve_instruction_type(payment_method)
+
+        expires_at = _now() + timedelta(minutes=15)
+
+        payment_instruction = self.pi_repo.create({
+            "id": _generate_id("pi"),
+            "order_id": order["id"],
+            "instruction_type": instruction_type,
+            "amount_cents": amount_cents,
+            "currency": "BRL",
+            "status": "PENDING",
+            "expires_at": expires_at,
+            "created_at": _now(),
+            "updated_at": _now(),
+        })
+
+        # ----------------------------------------------------------------
+        # 4. CALL PAYMENT GATEWAY
+        # ----------------------------------------------------------------
+        gateway_result = self.gateway.create_payment({
+            "order_id": order["id"],
+            "amount": amount_cents / 100,
+            "currency": "BRL",
+            "country": "BR",
+            "method": payment_method,
+        })
+
+        # ----------------------------------------------------------------
+        # 5. UPDATE PAYMENT INSTRUCTION WITH GATEWAY DATA
+        # ----------------------------------------------------------------
+        update_payload = _resolve_payment_payload(payment_method, gateway_result)
+
+        self.pi_repo.update(payment_instruction["id"], {
+            **update_payload,
+            "updated_at": _now(),
+        })
+
+        # ----------------------------------------------------------------
+        # 6. UPDATE ORDER PAYMENT STATUS
+        # ----------------------------------------------------------------
+        self.order_repo.update_payment_status(
+            order["id"],
+            "PENDING_CUSTOMER_ACTION"
+        )
+
+        # ----------------------------------------------------------------
+        # 7. RESPONSE (FRONTEND READY)
+        # ----------------------------------------------------------------
+        return {
+            "order_id": order["id"],
+            "allocation_id": allocation["id"],
+            "locker_id": locker_id,
+            "slot": slot,
+            "amount_cents": amount_cents,
+            "payment_method": payment_method,
+
+            "payment_status": "PENDING_CUSTOMER_ACTION",
+            "instruction_type": instruction_type,
+            "ttl_sec": 900,
+            "expires_at": expires_at.isoformat(),
+
+            **update_payload
+        }
+
 
 class NotificationChannel(str, Enum):
     EMAIL = "email"
@@ -150,6 +291,38 @@ class PickupFulfillmentConfig:
             return list(set(base_channels + payment_channels))
         
         return base_channels
+
+
+# ========================================================================
+# HELPERS
+# ========================================================================
+
+def _now():
+    return datetime.utcnow()
+
+
+def _generate_id(prefix: str):
+    return f"{prefix}_{uuid.uuid4().hex}"
+
+
+def _resolve_instruction_type(payment_method: str) -> str:
+    if payment_method in ["pix", "PIX"]:
+        return "GENERATE_PIX"
+    if payment_method in ["creditCard", "debitCard", "CARTAO"]:
+        return "CAPTURE_NOW"
+    raise Exception(f"Unsupported payment_method: {payment_method}")
+
+
+def _resolve_payment_payload(method: str, gateway_result) -> Dict[str, Any]:
+    if method.lower() == "pix":
+        return {
+            "qr_code": gateway_result.qr_code,
+            "qr_code_text": getattr(gateway_result, "qr_code_text", None),
+        }
+
+    return {
+        "redirect_url": gateway_result.redirect_url,
+    }
 
 
 def _utc_now() -> datetime:
