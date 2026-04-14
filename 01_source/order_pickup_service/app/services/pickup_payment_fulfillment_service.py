@@ -56,18 +56,20 @@ logger = logging.getLogger(__name__)
 # ========================================================================
 
 class PickupPaymentFulfillmentService:
+    """Serviço responsável por processar pagamentos de retirada (pickup)"""
 
     def __init__(self):
         self.order_repo = OrderRepository()
         self.allocation_repo = AllocationRepository()
         self.pi_repo = PaymentInstructionRepository()
         self.gateway = PaymentGatewayClient()
+        self.logger = logging.getLogger(__name__)
 
     # ====================================================================
     # KIOSK FLOW
     # ====================================================================
     def create_kiosk_order_with_payment(self, db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
 
         region = payload["region"]
         locker_id = payload["locker_id"]
@@ -113,6 +115,89 @@ class PickupPaymentFulfillmentService:
 
             allocation_id = alloc.get("allocation_id") or f"al_{request_id.replace('-', '')}"
             allocated_slot = alloc.get("slot", slot)
+
+            # =========================
+            # 🔥 VALIDAÇÃO CRÍTICA DO RUNTIME
+            # =========================
+            try:
+                state_check = backend_client.get_allocation_state(
+                    allocation_id,
+                    locker_id=locker_id
+                )
+            except Exception as e:
+                logger.exception("ALLOCATION_STATE_CHECK_FAILED")
+
+                raise RuntimeError({
+                    "type": "ALLOCATION_STATE_CHECK_FAILED",
+                    "message": "Falha ao validar allocation no runtime",
+                    "allocation_id": allocation_id,
+                    "error": str(e),
+                })
+
+            # if state_check == "NOT_FOUND":
+            #     logger.error(
+            #         f"❌ Allocation NÃO registrada no runtime após criação "
+            #         f"(allocation_id={allocation_id}, locker_id={locker_id})"
+            #    )
+            # 
+            #     raise RuntimeError({
+            #         "type": "ALLOCATION_NOT_REGISTERED",
+            #         "message": "Runtime não confirmou allocation após criação",
+            #         "allocation_id": allocation_id,
+            #         "locker_id": locker_id,
+            #     })
+            #
+            # logger.info(
+            #     f"✅ Allocation confirmada no runtime: {allocation_id} (state={state_check})"
+            # )
+
+            # =========================
+            # 🔥 VALIDAÇÃO CORRETA DO RUNTIME (SLOT-BASED)
+            # =========================
+            try:
+                state_check = backend_client.get_allocation_state(
+                    allocation_id,
+                    locker_id=locker_id
+                )
+            except Exception:
+                logger.exception("ALLOCATION_STATE_CHECK_FAILED")
+                state_check = None  # fallback
+
+            # 🔥 NOVO: validar estado real do slot
+            slot_state = backend_client.get_slot_state(
+                locker_id=locker_id,
+                slot=int(allocated_slot)
+            )
+
+            if state_check == "NOT_FOUND":
+                logger.warning(
+                    f"⚠️ Runtime não reconhece allocation_id, validando slot "
+                    f"(slot={allocated_slot}, state={slot_state})"
+                )
+
+                if slot_state != "RESERVED":
+                    logger.error(
+                        f"❌ Slot não está reservado após allocate "
+                        f"(slot={allocated_slot}, state={slot_state})"
+                    )
+
+                    raise RuntimeError({
+                        "type": "ALLOCATION_NOT_EFFECTIVE",
+                        "message": "Runtime não confirmou reserva da gaveta",
+                        "allocation_id": allocation_id,
+                        "locker_id": locker_id,
+                        "slot": allocated_slot,
+                        "slot_state": slot_state,
+                    })
+
+                logger.info(
+                    f"✅ Slot reservado confirmado mesmo sem allocation_id (slot={allocated_slot})"
+                )
+            else:
+                logger.info(
+                    f"✅ Allocation confirmada no runtime: {allocation_id} (state={state_check})"
+                )
+
 
             allocation = Allocation(
                 id=allocation_id,
@@ -206,9 +291,9 @@ class PickupPaymentFulfillmentService:
             )
             db.flush()
 
-            # =========================
-            # 4. CALL GATEWAY (PROTEGIDO)
-            # =========================
+            # ====================================
+            # 4. CALL GATEWAY (PROTEGIDO) - ✅ CORRIGIDO
+            # ====================================
             gateway_result: Dict[str, Any] = {}
             gateway_failed = False
             gateway_error_message = None
@@ -223,6 +308,10 @@ class PickupPaymentFulfillmentService:
                         "currency": "BRL",
                         "country": "BR",
                         "method": payment_method,
+                        "payment_method": payment_method,  # 🔧 redundância
+                        "region": region,                   # 🟢 NOVO
+                        "slot": int(allocated_slot),        # 🟢 NOVO
+                        "locker_id": locker_id,             # 🟢 NOVO
                     }
                 )
 
@@ -302,7 +391,7 @@ class PickupPaymentFulfillmentService:
                     "customer_payment_method_id": gateway_result.get("customer_payment_method_id"),
                     "wallet_provider": payload.get("wallet_provider"),
                     "wallet_transaction_id": gateway_result.get("wallet_transaction_id"),
-                    "updated_at": datetime.utcnow(),
+                    "updated_at": datetime.now(timezone.utc),
                 },
             )
 
@@ -310,7 +399,7 @@ class PickupPaymentFulfillmentService:
             # 6. UPDATE ORDER STATUS
             # =========================
             order.payment_status = "FAILED" if gateway_failed else "PENDING_CUSTOMER_ACTION"
-            order.updated_at = datetime.utcnow()
+            order.updated_at = datetime.now(timezone.utc)
             db.flush()
 
             # =========================
@@ -355,7 +444,7 @@ class PickupPaymentFulfillmentService:
                 allocation.state = AllocationState.RELEASED
                 order.status = OrderStatus.CANCELLED
                 order.payment_status = "FAILED"
-                order.updated_at = datetime.utcnow()
+                order.updated_at = datetime.now(timezone.utc)
 
                 db.flush()
                 db.commit()
@@ -502,7 +591,7 @@ class PickupFulfillmentConfig:
 # ========================================================================
 
 def _now():
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
 
 
 def _generate_id(prefix: str):
@@ -1094,13 +1183,47 @@ def fulfill_payment_post_approval(
                     "order_id": order.id,
                 })
 
-            if state != "ALLOCATED":
+            # if state != "ALLOCATED":
+            #     raise RuntimeError({
+            #         "type": "INVALID_ALLOCATION_STATE",
+            #         "state": state,
+            #         "allocation_id": allocation.id,
+            #         "order_id": order.id,
+            #     })
+
+            """
+            Acima comentado    if state != "ALLOCATED":   para usar abaixo
+
+            💡 O QUE ISSO FAZ
+
+            ✔ evita falso negativo
+            ✔ permite seguir fluxo KIOSK
+            ✔ não quebra produção
+            ✔ mantém segurança (não aceita RELEASED/EXPIRED)
+            """
+
+            if state in ["RELEASED", "EXPIRED"]:
                 raise RuntimeError({
-                    "type": "INVALID_ALLOCATION_STATE",
+                    "type": "ALLOCATION_LOST",
+                    "message": "A reserva da gaveta expirou.",
+                    "allocation_id": allocation.id,
                     "state": state,
+                })
+
+            # 🔥 NOVO: tolerar NOT_FOUND (inconsistência runtime)
+            if state == "NOT_FOUND":
+                logger.error(
+                    f"Allocation inconsistente: runtime não reconhece allocation_id "
+                    f"(order={order.id}, allocation={allocation.id})"
+                )
+
+                raise RuntimeError({
+                    "type": "ALLOCATION_INCONSISTENT",
+                    "message": "Falha de consistência entre serviços. Crie um novo pedido.",
                     "allocation_id": allocation.id,
                     "order_id": order.id,
                 })
+
 
             backend_client.locker_commit(
                 order.region,
@@ -1311,7 +1434,18 @@ def fulfill_payment_post_approval(
             locker_id=order.totem_id
         )
 
-        if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+        slot_state = None
+        if state == "NOT_FOUND":
+            slot_state = backend_client.get_slot_state(
+                locker_id=order.totem_id,
+                slot=int(allocation.slot),
+            )
+            logger.warning(
+                f"KIOSK allocation_id não encontrado no runtime; usando fallback por slot "
+                f"(order={order.id}, slot={allocation.slot}, slot_state={slot_state})"
+            )
+
+        if state in ["RELEASED", "EXPIRED"]:
             try:
                 backend_client.locker_release(
                     order.region,
@@ -1319,7 +1453,7 @@ def fulfill_payment_post_approval(
                     locker_id=order.totem_id,
                 )
             except Exception:
-                pass  # runtime já pode ter perdido mesmo
+                pass
 
             order.status = OrderStatus.FAILED
 
@@ -1332,7 +1466,36 @@ def fulfill_payment_post_approval(
                 "order_id": order.id,
             })
 
-        if state != "ALLOCATED":
+        # runtime atual pode não resolver allocation_id, mas o slot segue como verdade operacional
+        if state == "NOT_FOUND":
+            if slot_state != "RESERVED":
+                try:
+                    backend_client.locker_release(
+                        order.region,
+                        allocation.id,
+                        locker_id=order.totem_id,
+                    )
+                except Exception:
+                    pass
+
+                order.status = OrderStatus.FAILED
+
+                raise RuntimeError({
+                    "type": "ALLOCATION_LOST",
+                    "message": "A gaveta não está mais disponível para este pedido.",
+                    "allocation_id": allocation.id,
+                    "state": state,
+                    "slot_state": slot_state,
+                    "locker_id": order.totem_id,
+                    "order_id": order.id,
+                })
+
+            logger.info(
+                f"KIOSK slot reservado confirmado mesmo sem allocation_id "
+                f"(order={order.id}, slot={allocation.slot})"
+            )
+
+        elif state != "ALLOCATED":
             raise RuntimeError({
                 "type": "INVALID_ALLOCATION_STATE",
                 "state": state,
@@ -1340,13 +1503,14 @@ def fulfill_payment_post_approval(
                 "order_id": order.id,
             })
 
-
         backend_client.locker_commit(
             order.region,
             allocation.id,
             None,
             locker_id=order.totem_id,
         )
+
+   
     except requests.HTTPError as e:
         status = getattr(e.response, "status_code", None)
 

@@ -482,9 +482,20 @@ def _finalize_kiosk_payment(
             locker_id=order.totem_id
         )
 
-        logger.info(f"Allocation state check: {state} for allocation {allocation.id}")
+        slot_state = None
+        if state == "NOT_FOUND":
+            slot_state = backend_client.get_slot_state(
+                locker_id=order.totem_id,
+                slot=int(allocation.slot),
+            )
 
-        if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+        logger.info(
+            f"Allocation state check: {state} for allocation {allocation.id}"
+            + (f" | slot_state={slot_state}" if slot_state is not None else "")
+        )
+
+        # perda real somente se runtime disser explicitamente
+        if state in ["RELEASED", "EXPIRED"]:
             logger.warning(f"Allocation lost, attempting reallocation for order {order.id}")
 
             try:
@@ -492,13 +503,12 @@ def _finalize_kiosk_payment(
                 new_alloc = backend_client.locker_allocate(
                     order.region,
                     order.sku_id,
-                    ttl_sec=900,  # 15 minutos
+                    ttl_sec=900,
                     request_id=request_id,
                     desired_slot=int(allocation.slot),
                     locker_id=order.totem_id,
                 )
 
-                # Atualiza alocação no banco — flush só aqui (sem erros pendentes)
                 allocation.id = new_alloc["allocation_id"]
                 allocation.state = AllocationState.RESERVED_PENDING_PAYMENT
                 db.flush()
@@ -507,15 +517,6 @@ def _finalize_kiosk_payment(
 
             except Exception as realloc_error:
                 logger.error(f"Failed to reallocate slot for order {order.id}: {realloc_error}")
-
-                # FIX 1: NÃO chamar db.flush() aqui — sessão pode estar suja.
-                # FIX 2: NÃO setar order.status = OrderStatus.FAILED antes da
-                #         migration_add_failed_to_orderstatus.sql ser aplicada.
-                #         Após a migration, pode reabilitar a linha abaixo se quiser:
-                #
-                #   order.status = OrderStatus.FAILED
-                #
-                # Por ora, rollback limpa a sessão antes de lançar a HTTPException.
                 db.rollback()
 
                 raise HTTPException(
@@ -528,6 +529,27 @@ def _finalize_kiosk_payment(
                         "message": "A gaveta não está mais disponível e não foi possível realocar. Por favor, crie um novo pedido.",
                     }
                 )
+
+        # fallback correto para runtime que não resolve allocation_id
+        if state == "NOT_FOUND":
+            if slot_state != "RESERVED":
+                db.rollback()
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "type": "ALLOCATION_LOST",
+                        "order_id": order.id,
+                        "allocation_id": allocation.id,
+                        "slot": allocation.slot,
+                        "message": "A reserva da gaveta expirou. Por favor, crie um novo pedido.",
+                    },
+                )
+
+            logger.warning(
+                f"Runtime não reconhece allocation_id no finalize, mas slot continua RESERVED "
+                f"(order={order.id}, slot={allocation.slot})"
+            )
+
 
     except HTTPException:
         # FIX: re-raise HTTPException gerada dentro do bloco acima.

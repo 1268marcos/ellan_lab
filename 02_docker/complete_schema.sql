@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict jU7r200rxCM2EwT6e4dS4hqIa8b6Q7XkdkQ9xbclHn4hK7t7ohK1hDm9aa5Y5LO
+\restrict Cva1Wg1YiI485rQHRMC25lHbxHT3CWHfQ1d1B42JMfJ5b8HM7KoMxe7s8AqSetc
 
 -- Dumped from database version 15.17 (Debian 15.17-1.pgdg13+1)
 -- Dumped by pg_dump version 15.17 (Debian 15.17-1.pgdg13+1)
@@ -347,6 +347,30 @@ $$;
 
 ALTER FUNCTION public.set_row_updated_at() OWNER TO admin;
 
+--
+-- Name: trg_log_slot_state_change(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.trg_log_slot_state_change() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.status IS DISTINCT FROM OLD.status THEN
+        INSERT INTO public.slot_occupancy_history (
+            locker_id, slot_label, allocation_id, previous_state, current_state, triggered_by, metadata
+        ) VALUES (
+            NEW.locker_id, NEW.slot_label, NEW.current_allocation_id, OLD.status, NEW.status, 
+            COALESCE(NEW.metadata->>'triggered_by', 'SYSTEM'), 
+            jsonb_build_object('fault_code', NEW.fault_code, 'dimensions', jsonb_build_object('w', NEW.width_mm, 'h', NEW.height_mm, 'd', NEW.depth_mm))
+        );
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.trg_log_slot_state_change() OWNER TO admin;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -393,6 +417,27 @@ CREATE TABLE public.analytics_facts (
 
 
 ALTER TABLE public.analytics_facts OWNER TO admin;
+
+--
+-- Name: audit_logs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.audit_logs (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    actor_id character varying(36),
+    actor_role character varying(40),
+    action character varying(80) NOT NULL,
+    target_type character varying(40) NOT NULL,
+    target_id character varying(36) NOT NULL,
+    old_state jsonb,
+    new_state jsonb,
+    ip_address inet,
+    user_agent text,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.audit_logs OWNER TO admin;
 
 --
 -- Name: auth_sessions; Type: TABLE; Schema: public; Owner: admin
@@ -1110,6 +1155,29 @@ CREATE TABLE public.ecommerce_partners (
 ALTER TABLE public.ecommerce_partners OWNER TO admin;
 
 --
+-- Name: financial_ledger; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.financial_ledger (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    order_id character varying(36),
+    payment_transaction_id character varying(36),
+    wallet_id character varying(36),
+    entry_type character varying(30) NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'POSTED'::character varying NOT NULL,
+    external_reference character varying(100),
+    metadata jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_ledger_amount_nonzero CHECK ((amount_cents <> 0)),
+    CONSTRAINT ck_ledger_status_check CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'POSTED'::character varying, 'VOIDED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.financial_ledger OWNER TO admin;
+
+--
 -- Name: fiscal_documents; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -1497,6 +1565,10 @@ CREATE TABLE public.lockers (
     has_nfc boolean DEFAULT false NOT NULL,
     has_printer boolean DEFAULT false NOT NULL,
     slots_available integer DEFAULT 0 NOT NULL,
+    payment_rules jsonb DEFAULT '{"cash_allowed": false, "wallet_allowed": true, "allowed_methods": [], "payment_instruction": "CAPTURE_NOW", "minimum_amount_cents": 0}'::jsonb,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone,
     CONSTRAINT ck_lockers_pickup_code_length_range CHECK (((pickup_code_length >= 4) AND (pickup_code_length <= 12))),
     CONSTRAINT ck_lockers_pickup_max_reopens_non_negative CHECK ((pickup_max_reopens >= 0)),
     CONSTRAINT ck_lockers_pickup_reuse_policy CHECK (((pickup_reuse_policy)::text = ANY ((ARRAY['NO_REUSE'::character varying, 'SAME_TOKEN_UNTIL_DEADLINE'::character varying, 'ALLOW_REOPEN_WINDOW'::character varying])::text[]))),
@@ -1714,7 +1786,10 @@ CREATE TABLE public.orders (
     order_metadata jsonb,
     slot integer,
     allocation_id character varying,
-    allocation_expires_at timestamp without time zone
+    allocation_expires_at timestamp without time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
 );
 
 
@@ -1793,6 +1868,36 @@ CREATE TABLE public.payment_gateway_risk_events (
 
 
 ALTER TABLE public.payment_gateway_risk_events OWNER TO admin;
+
+--
+-- Name: payment_instructions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_instructions (
+    id character varying(36) NOT NULL,
+    order_id character varying NOT NULL,
+    instruction_type character varying(50) NOT NULL,
+    amount_cents integer NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying(30) DEFAULT 'PENDING'::character varying NOT NULL,
+    expires_at timestamp with time zone,
+    qr_code text,
+    qr_code_text text,
+    barcode character varying(255),
+    digitable_line text,
+    authorization_code character varying(100),
+    capture_amount_cents integer,
+    captured_at timestamp with time zone,
+    payment_token character varying(255),
+    customer_payment_method_id character varying(36),
+    wallet_provider character varying(50),
+    wallet_transaction_id character varying(255),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.payment_instructions OWNER TO admin;
 
 --
 -- Name: payment_interface_catalog; Type: TABLE; Schema: public; Owner: admin
@@ -1900,6 +2005,25 @@ CREATE TABLE public.payment_method_ui_alias (
 ALTER TABLE public.payment_method_ui_alias OWNER TO admin;
 
 --
+-- Name: payment_splits; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.payment_splits (
+    id character varying(36) NOT NULL,
+    order_id character varying NOT NULL,
+    recipient_type character varying(30) NOT NULL,
+    recipient_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    percentage numeric(5,2),
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    settled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.payment_splits OWNER TO admin;
+
+--
 -- Name: payment_transactions; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -1932,7 +2056,16 @@ CREATE TABLE public.payment_transactions (
     chargeback_at timestamp with time zone,
     chargeback_reason character varying(255),
     created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    gateway_webhook_received_at timestamp with time zone,
+    gateway_webhook_payload jsonb,
+    acquirer_name character varying(100),
+    acquirer_message text,
+    tid character varying(50),
+    arqc character varying(50),
+    nsu_sitef character varying(50),
+    reconciliation_status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    reconciliation_batch_id character varying(100)
 );
 
 
@@ -1994,6 +2127,30 @@ CREATE TABLE public.pickups (
 
 
 ALTER TABLE public.pickups OWNER TO admin;
+
+--
+-- Name: pricing_rules; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.pricing_rules (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    region character varying(20),
+    locker_id character varying(36),
+    product_category character varying(64),
+    valid_from timestamp with time zone NOT NULL,
+    valid_until timestamp with time zone,
+    base_amount_cents bigint NOT NULL,
+    discount_pct numeric(5,2) DEFAULT 0.00,
+    min_amount_cents bigint,
+    max_amount_cents bigint,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_pricing_valid_range CHECK (((valid_until IS NULL) OR (valid_until > valid_from)))
+);
+
+
+ALTER TABLE public.pricing_rules OWNER TO admin;
 
 --
 -- Name: privacy_consents; Type: TABLE; Schema: public; Owner: admin
@@ -2315,6 +2472,29 @@ CREATE TABLE public.runtime_lockers (
 ALTER TABLE public.runtime_lockers OWNER TO admin;
 
 --
+-- Name: saved_payment_methods; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.saved_payment_methods (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    method_code character varying(80) NOT NULL,
+    gateway_token character varying(255) NOT NULL,
+    last4 character varying(4),
+    card_brand character varying(50),
+    cardholder_name character varying(255),
+    expiry_month integer,
+    expiry_year integer,
+    is_default boolean DEFAULT false NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.saved_payment_methods OWNER TO admin;
+
+--
 -- Name: schema_migrations; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -2325,6 +2505,61 @@ CREATE TABLE public.schema_migrations (
 
 
 ALTER TABLE public.schema_migrations OWNER TO admin;
+
+--
+-- Name: slot_occupancy_history; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.slot_occupancy_history (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    locker_id character varying NOT NULL,
+    slot_label character varying(20) NOT NULL,
+    allocation_id character varying(36),
+    previous_state character varying(40),
+    current_state character varying(40) NOT NULL,
+    triggered_by character varying(50),
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb
+);
+
+
+ALTER TABLE public.slot_occupancy_history OWNER TO admin;
+
+--
+-- Name: user_roles; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.user_roles (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    user_id character varying(36) NOT NULL,
+    role character varying(40) NOT NULL,
+    scope_type character varying(40) DEFAULT 'GLOBAL'::character varying,
+    scope_id character varying(36),
+    is_active boolean DEFAULT true NOT NULL,
+    granted_at timestamp with time zone DEFAULT now() NOT NULL,
+    revoked_at timestamp with time zone
+);
+
+
+ALTER TABLE public.user_roles OWNER TO admin;
+
+--
+-- Name: user_wallets; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.user_wallets (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    balance_cents bigint DEFAULT 0 NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    last_transaction_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.user_wallets OWNER TO admin;
 
 --
 -- Name: users; Type: TABLE; Schema: public; Owner: admin
@@ -2344,7 +2579,10 @@ CREATE TABLE public.users (
     anonymized_at timestamp with time zone,
     locale character varying(10),
     totp_enabled boolean DEFAULT false NOT NULL,
-    totp_secret_ref character varying(255)
+    totp_secret_ref character varying(255),
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
 );
 
 
@@ -2422,6 +2660,27 @@ ALTER TABLE public.wallet_provider_catalog_id_seq OWNER TO admin;
 
 ALTER SEQUENCE public.wallet_provider_catalog_id_seq OWNED BY public.wallet_provider_catalog.id;
 
+
+--
+-- Name: wallet_transactions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.wallet_transactions (
+    id character varying(36) NOT NULL,
+    wallet_id character varying(36) NOT NULL,
+    order_id character varying,
+    type character varying(30) NOT NULL,
+    amount_cents bigint NOT NULL,
+    balance_after_cents bigint NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    external_reference character varying(255),
+    description text,
+    metadata jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.wallet_transactions OWNER TO admin;
 
 --
 -- Name: webhook_deliveries; Type: TABLE; Schema: public; Owner: admin
@@ -2636,6 +2895,14 @@ ALTER TABLE ONLY public.allocations
 
 ALTER TABLE ONLY public.analytics_facts
     ADD CONSTRAINT analytics_facts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: audit_logs audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_pkey PRIMARY KEY (id);
 
 
 --
@@ -2863,6 +3130,14 @@ ALTER TABLE ONLY public.ecommerce_partners
 
 
 --
+-- Name: financial_ledger financial_ledger_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.financial_ledger
+    ADD CONSTRAINT financial_ledger_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: fiscal_documents fiscal_documents_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -3047,6 +3322,14 @@ ALTER TABLE ONLY public.payment_gateway_risk_events
 
 
 --
+-- Name: payment_instructions payment_instructions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_instructions
+    ADD CONSTRAINT payment_instructions_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payment_interface_catalog payment_interface_catalog_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -3095,6 +3378,14 @@ ALTER TABLE ONLY public.payment_method_ui_alias
 
 
 --
+-- Name: payment_splits payment_splits_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_splits
+    ADD CONSTRAINT payment_splits_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: payment_transactions payment_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -3124,6 +3415,14 @@ ALTER TABLE ONLY public.pickups
 
 ALTER TABLE ONLY public.pickups
     ADD CONSTRAINT pickups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: pricing_rules pricing_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.pricing_rules
+    ADD CONSTRAINT pricing_rules_pkey PRIMARY KEY (id);
 
 
 --
@@ -3215,11 +3514,27 @@ ALTER TABLE ONLY public.runtime_lockers
 
 
 --
+-- Name: saved_payment_methods saved_payment_methods_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.saved_payment_methods
+    ADD CONSTRAINT saved_payment_methods_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: schema_migrations schema_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.schema_migrations
     ADD CONSTRAINT schema_migrations_pkey PRIMARY KEY (name);
+
+
+--
+-- Name: slot_occupancy_history slot_occupancy_history_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.slot_occupancy_history
+    ADD CONSTRAINT slot_occupancy_history_pkey PRIMARY KEY (id);
 
 
 --
@@ -3335,6 +3650,30 @@ ALTER TABLE ONLY public.lifecycle_deadlines
 
 
 --
+-- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_wallets user_wallets_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_wallets
+    ADD CONSTRAINT user_wallets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_wallets user_wallets_user_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_wallets
+    ADD CONSTRAINT user_wallets_user_id_key UNIQUE (user_id);
+
+
+--
 -- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -3356,6 +3695,14 @@ ALTER TABLE ONLY public.wallet_provider_catalog
 
 ALTER TABLE ONLY public.wallet_provider_catalog
     ADD CONSTRAINT wallet_provider_catalog_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: wallet_transactions wallet_transactions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT wallet_transactions_pkey PRIMARY KEY (id);
 
 
 --
@@ -3659,6 +4006,34 @@ CREATE INDEX ix_analytics_facts_fact_name_occurred_at ON public.analytics_facts 
 --
 
 CREATE INDEX ix_analytics_facts_order_id ON public.analytics_facts USING btree (order_id);
+
+
+--
+-- Name: ix_audit_actor_time; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_actor_time ON public.audit_logs USING btree (actor_id, occurred_at DESC);
+
+
+--
+-- Name: ix_audit_logs_new_state_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_logs_new_state_gin ON public.audit_logs USING gin (new_state);
+
+
+--
+-- Name: ix_audit_logs_old_state_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_logs_old_state_gin ON public.audit_logs USING gin (old_state);
+
+
+--
+-- Name: ix_audit_target; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_target ON public.audit_logs USING btree (target_type, target_id);
 
 
 --
@@ -4173,6 +4548,27 @@ CREATE INDEX ix_kiosk_antifraud_events_ip_hash ON public.kiosk_antifraud_events 
 
 
 --
+-- Name: ix_ledger_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ledger_created ON public.financial_ledger USING btree (created_at DESC);
+
+
+--
+-- Name: ix_ledger_order; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ledger_order ON public.financial_ledger USING btree (order_id);
+
+
+--
+-- Name: ix_ledger_type_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ledger_type_status ON public.financial_ledger USING btree (entry_type, status);
+
+
+--
 -- Name: ix_lifecycle_deadlines_due_at_status; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4453,6 +4849,13 @@ CREATE INDEX ix_order_items_slot_size ON public.order_items USING btree (slot_si
 
 
 --
+-- Name: ix_orders_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_active ON public.orders USING btree (deleted_at) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: ix_orders_channel_status; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4698,6 +5101,20 @@ CREATE INDEX ix_pg_gateway_risk_request_id ON public.payment_gateway_risk_events
 
 
 --
+-- Name: ix_pi_order_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pi_order_id ON public.payment_instructions USING btree (order_id);
+
+
+--
+-- Name: ix_pi_status_expires; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pi_status_expires ON public.payment_instructions USING btree (status, expires_at) WHERE ((status)::text = 'PENDING'::text);
+
+
+--
 -- Name: ix_pickup_tokens_active; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4873,6 +5290,13 @@ CREATE INDEX ix_pmc_family ON public.payment_method_catalog USING btree (family)
 
 
 --
+-- Name: ix_pricing_region_cat_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pricing_region_cat_active ON public.pricing_rules USING btree (region, product_category, is_active, valid_from) WHERE (is_active = true);
+
+
+--
 -- Name: ix_product_categories_parent; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -4891,6 +5315,34 @@ CREATE INDEX ix_product_cfg_category ON public.product_locker_configs USING btre
 --
 
 CREATE INDEX ix_product_cfg_locker ON public.product_locker_configs USING btree (locker_id);
+
+
+--
+-- Name: ix_ps_order; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ps_order ON public.payment_splits USING btree (order_id);
+
+
+--
+-- Name: ix_ps_recipient; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ps_recipient ON public.payment_splits USING btree (recipient_type, recipient_id, status);
+
+
+--
+-- Name: ix_pt_reconciliation; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pt_reconciliation ON public.payment_transactions USING btree (reconciliation_status) WHERE ((reconciliation_status)::text = 'PENDING'::text);
+
+
+--
+-- Name: ix_pt_webhook_pending; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pt_webhook_pending ON public.payment_transactions USING btree (gateway_webhook_received_at) WHERE (gateway_webhook_received_at IS NULL);
 
 
 --
@@ -4957,6 +5409,27 @@ CREATE INDEX ix_slot_configs_locker ON public.locker_slot_configs USING btree (l
 
 
 --
+-- Name: ix_slot_hist_allocation; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_slot_hist_allocation ON public.slot_occupancy_history USING btree (allocation_id);
+
+
+--
+-- Name: ix_slot_hist_locker_slot; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_slot_hist_locker_slot ON public.slot_occupancy_history USING btree (locker_id, slot_label, occurred_at DESC);
+
+
+--
+-- Name: ix_spm_user_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_spm_user_active ON public.saved_payment_methods USING btree (user_id, is_active);
+
+
+--
 -- Name: ix_users_email; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -5013,10 +5486,31 @@ CREATE INDEX ix_webhook_ep_partner ON public.webhook_endpoints USING btree (part
 
 
 --
+-- Name: ix_wt_order; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_wt_order ON public.wallet_transactions USING btree (order_id);
+
+
+--
+-- Name: ix_wt_wallet; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_wt_wallet ON public.wallet_transactions USING btree (wallet_id, created_at DESC);
+
+
+--
 -- Name: uq_locker_category; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE UNIQUE INDEX uq_locker_category ON public.product_locker_configs USING btree (locker_id, category);
+
+
+--
+-- Name: uq_user_default_method; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX uq_user_default_method ON public.saved_payment_methods USING btree (user_id) WHERE (is_default = true);
 
 
 --
@@ -5069,6 +5563,13 @@ CREATE UNIQUE INDEX ux_pg_gateway_idem_endpoint_key ON public.payment_gateway_id
 
 
 --
+-- Name: ux_user_role_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ux_user_role_active ON public.user_roles USING btree (user_id, role, scope_type, scope_id) WHERE (revoked_at IS NULL);
+
+
+--
 -- Name: ux_users_email; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -5097,11 +5598,47 @@ CREATE TRIGGER trg_pg_gateway_risk_events_updated_at BEFORE UPDATE ON public.pay
 
 
 --
+-- Name: payment_instructions trg_pi_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_pi_updated_at BEFORE UPDATE ON public.payment_instructions FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
+-- Name: locker_slots trg_slot_occupancy_history; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_slot_occupancy_history AFTER UPDATE ON public.locker_slots FOR EACH ROW EXECUTE FUNCTION public.trg_log_slot_state_change();
+
+
+--
+-- Name: saved_payment_methods trg_spm_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_spm_updated_at BEFORE UPDATE ON public.saved_payment_methods FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
+-- Name: user_wallets trg_uw_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_uw_updated_at BEFORE UPDATE ON public.user_wallets FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
 -- Name: allocations allocations_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.allocations
     ADD CONSTRAINT allocations_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: audit_logs audit_logs_actor_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.audit_logs
+    ADD CONSTRAINT audit_logs_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES public.users(id);
 
 
 --
@@ -5233,6 +5770,30 @@ ALTER TABLE ONLY public.data_deletion_requests
 
 
 --
+-- Name: financial_ledger financial_ledger_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.financial_ledger
+    ADD CONSTRAINT financial_ledger_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: financial_ledger financial_ledger_payment_transaction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.financial_ledger
+    ADD CONSTRAINT financial_ledger_payment_transaction_id_fkey FOREIGN KEY (payment_transaction_id) REFERENCES public.payment_transactions(id);
+
+
+--
+-- Name: financial_ledger financial_ledger_wallet_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.financial_ledger
+    ADD CONSTRAINT financial_ledger_wallet_id_fkey FOREIGN KEY (wallet_id) REFERENCES public.user_wallets(id);
+
+
+--
 -- Name: capability_profile_snapshot fk_cap_snapshot_locker; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -5302,6 +5863,22 @@ ALTER TABLE ONLY public.notification_logs
 
 ALTER TABLE ONLY public.order_items
     ADD CONSTRAINT order_items_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id) ON DELETE CASCADE;
+
+
+--
+-- Name: payment_instructions payment_instructions_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_instructions
+    ADD CONSTRAINT payment_instructions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: payment_splits payment_splits_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.payment_splits
+    ADD CONSTRAINT payment_splits_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
 
 
 --
@@ -5401,6 +5978,54 @@ ALTER TABLE ONLY public.runtime_locker_slots
 
 
 --
+-- Name: saved_payment_methods saved_payment_methods_method_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.saved_payment_methods
+    ADD CONSTRAINT saved_payment_methods_method_code_fkey FOREIGN KEY (method_code) REFERENCES public.payment_method_catalog(code);
+
+
+--
+-- Name: saved_payment_methods saved_payment_methods_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.saved_payment_methods
+    ADD CONSTRAINT saved_payment_methods_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_roles user_roles_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_roles
+    ADD CONSTRAINT user_roles_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: user_wallets user_wallets_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_wallets
+    ADD CONSTRAINT user_wallets_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: wallet_transactions wallet_transactions_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT wallet_transactions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: wallet_transactions wallet_transactions_wallet_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.wallet_transactions
+    ADD CONSTRAINT wallet_transactions_wallet_id_fkey FOREIGN KEY (wallet_id) REFERENCES public.user_wallets(id);
+
+
+--
 -- Name: webhook_deliveries webhook_deliveries_endpoint_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -5412,5 +6037,5 @@ ALTER TABLE ONLY public.webhook_deliveries
 -- PostgreSQL database dump complete
 --
 
-\unrestrict jU7r200rxCM2EwT6e4dS4hqIa8b6Q7XkdkQ9xbclHn4hK7t7ohK1hDm9aa5Y5LO
+\unrestrict Cva1Wg1YiI485rQHRMC25lHbxHT3CWHfQ1d1B42JMfJ5b8HM7KoMxe7s8AqSetc
 

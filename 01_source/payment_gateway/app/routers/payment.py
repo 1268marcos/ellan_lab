@@ -1,135 +1,175 @@
 # 01_source/payment_gateway/app/routers/payment.py
+# 13/04/2026 - CORRIGIDO: Adicionados endpoints POST /gateway/payment/create
+#              e POST /gateway/pagamento (legado frontend) que chamam process_payment()
 
-from fastapi import APIRouter, HTTPException, Header, Depends, status
+from __future__ import annotations
+
+import uuid
 from typing import Optional
-from datetime import datetime
+
+from fastapi import APIRouter, Header, Request, status
+from fastapi.responses import JSONResponse
+
+from app.models.payment_model import PaymentRequest
+from app.services.payment_service import process_payment
 from app.schemas.payment import CancelPaymentRequest
-from app.services.risk_events_service import RiskEventsService
-from app.integrations.payments.mercadopago.sp import build_provider as build_mercadopago
-from app.integrations.payments.stripe.pt import build_provider as build_stripe_pt
-from app.integrations.payments.stripe.sp import build_provider as build_stripe_sp
-from app.integrations.payments.base.contracts import CancelPaymentCommand
-from app.core.event_log import GatewayEventLogger
 from app.core.config import settings
+from app.core.event_log import GatewayEventLogger
 
 router = APIRouter(tags=["Payment"])
 
 
-def get_logger():
-    """Lazy initialization of logger to avoid startup errors"""
+def _gen_idempotency_key() -> str:
+    return f"auto_{uuid.uuid4().hex}"
+
+
+def _gen_device_fp() -> str:
+    return f"fp_auto_{uuid.uuid4().hex[:16]}"
+
+
+def _get_logger():
     try:
-        log_dir = getattr(settings, 'GATEWAY_LOG_DIR', '/logs')
-        log_hash_salt = getattr(settings, 'LOG_HASH_SALT', None)
-        
+        log_dir = getattr(settings, "GATEWAY_LOG_DIR", "/logs")
+        log_hash_salt = getattr(settings, "LOG_HASH_SALT", None)
         if not log_hash_salt:
-            print("Warning: LOG_HASH_SALT not configured, logger disabled")
             return None
-        
         return GatewayEventLogger(
-            gateway_id=getattr(settings, 'GATEWAY_ID', 'payment_gateway'),
+            gateway_id=getattr(settings, "GATEWAY_ID", "payment_gateway"),
             log_dir=log_dir,
-            log_hash_salt=log_hash_salt
+            log_hash_salt=log_hash_salt,
         )
     except Exception as e:
-        print(f"Warning: Failed to initialize logger: {str(e)}")
+        print(f"Warning: Failed to initialize logger: {e}")
         return None
 
-# GERANDO ERRO POR ISSO COMENTADA
-# CORREÇÃO 1: Adicionado response_model=None
-# CORREÇÃO 2: Dependência injetada corretamente com Depends()
-# @router.post(
-#     "/gateway/pagamento/{order_id}/cancel",
-#     status_code=status.HTTP_200_OK,
-#     summary="Cancelar pagamento",
-#     response_model=None,  # <--- CRUCIAL: Desabilita a geração automática do modelo de resposta
-# )
-# async def cancel_payment(
-#     order_id: str,
-#     body: CancelPaymentRequest,
-#     idempotency_key: str = Header(..., alias="Idempotency-Key"),
-#     risk_events_service: RiskEventsService = Depends(),  # <--- CORRETO: Sem argumento
-# ):
-#     # 1. Buscar evento do pagamento original
-#     event = await risk_events_service.get_event_by_order_id(order_id)
+
+# ---------------------------------------------------------------------------
+# Endpoint principal — chamado pelo order_pickup_service via PaymentGatewayClient
+# Paths em ordem de preferência no _candidate_paths() do client:
+#   /gateway/payment/create  ← primeira tentativa
+#   /gateway/payments/create
+#   /payments/create
+#   /payments
+#   /gateway/payment
+# ---------------------------------------------------------------------------
+
+def _handle_payment(data: PaymentRequest, request: Request, idempotency_key: str, device_fp: str):
+    result = process_payment(
+        data=data,
+        request=request,
+        idempotency_key=idempotency_key,
+        device_fp=device_fp,
+        request_id=None,
+    )
+    return result
+
+
+@router.post("/gateway/payment/create", response_model=None)
+async def create_payment_new(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+
+@router.post("/gateway/payments/create", response_model=None)
+async def create_payment_plural(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+
+@router.post("/payments/create", response_model=None)
+async def create_payment_short(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+
+@router.post("/payments", response_model=None)
+async def create_payment_root(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+
+@router.post("/gateway/payment", response_model=None)
+async def create_payment_legacy_path(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+
+# ---------------------------------------------------------------------------
+# Endpoint legado — chamado diretamente pelo frontend
+# ---------------------------------------------------------------------------
+
+@router.post("/gateway/pagamento", response_model=None)
+async def gateway_pagamento(
+    data: PaymentRequest,
+    request: Request,
+    idempotency_key: Optional[str] = Header(None, alias="Idempotency-Key"),
+    device_fp: Optional[str] = Header(None, alias="X-Device-Fingerprint"),
+):
+    ik = idempotency_key or _gen_idempotency_key()
+    fp = device_fp or _gen_device_fp()
+    return _handle_payment(data, request, ik, fp)
+
+#-------------------------------
+# CHATGPT 
+# from app.integrations.payments.base.contracts import CreatePaymentCommand
+# from fastapi import APIRouter
 # 
-#     if not event:
-#         raise HTTPException(
-#             status_code=status.HTTP_404_NOT_FOUND,
-#             detail=f"Payment not found for order_id: {order_id}"
-#         )
+# router = APIRouter(prefix="/gateway", tags=["gateway"])
 # 
-#     # 2. Validar se pode ser cancelado
-#     if event.decision not in ("APPROVED",):
-#         raise HTTPException(
-#             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-#             detail=f"Payment cannot be cancelled in current status: {event.decision}"
-#         )
 # 
-#     # 3. Selecionar provider
-#     try:
-#         if event.provider == "mercadopago":
-#             provider = build_mercadopago(access_token=settings.MERCADOPAGO_ACCESS_TOKEN)
-#         elif event.provider == "stripe" and event.region == "PT":
-#             provider = build_stripe_pt(secret_key=settings.STRIPE_SECRET_KEY_PT)
-#         elif event.provider == "stripe" and event.region == "SP":
-#             provider = build_stripe_sp(secret_key=settings.STRIPE_SECRET_KEY_SP)
-#         else:
-#             raise HTTPException(
-#                 status_code=status.HTTP_400_BAD_REQUEST,
-#                 detail=f"Unsupported provider/region: {event.provider}/{event.region}"
-#             )
-#     except Exception as e:
-#         raise HTTPException(
-#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-#             detail=f"Failed to initialize payment provider: {str(e)}"
-#         )
+# @router.post("/payment_gpt")
+# def create_payment_gpt(payload: dict):
+#     """
+#     Endpoint mínimo para criação de pagamento (stub funcional)
+#     """
 # 
-#    # 4. Executar cancelamento
-#     cancel_command = CancelPaymentCommand(
-#         provider_payment_id=event.provider_payment_id,
-#         reason=body.reason,
-#         amount=body.amount
-#     )
-#     
-#     refund_result = await provider.cancel_payment(cancel_command)
+#     order_id = payload.get("order_id")
+#     amount = payload.get("amount")
+#     currency = payload.get("currency", "BRL")
 # 
-#     if not refund_result.success:
-#         raise HTTPException(
-#             status_code=status.HTTP_502_BAD_GATEWAY,
-#             detail=f"Provider refund failed: {refund_result.error}"
-#         )
+#     if not order_id or not amount:
+#         return {
+#             "status": "error",
+#             "message": "order_id e amount são obrigatórios"
+#         }
 # 
-#     # 5. Registrar no log
-#     logger = get_logger()
-#     if logger:
-#         try:
-#             logger.append_event(
-#                 event={
-#                     "event_type": "GATEWAY_PAYMENT_CANCELLED",
-#                     "request_id": order_id,
-#                     "region": getattr(event, 'region', None),
-#                     "payload": {
-#                         "order_id": order_id,
-#                         "provider": event.provider,
-#                         "provider_payment_id": event.provider_payment_id,
-#                         "provider_refund_id": refund_result.refund_id,
-#                         "reason": body.reason,
-#                         "requested_by": body.requested_by,
-#                         "amount": body.amount,
-#                         "idempotency_key": idempotency_key,
-#                     },
-#                 }
-#             )
-#         except Exception as e:
-#             print(f"Warning: Failed to log cancellation event: {str(e)}")
-# 
+#     # 🔥 SIMULA PIX
 #     return {
-#         "order_id": order_id,
-#         "cancelled": True,
-#         "provider": event.provider,
-#         "provider_refund_id": refund_result.refund_id,
-#         "refund_status": refund_result.status,
-#         "processed_at": refund_result.processed_at or datetime.utcnow(),
-#         "reason": body.reason,
-#         "requested_by": body.requested_by
+#         "provider": "stub",
+#         "provider_payment_id": f"pay_{order_id}",
+#         "status": "PENDING",
+#         "qr_code": f"QR_CODE_{order_id}",
+#         "qr_code_text": f"PIX_CODE_{order_id}",
+#         "redirect_url": None
 #     }
+

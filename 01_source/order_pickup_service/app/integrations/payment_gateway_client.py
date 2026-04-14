@@ -52,11 +52,19 @@ class PaymentGatewayClient:
             "amount": payload["amount"],
             "currency": payload.get("currency", "BRL"),
             "country": payload.get("country", "BR"),
+
+            # compat
             "method": payload.get("method"),
             "payment_method": payload.get("payment_method") or payload.get("method"),
-            "region": payload.get("region"),
+            
+            # "region": payload.get("region"),
+            # "locker_id": payload.get("locker_id"),
+            # "slot": payload.get("slot"),
+            # gateway espera estes nomes
+            "regiao": payload.get("region"),
+            "porta": payload.get("slot"),
             "locker_id": payload.get("locker_id"),
-            "slot": payload.get("slot"),
+
             "customer_reference": payload.get("customer_reference"),
             "metadata": payload.get("metadata", {}),
         }
@@ -93,9 +101,7 @@ class PaymentGatewayClient:
 
             return {
                 "provider": data.get("provider"),
-                "provider_payment_id": data.get("provider_payment_id")
-                or data.get("payment_id")
-                or data.get("id"),
+                "provider_payment_id": data.get("provider_payment_id") or data.get("payment_id") or data.get("id"),
                 "status": data.get("status"),
                 "raw_status": data.get("raw_status") or data.get("status"),
                 "redirect_url": data.get("redirect_url"),

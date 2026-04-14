@@ -370,3 +370,42 @@ def get_allocation_state(
     return data.get("state")
 
 
+def get_slot_state(
+    locker_id: str,
+    slot: int,
+) -> str:
+    """
+    Retorna o estado atual de uma gaveta (slot) no runtime.
+    Fonte da verdade operacional.
+    """
+    normalized_locker_id = _normalize_locker_id(locker_id)
+    if not normalized_locker_id:
+        raise ValueError("locker_id is required for slot state")
+
+    url = f"{_runtime_base()}/locker/slots"
+
+    response = requests.get(
+        url,
+        headers=_headers_for_internal_request(normalized_locker_id),
+        timeout=settings.backend_client_timeout_sec,
+    )
+
+    if not response.ok:
+        try:
+            error_body = response.json()
+        except Exception:
+            error_body = response.text
+
+        raise Exception({
+            "error": "runtime_failed_get_slots",
+            "status_code": response.status_code,
+            "body": error_body
+        })
+
+    slots = response.json()
+
+    for s in slots:
+        if int(s.get("slot")) == int(slot):
+            return s.get("state")
+
+    return "NOT_FOUND"
