@@ -13,7 +13,8 @@ OrderStatus = Literal[
     "PAYMENT_PENDING",
     "PAID_PENDING_PICKUP",
     "DISPENSED",
-    "PICKED_UP",
+    "PICKED_UP",  # provalvemente bug - isso depende de sensor OU confirmação humana
+    "DISPENSED", # máquina liberou - pickup.door_opened
     "EXPIRED",
 ]
 

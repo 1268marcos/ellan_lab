@@ -38,7 +38,8 @@ def get_public_pickup(
 
     if order.status not in {
         OrderStatus.PAID_PENDING_PICKUP,
-        OrderStatus.PICKED_UP,
+        OrderStatus.PICKED_UP, # provalvemente bug - isso depende de sensor OU confirmação humana
+        # OrderStatus.DISPENSED, # máquina liberou - pickup.door_opened
     }:
         raise HTTPException(status_code=409, detail="pickup_not_available_for_order_status")
 

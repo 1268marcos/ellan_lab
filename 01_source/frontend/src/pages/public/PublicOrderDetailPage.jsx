@@ -311,8 +311,12 @@ function getPickupMessage(order) {
     return "Este pedido foi criado, mas a retirada ainda não foi liberada.";
   }
 
-  if (status === "PICKED_UP") {
+  if (status === "PICKED_UP") { // provalvemente bug - isso depende de sensor OU confirmação humana
     return "Este pedido já foi retirado.";
+  }
+
+  if (status === "DISPENSED") { // máquina liberou - pickup.door_opened
+     return "Este pedido já foi retirado na máquina.";
   }
 
   if (status === "PAID_PENDING_PICKUP") {

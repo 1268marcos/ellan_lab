@@ -118,6 +118,7 @@ def _mark_picked_up_from_closed(payload: dict) -> None:
     current_state = row[0] if row else None
 
     # Só muda se estava PAID_PENDING_PICKUP (regra correta)
+    # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     res = conn.execute(
         """
         UPDATE door_state
@@ -129,6 +130,7 @@ def _mark_picked_up_from_closed(payload: dict) -> None:
 
     if res.rowcount == 1:
         # Audit event: CLOSED → PICKED_UP
+        # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
         chain = _append_event(
             conn,
             machine_id=MACHINE_ID,
@@ -164,6 +166,7 @@ def _mark_picked_up_from_closed(payload: dict) -> None:
 def _set_picked_up(door_id: int):
     conn = get_conn()
     # só marca PICKED_UP se estava PAID_PENDING_PICKUP (evita bagunçar)
+    # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     now_iso = _now_iso()
     conn.execute(
         """

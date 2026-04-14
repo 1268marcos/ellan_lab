@@ -18,9 +18,10 @@ function OrderStatusBadge({ status }) {
   const statusConfig = {
     PAYMENT_PENDING: { bg: "#fef3c7", color: "#92400e", label: "Pagamento Pendente" },
     PAID_PENDING_PICKUP: { bg: "#dbeafe", color: "#1e40af", label: "Aguardando Retirada" },
-    PICKED_UP: { bg: "#d1fae5", color: "#065f46", label: "Retirado" },
+    PICKED_UP: { bg: "#d1fae5", color: "#065f46", label: "Retirado" }, // sem evidência por: sensor OU comprovação humana
     EXPIRED: { bg: "#fee2e2", color: "#991b1b", label: "Expirado" },
     CANCELLED: { bg: "#f3f4f6", color: "#374151", label: "Cancelado" },
+    DISPENSED: { bg: "rgba(95,61,196,0.22)", color: "rgba(95,61,196,0.45)", label: "Máquina Liberou" },
   };
 
   const config = statusConfig[status] || { bg: "#f3f4f6", color: "#374151", label: status };
@@ -146,7 +147,8 @@ function OrdersFilter({ filter, onFilterChange, totalOrders }) {
           <option value="all">Todos os pedidos ({totalOrders})</option>
           <option value="PAYMENT_PENDING">Pagamento Pendente</option>
           <option value="PAID_PENDING_PICKUP">Aguardando Retirada</option>
-          <option value="PICKED_UP">Retirados</option>
+          <option value="PICKED_UP">Retirados</option> {/*  provalvemente bug - isso depende de sensor OU confirmação humana */}
+          <option value="DISPENSED">Liberados na Máquina</option>
           <option value="EXPIRED">Expirados</option>
           <option value="CANCELLED">Cancelados</option>
         </select>
@@ -253,7 +255,8 @@ export default function PublicMyOrdersPage() {
       all: items.length,
       PAYMENT_PENDING: 0,
       PAID_PENDING_PICKUP: 0,
-      PICKED_UP: 0,
+      PICKED_UP: 0, // provalvemente bug - isso depende de sensor OU confirmação humana
+      // DISPENSED: 0, // máquina liberou - pickup.door_opened
       EXPIRED: 0,
       CANCELLED: 0,
     };

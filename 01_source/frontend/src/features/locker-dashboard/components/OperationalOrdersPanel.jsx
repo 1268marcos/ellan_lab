@@ -80,7 +80,8 @@ export default function OperationalOrdersPanel({
             <option value="">Todos</option>
             <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
             <option value="PAID_PENDING_PICKUP">PAID_PENDING_PICKUP</option>
-            <option value="PICKED_UP">PICKED_UP</option>
+            <option value="PICKED_UP">PICKED_UP</option> {/* PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened */}
+            <option value="DISPENSED">DISPENSED</option> {/* DISPENSED, máquina liberou - pickup.door_opened */}
             <option value="EXPIRED">EXPIRED</option>
             <option value="EXPIRED_CREDIT_50">EXPIRED_CREDIT_50</option>
             <option value="DISPENSED">DISPENSED</option>

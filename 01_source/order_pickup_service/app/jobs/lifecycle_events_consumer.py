@@ -38,8 +38,9 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
 
     for item in items:
         event_name = item.get("event_name")
-        if event_name != "order.prepayment_timed_out":
-            continue
+        
+        # if event_name != "order.prepayment_timed_out":
+        #    continue
 
         event_key = item.get("event_key")
         payload = item.get("payload") or {}
@@ -53,16 +54,38 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
             continue
 
         try:
-            handled = _handle_prepayment_timeout(db=db, order_id=order_id, payload=payload)
+            # handled = _handle_prepayment_timeout(db=db, order_id=order_id, payload=payload)
+            # if handled:
+            #     client.ack_event(event_key=event_key)
+            #     processed += 1
+            handled = False
+
+            if event_name == "order.prepayment_timed_out":
+                handled = _handle_prepayment_timeout(
+                    db=db,
+                    order_id=order_id,
+                    payload=payload
+                )
+
+            # 🔥 NOVO BLOCO CRÍTICO
+            elif event_name == "pickup.door_opened":
+                handled = _handle_pickup_door_opened(
+                    db=db,
+                    order_id=order_id,
+                    payload=payload
+                )
+
             if handled:
                 client.ack_event(event_key=event_key)
                 processed += 1
+
         except LifecycleEventsClientError:
             logger.exception(
                 "lifecycle_event_ack_failed",
                 extra={"event_key": event_key, "order_id": order_id},
             )
             db.rollback()
+
         except Exception:
             logger.exception(
                 "lifecycle_event_process_failed",
@@ -74,6 +97,40 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
         logger.info("lifecycle_events_processed", extra={"processed": processed})
 
     return processed
+
+
+def _handle_pickup_door_opened(
+    *,
+    db: Session,
+    order_id: str,
+    payload: dict[str, Any],
+) -> bool:
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        logger.warning("pickup_door_opened_order_not_found", extra={"order_id": order_id})
+        return True
+
+    pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
+
+    # 🔥 estado final correto
+    # OrderStatus.DISPENSED -> Máquina liberou - pickup.door_opened - NÃO tem como provar que cliente retirou fisicamente, só sabe que a porta abriu.
+    order.status = OrderStatus.DISPENSED
+    order.picked_up_at = payload.get("occurred_at")
+
+    if pickup:
+        pickup.status = PickupStatus.REDEEMED  # Retirada concluída - Antes errado com PickupStatus.COMPLETED
+
+    db.commit()
+
+    logger.info(
+        "pickup_door_opened_applied",
+        extra={
+            "order_id": order.id,
+        },
+    )
+
+    return True
+
 
 
 def _resolve_locker_id(*, order: Order, allocation: Allocation | None) -> str | None:

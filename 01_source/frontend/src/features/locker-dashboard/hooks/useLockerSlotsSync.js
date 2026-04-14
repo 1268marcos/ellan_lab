@@ -103,7 +103,7 @@ export default function useLockerSlotsSync({
 
         if (
           typeof onRefreshOrders === "function" &&
-          (nextState === "PICKED_UP" || nextState === "PAID_PENDING_PICKUP")
+          (nextState === "PICKED_UP" || nextState === "PAID_PENDING_PICKUP") // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
         ) {
           onRefreshOrders();
         }

@@ -22,7 +22,8 @@ class AllocationState(str, enum.Enum):
     KIOSK (fase atual):
       RESERVED_PENDING_PAYMENT
       -> OPENED_FOR_PICKUP
-      -> PICKED_UP apenas quando houver confirmação explícita de retirada
+      -> PICKED_UP apenas quando houver confirmação explícita de retirada - sensor OU confirmação humana
+      -> DISPENSED - máquina liberou - pickup.door_opened
       (ou) -> RELEASED / CANCELLED
 
     Observação:

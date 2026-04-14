@@ -14,7 +14,8 @@ SlotState = Literal[
     "AVAILABLE",
     "RESERVED",
     "PAID_PENDING_PICKUP",
-    "PICKED_UP",
+    "PICKED_UP", # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
+    "DISPENSED",
     "OUT_OF_STOCK",
 ]
 

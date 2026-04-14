@@ -22,8 +22,8 @@ class OrderStatus(str, enum.Enum):
     """Status do pedido"""
     PAYMENT_PENDING = "PAYMENT_PENDING"
     PAID_PENDING_PICKUP = "PAID_PENDING_PICKUP"
-    DISPENSED = "DISPENSED"
-    PICKED_UP = "PICKED_UP"
+    DISPENSED = "DISPENSED"   # Máquina liberou - pickup.door_opened - NÃO tem como provar que cliente retirou fisicamente, só sabe que a porta abriu.
+    PICKED_UP = "PICKED_UP"   # Cliente retirou - previsto para o uso com: sensor de retirada OU confirmação humana. 
     EXPIRED_CREDIT_50 = "EXPIRED_CREDIT_50"
     EXPIRED = "EXPIRED"
     CANCELLED = "CANCELLED"  # Adicionado
@@ -538,6 +538,8 @@ class Order(Base):
     @property
     def is_picked_up(self) -> bool:
         """Verifica se o pedido foi retirado"""
+        # OrderStatus.PICKED_UP, # provalvemente bug - isso depende de sensor OU confirmação humana
+        # OrderStatus.DISPENSED, # máquina liberou - pickup.door_opened
         return self.status == OrderStatus.PICKED_UP and self.picked_up_at is not None
     
     @property

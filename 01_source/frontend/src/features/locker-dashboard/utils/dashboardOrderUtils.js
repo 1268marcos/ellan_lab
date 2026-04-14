@@ -99,7 +99,7 @@ export function getOperationalRowHighlight(item) {
     };
   }
 
-  if (item.channel === "ONLINE" && item.status === "PICKED_UP") {
+  if (item.channel === "ONLINE" && item.status === "PICKED_UP") { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     return {
       bg: "linear-gradient(135deg, rgba(31,122,63,0.18), rgba(31,122,63,0.06))",
       borderLeft: "4px solid rgba(31,122,63,0.70)",
@@ -313,12 +313,12 @@ export function getOrderSupportMeta(currentOrder) {
   const currentOrderWarning =
     currentOrder?.status === "EXPIRED" || currentOrder?.status === "EXPIRED_CREDIT_50"
       ? "Este pedido expirou. Não tente pagar ou retirar. Crie um novo pedido."
-      : currentOrder?.status === "PICKED_UP"
+      : currentOrder?.status === "PICKED_UP" // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto : DISPENSED, máquina liberou - pickup.door_opened 
         ? "Este pedido já foi retirado. Não tente pagar novamente."
         : null;
 
   const isOrderAlreadyPaid =
-    currentOrder?.status === "PAID_PENDING_PICKUP" || currentOrder?.status === "PICKED_UP";
+    currentOrder?.status === "PAID_PENDING_PICKUP" || currentOrder?.status === "PICKED_UP"; // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto : DISPENSED, máquina liberou - pickup.door_opened
 
   const canRegenerateManualCode =
     currentOrder?.status === "PAID_PENDING_PICKUP" && !!currentOrder?.order_id;

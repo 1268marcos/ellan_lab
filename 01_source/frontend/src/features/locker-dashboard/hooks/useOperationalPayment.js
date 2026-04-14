@@ -260,10 +260,15 @@ export default function useOperationalPayment({
       return { ok: false };
     }
 
-    if (currentOrder?.status === "PICKED_UP") {
+    if (currentOrder?.status === "PICKED_UP") { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
       setPayResp("⚠️ Este pedido já foi retirado.");
       return { ok: false };
     }
+
+    if (currentOrder?.status === "DISPENSED") { // máquina liberou - pickup.door_opened
+      setPayResp("⚠️ Este pedido já foi retirado na máquina.");
+      return { ok: false };
+    }    
 
     if (!payMethod) {
       setPayResp("❌ Selecione um método de pagamento.");

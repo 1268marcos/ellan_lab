@@ -18,13 +18,14 @@ class PickupStatus(str, enum.Enum):
         Retirada liberada e ainda utilizável.
 
     REDEEMED:
-        Retirada concluída.
+        Retirada concluída. Sem provas por: sensor ou validação humana.
 
     EXPIRED:
         Janela operacional expirou sem conclusão.
 
     CANCELLED:
         Fluxo cancelado por operação, compensação ou inconsistência.
+
     """
     ACTIVE = "ACTIVE"
     REDEEMED = "REDEEMED"

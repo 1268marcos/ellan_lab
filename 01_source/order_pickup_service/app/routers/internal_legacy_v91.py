@@ -436,7 +436,8 @@ def payment_confirm(
     if order.status in (
         OrderStatus.PAID_PENDING_PICKUP,
         OrderStatus.DISPENSED,
-        OrderStatus.PICKED_UP,
+        OrderStatus.PICKED_UP, # provalvemente bug - isso depende de sensor OU confirmação humana
+        # OrderStatus.DISPENSED, # máquina liberou - pickup.door_opened
     ):
         allocation = _ensure_allocation(db, order.id)
         pickup = _get_latest_pickup_by_order(db, order.id)

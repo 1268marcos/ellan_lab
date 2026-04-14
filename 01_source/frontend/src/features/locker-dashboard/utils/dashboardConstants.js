@@ -4,7 +4,8 @@ export const SLOT_STATES = [
   "AVAILABLE",
   "RESERVED",
   "PAID_PENDING_PICKUP",
-  "PICKED_UP",
+  "PICKED_UP", // cliente retirou - sem evidência: falta sensor OU comprovação humana
+  "DISPENSED", // máquina liberou (KIOSK)
   "OUT_OF_STOCK",
 ];
 
@@ -135,7 +136,8 @@ export const STATE_STYLE = {
   AVAILABLE: { bg: "#1f7a3f", fg: "white", label: "Disponível" },
   RESERVED: { bg: "#c79200", fg: "black", label: "Reservada" },
   PAID_PENDING_PICKUP: { bg: "#1b5883", fg: "white", label: "Pago (aguardando)" },
-  PICKED_UP: { bg: "#6b6b6b", fg: "white", label: "Retirado" },
+  PICKED_UP: { bg: "#6b6b6b", fg: "white", label: "Retirado" }, // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
+  DISPENSED: { bg: "#3f3f3f", fg: "white", label: "Liberado na Máquina" },
   OUT_OF_STOCK: { bg: "#b3261e", fg: "white", label: "Indisponível" },
 };
 
@@ -152,11 +154,17 @@ export const ORDER_STATUS_META = {
     bg: "linear-gradient(135deg, rgba(27,88,131,0.28), rgba(27,88,131,0.12))",
     border: "rgba(27,88,131,0.45)",
   },
-  PICKED_UP: {
+  PICKED_UP: { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     label: "Retirado",
     tone: "neutral",
     bg: "linear-gradient(135deg, rgba(107,107,107,0.24), rgba(107,107,107,0.10))",
     border: "rgba(107,107,107,0.40)",
+  },
+  DISPENSED: { 
+    label: "Liberado na Máquina",
+    tone: "neutral",
+    bg: "linear-gradient(135deg, rgba(107,107,107,0.34), rgba(107,107,107,0.20))",
+    border: "rgba(107,107,107,0.50)",
   },
   EXPIRED: {
     label: "Expirado",
@@ -223,10 +231,15 @@ export const ALLOCATION_STATUS_META = {
     bg: "rgba(95,61,196,0.22)",
     border: "rgba(95,61,196,0.45)",
   },
-  PICKED_UP: {
+  PICKED_UP: { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     label: "Retirada concluída",
     bg: "rgba(31,122,63,0.22)",
     border: "rgba(31,122,63,0.45)",
+  },
+  DISPENSED: {
+    label: "Máquina liberou",
+    bg: "rgba(31,122,63,0.32)",
+    border: "rgba(31,122,63,0.55)",
   },
   EXPIRED: {
     label: "Alocação expirada",
@@ -272,10 +285,16 @@ export const OPERATIONAL_HIGHLIGHT_LEGEND = [
     border: "rgba(27,88,131,0.70)",
   },
   {
-    key: "ONLINE_PICKED_UP",
+    key: "ONLINE_PICKED_UP", // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
     label: "ONLINE • PICKED_UP",
     bg: "linear-gradient(135deg, rgba(31,122,63,0.18), rgba(31,122,63,0.06))",
     border: "rgba(31,122,63,0.70)",
+  },
+  {
+    key: "ONLINE_DISPENSED", 
+    label: "ONLINE • DISPENSED",
+    bg: "linear-gradient(135deg, rgba(31,122,63,0.28), rgba(31,122,63,0.16))",
+    border: "rgba(31,122,63,0.85)",
   },
 ];
 

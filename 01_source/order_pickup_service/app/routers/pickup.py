@@ -501,7 +501,8 @@ def _mark_pickup_redeemed_operationally(
     )
 
     order.mark_as_picked_up()
-    allocation.state = AllocationState.PICKED_UP
+    allocation.state = AllocationState.PICKED_UP # provalvemente bug - isso depende de sensor OU confirmação humana
+    # allocation.state = AllocationState.DISPENSED # máquina liberou - pickup.door_opened
     allocation.locked_until = None
 
     if pickup.channel == PickupChannel.KIOSK and not pickup.notes:

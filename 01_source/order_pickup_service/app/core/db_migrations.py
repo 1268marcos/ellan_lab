@@ -278,6 +278,7 @@ def _ensure_orders_columns(conn) -> None:
         "ON orders (pickup_deadline_at) "
         "WHERE status NOT IN ('PICKED_UP','CANCELLED','REFUNDED','EXPIRED')",
     )
+    # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
 
 
 def _ensure_allocations_columns(conn) -> None:

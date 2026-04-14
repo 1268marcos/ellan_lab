@@ -91,13 +91,13 @@ export default function useOperationalPickup({
         prev
           ? {
               ...prev,
-              status: "PICKED_UP",
+              status: "PICKED_UP", // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
               picked_up_at: data?.picked_up_at || new Date().toISOString(),
               pickup_status: data?.pickup_status || "REDEEMED",
               allocation: {
                 allocation_id: prev?.allocation?.allocation_id,
                 slot: data?.slot || prev?.allocation?.slot,
-                state: data?.allocation_state || "PICKED_UP",
+                state: data?.allocation_state || "PICKED_UP", // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
               },
             }
           : prev
@@ -126,13 +126,13 @@ export default function useOperationalPickup({
         prev
           ? {
               ...prev,
-              status: "PICKED_UP",
+              status: "PICKED_UP", // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
               picked_up_at: data?.picked_up_at || new Date().toISOString(),
               pickup_status: data?.pickup_status || "REDEEMED",
               allocation: {
                 allocation_id: prev?.allocation?.allocation_id,
                 slot: data?.slot || prev?.allocation?.slot,
-                state: data?.allocation_state || "PICKED_UP",
+                state: data?.allocation_state || "PICKED_UP", // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
               },
             }
           : prev

@@ -144,7 +144,7 @@ def log_sample(x_internal_token: str | None = Header(default=None)):
             correlation_id=correlation_id,
             door_id=door_id,
             old_state="PAID_PENDING_PICKUP",
-            new_state="PICKED_UP",
+            new_state="PICKED_UP", # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
             payload={"fsm": "door_state"},
         ))
 
