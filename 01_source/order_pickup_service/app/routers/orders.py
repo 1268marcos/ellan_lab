@@ -25,10 +25,22 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 
 def resolve_operational_status(order: Order, allocation: Allocation | None) -> str:
     
-    if order.status == OrderStatus.FAILED:
-        return "FAILED"
+    # if order.status == OrderStatus.FAILED:
+    #     return "FAILED"
 
-    # 🔥 sem allocation → expirado
+    # 🔒 estados finais/canônicos do pedido não devem ser sobrescritos
+    if order.status in {
+        OrderStatus.DISPENSED,
+        OrderStatus.PICKED_UP,
+        OrderStatus.CANCELLED,
+        OrderStatus.REFUNDED,
+        OrderStatus.FAILED,
+        OrderStatus.EXPIRED,
+        OrderStatus.EXPIRED_CREDIT_50,
+    }:
+        return order.status.value
+
+    # 🔥 sem allocation → expirado,  sem allocation só é problema para pedidos não finais
     if not allocation:
         return "EXPIRED"
 
@@ -41,19 +53,30 @@ def resolve_operational_status(order: Order, allocation: Allocation | None) -> s
     except Exception:
         return "UNKNOWN"
 
-    if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+    # if state in ["RELEASED", "EXPIRED", "NOT_FOUND"]:
+    #    return "EXPIRED"
+   
+    # 🔥 NOT_FOUND não pode derrubar KIOSK já dispensado
+    if state in ["RELEASED", "EXPIRED"]:
         return "EXPIRED"
 
+
     # 🔥 deadline
+    # if order.pickup_deadline_at:
+    #     if order.pickup_deadline_at < datetime.now(timezone.utc):
+    #         return "EXPIRED"
+        
     if order.pickup_deadline_at:
-        if order.pickup_deadline_at < datetime.now(timezone.utc):
+        now_utc = datetime.now(timezone.utc)
+        deadline = order.pickup_deadline_at
+        if getattr(deadline, "tzinfo", None) is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+
+        if deadline < now_utc:
             return "EXPIRED"
 
+
     return order.status.value
-
-
-
-
 
 
 @router.post("", response_model=OrderOut)
