@@ -54,7 +54,11 @@ from app.services.payment_confirm_service import (
     emit_order_paid_and_simulate_fiscal,
 )
 
-from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
+from app.services.pickup_payment_fulfillment_service import (
+    PickupPaymentFulfillmentService,
+    fulfill_payment_post_approval,
+)
+
 from app.services.notification_dispatch_service import queue_receipt_email
 
 from app.services.payment_capability_service import get_payment_capabilities
@@ -350,148 +354,73 @@ def kiosk_create_order(
         )
     # ===== FIM DO PATCH =====
 
-  
-    pricing = backend_client.get_sku_pricing(
-        payload.region.value,
-        payload.sku_id,
-        locker_id=payload.totem_id,
-    )
-
-    amount_cents = int(pricing.get("amount_cents") or pricing.get("price_cents"))
-
-    # ttl_sec = get_capability_constraint(
-    #     db=db,
-    #     region=payload.region.value,
-    #     # channel="KIOSK",
-    #     # context="ORDER_CREATION",
-    #     channel="kiosk",
-    #     context="order_creation",
-    #     code="prepayment_timeout_sec",
-    # )
-    ttl_raw = get_capability_constraint(
-        db=db,
-        region=payload.region.value,
-        channel="kiosk",
-        context="order_creation",
-        code="prepayment_timeout_sec",
-    )
-
-    # 🔥 CORREÇÃO: TTL SEGURO com valor maior para desenvolvimento
-    if isinstance(ttl_raw, dict):
-        ttl_value = ttl_raw.get("value")
-    else:
-        ttl_value = ttl_raw
-
-    ttl_sec = int(ttl_value) if ttl_value not in (None, "", 0, "0") else 1800 # (30 min) antes 120 (2 min)
-
-    logger.info(f"Using TTL of {ttl_sec} seconds for allocation")
-
-    alloc = backend_client.locker_allocate(
-        payload.region.value,
-        payload.sku_id,
-        ttl_sec,
-        str(uuid.uuid4()),
-        payload.desired_slot,
-        locker_id=payload.totem_id,
-    )
-
-    allocation_id = alloc["allocation_id"]
-    slot = int(alloc["slot"])
-
+    # =========================
+    # NOVO FLOW UNIFICADO
+    # =========================
     try:
-        order = Order(
-            id=str(uuid.uuid4()),
-            channel=OrderChannel.KIOSK,
-            region=payload.region.value,
-            totem_id=payload.totem_id,
-            sku_id=payload.sku_id,
-            amount_cents=amount_cents,
-            status=OrderStatus.PAYMENT_PENDING,
-            payment_method=payment_method_enum,
-            payment_status=PaymentStatus.PENDING_CUSTOMER_ACTION,
-            guest_phone=payload.customer_phone,
-            payment_interface=payment_interface,
-            wallet_provider=wallet_provider_value,
-        )
+        logger.error("🔥 NEW FLOW EXECUTADO - kiosk.py chamando service")
 
-        db.add(order)
-        db.flush()
-
-        # 🔥 FIX CRÍTICO — PERSISTIR ALOCAÇÃO NO ORDER
-        order.slot = slot
-        order.allocation_id = allocation_id
-
-        allocation = Allocation(
-            id=allocation_id,
-            order_id=order.id,
-            locker_id=payload.totem_id,
-            slot=slot,
-            state=AllocationState.RESERVED_PENDING_PAYMENT,
-            ttl_seconds=ttl_sec,
-        )
-
-        db.add(allocation)
-        db.commit()
-
-    except Exception:
-        db.rollback()
-
-        try:
-            backend_client.locker_release(
-                payload.region.value,
-                allocation_id,
-                locker_id=payload.totem_id,
-            )
-        except Exception:
-            logger.exception(
-                "kiosk_create_order_release_failed_after_persistence_error",
-                extra={
-                    "allocation_id": allocation_id,
-                    "locker_id": payload.totem_id,
-                    "region": payload.region.value,
+        if not payload.amount_cents:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "AMOUNT_CENTS_REQUIRED",
+                    "message": "amount_cents é obrigatório no KIOSK",
                 },
             )
 
-        raise
+        service_payload = {
+            "region": payload.region.value,
+            "locker_id": payload.totem_id,
+            "totem_id": payload.totem_id,
+            "sku_id": payload.sku_id,
+            "slot": payload.desired_slot,
+            "payment_method": payment_method_code,
+            # "amount_cents": None,  # causando erro - deveria ser resolvido no backend se necessário
+            "amount_cents": payload.amount_cents,
+            "payment_interface": payment_interface,
+            "wallet_provider": wallet_provider_value,
+            "customer_phone": payload.customer_phone,
+            "device_id": x_device_fingerprint,
+            "ip_address": request.client.host if request.client else None,
+            "user_agent": request.headers.get("user-agent"),
+        }
 
-    try:
-        register_prepayment_timeout_deadline(
-            order_id=order.id,
-            order_channel=order.channel.value,
-            region_code=order.region,
-            slot_id=str(slot),
-            machine_id=order.totem_id,
-            created_at=order.created_at,
-            payment_method=payment_method_code,
+        result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(
+            db,
+            service_payload
         )
 
-    except Exception:
-        logger.exception("lifecycle_failed_releasing_allocation")
+        logger.error("🔥 NEW FLOW EXECUTADO - kiosk.py retorno do service")
 
-        try:
-            backend_client.locker_release(
-                payload.region.value,
-                allocation_id,
-                locker_id=payload.totem_id,
-            )
-        except Exception:
-            logger.exception("FAILED_TO_RELEASE_AFTER_LIFECYCLE_ERROR")
+    except Exception as exc:
+        logger.exception("KIOSK_CREATE_ORDER_FAILED")
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "KIOSK_CREATE_ORDER_FAILED",
+                "error": str(exc),
+            },
+        )
 
-        allocation.state = AllocationState.FAILED
-        db.commit()
-
-        raise
-
+    # =========================
+    # RESPONSE DIRETO DO SERVICE
+    # =========================
     return KioskOrderOut(
-        order_id=order.id,
-        status=order.status.value,
-        slot=slot,
-        amount_cents=amount_cents,
-        payment_method=payment_method_code,
-        allocation_id=allocation.id,
-        message="Pedido criado com sucesso",
+        order_id=result["order_id"],
+        allocation_id=result.get("allocation_id"),
+        slot=result.get("slot"),
+        amount_cents=result["amount_cents"],
+        payment_method=result.get("payment_method"),
+        payment_status=result.get("payment_status"),
+        instruction_type=result.get("instruction_type"),
+        ttl_sec=result.get("ttl_sec"),
+        expires_at=result.get("expires_at"),
+        qr_code=result.get("qr_code"),
+        qr_code_text=result.get("qr_code_text"),
+        status="PAYMENT_PENDING" if result.get("payment_status") != "FAILED" else "CANCELLED",
+        message="Pedido criado e aguardando pagamento" if result.get("payment_status") != "FAILED" else "Falha ao iniciar pagamento; gaveta liberada",
     )
-
 
 
 # =============================================================
@@ -833,6 +762,16 @@ def kiosk_payment_simulate_approved(
         raise HTTPException(
             status_code=404,
             detail={"type": "ORDER_NOT_FOUND", "order_id": order_id},
+        )
+
+    if order.payment_status == "FAILED" or order.status == OrderStatus.CANCELLED:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "ORDER_NOT_PAYABLE",
+                "message": "Pedido já falhou ou foi cancelado. Crie um novo pedido.",
+                "order_id": order_id,
+            },
         )
 
     # 🔥 seguir fluxo normal (sem duplicar cancel_prepayment_timeout_deadline)

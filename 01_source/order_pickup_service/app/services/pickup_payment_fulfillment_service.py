@@ -7,12 +7,15 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+import logging
+
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
 from enum import Enum
 
 import requests
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
@@ -46,6 +49,7 @@ from app.repositories.order_repository import OrderRepository
 from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.payment_instruction_repository import PaymentInstructionRepository
 
+logger = logging.getLogger(__name__)
 
 # ========================================================================
 # MAIN SERVICE
@@ -62,20 +66,9 @@ class PickupPaymentFulfillmentService:
     # ====================================================================
     # KIOSK FLOW
     # ====================================================================
+    def create_kiosk_order_with_payment(self, db: Session, payload: Dict[str, Any]) -> Dict[str, Any]:
+        now = datetime.utcnow()
 
-    def create_kiosk_order_with_payment(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Fluxo completo:
-        1. cria pedido
-        2. aloca slot
-        3. cria payment_instruction
-        4. chama gateway
-        5. retorna resposta completa
-        """
-
-        # ----------------------------------------------------------------
-        # INPUT
-        # ----------------------------------------------------------------
         region = payload["region"]
         locker_id = payload["locker_id"]
         sku_id = payload["sku_id"]
@@ -83,104 +76,315 @@ class PickupPaymentFulfillmentService:
         payment_method = payload["payment_method"]
         amount_cents = payload["amount_cents"]
 
-        # ----------------------------------------------------------------
-        # 1. CREATE ORDER
-        # ----------------------------------------------------------------
-        order = self.order_repo.create_order({
-            "region": region,
-            "locker_id": locker_id,
-            "sku_id": sku_id,
-            "amount_cents": amount_cents,
-            "payment_method": payment_method,
-            "status": "PAYMENT_PENDING",
-            "payment_status": "CREATED",
-            "channel": "KIOSK",
-            "created_at": _now(),
-        })
+        try:
+            logger.error("🔥 NEW FLOW EXECUTADO - service início")
 
-        # ----------------------------------------------------------------
-        # 2. ALLOCATE SLOT (FAIL FAST)
-        # ----------------------------------------------------------------
-        allocation = self.allocation_repo.allocate({
-            "order_id": order["id"],
-            "locker_id": locker_id,
-            "slot": slot,
-            "ttl_seconds": 900,
-        })
+            # =========================
+            # 1. CREATE ORDER
+            # =========================
+            order = Order(
+                id=str(uuid.uuid4()),
+                region=region,
+                totem_id=locker_id,
+                sku_id=sku_id,
+                amount_cents=amount_cents,
+                payment_method=payment_method,
+                status=OrderStatus.PAYMENT_PENDING,
+                payment_status="CREATED",
+                channel=OrderChannel.KIOSK,
+                created_at=now,
+                updated_at=now,
+            )
+            db.add(order)
+            db.flush()
 
-        if allocation["state"] != "RESERVED_PENDING_PAYMENT":
-            raise Exception({
-                "type": "ALLOCATION_FAILED",
-                "order_id": order["id"],
-                "allocation_state": allocation["state"],
-            })
+            # =========================
+            # 2. ALLOCATE SLOT NO RUNTIME
+            # =========================
+            request_id = str(uuid.uuid4())
+            alloc = backend_client.locker_allocate(
+                region,
+                sku_id,
+                ttl_sec=900,
+                request_id=request_id,
+                desired_slot=int(slot),
+                locker_id=locker_id,
+            )
 
-        # ----------------------------------------------------------------
-        # 3. CREATE PAYMENT INSTRUCTION
-        # ----------------------------------------------------------------
-        instruction_type = _resolve_instruction_type(payment_method)
+            allocation_id = alloc.get("allocation_id") or f"al_{request_id.replace('-', '')}"
+            allocated_slot = alloc.get("slot", slot)
 
-        expires_at = _now() + timedelta(minutes=15)
+            allocation = Allocation(
+                id=allocation_id,
+                order_id=order.id,
+                locker_id=locker_id,
+                slot=int(allocated_slot),
+                state=AllocationState.RESERVED_PENDING_PAYMENT,
+                locked_until=now + timedelta(minutes=15),
+            )
+            db.add(allocation)
+            db.flush()
 
-        payment_instruction = self.pi_repo.create({
-            "id": _generate_id("pi"),
-            "order_id": order["id"],
-            "instruction_type": instruction_type,
-            "amount_cents": amount_cents,
-            "currency": "BRL",
-            "status": "PENDING",
-            "expires_at": expires_at,
-            "created_at": _now(),
-            "updated_at": _now(),
-        })
+            # =========================
+            # 3. CREATE PAYMENT INSTRUCTION
+            # =========================
+            instruction_type = _resolve_instruction_type(payment_method)
+            expires_at = now + timedelta(minutes=15)
 
-        # ----------------------------------------------------------------
-        # 4. CALL PAYMENT GATEWAY
-        # ----------------------------------------------------------------
-        gateway_result = self.gateway.create_payment({
-            "order_id": order["id"],
-            "amount": amount_cents / 100,
-            "currency": "BRL",
-            "country": "BR",
-            "method": payment_method,
-        })
+            payment_instruction_id = str(uuid.uuid4())
 
-        # ----------------------------------------------------------------
-        # 5. UPDATE PAYMENT INSTRUCTION WITH GATEWAY DATA
-        # ----------------------------------------------------------------
-        update_payload = _resolve_payment_payload(payment_method, gateway_result)
+            db.execute(
+                text(
+                    """
+                    INSERT INTO payment_instructions (
+                        id,
+                        order_id,
+                        instruction_type,
+                        amount_cents,
+                        currency,
+                        status,
+                        expires_at,
+                        qr_code,
+                        qr_code_text,
+                        barcode,
+                        digitable_line,
+                        authorization_code,
+                        capture_amount_cents,
+                        captured_at,
+                        payment_token,
+                        customer_payment_method_id,
+                        wallet_provider,
+                        wallet_transaction_id,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        :id,
+                        :order_id,
+                        :instruction_type,
+                        :amount_cents,
+                        :currency,
+                        :status,
+                        :expires_at,
+                        :qr_code,
+                        :qr_code_text,
+                        :barcode,
+                        :digitable_line,
+                        :authorization_code,
+                        :capture_amount_cents,
+                        :captured_at,
+                        :payment_token,
+                        :customer_payment_method_id,
+                        :wallet_provider,
+                        :wallet_transaction_id,
+                        :created_at,
+                        :updated_at
+                    )
+                    """
+                ),
+                {
+                    "id": payment_instruction_id,
+                    "order_id": order.id,
+                    "instruction_type": instruction_type,
+                    "amount_cents": amount_cents,
+                    "currency": "BRL",
+                    "status": "PENDING",
+                    "expires_at": expires_at,
+                    "qr_code": None,
+                    "qr_code_text": None,
+                    "barcode": None,
+                    "digitable_line": None,
+                    "authorization_code": None,
+                    "capture_amount_cents": None,
+                    "captured_at": None,
+                    "payment_token": None,
+                    "customer_payment_method_id": None,
+                    "wallet_provider": payload.get("wallet_provider"),
+                    "wallet_transaction_id": None,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            db.flush()
 
-        self.pi_repo.update(payment_instruction["id"], {
-            **update_payload,
-            "updated_at": _now(),
-        })
+            # =========================
+            # 4. CALL GATEWAY (PROTEGIDO)
+            # =========================
+            gateway_result: Dict[str, Any] = {}
+            gateway_failed = False
+            gateway_error_message = None
 
-        # ----------------------------------------------------------------
-        # 6. UPDATE ORDER PAYMENT STATUS
-        # ----------------------------------------------------------------
-        self.order_repo.update_payment_status(
-            order["id"],
-            "PENDING_CUSTOMER_ACTION"
-        )
+            try:
+                logger.error("🔥 NEW FLOW EXECUTADO - antes do gateway.create_payment")
 
-        # ----------------------------------------------------------------
-        # 7. RESPONSE (FRONTEND READY)
-        # ----------------------------------------------------------------
-        return {
-            "order_id": order["id"],
-            "allocation_id": allocation["id"],
-            "locker_id": locker_id,
-            "slot": slot,
-            "amount_cents": amount_cents,
-            "payment_method": payment_method,
+                raw_gateway_result = self.gateway.create_payment(
+                    {
+                        "order_id": order.id,
+                        "amount": amount_cents / 100,
+                        "currency": "BRL",
+                        "country": "BR",
+                        "method": payment_method,
+                    }
+                )
 
-            "payment_status": "PENDING_CUSTOMER_ACTION",
-            "instruction_type": instruction_type,
-            "ttl_sec": 900,
-            "expires_at": expires_at.isoformat(),
+                if raw_gateway_result is None:
+                    raise RuntimeError("payment_gateway retornou None")
 
-            **update_payload
-        }
+                if isinstance(raw_gateway_result, dict):
+                    gateway_result = raw_gateway_result
+                else:
+                    gateway_result = {
+                        "qr_code": getattr(raw_gateway_result, "qr_code", None),
+                        "qr_code_text": getattr(raw_gateway_result, "qr_code_text", None),
+                        "authorization_code": getattr(raw_gateway_result, "authorization_code", None),
+                        "barcode": getattr(raw_gateway_result, "barcode", None),
+                        "digitable_line": getattr(raw_gateway_result, "digitable_line", None),
+                        "payment_token": getattr(raw_gateway_result, "payment_token", None),
+                        "customer_payment_method_id": getattr(raw_gateway_result, "customer_payment_method_id", None),
+                        "wallet_transaction_id": getattr(raw_gateway_result, "wallet_transaction_id", None),
+                        "status": getattr(raw_gateway_result, "status", None),
+                    }
+
+                logger.error("🔥 NEW FLOW EXECUTADO - depois do gateway.create_payment")
+
+            except Exception as e:
+                gateway_failed = True
+                gateway_error_message = str(e)
+                logger.exception("GATEWAY_CREATE_PAYMENT_FAILED")
+
+                gateway_result = {
+                    "qr_code": None,
+                    "qr_code_text": None,
+                    "authorization_code": None,
+                    "barcode": None,
+                    "digitable_line": None,
+                    "payment_token": None,
+                    "customer_payment_method_id": None,
+                    "wallet_transaction_id": None,
+                    "status": "FAILED",
+                }
+
+            # =========================
+            # 5. UPDATE PAYMENT INSTRUCTION
+            # =========================
+            pi_status = "FAILED" if gateway_failed else "PENDING"
+
+            db.execute(
+                text(
+                    """
+                    UPDATE payment_instructions
+                    SET status = :status,
+                        qr_code = :qr_code,
+                        qr_code_text = :qr_code_text,
+                        barcode = :barcode,
+                        digitable_line = :digitable_line,
+                        authorization_code = :authorization_code,
+                        capture_amount_cents = :capture_amount_cents,
+                        captured_at = :captured_at,
+                        payment_token = :payment_token,
+                        customer_payment_method_id = :customer_payment_method_id,
+                        wallet_provider = :wallet_provider,
+                        wallet_transaction_id = :wallet_transaction_id,
+                        updated_at = :updated_at
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "id": payment_instruction_id,
+                    "status": pi_status,
+                    "qr_code": gateway_result.get("qr_code"),
+                    "qr_code_text": gateway_result.get("qr_code_text"),
+                    "barcode": gateway_result.get("barcode"),
+                    "digitable_line": gateway_result.get("digitable_line"),
+                    "authorization_code": gateway_result.get("authorization_code"),
+                    "capture_amount_cents": amount_cents if instruction_type == "CAPTURE_NOW" else None,
+                    "captured_at": None,
+                    "payment_token": gateway_result.get("payment_token"),
+                    "customer_payment_method_id": gateway_result.get("customer_payment_method_id"),
+                    "wallet_provider": payload.get("wallet_provider"),
+                    "wallet_transaction_id": gateway_result.get("wallet_transaction_id"),
+                    "updated_at": datetime.utcnow(),
+                },
+            )
+
+            # =========================
+            # 6. UPDATE ORDER STATUS
+            # =========================
+            order.payment_status = "FAILED" if gateway_failed else "PENDING_CUSTOMER_ACTION"
+            order.updated_at = datetime.utcnow()
+            db.flush()
+
+            # =========================
+            # 7. COMMIT FINAL
+            # =========================
+            db.commit()
+            logger.error("🔥 NEW FLOW EXECUTADO - commit final realizado")
+
+            response = {
+                "order_id": order.id,
+                "allocation_id": allocation.id,
+                "locker_id": locker_id,
+                "slot": int(allocated_slot),
+                "amount_cents": amount_cents,
+                "payment_method": payment_method,
+                "payment_status": order.payment_status,
+                "instruction_type": instruction_type,
+                "ttl_sec": 900,
+                "expires_at": expires_at.isoformat(),
+                "qr_code": gateway_result.get("qr_code"),
+                "qr_code_text": gateway_result.get("qr_code_text"),
+                "barcode": gateway_result.get("barcode"),
+                "digitable_line": gateway_result.get("digitable_line"),
+                "authorization_code": gateway_result.get("authorization_code"),
+            }
+
+            # if gateway_failed:
+            #     response["gateway_error"] = gateway_error_message
+
+            if gateway_failed:
+                logger.error("🔥 PAYMENT FAILED - liberando allocation imediatamente")
+
+                try:
+                    backend_client.locker_release(
+                        region,
+                        allocation.id,
+                        locker_id=locker_id,
+                    )
+                except Exception:
+                    logger.exception("FAILED_TO_RELEASE_ALLOCATION_AFTER_GATEWAY_FAILURE")
+
+                allocation.state = AllocationState.RELEASED
+                order.status = OrderStatus.CANCELLED
+                order.payment_status = "FAILED"
+                order.updated_at = datetime.utcnow()
+
+                db.flush()
+                db.commit()
+
+                return {
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "locker_id": locker_id,
+                    "slot": int(allocated_slot),
+                    "amount_cents": amount_cents,
+                    "payment_method": payment_method,
+                    "payment_status": "FAILED",
+                    "instruction_type": instruction_type,
+                    "ttl_sec": 0,
+                    "expires_at": None,
+                    "qr_code": None,
+                    "qr_code_text": None,
+                    "barcode": None,
+                    "digitable_line": None,
+                    "authorization_code": None,
+                }
+
+
+            return response
+
+        except Exception:
+            db.rollback()
+            logger.exception("KIOSK_CREATE_ORDER_WITH_PAYMENT_FAILED")
+            raise
 
 
 class NotificationChannel(str, Enum):

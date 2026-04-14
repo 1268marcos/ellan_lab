@@ -434,7 +434,10 @@ def kiosk_create_order(
     }
 
     try:
-        result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(service_payload)
+        logger.error("🔥 NEW FLOW EXECUTADO - em public_orders.py antes do result = PickupPaymentFulfillmentService")
+        # result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(service_payload)
+        result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(db, service_payload)
+        logger.error("🔥 NEW FLOW EXECUTADO - em public_orders.py depois do result = PickupPaymentFulfillmentService")
     except HTTPException:
         raise
     except Exception as exc:
