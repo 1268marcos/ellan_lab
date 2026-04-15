@@ -3,6 +3,7 @@
 # 05/04/2026 - Resolvendo Hardcoded
 # 05/04/2026 - Corrigido para usar capability profile do banco como source of truth
 # 06/04/2026 - Ajuste order_creation_service
+# 15/04/2026 - ajuste de customer_email para guest_email
 
 from __future__ import annotations
 
@@ -600,7 +601,8 @@ def create_order_core(
     card_type_value: Optional[str] = None,
     payment_interface: Optional[str] = None,
     wallet_provider: Optional[str] = None,
-    customer_email: Optional[str] = None,
+    # customer_email: Optional[str] = None,
+    guest_email: Optional[str] = None,
     device_id: Optional[str] = None,
     ip_address: Optional[str] = None,
 ) -> CreateOrderCoreResult:
@@ -896,7 +898,8 @@ def create_order_core(
         status=OrderStatus.PAYMENT_PENDING,
         payment_method=payment_method, # enum ✅
         guest_phone=guest_phone,
-        customer_email=customer_email,
+        # customer_email=customer_email,
+        guest_email=guest_email,
         device_id=device_id,
         ip_address=ip_address,
         # payment_method=resolved_payment["payment_method"], # ❌ STRING
@@ -919,7 +922,8 @@ def create_order_core(
             slot=slot,
             state=AllocationState.RESERVED_PENDING_PAYMENT,
             ttl_seconds=alloc_ttl_sec,
-            expires_at=payment_timeout_at,
+            # expires_at=payment_timeout_at,
+            locked_until=payment_timeout_at,
         )
 
         db.add(allocation)
@@ -928,6 +932,14 @@ def create_order_core(
         db.refresh(allocation)
     except Exception as exc:
         db.rollback()
+
+        logger.exception(
+            "ORDER_PERSISTENCE_FAILED_ORIGINAL - order_id=%s allocation_id=%s locker_id=%s slot=%s",
+            order.id,
+            allocation_id,
+            totem_id,
+            slot,
+        )
 
         try:
             backend_client.locker_release(
@@ -967,7 +979,7 @@ def create_order_core(
             payment_method=order.payment_method.value,
             timeout_seconds=alloc_ttl_sec,
         )
-    except LifecycleClientError as exc:
+    except (LifecycleClientError, TypeError) as exc:  # OU except Exception:
         logger.exception(
             "lifecycle_register_failed - order_id=%s, allocation_id=%s",
             order.id,
@@ -1083,7 +1095,8 @@ def create_order_with_alipay(
     desired_slot: int,
     amount_cents: int,
     user_id: Optional[str] = None,
-    customer_email: Optional[str] = None,
+    # customer_email: Optional[str] = None,
+    guest_email: Optional[str] = None,
 ) -> CreateOrderCoreResult:
     """Helper para criação de pedido com Alipay (China)"""
     if region != "CN":
@@ -1106,7 +1119,8 @@ def create_order_with_alipay(
         guest_phone=None,
         user_id=user_id,
         payment_interface="qr_code",
-        customer_email=customer_email,
+        # customer_email=customer_email,
+        guest_email=guest_email,
     )
 
 

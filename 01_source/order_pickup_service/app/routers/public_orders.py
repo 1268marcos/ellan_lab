@@ -1,6 +1,10 @@
 # 01_source/order_pickup_service/app/routers/public_orders.py
-# PATCH DIRETO — KIOSK CREATE ORDER + PAYMENT INSTRUCTION NO RESPONSE
-# 13/04/2026
+# 02/04/2026 - Enhanced Version with Global Markets Support
+# 11/04/2026 - substituição de: Converte payload para CreateOrderIn 
+#                         para: USAR PAYLOAD DIRETO (SEM CreateOrderIn)
+# 14/04/2026 - Volta para produção desta versão do código
+#              veja public_orders_BUGADA_POREM.py (causou problemas em ONLINE, porém, KIOSK ok)
+#
 
 from __future__ import annotations
 
@@ -13,27 +17,28 @@ import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
-from sqlalchemy import text
 
 from app.core.auth_dep import get_current_public_user, get_current_user
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
-from app.models.allocation import Allocation
 from app.schemas.orders import CreateOrderIn, OnlineRegion, OnlinePaymentMethod
 from app.services.order_creation_service import create_order_core, CreateOrderCoreResult
-from app.services.payment_resolution_service import resolve_payment_ui_code
-from app.services.pickup_payment_fulfillment_service import PickupPaymentFulfillmentService
 
+# ==================== Importações adicionais ====================
+from app.models.allocation import Allocation
+
+from app.services.payment_resolution_service import resolve_payment_ui_code
+
+
+# Configuração de logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
 
-# =========================================================
-# HELPERS
-# =========================================================
+# ==================== Funções Utilitárias ====================
 
 def _dt_iso(value: datetime | None) -> str | None:
     if value is None:
@@ -41,465 +46,760 @@ def _dt_iso(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
-def _enum_value(value):
-    if value is None:
-        return None
-    return getattr(value, "value", value)
-
-
-def _get_latest_payment_instruction(db: Session, order_id: str) -> dict[str, Any] | None:
-    row = db.execute(
-        text(
-            """
-            SELECT
-                id,
-                order_id,
-                instruction_type,
-                amount_cents,
-                currency,
-                status,
-                expires_at,
-                qr_code,
-                qr_code_text,
-                authorization_code,
-                captured_at,
-                redirect_url,
-                provider_payment_id,
-                provider_name,
-                created_at,
-                updated_at
-            FROM payment_instructions
-            WHERE order_id = :order_id
-            ORDER BY created_at DESC
-            LIMIT 1
-            """
-        ),
-        {"order_id": order_id},
-    ).mappings().first()
-
-    return dict(row) if row else None
-
-
-def _serialize_order(
-    order: Order,
-    fiscal: FiscalDocument | None = None,
-    payment_instruction: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    response = {
+def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
+    """Serializa pedido para resposta da API"""
+    return {
         "id": order.id,
         "order_id": order.id,
         "user_id": order.user_id,
-        "channel": _enum_value(order.channel),
+        "channel": order.channel.value if order.channel else None,
         "region": order.region,
         "totem_id": order.totem_id,
         "sku_id": order.sku_id,
         "amount_cents": order.amount_cents,
-        "status": _enum_value(order.status),
+        "status": order.status.value if order.status else None,
         "gateway_transaction_id": order.gateway_transaction_id,
-        "payment_method": _enum_value(order.payment_method),
-        "payment_status": _enum_value(order.payment_status),
-        "card_type": _enum_value(order.card_type),
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "payment_status": order.payment_status.value if order.payment_status else None,
+        "card_type": order.card_type.value if order.card_type else None,
         "payment_updated_at": _dt_iso(order.payment_updated_at),
         "paid_at": _dt_iso(order.paid_at),
         "pickup_deadline_at": _dt_iso(order.pickup_deadline_at),
         "picked_up_at": _dt_iso(order.picked_up_at),
         "guest_session_id": order.guest_session_id,
-        "receipt_email": order.receipt_email,
-        "receipt_phone": order.receipt_phone,
-        "guest_phone": order.guest_phone,
-        "guest_email": order.guest_email,
+        "consent_marketing": order.consent_marketing,
         "created_at": _dt_iso(order.created_at),
         "updated_at": _dt_iso(order.updated_at),
-        "currency": order.currency,
-        "site_id": getattr(order, "site_id", None),
-        "tenant_id": getattr(order, "tenant_id", None),
-        "ecommerce_partner_id": getattr(order, "ecommerce_partner_id", None),
-        "partner_order_ref": getattr(order, "partner_order_ref", None),
-        "sku_description": getattr(order, "sku_description", None),
-        "slot_size": getattr(order, "slot_size", None),
-        "card_last4": getattr(order, "card_last4", None),
-        "card_brand": getattr(order, "card_brand", None),
-        "installments": getattr(order, "installments", None),
-        "guest_name": getattr(order, "guest_name", None),
-        "cancelled_at": _dt_iso(getattr(order, "cancelled_at", None)),
-        "cancel_reason": getattr(order, "cancel_reason", None),
-        "refunded_at": _dt_iso(getattr(order, "refunded_at", None)),
-        "refund_reason": getattr(order, "refund_reason", None),
-        "payment_interface": getattr(order, "payment_interface", None),
-        "wallet_provider": getattr(order, "wallet_provider", None),
-        "device_id": getattr(order, "device_id", None),
-        "ip_address": getattr(order, "ip_address", None),
-        "user_agent": getattr(order, "user_agent", None),
-        "slot": getattr(order, "slot", None),
-        "allocation_id": getattr(order, "allocation_id", None),
-        "allocation_expires_at": _dt_iso(getattr(order, "allocation_expires_at", None)),
-        "fiscal": None,
-        "instruction_type": None,
-        "ttl_sec": None,
-        "expires_at": None,
-        "qr_code": None,
-        "qr_code_text": None,
-        "redirect_url": None,
-        "provider_payment_id": None,
-        "provider_name": None,
-        "payment_instruction_status": None,
+        "receipt_code": fiscal.receipt_code if fiscal else None,
+        "receipt_print_path": fiscal.print_site_path if fiscal else None,
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
+        ),
+        "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
+        "customer_phone": order.guest_phone,
+        # "customer_email": getattr(order, "customer_email", None),
+        "guest_email": getattr(order, "guest_email", None),
     }
 
-    if fiscal is not None:
-        response["fiscal"] = {
-            "id": fiscal.id,
-            "order_id": fiscal.order_id,
-            "receipt_code": getattr(fiscal, "receipt_code", None),
-            "attempt": getattr(fiscal, "attempt", None),
-            "issued_at": _dt_iso(getattr(fiscal, "issued_at", None)),
-            "status": _enum_value(getattr(fiscal, "status", None)),
-        }
 
-    if payment_instruction:
-        expires_at = payment_instruction.get("expires_at")
-        created_at = payment_instruction.get("created_at")
+def _hash_token(token: str) -> str:
+    """Gera hash SHA256 do token"""
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
-        ttl_sec = None
-        if expires_at and created_at:
-            try:
-                ttl_sec = int((expires_at - created_at).total_seconds())
-            except Exception:
-                ttl_sec = None
 
-        response.update(
-            {
-                "instruction_type": payment_instruction.get("instruction_type"),
-                "ttl_sec": ttl_sec,
-                "expires_at": _dt_iso(expires_at),
-                "qr_code": payment_instruction.get("qr_code"),
-                "qr_code_text": payment_instruction.get("qr_code_text"),
-                "redirect_url": payment_instruction.get("redirect_url"),
-                "provider_payment_id": payment_instruction.get("provider_payment_id"),
-                "provider_name": payment_instruction.get("provider_name"),
-                "payment_instruction_status": payment_instruction.get("status"),
-            }
+def _generate_public_access_token() -> tuple[str, str]:
+    """Gera token de acesso público e seu hash"""
+    token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    return token, token_hash
+
+
+def _resolve_guest_session_id(device_fp: str | None) -> str | None:
+    """Resolve guest session ID a partir do device fingerprint"""
+    value = str(device_fp or "").strip()
+    return value or None
+
+
+def _validate_payment_method_for_region(
+    payment_method: str, 
+    region: str
+) -> None:
+    """Valida se o método de pagamento é compatível com a região"""
+    # Mapeamento de métodos por região
+    region_methods = {
+        # Brasil
+        "SP": {"pix", "boleto", "creditCard", "debitCard", "giftCard", 
+               "apple_pay", "google_pay", "mercado_pago_wallet"},
+        "RJ": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "MG": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "RS": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        "BA": {"pix", "boleto", "creditCard", "debitCard", "giftCard"},
+        
+        # Portugal
+        "PT": {"mbway", "multibanco_reference", "creditCard", "debitCard", 
+               "giftCard", "apple_pay", "google_pay"},
+        
+        # México
+        "MX": {"oxxo", "spei", "creditCard", "debitCard", "giftCard"},
+        
+        # Argentina
+        "AR": {"rapipago", "pagofacil", "creditCard", "debitCard"},
+        
+        # China
+        "CN": {"alipay", "wechat_pay", "unionpay", "creditCard", "debitCard"},
+        
+        # Japão
+        "JP": {"paypay", "line_pay", "rakuten_pay", "konbini", "creditCard"},
+        
+        # Tailândia
+        "TH": {"promptpay", "truemoney", "creditCard"},
+        
+        # Indonésia
+        "ID": {"go_pay", "ovo", "dana", "creditCard"},
+        
+        # Singapura
+        "SG": {"grabpay", "dbs_paylah", "creditCard"},
+        
+        # Filipinas
+        "PH": {"gcash", "paymaya", "creditCard"},
+        
+        # Emirados Árabes
+        "AE": {"tabby", "payby", "creditCard"},
+        
+        # Turquia
+        "TR": {"troy", "bkm_express", "creditCard"},
+        
+        # Rússia
+        "RU": {"mir", "yoomoney", "creditCard"},
+        
+        # Austrália
+        "AU": {"afterpay", "zip", "bpay", "creditCard"},
+        
+        # África do Sul
+        "ZA": {"yoco", "paystack", "creditCard"},
+        
+        # Quênia
+        "KE": {"m_pesa", "airtel_money", "creditCard"},
+        
+        # Nigéria
+        "NG": {"paystack", "flutterwave", "creditCard"},
+    }
+    
+    # Extrai base da região (primeiros 2 caracteres para regiões compostas)
+    region_base = region[:2] if len(region) >= 2 else region
+    
+    allowed_methods = region_methods.get(region, region_methods.get(region_base, set()))
+    
+    if allowed_methods and payment_method not in allowed_methods:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "PAYMENT_METHOD_NOT_ALLOWED_IN_REGION",
+                "message": f"Método de pagamento {payment_method} não é suportado na região {region}",
+                "region": region,
+                "payment_method": payment_method,
+                "allowed_methods": list(allowed_methods),
+            },
         )
 
-    return response
+
+def _validate_amount_for_region(amount_cents: int, region: str) -> None:
+    """Valida se o valor está dentro dos limites da região"""
+    # Limites por região (em centavos)
+    limits = {
+        "BR": {"min": 1, "max": 500000},      # R$ 5.000
+        "PT": {"min": 1, "max": 100000},      # € 1.000
+        "MX": {"min": 1, "max": 200000},      # MX$ 2.000
+        "CN": {"min": 1, "max": 1000000},     # ¥ 10.000
+        "JP": {"min": 1, "max": 1000000},     # ¥ 10.000
+        "US": {"min": 1, "max": 100000},      # $ 1.000
+        "AE": {"min": 1, "max": 500000},      # AED 5.000
+        "AU": {"min": 1, "max": 100000},      # AU$ 1.000
+        "default": {"min": 1, "max": 100000},
+    }
+    
+    region_base = region[:2] if len(region) >= 2 else region
+    region_limits = limits.get(region_base, limits["default"])
+    
+    if amount_cents < region_limits["min"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "AMOUNT_BELOW_MINIMUM",
+                "message": f"Valor mínimo para região {region} é {region_limits['min']} centavos",
+                "min_amount": region_limits["min"],
+                "amount_cents": amount_cents,
+            },
+        )
+    
+    if amount_cents > region_limits["max"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "AMOUNT_EXCEEDS_LIMIT",
+                "message": f"Valor máximo para região {region} é {region_limits['max']} centavos",
+                "max_amount": region_limits["max"],
+                "amount_cents": amount_cents,
+            },
+        )
 
 
-# =========================================================
-# SCHEMAS
-# =========================================================
-
-class KioskOrderCreateIn(BaseModel):
-    region: OnlineRegion
-    totem_id: str = Field(..., min_length=3, max_length=120)
-    sku_id: str = Field(..., min_length=1, max_length=120)
-    slot: int = Field(..., ge=1)
-    payment_method: str = Field(..., min_length=1, max_length=80)
-    amount_cents: int | None = Field(default=None, ge=1)
-    customer_phone: str | None = None
-    payment_interface: str | None = None
-    wallet_provider: str | None = None
-
-    @field_validator("totem_id", "sku_id", "payment_method", mode="before")
-    @classmethod
-    def _strip_text(cls, value):
-        if value is None:
-            return value
-        return str(value).strip()
-
-    @field_validator("customer_phone", "payment_interface", "wallet_provider", mode="before")
-    @classmethod
-    def _strip_optional(cls, value):
-        if value is None:
-            return value
-        value = str(value).strip()
-        return value or None
-
-
-class KioskOrderOut(BaseModel):
-    order_id: str
-    allocation_id: str | None = None
-    slot: int | None = None
-    amount_cents: int
-    payment_method: str | None = None
-    payment_status: str | None = None
-    instruction_type: str | None = None
-    ttl_sec: int | None = None
-    expires_at: str | None = None
-    qr_code: str | None = None
-    qr_code_text: str | None = None
-    redirect_url: str | None = None
-    status: str | None = None
-
-
-class KioskCustomerIdentifyIn(BaseModel):
-    order_id: str
-    email: str | None = None
-    phone: str | None = None
-
-
-class KioskIdentifyOut(BaseModel):
-    ok: bool
-    order_id: str
-    message: str
-
-
-# =========================================================
-# PLACEHOLDERS COMPAT
-# =========================================================
-
-def check_kiosk_antifraud(
-    db: Session,
-    request: Request,
-    totem_id: str,
-    region: str,
-    device_fingerprint: str | None = None,
-):
-    return None
-
-
-def queue_receipt_email(
+def _get_order_for_public_access(
+    *,
     db: Session,
     order_id: str,
-    email: str | None,
-    receipt_code: str | None,
-):
+    current_user: User | None,
+    guest_session_id: str | None,
+    public_token: str | None,
+) -> Order | None:
+    """Recupera pedido para acesso público com diferentes métodos de autenticação"""
+    base_query = db.query(Order).filter(Order.id == order_id)
+
+    if current_user is not None:
+        order = base_query.filter(Order.user_id == current_user.id).first()
+        if order:
+            return order
+
+    if guest_session_id:
+        order = base_query.filter(Order.guest_session_id == guest_session_id).first()
+        if order:
+            return order
+
+    if public_token:
+        order = (
+            base_query
+            .filter(Order.public_access_token_hash == _hash_token(public_token))
+            .first()
+        )
+        if order:
+            return order
+
     return None
 
 
-def _resolve_payment_interface(resolved_payment: dict[str, Any]) -> str | None:
-    interfaces = resolved_payment.get("interfaces") or []
-    if not interfaces:
-        return None
+def _list_orders_for_public_access(
+    *,
+    db: Session,
+    current_user: User | None,
+    guest_session_id: str | None,
+    limit: int,
+    offset: int,
+    status_value: str | None,
+    region: str | None = None,
+    payment_method: str | None = None,
+) -> tuple[list[Order], int]:
+    """Lista pedidos para acesso público com filtros"""
+    if current_user is None and not guest_session_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "type": "PUBLIC_ORDER_ACCESS_DENIED",
+                "message": (
+                    "Informe autenticação pública válida ou X-Device-Fingerprint "
+                    "para acessar pedidos públicos."
+                ),
+            },
+        )
 
-    default = next((i for i in interfaces if i.get("default")), None)
-    if default:
-        return default.get("code")
+    query = db.query(Order)
 
-    return interfaces[0].get("code")
+    if current_user is not None and guest_session_id:
+        query = query.filter(
+            (Order.user_id == current_user.id) | (Order.guest_session_id == guest_session_id)
+        )
+    elif current_user is not None:
+        query = query.filter(Order.user_id == current_user.id)
+    else:
+        query = query.filter(Order.guest_session_id == guest_session_id)
+
+    if status_value:
+        try:
+            status_enum = OrderStatus(status_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "type": "INVALID_STATUS",
+                    "message": "status inválido para filtro.",
+                    "status": status_value,
+                },
+            ) from exc
+        query = query.filter(Order.status == status_enum)
+    
+    if region:
+        query = query.filter(Order.region == region)
+    
+    if payment_method:
+        try:
+            payment_method_enum = PaymentMethod(payment_method)
+            query = query.filter(Order.payment_method == payment_method_enum)
+        except ValueError:
+            pass  # Ignora método inválido
+
+    total = query.count()
+
+    items = (
+        query.order_by(Order.created_at.desc(), Order.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return items, total
 
 
-def _validate_requirements(method: dict[str, Any], payload: KioskOrderCreateIn):
-    for r in method.get("requirements", []):
-        if not r.get("required"):
-            continue
+def _create_public_order_via_existing_flow(
+    *,
+    db: Session,
+    payload: PublicCreateOrderRequest,
+    guest_session_id: str,
+    idempotency_key: str,
+    device_fp: str,
+    request: Request,
+    current_user: User,
+) -> dict[str, Any]:
+    """Cria pedido público utilizando o fluxo existente"""
+    _ = idempotency_key
+    _ = device_fp
+    _ = request
 
-        code = r.get("code")
+    # Valida método de pagamento para a região
+    _validate_payment_method_for_region(payload.payment_method, payload.region)
+    
+    # Valida valor para a região
+    if payload.amount_cents:
+        _validate_amount_for_region(payload.amount_cents, payload.region)
 
-        if code == "customer_phone" and not payload.customer_phone:
-            raise HTTPException(status_code=400, detail="customer_phone obrigatório")
+    # 🔥 USAR PAYLOAD DIRETO (SEM CreateOrderIn)
+    # Chama core de criação
+    result = create_order_core(
+        db=db,
+        region=payload.region,
+        sku_id=payload.sku_id,
+        totem_id=payload.totem_id,
+        desired_slot=payload.desired_slot,
+        payment_method_value=payload.payment_method,
+        amount_cents_input=payload.amount_cents,
+        guest_phone=payload.customer_phone,
+        # customer_email=getattr(payload, "customer_email", None),
+        guest_email=payload.guest_email,
+        user_id=current_user.id,
+        payment_interface=payload.payment_interface,
+        wallet_provider=payload.wallet_provider,
+        device_id=device_fp,
+        ip_address=request.client.host if request.client else None,
+    )
 
-        if code == "wallet_provider" and not payload.wallet_provider:
-            raise HTTPException(status_code=400, detail="wallet_provider obrigatório")
+    order = result.order
+    order.idempotency_key = idempotency_key
+    allocation = result.allocation
 
-        if code == "amount_cents" and not payload.amount_cents:
-            raise HTTPException(status_code=400, detail="amount_cents obrigatório")
+    # Gera token de acesso público
+    public_access_token, public_access_token_hash = _generate_public_access_token()
+
+    # Atualiza pedido com informações adicionais
+    order.user_id = current_user.id
+    order.guest_session_id = guest_session_id
+    order.public_access_token_hash = public_access_token_hash
+    order.guest_phone = payload.customer_phone.strip() if payload.customer_phone else order.guest_phone
+    order.consent_marketing = 1 if payload.consent_marketing else 0
+    order.touch()
+
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+
+    logger.info(
+        f"Public order created - order_id={order.id}, "
+        f"user_id={current_user.id}, region={payload.region}, "
+        f"payment_method={payload.payment_method}, amount={order.amount_cents}"
+    )
+
+    return {
+        "order_id": order.id,
+        "channel": order.channel.value,
+        "status": order.status.value,
+        "amount_cents": order.amount_cents,
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "allocation": {
+            "allocation_id": allocation.id,
+            "slot": allocation.slot,
+            "ttl_sec": result.ttl_sec,
+            "expires_at": _dt_iso(result.payment_timeout_at) if result.payment_timeout_at else None,
+        },
+        "public_access_token": public_access_token,
+        "guest_session_id": guest_session_id,
+        "user_id": order.user_id,
+        "region": order.region,
+    }
 
 
-# =========================================================
-# IDENTIFY
-# =========================================================
+# ==================== Schemas ====================
 
-@router.post("/identify", response_model=KioskIdentifyOut)
-def kiosk_identify(
-    payload: KioskCustomerIdentifyIn,
+class PublicCreateOrderRequest(BaseModel):
+    """Request para criação de pedido público"""
+    region: str = Field(..., min_length=2, max_length=8, description="Código da região")
+    sku_id: str = Field(..., min_length=1, max_length=255)
+    totem_id: str = Field(..., min_length=1, max_length=255)
+    desired_slot: int = Field(..., ge=1, le=9999, description="Slot desejado")
+    payment_method: str = Field(..., min_length=1, max_length=64)
+    payment_interface: Optional[str] = Field(default=None, max_length=32)
+    amount_cents: Optional[int] = Field(default=None, ge=1)
+    customer_phone: Optional[str] = Field(default=None, max_length=64)
+    # customer_email: Optional[str] = Field(default=None, max_length=255)
+    guest_email: Optional[str] = Field(default=None, max_length=255)
+    wallet_provider: Optional[str] = Field(default=None, max_length=64)
+    consent_marketing: bool = False
+    
+    @field_validator("region")
+    @classmethod
+    def validate_region(cls, v: str) -> str:
+        region_upper = v.strip().upper()
+        valid_regions = {
+            # América Latina
+            "SP", "RJ", "MG", "RS", "BA", "BR", "MX", "AR", "CO", "CL", "PE",
+            "EC", "UY", "PY", "BO", "VE", "CR", "PA", "DO",
+            # América do Norte
+            "US_NY", "US_CA", "US_TX", "US_FL", "US_IL", "CA_ON", "CA_QC", "CA_BC",
+            # Europa
+            "PT", "ES", "FR", "DE", "UK", "IT", "NL", "BE", "CH", "SE",
+            "NO", "DK", "FI", "IE", "AT", "PL", "CZ", "GR", "HU", "RO", "RU", "TR",
+            # África
+            "ZA", "NG", "KE", "EG", "MA", "GH", "SN", "CI", "TZ", "UG", "RW", "MZ", "AO", "DZ", "TN",
+            # Ásia
+            "CN", "JP", "KR", "TH", "ID", "SG", "PH", "VN", "MY",
+            # Oriente Médio
+            "AE", "SA", "QA", "KW", "BH", "OM", "JO",
+            # Oceania
+            "AU", "NZ",
+        }
+        if region_upper not in valid_regions:
+            raise ValueError(f"Região inválida: {v}")
+        return region_upper
+    
+    @field_validator("payment_method")
+    @classmethod
+    def validate_payment_method(cls, v: str) -> str:
+        valid_methods = {
+            "pix", "boleto", "creditcard", "debitcard", "giftcard", "prepaidcard",
+            "apple_pay", "google_pay", "samsung_pay", "mercado_pago_wallet",
+            "mbway", "multibanco_reference", "sofort", "ideal", "bancontact",
+            "alipay", "wechat_pay", "paypay", "line_pay", "rakuten_pay",
+            "promptpay", "truemoney", "go_pay", "ovo", "dana", "grabpay",
+            "gcash", "paymaya", "tabby", "afterpay", "zip", "m_pesa",
+            "airtel_money", "mtn_money", "troy", "mir", "yoomoney",
+        }
+        # anteriormente foi creditCard agora creditcard (veja o conjunto acima)
+        v_normalized = v.lower()
+
+        # if v.lower() not in valid_methods:
+        if v_normalized not in valid_methods:
+            raise ValueError(f"Método de pagamento inválido: {v}")
+        
+        # return v.lower()
+        return v_normalized
+
+
+class PublicOrderListResponse(BaseModel):
+    """Resposta para listagem de pedidos públicos"""
+    items: List[Dict[str, Any]]
+    pagination: Dict[str, int]
+    filters: Dict[str, Any]
+    access_mode: Dict[str, Any]
+
+
+class PublicOrderCreateResponse(BaseModel):
+    """Resposta para criação de pedido público"""
+    order_id: str
+    channel: str
+    status: str
+    amount_cents: int
+    payment_method: Optional[str]
+    allocation: Dict[str, Any]
+    public_access_token: str
+    guest_session_id: str
+    user_id: str
+    region: str
+
+
+# ==================== Endpoints ====================
+
+@router.post("/", response_model=PublicOrderCreateResponse)
+def create_public_order(
+    payload: PublicCreateOrderRequest,
+    request: Request,
     db: Session = Depends(get_db),
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+    device_fp: str = Header(..., alias="X-Device-Fingerprint"),
+    current_user: User = Depends(get_current_user),
 ):
-    order = db.get(Order, payload.order_id)
+    """
+    Cria um novo pedido público.
+    
+    Requer:
+    - Autenticação do usuário
+    - Idempotency-Key header
+    - X-Device-Fingerprint header
+    """
+    # Verifica autenticação
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "type": "AUTHENTICATION_REQUIRED",
+                "message": "É necessário estar autenticado para criar pedidos.",
+            },
+        )
+
+    # Valida device fingerprint
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    if not guest_session_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "DEVICE_FINGERPRINT_REQUIRED",
+                "message": "X-Device-Fingerprint é obrigatório.",
+            },
+        )
+
+    # ===============================
+    # NORMALIZAÇÃO SEGURA (SEM MIDDLEWARE)
+    # ===============================
+    resolved = resolve_payment_ui_code(
+        db=db,
+        raw_payment_method=payload.payment_method,
+        raw_payment_interface=payload.payment_interface,
+        raw_wallet_provider=payload.wallet_provider,
+    )
+
+    payload.payment_method = resolved.get("payment_method")
+    payload.payment_interface = resolved.get("payment_interface")
+    payload.wallet_provider = resolved.get("wallet_provider")
+
+
+
+    # Valida idempotency key
+    if not str(idempotency_key or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "type": "IDEMPOTENCY_KEY_REQUIRED",
+                "message": "Idempotency-Key é obrigatório.",
+            },
+        )
+
+    # Verifica duplicata por idempotency key
+    existing_order = db.query(Order).filter(
+        Order.idempotency_key == idempotency_key
+    ).first()
+    
+    if existing_order:
+        logger.info(f"Idempotency key hit: {idempotency_key}")
+        # Retorna pedido existente
+        allocation = db.query(Allocation).filter(
+            Allocation.order_id == existing_order.id
+        ).first()
+        
+        return {
+            "order_id": existing_order.id,
+            "channel": existing_order.channel.value,
+            "status": existing_order.status.value,
+            "amount_cents": existing_order.amount_cents,
+            "payment_method": existing_order.payment_method.value if existing_order.payment_method else None,
+            "allocation": {
+                "allocation_id": allocation.id if allocation else None,
+                "slot": allocation.slot if allocation else None,
+                "ttl_sec": None,
+            },
+            "public_access_token": None,
+            "guest_session_id": existing_order.guest_session_id,
+            "user_id": existing_order.user_id,
+            "region": existing_order.region,
+        }
+
+    return _create_public_order_via_existing_flow(
+        db=db,
+        payload=payload,
+        guest_session_id=guest_session_id,
+        idempotency_key=idempotency_key,
+        device_fp=device_fp,
+        request=request,
+        current_user=current_user,
+    )
+
+
+@router.get("/")
+def list_my_public_orders(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status_value: str | None = Query(default=None, alias="status"),
+    region: str | None = Query(default=None, description="Filtrar por região"),
+    payment_method: str | None = Query(default=None, description="Filtrar por método de pagamento"),
+    current_user: User | None = Depends(get_current_public_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+):
+    """
+    Lista pedidos públicos do usuário atual.
+    
+    Suporta:
+    - Autenticação por usuário
+    - Autenticação por guest session (X-Device-Fingerprint)
+    - Filtros por status, região e método de pagamento
+    """
+    guest_session_id = _resolve_guest_session_id(device_fp)
+
+    items, total = _list_orders_for_public_access(
+        db=db,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        limit=limit,
+        offset=offset,
+        status_value=status_value,
+        region=region,
+        payment_method=payment_method,
+    )
+
+    # Busca documentos fiscais
+    order_ids = [order.id for order in items]
+    fiscal_docs = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id.in_(order_ids))
+        .all()
+        if order_ids
+        else []
+    )
+    fiscal_by_order_id = {doc.order_id: doc for doc in fiscal_docs}
+
+    return {
+        "items": [
+            _serialize_order(order, fiscal=fiscal_by_order_id.get(order.id))
+            for order in items
+        ],
+        "pagination": {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_next": offset + limit < total,
+            "has_prev": offset > 0,
+        },
+        "filters": {
+            "status": status_value,
+            "region": region,
+            "payment_method": payment_method,
+        },
+        "access_mode": {
+            "user_id": current_user.id if current_user else None,
+            "guest_session_id": guest_session_id,
+        },
+    }
+
+
+@router.get("/{order_id}")
+def get_my_public_order(
+    order_id: str,
+    current_user: User | None = Depends(get_current_public_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    public_token_query: str | None = Query(default=None, alias="token"),
+    public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
+):
+    """
+    Obtém detalhes de um pedido público específico.
+    
+    Suporta acesso via:
+    - Usuário autenticado (owner)
+    - Guest session (X-Device-Fingerprint)
+    - Token público (query ou header)
+    """
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    public_token = public_token_header or public_token_query
+
+    order = _get_order_for_public_access(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=public_token,
+    )
 
     if not order:
         raise HTTPException(
-            status_code=404,
-            detail={"type": "ORDER_NOT_FOUND", "order_id": payload.order_id},
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido público não encontrado para este contexto de acesso.",
+                "order_id": order_id,
+                "guest_session_id": guest_session_id,
+                "user_id": current_user.id if current_user else None,
+                "public_token_present": bool(public_token),
+            },
         )
 
-    if payload.email:
-        order.receipt_email = payload.email
+    # Verificação de ownership adicional para usuário autenticado
+    if current_user and order.user_id and order.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido não encontrado",
+                "order_id": order_id,
+            },
+        )
 
-    if payload.phone:
-        order.receipt_phone = payload.phone
-
-    db.commit()
-
-    existing_fiscal = (
+    # Busca documento fiscal
+    fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
-        .order_by(FiscalDocument.attempt.desc())
         .first()
     )
 
-    receipt_code = None
-    if existing_fiscal and existing_fiscal.receipt_code:
-        receipt_code = existing_fiscal.receipt_code
-    else:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "type": "FISCAL_NOT_AVAILABLE",
-                "order_id": order.id,
-            },
-        )
-
-    try:
-        queue_receipt_email(
-            db=db,
-            order_id=order.id,
-            email=payload.email,
-            receipt_code=receipt_code,
-        )
-    except Exception:
-        logger.exception("FAILED_TO_QUEUE_RECEIPT_EMAIL")
-
-    return KioskIdentifyOut(
-        ok=True,
-        order_id=order.id,
-        message="Identificação registrada e envio do comprovante solicitado",
-    )
+    return _serialize_order(order, fiscal=fiscal)
 
 
-# =========================================================
-# KIOSK CREATE ORDER
-# =========================================================
-
-@router.post("/", response_model=KioskOrderOut)
-@router.post("/orders", response_model=KioskOrderOut)
-def kiosk_create_order(
-    payload: KioskOrderCreateIn,
-    request: Request,
+@router.post("/{order_id}/cancel")
+def cancel_public_order(
+    order_id: str,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-    x_device_fingerprint: str | None = Header(default=None),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
 ):
-    check_kiosk_antifraud(
+    """
+    Cancela um pedido público.
+    
+    Apenas o owner do pedido pode cancelar.
+    """
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    
+    # Busca pedido
+    order = _get_order_for_public_access(
         db=db,
-        request=request,
-        totem_id=payload.totem_id,
-        region=payload.region.value,
-        device_fingerprint=x_device_fingerprint,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=None,
     )
-
-    resolved_payment = resolve_payment_ui_code(
-        db=db,
-        region=payload.region.value,
-        channel="KIOSK",
-        context="LOCKER",
-        ui_code=payload.payment_method,
-        locker_id=payload.totem_id,
-    )
-
-    if not resolved_payment:
+    
+    if not order:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail={
-                "type": "PAYMENT_METHOD_NOT_ALLOWED",
-                "payment_method": payload.payment_method,
-                "region": payload.region.value,
-                "totem_id": payload.totem_id,
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido não encontrado",
             },
         )
-
-    _validate_requirements(resolved_payment, payload)
-
-    resolved_method = (
-        resolved_payment.get("method")
-        or resolved_payment.get("payment_method")
-        or payload.payment_method
-    )
-
-    resolved_interface = (
-        payload.payment_interface
-        or _resolve_payment_interface(resolved_payment)
-    )
-
-    if not payload.amount_cents:
+    
+    # Verifica ownership
+    if current_user and order.user_id != current_user.id:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail={
-                "type": "AMOUNT_CENTS_REQUIRED",
-                "message": "amount_cents é obrigatório para criação do pedido KIOSK",
+                "type": "CANCEL_NOT_ALLOWED",
+                "message": "Você não tem permissão para cancelar este pedido",
             },
         )
-
-    service_payload = {
-        "region": payload.region.value,
-        "locker_id": payload.totem_id,
-        "totem_id": payload.totem_id,
-        "sku_id": payload.sku_id,
-        "slot": payload.slot,
-        "payment_method": resolved_method,
-        "amount_cents": payload.amount_cents,
-        "payment_interface": resolved_interface,
-        "wallet_provider": payload.wallet_provider,
-        "customer_phone": payload.customer_phone,
-        "device_id": x_device_fingerprint,
-        "ip_address": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
+    
+    # Verifica se pode cancelar
+    if order.status not in [OrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_FAILED]:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "type": "CANCEL_NOT_ALLOWED",
+                "message": f"Pedido em status {order.status.value} não pode ser cancelado",
+                "current_status": order.status.value,
+            },
+        )
+    
+    # Atualiza status
+    order.status = OrderStatus.CANCELLED
+    order.touch()
+    db.commit()
+    
+    logger.info(f"Public order cancelled - order_id={order_id}, user_id={current_user.id}")
+    
+    return {
+        "order_id": order.id,
+        "status": order.status.value,
+        "message": "Pedido cancelado com sucesso",
     }
-
-    try:
-        logger.error("🔥 NEW FLOW EXECUTADO - em public_orders.py antes do result = PickupPaymentFulfillmentService")
-        # result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(service_payload)
-        result = PickupPaymentFulfillmentService().create_kiosk_order_with_payment(db, service_payload)
-        logger.error("🔥 NEW FLOW EXECUTADO - em public_orders.py depois do result = PickupPaymentFulfillmentService")
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.exception("KIOSK_CREATE_ORDER_FAILED")
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "KIOSK_CREATE_ORDER_FAILED",
-                "message": "Falha ao criar pedido KIOSK com payment_instruction",
-                "region": payload.region.value,
-                "totem_id": payload.totem_id,
-                "slot": payload.slot,
-                "sku_id": payload.sku_id,
-                "payment_method": resolved_method,
-                "error": str(exc),
-            },
-        ) from exc
-
-    order = db.get(Order, result["order_id"])
-    if order is None:
-        raise HTTPException(
-            status_code=500,
-            detail={
-                "type": "ORDER_NOT_PERSISTED",
-                "order_id": result["order_id"],
-            },
-        )
-
-    payment_instruction = _get_latest_payment_instruction(db, order.id)
-
-    response = _serialize_order(
-        order=order,
-        fiscal=None,
-        payment_instruction=payment_instruction,
-    )
-
-    response["allocation_id"] = result.get("allocation_id") or response.get("allocation_id")
-    response["slot"] = result.get("slot") or response.get("slot")
-    response["amount_cents"] = result.get("amount_cents") or response.get("amount_cents")
-    response["payment_method"] = result.get("payment_method") or response.get("payment_method")
-    response["payment_status"] = result.get("payment_status") or response.get("payment_status")
-    response["instruction_type"] = result.get("instruction_type") or response.get("instruction_type")
-    response["ttl_sec"] = result.get("ttl_sec") or response.get("ttl_sec")
-    response["expires_at"] = result.get("expires_at") or response.get("expires_at")
-    response["qr_code"] = result.get("qr_code") or response.get("qr_code")
-    response["qr_code_text"] = result.get("qr_code_text") or response.get("qr_code_text")
-    response["redirect_url"] = result.get("redirect_url") or response.get("redirect_url")
-
-    return KioskOrderOut(
-        order_id=response["order_id"],
-        allocation_id=response.get("allocation_id"),
-        slot=response.get("slot"),
-        amount_cents=response["amount_cents"],
-        payment_method=response.get("payment_method"),
-        payment_status=response.get("payment_status"),
-        instruction_type=response.get("instruction_type"),
-        ttl_sec=response.get("ttl_sec"),
-        expires_at=response.get("expires_at"),
-        qr_code=response.get("qr_code"),
-        qr_code_text=response.get("qr_code_text"),
-        redirect_url=response.get("redirect_url"),
-        status=response.get("status"),
-    )
 
 

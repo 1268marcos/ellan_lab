@@ -595,12 +595,15 @@ class CreateOrderIn(BaseModel):
     payment_method: OnlinePaymentMethod
     payment_interface: OnlinePaymentInterface
 
-    desired_slot: Optional[int] = Field(
-        default=None,
-        ge=1,
-        le=999,
-        description="Slot físico do locker (validado dinamicamente no backend/runtime)",
-    )
+    # desired_slot: Optional[int] = Field(
+    #     default=None,
+    #     ge=1,
+    #     le=999,
+    #     description="Slot físico do locker (validado dinamicamente no backend/runtime)",
+    # )
+    slot: int | None = None
+    desired_slot: int | None = None
+
     amount_cents: Optional[int] = Field(default=None, gt=0, le=999999999)
 
     customer_phone: Optional[str] = Field(default=None, examples=["+351912345678"])
@@ -994,6 +997,12 @@ class CreateOrderIn(BaseModel):
         } and self.amount_cents is None:
             raise ValueError(f"amount_cents is required for {self.payment_method.value}")
 
+        return self
+
+    @model_validator(mode="after")
+    def normalize_slot(self):
+        if self.slot is None and self.desired_slot is not None:
+            self.slot = self.desired_slot
         return self
 
 

@@ -25,6 +25,15 @@ const GATEWAY_BASE =
 const RUNTIME_BASE =
   import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
 
+
+// Helper para verificar se DEV_BYPASS_AUTH está habilitado
+function isDevBypassEnabled() {
+  return String(import.meta.env.VITE_DEV_BYPASS_AUTH || "")
+    .trim()
+    .toLowerCase() === "true";
+}
+
+
 function TrustSignals() {
   return (
     <div style={trustSignalsStyle}>
@@ -145,13 +154,6 @@ function generateIdempotencyKey() {
   return crypto.randomUUID();
 }
 
-// 15/04/2026
-function isDevBypassEnabled() {
-  return String(import.meta.env.VITE_DEV_BYPASS_AUTH || "")
-    .trim()
-    .toLowerCase() === "true";
-}
-
 async function parseRichErrorResponse(res) {
   const rawText = await res.text().catch(() => "");
   let parsed = null;
@@ -254,37 +256,49 @@ export default function PublicCheckoutPage() {
   const [submitError, setSubmitError] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
 
+  // Estados para simulação DEV
+  const [loadingSimulatePayment, setLoadingSimulatePayment] = useState(false);
+  const [simulateResult, setSimulateResult] = useState(null);
+
   const invalidParams = !lockerId || !skuId || !slot;
 
   const { token, isAuthenticated } = useAuth();
 
+  const devBypassEnabled = useMemo(() => isDevBypassEnabled(), []);
+
+  // Em ambiente DEV, não exigimos autenticação
+  useEffect(() => {
+    // Se estiver em DEV com bypass, não redireciona
+    if (devBypassEnabled) {
+      console.log('🔧 DEV mode: skipping auth redirect');
+      return;
+    }
+    
+    // if (!devBypassEnabled && !isAuthenticated && !invalidParams) {
+    if (!isAuthenticated && !invalidParams) {
+      const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
+      navigate(`/login?redirect=${redirectUrl}`);
+    }
+  }, [devBypassEnabled, isAuthenticated, invalidParams, navigate]);
+
+
   const runtimeSkuUrl = useMemo(
     () => `${RUNTIME_BASE}/catalog/skus/${encodeURIComponent(skuId)}`,
     [skuId]
-  );
+  ); 
+
 
   const allowedPaymentMethods = useMemo(() => {
     return Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
   }, [locker]);
 
-  // 15/04/2026
-  const [loadingSimulatePayment, setLoadingSimulatePayment] = useState(false);
-  const [simulateResult, setSimulateResult] = useState(null);
 
   const canShowDevSimulateButton = useMemo(() => {
-    return isDevBypassEnabled() && Boolean(lockerId) && Boolean(region);
-  }, [lockerId, region]);
+    return devBypassEnabled && Boolean(lockerId) && Boolean(region) && Boolean(product) && Boolean(locker);
+  }, [devBypassEnabled, lockerId, region, product, locker]);
 
 
 
-
-
-  useEffect(() => {
-    if (!isAuthenticated && !invalidParams) {
-      const redirectUrl = encodeURIComponent(window.location.pathname + window.location.search);
-      navigate(`/login?redirect=${redirectUrl}`);
-    }
-  }, [isAuthenticated, invalidParams, navigate]);
 
   useEffect(() => {
     async function loadLocker() {
@@ -433,14 +447,20 @@ export default function PublicCheckoutPage() {
       const deviceFp = getOrCreateDeviceFingerprint();
       const idempotencyKey = generateIdempotencyKey();
 
+      const headers = {
+        "Content-Type": "application/json",
+        "X-Device-Fingerprint": deviceFp,
+        "Idempotency-Key": idempotencyKey,
+      };
+
+      // Só adiciona Authorization se tiver token (em DEV pode não ter)
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+      }
+
       const res = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Device-Fingerprint": deviceFp,
-          "Idempotency-Key": idempotencyKey,
-        },
+        headers,
         body: JSON.stringify(payload),
       });
 
@@ -494,7 +514,7 @@ export default function PublicCheckoutPage() {
   }
 
 
-  // 15/04/2026
+  // Função para simular pagamento em ambiente DEV
   async function handleSimulateOnlinePaymentDev() {
     if (!canShowDevSimulateButton) {
       setSubmitError("A simulação DEV só pode ser usada com VITE_DEV_BYPASS_AUTH=true.");
@@ -519,8 +539,8 @@ export default function PublicCheckoutPage() {
     const payload = buildOnlineOrderPayload({
       region,
       totemId: lockerId,
-      skuId,
-      slot,
+      skuId: skuId,
+      slot: slot,
       uiMethod: paymentMethod,
       customerPhone,
       amountCents: product.amount_cents,
@@ -547,7 +567,6 @@ export default function PublicCheckoutPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
           "X-Device-Fingerprint": deviceFp,
           "Idempotency-Key": idempotencyKey,
         },
@@ -590,12 +609,17 @@ export default function PublicCheckoutPage() {
         );
       }
 
-      const simulateRes = await fetch(
-        `${ORDER_PICKUP_BASE}/dev-admin/simulate-online-payment?order_id=${encodeURIComponent(orderId)}`,
-        {
-          method: "POST",
-        }
-      );
+      const simulateRes = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/simulate-online-payment`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          order_id: orderId,
+          region,
+          locker_id: lockerId,
+        }),
+      });
 
       const simulateData = await simulateRes.json().catch(() => ({}));
 
@@ -626,7 +650,6 @@ export default function PublicCheckoutPage() {
       setLoadingSimulatePayment(false);
     }
   }
-  
 
 
 
@@ -810,17 +833,6 @@ export default function PublicCheckoutPage() {
               </div>
             ) : null}
 
-
-            {/* 15/04/2026 */}
-            {simulateResult ? (
-              <pre style={okDevBoxStyle}>
-                {JSON.stringify(simulateResult, null, 2)}
-              </pre>
-            ) : null}
-
-
-
-
             <button
               onClick={handleCreateOrder}
               disabled={
@@ -856,8 +868,8 @@ export default function PublicCheckoutPage() {
 
 
 
-            {/* 15/04/2026 */}
-            {canShowDevSimulateButton ? (
+            {/* Botão DEV para simular pagamento */}
+            {canShowDevSimulateButton && (
               <button
                 onClick={handleSimulateOnlinePaymentDev}
                 disabled={
@@ -872,17 +884,28 @@ export default function PublicCheckoutPage() {
                   (paymentMethod === "MBWAY" && !customerPhone.trim())
                 }
                 style={{
-                  ...buttonDangerStyleDev,
+                  ...devButtonStyle,
                   ...(loadingSimulatePayment ? buttonDisabledStyle : {}),
                   marginTop: 12,
                 }}
               >
-                {loadingSimulatePayment
-                  ? "Simulando pagamento DEV..."
-                  : "DEV — Criar pedido e simular pagamento"}
+                {loadingSimulatePayment ? (
+                  <>
+                    <span style={spinnerSmallStyle} />
+                    Simulando pagamento DEV...
+                  </>
+                ) : (
+                  "DEV — Criar pedido e simular pagamento"
+                )}
               </button>
-            ) : null}
+            )}
 
+            {/* Resultado da simulação DEV */}
+            {simulateResult && (
+              <pre style={devResultStyle}>
+                {JSON.stringify(simulateResult, null, 2)}
+              </pre>
+            )}
 
 
 
@@ -1151,6 +1174,35 @@ const primaryButtonStyle = {
   gap: 8,
 };
 
+const devButtonStyle = {
+  width: "100%",
+  padding: "16px 20px",
+  borderRadius: 12,
+  border: "1px solid rgba(179,38,30,0.40)",
+  background: "#8a2323",
+  color: "white",
+  fontWeight: 700,
+  fontSize: 15,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+};
+
+
+const devResultStyle = {
+  marginTop: 16,
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(31,122,63,0.1)",
+  border: "1px solid rgba(31,122,63,0.3)",
+  color: "#1f7a3f",
+  fontSize: 12,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+};
+
 const buttonDisabledStyle = {
   opacity: 0.6,
   cursor: "not-allowed",
@@ -1230,29 +1282,3 @@ if (typeof document !== "undefined") {
     document.head.appendChild(styleSheet);
   }
 }
-
-
-
-const buttonDangerStyleDev = {
-  width: "100%",
-  padding: "14px 18px",
-  borderRadius: 12,
-  border: "1px solid rgba(179,38,30,0.40)",
-  background: "#8a2323",
-  color: "white",
-  fontWeight: 700,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const okDevBoxStyle = {
-  marginTop: 16,
-  padding: 12,
-  borderRadius: 12,
-  background: "rgba(31,122,63,0.15)",
-  border: "1px solid rgba(31,122,63,0.35)",
-  color: "#1f7a3f",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-

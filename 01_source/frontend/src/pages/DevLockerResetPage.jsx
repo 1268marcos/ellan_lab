@@ -168,7 +168,7 @@ export default function DevLockerResetPage() {
         <h1 style={{ marginTop: 0 }}>DEV — Reset de locker</h1>
         <div style={warningStyle}>
           Esta tela é exclusivamente para ambiente de desenvolvimento controlado com
-          <b> DEV_BYPASS_AUTH=true</b>. Veja 02_docker/.env 
+          <b> VITE_DEV_BYPASS_AUTH=true</b>. Veja 02_docker/.env 
         </div>
 
         <div style={gridStyle}>

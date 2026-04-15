@@ -45,7 +45,7 @@ def get_current_user_or_dev(
     """
     Ordem de resolução:
     1. Bearer token público válido -> usuário autenticado por sessão
-    2. DEV_BYPASS_AUTH=true + bypass explícito -> usuário fake de desenvolvimento
+    2. VITE_DEV_BYPASS_AUTH=true + bypass explícito -> usuário fake de desenvolvimento
     3. caso contrário -> 401
 
     Regra importante:

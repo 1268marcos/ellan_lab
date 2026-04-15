@@ -116,13 +116,23 @@ export function buildOnlineOrderPayload({
   slot,
   uiMethod,
   customerPhone = "",
+  amountCents,
 }) {
+
+  const normalizedSlot = Number(slot);
+  const normalizedAmount = Number(amountCents);
+
   return {
     region: String(region || "").trim().toUpperCase(),
     sku_id: String(skuId || "").trim(),
     totem_id: String(totemId || "").trim(),
-    desired_slot: Number(slot),
+    // desired_slot: Number(slot),
+    slot: normalizedSlot, // ✅ FIX
+    desired_slot: normalizedSlot,
     payment_method: String(uiMethod || "").trim(),
     customer_phone: customerPhone?.trim() || null,
+        amount_cents: Number.isFinite(normalizedAmount) && normalizedAmount > 0
+      ? normalizedAmount
+      : null, // 🔥 FIX
   };
 }

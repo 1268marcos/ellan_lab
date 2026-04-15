@@ -145,13 +145,6 @@ function generateIdempotencyKey() {
   return crypto.randomUUID();
 }
 
-// 15/04/2026
-function isDevBypassEnabled() {
-  return String(import.meta.env.VITE_DEV_BYPASS_AUTH || "")
-    .trim()
-    .toLowerCase() === "true";
-}
-
 async function parseRichErrorResponse(res) {
   const rawText = await res.text().catch(() => "");
   let parsed = null;
@@ -266,18 +259,6 @@ export default function PublicCheckoutPage() {
   const allowedPaymentMethods = useMemo(() => {
     return Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
   }, [locker]);
-
-  // 15/04/2026
-  const [loadingSimulatePayment, setLoadingSimulatePayment] = useState(false);
-  const [simulateResult, setSimulateResult] = useState(null);
-
-  const canShowDevSimulateButton = useMemo(() => {
-    return isDevBypassEnabled() && Boolean(lockerId) && Boolean(region);
-  }, [lockerId, region]);
-
-
-
-
 
   useEffect(() => {
     if (!isAuthenticated && !invalidParams) {
@@ -493,147 +474,6 @@ export default function PublicCheckoutPage() {
     }
   }
 
-
-  // 15/04/2026
-  async function handleSimulateOnlinePaymentDev() {
-    if (!canShowDevSimulateButton) {
-      setSubmitError("A simulação DEV só pode ser usada com VITE_DEV_BYPASS_AUTH=true.");
-      return;
-    }
-
-    if (invalidParams || !product || !locker) {
-      setSubmitError("Dados do checkout incompletos para simulação DEV.");
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `ATENÇÃO: isso vai criar um pedido ONLINE real para o locker ${lockerId}, slot ${slot}, e depois simular a aprovação do pagamento em ambiente DEV. Deseja continuar?`
-    );
-    if (!confirmed) return;
-
-    setLoadingSimulatePayment(true);
-    setSubmitError("");
-    setSimulateResult(null);
-    setCurrentStep(2);
-
-    const payload = buildOnlineOrderPayload({
-      region,
-      totemId: lockerId,
-      skuId,
-      slot,
-      uiMethod: paymentMethod,
-      customerPhone,
-      amountCents: product.amount_cents,
-    });
-
-    if (!payload.payment_interface) {
-      payload.payment_interface = "web_token";
-    }
-
-    if (paymentMethod === "MBWAY") {
-      payload.customer_phone = customerPhone.trim();
-    }
-
-    const walletProvider = walletProviderForMethod(paymentMethod);
-    if (walletProvider) {
-      payload.wallet_provider = walletProvider;
-    }
-
-    try {
-      const deviceFp = getOrCreateDeviceFingerprint();
-      const idempotencyKey = generateIdempotencyKey();
-
-      const createRes = await fetch(`${ORDER_PICKUP_BASE}/public/orders/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-          "X-Device-Fingerprint": deviceFp,
-          "Idempotency-Key": idempotencyKey,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!createRes.ok) {
-        const richError = await parseRichErrorResponse(createRes);
-        throw new Error(
-          JSON.stringify(
-            {
-              error: "Falha ao criar pedido online para simulação DEV",
-              http_status: richError.status,
-              http_status_text: richError.statusText,
-              backend_detail: richError.detail,
-              response_json: richError.parsed,
-              response_raw: richError.rawText,
-              request_payload: payload,
-            },
-            null,
-            2
-          )
-        );
-      }
-
-      const created = await createRes.json().catch(() => ({}));
-      const orderId = created?.order_id;
-
-      if (!orderId) {
-        throw new Error(
-          JSON.stringify(
-            {
-              error: "Resposta sem order_id na criação do pedido DEV",
-              response_json: created,
-              request_payload: payload,
-            },
-            null,
-            2
-          )
-        );
-      }
-
-      const simulateRes = await fetch(
-        `${ORDER_PICKUP_BASE}/dev-admin/simulate-online-payment?order_id=${encodeURIComponent(orderId)}`,
-        {
-          method: "POST",
-        }
-      );
-
-      const simulateData = await simulateRes.json().catch(() => ({}));
-
-      if (!simulateRes.ok) {
-        throw new Error(
-          JSON.stringify(
-            {
-              error: "Falha ao simular pagamento ONLINE DEV",
-              order_id: orderId,
-              response_json: simulateData,
-            },
-            null,
-            2
-          )
-        );
-      }
-
-      setSimulateResult(simulateData);
-      setCurrentStep(3);
-
-      setTimeout(() => {
-        navigate(`/meus-pedidos/${encodeURIComponent(orderId)}`, { replace: true });
-      }, 1200);
-    } catch (e) {
-      setSubmitError(String(e?.message || e));
-      setCurrentStep(1);
-    } finally {
-      setLoadingSimulatePayment(false);
-    }
-  }
-  
-
-
-
-
-
-
-
   if (invalidParams) {
     return (
       <main style={pageStyle}>
@@ -810,17 +650,6 @@ export default function PublicCheckoutPage() {
               </div>
             ) : null}
 
-
-            {/* 15/04/2026 */}
-            {simulateResult ? (
-              <pre style={okDevBoxStyle}>
-                {JSON.stringify(simulateResult, null, 2)}
-              </pre>
-            ) : null}
-
-
-
-
             <button
               onClick={handleCreateOrder}
               disabled={
@@ -852,45 +681,6 @@ export default function PublicCheckoutPage() {
                 "Criar Pedido Online"
               )}
             </button>
-
-
-
-
-            {/* 15/04/2026 */}
-            {canShowDevSimulateButton ? (
-              <button
-                onClick={handleSimulateOnlinePaymentDev}
-                disabled={
-                  loadingSimulatePayment ||
-                  submitting ||
-                  productLoading ||
-                  lockerLoading ||
-                  !product ||
-                  !locker ||
-                  !paymentMethod ||
-                  !allowedPaymentMethods.length ||
-                  (paymentMethod === "MBWAY" && !customerPhone.trim())
-                }
-                style={{
-                  ...buttonDangerStyleDev,
-                  ...(loadingSimulatePayment ? buttonDisabledStyle : {}),
-                  marginTop: 12,
-                }}
-              >
-                {loadingSimulatePayment
-                  ? "Simulando pagamento DEV..."
-                  : "DEV — Criar pedido e simular pagamento"}
-              </button>
-            ) : null}
-
-
-
-
-
-
-
-
-
 
             <div style={actionsStyle}>
               <Link
@@ -1230,29 +1020,3 @@ if (typeof document !== "undefined") {
     document.head.appendChild(styleSheet);
   }
 }
-
-
-
-const buttonDangerStyleDev = {
-  width: "100%",
-  padding: "14px 18px",
-  borderRadius: 12,
-  border: "1px solid rgba(179,38,30,0.40)",
-  background: "#8a2323",
-  color: "white",
-  fontWeight: 700,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const okDevBoxStyle = {
-  marginTop: 16,
-  padding: 12,
-  borderRadius: 12,
-  background: "rgba(31,122,63,0.15)",
-  border: "1px solid rgba(31,122,63,0.35)",
-  color: "#1f7a3f",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-

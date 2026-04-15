@@ -1,5 +1,10 @@
 # 01_source/order_pickup_service/app/routers/dev_admin.py
+# 15/04/2026 - nova router.post("/dev/simulate-online-payment")
+
 from typing import Any
+
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -17,7 +22,25 @@ from app.schemas.dev_admin import (
 )
 from app.services import backend_client
 
+from uuid import uuid4
+from datetime import datetime, timedelta, timezone
+
+from app.models.allocation import Allocation
+from app.models.pickup import Pickup, PickupStatus, PickupLifecycleStage, PickupChannel
+from app.models.pickup_token import PickupToken
+
+
+
+
 router = APIRouter(prefix="/dev-admin", tags=["dev-admin"])
+
+
+def _sha256(s: str) -> str:
+    import hashlib
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+def _generate_manual_code() -> str:
+    return f"{uuid4().int % 1_000_000:06d}"
 
 
 def _ensure_dev_mode() -> None:
@@ -26,7 +49,7 @@ def _ensure_dev_mode() -> None:
             status_code=403,
             detail={
                 "type": "DEV_MODE_REQUIRED",
-                "message": "Este endpoint só pode ser usado com DEV_BYPASS_AUTH=true. Veja 01_source/order_pickup_service/.env",
+                "message": "Este endpoint só pode ser usado com VITE_DEV_BYPASS_AUTH=true. Veja 01_source/order_pickup_service/.env",
             },
         )
 
@@ -318,3 +341,105 @@ def dev_reset_locker(
             "Para conflitos órfãos do backend regional, use também /dev-admin/release-regional-allocations."
         ),
     )
+
+# 15/04/2026
+@router.post("/simulate-online-payment")
+def simulate_payment(
+    order_id: str,
+    db: Session = Depends(get_db),
+):
+    _ensure_dev_mode()
+
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    allocation = (
+        db.query(Allocation)
+        .filter(Allocation.order_id == order.id)
+        .first()
+    )
+    if not allocation:
+        raise HTTPException(status_code=404, detail="Allocation not found")
+
+    now = datetime.now(timezone.utc)
+
+    if str(order.payment_status or "") != "APPROVED":
+        order.payment_status = "APPROVED"
+        order.status = "PAID_PENDING_PICKUP"
+        order.paid_at = now
+        order.payment_updated_at = now
+
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .first()
+    )
+
+    if not pickup:
+        pickup = Pickup(
+            id=f"pk_{uuid4().hex}",
+            order_id=order.id,
+            channel=PickupChannel.ONLINE,
+            region=order.region,
+            locker_id=allocation.locker_id or order.totem_id,
+            machine_id=order.totem_id,
+            slot=allocation.slot,
+            status=PickupStatus.ACTIVE,
+            lifecycle_stage=PickupLifecycleStage.READY_FOR_PICKUP,
+            activated_at=now,
+            ready_at=now,
+            # pickup_window_sec=7200,  # 2h - isso existe no conceito (lógica), mas no seu sistema o correto é: expires_at
+            expires_at=now + timedelta(hours=2),
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(pickup)
+        db.flush()
+    else:
+        pickup.channel = PickupChannel.ONLINE
+        pickup.region = order.region
+        pickup.locker_id = allocation.locker_id or order.totem_id
+        pickup.machine_id = order.totem_id
+        pickup.slot = allocation.slot
+        pickup.status = PickupStatus.ACTIVE
+        pickup.lifecycle_stage = PickupLifecycleStage.READY_FOR_PICKUP
+        pickup.activated_at = pickup.activated_at or now
+        pickup.ready_at = pickup.ready_at or now
+        pickup.expires_at = pickup.expires_at or (now + timedelta(hours=2))
+        pickup.touch()
+        db.flush()
+
+    manual_code = _generate_manual_code()
+    token_hash = _sha256(manual_code)
+
+    tok = PickupToken(
+        id=str(uuid4()),
+        pickup_id=pickup.id,
+        token_hash=token_hash,
+        expires_at=pickup.expires_at.replace(tzinfo=None),
+        used_at=None,
+    )
+    db.add(tok)
+    db.flush()
+
+    pickup.current_token_id = tok.id
+    pickup.touch()
+
+    db.commit()
+    db.refresh(order)
+    db.refresh(pickup)
+
+    return {
+        "message": "Pagamento simulado + pickup/token criados",
+        "order_id": order.id,
+        "pickup_id": pickup.id,
+        "token_id": tok.id,
+        "manual_code": manual_code,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "locker_id": pickup.locker_id,
+        "slot": pickup.slot,
+        "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
+    }

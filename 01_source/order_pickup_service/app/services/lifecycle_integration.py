@@ -406,7 +406,6 @@ def _calculate_reminder_schedule(
     
     return reminders
 
-
 def register_prepayment_timeout_deadline(
     *,
     order_id: str,
@@ -416,39 +415,40 @@ def register_prepayment_timeout_deadline(
     machine_id: str | None,
     created_at: datetime | None,
     payment_method: str | None = None,
+    timeout_seconds: int,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Registra deadline de pré-pagamento com suporte regional aprimorado
     """
     client = LifecycleClient()
-    deadline_at = _resolve_deadline_at(
-        created_at=created_at,
-        region_code=region_code,
-        order_channel=order_channel,
-        payment_method=payment_method,
-        event_type=LifecycleEventType.PREPAYMENT_DEADLINE,
-    )
+
+    deadline_at = None
+    if created_at is not None:
+        base_created_at = created_at
+        if base_created_at.tzinfo is None:
+            base_created_at = base_created_at.replace(tzinfo=timezone.utc)
+
+        deadline_at = base_created_at + timedelta(seconds=int(timeout_seconds))
+
     deadline_at_str = _serialize_deadline_at(deadline_at)
-    
-    # Calcula lembretes baseados na região
+
     reminders = []
     if deadline_at:
         reminders = _calculate_reminder_schedule(
-            deadline_at, 
+            deadline_at,
             region_code,
             LifecycleEventType.PREPAYMENT_DEADLINE
         )
-    
-    # Prepara metadados regionais
+
     region_metadata = {
         "timezone": RegionLifecycleConfig.get_timezone(region_code),
         "reminder_intervals": RegionLifecycleConfig.get_reminder_intervals(region_code),
         "notification_channels": RegionLifecycleConfig.get_notification_channels(region_code),
         "reminder_schedule": [r.isoformat() for r in reminders],
-        ** (metadata or {})
+        **(metadata or {})
     }
-    
+
     try:
         result = client.create_prepayment_deadline(
             order_id=order_id,
@@ -460,7 +460,7 @@ def register_prepayment_timeout_deadline(
             payment_method=payment_method,
             # metadata=region_metadata,
         )
-        
+
         logger.info(
             "lifecycle_deadline_registered",
             extra={
@@ -469,17 +469,18 @@ def register_prepayment_timeout_deadline(
                 "region_code": region_code,
                 "payment_method": payment_method,
                 "deadline_at": deadline_at_str,
+                "timeout_seconds": timeout_seconds,
                 "reminder_count": len(reminders),
                 "result": result,
             },
         )
-        
+
         return {
             "deadline_at": deadline_at_str,
             "reminders": reminders,
             "result": result,
         }
-        
+
     except LifecycleClientError:
         logger.exception(
             "lifecycle_deadline_register_failed",
@@ -489,10 +490,10 @@ def register_prepayment_timeout_deadline(
                 "region_code": region_code,
                 "payment_method": payment_method,
                 "deadline_at": deadline_at_str,
+                "timeout_seconds": timeout_seconds,
             },
         )
         raise
-
 
 def cancel_prepayment_timeout_deadline(
     *, 
