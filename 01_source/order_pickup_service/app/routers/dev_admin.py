@@ -29,8 +29,14 @@ from app.models.allocation import Allocation
 from app.models.pickup import Pickup, PickupStatus, PickupLifecycleStage, PickupChannel
 from app.models.pickup_token import PickupToken
 
+from app.services.payment_confirm_service import apply_payment_confirmation
+from app.routers.internal import _ensure_online_pickup, _create_pickup_token
 
-
+from app.routers.internal import (
+    _ensure_allocation,
+    _ensure_online_pickup,
+    _create_pickup_token,
+)
 
 router = APIRouter(prefix="/dev-admin", tags=["dev-admin"])
 
@@ -343,7 +349,7 @@ def dev_reset_locker(
     )
 
 # 15/04/2026
-@router.post("/simulate-online-payment")
+@router.post("/simulate-online-payment-legacy-not-use")
 def simulate_payment(
     order_id: str,
     db: Session = Depends(get_db),
@@ -437,6 +443,64 @@ def simulate_payment(
         "pickup_id": pickup.id,
         "token_id": tok.id,
         "manual_code": manual_code,
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "locker_id": pickup.locker_id,
+        "slot": pickup.slot,
+        "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
+    }
+
+
+# 15/04/2026 - versão final
+@router.post("/simulate-online-payment")
+def simulate_payment(
+    order_id: str,
+    db: Session = Depends(get_db),
+):
+    _ensure_dev_mode()
+
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    allocation = _ensure_allocation(db, order.id)
+
+    now = datetime.now(timezone.utc)
+
+    if str(order.payment_status or "") != "APPROVED":
+        order.payment_status = "APPROVED"
+        order.status = "PAID_PENDING_PICKUP"
+        order.paid_at = now
+        order.payment_updated_at = now
+
+    deadline_utc = now + timedelta(hours=2)
+
+    pickup = _ensure_online_pickup(
+        db,
+        order=order,
+        allocation=allocation,
+        deadline_utc=deadline_utc,
+    )
+
+    token_data = _create_pickup_token(
+        db,
+        pickup_id=pickup.id,
+        expires_at_utc=deadline_utc,
+    )
+
+    pickup.current_token_id = token_data["token_id"]
+    pickup.touch()
+
+    db.commit()
+    db.refresh(order)
+    db.refresh(pickup)
+
+    return {
+        "message": "Pagamento simulado + pickup/token criados",
+        "order_id": order.id,
+        "pickup_id": pickup.id,
+        "token_id": token_data["token_id"],
+        "manual_code": token_data["manual_code"],
         "status": order.status,
         "payment_status": order.payment_status,
         "locker_id": pickup.locker_id,
