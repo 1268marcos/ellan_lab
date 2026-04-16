@@ -1,4 +1,6 @@
 # 01_source/backend/runtime/app/repositories/runtime_registry_repo.py
+# 16/04/2026
+
 from __future__ import annotations
 
 import threading
@@ -67,24 +69,43 @@ def _read_runtime_locker_from_db(locker_id: str) -> dict[str, Any]:
             cur.execute(
                 """
                 SELECT
-                    locker_id,
-                    machine_id,
-                    display_name,
-                    region,
-                    country,
-                    timezone,
-                    operator_id,
-                    temperature_zone,
-                    security_level,
-                    active,
-                    runtime_enabled,
-                    mqtt_region,
-                    mqtt_locker_id,
-                    topology_version,
-                    slot_count_total,
-                    payment_methods_json
-                FROM runtime_lockers
-                WHERE locker_id = %s
+                        rl.locker_id,
+                        rl.machine_id,
+                        rl.display_name,
+                        rl.region,
+                        rl.country,
+                        rl.timezone,
+                        rl.operator_id,
+                        rl.temperature_zone,
+                        rl.security_level,
+                        rl.active,
+                        rl.runtime_enabled,
+                        rl.mqtt_region,
+                        rl.mqtt_locker_id,
+                        rl.topology_version,
+                        rl.payment_methods_json,
+                        rl.slot_count_total,
+
+                        l.address_line,
+                        l.address_number,
+                        l.address_extra,
+                        l.district,
+                        l.city,
+                        l.state,
+                        l.postal_code,
+                        l.latitude,
+                        l.longitude,
+                        l.slots_count AS slots_central,
+
+                        rl.slot_count_total <> l.slots_count AS slots_divergentes,
+                        rl.payment_methods_json = '[]'       AS sem_pagamento_runtime
+
+                    FROM public.runtime_lockers rl
+                    LEFT JOIN public.lockers l
+                        ON l.id = rl.locker_id
+                    AND l.deleted_at IS NULL
+
+                    WHERE rl.locker_id = %s
                 """,
                 (locker_id,),
             )
@@ -245,7 +266,7 @@ def invalidate_runtime_locker_cache(locker_id: str | None = None) -> None:
             _cache.clear()
 
 
-def list_runtime_lockers() -> list[dict[str, Any]]:
+def list_runtime_lockers_legacy_erro() -> list[dict[str, Any]]:
     conn = _get_connection()
     try:
         with conn, conn.cursor() as cur:
@@ -301,3 +322,91 @@ def list_runtime_lockers() -> list[dict[str, Any]]:
 
     finally:
         conn.close()
+
+
+def list_runtime_lockers() -> list[dict[str, Any]]:
+    conn = _get_connection()
+    try:
+        with conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    rl.locker_id,
+                    rl.machine_id,
+                    rl.display_name,
+                    rl.region,
+                    rl.country,
+                    rl.timezone,
+                    rl.operator_id,
+                    rl.temperature_zone,
+                    rl.security_level,
+                    rl.active,
+                    rl.runtime_enabled,
+                    rl.mqtt_region,
+                    rl.mqtt_locker_id,
+                    rl.topology_version,
+                    rl.payment_methods_json,
+                    rl.slot_count_total,
+
+                    -- 🔥 CENTRAL (FALTAVA AQUI)
+                    l.address_line,
+                    l.address_number,
+                    l.address_extra,
+                    l.district,
+                    l.city,
+                    l.state,
+                    l.postal_code,
+                    l.latitude,
+                    l.longitude
+
+                FROM public.runtime_lockers rl
+                LEFT JOIN public.lockers l
+                    ON l.id = rl.locker_id
+                    AND l.deleted_at IS NULL
+
+                WHERE rl.active = TRUE
+                  AND rl.runtime_enabled = TRUE
+
+                ORDER BY rl.region, rl.display_name
+                """
+            )
+
+            rows = cur.fetchall()
+
+            return [
+                {
+                    "locker_id": str(row["locker_id"]),
+                    "machine_id": str(row["machine_id"]),
+                    "display_name": str(row["display_name"]),
+                    "region": str(row["region"]),
+                    "country": str(row["country"]),
+                    "timezone": str(row["timezone"]),
+                    "operator_id": row["operator_id"],
+                    "temperature_zone": str(row["temperature_zone"]),
+                    "security_level": str(row["security_level"]),
+                    "active": bool(row["active"]),
+                    "runtime_enabled": bool(row["runtime_enabled"]),
+                    "mqtt_region": str(row["mqtt_region"]),
+                    "mqtt_locker_id": str(row["mqtt_locker_id"]),
+                    "topology_version": int(row["topology_version"]),
+                    "payment_methods": list(row.get("payment_methods_json") or []),
+                    "slot_count_total": int(row["slot_count_total"]),
+
+                    # 🔥 ESSENCIAL PARA O FRONT
+                    "address_line": row.get("address_line"),
+                    "address_number": row.get("address_number"),
+                    "address_extra": row.get("address_extra"),
+                    "district": row.get("district"),
+                    "city": row.get("city"),
+                    "state": row.get("state"),
+                    "postal_code": row.get("postal_code"),
+                    "latitude": row.get("latitude"),
+                    "longitude": row.get("longitude"),
+                }
+                for row in rows
+            ]
+
+    finally:
+        conn.close()
+
+

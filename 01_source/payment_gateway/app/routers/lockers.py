@@ -1,4 +1,7 @@
 # 01_source/payment_gateway/app/routers/lockers.py
+# 16/04/2026 - inclusão de "pickup_code_length":
+# 16/04/2026 - atualização da função _safe_address_from_runtime
+
 from __future__ import annotations
 
 import os
@@ -29,7 +32,7 @@ def _extract_items(payload) -> list[dict]:
     return []
 
 
-def _safe_address_from_runtime(item: dict) -> dict:
+def _safe_address_from_runtime_legacy_erro(item: dict) -> dict:
     address = item.get("address")
 
     if isinstance(address, dict):
@@ -51,6 +54,53 @@ def _safe_address_from_runtime(item: dict) -> dict:
         "locality": None,
         "city": item.get("city"),
         "federative_unit": item.get("state"),
+        "postal_code": item.get("postal_code"),
+        "country": item.get("country"),
+    }
+
+
+def _safe_address_from_runtime(item: dict) -> dict:
+    address = item.get("address")
+
+    if isinstance(address, dict):
+        return {
+            "address": (
+                address.get("address")
+                or address.get("address_line")
+                or item.get("address_line")
+            ),
+            "number": (
+                address.get("number")
+                or address.get("address_number")
+                or item.get("address_number")
+            ),
+            "additional_information": (
+                address.get("additional_information")
+                or address.get("address_extra")
+                or item.get("address_extra")
+            ),
+            "locality": (
+                address.get("locality")
+                or address.get("district")
+                or item.get("district")
+            ),
+            "city": address.get("city") or item.get("city"),
+            "federative_unit": (
+                address.get("federative_unit")
+                or address.get("state")
+                or item.get("state")
+            ),
+            "postal_code": address.get("postal_code") or item.get("postal_code"),
+            "country": address.get("country") or item.get("country"),
+        }
+
+    return {
+        "address": item.get("address_line") or item.get("address"),
+        "number": item.get("address_number") or item.get("number"),
+        "additional_information": item.get("address_extra") or item.get("additional_information"),
+        "locality": item.get("district") or item.get("locality"),
+        "city": item.get("city"),
+        "federative_unit": item.get("state") or item.get("federative_unit"),
         "postal_code": item.get("postal_code"),
         "country": item.get("country"),
     }
@@ -78,6 +128,7 @@ def _to_public_summary(item: dict) -> dict:
             or item.get("allowed_payment_methods")
             or []
         ),
+        "pickup_code_length": int(item.get("pickup_code_length") or 6),
         "active": bool(item.get("active", False)),
         "address": _safe_address_from_runtime(item),
     }

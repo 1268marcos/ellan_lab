@@ -1,4 +1,6 @@
 // 01_source/frontend/src/features/locker-dashboard/utils/dashboardMappers.js
+// 16/04/2026 - inclusão de pickup_code_length
+
 
 import { LOCKER_REGISTRY_FALLBACK } from "./dashboardConstants.js";
 
@@ -28,6 +30,7 @@ export function normalizeLockerItem(locker) {
     payment_methods: Array.isArray(locker?.payment_methods)
       ? locker.payment_methods.map((m) => String(m).trim()) //.toUpperCase()
       : [],
+    pickup_code_length: Number(locker?.pickup_code_length || 6),
     active: Boolean(locker?.active),
     address,
   };

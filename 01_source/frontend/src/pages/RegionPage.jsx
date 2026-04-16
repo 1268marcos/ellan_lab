@@ -63,7 +63,7 @@ function formatMoney(cents, currency) {
   }
 }
 
-function normalizeLockerItem(locker) {
+function normalizeLockerItem_legacy(locker) {
   const address =
     locker?.address && typeof locker.address === "object"
       ? locker.address
@@ -100,7 +100,101 @@ function normalizeLockerItem(locker) {
 }
 
 
-function formatAddress(locker) {
+
+function normalizeLockerItem(locker) {
+  const rawAddress =
+    locker?.address && typeof locker.address === "object"
+      ? locker.address
+      : {};
+
+  const safeString = (value) => {
+    if (value == null) return "";
+    if (typeof value === "string") return value.trim();
+    if (typeof value === "number" || typeof value === "boolean") return String(value).trim();
+    return "";
+  };
+
+  const address = {
+    address:
+      safeString(rawAddress.address) ||
+      safeString(rawAddress.address_line) ||
+      safeString(locker?.address_line) ||
+      safeString(locker?.address),
+    number:
+      safeString(rawAddress.number) ||
+      safeString(rawAddress.address_number) ||
+      safeString(locker?.address_number) ||
+      safeString(locker?.number),
+    additional_information:
+      safeString(rawAddress.additional_information) ||
+      safeString(rawAddress.address_extra) ||
+      safeString(locker?.address_extra) ||
+      safeString(locker?.additional_information),
+    locality:
+      safeString(rawAddress.locality) ||
+      safeString(rawAddress.district) ||
+      safeString(locker?.district) ||
+      safeString(locker?.locality),
+    city:
+      safeString(rawAddress.city) ||
+      safeString(locker?.city),
+    federative_unit:
+      safeString(rawAddress.federative_unit) ||
+      safeString(rawAddress.state) ||
+      safeString(locker?.state) ||
+      safeString(locker?.federative_unit),
+    postal_code:
+      safeString(rawAddress.postal_code) ||
+      safeString(locker?.postal_code),
+    country:
+      safeString(rawAddress.country) ||
+      safeString(locker?.country),
+  };
+
+  const slotCountFromRuntime = Array.isArray(locker?.slot_ids)
+    ? locker.slot_ids.length
+    : Number(locker?.slots || locker?.slots_count || 0);
+
+  const channels = Array.isArray(locker?.channels)
+    ? locker.channels.map((item) => String(item).trim()).filter(Boolean)
+    : typeof locker?.allowed_channels === "string"
+      ? locker.allowed_channels
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+  const paymentMethods = Array.isArray(locker?.payment_methods)
+    ? locker.payment_methods.map((item) => String(item).trim()).filter(Boolean)
+    : typeof locker?.allowed_payment_methods === "string"
+      ? locker.allowed_payment_methods
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean)
+      : [];
+
+  return {
+    locker_id: String(
+      locker?.locker_id || locker?.id || locker?.external_id || ""
+    ).trim(),
+    pickup_code_length: Number(locker?.pickup_code_length || 6),
+    region: String(locker?.region || "").trim().toUpperCase(),
+    site_id: locker?.site_id || "",
+    display_name: locker?.display_name || locker?.locker_id || locker?.id || "",
+    backend_region: String(
+      locker?.backend_region || locker?.region || ""
+    ).trim().toUpperCase(),
+    slots: Number(slotCountFromRuntime || 0),
+    channels,
+    payment_methods: paymentMethods,
+    address,
+    active: Boolean(locker?.active),
+  };
+}
+
+
+
+function formatAddress_com_erro_legacy(locker) {
   if (!locker) return "-";
 
   const address = locker.address || {};
@@ -118,6 +212,28 @@ function formatAddress(locker) {
 
   return parts.join(" • ");
 }
+
+
+function formatAddress(locker) {
+  if (!locker) return "-";
+
+  const address = locker.address || {};
+
+  const parts = [
+    [address.address, address.number].filter(Boolean).join(", "),
+    address.additional_information || "",
+    address.locality || "",
+    [address.city, address.federative_unit].filter(Boolean).join(" / "),
+    address.postal_code || "",
+    address.country || "",
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  return parts.length ? parts.join(" • ") : "-";
+}
+
+
 
 function nowEpochSec() {
   return Math.floor(Date.now() / 1000);
@@ -1529,7 +1645,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         <div style={summaryListStyle}>
           <ManualPickupPanel
             region={region}
-            lockerId={selectedLockerId}
+            lockerId={selectedLocker?.locker_id}
             pickupCodeLength={selectedLocker?.pickup_code_length || 6}
             apiBase="/api/op"
             onRedeemed={(data) => {
