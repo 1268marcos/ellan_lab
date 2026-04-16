@@ -1,9 +1,12 @@
 // 01_source/frontend/src/pages/RegionPage.jsx
 // 07/04/2026 - resposta JSON rico para rejected - extractGatewayDebugInfo 
 // 09/04/2026 - COM VALIDAÇÃO DE CAMPOS, FLUXO UX PROGRESSIVO E SIMULAÇÃO DE IMPRESSÃO
+// 16/04/2026 - ManualPickupPanel
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+
+import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
 import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
 
@@ -81,6 +84,7 @@ function normalizeLockerItem(locker) {
 
   return {
     locker_id: String(locker?.locker_id || "").trim(),
+    pickup_code_length: Number(locker?.pickup_code_length || 6),
     region: String(locker?.region || "").toUpperCase(),
     site_id: locker?.site_id || "",
     display_name: locker?.display_name || locker?.locker_id || "",
@@ -1517,6 +1521,47 @@ export default function RegionPage({ region, mode = "kiosk" }) {
           </>
         )}
       </section>
+
+
+      {/* SEÇÃO 5 - RETIRADA MANUAL POR CÓDIGO - ONLINE */}
+      <section style={cardStyle}>
+        <h2 style={h2Style}>Retirada por código manual</h2>
+        <div style={summaryListStyle}>
+          <ManualPickupPanel
+            region={region}
+            lockerId={selectedLockerId}
+            pickupCodeLength={selectedLocker?.pickup_code_length || 6}
+            apiBase="/api/op"
+            onRedeemed={(data) => {
+              console.log("Retirada manual concluída:", data);
+
+              setErr(null);
+
+              if (data) {
+                setPaymentResp((prev) => {
+                  if (!prev) return prev;
+
+                  return {
+                    ...prev,
+                    status: data.order_status || data.status || prev.status,
+                    picked_up_at: data.picked_up_at || prev.picked_up_at || null,
+                    pickup_id: data.pickup_id || prev.pickup_id || null,
+                    pickup_status: data.pickup_status || prev.pickup_status || null,
+                    pickup_lifecycle_stage:
+                      data.pickup_lifecycle_stage || prev.pickup_lifecycle_stage || null,
+                    slot: data.slot ?? prev.slot,
+                  };
+                });
+
+                setHasCompletedPayment(true);
+              }
+
+              fetchCatalogSlots(true);
+            }}
+          />
+        </div>
+      </section>
+
 
       {err && (
         <section style={cardStyle}>

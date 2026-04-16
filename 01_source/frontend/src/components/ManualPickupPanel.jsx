@@ -1,30 +1,45 @@
-import React, { useEffect, useMemo, useState } from "react";
+// 01_source/frontend/src/components/ManualPickupPanel.jsx
+// 16/04/2026 - versão FINAL limpa
 
-const btn = {
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import PickupCodeVirtualKeyboard from "./PickupCodeVirtualKeyboard.jsx";
+
+const panelStyle = {
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(0,0,0,0.18)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const btnStyle = {
   padding: "10px 12px",
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.18)",
-  background: "#7a5f1f",
+  background: "#2d8a4a",
   color: "white",
   cursor: "pointer",
   fontWeight: 800,
 };
 
-const input = {
+const inputStyle = {
   width: "100%",
   padding: "10px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.16)",
   background: "rgba(255,255,255,0.06)",
   color: "white",
-  outline: "none",
 };
 
-const label = {
+const toastStyle = {
+  padding: 10,
+  borderRadius: 12,
+  border: "1px solid rgba(245, 158, 11, 0.35)",
+  background: "rgba(245, 158, 11, 0.16)",
+  color: "#fde68a",
   fontSize: 12,
-  opacity: 0.9,
-  display: "grid",
-  gap: 6,
+  fontWeight: 700,
 };
 
 export default function ManualPickupPanel({
@@ -32,13 +47,38 @@ export default function ManualPickupPanel({
   lockerId = "",
   apiBase = "/api/op",
   onRedeemed,
+  pickupCodeLength = 6,
 }) {
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resp, setResp] = useState("");
   const [error, setError] = useState("");
 
-  const endpoint = useMemo(() => `${apiBase}/totem/pickups/redeem-manual`, [apiBase]);
+  const [toastMessage, setToastMessage] = useState("");
+  const toastTimerRef = useRef(null);
+
+  const endpoint = useMemo(() => {
+    return `${apiBase}/totem/pickups/redeem-manual`;
+  }, [apiBase]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
+
+  function showToast(message) {
+    setToastMessage(message);
+
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+    }
+
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage("");
+    }, 2500);
+  }
 
   useEffect(() => {
     setManualCode("");
@@ -47,24 +87,20 @@ export default function ManualPickupPanel({
   }, [region, lockerId]);
 
   async function redeemManualCode() {
-    const cleanCode = String(manualCode).trim();
-    const cleanLockerId = String(lockerId || "").trim();
+    const cleanCode = manualCode.trim();
 
-    if (!cleanLockerId) {
+    if (!lockerId) {
       setError("Locker não selecionado.");
-      setResp("");
       return;
     }
 
     if (!cleanCode) {
       setError("Digite o código manual.");
-      setResp("");
       return;
     }
 
     setLoading(true);
     setError("");
-    setResp("");
 
     try {
       const res = await fetch(endpoint, {
@@ -72,125 +108,71 @@ export default function ManualPickupPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           region,
-          locker_id: cleanLockerId,
+          locker_id: lockerId,
           manual_code: cleanCode,
         }),
       });
 
-      const text = await res.text();
+      const data = await res.json();
 
+      // ✅ DEPOIS — garante sempre string
       if (!res.ok) {
-        setError(`HTTP ${res.status}: ${text}`);
+        const detail = data?.detail;
+        const message =
+          typeof detail === "string"
+            ? detail
+            : detail
+            ? JSON.stringify(detail, null, 2)
+            : "Erro ao validar código.";
+        setError(message);
         return;
-      }
-
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = { raw: text };
       }
 
       setResp(JSON.stringify(data, null, 2));
       setManualCode("");
 
-      if (onRedeemed) {
-        onRedeemed(data);
-      }
+      onRedeemed?.(data);
     } catch (e) {
-      setError(String(e?.message || e));
+      setError(e?.message ? String(e.message) : String(e));
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div
-      style={{
-        borderRadius: 12,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(0,0,0,0.18)",
-        padding: 12,
-        display: "grid",
-        gap: 10,
-      }}
-    >
+    <div style={panelStyle}>
       <div style={{ fontWeight: 800 }}>Retirada por código manual</div>
 
-      <div style={{ fontSize: 12, opacity: 0.75 }}>
-        Endpoint: <code>{endpoint}</code>
-      </div>
-
-      <div style={{ fontSize: 12, opacity: 0.75 }}>
-        Região atual: <b>{region}</b>
-      </div>
-
-      <div style={{ fontSize: 12, opacity: 0.75 }}>
-        Locker atual: <b>{lockerId || "-"}</b>
-      </div>
-
-      <label style={label}>
-        Código manual
-        <input
-          value={manualCode}
-          onChange={(e) => setManualCode(e.target.value)}
-          placeholder="ex.: 482931"
-          style={input}
-          maxLength={8}
-        />
-      </label>
+      <button onClick={() => setKeyboardOpen(true)} style={inputStyle}>
+        {manualCode || "Digite o código"}
+      </button>
 
       <button
         onClick={redeemManualCode}
         disabled={loading || !lockerId}
-        style={{
-          ...btn,
-          background: loading || !lockerId ? "rgba(255,255,255,0.08)" : "#2d8a4a",
-          cursor: loading || !lockerId ? "not-allowed" : "pointer",
-        }}
+        style={btnStyle}
       >
         {loading ? "Validando..." : "Retirar com código"}
       </button>
 
-      <div style={{ fontSize: 11, opacity: 0.7 }}>
-        Use este painel para simular o totem sem precisar de leitor de QR.
-      </div>
+      {toastMessage && <div style={toastStyle}>{toastMessage}</div>}
 
-      {error ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "#2b1d1d",
-            color: "#ffb4b4",
-            overflow: "auto",
-            maxHeight: 180,
-            fontSize: 11,
-          }}
-        >
-          {error}
-        </pre>
-      ) : null}
+      <PickupCodeVirtualKeyboard
+        isOpen={keyboardOpen}
+        value={manualCode}
+        onChange={setManualCode}
+        onClose={() => setKeyboardOpen(false)}
+        onDiscardIncompleteCode={({ message, enteredLength, expectedLength }) => {
+          showToast(
+            message ||
+              `Código incompleto descartado (${enteredLength}/${expectedLength})`
+          );
+        }}
+        codeLength={pickupCodeLength}
+      />
 
-      {resp ? (
-        <pre
-          style={{
-            margin: 0,
-            padding: 10,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "#0b0d10",
-            color: "white",
-            overflow: "auto",
-            maxHeight: 220,
-            fontSize: 11,
-          }}
-        >
-          {resp}
-        </pre>
-      ) : null}
+      {error && <pre>{error}</pre>}
+      {resp && <pre>{resp}</pre>}
     </div>
   );
 }
