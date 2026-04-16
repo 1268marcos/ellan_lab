@@ -18,7 +18,9 @@ const PublicSupportPage = lazy(() => import("./pages/public/PublicSupportPage"))
 const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyPolicyPage"));
 const PublicTermsOfUsePage = lazy(() => import("./pages/public/PublicTermsOfUsePage"));
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
+const LockerDashboardFirst = lazy(() => import("./pages/LockerDashboardFirst"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
+const RegionPageFirst = lazy(() => import("./pages/RegionPageFirst"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 
@@ -409,6 +411,18 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+
+
+            <Route
+              path="/ops/00"
+              element={
+                <OpsRoute>
+                  <LockerDashboardFirst region="SP" />
+                </OpsRoute>
+              }
+            />
+
+
             <Route
               path="/ops/sp/kiosk"
               element={
@@ -425,6 +439,23 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+
+
+
+
+            <Route
+              path="/ops/00/kiosk"
+              element={
+                <OpsRoute>
+                  <RegionPageFirst region="SP" mode="kiosk" />
+                </OpsRoute>
+              }
+            />
+
+
+
+
+
             <Route
               path="/ops/dev/reset"
               element={
