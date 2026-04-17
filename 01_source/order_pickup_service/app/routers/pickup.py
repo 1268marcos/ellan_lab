@@ -1,4 +1,5 @@
 # 01_source/order_pickup_service/app/routers/pickup.py
+# 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
 
 from __future__ import annotations
 
@@ -575,6 +576,7 @@ def legacy_generate_manual_code(
         id=str(uuid.uuid4()),
         pickup_id=pickup.id,
         token_hash=_sha256(manual_code),
+        manual_code=manual_code,  # 🔥 NOVO
         expires_at=deadline.replace(tzinfo=None),
         used_at=None,
     )

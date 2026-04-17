@@ -1,4 +1,5 @@
 # 01_source/order_pickup_service/app/schemas/pickup.py
+# 17/04/2026 - criação do token
 
 from __future__ import annotations
 

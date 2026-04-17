@@ -5,6 +5,11 @@
 # 14/04/2026 - Volta para produção desta versão do código
 #              veja public_orders_BUGADA_POREM.py (causou problemas em ONLINE, porém, KIOSK ok)
 #
+# 17/04/2026 - nova def _serialize_order() e inclusão em @router.get("/{order_id}")
+# 17/04/2026 - correção de "manual_code": 
+# 17/04/2026 - patch para exibir o token de Código manual: token:5b0be4 para 886137
+# 17/04/2026 - correção de "picked_up_at": em _serialize_order()
+
 
 from __future__ import annotations
 
@@ -32,6 +37,11 @@ from app.models.allocation import Allocation
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 
+from app.models.pickup import Pickup
+from app.models.pickup_token import PickupToken
+from app.services.pickup_qr_service import build_public_pickup_qr_value
+
+
 # Configuração de logging
 logger = logging.getLogger(__name__)
 
@@ -46,7 +56,7 @@ def _dt_iso(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
-def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
+def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
     """Serializa pedido para resposta da API"""
     return {
         "id": order.id,
@@ -79,6 +89,93 @@ def _serialize_order(order: Order, fiscal: FiscalDocument | None = None) -> dict
         "customer_phone": order.guest_phone,
         # "customer_email": getattr(order, "customer_email", None),
         "guest_email": getattr(order, "guest_email", None),
+    }
+
+
+def _serialize_order(
+    order: Order,
+    fiscal: FiscalDocument | None = None,
+    *,
+    pickup: Pickup | None = None,
+    token: PickupToken | None = None,
+    allocation: Allocation | None = None,
+) -> dict[str, Any]:
+    """Serializa pedido para resposta da API"""
+
+    slot_value = None
+    if getattr(order, "slot", None) is not None:
+        slot_value = order.slot
+    elif pickup and getattr(pickup, "slot", None) is not None:
+        slot_value = pickup.slot
+    elif allocation and getattr(allocation, "slot", None) is not None:
+        slot_value = allocation.slot
+
+    expires_at_value = None
+    if pickup and getattr(pickup, "expires_at", None):
+        expires_at_value = _dt_iso(pickup.expires_at)
+    elif token and getattr(token, "expires_at", None):
+        expires_at_value = _dt_iso(token.expires_at)
+
+    qr_payload = None
+    if order and token and token.id and expires_at_value:
+        qr_payload = build_public_pickup_qr_value(
+            order_id=order.id,
+            token_id=token.id,
+            expires_at_iso=expires_at_value,
+        )
+
+    return {
+        "id": order.id,
+        "order_id": order.id,
+        "user_id": order.user_id,
+        "channel": order.channel.value if order.channel else None,
+        "region": order.region,
+        "totem_id": order.totem_id,
+        "sku_id": order.sku_id,
+        "amount_cents": order.amount_cents,
+        "status": order.status.value if order.status else None,
+        "gateway_transaction_id": order.gateway_transaction_id,
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "payment_status": order.payment_status.value if order.payment_status else None,
+        "card_type": order.card_type.value if order.card_type else None,
+        "payment_updated_at": _dt_iso(order.payment_updated_at),
+        "paid_at": _dt_iso(order.paid_at),
+        "pickup_deadline_at": _dt_iso(order.pickup_deadline_at),
+        # "picked_up_at": _dt_iso(order.picked_up_at),
+        "picked_up_at": (
+            _dt_iso(order.picked_up_at)
+            or _dt_iso(getattr(pickup, "redeemed_at", None))
+            or _dt_iso(getattr(pickup, "item_removed_at", None))
+            or _dt_iso(getattr(pickup, "door_closed_at", None))
+        ),
+        "guest_session_id": order.guest_session_id,
+        "consent_marketing": order.consent_marketing,
+        "created_at": _dt_iso(order.created_at),
+        "updated_at": _dt_iso(order.updated_at),
+        "receipt_code": fiscal.receipt_code if fiscal else None,
+        "receipt_print_path": fiscal.print_site_path if fiscal else None,
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
+        ),
+        "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
+        "customer_phone": order.guest_phone,
+        "guest_email": getattr(order, "guest_email", None),
+
+        # 🔥 BLOCO NOVO PARA DETALHE DO PICKUP
+        "allocation_id": getattr(order, "allocation_id", None) or (allocation.id if allocation else None),
+        "slot": slot_value,
+        "pickup_id": pickup.id if pickup else None,
+        "pickup_status": pickup.status.value if pickup and pickup.status else None,
+        "pickup_lifecycle_stage": (
+            pickup.lifecycle_stage.value
+            if pickup and getattr(pickup, "lifecycle_stage", None)
+            else None
+        ),
+        "expires_at": expires_at_value,
+        "token_id": token.id if token else None,
+        # "manual_code": None,  # não existe código em claro persistido; não inventar
+        "manual_code": getattr(token, "manual_code", None),
+        "qr_payload": qr_payload,
     }
 
 
@@ -727,13 +824,73 @@ def get_my_public_order(
         )
 
     # Busca documento fiscal
+    # fiscal = (
+    #     db.query(FiscalDocument)
+    #     .filter(FiscalDocument.order_id == order.id)
+    #     .first()
+    # )
+    # 
+    # return _serialize_order(order, fiscal=fiscal)
+    # Busca documento fiscal
     fiscal = (
         db.query(FiscalDocument)
         .filter(FiscalDocument.order_id == order.id)
         .first()
     )
 
-    return _serialize_order(order, fiscal=fiscal)
+    # Busca allocation associada
+    allocation = None
+    if getattr(order, "allocation_id", None):
+        allocation = (
+            db.query(Allocation)
+            .filter(Allocation.id == order.allocation_id)
+            .first()
+        )
+
+    if allocation is None:
+        allocation = (
+            db.query(Allocation)
+            .filter(Allocation.order_id == order.id)
+            .order_by(Allocation.created_at.desc(), Allocation.id.desc())
+            .first()
+        )
+
+    # Busca pickup mais recente
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .first()
+    )
+
+    # Busca token atual/mais recente
+    token = None
+    if pickup and getattr(pickup, "current_token_id", None):
+        token = (
+            db.query(PickupToken)
+            .filter(PickupToken.id == pickup.current_token_id)
+            .first()
+        )
+
+    if token is None and pickup:
+        token = (
+            db.query(PickupToken)
+            .filter(PickupToken.pickup_id == pickup.id)
+            .order_by(PickupToken.expires_at.desc(), PickupToken.id.desc())
+            .first()
+        )
+
+    return _serialize_order(
+        order,
+        fiscal=fiscal,
+        pickup=pickup,
+        token=token,
+        allocation=allocation,
+    )
+
+
+
+
 
 
 @router.post("/{order_id}/cancel")

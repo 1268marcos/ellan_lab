@@ -2,6 +2,7 @@
 # 02/04/2026 - Enhanced Version with Asia, Middle East, Eastern Europe & Oceania Support
 # veja fim do arquivo
 # 13/04/2026 - FIX: BLOQUEAR REALLOCATE NO FLUXO KIOSK (409 error agora causa falha controlada)
+# 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
 
 from __future__ import annotations
 
@@ -670,6 +671,7 @@ def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetim
         id=str(uuid.uuid4()),
         pickup_id=pickup_id,
         token_hash=token_hash,
+        manual_code=manual_code,  # 🔥 NOVO
         expires_at=expires_at_utc.replace(tzinfo=None),
         used_at=None,
     )

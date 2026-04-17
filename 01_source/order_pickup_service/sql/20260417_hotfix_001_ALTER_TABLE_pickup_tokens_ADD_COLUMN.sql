@@ -1,0 +1,1 @@
+ALTER TABLE pickup_tokens ADD COLUMN manual_code VARCHAR;

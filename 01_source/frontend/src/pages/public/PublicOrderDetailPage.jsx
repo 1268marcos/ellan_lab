@@ -159,8 +159,8 @@ export default function PublicOrderDetailPage() {
                 <Field label="Produto" value={order.sku_id} />
                 <Field label="Valor" value={formatAmount(order.amount_cents)} />
                 <Field label="Pago em" value={formatDateTime(order.paid_at)} />
-                <Field label="Retirado em" value={formatDateTime(order.pickup_up_at)} />
-                <Field label="Expira a retirada em" value={formatDateTime(order.pickup_deadline_at)} />
+                <Field label="Retirado em" value={formatDateTime(order.picked_up_at)} />
+                <Field label="Expira a retirada em" value={formatDateTime(order.expires_at || pickup?.expires_at)} />
               </div>
             </section>
 
@@ -244,7 +244,7 @@ export default function PublicOrderDetailPage() {
                   <div style={detailsGridStyle}>
                     <Field label="Status" value={pickup.status} />
                     <Field label="Expira em" value={formatDateTime(pickup.expires_at)} />
-                    <Field label="Código manual" value={pickup.manual_code_masked || "-"} />
+                    <Field label="Código de retirada manual" value={order?.manual_code || pickup?.manual_code_masked || "-"} />
                   </div>
 
                   <div style={{ marginTop: 16 }}>

@@ -4,6 +4,7 @@
 # 09/04/2026 - CORRIGIDO: Import do FiscalDocument adicionado
 # 11/04/2026 - CORRIGIDO: receipt_code em def _extract_attempt_from_fiscal()
 # 11/04/2026 - melhorada a função def _extract_attempt_from_fiscal()
+# 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
 
 from __future__ import annotations
 
@@ -106,6 +107,7 @@ def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetim
         id=str(uuid.uuid4()),
         pickup_id=pickup_id,
         token_hash=_sha256(manual_code),
+        manual_code=manual_code,  # 🔥 NOVO
         expires_at=expires_at_utc.replace(tzinfo=None),
         used_at=None,
     )

@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/routers/dev_admin.py
-# 15/04/2026 - nova router.post("/dev/simulate-online-payment")
+# 15/04/2026 - nova @router.post("/simulate-online-payment") - foi substituída em 17/04/2026
+# 17/04/2026 - nova @router.post("/simulate-online-payment")
 
 from typing import Any
 
@@ -451,9 +452,9 @@ def simulate_payment(
     }
 
 
-# 15/04/2026 - versão final
+# 15/04/2026 - criada e funcional - foi substituída por 17/04/2026
 @router.post("/simulate-online-payment")
-def simulate_payment(
+def simulate_payment_legacy_funcional(
     order_id: str,
     db: Session = Depends(get_db),
 ):
@@ -507,3 +508,61 @@ def simulate_payment(
         "slot": pickup.slot,
         "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
     }
+
+
+
+# 17/04/2026 
+@router.post("/simulate-online-payment")
+def simulate_payment(
+    order_id: str,
+    db: Session = Depends(get_db),
+):
+    _ensure_dev_mode()
+
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    allocation = _ensure_allocation(db, order.id)
+
+    now = datetime.now(timezone.utc)
+
+    # 🔥 1. Marca pagamento aprovado
+    order.payment_status = "APPROVED"
+    order.status = "PAID_PENDING_PICKUP"
+    order.paid_at = now
+    order.payment_updated_at = now
+
+    # 🔥 2. EXECUTA PIPELINE REAL (ESSENCIAL)
+    result = fulfill_payment_post_approval(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup_window_hours=2,
+    )
+
+    pickup = result["pickup"]
+
+    # 🔥 3. SINCRONIZA CAMPOS NA ORDER (CRÍTICO)
+    order.slot = allocation.slot
+    order.allocation_id = allocation.id
+    order.allocation_expires_at = allocation.locked_until
+
+    db.commit()
+    db.refresh(order)
+    db.refresh(pickup)
+
+    return {
+        "message": "Pagamento simulado (pipeline real executado)",
+        "order_id": order.id,
+        "pickup_id": pickup.id,
+        "token_id": result.get("token_id"),
+        "manual_code": result.get("manual_code"),
+        "status": order.status,
+        "payment_status": order.payment_status,
+        "locker_id": pickup.locker_id,
+        "slot": pickup.slot,
+        "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
+    }
+
+
