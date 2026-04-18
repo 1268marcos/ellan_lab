@@ -1,6 +1,13 @@
 # 01_source/order_pickup_service/app/routers/dev_admin.py
 # 15/04/2026 - nova @router.post("/simulate-online-payment") - foi substituída em 17/04/2026
 # 17/04/2026 - nova @router.post("/simulate-online-payment")
+# 18/04/2026 - remoção : from app.routers.internal import _ensure_online_pickup, _create_pickup_token
+# 18/04/2026 - remoção : from app.routers.internal import _ensure_online_pickup
+# 18/04/2026 - inclusão : from app.services.pickup_payment_fulfillment_service import _create_pickup_token, _ensure_online_pickup
+
+from __future__ import annotations
+
+import logging
 
 from typing import Any
 
@@ -31,17 +38,23 @@ from app.models.pickup import Pickup, PickupStatus, PickupLifecycleStage, Pickup
 from app.models.pickup_token import PickupToken
 
 from app.services.payment_confirm_service import apply_payment_confirmation
-from app.routers.internal import _ensure_online_pickup, _create_pickup_token
 
-from app.routers.internal import (
-    _ensure_allocation,
-    _ensure_online_pickup,
+from app.services.pickup_payment_fulfillment_service import (
     _create_pickup_token,
+    _ensure_online_pickup,
+    fulfill_payment_post_approval,
 )
+
+from app.routers.internal import _ensure_allocation
+
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/dev-admin", tags=["dev-admin"])
 
-
+#-------------------------------------
+# HELPERS
+#-------------------------------------
 def _sha256(s: str) -> str:
     import hashlib
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
@@ -491,6 +504,9 @@ def simulate_payment_legacy_funcional(
 
     pickup.current_token_id = token_data["token_id"]
     pickup.touch()
+
+    logger.error(f"🔥 TOKEN CRIADO COM AES dev_admin - token_data={token_data}")
+
 
     db.commit()
     db.refresh(order)

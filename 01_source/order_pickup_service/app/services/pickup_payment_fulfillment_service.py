@@ -4,6 +4,7 @@
 # 13/04/2026 - FIX: BLOQUEAR REALLOCATE NO FLUXO KIOSK (409 error agora causa falha controlada)
 # 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
 # 17/04/2026 - código cifrado para manual_code
+# 18/04/2026 - correção para gravar manual_code_encrypted
 
 from __future__ import annotations
 
@@ -719,6 +720,9 @@ def _generate_qr_code_content(order_id: str, token_id: str, region: str) -> str:
 
 
 def _create_pickup_token_legacy_codigo_manual_texto_abandonar(db: Session, *, pickup_id: str, expires_at_utc: datetime, region: Optional[str] = None) -> dict:
+    
+    raise RuntimeError("LEGACY TOKEN GENERATION SHOULD NOT BE USED") # forçar erro se estive ativo, é errado
+
     """Cria token de pickup com suporte regional"""
     manual_code = _generate_manual_code()
     token_hash = _sha256(manual_code)
@@ -771,6 +775,13 @@ def _create_pickup_token(
     )
     db.add(tok)
     db.flush()
+
+    logger.error(
+        "🔥 TOKEN CRIADO COM AES em pickup_payment_fulfillment_service - pickup_id=%s token_id=%s encrypted=%s",
+        pickup_id,
+        tok.id,
+        bool(tok.manual_code_encrypted),
+    )
 
     return {
         "token_id": tok.id,
