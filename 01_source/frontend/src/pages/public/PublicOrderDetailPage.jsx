@@ -1,5 +1,6 @@
 // 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx
 // 18/04/2026 - atualização : function getPickupMessage() 
+// 18/04/2026 - melhoramento UX/CX para localização locker
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -15,6 +16,51 @@ const FRONTEND_BASE =
 function normalize(value) {
   return String(value || "").trim().toUpperCase();
 }
+
+
+
+
+function formatLockerAddress(locker) {
+  if (!locker || typeof locker !== "object") return "-";
+
+  const parts = [
+    locker.address_line,
+    locker.address_number,
+    locker.address_extra,
+    locker.district,
+    locker.city,
+    locker.state,
+    locker.postal_code,
+    locker.country,
+  ]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+
+  if (parts.length === 0) return "-";
+
+  return parts.join(" • ");
+}
+
+function getLockerDisplayName(order) {
+  const locker = order?.locker;
+  if (locker?.display_name) return locker.display_name;
+  return order?.totem_id || "-";
+}
+
+function getLockerTechnicalId(order) {
+  const locker = order?.locker;
+  return locker?.locker_id || order?.totem_id || "-";
+}
+
+function getLockerFullAddress(order) {
+  const locker = order?.locker;
+  return formatLockerAddress(locker);
+}
+
+
+
+
+
 
 export default function PublicOrderDetailPage() {
   const { orderId } = useParams();
@@ -156,7 +202,9 @@ export default function PublicOrderDetailPage() {
                 <Field label="Método" value={order.payment_method} />
                 <Field label="Status" value={order.status} />
                 <Field label="Canal" value={order.channel} />
-                <Field label="Locker" value={order.totem_id} />
+                <Field label="Locker" value={getLockerDisplayName(order)} />
+                <Field label="ID técnico do locker" value={getLockerTechnicalId(order)} />
+                <Field label="Endereço do locker" value={getLockerFullAddress(order)} />
                 <Field label="Gaveta/Slot" value={order.slot} />
                 <Field label="Produto" value={order.sku_id} />
                 <Field label="Valor" value={formatAmount(order.amount_cents)} />

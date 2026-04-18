@@ -10,6 +10,7 @@
 # 17/04/2026 - patch para exibir o token de Código manual: token:5b0be4 para 886137
 # 17/04/2026 - correção de "picked_up_at": em _serialize_order()
 # 17/04/2026 - manual_code criptografado/cifrado
+# 18/04/2026 - melhoramento payload - endereço - def _load_locker_snapshot()
 
 
 from __future__ import annotations
@@ -47,6 +48,11 @@ from app.models.pickup import Pickup
 from app.models.pickup_token import PickupToken
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 
+from sqlalchemy import text
+
+from app.services import backend_client
+
+
 
 # Configuração de logging
 logger = logging.getLogger(__name__)
@@ -60,6 +66,219 @@ def _dt_iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+def _load_locker_snapshot_legacy_sem_endereco(
+    db: Session,
+    *,
+    order: Order,
+    allocation: Allocation | None = None,
+    pickup: Pickup | None = None,
+) -> dict[str, Any] | None:
+    """
+    Enriquecimento UX/CX:
+    resolve dados amigáveis do locker para exibição no detalhe do pedido.
+    Prioriza external_id = totem_id/locker_id.
+    """
+    candidate_locker_id = None
+
+    if pickup and getattr(pickup, "locker_id", None):
+        candidate_locker_id = str(pickup.locker_id).strip()
+    elif allocation and getattr(allocation, "locker_id", None):
+        candidate_locker_id = str(allocation.locker_id).strip()
+    elif getattr(order, "totem_id", None):
+        candidate_locker_id = str(order.totem_id).strip()
+
+    if not candidate_locker_id:
+        return None
+
+    row = db.execute(
+        text(
+            """
+            SELECT
+                external_id,
+                display_name,
+                address_line,
+                address_number,
+                address_extra,
+                district,
+                city,
+                state,
+                postal_code,
+                country
+            FROM public.lockers
+            WHERE external_id = :locker_id
+              AND deleted_at IS NULL
+            LIMIT 1
+            """
+        ),
+        {"locker_id": candidate_locker_id},
+    ).mappings().first()
+
+    if not row:
+        return {
+            "locker_id": candidate_locker_id,
+            "display_name": candidate_locker_id,
+            "address_line": None,
+            "address_number": None,
+            "address_extra": None,
+            "district": None,
+            "city": None,
+            "state": None,
+            "postal_code": None,
+            "country": None,
+        }
+
+    return {
+        "locker_id": row.get("external_id") or candidate_locker_id,
+        "display_name": row.get("display_name") or candidate_locker_id,
+        "address_line": row.get("address_line"),
+        "address_number": row.get("address_number"),
+        "address_extra": row.get("address_extra"),
+        "district": row.get("district"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+        "postal_code": row.get("postal_code"),
+        "country": row.get("country"),
+    }
+
+
+def _load_locker_snapshot(
+    db: Session,
+    *,
+    order: Order,
+    allocation: Allocation | None = None,
+    pickup: Pickup | None = None,
+) -> dict[str, Any] | None:
+    candidate_locker_id = None
+
+    if pickup and getattr(pickup, "locker_id", None):
+        candidate_locker_id = str(pickup.locker_id).strip()
+    elif allocation and getattr(allocation, "locker_id", None):
+        candidate_locker_id = str(allocation.locker_id).strip()
+    elif getattr(order, "totem_id", None):
+        candidate_locker_id = str(order.totem_id).strip()
+
+    if not candidate_locker_id:
+        return None
+
+    # 1) Fonte principal: registry/runtime, mesmo padrão rico usado pelo catálogo
+    try:
+        locker = backend_client.get_locker_registry_item(candidate_locker_id)
+    except Exception:
+        locker = None
+
+    if locker:
+        address = locker.get("address") if isinstance(locker.get("address"), dict) else {}
+
+        return {
+            "locker_id": (
+                locker.get("locker_id")
+                or locker.get("id")
+                or locker.get("machine_id")
+                or candidate_locker_id
+            ),
+            "display_name": (
+                locker.get("display_name")
+                or locker.get("locker_name")
+                or locker.get("label")
+                or candidate_locker_id
+            ),
+            "address_line": (
+                address.get("address")
+                or address.get("address_line")
+                or locker.get("address_line")
+                or locker.get("address")
+            ),
+            "address_number": (
+                address.get("number")
+                or address.get("address_number")
+                or locker.get("address_number")
+                or locker.get("number")
+            ),
+            "address_extra": (
+                address.get("additional_information")
+                or address.get("address_extra")
+                or locker.get("address_extra")
+                or locker.get("additional_information")
+            ),
+            "district": (
+                address.get("locality")
+                or address.get("district")
+                or locker.get("district")
+                or locker.get("locality")
+            ),
+            "city": address.get("city") or locker.get("city"),
+            "state": (
+                address.get("federative_unit")
+                or address.get("state")
+                or locker.get("state")
+                or locker.get("federative_unit")
+            ),
+            "postal_code": address.get("postal_code") or locker.get("postal_code"),
+            "country": address.get("country") or locker.get("country"),
+        }
+
+    # 2) Fallback: tabela local public.lockers
+    row = db.execute(
+        text(
+            """
+            SELECT
+                external_id,
+                display_name,
+                address_line,
+                address_number,
+                address_extra,
+                district,
+                city,
+                state,
+                postal_code,
+                country
+            FROM public.lockers
+            WHERE (
+                external_id = :locker_id
+                OR id = :locker_id
+                OR machine_id = :locker_id
+            )
+              AND deleted_at IS NULL
+            LIMIT 1
+            """
+        ),
+        {"locker_id": candidate_locker_id},
+    ).mappings().first()
+
+    if not row:
+        return {
+            "locker_id": candidate_locker_id,
+            "display_name": candidate_locker_id,
+            "address_line": None,
+            "address_number": None,
+            "address_extra": None,
+            "district": None,
+            "city": None,
+            "state": None,
+            "postal_code": None,
+            "country": None,
+        }
+
+    return {
+        "locker_id": row.get("external_id") or candidate_locker_id,
+        "display_name": row.get("display_name") or candidate_locker_id,
+        "address_line": row.get("address_line"),
+        "address_number": row.get("address_number"),
+        "address_extra": row.get("address_extra"),
+        "district": row.get("district"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+        "postal_code": row.get("postal_code"),
+        "country": row.get("country"),
+    }
+
+
+
+
+
+
 
 
 
@@ -278,6 +497,7 @@ def _serialize_order(
     pickup: Pickup | None = None,
     token: PickupToken | None = None,
     allocation: Allocation | None = None,
+    locker: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Serializa pedido para resposta da API"""
 
@@ -302,6 +522,8 @@ def _serialize_order(
             token_id=token.id,
             expires_at_iso=expires_at_value,
         )
+
+
 
     return {
         "id": order.id,
@@ -352,6 +574,7 @@ def _serialize_order(
         "token_id": token.id if token else None,
         "manual_code": _resolve_token_manual_code(token),
         "qr_payload": qr_payload,
+        "locker": locker,
     }
 
 
@@ -1058,12 +1281,21 @@ def get_my_public_order(
             .first()
         )
 
+
+    locker = _load_locker_snapshot(
+        db,
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+    )
+
     return _serialize_order(
         order,
         fiscal=fiscal,
         pickup=pickup,
         token=token,
         allocation=allocation,
+        locker=locker,
     )
 
 
