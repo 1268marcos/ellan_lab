@@ -3,12 +3,18 @@
 # veja fim do arquivo
 # 13/04/2026 - FIX: BLOQUEAR REALLOCATE NO FLUXO KIOSK (409 error agora causa falha controlada)
 # 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
+# 17/04/2026 - código cifrado para manual_code
 
 from __future__ import annotations
 
 import hashlib
 import uuid
 import logging
+import os
+import base64
+import secrets
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any, List, Tuple
@@ -631,6 +637,61 @@ def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
+
+def _get_manual_code_aes_key() -> bytes:
+    raw = str(os.getenv("MANUAL_CODE_AES_KEY", "")).strip()
+    if not raw:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY não configurada. "
+            "Use uma chave base64 urlsafe de 16, 24 ou 32 bytes."
+        )
+
+    padded = raw + "=" * (-len(raw) % 4)
+
+    try:
+        key = base64.urlsafe_b64decode(padded.encode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("MANUAL_CODE_AES_KEY inválida (base64 urlsafe).") from exc
+
+    if len(key) not in {16, 24, 32}:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY deve decodificar para 16, 24 ou 32 bytes."
+        )
+
+    return key
+
+
+def _build_manual_code_aad(*, pickup_id: str | None = None) -> bytes | None:
+    if not pickup_id:
+        return None
+    return f"pickup={pickup_id}".encode("utf-8")
+
+
+def _encrypt_manual_code(
+    manual_code: str,
+    *,
+    pickup_id: str | None = None,
+) -> str:
+    key = _get_manual_code_aes_key()
+    aesgcm = AESGCM(key)
+    nonce = secrets.token_bytes(12)
+
+    associated_data = _build_manual_code_aad(pickup_id=pickup_id)
+
+    ciphertext = aesgcm.encrypt(
+        nonce,
+        manual_code.encode("utf-8"),
+        associated_data,
+    )
+
+    blob = nonce + ciphertext
+    encoded = base64.urlsafe_b64encode(blob).decode("utf-8").rstrip("=")
+    return f"v1:{encoded}"
+
+
+
+
+
 def _generate_manual_code() -> str:
     return f"{uuid.uuid4().int % 1_000_000:06d}"
 
@@ -657,7 +718,7 @@ def _generate_qr_code_content(order_id: str, token_id: str, region: str) -> str:
         return build_public_pickup_qr_value(order_id, token_id, _utc_now().isoformat())
 
 
-def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetime, region: Optional[str] = None) -> dict:
+def _create_pickup_token_legacy_codigo_manual_texto_abandonar(db: Session, *, pickup_id: str, expires_at_utc: datetime, region: Optional[str] = None) -> dict:
     """Cria token de pickup com suporte regional"""
     manual_code = _generate_manual_code()
     token_hash = _sha256(manual_code)
@@ -678,6 +739,46 @@ def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetim
     db.add(tok)
     db.flush()
     return {"token_id": tok.id, "manual_code": manual_code}
+
+
+
+def _create_pickup_token(
+    db: Session,
+    *,
+    pickup_id: str,
+    expires_at_utc: datetime,
+    region: Optional[str] = None,
+) -> dict:
+    """Cria token de pickup com suporte regional e manual_code criptografado"""
+    manual_code = _generate_manual_code()
+    token_hash = _sha256(manual_code)
+
+    if region in ["CN", "JP", "TH"]:
+        manual_code = f"{uuid.uuid4().int % 10_000_000:07d}"
+        token_hash = _sha256(manual_code)
+
+    tok = PickupToken(
+        id=str(uuid.uuid4()),
+        pickup_id=pickup_id,
+        token_hash=token_hash,
+        manual_code_encrypted=_encrypt_manual_code(
+            manual_code,
+            pickup_id=pickup_id,
+        ),
+        manual_code=None,
+        expires_at=expires_at_utc.replace(tzinfo=None),
+        used_at=None,
+    )
+    db.add(tok)
+    db.flush()
+
+    return {
+        "token_id": tok.id,
+        "manual_code": manual_code,
+    }
+
+
+
 
 
 def _get_active_pickup_by_order(db: Session, order_id: str) -> Optional[Pickup]:

@@ -190,7 +190,8 @@ WITH
               'expires_at',  pt.expires_at,
               'used_at',     pt.used_at,
               'is_active',   pt.is_active,
-              'manual_code', pt.manual_code
+              'manual_code', pt.manual_code,
+              'manual_code_encrypted', pt.manual_code_encrypted 
             ) ORDER BY pt.created_at
           )
           FROM public.pickup_tokens pt

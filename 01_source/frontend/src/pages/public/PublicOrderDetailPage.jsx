@@ -1,4 +1,6 @@
 // 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx
+// 18/04/2026 - atualização : function getPickupMessage() 
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -239,21 +241,36 @@ export default function PublicOrderDetailPage() {
                 </p>
               </div>
 
-              {pickup ? (
+
+
+              {order ? (
                 <>
                   <div style={detailsGridStyle}>
-                    <Field label="Status" value={pickup.status} />
-                    <Field label="Expira em" value={formatDateTime(pickup.expires_at)} />
-                    <Field label="Código de retirada manual" value={order?.manual_code || pickup?.manual_code_masked || "-"} />
+                    <Field
+                      label="Status"
+                      value={pickup?.status || order?.pickup_status || order?.status}
+                    />
+                    <Field
+                      label="Expira em"
+                      value={formatDateTime(order?.expires_at || pickup?.expires_at)}
+                    />
+                    <Field
+                      label="Código de retirada manual"
+                      value={order?.manual_code || pickup?.manual_code_masked || "-"}
+                    />
                   </div>
 
                   <div style={{ marginTop: 16 }}>
                     <label style={labelStyle}>QR payload</label>
                     <textarea
                       readOnly
-                      value={pickup.qr_value || ""}
+                      value={order?.qr_payload || pickup?.qr_value || ""}
                       style={textAreaStyle}
                     />
+                  </div>
+
+                  <div style={{ marginTop: 12 }}>
+                    <p style={infoTextStyle}>{pickupMessage}</p>
                   </div>
                 </>
               ) : (
@@ -262,6 +279,11 @@ export default function PublicOrderDetailPage() {
                   <p style={infoTextStyle}>{pickupMessage}</p>
                 </div>
               )}
+
+
+
+
+
             </section>
           </>
         ) : null}
@@ -279,6 +301,8 @@ function Field({ label, value }) {
   );
 }
 
+
+
 function getPickupMessage(order) {
   if (!order) {
     return "Não foi possível determinar o estado da retirada deste pedido.";
@@ -286,6 +310,7 @@ function getPickupMessage(order) {
 
   const status = String(order.status || "").toUpperCase();
   const paymentStatus = String(order.payment_status || "").toUpperCase();
+  const pickupStatus = String(order.pickup_status || "").toUpperCase();
 
   if (status === "EXPIRED") {
     return "Este pedido expirou antes da confirmação do pagamento. A retirada não foi liberada.";
@@ -311,20 +336,17 @@ function getPickupMessage(order) {
     return "Este pedido foi criado, mas a retirada ainda não foi liberada.";
   }
 
-  if (status === "PICKED_UP") { // provalvemente bug - isso depende de sensor OU confirmação humana
-    return "Este pedido já foi retirado.";
-  }
-
-  if (status === "DISPENSED") { // máquina liberou - pickup.door_opened
-     return "Este pedido já foi retirado na máquina.";
+  if (pickupStatus === "REDEEMED" || status === "PICKED_UP" || status === "DISPENSED") {
+    return "Este pedido já foi retirado com sucesso.";
   }
 
   if (status === "PAID_PENDING_PICKUP") {
-    return "O pedido foi pago, mas os dados de retirada ainda não foram disponibilizados nesta tela.";
+    return "O pedido foi pago e está disponível para retirada no kiosk/totem.";
   }
 
   return "Os dados de retirada ainda não estão disponíveis para o estado atual deste pedido.";
 }
+
 
 function formatDateTime(value) {
   if (!value) return "-";

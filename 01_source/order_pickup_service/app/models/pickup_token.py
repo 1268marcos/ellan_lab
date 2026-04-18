@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/models/pickup_token.py
 # pickup_tokens - credenciais temporárias de retirada
 # 17/04/2026 - inclusão de manual_code
+# 17/04/2026 - suporte a manual_code_encrypted com fallback legado manual_code
 
 from sqlalchemy import Column, String, DateTime, ForeignKey, Index
 from datetime import datetime
@@ -15,7 +16,12 @@ class PickupToken(Base):
     pickup_id = Column(String, ForeignKey("pickups.id"), nullable=False)
 
     token_hash = Column(String, nullable=False)
-    manual_code = Column(String, nullable=True)  # 🔥 NOVO ADICIONAR
+
+    # legado temporário: manter para leitura de tokens antigos
+    manual_code = Column(String, nullable=True)
+
+    # novo padrão seguro
+    manual_code_encrypted = Column(String, nullable=True)
 
     expires_at = Column(DateTime, nullable=False)
     used_at = Column(DateTime, nullable=True)
@@ -25,3 +31,4 @@ class PickupToken(Base):
         Index("ix_pickup_tokens_pickup_id", "pickup_id"),
         Index("ix_pickup_tokens_token_hash", "token_hash"),
     )
+

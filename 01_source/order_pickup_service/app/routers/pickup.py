@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/routers/pickup.py
 # 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
+# 17/04/2026 - criptografia para o manual_code usando AES-GCM
 
 from __future__ import annotations
 
@@ -7,6 +8,13 @@ import hashlib
 import hmac
 import logging
 import uuid
+import base64
+import os 
+import secrets
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -43,6 +51,8 @@ from app.services.pickup_event_publisher import (
     publish_pickup_redeemed,
 )
 
+
+
 router = APIRouter(tags=["pickup"])
 logger = logging.getLogger(__name__)
 
@@ -61,6 +71,7 @@ MANUAL_REDEEM_BLOCK_SEC = settings.manual_redeem_block_sec
 _manual_redeem_attempts = {}
 
 
+#=============== HELPERS =================
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -77,6 +88,95 @@ def _epoch(dt: datetime) -> int:
 
 def _sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+
+
+def _get_manual_code_aes_key() -> bytes:
+    raw = str(os.getenv("MANUAL_CODE_AES_KEY", "")).strip()
+    if not raw:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY não configurada. "
+            "Use uma chave base64 urlsafe de 16, 24 ou 32 bytes."
+        )
+
+    padded = raw + "=" * (-len(raw) % 4)
+
+    try:
+        key = base64.urlsafe_b64decode(padded.encode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("MANUAL_CODE_AES_KEY inválida (base64 urlsafe).") from exc
+
+    if len(key) not in {16, 24, 32}:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY deve decodificar para 16, 24 ou 32 bytes."
+        )
+
+    return key
+
+
+def _build_manual_code_aad(*, pickup_id: str | None = None) -> bytes | None:
+    if not pickup_id:
+        return None
+    return f"pickup={pickup_id}".encode("utf-8")
+
+
+def _encrypt_manual_code(
+    manual_code: str,
+    *,
+    pickup_id: str | None = None,
+) -> str:
+    key = _get_manual_code_aes_key()
+    aesgcm = AESGCM(key)
+    nonce = secrets.token_bytes(12)
+
+    associated_data = _build_manual_code_aad(pickup_id=pickup_id)
+
+    ciphertext = aesgcm.encrypt(
+        nonce,
+        manual_code.encode("utf-8"),
+        associated_data,
+    )
+
+    blob = nonce + ciphertext
+    encoded = base64.urlsafe_b64encode(blob).decode("utf-8").rstrip("=")
+    return f"v1:{encoded}"
+
+# existe a função abaixo em 
+# 01_source/order_pickup_service/app/routers/public_orders.py
+def _decrypt_manual_code(  
+    encrypted: str,
+    *,
+    pickup_id: str | None = None,
+) -> str:
+    if not encrypted:
+        raise ValueError("manual_code_encrypted vazio")
+
+    if not encrypted.startswith("v1:"):
+        raise ValueError("Versão não suportada")
+
+    encoded = encrypted[3:]
+    padded = encoded + "=" * (-len(encoded) % 4)
+
+    blob = base64.urlsafe_b64decode(padded.encode("utf-8"))
+
+    if len(blob) < 13:
+        raise ValueError("Dados corrompidos")
+
+    nonce = blob[:12]
+    ciphertext = blob[12:]
+
+    key = _get_manual_code_aes_key()
+    aesgcm = AESGCM(key)
+
+    associated_data = _build_manual_code_aad(pickup_id=pickup_id)
+
+    plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data)
+    return plaintext.decode("utf-8")
+
+
+
+
 
 
 def _normalize_region(value: str) -> str:
@@ -576,10 +676,15 @@ def legacy_generate_manual_code(
         id=str(uuid.uuid4()),
         pickup_id=pickup.id,
         token_hash=_sha256(manual_code),
-        manual_code=manual_code,  # 🔥 NOVO
+        manual_code_encrypted=_encrypt_manual_code(
+            manual_code,
+            pickup_id=pickup.id,
+        ),
+        manual_code=None, # antes e gravava em texto plano  manual_code=manual_code,  # 🔥 NOVO
         expires_at=deadline.replace(tzinfo=None),
         used_at=None,
     )
+
     db.add(tok)
     db.flush()
 

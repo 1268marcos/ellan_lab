@@ -9,6 +9,7 @@
 # 17/04/2026 - correção de "manual_code": 
 # 17/04/2026 - patch para exibir o token de Código manual: token:5b0be4 para 886137
 # 17/04/2026 - correção de "picked_up_at": em _serialize_order()
+# 17/04/2026 - manual_code criptografado/cifrado
 
 
 from __future__ import annotations
@@ -18,6 +19,11 @@ from typing import Any, Optional, List, Dict
 import hashlib
 import secrets
 import logging
+
+import os
+import base64
+
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
@@ -48,12 +54,97 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
 
-# ==================== Funções Utilitárias ====================
+# ==================== Funções Utilitárias / HELPERS ====================
 
 def _dt_iso(value: datetime | None) -> str | None:
     if value is None:
         return None
     return value.isoformat()
+
+
+
+def _get_manual_code_aes_key() -> bytes:
+    raw = str(os.getenv("MANUAL_CODE_AES_KEY", "")).strip()
+    if not raw:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY não configurada. "
+            "Use uma chave base64 urlsafe de 16, 24 ou 32 bytes."
+        )
+
+    padded = raw + "=" * (-len(raw) % 4)
+
+    try:
+        key = base64.urlsafe_b64decode(padded.encode("utf-8"))
+    except Exception as exc:
+        raise RuntimeError("MANUAL_CODE_AES_KEY inválida (base64 urlsafe).") from exc
+
+    if len(key) not in {16, 24, 32}:
+        raise RuntimeError(
+            "MANUAL_CODE_AES_KEY deve decodificar para 16, 24 ou 32 bytes."
+        )
+
+    return key
+
+
+def _build_manual_code_aad(*, pickup_id: str | None = None) -> bytes | None:
+    if not pickup_id:
+        return None
+    return f"pickup={pickup_id}".encode("utf-8")
+
+
+def _decrypt_manual_code(
+    encrypted: str | None,
+    *,
+    pickup_id: str | None = None,
+) -> str | None:
+    if not encrypted:
+        return None
+
+    try:
+        if not encrypted.startswith("v1:"):
+            return None
+
+        encoded = encrypted[3:]
+        padded = encoded + "=" * (-len(encoded) % 4)
+        blob = base64.urlsafe_b64decode(padded.encode("utf-8"))
+
+        if len(blob) < 13:
+            return None
+
+        nonce = blob[:12]
+        ciphertext = blob[12:]
+
+        aesgcm = AESGCM(_get_manual_code_aes_key())
+        plaintext = aesgcm.decrypt(
+            nonce,
+            ciphertext,
+            _build_manual_code_aad(pickup_id=pickup_id),
+        )
+        return plaintext.decode("utf-8")
+    except Exception:
+        logger.exception("MANUAL_CODE_DECRYPT_FAILED")
+        return None
+
+
+def _resolve_token_manual_code(token: PickupToken | None) -> str | None:
+    if not token:
+        return None
+
+    decrypted = _decrypt_manual_code(
+        getattr(token, "manual_code_encrypted", None),
+        pickup_id=getattr(token, "pickup_id", None),
+    )
+    if decrypted:
+        return decrypted
+
+    legacy = getattr(token, "manual_code", None)
+    if legacy:
+        return legacy
+
+    return None
+
+
+
 
 
 def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
@@ -92,7 +183,7 @@ def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalDocument 
     }
 
 
-def _serialize_order(
+def _serialize_order_legacy_manual_code_texto_plano(
     order: Order,
     fiscal: FiscalDocument | None = None,
     *,
@@ -177,6 +268,93 @@ def _serialize_order(
         "manual_code": getattr(token, "manual_code", None),
         "qr_payload": qr_payload,
     }
+
+
+
+def _serialize_order(
+    order: Order,
+    fiscal: FiscalDocument | None = None,
+    *,
+    pickup: Pickup | None = None,
+    token: PickupToken | None = None,
+    allocation: Allocation | None = None,
+) -> dict[str, Any]:
+    """Serializa pedido para resposta da API"""
+
+    slot_value = None
+    if getattr(order, "slot", None) is not None:
+        slot_value = order.slot
+    elif pickup and getattr(pickup, "slot", None) is not None:
+        slot_value = pickup.slot
+    elif allocation and getattr(allocation, "slot", None) is not None:
+        slot_value = allocation.slot
+
+    expires_at_value = None
+    if pickup and getattr(pickup, "expires_at", None):
+        expires_at_value = _dt_iso(pickup.expires_at)
+    elif token and getattr(token, "expires_at", None):
+        expires_at_value = _dt_iso(token.expires_at)
+
+    qr_payload = None
+    if order and token and token.id and expires_at_value:
+        qr_payload = build_public_pickup_qr_value(
+            order_id=order.id,
+            token_id=token.id,
+            expires_at_iso=expires_at_value,
+        )
+
+    return {
+        "id": order.id,
+        "order_id": order.id,
+        "user_id": order.user_id,
+        "channel": order.channel.value if order.channel else None,
+        "region": order.region,
+        "totem_id": order.totem_id,
+        "sku_id": order.sku_id,
+        "amount_cents": order.amount_cents,
+        "status": order.status.value if order.status else None,
+        "gateway_transaction_id": order.gateway_transaction_id,
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "payment_status": order.payment_status.value if order.payment_status else None,
+        "card_type": order.card_type.value if order.card_type else None,
+        "payment_updated_at": _dt_iso(order.payment_updated_at),
+        "paid_at": _dt_iso(order.paid_at),
+        "pickup_deadline_at": _dt_iso(order.pickup_deadline_at),
+        "picked_up_at": (
+            _dt_iso(order.picked_up_at)
+            or _dt_iso(getattr(pickup, "redeemed_at", None))
+            or _dt_iso(getattr(pickup, "item_removed_at", None))
+            or _dt_iso(getattr(pickup, "door_closed_at", None))
+        ),
+        "guest_session_id": order.guest_session_id,
+        "consent_marketing": order.consent_marketing,
+        "created_at": _dt_iso(order.created_at),
+        "updated_at": _dt_iso(order.updated_at),
+        "receipt_code": fiscal.receipt_code if fiscal else None,
+        "receipt_print_path": fiscal.print_site_path if fiscal else None,
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
+        ),
+        "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
+        "customer_phone": order.guest_phone,
+        "guest_email": getattr(order, "guest_email", None),
+
+        "allocation_id": getattr(order, "allocation_id", None) or (allocation.id if allocation else None),
+        "slot": slot_value,
+        "pickup_id": pickup.id if pickup else None,
+        "pickup_status": pickup.status.value if pickup and pickup.status else None,
+        "pickup_lifecycle_stage": (
+            pickup.lifecycle_stage.value
+            if pickup and getattr(pickup, "lifecycle_stage", None)
+            else None
+        ),
+        "expires_at": expires_at_value,
+        "token_id": token.id if token else None,
+        "manual_code": _resolve_token_manual_code(token),
+        "qr_payload": qr_payload,
+    }
+
+
 
 
 def _hash_token(token: str) -> str:

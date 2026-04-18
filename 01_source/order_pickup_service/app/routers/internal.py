@@ -5,6 +5,9 @@
 # 11/04/2026 - CORRIGIDO: receipt_code em def _extract_attempt_from_fiscal()
 # 11/04/2026 - melhorada a função def _extract_attempt_from_fiscal()
 # 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
+# 18/04/2026 - patch : _cancel_prepayment_timeout_for_order
+# 18/04/2026 - patch : assim que o pagamento for aceito/aprovado > cancelar o PREPAYMENT_TIMEOUT > só depois seguir com pickup/fulfillment
+# 18/04/2026 - o patch anterior não substitui um hardening futuro no order_lifecycle_service, mas corta a causa principal no ponto certo do fluxo.
 
 from __future__ import annotations
 
@@ -53,12 +56,14 @@ from app.services.payment_confirm_service import (
 )
 # from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
+
 router = APIRouter(prefix="/internal", tags=["internal"])
 
 PICKUP_WINDOW_HOURS = 2
 QR_ROTATE_SEC = settings.qr_rotate_sec
 
 
+#============ HELPERS =============
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -77,6 +82,43 @@ def _normalize_region(region: str | None) -> str | None:
     if region is None:
         return None
     return str(region).strip().upper()
+
+
+
+
+def _cancel_prepayment_timeout_for_order(order: Order) -> None:
+    """
+    Cancela o deadline PREPAYMENT_TIMEOUT do pedido.
+    Deve ser chamado imediatamente após confirmação de pagamento
+    e antes de publicar/seguir com o fulfillment.
+    """
+    try:
+        cancel_prepayment_timeout_deadline(
+            order_id=order.id,
+            reason="payment_confirmed",
+            metadata={
+                "source_service": "order_pickup_service",
+                "order_id": order.id,
+                "region": order.region,
+                "channel": order.channel.value if order.channel else None,
+                "payment_method": order.payment_method.value if order.payment_method else None,
+                "totem_id": order.totem_id,
+            },
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "PREPAYMENT_DEADLINE_CANCEL_FAILED",
+                "message": "Falha ao cancelar deadline de pré-pagamento após confirmação do pagamento.",
+                "order_id": order.id,
+                "error": str(exc),
+            },
+        ) from exc
+
+
+
+
 
 
 def _ensure_allocation(db: Session, order_id: str) -> Allocation:
@@ -454,7 +496,9 @@ def _extract_attempt_from_fiscal(fiscal_payload: dict | str | None) -> int:
 
 
 
-
+#--------------------------------------
+# ROTAS
+#--------------------------------------
 @router.get("/health")
 def internal_health(_=Depends(require_internal_token)):
     return {
@@ -554,6 +598,10 @@ def payment_confirm(
                 "order_id": order.id,
             },
         ) from exc
+
+    # 🔥 CANCELAR TIMEOUT DE PRÉ-PAGAMENTO IMEDIATAMENTE APÓS CONFIRMAÇÃO
+    _cancel_prepayment_timeout_for_order(order)
+
 
     # =========================================================
     # 🔥 NOVO FLOW EXPLÍCITO E PROFISSIONAL
