@@ -1,4 +1,6 @@
 # 01_source/order_pickup_service/app/jobs/lifecycle_events_consumer.py
+# 18/04/2026 - melhorias para expiração de retirada no ONLINE (pagou e não foi retirar)
+
 from __future__ import annotations
 
 import logging
@@ -15,6 +17,12 @@ from app.models.allocation import Allocation
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
+
+from app.services.pickup_expiration_handler import handle_pickup_expired
+
+
+
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +82,18 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
                     order_id=order_id,
                     payload=payload
                 )
+
+            elif event_name in {
+                "pickup.expired",
+                "pickup.timed_out",
+                "pickup.pickup_timed_out",
+            }:
+                handled = handle_pickup_expired(
+                    db=db,
+                    order_id=order_id,
+                    payload=payload,
+                )
+
 
             if handled:
                 client.ack_event(event_key=event_key)
@@ -154,12 +174,27 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         )
         return True
 
-    allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
-    pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
+    # allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
+    # pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
+    # Pega a allocation mais recente (melhoria válida)
+    allocation = (
+        db.query(Allocation)
+        .filter(Allocation.order_id == order.id)
+        .order_by(Allocation.created_at.desc())
+        .first()
+    )
 
-    region = payload.get("region_code") or order.region
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc())
+        .first()
+    )
+
+    region = payload.get("region_code") or order.region   # Mantém flexibilidade
     locker_id = _resolve_locker_id(order=order, allocation=allocation)
 
+    # 🔥 Libera locker ANTES do commit (mantém da versão atual)
     if allocation and allocation.id:
         try:
             backend_client.locker_release(
@@ -186,16 +221,30 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
                     "locker_id": locker_id,
                 },
             )
-            raise
+            raise  # 🔥 Mantém o raise para garantir consistência
 
+    # Usa métodos de domínio (melhoria válida)
     order.status = OrderStatus.EXPIRED
     order.mark_payment_expired()
 
+
+    # Se existir método mark_as_expired, use-o
+    if hasattr(order, "mark_as_expired"):
+        order.mark_as_expired(credit_50=False)
+
+
     if allocation:
-        allocation.mark_released()
+        # allocation.mark_released()
+        # Prefira mark_expired se existir, senão mark_released
+        if hasattr(allocation, "mark_expired"):
+            allocation.mark_expired()
+        else:
+            allocation.mark_released()
+
 
     if pickup and pickup.status == PickupStatus.ACTIVE:
-        pickup.status = PickupStatus.CANCELLED
+        # pickup.status = PickupStatus.CANCELLED
+        pickup.status = PickupStatus.EXPIRED  # Mantém EXPIRED (mais semântico)
 
     db.commit()
 
@@ -210,3 +259,6 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         },
     )
     return True
+
+
+

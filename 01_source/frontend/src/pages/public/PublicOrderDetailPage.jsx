@@ -360,9 +360,18 @@ function getPickupMessage(order) {
   const paymentStatus = String(order.payment_status || "").toUpperCase();
   const pickupStatus = String(order.pickup_status || "").toUpperCase();
 
-  if (status === "EXPIRED") {
-    return "Este pedido expirou antes da confirmação do pagamento. A retirada não foi liberada.";
+  // if (status === "EXPIRED") {
+  //   return "Este pedido expirou antes da confirmação do pagamento. A retirada não foi liberada.";
+  // }
+
+  const isExpired =
+    status === "EXPIRED" ||
+    status === "EXPIRED_CREDIT_50";
+
+  if (isExpired) {
+    return "O prazo de retirada expirou. Este pedido não está mais disponível no locker.";
   }
+
 
   if (status === "CANCELLED" || status === "CANCELED") {
     return "Este pedido foi cancelado. A retirada não está disponível.";
