@@ -17,8 +17,11 @@ MACHINE_ID = os.getenv("MACHINE_ID", "CACIFO-SP-001")
 DOOR_EVENTS_TOPIC = f"locker/{REGION}/doors/events"
 LOG_HASH_SALT = os.getenv("LOG_HASH_SALT", "")  # opcional (melhor ter)
 
+# def _now_iso() -> str:
+#     return datetime.now(timezone.utc).isoformat()
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return to_iso_utc(datetime.now(timezone.utc))    
 
 def _canonical_json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, separators=(",", ":"), sort_keys=True)

@@ -1,4 +1,6 @@
 # 01_source/backend/runtime/app/core/antifraud_snapshot_verify.py
+# 19/04/2026
+
 import os
 import json
 import hashlib
@@ -69,7 +71,7 @@ def _day_end_iso(date_utc: str) -> str | None:
     try:
         d = datetime.strptime(date_utc, "%Y-%m-%d").replace(tzinfo=timezone.utc)
         end = d.replace(hour=23, minute=59, second=59, microsecond=999999)
-        return end.isoformat()
+        return to_iso_utc(end)
     except Exception:
         return None
 

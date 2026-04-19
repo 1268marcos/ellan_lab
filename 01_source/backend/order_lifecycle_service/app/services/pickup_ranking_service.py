@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/services/pickup_ranking_service.py
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -382,8 +384,8 @@ def build_pickup_ranking(
         dimension=dimension,
         direction=direction,
         limit=limit,
-        window_start=start_at.isoformat() if start_at else None,
-        window_end=end_at.isoformat() if end_at else None,
+        window_start=to_iso_utc(start_at),
+        window_end=to_iso_utc(end_at),
         items=ranked_items,
         filters={
             "region": region,
@@ -396,3 +398,4 @@ def build_pickup_ranking(
             "site_id": site_id,
         },
     )
+

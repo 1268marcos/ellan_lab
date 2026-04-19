@@ -19,8 +19,9 @@ from app.core.datetime_utils import to_iso_utc
 logger = logging.getLogger(__name__)
 
 
+
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return to_iso_utc(datetime.now(timezone.utc))    
 
 
 def _worker_id() -> str:

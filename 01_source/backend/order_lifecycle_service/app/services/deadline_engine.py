@@ -1,5 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/services/deadline_engine.py
 # 19/04/2026 - Refatoração: remoção de duplicação de verificação/status + fix de _normalize_db_text
+# 19/04/2026 - datetime
 
 from datetime import datetime, timezone
 from sqlalchemy import text
@@ -18,8 +19,8 @@ from app.core.datetime_utils import to_iso_utc
 #-------------------------------------
 # HELPERS
 #-------------------------------------
-def utc_now():
-    return datetime.now(timezone.utc)
+def _utc_now():
+    return to_iso_utc(datetime.now(timezone.utc))  
 
 def _mark_deadline_executed(deadline: LifecycleDeadline, now: datetime) -> bool:
     if deadline.status != DeadlineStatus.EXECUTING:

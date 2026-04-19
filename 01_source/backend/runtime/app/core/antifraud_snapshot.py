@@ -1,4 +1,6 @@
 # 01_source/backend/runtime/app/core/antifraud_snapshot.py
+# 19/04/2026 - datetime
+
 import os
 import json
 import hashlib
@@ -32,7 +34,7 @@ def _day_bounds_utc_iso(date_utc: str) -> tuple[str, str]:
     d = datetime.strptime(date_utc, "%Y-%m-%d").replace(tzinfo=timezone.utc)
     start = d.replace(hour=0, minute=0, second=0, microsecond=0)
     end = d.replace(hour=23, minute=59, second=59, microsecond=999999)
-    return (start.isoformat(), end.isoformat())
+    return (to_iso_utc(start), to_iso_utc(end))
 
 def _sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
@@ -220,7 +222,7 @@ def create_daily_snapshot(*, machine_id: str, base_dir: str | None = None, date_
         "config_fingerprint": config_fingerprint,
 
         "verify_endpoint": f"/audit/snapshot/verify_file?machine_id={machine_id}&date_utc={date}",
-        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "created_at_utc": to_iso_utc(datetime.now(timezone.utc)),
         "version": SNAPSHOT_VERSION,
     }
 

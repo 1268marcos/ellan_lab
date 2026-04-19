@@ -28,7 +28,7 @@ def _require_internal_token(x_internal_token: str | None):
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return to_iso_utc(datetime.now(timezone.utc))
 
 
 def _utc_date_str() -> str:

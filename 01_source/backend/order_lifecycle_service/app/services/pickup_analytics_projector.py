@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/services/pickup_analytics_projector.py
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -127,7 +129,7 @@ def project_pickup_event_facts(
         occurred_at=event.occurred_at,
         payload={
             **base_payload,
-            "occurred_at": event.occurred_at.isoformat(),
+            "occurred_at": to_iso_utc(event.occurred_at),
         },
     )
 
@@ -146,7 +148,7 @@ def project_pickup_event_facts(
             payload={
                 **base_payload,
                 "terminal_state": terminal_state,
-                "occurred_at": event.occurred_at.isoformat(),
+                "occurred_at": to_iso_utc(event.occurred_at),
             },
         )
 
@@ -173,8 +175,8 @@ def project_pickup_event_facts(
                 **base_payload,
                 "pickup_id": pickup_id,
                 "minutes": created_to_ready,
-                "started_at": created_at.isoformat(),
-                "ended_at": ready_at.isoformat(),
+                "started_at": to_iso_utc(created_at),
+                "ended_at": to_iso_utc(ready_at),
             },
         )
 
@@ -193,8 +195,8 @@ def project_pickup_event_facts(
                 **base_payload,
                 "pickup_id": pickup_id,
                 "minutes": ready_to_redeemed,
-                "started_at": ready_at.isoformat(),
-                "ended_at": redeemed_at.isoformat(),
+                "started_at": to_iso_utc(ready_at),
+                "ended_at": to_iso_utc(redeemed_at),
             },
         )
 
@@ -213,8 +215,8 @@ def project_pickup_event_facts(
                 **base_payload,
                 "pickup_id": pickup_id,
                 "minutes": door_opened_to_redeemed,
-                "started_at": door_opened_at.isoformat(),
-                "ended_at": redeemed_at.isoformat(),
+                "started_at": to_iso_utc(door_opened_at),
+                "ended_at": to_iso_utc(redeemed_at),
             },
         )
 
@@ -233,7 +235,7 @@ def project_pickup_event_facts(
                 **base_payload,
                 "pickup_id": pickup_id,
                 "minutes": door_opened_to_door_closed,
-                "started_at": door_opened_at.isoformat(),
-                "ended_at": door_closed_at.isoformat(),
+                "started_at": to_iso_utc(door_opened_at),
+                "ended_at": to_iso_utc(door_closed_at),
             },
         )

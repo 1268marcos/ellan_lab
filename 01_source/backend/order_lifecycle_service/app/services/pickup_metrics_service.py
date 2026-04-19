@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/services/pickup_metrics_service.py
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -127,8 +129,8 @@ def build_pickup_metrics(
         return round((value / total) * 100.0, 3)
 
     return PickupMetricsResponse(
-        window_start=start_at.isoformat() if start_at else None,
-        window_end=end_at.isoformat() if end_at else None,
+        window_start=to_iso_utc(start_at),
+        window_end=to_iso_utc(end_at),
         total_terminal_pickups=total_terminal_pickups,
         redeemed_pickups=redeemed_pickups,
         expired_pickups=expired_pickups,

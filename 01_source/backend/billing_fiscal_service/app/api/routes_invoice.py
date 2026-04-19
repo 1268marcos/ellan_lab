@@ -1,5 +1,7 @@
 # 01_source/backend/billing_fiscal_service/app/api/routes_invoice.py
 # 01_source/backend/billing_fiscal_service/app/routers/internal_invoices.py (NUNCA FOI CRIADO)
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header, HTTPException

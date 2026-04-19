@@ -12,8 +12,8 @@ from app.core.datetime_utils import to_iso_utc
 
 
 
-def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _utc_now_iso() -> str:
+    return to_iso_utc(datetime.now(timezone.utc))
 
 
 def _canonical_json(payload: Dict[str, Any]) -> str:

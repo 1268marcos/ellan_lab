@@ -33,9 +33,11 @@ def _build_error(
     return detail
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+# def _now_iso() -> str:
+#     return datetime.now(timezone.utc).isoformat()
 
+def _now_iso() -> str:
+    return to_iso_utc(datetime.now(timezone.utc))
 
 def _default_sku_catalog() -> dict[str, dict[str, Any]]:
     """

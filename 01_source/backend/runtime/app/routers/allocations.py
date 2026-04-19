@@ -3,6 +3,7 @@
 # 01/04/2026
 # 10/04/2026 - commit/release por slot específico
 # 10/04/2026 - persistência local de allocations + TTL
+# 19/04/2026 - datetime
 
 from fastapi import APIRouter, HTTPException, Request, Header
 from pydantic import BaseModel
@@ -29,7 +30,7 @@ def _now_utc() -> datetime:
 
 
 def _now_iso() -> str:
-    return _now_utc().isoformat()
+    return to_iso_utc(_now_utc())
 
 
 def _raise(status, *, err_type, message, retryable, **extra):
@@ -49,7 +50,7 @@ def _parse_positive_ttl(ttl_seconds: Optional[int], default: int = 90) -> int:
 
 
 def _build_expires_at(ttl_seconds: int) -> str:
-    return (_now_utc() + timedelta(seconds=ttl_seconds)).isoformat()
+    return to_iso_utc(_now_utc() + timedelta(seconds=ttl_seconds))
 
 
 def _fetch_allocation_or_raise(conn, allocation_id: str) -> dict:

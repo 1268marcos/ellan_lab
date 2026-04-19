@@ -1,4 +1,6 @@
 # 01_source/backend/order_lifecycle_service/app/services/analytics_breakdown_service.py
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -213,8 +215,8 @@ def build_pickup_breakdown(
 
     return PickupBreakdownResponse(
         dimension=dimension,
-        window_start=start_at.isoformat() if start_at else None,
-        window_end=end_at.isoformat() if end_at else None,
+        window_start=to_iso_utc(start_at),
+        window_end=to_iso_utc(end_at),
         items=items,
         filters={
             "region": region,
@@ -227,3 +229,4 @@ def build_pickup_breakdown(
             "site_id": site_id,
         },
     )
+

@@ -1,5 +1,7 @@
 # 01_source/backend/order_lifecycle/app/routers/internal_pickup_health.py
 # LEGADO
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

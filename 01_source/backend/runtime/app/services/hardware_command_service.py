@@ -39,9 +39,11 @@ def _build_error(
     return detail
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+# def _now_iso() -> str:
+#     return datetime.now(timezone.utc).isoformat()
 
+def _now_iso() -> str:
+    return to_iso_utc(datetime.now(timezone.utc))
 
 def _now_epoch_ms() -> int:
     return int(datetime.now(timezone.utc).timestamp() * 1000)
