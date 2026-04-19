@@ -9,6 +9,7 @@ from fastapi import APIRouter, Query
 
 from app.services.pickup_health_service import compute_health
 
+from app.core.datetime_utils import to_iso_utc
 
 router = APIRouter(
     prefix="/internal/analytics/pickup-health",
@@ -17,7 +18,7 @@ router = APIRouter(
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return to_iso_utc(datetime.now(timezone.utc))
 
 
 # =========================================================

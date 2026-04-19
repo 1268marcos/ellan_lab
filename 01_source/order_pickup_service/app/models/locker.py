@@ -24,6 +24,9 @@ from app.core.db import Base
 import enum
 import json
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 # ============================================================
 # ENUMS COMPARTILHADOS

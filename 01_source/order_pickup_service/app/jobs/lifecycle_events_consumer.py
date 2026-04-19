@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/jobs/lifecycle_events_consumer.py
 # 18/04/2026 - melhorias para expiração de retirada no ONLINE (pagou e não foi retirar)
+# 19/04/2026 - confirmação do event_name == "pickup.expired":
 
 from __future__ import annotations
 
@@ -75,7 +76,7 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
                     payload=payload
                 )
 
-            # 🔥 NOVO BLOCO CRÍTICO
+            # BLOCO CRÍTICO
             elif event_name == "pickup.door_opened":
                 handled = _handle_pickup_door_opened(
                     db=db,

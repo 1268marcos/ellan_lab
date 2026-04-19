@@ -8,6 +8,9 @@ from typing import Any, Optional, Dict, Union
 from app.core.db import get_conn
 from .event_types import EventType, Severity
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()

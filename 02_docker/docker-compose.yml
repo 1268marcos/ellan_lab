@@ -48,7 +48,7 @@ services:
   # POSTGRES CENTRAL
   # =========================
   postgres_central:
-    image: postgres:15
+    image: postgis/postgis:15-3.4  # Mude de postgres:15 para postgis/postgis:15-3.4
     container_name: postgres_central
     restart: unless-stopped
     environment:
@@ -56,6 +56,10 @@ services:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
       TZ: Europe/Lisbon
+      # Variáveis adicionais para PostGIS
+      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
     ports:
       - "5435:5432"
     volumes:
@@ -63,6 +67,7 @@ services:
       - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d locker_central"]
+      # test: ["CMD-SHELL", "pg_isready -U admin -d locker_central && psql -U admin -d locker_central -c 'SELECT PostGIS_version();' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -710,6 +715,42 @@ services:
         condition: service_started
     networks:
       - locker-network
+
+  # =========================
+  # ORDER LIFECYCLE PICKUP TIMEOUT WORKER
+  # =========================
+  order_lifecycle_pickup_worker:
+    build:
+      context: ../01_source/backend/order_lifecycle_service
+    container_name: order_lifecycle_pickup_worker
+    command: ["python", "-m", "app.workers.pickup_timeout_worker"]
+    restart: unless-stopped
+    environment:
+      SERVICE_NAME: order_lifecycle_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      POSTGRES_HOST: postgres_central
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      PREPAYMENT_TIMEOUT_SECONDS: 90
+      WORKER_POLL_INTERVAL_SECONDS: 5
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      order_lifecycle_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+
+
+
+
+
+
 
   # =========================
   # SIMULATOR SP

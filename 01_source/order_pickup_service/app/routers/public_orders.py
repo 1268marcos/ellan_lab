@@ -11,11 +11,12 @@
 # 17/04/2026 - correção de "picked_up_at": em _serialize_order()
 # 17/04/2026 - manual_code criptografado/cifrado
 # 18/04/2026 - melhoramento payload - endereço - def _load_locker_snapshot()
+# 19/04/2026 - datatime padrao ISO 8601
 
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional, List, Dict
 import hashlib
 import secrets
@@ -23,6 +24,8 @@ import logging
 
 import os
 import base64
+
+from app.core.datetime_utils import to_iso_utc
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
@@ -62,10 +65,10 @@ router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 
 # ==================== Funções Utilitárias / HELPERS ====================
 
+from datetime import datetime, timezone
+
 def _dt_iso(value: datetime | None) -> str | None:
-    if value is None:
-        return None
-    return value.isoformat()
+    return to_iso_utc(value)
 
 
 def _load_locker_snapshot_legacy_sem_endereco(
@@ -420,12 +423,28 @@ def _serialize_order_legacy_manual_code_texto_plano(
     elif allocation and getattr(allocation, "slot", None) is not None:
         slot_value = allocation.slot
 
-    expires_at_value = None
-    if pickup and getattr(pickup, "expires_at", None):
-        expires_at_value = _dt_iso(pickup.expires_at)
-    elif token and getattr(token, "expires_at", None):
-        expires_at_value = _dt_iso(token.expires_at)
+    # expires_at_value = None
+    # if pickup and getattr(pickup, "expires_at", None):
+    #     expires_at_value = _dt_iso(pickup.expires_at)
+    # elif token and getattr(token, "expires_at", None):
+    #     expires_at_value = _dt_iso(token.expires_at)
+    # 
+    # qr_payload = None
+    # if order and token and token.id and expires_at_value:
+    #     qr_payload = build_public_pickup_qr_value(
+    #         order_id=order.id,
+    #         token_id=token.id,
+    #         expires_at_iso=expires_at_value,
+    #     )
 
+    # 🔥 expires_at com fallback seguro e padronizado via _dt_iso()
+    # Prioriza pickup > token, garantindo que o valor seja sempre string ISO ou None
+    expires_at_value = (
+        _dt_iso(getattr(pickup, "expires_at", None))
+        or _dt_iso(getattr(token, "expires_at", None))
+    )
+
+    # QR payload depende do expires_at formatado
     qr_payload = None
     if order and token and token.id and expires_at_value:
         qr_payload = build_public_pickup_qr_value(
@@ -433,6 +452,7 @@ def _serialize_order_legacy_manual_code_texto_plano(
             token_id=token.id,
             expires_at_iso=expires_at_value,
         )
+
 
     return {
         "id": order.id,
@@ -541,7 +561,11 @@ def _serialize_order(
         "card_type": order.card_type.value if order.card_type else None,
         "payment_updated_at": _dt_iso(order.payment_updated_at),
         "paid_at": _dt_iso(order.paid_at),
-        "pickup_deadline_at": _dt_iso(order.pickup_deadline_at),
+        "pickup_deadline_at": (
+            _dt_iso(order.pickup_deadline_at)
+            or _dt_iso(getattr(pickup, "expires_at", None))
+            or _dt_iso(getattr(token, "expires_at", None))
+        ),
         "picked_up_at": (
             _dt_iso(order.picked_up_at)
             or _dt_iso(getattr(pickup, "redeemed_at", None))
@@ -570,7 +594,8 @@ def _serialize_order(
             if pickup and getattr(pickup, "lifecycle_stage", None)
             else None
         ),
-        "expires_at": expires_at_value,
+        # ✅ expires_at agora vem de cálculo com fallback + _dt_iso()
+        "expires_at": expires_at_value, # ops
         "token_id": token.id if token else None,
         "manual_code": _resolve_token_manual_code(token),
         "qr_payload": qr_payload,

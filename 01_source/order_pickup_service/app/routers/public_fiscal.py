@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
 
+from app.core.datetime_utils import to_iso_utc
+
+
 router = APIRouter(prefix="/public/fiscal", tags=["public-fiscal"])
 
 

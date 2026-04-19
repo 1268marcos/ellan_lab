@@ -1,4 +1,5 @@
 # 01_source/backend/order_lifecycle_service/app/models/lifecycle.py
+# 19/04/2026 - inclusão na class DeadlineType() PICKUP_TIMEOUT 
 import enum
 import uuid
 from datetime import datetime
@@ -13,6 +14,7 @@ from app.models.base import Base
 class DeadlineType(str, enum.Enum):
     PREPAYMENT_TIMEOUT = "PREPAYMENT_TIMEOUT"
     POSTPAYMENT_EXPIRY = "POSTPAYMENT_EXPIRY"
+    PICKUP_TIMEOUT = "PICKUP_TIMEOUT"  # 👈 ADICIONAR
 
 
 class DeadlineStatus(str, enum.Enum):

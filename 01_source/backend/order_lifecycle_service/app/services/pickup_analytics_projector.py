@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 
 from app.models.lifecycle import AnalyticsFact, DomainEvent
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 def _as_utc(dt: datetime | None) -> datetime | None:
     if dt is None:

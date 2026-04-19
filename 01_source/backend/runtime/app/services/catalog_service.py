@@ -12,6 +12,9 @@ from app.core.locker_runtime_resolver import resolve_runtime_locker
 from app.core.slot_topology import get_valid_slot_ids
 from app.schemas.catalog import CatalogSkuOut, CatalogSlotOut
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 def _build_error(
     *,

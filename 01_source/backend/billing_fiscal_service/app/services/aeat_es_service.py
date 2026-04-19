@@ -7,9 +7,11 @@ from datetime import datetime, timezone
 
 from app.models.invoice_model import Invoice
 
+from app.core.datetime_utils import to_iso_utc
+
 
 def _aeat_es_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return to_iso_utc(datetime.now(timezone.utc))
 
 
 def _aeat_es_generate_invoice_number(invoice: Invoice) -> str:

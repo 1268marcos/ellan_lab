@@ -13,6 +13,8 @@ from app.models.lifecycle import (
     LifecycleDeadline,
 )
 
+from app.core.datetime_utils import to_iso_utc
+
 #-------------------------------------
 # HELPERS
 #-------------------------------------
@@ -115,7 +117,7 @@ def execute_prepayment_timeout(db: Session, deadline: LifecycleDeadline) -> None
             "order_id": order_id,
             "order_channel": order_channel,
             "deadline_type": deadline.deadline_type.value,
-            "due_at": deadline.due_at.isoformat(),
+            "due_at": to_iso_utc(deadline.due_at),
             "reason": "payment_not_confirmed_before_deadline",
             **payload,
         },
@@ -137,7 +139,7 @@ def execute_prepayment_timeout(db: Session, deadline: LifecycleDeadline) -> None
             "abandonment_stage": "prepayment",
             "reason": "payment_not_confirmed_before_deadline",
             "deadline_type": deadline.deadline_type.value,
-            "due_at": deadline.due_at.isoformat(),
+            "due_at": to_iso_utc(deadline.due_at),
             **payload,
         },
         occurred_at=now,
@@ -169,7 +171,7 @@ def execute_pickup_timeout(db: Session, deadline: LifecycleDeadline) -> None:
             "pickup_id": pickup_id,
             "order_channel": order_channel,
             "deadline_type": deadline.deadline_type.value,
-            "due_at": deadline.due_at.isoformat(),
+            "due_at": to_iso_utc(deadline.due_at),
             "reason": "pickup_not_redeemed_before_deadline",
             **payload,
         },
@@ -191,7 +193,7 @@ def execute_pickup_timeout(db: Session, deadline: LifecycleDeadline) -> None:
             "terminal_state": "expired",
             "reason": "pickup_not_redeemed_before_deadline",
             "deadline_type": deadline.deadline_type.value,
-            "due_at": deadline.due_at.isoformat(),
+            "due_at": to_iso_utc(deadline.due_at),
             **payload,
         },
         occurred_at=now,

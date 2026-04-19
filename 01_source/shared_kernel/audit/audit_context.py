@@ -4,6 +4,9 @@ from datetime import datetime, timezone
 from shared_kernel.observability.correlation_id import get_correlation_id
 from shared_kernel.observability.request_id import get_request_id
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 @dataclass
 class AuditContext:

@@ -1,0 +1,2 @@
+ALTER TYPE deadline_type_enum
+ADD VALUE 'PICKUP_TIMEOUT';

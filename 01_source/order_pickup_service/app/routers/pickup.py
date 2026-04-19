@@ -51,9 +51,12 @@ from app.services.pickup_event_publisher import (
     publish_pickup_redeemed,
 )
 
+from app.core.datetime_utils import to_iso_utc
+
 
 
 router = APIRouter(tags=["pickup"])
+
 logger = logging.getLogger(__name__)
 
 QR_ROTATE_SEC = settings.qr_rotate_sec

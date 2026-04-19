@@ -10,6 +10,9 @@ from sqlalchemy.orm import Query, Session
 from app.models.lifecycle import AnalyticsFact
 from app.schemas.analytics import PickupMetricsResponse
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 def _apply_filters(
     query: Query,

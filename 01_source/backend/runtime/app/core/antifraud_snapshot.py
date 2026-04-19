@@ -8,6 +8,10 @@ from typing import Optional
 
 from app.core.db import get_conn
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 SNAPSHOT_VERSION = 7  # bump: snapshot histórico real (as-of date)
 
 def _validate_date_utc(date_utc: str) -> str:

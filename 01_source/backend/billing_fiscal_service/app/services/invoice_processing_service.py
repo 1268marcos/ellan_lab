@@ -12,6 +12,10 @@ from sqlalchemy.orm import Session
 from app.models.invoice_model import Invoice, InvoiceStatus
 from app.services.fiscal_router_service import route_issue_invoice
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,7 +176,7 @@ def finalize_invoice_failure(
             "order_id": invoice.order_id,
             "retry_count": invoice.retry_count,
             "status": str(getattr(invoice.status, "value", invoice.status)),
-            "next_retry_at": invoice.next_retry_at.isoformat() if invoice.next_retry_at else None,
+            "next_retry_at": to_iso_utc(invoice.next_retry_at),
         },
     )
 

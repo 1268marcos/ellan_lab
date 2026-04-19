@@ -8,6 +8,9 @@ from re import compile as re_compile
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 class OnlineRegion(str, Enum):
     # América Latina

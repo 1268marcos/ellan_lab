@@ -22,8 +22,10 @@ from app.services.lifecycle_domain_event_client import (
     publish_domain_event,
 )
 
-
 from app.schemas.domain_events import DomainEventEnvelope, OrderPaidPayload
+
+from app.core.datetime_utils import to_iso_utc
+
 
 
 logger = logging.getLogger("domain_event_outbox_worker")

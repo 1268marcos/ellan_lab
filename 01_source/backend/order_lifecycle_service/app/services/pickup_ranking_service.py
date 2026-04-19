@@ -10,6 +10,10 @@ from sqlalchemy.orm import Query, Session
 from app.models.lifecycle import AnalyticsFact
 from app.schemas.analytics_ranking import PickupRankingItem, PickupRankingResponse
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 _ALLOWED_DIMENSIONS = {
     "region",
     "channel",

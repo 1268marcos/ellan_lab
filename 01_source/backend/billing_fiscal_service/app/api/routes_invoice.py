@@ -15,6 +15,10 @@ from app.schemas.invoice_schema import InvoiceResponse
 from app.services.invoice_issue_service import reset_invoice_for_retry
 from app.services.invoice_orchestrator import ensure_and_process_invoice
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 router = APIRouter(prefix="/internal/invoices", tags=["invoices"])
 
 
@@ -24,7 +28,7 @@ def validate_internal_token(internal_token: str = Header(..., alias="X-Internal-
 
 
 def _iso_or_none(value):
-    return value.isoformat() if value is not None else None
+    return to_iso_utc(value)
 
 
 def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:

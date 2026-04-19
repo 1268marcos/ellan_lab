@@ -18,6 +18,9 @@ from app.core.slot_topology import ensure_valid_slot
 from app.core.locker_runtime_resolver import resolve_runtime_locker
 from app.core.db import get_conn
 
+from app.core.datetime_utils import to_iso_utc
+
+
 
 def _build_error(
     *,

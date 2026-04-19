@@ -13,6 +13,9 @@ import logging
 
 from app.core.risk_engine import evaluate_risk, RiskDecision, get_risk_summary, should_trigger_alert
 
+from app.core.datetime_utils import to_iso_utc
+
+
 # Configuração de logging
 logger = logging.getLogger(__name__)
 

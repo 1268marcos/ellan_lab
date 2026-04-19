@@ -5,6 +5,11 @@ from app.core.db import get_conn
 from datetime import datetime, timezone
 import hashlib
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
+
 MQTT_HOST = os.getenv("MQTT_HOST", "mqtt_broker")
 REGION = os.getenv("REGION", "SP")
 MACHINE_ID = os.getenv("MACHINE_ID", "CACIFO-SP-001")

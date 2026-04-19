@@ -22,6 +22,10 @@ from app.models.order import Order, PaymentMethod, OrderChannel, PaymentStatus
 from app.services.domain_event_outbox_service import enqueue_order_paid_event
 from app.services import backend_client
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 logger = logging.getLogger(__name__)
 
 

@@ -15,6 +15,10 @@ from app.services import backend_client
 from app.models.user import User
 from app.services.notification_dispatch_service import queue_receipt_email
 
+from app.core.datetime_utils import to_iso_utc
+
+
+
 ALLOC_TTL_SEC = int(os.getenv("ALLOC_TTL_SEC", "120"))
 PICKUP_WINDOW_SEC = int(os.getenv("PICKUP_WINDOW_SEC", str(2 * 60 * 60)))  # 2h
 QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))  # 10 min

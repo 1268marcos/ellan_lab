@@ -1,6 +1,0 @@
-fastapi
-uvicorn
-psycopg2-binary
-redis
-pydantic
-paho-mqtt

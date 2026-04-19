@@ -1,11 +1,14 @@
 // 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx
 // 18/04/2026 - atualização : function getPickupMessage() 
 // 18/04/2026 - melhoramento UX/CX para localização locker
+// 19/04/2026 - ajuste em datas apresentadas com formatDateTimeByRegion()
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchOrderDetail, fetchOrderPickup } from "../../services/publicApi";
+
+import { formatDateTimeByRegion } from "../../utils/datetime";
 
 const API_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -208,9 +211,9 @@ export default function PublicOrderDetailPage() {
                 <Field label="Gaveta/Slot" value={order.slot} />
                 <Field label="Produto" value={order.sku_id} />
                 <Field label="Valor" value={formatAmount(order.amount_cents)} />
-                <Field label="Pago em" value={formatDateTime(order.paid_at)} />
-                <Field label="Retirado em" value={formatDateTime(order.picked_up_at)} />
-                <Field label="Expira a retirada em" value={formatDateTime(order.expires_at || pickup?.expires_at)} />
+                <Field label="Pago em" value={formatDateTimeByRegion(order.paid_at, order.region)} />
+                <Field label="Retirado em" value={formatDateTimeByRegion(order.picked_up_at, order.region)} />
+                <Field label="Expira a retirada em" value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)} />
               </div>
             </section>
 
@@ -300,7 +303,7 @@ export default function PublicOrderDetailPage() {
                     />
                     <Field
                       label="Expira em"
-                      value={formatDateTime(order?.expires_at || pickup?.expires_at)}
+                      value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
                     />
                     <Field
                       label="Código de retirada manual"
