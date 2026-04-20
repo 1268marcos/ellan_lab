@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/services/backend_client.py
 # 08/04/2026 - EM def locker_set_state INCLUIDO NOVOS EM payload
+# 20/04/2026 - aplicar correção para pago ONLINE e retirada não realizada (ou seja expirada)
 
 from __future__ import annotations
 

@@ -1,18 +1,8 @@
 # ============================================================================
 # docker-compose.yml (Compose V2 - sem version)
-# VERSÃO 2.0 - BACKENDS SP/PT DESCONTINUADOS
+# VERSÃO 2.1
 # ============================================================================
 # 
-# ALTERAÇÕES NESTA VERSÃO:
-# ✅ backend_sp - COMENTADO (descontinuado)
-# ✅ backend_pt - COMENTADO (descontinuado)
-# ✅ payment_gateway - BACKEND_SP/PT removidos das env vars
-# ✅ order_pickup_service - BACKEND_SP/PT removidos das env vars e depends_on
-# ✅ order_lifecycle_service - depends_on ajustado
-# ✅ billing_fiscal_service - depends_on ajustado
-# ✅ billing_fiscal_issue_worker - depends_on ajustado
-# ✅ billing_fiscal_event_worker - depends_on ajustado
-#
 # Arquitetura CENTRAL simplificada:
 # - Postgres CENTRAL (fonte da verdade)
 # - Redis CENTRAL (cache/locks/fila leve)
@@ -55,7 +45,7 @@ services:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      TZ: Europe/Lisbon
+      TZ: UTC
       # Variáveis adicionais para PostGIS
       POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_SHARED_BUFFERS: 256MB
@@ -115,158 +105,6 @@ services:
     networks:
       - locker-network
 
-  # =========================
-  # ⚠️ BACKEND SP - DESCONTINUADO (comentado)
-  # =========================
-  # backend_sp:
-  #   build:
-  #     context: ../01_source/backend_sp
-  #   container_name: backend_sp
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8201:8000"
-  #   environment:
-  #     DB_HOST: postgres_central
-  #     DB_NAME: locker_central
-  #     DB_USER: admin
-  #     DB_PASS: admin123
-  #     REDIS_HOST: redis_central
-  #     REGION: SP
-  #     TZ: America/Sao_Paulo
-  #     MQTT_HOST: mqtt_broker
-  #     LOCKER_ID: LOCKER_SP_01
-  #     MACHINE_ID: CACIFO-SP-001
-  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-  #     BACKUPS_DIR: /backups
-  #     LOGS_DIR: /logs
-  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
-  #     HOST: 0.0.0.0
-  #     PORT: 8000
-  #   env_file:
-  #     - ./configs/backend_sp.env
-  #   volumes:
-  #     - ../03_data/sqlite:/data/sqlite
-  #   depends_on:
-  #     postgres_central:
-  #       condition: service_healthy
-  #     redis_central:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-
-  # =========================
-  # ⚠️ BACKEND PT - DESCONTINUADO (comentado)
-  # =========================
-  # backend_pt:
-  #   build:
-  #     context: ../01_source/backend_pt
-  #   container_name: backend_pt
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8202:8000"
-  #   environment:
-  #     DB_HOST: postgres_central
-  #     DB_NAME: locker_central
-  #     DB_USER: admin
-  #     DB_PASS: admin123
-  #     REDIS_HOST: redis_central
-  #     REGION: PT
-  #     TZ: Europe/Lisbon
-  #     MQTT_HOST: mqtt_broker
-  #     LOCKER_ID: LOCKER_PT_01
-  #     MACHINE_ID: CACIFO-PT-001
-  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-  #     BACKUPS_DIR: /backups
-  #     LOGS_DIR: /logs
-  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
-  #     HOST: 0.0.0.0
-  #     PORT: 8000
-  #   env_file:
-  #     - ./configs/backend_pt.env
-  #   volumes:
-  #     - ../03_data/sqlite:/data/sqlite
-  #   depends_on:
-  #     postgres_central:
-  #       condition: service_healthy
-  #     redis_central:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-
-
-  # =========================
-  # BACKEND RUNTIME - runtime operacional multi-locker
-  # =========================
-  # runtime:
-  #   build:
-  #     context: ../01_source/backend/runtime
-  #   container_name: runtime
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8200:8000"
-  #   environment:
-  #     DB_HOST: postgres_central
-  #     DB_NAME: locker_central
-  #     DB_USER: admin
-  #     DB_PASS: admin123
-  #     REDIS_HOST: redis_central
-
-  #     MQTT_HOST: mqtt_broker
-  #     MQTT_PORT: 1883
-
-  #     BACKUPS_DIR: /backups
-  #     LOGS_DIR: /logs
-      
-  #     CENTRAL_POSTGRES_DSN: postgresql://admin:admin123@postgres_central:5432/locker_central
-  #     EVENTS_DB_PATH: /data/sqlite/runtime/events.db
-  #     LOG_HASH_SALT: ${LOG_HASH_SALT}
-      
-  #     APP_NAME: backend_runtime
-  #     HOST: 0.0.0.0
-  #     PORT: 8000
-  #     INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-
-  #     TZ: Europe/Lisbon
-
-  #     RUNTIME_REGISTRY_CACHE_TTL_SEC: 5
-
-  #     RUNTIME_APPLY_SCHEMA_ON_STARTUP: "true"
-  #     RUNTIME_SYNC_ON_STARTUP: "true"
-  #     RUNTIME_SYNC_PRUNE_MISSING_ON_STARTUP: "false"
-  #     RUNTIME_FAIL_FAST_ON_STARTUP_ERROR: "true"
-
-  #   volumes:
-  #     - ../03_data/sqlite:/data/sqlite
-  #     - ../04_logs:/logs
-  #     - ../05_backups:/backups
-  #   depends_on:
-  #     postgres_central:
-  #       condition: service_healthy
-  #     redis_central:
-  #       condition: service_healthy
-  #     mqtt:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-  #   healthcheck:
-  #     test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 40s
-
 
   # =========================
   # BACKEND RUNTIME (multi-locker)
@@ -309,7 +147,7 @@ services:
       RUNTIME_SYNC_PRUNE_MISSING_ON_STARTUP: "false"
       RUNTIME_FAIL_FAST_ON_STARTUP_ERROR: "true"
 
-      TZ: Europe/Lisbon
+      TZ: UTC
     volumes:
       - ../03_data/sqlite:/data/sqlite
       - ../04_logs:/logs
@@ -357,7 +195,7 @@ services:
       - MQTT_HOST=mqtt_broker
 
       # timezone do container
-      - TZ=America/Sao_Paulo
+      - TZ=UTC
 
       # sqlite local (resiliência)
       - GATEWAY_SQLITE_PATH=/data/sqlite/gateway/events.db
@@ -440,7 +278,7 @@ services:
     env_file:
       - ../01_source/order_pickup_service/.env
     environment:
-      - TZ=America/Sao_Paulo
+      - TZ=UTC
 
       # ⚠️ BACKENDS LEGADOS REMOVIDOS
       # - BACKEND_SP_INTERNAL=http://backend_sp:8000  # REMOVIDO
@@ -516,6 +354,7 @@ services:
       POSTGRES_PASSWORD: admin123
       PREPAYMENT_TIMEOUT_SECONDS: 90
       WORKER_POLL_INTERVAL_SECONDS: 5
+      TZ: UTC
     ports:
       - "8010:8010"
     depends_on:
@@ -544,6 +383,7 @@ services:
       POSTGRES_PASSWORD: admin123
       PREPAYMENT_TIMEOUT_SECONDS: 90
       WORKER_POLL_INTERVAL_SECONDS: 5
+      TZ: UTC
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -577,6 +417,7 @@ services:
       INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
+      TZ: UTC
     ports:
       - "8020:8020"
     depends_on:
@@ -616,6 +457,7 @@ services:
       INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
+      TZ: UTC
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -653,6 +495,7 @@ services:
       INVOICE_ISSUE_BASE_BACKOFF_SEC: 15
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_event_worker
+      TZ: UTC
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -675,7 +518,7 @@ services:
     env_file:
       - ../01_source/order_pickup_service/.env
     environment:
-      - TZ=America/Sao_Paulo
+      - TZ=UTC
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
       - LIFECYCLE_SERVICE_URL=http://order_lifecycle_service:8010
@@ -704,7 +547,7 @@ services:
     env_file:
       - ../01_source/order_pickup_service/.env
     environment:
-      - TZ=America/Sao_Paulo
+      - TZ=UTC
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
       - RUN_DB_MIGRATIONS_ON_STARTUP=true
       - FRONTEND_BASE_URL=http://localhost:5173
@@ -737,6 +580,7 @@ services:
       POSTGRES_PASSWORD: admin123
       PREPAYMENT_TIMEOUT_SECONDS: 90
       WORKER_POLL_INTERVAL_SECONDS: 5
+      TZ: UTC
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -744,61 +588,6 @@ services:
         condition: service_started
     networks:
       - locker-network
-
-
-
-
-
-
-
-
-  # =========================
-  # SIMULATOR SP
-  # =========================
-  # simulator_sp:
-  #   build:
-  #     context: ../01_source/simulator
-  #   container_name: simulator_sp
-  #   restart: unless-stopped
-  #   environment:
-  #     MQTT_HOST: mqtt_broker
-  #     MQTT_PORT: "1883"
-  #     REGION: SP
-  #     LOCKER_ID: LOCKER_SP_01
-  #     MACHINE_ID: CACIFO-SP-001
-  #     FAILURE_RATE: "0.12"
-  #     PAYMENT_TRIGGERS_OPEN: "false"
-  #     TZ: America/Sao_Paulo
-  #     DEBUG_LOGS: "true"
-  #   depends_on:
-  #     mqtt:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
-
-  # =========================
-  # SIMULATOR PT
-  # =========================
-  # simulator_pt:
-  #   build:
-  #     context: ../01_source/simulator
-  #   container_name: simulator_pt
-  #   restart: unless-stopped
-  #   environment:
-  #     MQTT_HOST: mqtt_broker
-  #     MQTT_PORT: "1883"
-  #     REGION: PT
-  #     LOCKER_ID: LOCKER_PT_01
-  #     MACHINE_ID: CACIFO-PT-001
-  #     FAILURE_RATE: "0.10"
-  #     PAYMENT_TRIGGERS_OPEN: "false"
-  #     TZ: Europe/Lisbon
-  #     DEBUG_LOGS: "true"
-  #   depends_on:
-  #     mqtt:
-  #       condition: service_healthy
-  #   networks:
-  #     - locker-network
       
 
   # =========================
@@ -825,14 +614,13 @@ services:
 
       FAILURE_RATE: "0.09"
       PAYMENT_TRIGGERS_OPEN: "false"
-      TZ: Europe/Lisbon
+      TZ: UTC
       DEBUG_LOGS: "true"
     depends_on:
       mqtt:
         condition: service_healthy
     networks:
       - locker-network
-
 
 
   # =========================

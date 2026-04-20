@@ -6,6 +6,9 @@
 # 17/04/2026 - código cifrado para manual_code
 # 18/04/2026 - correção para gravar manual_code_encrypted
 # 19/04/2026 - datetime
+# 20/04/2026 - correção expiração pedido pago ONLINE e código de retirada não usado
+# 20/04/2026 - alterado register_pickup_deadline() / veja a referência em 01_source/order_pickup_service/app/services/lifecycle_integration.py
+# 20/04/2026 - mantido register_pickup_deadline() do KIOSK para se quiser regra específica (ex: auditoria, SLA, etc) register_pickup_deadline(
 
 from __future__ import annotations
 
@@ -59,6 +62,9 @@ from app.repositories.allocation_repository import AllocationRepository
 from app.repositories.payment_instruction_repository import PaymentInstructionRepository
 
 from app.core.datetime_utils import to_iso_utc
+
+from app.services.lifecycle_integration import register_pickup_deadline
+
 
 
 
@@ -918,6 +924,20 @@ def _ensure_online_pickup(
     )
     db.add(pickup)
     db.flush()
+
+    register_pickup_deadline(
+        order_id=order.id,
+        order_channel=order.channel.value if hasattr(order.channel, "value") else order.channel,
+        region_code=order.region,
+        slot_id=str(allocation.slot) if allocation and allocation.slot is not None else None,
+        machine_id=order.totem_id,
+        # pickup_created_at=pickup.activated_at or pickup.ready_at,
+        pickup_created_at=None, # marcos
+        deadline_at=deadline_utc,
+        payment_method=order.payment_method,
+    )
+
+
     return pickup
 
 
@@ -983,6 +1003,20 @@ def _ensure_kiosk_pickup(
     )
     db.add(pickup)
     db.flush()
+
+    # ABAIXO É PARA KIOSK - 20/04/2026 - mantido para se quiser regra específica (ex: auditoria, SLA, etc)
+    register_pickup_deadline(
+        order_id=order.id,
+        order_channel=order.channel.value if hasattr(order.channel, "value") else order.channel,
+        region_code=order.region,
+        slot_id=str(allocation.slot) if allocation and allocation.slot is not None else None,
+        machine_id=order.totem_id,
+        pickup_created_at=pickup.activated_at or pickup.ready_at, # poderia se None - Funciona melhor se você deixar os dois como None, a menos que vá reativar a lógica de cálculo interno depois.
+        deadline_at=None, # marcos
+        payment_method=order.payment_method,
+    )
+
+
     return pickup
 
 

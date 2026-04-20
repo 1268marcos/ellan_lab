@@ -1,6 +1,7 @@
 # 01_source/order_pickup_service/app/services/pickup_expiration_handler.py
 # 18/04/2026 - novo
 # 18/04/2026 - handler de expiração de retirada
+# 20/04/2026 - inclusão de log para encontrar bug da expiração de retirada
 
 from __future__ import annotations
 
@@ -160,7 +161,20 @@ def _apply_external_effects(
                     state=RUNTIME_STATE_ON_PICKUP_EXPIRED,
                     locker_id=locker_id,
                 )
+
+                logger.info(
+                    "pickup_expired_set_state_succeeded",
+                    extra={
+                        "order_id": order_id,
+                        "slot": slot,
+                        "region": region,
+                        "locker_id": locker_id,
+                        "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
+                    },
+                )
+
                 break
+
             except Exception as exc:
                 if attempt == MAX_RETRIES - 1:
                     logger.exception(
@@ -193,7 +207,19 @@ def _apply_external_effects(
                     allocation_id=allocation_id,
                     locker_id=locker_id,
                 )
+
+                logger.info(
+                    "pickup_expired_locker_release_succeeded",
+                    extra={
+                        "order_id": order_id,
+                        "allocation_id": allocation_id,
+                        "region": region,
+                        "locker_id": locker_id,
+                    },
+                )
+
                 break
+
             except Exception:
                 if attempt == MAX_RETRIES - 1:
                     logger.exception(
@@ -225,6 +251,16 @@ def handle_pickup_expired(
     payload: dict[str, Any] | None = None,
 ) -> bool:
     payload = payload or {}
+
+
+    logger.info(
+        "handle_pickup_expired_started",
+        extra={
+            "order_id": order_id,
+            "payload": payload,
+        },
+    )
+
 
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -275,6 +311,18 @@ def handle_pickup_expired(
                 "pickup_expired_publish_event_failed",
                 extra={"order_id": order.id, "pickup_id": result.get("pickup_id")},
             )
+
+    logger.info(
+        "pickup_expired_external_effects_started",
+        extra={
+            "order_id": order.id,
+            "allocation_id": result.get("allocation_id"),
+            "slot": result.get("slot"),
+            "region": result.get("region"),
+            "locker_id": result.get("locker_id"),
+            "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
+        },
+    )
 
     _apply_external_effects(
         order_id=order.id,

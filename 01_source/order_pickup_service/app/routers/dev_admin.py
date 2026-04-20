@@ -4,6 +4,7 @@
 # 18/04/2026 - remoção : from app.routers.internal import _ensure_online_pickup, _create_pickup_token
 # 18/04/2026 - remoção : from app.routers.internal import _ensure_online_pickup
 # 18/04/2026 - inclusão : from app.services.pickup_payment_fulfillment_service import _create_pickup_token, _ensure_online_pickup
+# 20/04/2026 - compensação para não deixar slot preso
 
 from __future__ import annotations
 
@@ -19,8 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import get_db
-from app.models.allocation import Allocation
-from app.models.order import Order
+
+from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup
 from app.schemas.dev_admin import (
     DevReleaseRegionalAllocationsIn,
@@ -33,7 +34,7 @@ from app.services import backend_client
 from uuid import uuid4
 
 
-from app.models.allocation import Allocation
+from app.models.allocation import Allocation, AllocationState
 from app.models.pickup import Pickup, PickupStatus, PickupLifecycleStage, PickupChannel
 from app.models.pickup_token import PickupToken
 
@@ -492,12 +493,48 @@ def simulate_payment_legacy_funcional(
 
     deadline_utc = now + timedelta(hours=2)
 
-    pickup = _ensure_online_pickup(
-        db,
-        order=order,
-        allocation=allocation,
-        deadline_utc=deadline_utc,
-    )
+    # pickup = _ensure_online_pickup(
+    #     db,
+    #     order=order,
+    #     allocation=allocation,
+    #     deadline_utc=deadline_utc,
+    # )
+    # 
+    try:
+        pickup = _ensure_online_pickup(
+            db,
+            order=order,
+            allocation=allocation,
+            deadline_utc=deadline_utc,
+        )
+    except Exception:
+        try:
+            backend_client.locker_release(
+                order.region,
+                allocation.id,
+                locker_id=order.totem_id,
+            )
+        except Exception:
+            logger.exception(
+                "simulate_payment_release_after_pickup_setup_failed",
+                extra={
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "locker_id": order.totem_id,
+                },
+            )
+
+        try:
+            allocation.mark_released()
+        except Exception:
+            allocation.state = AllocationState.RELEASED
+
+        order.status = OrderStatus.FAILED
+        order.updated_at = datetime.now(timezone.utc)
+        db.flush()
+        db.commit()
+        raise
+
 
     token_data = _create_pickup_token(
         db,

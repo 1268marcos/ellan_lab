@@ -2,6 +2,7 @@
 # 02/04/2026 - Enhanced Version with Asia, Middle East, Eastern Europe & Oceania Support
 # veja fim do arquivo
 # 06/04/2026 - Ajustar _calculate_reminder_schedule
+# 20/04/2026 - alteração em def register_pickup_deadline() alterado pickup_created_at: datetime | None,
 
 from __future__ import annotations
 
@@ -542,7 +543,7 @@ def cancel_prepayment_timeout_deadline(
         raise
 
 
-def register_pickup_deadline(
+def register_pickup_deadline_legacy_mantida_sla_auditoria(
     *,
     order_id: str,
     order_channel: str,
@@ -550,19 +551,22 @@ def register_pickup_deadline(
     slot_id: str | None,
     machine_id: str | None,
     pickup_created_at: datetime | None,
+    deadline_at: datetime | None,
     payment_method: str | None = None,
 ) -> Dict[str, Any]:
     """
     Registra deadline para pickup com base na região
+    VERSÃO PARA ATENDER ISSO:
+    ABAIXO É PARA KIOSK - 20/04/2026 - mantido para se quiser regra específica (ex: auditoria, SLA, etc)
     """
     client = LifecycleClient()
-    deadline_at = _resolve_deadline_at(
-        created_at=pickup_created_at,
-        region_code=region_code,
-        order_channel=order_channel,
-        payment_method=payment_method,
-        event_type=LifecycleEventType.PICKUP_DEADLINE,
-    )
+    # deadline_at = _resolve_deadline_at(
+    #     created_at=pickup_created_at,
+    #     region_code=region_code,
+    #     order_channel=order_channel,
+    #     payment_method=payment_method,
+    #     event_type=LifecycleEventType.PICKUP_DEADLINE,
+    # )
     deadline_at_str = _serialize_deadline_at(deadline_at)
     
     # Calcula lembretes de pickup
@@ -613,6 +617,104 @@ def register_pickup_deadline(
             },
         )
         raise
+
+
+
+def register_pickup_deadline(
+    *,
+    order_id: str,
+    order_channel: str,
+    region_code: str | None,
+    slot_id: str | None,
+    machine_id: str | None,
+    pickup_created_at: datetime | None,
+    deadline_at: datetime | None,
+    payment_method: str | None = None,
+) -> Dict[str, Any]:
+    """
+    Registra deadline para pickup com base na região.
+
+    Regra atual:
+    - ONLINE: deve passar deadline_at preenchido
+    - KIOSK: pode chamar com deadline_at=None para compatibilidade/auditoria futura;
+      nesse caso, não agenda nada e retorna skip controlado
+    """
+    normalized_channel = str(order_channel or "").strip().upper()
+
+    if deadline_at is None:
+        logger.info(
+            "pickup_deadline_skipped",
+            extra={
+                "order_id": order_id,
+                "order_channel": normalized_channel,
+                "region_code": region_code,
+                "slot_id": slot_id,
+                "machine_id": machine_id,
+                "reason": "deadline_at_missing",
+            },
+        )
+        return {
+            "scheduled": False,
+            "skipped": True,
+            "reason": "deadline_at_missing",
+            "deadline_at": None,
+            "reminders": [],
+            "result": None,
+        }
+
+    client = LifecycleClient()
+    deadline_at_str = _serialize_deadline_at(deadline_at)
+
+    reminders = _calculate_reminder_schedule(
+        deadline_at,
+        region_code,
+        LifecycleEventType.PICKUP_REMINDER,
+    )
+
+    try:
+        result = client.create_pickup_deadline(
+            order_id=order_id,
+            order_channel=order_channel,
+            region_code=region_code,
+            slot_id=slot_id,
+            machine_id=machine_id,
+            deadline_at=deadline_at_str,
+            payment_method=payment_method,
+            reminder_schedule=[r.isoformat() for r in reminders],
+        )
+
+        logger.info(
+            "pickup_deadline_registered",
+            extra={
+                "order_id": order_id,
+                "order_channel": normalized_channel,
+                "region_code": region_code,
+                "deadline_at": deadline_at_str,
+                "reminder_count": len(reminders),
+                "result": result,
+            },
+        )
+
+        return {
+            "scheduled": True,
+            "skipped": False,
+            "deadline_at": deadline_at_str,
+            "reminders": reminders,
+            "result": result,
+        }
+
+    except LifecycleClientError:
+        logger.exception(
+            "pickup_deadline_register_failed",
+            extra={
+                "order_id": order_id,
+                "order_channel": normalized_channel,
+                "region_code": region_code,
+                "deadline_at": deadline_at_str,
+            },
+        )
+        raise
+
 
 
 def register_payment_reminder(

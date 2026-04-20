@@ -1,4 +1,7 @@
 # 01_source/order_pickup_service/app/core/lifecycle_client.py
+# 20/04/2026 - inclusão de def _build_pickup_deadline_key()
+
+
 from __future__ import annotations
 
 from typing import Any
@@ -118,6 +121,49 @@ class LifecycleClient:
             path="/internal/deadlines",
             json_body=payload,
         )
+
+
+
+    # 20/04/2026
+    @staticmethod
+    def _build_pickup_deadline_key(order_id: str) -> str:
+        return f"order:{order_id}:pickup_deadline"
+
+    def create_pickup_deadline(
+        self,
+        *,
+        order_id: str,
+        order_channel: str,
+        region_code: str | None,
+        slot_id: str | None,
+        machine_id: str | None,
+        deadline_at: str | None,
+        payment_method: str | None = None,
+        reminder_schedule: list[str] | None = None,
+    ) -> dict[str, Any]:
+        payload = {
+            "deadline_key": self._build_pickup_deadline_key(order_id),
+            "order_id": order_id,
+            "order_channel": order_channel,
+            "deadline_type": "PICKUP_TIMEOUT",
+            "due_at": deadline_at,
+            "payload": {
+                "region_code": region_code,
+                "slot_id": slot_id,
+                "machine_id": machine_id,
+                "payment_method": payment_method,
+                "reminder_schedule": reminder_schedule or [],
+            },
+        }
+
+        return self._request(
+            method="POST",
+            path="/internal/deadlines",
+            json_body=payload,
+        )
+
+
+
 
     def cancel_prepayment_deadline(
         self,
