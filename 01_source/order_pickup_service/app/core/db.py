@@ -1,5 +1,6 @@
 # 01_source/order_pickup_service/app/core/db.py
 # 03/04/2026 - adicionar coluna 'currency' na tabela 'orders'
+# 20/04/2026 - garantir timezone=UTC
 
 import logging
 
@@ -16,7 +17,22 @@ connect_args = {}
 if settings.database_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
 
-engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+
+
+# engine = create_engine(settings.database_url, connect_args=connect_args, future=True)
+connect_args_pg = {"options": "-c timezone=UTC"}
+
+if settings.database_url.startswith("sqlite"):
+    connect_args_pg = {"check_same_thread": False}
+
+engine = create_engine(
+    settings.database_url,
+    connect_args=connect_args_pg,
+    future=True,
+)
+
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, future=True)
 
 logger = logging.getLogger("order_pickup_service.db")

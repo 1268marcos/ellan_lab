@@ -2,12 +2,13 @@
 # 02/04/2026 - Enhanced Version with Global Markets Support
 # veja fim do arquivo
 # 03/04/2026
+# 20/04/2026 - correção formato de datetime 
 
 import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, Enum, Index, String, Integer, Boolean, Float
+from sqlalchemy import Column, DateTime as _DateTime, Enum, Index, String, Integer, Boolean, Float
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -15,6 +16,8 @@ from app.core.db import Base
 
 from app.models.order_item import OrderItem
 
+
+TZ = _DateTime(timezone=True)
 
 # ==================== Enums ====================
 
@@ -384,14 +387,14 @@ class Order(Base):
     payment_interface = Column(Enum(PaymentInterface), nullable=True)  # Adicionado
     wallet_provider = Column(Enum(WalletProvider), nullable=True)  # Adicionado
     card_type = Column(Enum(CardType), nullable=True)
-    payment_updated_at = Column(DateTime, nullable=True)
+    payment_updated_at = Column(TZ, nullable=True)
     
     # Timestamps de eventos
-    paid_at = Column(DateTime, nullable=True)
-    pickup_deadline_at = Column(DateTime, nullable=True)
-    picked_up_at = Column(DateTime, nullable=True)
-    cancelled_at = Column(DateTime, nullable=True)  # Adicionado
-    refunded_at = Column(DateTime, nullable=True)  # Adicionado
+    paid_at = Column(TZ, nullable=True)
+    pickup_deadline_at = Column(TZ, nullable=True)
+    picked_up_at = Column(TZ, nullable=True)
+    cancelled_at = Column(TZ, nullable=True)  # Adicionado
+    refunded_at = Column(TZ, nullable=True)  # Adicionado
     
     # Identificação do cliente
     guest_session_id = Column(String, nullable=True)
@@ -412,7 +415,7 @@ class Order(Base):
     # Persistência
     slot = Column(Integer, nullable=True)
     allocation_id = Column(String, nullable=True)
-    allocation_expires_at = Column(DateTime, nullable=True)
+    allocation_expires_at = Column(TZ, nullable=True)
 
     # Idempotência
     idempotency_key = Column(String, nullable=True, unique=True)  # Adicionado
@@ -421,12 +424,10 @@ class Order(Base):
     order_metadata = Column(JSONB, nullable=True, default={})  # Adicionado
     
     # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime,
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+    created_at = Column(TZ, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(TZ, nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # ==================== Métodos de instância ====================

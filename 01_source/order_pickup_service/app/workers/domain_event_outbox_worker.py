@@ -34,10 +34,11 @@ POLL_SEC = int(os.getenv("DOMAIN_EVENT_OUTBOX_POLL_SEC", "5"))
 BATCH_SIZE = int(os.getenv("DOMAIN_EVENT_OUTBOX_BATCH_SIZE", "50"))
 
 
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# def _utc_now_naive() -> datetime:
+#     return datetime.now(timezone.utc).replace(tzinfo=None)
 
-
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 def _next_retry_at_for(retry_count: int) -> datetime:
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -87,7 +88,7 @@ def _next_retry_at_for(retry_count: int) -> datetime:
 # 
 #     return claimed
 def _claim_batch(db: Session) -> list[dict]:
-    now = _utc_now_naive()
+    now = _utc_now() # _utc_now_naive()
     stale_processing_before = now - timedelta(minutes=5)
 
     rows = (
@@ -160,7 +161,7 @@ def _mark_published(db: Session, row_id: str) -> None:
     if not row:
         return
 
-    now = _utc_now_naive()
+    now = _utc_now() # _utc_now_naive()
     row.status = "PUBLISHED"
     row.published_at = now
     row.last_error = None
@@ -190,7 +191,7 @@ def _mark_failed(db: Session, row_id: str, error_message: str) -> None:
     row.last_error = (error_message or "")[:4000]
     row.next_retry_at = _next_retry_at_for(retry_count)
     row.processing_started_at = None
-    row.updated_at = _utc_now_naive()
+    row.updated_at = _utc_now() # _utc_now_naive()
     db.commit()
 
 

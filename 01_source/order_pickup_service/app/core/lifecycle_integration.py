@@ -21,7 +21,7 @@ def _as_utc_naive(dt: datetime | None) -> datetime | None:
         return dt
     return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
-
+# existe outro def _resolve_deadline_at nesse código ????
 def _resolve_deadline_at(
     *,
     created_at: datetime | None,

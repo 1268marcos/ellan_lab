@@ -13,8 +13,11 @@ from app.models.domain_event_outbox import DomainEventOutbox
 logger = logging.getLogger("order_paid_outbox")
 
 
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# def _utc_now_naive() -> datetime:
+#     return datetime.now(timezone.utc).replace(tzinfo=None)
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def enqueue_order_paid_event(
@@ -83,7 +86,7 @@ def enqueue_order_paid_event(
         )
         return existing
 
-    occurred_at = _utc_now_naive()
+    occurred_at = _utc_now() # _utc_now_naive()
 
     payload: dict[str, Any] = {
         "order_id": order_id,

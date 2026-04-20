@@ -378,7 +378,11 @@ def _resolve_deadline_at(
     elif event_type == LifecycleEventType.PICKUP_REMINDER:
         timeout_sec = timeout_sec - 3600  # Lembrete 1 hora antes do fim
 
-    return base_created_at + timedelta(seconds=int(timeout_sec))
+    # return base_created_at + timedelta(seconds=int(timeout_sec))
+
+    # NUNCA chamar _convert_to_region_timezone aqui
+    result = base_created_at + timedelta(seconds=int(timeout_sec))
+    return result.replace(tzinfo=timezone.utc)   # sempre UTC
 
 
 def _serialize_deadline_at(deadline_at: datetime | None) -> str | None:
@@ -386,9 +390,11 @@ def _serialize_deadline_at(deadline_at: datetime | None) -> str | None:
         return None
 
     if deadline_at.tzinfo is None:
-        return deadline_at.isoformat()
+        # return deadline_at.isoformat()
+         deadline_at = deadline_at.replace(tzinfo=timezone.utc)
+    return deadline_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
-    return deadline_at.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
+    # return deadline_at.astimezone(timezone.utc).replace(tzinfo=None).isoformat()
 
 
 def _calculate_reminder_schedule(

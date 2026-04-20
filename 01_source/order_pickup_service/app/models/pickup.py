@@ -1,13 +1,18 @@
 # 01_source/order_pickup_service/app/models/pickup.py
+# 20/04/2026 - correção formato de datetime 
 
 from __future__ import annotations
 
 import enum
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, Enum, ForeignKey, Index, String, Integer
+from sqlalchemy import Column, DateTime as _DateTime, Enum, ForeignKey, Index, String, Integer
+# from sqlalchemy import DateTime as _DateTime
 
 from app.core.db import Base
+
+# Definir alias para não repetir timezone=True em todo lugar:
+TZ = _DateTime(timezone=True)
 
 
 class PickupStatus(str, enum.Enum):
@@ -104,20 +109,20 @@ class Pickup(Base):
     current_token_id = Column(String, nullable=True)
 
     # Janelas e tempos de operação
-    activated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    ready_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)
+    activated_at = Column(TZ, nullable=False, default=lambda: datetime.now(timezone.utc))
+    ready_at = Column(TZ, nullable=True)
+    expires_at = Column(TZ, nullable=True)
 
     # Telemetria física / sensores / operação
-    door_opened_at = Column(DateTime, nullable=True)
-    item_removed_at = Column(DateTime, nullable=True)
-    door_closed_at = Column(DateTime, nullable=True)
+    door_opened_at = Column(TZ, nullable=True)
+    item_removed_at = Column(TZ, nullable=True)
+    door_closed_at = Column(TZ, nullable=True)
 
     # Conclusão/cancelamento
-    redeemed_at = Column(DateTime, nullable=True)
+    redeemed_at = Column(TZ, nullable=True)
     redeemed_via = Column(Enum(PickupRedeemVia), nullable=True)
-    expired_at = Column(DateTime, nullable=True)
-    cancelled_at = Column(DateTime, nullable=True)
+    expired_at = Column(TZ, nullable=True)
+    cancelled_at = Column(TZ, nullable=True)
     cancel_reason = Column(String, nullable=True)
 
     # Auditoria e troubleshooting
@@ -126,12 +131,10 @@ class Pickup(Base):
     sensor_event_id = Column(String, nullable=True)
     notes = Column(String, nullable=True)
 
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(
-        DateTime,
-        nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+    created_at = Column(TZ, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(TZ, nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

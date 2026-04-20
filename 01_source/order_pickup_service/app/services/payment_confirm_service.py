@@ -94,9 +94,11 @@ REGION_FISCAL_CONFIG = {
 
 # ==================== Funções Utilitárias ====================
 
-def _utc_now_naive() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+# def _utc_now_naive() -> datetime:
+#     return datetime.now(timezone.utc).replace(tzinfo=None)
 
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 def _enum_value_or_raw(value) -> str | None:
     if value is None:
@@ -359,7 +361,7 @@ def apply_payment_confirmation(
 
     # Atualiza timestamps
     if not getattr(order, "paid_at", None):
-        order.paid_at = _utc_now_naive()
+        order.paid_at = _utc_now() # _utc_now_naive()
     
     # Atualiza moeda
     if currency:
@@ -551,7 +553,7 @@ def emit_order_paid_and_simulate_fiscal(
             print_status=fiscal["print_status"],
             print_site_path=fiscal["print_site_path"],
             payload_json=fiscal,
-            issued_at=_utc_now_naive(),
+            issued_at=_utc_now(), # _utc_now_naive(),
         )
 
         db.add(fiscal_doc)
@@ -730,7 +732,7 @@ def refund_payment(
     return {
         "order_id": order.id,
         "refund_amount": refund_amount,
-        "refunded_at": _utc_now_naive().isoformat(),
+        "refunded_at": _utc_now(), # _utc_now_naive().isoformat(),
         "status": order.payment_status.value,
     }
 

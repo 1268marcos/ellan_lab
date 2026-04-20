@@ -8,6 +8,7 @@
 # 18/04/2026 - patch : _cancel_prepayment_timeout_for_order
 # 18/04/2026 - patch : assim que o pagamento for aceito/aprovado > cancelar o PREPAYMENT_TIMEOUT > só depois seguir com pickup/fulfillment
 # 18/04/2026 - o patch anterior não substitui um hardening futuro no order_lifecycle_service, mas corta a causa principal no ponto certo do fluxo.
+# 20/04/2026 - cancelamento do uso def _utc_now_naive()
 
 from __future__ import annotations
 
@@ -73,8 +74,15 @@ def _utc_now() -> datetime:
 # def _utc_now() -> str:
 #     return to_iso_utc(datetime.now(timezone.utc))
 
-def _utc_now_naive() -> datetime:
-    return _utc_now().replace(tzinfo=None)
+# def _utc_now_naive() -> datetime:
+#     return _utc_now().replace(tzinfo=None)
+
+def _dt_iso(dt: datetime | None) -> str | None:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _enum_value_or_raw(value) -> str | None:
@@ -155,7 +163,8 @@ def _create_pickup_token(db: Session, *, pickup_id: str, expires_at_utc: datetim
         pickup_id=pickup_id,
         token_hash=_sha256(manual_code),
         manual_code=manual_code,  # 🔥 NOVO
-        expires_at=expires_at_utc.replace(tzinfo=None),
+        # expires_at=expires_at_utc.replace(tzinfo=None),
+        expires_at=expires_at_utc,
         used_at=None,
     )
     db.add(tok)
@@ -225,7 +234,8 @@ def _ensure_online_pickup(
     
     locker_id = allocation.locker_id
     
-    now_naive = _utc_now_naive()
+    # now_naive = _utc_now_naive()
+    now = _utc_now()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
     if existing_pickup:
@@ -233,9 +243,10 @@ def _ensure_online_pickup(
         _apply_pickup_context(pickup, order=order, allocation=allocation)
         pickup.status = PickupStatus.ACTIVE
         pickup.lifecycle_stage = PickupLifecycleStage.READY_FOR_PICKUP
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = now_naive
-        pickup.expires_at = deadline_utc.replace(tzinfo=None)
+        pickup.activated_at = pickup.activated_at or now # now_naive
+        pickup.ready_at = now # now_naive
+        # pickup.expires_at = deadline_utc.replace(tzinfo=None)
+        pickup.expires_at = deadline_utc
         pickup.door_opened_at = None
         pickup.item_removed_at = None
         pickup.door_closed_at = None
@@ -262,9 +273,9 @@ def _ensure_online_pickup(
         status=PickupStatus.ACTIVE,
         lifecycle_stage=PickupLifecycleStage.READY_FOR_PICKUP,
         current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
-        expires_at=deadline_utc.replace(tzinfo=None),
+        activated_at=now, # now_naive,
+        ready_at=now, # now_naive,
+        expires_at=deadline_utc, # deadline_utc.replace(tzinfo=None),
         door_opened_at=None,
         item_removed_at=None,
         door_closed_at=None,
@@ -302,7 +313,8 @@ def _ensure_kiosk_pickup(
     
     locker_id = allocation.locker_id
     
-    now_naive = _utc_now_naive()
+    # now_naive = _utc_now_naive()
+    now = _utc_now()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
     if existing_pickup:
@@ -310,10 +322,10 @@ def _ensure_kiosk_pickup(
         _apply_pickup_context(pickup, order=order, allocation=allocation)
         pickup.status = PickupStatus.ACTIVE
         pickup.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = pickup.ready_at or now_naive
+        pickup.activated_at = pickup.activated_at or now # now_naive
+        pickup.ready_at = pickup.ready_at or now # now_naive
         pickup.expires_at = None
-        pickup.door_opened_at = pickup.door_opened_at or now_naive
+        pickup.door_opened_at = pickup.door_opened_at or now # now_naive
         pickup.item_removed_at = None
         pickup.door_closed_at = None
         pickup.redeemed_at = None
@@ -340,10 +352,10 @@ def _ensure_kiosk_pickup(
         status=PickupStatus.ACTIVE,
         lifecycle_stage=PickupLifecycleStage.DOOR_OPENED,
         current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
+        activated_at=now, # now_naive,
+        ready_at=now, # now_naive,
         expires_at=None,
-        door_opened_at=now_naive,
+        door_opened_at=now, # now_naive,
         item_removed_at=None,
         door_closed_at=None,
         redeemed_at=None,
@@ -636,7 +648,9 @@ def payment_confirm(
 
     # 3. DEFINE DEADLINE DE RETIRADA
     deadline_utc = _utc_now() + timedelta(hours=PICKUP_WINDOW_HOURS)
-    order.pickup_deadline_at = deadline_utc.replace(tzinfo=None)
+    # order.pickup_deadline_at = deadline_utc.replace(tzinfo=None)
+    order.pickup_deadline_at = deadline_utc
+
 
     # 4. CRIA OU ATUALIZA PICKUP
     pickup = _ensure_online_pickup(
@@ -887,12 +901,18 @@ def internal_order_status(
             "lifecycle_stage": pickup.lifecycle_stage.value if pickup.lifecycle_stage else None,
             "expires_at": pickup.expires_at.isoformat() if pickup.expires_at else None,
             "current_token_id": pickup.current_token_id,
+            
+            
             "activated_at": pickup.activated_at.isoformat() if pickup.activated_at else None,
             "ready_at": pickup.ready_at.isoformat() if pickup.ready_at else None,
-            "door_opened_at": pickup.door_opened_at.isoformat() if pickup.door_opened_at else None,
+            # "door_opened_at": pickup.door_opened_at.isoformat() if pickup.door_opened_at else None,
+            "door_opened_at": _dt_iso(pickup.door_opened_at),
             "item_removed_at": pickup.item_removed_at.isoformat() if pickup.item_removed_at else None,
             "door_closed_at": pickup.door_closed_at.isoformat() if pickup.door_closed_at else None,
-            "redeemed_at": pickup.redeemed_at.isoformat() if pickup.redeemed_at else None,
+            # "redeemed_at": pickup.redeemed_at.isoformat() if pickup.redeemed_at else None,
+            "redeemed_at": _dt_iso(pickup.redeemed_at),
+
+            
             "redeemed_via": pickup.redeemed_via.value if pickup.redeemed_via else None,
             "expired_at": pickup.expired_at.isoformat() if pickup.expired_at else None,
             "cancelled_at": pickup.cancelled_at.isoformat() if pickup.cancelled_at else None,

@@ -641,8 +641,8 @@ def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _utc_now_naive() -> datetime:
-    return _utc_now().replace(tzinfo=None)
+# def _utc_now_naive() -> datetime:
+#     return _utc_now().replace(tzinfo=None)
 
 
 def _sha256(s: str) -> str:
@@ -869,7 +869,8 @@ def _ensure_online_pickup(
     allocation: Allocation,
     deadline_utc: datetime,
 ) -> Pickup:
-    now_naive = _utc_now_naive()
+    # now_naive = _utc_now_naive()
+    now = _utc_now()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
     if existing_pickup:
@@ -877,8 +878,8 @@ def _ensure_online_pickup(
         _apply_pickup_context(pickup, order=order, allocation=allocation)
         pickup.status = PickupStatus.ACTIVE
         pickup.lifecycle_stage = PickupLifecycleStage.READY_FOR_PICKUP
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = now_naive
+        pickup.activated_at = pickup.activated_at or now # now_naive
+        pickup.ready_at = now # now_naive
         pickup.expires_at = deadline_utc.replace(tzinfo=None)
         pickup.door_opened_at = None
         pickup.item_removed_at = None
@@ -906,8 +907,8 @@ def _ensure_online_pickup(
         status=PickupStatus.ACTIVE,
         lifecycle_stage=PickupLifecycleStage.READY_FOR_PICKUP,
         current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
+        activated_at=now, #now_naive,
+        ready_at=now, #now_naive,
         expires_at=deadline_utc.replace(tzinfo=None),
         door_opened_at=None,
         item_removed_at=None,
@@ -947,7 +948,8 @@ def _ensure_kiosk_pickup(
     order: Order,
     allocation: Allocation,
 ) -> Pickup:
-    now_naive = _utc_now_naive()
+    # now_naive = _utc_now_naive()
+    now = _utc_now()
     existing_pickup = _get_active_pickup_by_order(db, order.id)
 
     if existing_pickup:
@@ -955,10 +957,10 @@ def _ensure_kiosk_pickup(
         _apply_pickup_context(pickup, order=order, allocation=allocation)
         pickup.status = PickupStatus.ACTIVE
         pickup.lifecycle_stage = PickupLifecycleStage.DOOR_OPENED
-        pickup.activated_at = pickup.activated_at or now_naive
-        pickup.ready_at = pickup.ready_at or now_naive
+        pickup.activated_at = pickup.activated_at or now # now_naive
+        pickup.ready_at = pickup.ready_at or now # now_naive
         pickup.expires_at = None
-        pickup.door_opened_at = pickup.door_opened_at or now_naive
+        pickup.door_opened_at = pickup.door_opened_at or now # now_naive
         pickup.item_removed_at = None
         pickup.door_closed_at = None
         pickup.redeemed_at = None
@@ -985,10 +987,10 @@ def _ensure_kiosk_pickup(
         status=PickupStatus.ACTIVE,
         lifecycle_stage=PickupLifecycleStage.DOOR_OPENED,
         current_token_id=None,
-        activated_at=now_naive,
-        ready_at=now_naive,
+        activated_at=now, # now_naive,
+        ready_at=now, # now_naive,
         expires_at=None,
-        door_opened_at=now_naive,
+        door_opened_at=now, # now_naive,
         item_removed_at=None,
         door_closed_at=None,
         redeemed_at=None,
