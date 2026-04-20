@@ -5,6 +5,7 @@
 # 17/04/2026 - manual_code=manual_code,  # 🔥 NOVO
 # 17/04/2026 - código cifrado para manual_code
 # 18/04/2026 - correção para gravar manual_code_encrypted
+# 19/04/2026 - datetime
 
 from __future__ import annotations
 

@@ -75,11 +75,11 @@ _manual_redeem_attempts = {}
 
 
 #=============== HELPERS =================
-# def _utcnow() -> datetime:
-#     return datetime.now(timezone.utc)
-
 def _utcnow() -> datetime:
-    return to_iso_utc(datetime.now(timezone.utc))    
+    return datetime.now(timezone.utc)
+
+# def _utcnow() -> datetime:
+#     return to_iso_utc(datetime.now(timezone.utc))    
 
 
 def _utcnow_naive() -> datetime:

@@ -67,11 +67,11 @@ QR_ROTATE_SEC = settings.qr_rotate_sec
 
 
 #============ HELPERS =============
-# def _utc_now() -> datetime:
-#     return datetime.now(timezone.utc)
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
-def _utc_now() -> str:
-    return to_iso_utc(datetime.now(timezone.utc))
+# def _utc_now() -> str:
+#     return to_iso_utc(datetime.now(timezone.utc))
 
 def _utc_now_naive() -> datetime:
     return _utc_now().replace(tzinfo=None)

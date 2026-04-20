@@ -1,4 +1,6 @@
 # 01_source/backend/billing_fiscal_service/app/services/invoice_processing_service.py
+# 19/04/2026 - datetime
+
 from __future__ import annotations
 
 import logging
@@ -19,9 +21,11 @@ from app.core.datetime_utils import to_iso_utc
 logger = logging.getLogger(__name__)
 
 
-
 def _utc_now() -> datetime:
-    return to_iso_utc(datetime.now(timezone.utc))    
+    return datetime.now(timezone.utc)
+
+# def _utc_now() -> datetime:
+#     return to_iso_utc(datetime.now(timezone.utc))    
 
 
 def _worker_id() -> str:

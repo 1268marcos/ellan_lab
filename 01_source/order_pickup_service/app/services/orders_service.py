@@ -1,4 +1,6 @@
 # 01_source/order_pickup_service/app/services/orders_service.py
+# 19/04/2026 - datetime
+
 import os
 import uuid
 import hashlib
@@ -24,11 +26,11 @@ PICKUP_WINDOW_SEC = int(os.getenv("PICKUP_WINDOW_SEC", str(2 * 60 * 60)))  # 2h
 QR_ROTATE_SEC = int(os.getenv("QR_ROTATE_SEC", "600"))  # 10 min
 
 
-# def _utcnow() -> datetime:
-#     return datetime.now(timezone.utc)
-
 def _utcnow() -> datetime:
-    return to_iso_utc(datetime.now(timezone.utc))    
+    return datetime.now(timezone.utc)
+
+# def _utcnow() -> datetime:
+#     return to_iso_utc(datetime.now(timezone.utc))    
 
 
 def _sha256(s: str) -> str:
