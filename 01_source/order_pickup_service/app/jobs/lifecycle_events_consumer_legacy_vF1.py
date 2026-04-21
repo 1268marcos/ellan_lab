@@ -1,8 +1,6 @@
 # 01_source/order_pickup_service/app/jobs/lifecycle_events_consumer.py
-# 21/04/2026 - hardening para expiração de pickup
-# - resolve order_id corretamente mesmo quando aggregate_id vier como pickup_id
-# - logs mais explícitos
-# - mantém compatibilidade com pickup.expired / pickup.timed_out
+# 18/04/2026 - melhorias para expiração de retirada no ONLINE (pagou e não foi retirar)
+# 19/04/2026 - confirmação do event_name == "pickup.expired":
 
 from __future__ import annotations
 
@@ -19,46 +17,17 @@ from app.core.lifecycle_events_client import (
 from app.models.allocation import Allocation
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
+from app.services import backend_client
+
 from app.services.pickup_expiration_handler import handle_pickup_expired
+
+
+
+
 
 logger = logging.getLogger(__name__)
 
 LIFECYCLE_EVENTS_BATCH_SIZE = settings.lifecycle_events_batch_size
-
-
-def _resolve_order_id_from_event(
-    *,
-    db: Session,
-    item: dict[str, Any],
-    payload: dict[str, Any],
-) -> str | None:
-    order_id = payload.get("order_id")
-    if order_id:
-        return str(order_id)
-
-    aggregate_id = item.get("aggregate_id")
-    if not aggregate_id:
-        return None
-
-    aggregate_type = str(item.get("aggregate_type") or "").strip().lower()
-
-    if aggregate_type == "order":
-        return str(aggregate_id)
-
-    if aggregate_type == "pickup":
-        pickup = db.query(Pickup).filter(Pickup.id == str(aggregate_id)).first()
-        if pickup and pickup.order_id:
-            return str(pickup.order_id)
-
-    order = db.query(Order).filter(Order.id == str(aggregate_id)).first()
-    if order:
-        return str(order.id)
-
-    pickup = db.query(Pickup).filter(Pickup.id == str(aggregate_id)).first()
-    if pickup and pickup.order_id:
-        return str(pickup.order_id)
-
-    return None
 
 
 def run_lifecycle_events_consumer_once(db: Session) -> int:
@@ -78,43 +47,41 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
 
     for item in items:
         event_name = item.get("event_name")
+        
+        # if event_name != "order.prepayment_timed_out":
+        #    continue
+
         event_key = item.get("event_key")
         payload = item.get("payload") or {}
-
-        order_id = _resolve_order_id_from_event(
-            db=db,
-            item=item,
-            payload=payload,
-        )
+        order_id = payload.get("order_id") or item.get("aggregate_id")
 
         if not event_key or not order_id:
             logger.warning(
                 "lifecycle_event_missing_fields",
-                extra={
-                    "event_key": event_key,
-                    "event_name": event_name,
-                    "aggregate_id": item.get("aggregate_id"),
-                    "aggregate_type": item.get("aggregate_type"),
-                    "payload": payload,
-                },
+                extra={"event_key": event_key, "order_id": order_id},
             )
             continue
 
         try:
+            # handled = _handle_prepayment_timeout(db=db, order_id=order_id, payload=payload)
+            # if handled:
+            #     client.ack_event(event_key=event_key)
+            #     processed += 1
             handled = False
 
             if event_name == "order.prepayment_timed_out":
                 handled = _handle_prepayment_timeout(
                     db=db,
                     order_id=order_id,
-                    payload=payload,
+                    payload=payload
                 )
 
+            # BLOCO CRÍTICO
             elif event_name == "pickup.door_opened":
                 handled = _handle_pickup_door_opened(
                     db=db,
                     order_id=order_id,
-                    payload=payload,
+                    payload=payload
                 )
 
             elif event_name in {
@@ -127,6 +94,7 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
                     order_id=order_id,
                     payload=payload,
                 )
+
 
             if handled:
                 client.ack_event(event_key=event_key)
@@ -142,12 +110,7 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
         except Exception:
             logger.exception(
                 "lifecycle_event_process_failed",
-                extra={
-                    "event_key": event_key,
-                    "event_name": event_name,
-                    "order_id": order_id,
-                    "payload": payload,
-                },
+                extra={"event_key": event_key, "order_id": order_id},
             )
             db.rollback()
 
@@ -170,20 +133,25 @@ def _handle_pickup_door_opened(
 
     pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
 
+    # 🔥 estado final correto
+    # OrderStatus.DISPENSED -> Máquina liberou - pickup.door_opened - NÃO tem como provar que cliente retirou fisicamente, só sabe que a porta abriu.
     order.status = OrderStatus.DISPENSED
     order.picked_up_at = payload.get("occurred_at")
 
     if pickup:
-        pickup.status = PickupStatus.REDEEMED
+        pickup.status = PickupStatus.REDEEMED  # Retirada concluída - Antes errado com PickupStatus.COMPLETED
 
     db.commit()
 
     logger.info(
         "pickup_door_opened_applied",
-        extra={"order_id": order.id},
+        extra={
+            "order_id": order.id,
+        },
     )
 
     return True
+
 
 
 def _resolve_locker_id(*, order: Order, allocation: Allocation | None) -> str | None:
@@ -207,6 +175,9 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         )
         return True
 
+    # allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
+    # pickup = db.query(Pickup).filter(Pickup.order_id == order.id).first()
+    # Pega a allocation mais recente (melhoria válida)
     allocation = (
         db.query(Allocation)
         .filter(Allocation.order_id == order.id)
@@ -214,17 +185,81 @@ def _handle_prepayment_timeout(*, db: Session, order_id: str, payload: dict[str,
         .first()
     )
 
-    order.status = OrderStatus.CANCELLED
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc())
+        .first()
+    )
+
+    region = payload.get("region_code") or order.region   # Mantém flexibilidade
+    locker_id = _resolve_locker_id(order=order, allocation=allocation)
+
+    # 🔥 Libera locker ANTES do commit (mantém da versão atual)
+    if allocation and allocation.id:
+        try:
+            backend_client.locker_release(
+                region,
+                allocation.id,
+                locker_id=locker_id,
+            )
+
+            if allocation.slot is not None:
+                backend_client.locker_set_state(
+                    region,
+                    int(allocation.slot),
+                    "AVAILABLE",
+                    locker_id=locker_id,
+                )
+        except Exception:
+            logger.exception(
+                "prepayment_timeout_release_failed",
+                extra={
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "slot": allocation.slot,
+                    "region": region,
+                    "locker_id": locker_id,
+                },
+            )
+            raise  # 🔥 Mantém o raise para garantir consistência
+
+    # Usa métodos de domínio (melhoria válida)
+    order.status = OrderStatus.EXPIRED
+    order.mark_payment_expired()
+
+
+    # Se existir método mark_as_expired, use-o
+    if hasattr(order, "mark_as_expired"):
+        order.mark_as_expired(credit_50=False)
+
 
     if allocation:
-        allocation.locked_until = None
+        # allocation.mark_released()
+        # Prefira mark_expired se existir, senão mark_released
+        if hasattr(allocation, "mark_expired"):
+            allocation.mark_expired()
+        else:
+            allocation.mark_released()
+
+
+    if pickup and pickup.status == PickupStatus.ACTIVE:
+        # pickup.status = PickupStatus.CANCELLED
+        pickup.status = PickupStatus.EXPIRED  # Mantém EXPIRED (mais semântico)
 
     db.commit()
 
     logger.info(
         "prepayment_timeout_applied",
-        extra={"order_id": order.id},
+        extra={
+            "order_id": order.id,
+            "region": region,
+            "locker_id": locker_id,
+            "allocation_id": allocation.id if allocation else None,
+            "slot": allocation.slot if allocation else None,
+        },
     )
-
     return True
+
+
 

@@ -2,10 +2,8 @@
 -- PostgreSQL database dump
 --
 
-\restrict H7nEXDtVaDTrf56KQDCCfzSrhVodL2wjyOBCCU7KlcpNLEasfOoUxi09HYmEp1N
-
--- Dumped from database version 15.17 (Debian 15.17-1.pgdg13+1)
--- Dumped by pg_dump version 15.17 (Debian 15.17-1.pgdg13+1)
+-- Dumped from database version 15.8 (Debian 15.8-1.pgdg110+1)
+-- Dumped by pg_dump version 15.8 (Debian 15.8-1.pgdg110+1)
 
 SET statement_timeout = 0;
 SET lock_timeout = 0;
@@ -17,6 +15,78 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: topology; Type: SCHEMA; Schema: -; Owner: admin
+--
+
+CREATE SCHEMA topology;
+
+
+ALTER SCHEMA topology OWNER TO admin;
+
+--
+-- Name: SCHEMA topology; Type: COMMENT; Schema: -; Owner: admin
+--
+
+COMMENT ON SCHEMA topology IS 'PostGIS Topology schema';
+
+
+--
+-- Name: address_standardizer; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS address_standardizer WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION address_standardizer; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION address_standardizer IS 'Used to parse an address into constituent elements. Generally used to support geocoding address normalization step.';
+
+
+--
+-- Name: fuzzystrmatch; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION fuzzystrmatch; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION fuzzystrmatch IS 'determine similarities and distance between strings';
+
+
+--
+-- Name: postgis; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION postgis; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION postgis IS 'PostGIS geometry and geography spatial types and functions';
+
+
+--
+-- Name: postgis_topology; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS postgis_topology WITH SCHEMA topology;
+
+
+--
+-- Name: EXTENSION postgis_topology; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION postgis_topology IS 'PostGIS topology spatial types and functions';
+
 
 --
 -- Name: allocationstate; Type: TYPE; Schema: public; Owner: admin
@@ -86,7 +156,8 @@ ALTER TYPE public.deadline_status_enum OWNER TO admin;
 
 CREATE TYPE public.deadline_type_enum AS ENUM (
     'PREPAYMENT_TIMEOUT',
-    'POSTPAYMENT_EXPIRY'
+    'POSTPAYMENT_EXPIRY',
+    'PICKUP_TIMEOUT'
 );
 
 
@@ -285,6 +356,43 @@ CREATE TYPE public.pickupstatus AS ENUM (
 
 
 ALTER TYPE public.pickupstatus OWNER TO admin;
+
+--
+-- Name: find_lockers_by_distance(numeric, numeric, numeric, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.find_lockers_by_distance(ref_lat numeric, ref_lon numeric, radius_meters numeric, max_results integer DEFAULT 50) RETURNS TABLE(id integer, external_id character varying, address_street character varying, city_name character varying, district character varying, postal_code character varying, distance_meters numeric, is_24h boolean)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        l.id,
+        l.external_id,
+        l.address_street,
+        l.city_name,
+        l.district,
+        l.postal_code,
+        ROUND(CAST(ST_Distance(
+            l.geom::geography,
+            ST_SetSRID(ST_MakePoint(ref_lon, ref_lat), 4326)::geography
+        ) AS NUMERIC), 2) AS distance_meters,
+        (l.metadata_json->>'is_24h')::BOOLEAN AS is_24h
+    FROM public.capability_locker_location l
+    WHERE l.is_active = true
+      AND l.geom IS NOT NULL
+      AND ST_DWithin(
+            l.geom::geography,
+            ST_SetSRID(ST_MakePoint(ref_lon, ref_lat), 4326)::geography,
+            radius_meters
+          )
+    ORDER BY l.geom <-> ST_SetSRID(ST_MakePoint(ref_lon, ref_lat), 4326)
+    LIMIT max_results;
+END;
+$$;
+
+
+ALTER FUNCTION public.find_lockers_by_distance(ref_lat numeric, ref_lon numeric, radius_meters numeric, max_results integer) OWNER TO admin;
 
 --
 -- Name: get_active_fiscal_document(text); Type: FUNCTION; Schema: public; Owner: admin
@@ -545,6 +653,42 @@ $$;
 
 ALTER FUNCTION public.trg_log_slot_state_change() OWNER TO admin;
 
+--
+-- Name: update_geom_from_coords(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.update_geom_from_coords() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL THEN
+        NEW.geom = ST_SetSRID(ST_MakePoint(NEW.longitude, NEW.latitude), 4326);
+    ELSIF NEW.latitude IS NULL OR NEW.longitude IS NULL THEN
+        NEW.geom = NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_geom_from_coords() OWNER TO admin;
+
+--
+-- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.update_updated_at_column() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.update_updated_at_column() OWNER TO admin;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -744,6 +888,134 @@ ALTER TABLE public.capability_context_id_seq OWNER TO admin;
 --
 
 ALTER SEQUENCE public.capability_context_id_seq OWNED BY public.capability_context.id;
+
+
+--
+-- Name: capability_country; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.capability_country (
+    id integer NOT NULL,
+    code character(2) NOT NULL,
+    name character varying(100) NOT NULL,
+    continent character varying(50),
+    default_currency character(3),
+    default_timezone character varying(50),
+    address_format character varying(20),
+    metadata_json jsonb,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.capability_country OWNER TO admin;
+
+--
+-- Name: TABLE capability_country; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.capability_country IS 'Países operacionais para o sistema de lockers';
+
+
+--
+-- Name: capability_country_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.capability_country_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.capability_country_id_seq OWNER TO admin;
+
+--
+-- Name: capability_country_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.capability_country_id_seq OWNED BY public.capability_country.id;
+
+
+--
+-- Name: capability_locker_location; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.capability_locker_location (
+    id integer NOT NULL,
+    external_id character varying(100),
+    province_code character varying(10),
+    city_name character varying(100),
+    district character varying(100),
+    postal_code character varying(20),
+    latitude numeric(10,8),
+    longitude numeric(11,8),
+    geom public.geometry(Point,4326),
+    timezone character varying(50),
+    address_street character varying(255),
+    address_number character varying(20),
+    address_complement character varying(100),
+    operating_hours_json jsonb,
+    is_active boolean DEFAULT true,
+    metadata_json jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.capability_locker_location OWNER TO admin;
+
+--
+-- Name: TABLE capability_locker_location; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.capability_locker_location IS 'Localizações físicas dos lockers com suporte a geolocalização';
+
+
+--
+-- Name: COLUMN capability_locker_location.geom; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.capability_locker_location.geom IS 'Geometria PostGIS (Point, SRID 4326) para consultas espaciais avançadas';
+
+
+--
+-- Name: COLUMN capability_locker_location.operating_hours_json; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.capability_locker_location.operating_hours_json IS 'JSON com horários: {"monday": "08:00-22:00", "saturday": "09:00-14:00"}';
+
+
+--
+-- Name: COLUMN capability_locker_location.metadata_json; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.capability_locker_location.metadata_json IS 'Metadados extensíveis: {"is_24h": true, "locker_size": "large", "accessibility": "wheelchair"}';
+
+
+--
+-- Name: capability_locker_location_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.capability_locker_location_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.capability_locker_location_id_seq OWNER TO admin;
+
+--
+-- Name: capability_locker_location_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.capability_locker_location_id_seq OWNED BY public.capability_locker_location.id;
 
 
 --
@@ -1110,6 +1382,56 @@ ALTER SEQUENCE public.capability_profile_target_id_seq OWNED BY public.capabilit
 
 
 --
+-- Name: capability_province; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.capability_province (
+    id integer NOT NULL,
+    code character varying(10) NOT NULL,
+    name character varying(100) NOT NULL,
+    country_code character(2),
+    province_code_original character(2),
+    region character varying(50),
+    timezone character varying(50),
+    is_active boolean DEFAULT true,
+    metadata_json jsonb,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.capability_province OWNER TO admin;
+
+--
+-- Name: TABLE capability_province; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.capability_province IS 'Estados/Províncias com hierarquia ISO 3166-2 (ex: BR-SP)';
+
+
+--
+-- Name: capability_province_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.capability_province_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.capability_province_id_seq OWNER TO admin;
+
+--
+-- Name: capability_province_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.capability_province_id_seq OWNED BY public.capability_province.id;
+
+
+--
 -- Name: capability_region; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -1255,11 +1577,11 @@ CREATE TABLE public.domain_event_outbox (
     event_version integer,
     status character varying(50),
     payload_json text,
-    occurred_at timestamp without time zone,
-    published_at timestamp without time zone,
+    occurred_at timestamp with time zone,
+    published_at timestamp with time zone,
     last_error text,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     retry_count integer DEFAULT 0 NOT NULL,
     next_retry_at timestamp without time zone,
     processing_started_at timestamp without time zone
@@ -1922,10 +2244,10 @@ CREATE TABLE public.orders (
     payment_method public.paymentmethod,
     payment_status public.paymentstatus NOT NULL,
     card_type public.cardtype,
-    payment_updated_at timestamp without time zone,
-    paid_at timestamp without time zone,
-    pickup_deadline_at timestamp without time zone,
-    picked_up_at timestamp without time zone,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
     guest_session_id character varying,
     public_access_token_hash character varying,
     receipt_email character varying,
@@ -1933,8 +2255,8 @@ CREATE TABLE public.orders (
     consent_marketing integer NOT NULL,
     guest_phone character varying,
     guest_email character varying,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
     currency character varying(8) DEFAULT 'BRL'::character varying,
     site_id character varying(100),
     tenant_id character varying(100),
@@ -1960,7 +2282,7 @@ CREATE TABLE public.orders (
     order_metadata jsonb,
     slot integer,
     allocation_id character varying,
-    allocation_expires_at timestamp without time zone,
+    allocation_expires_at timestamp with time zone,
     created_by character varying(36),
     updated_by character varying(36),
     deleted_at timestamp with time zone
@@ -2256,10 +2578,12 @@ CREATE TABLE public.pickup_tokens (
     id character varying NOT NULL,
     pickup_id character varying NOT NULL,
     token_hash character varying NOT NULL,
-    expires_at timestamp without time zone NOT NULL,
-    used_at timestamp without time zone,
-    created_at timestamp without time zone NOT NULL,
-    is_active boolean DEFAULT true NOT NULL
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    manual_code character varying,
+    manual_code_encrypted character varying
 );
 
 
@@ -2283,23 +2607,23 @@ CREATE TABLE public.pickups (
     status public.pickupstatus NOT NULL,
     lifecycle_stage public.pickuplifecyclestage NOT NULL,
     current_token_id character varying,
-    activated_at timestamp without time zone NOT NULL,
-    ready_at timestamp without time zone,
-    expires_at timestamp without time zone,
-    door_opened_at timestamp without time zone,
-    item_removed_at timestamp without time zone,
-    door_closed_at timestamp without time zone,
-    redeemed_at timestamp without time zone,
+    activated_at timestamp with time zone NOT NULL,
+    ready_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    door_opened_at timestamp with time zone,
+    item_removed_at timestamp with time zone,
+    door_closed_at timestamp with time zone,
+    redeemed_at timestamp with time zone,
     redeemed_via public.pickupredeemvia,
-    expired_at timestamp without time zone,
-    cancelled_at timestamp without time zone,
+    expired_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
     cancel_reason character varying,
     correlation_id character varying,
     source_event_id character varying,
     sensor_event_id character varying,
     notes character varying,
-    created_at timestamp without time zone NOT NULL,
-    updated_at timestamp without time zone NOT NULL
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
 );
 
 
@@ -2926,6 +3250,20 @@ ALTER TABLE ONLY public.capability_context ALTER COLUMN id SET DEFAULT nextval('
 
 
 --
+-- Name: capability_country id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_country ALTER COLUMN id SET DEFAULT nextval('public.capability_country_id_seq'::regclass);
+
+
+--
+-- Name: capability_locker_location id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_locker_location ALTER COLUMN id SET DEFAULT nextval('public.capability_locker_location_id_seq'::regclass);
+
+
+--
 -- Name: capability_profile id; Type: DEFAULT; Schema: public; Owner: admin
 --
 
@@ -2986,6 +3324,13 @@ ALTER TABLE ONLY public.capability_profile_snapshot_old ALTER COLUMN id SET DEFA
 --
 
 ALTER TABLE ONLY public.capability_profile_target ALTER COLUMN id SET DEFAULT nextval('public.capability_profile_target_id_seq'::regclass);
+
+
+--
+-- Name: capability_province id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_province ALTER COLUMN id SET DEFAULT nextval('public.capability_province_id_seq'::regclass);
 
 
 --
@@ -3123,6 +3468,38 @@ ALTER TABLE ONLY public.capability_context
 
 
 --
+-- Name: capability_country capability_country_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_country
+    ADD CONSTRAINT capability_country_code_key UNIQUE (code);
+
+
+--
+-- Name: capability_country capability_country_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_country
+    ADD CONSTRAINT capability_country_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: capability_locker_location capability_locker_location_external_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_locker_location
+    ADD CONSTRAINT capability_locker_location_external_id_key UNIQUE (external_id);
+
+
+--
+-- Name: capability_locker_location capability_locker_location_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_locker_location
+    ADD CONSTRAINT capability_locker_location_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: capability_profile_action capability_profile_action_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -3200,6 +3577,22 @@ ALTER TABLE ONLY public.capability_profile_snapshot
 
 ALTER TABLE ONLY public.capability_profile_target
     ADD CONSTRAINT capability_profile_target_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: capability_province capability_province_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_province
+    ADD CONSTRAINT capability_province_code_key UNIQUE (code);
+
+
+--
+-- Name: capability_province capability_province_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_province
+    ADD CONSTRAINT capability_province_pkey PRIMARY KEY (id);
 
 
 --
@@ -3927,6 +4320,48 @@ CREATE INDEX idx_allocations_state ON public.allocations USING btree (state);
 
 
 --
+-- Name: idx_country_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_code ON public.capability_country USING btree (code);
+
+
+--
+-- Name: idx_country_continent; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_continent ON public.capability_country USING btree (continent);
+
+
+--
+-- Name: idx_country_continent_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_continent_active ON public.capability_country USING btree (continent, is_active);
+
+
+--
+-- Name: idx_country_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_created_at ON public.capability_country USING btree (created_at);
+
+
+--
+-- Name: idx_country_is_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_is_active ON public.capability_country USING btree (is_active);
+
+
+--
+-- Name: idx_country_metadata_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_country_metadata_gin ON public.capability_country USING gin (metadata_json);
+
+
+--
 -- Name: idx_door_state_machine; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -3945,6 +4380,167 @@ CREATE INDEX idx_door_state_machine_state ON public.door_state USING btree (mach
 --
 
 CREATE INDEX idx_fiscal_order_attempt ON public.fiscal_documents USING btree (order_id, attempt);
+
+
+--
+-- Name: idx_locker_24h_only; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_24h_only ON public.capability_locker_location USING btree (id) WHERE ((metadata_json ->> 'is_24h'::text) = 'true'::text);
+
+
+--
+-- Name: idx_locker_active_only; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_active_only ON public.capability_locker_location USING btree (id) WHERE (is_active = true);
+
+
+--
+-- Name: idx_locker_address_search_en; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_address_search_en ON public.capability_locker_location USING gin (to_tsvector('english'::regconfig, (((((COALESCE(address_street, ''::character varying))::text || ' '::text) || (COALESCE(city_name, ''::character varying))::text) || ' '::text) || (COALESCE(district, ''::character varying))::text)));
+
+
+--
+-- Name: idx_locker_address_search_pt; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_address_search_pt ON public.capability_locker_location USING gin (to_tsvector('portuguese'::regconfig, (((((((((COALESCE(address_street, ''::character varying))::text || ' '::text) || (COALESCE(address_number, ''::character varying))::text) || ' '::text) || (COALESCE(city_name, ''::character varying))::text) || ' '::text) || (COALESCE(district, ''::character varying))::text) || ' '::text) || (COALESCE(postal_code, ''::character varying))::text)));
+
+
+--
+-- Name: idx_locker_city_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_city_active ON public.capability_locker_location USING btree (city_name, is_active);
+
+
+--
+-- Name: idx_locker_city_district; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_city_district ON public.capability_locker_location USING btree (city_name, district);
+
+
+--
+-- Name: idx_locker_city_name; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_city_name ON public.capability_locker_location USING btree (city_name);
+
+
+--
+-- Name: idx_locker_coords; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_coords ON public.capability_locker_location USING btree (latitude, longitude);
+
+
+--
+-- Name: idx_locker_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_created_at ON public.capability_locker_location USING btree (created_at);
+
+
+--
+-- Name: idx_locker_district; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_district ON public.capability_locker_location USING btree (district);
+
+
+--
+-- Name: idx_locker_external_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_external_id ON public.capability_locker_location USING btree (external_id);
+
+
+--
+-- Name: idx_locker_geom_bbox; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_geom_bbox ON public.capability_locker_location USING gist (geom public.gist_geometry_ops_nd);
+
+
+--
+-- Name: idx_locker_geom_gist; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_geom_gist ON public.capability_locker_location USING gist (geom);
+
+
+--
+-- Name: idx_locker_has_geom; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_has_geom ON public.capability_locker_location USING btree (id) WHERE (geom IS NOT NULL);
+
+
+--
+-- Name: idx_locker_hours_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_hours_gin ON public.capability_locker_location USING gin (operating_hours_json);
+
+
+--
+-- Name: idx_locker_is_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_is_active ON public.capability_locker_location USING btree (is_active);
+
+
+--
+-- Name: idx_locker_metadata_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_metadata_gin ON public.capability_locker_location USING gin (metadata_json);
+
+
+--
+-- Name: idx_locker_metadata_is_24h; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_metadata_is_24h ON public.capability_locker_location USING btree (((metadata_json ->> 'is_24h'::text)));
+
+
+--
+-- Name: idx_locker_metadata_locker_size; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_metadata_locker_size ON public.capability_locker_location USING btree (((metadata_json ->> 'locker_size'::text)));
+
+
+--
+-- Name: idx_locker_postal_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_postal_active ON public.capability_locker_location USING btree (postal_code, is_active);
+
+
+--
+-- Name: idx_locker_postal_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_postal_code ON public.capability_locker_location USING btree (postal_code);
+
+
+--
+-- Name: idx_locker_province_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_province_active ON public.capability_locker_location USING btree (province_code, is_active);
+
+
+--
+-- Name: idx_locker_province_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_locker_province_code ON public.capability_locker_location USING btree (province_code);
 
 
 --
@@ -4106,6 +4702,76 @@ CREATE INDEX idx_products_created_at ON public.products USING btree (created_at)
 --
 
 CREATE INDEX idx_products_is_active ON public.products USING btree (is_active);
+
+
+--
+-- Name: idx_province_active_only; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_active_only ON public.capability_province USING btree (country_code) WHERE (is_active = true);
+
+
+--
+-- Name: idx_province_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_code ON public.capability_province USING btree (code);
+
+
+--
+-- Name: idx_province_country_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_country_active ON public.capability_province USING btree (country_code, is_active);
+
+
+--
+-- Name: idx_province_country_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_country_code ON public.capability_province USING btree (country_code);
+
+
+--
+-- Name: idx_province_country_region; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_country_region ON public.capability_province USING btree (country_code, region);
+
+
+--
+-- Name: idx_province_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_created_at ON public.capability_province USING btree (created_at);
+
+
+--
+-- Name: idx_province_is_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_is_active ON public.capability_province USING btree (is_active);
+
+
+--
+-- Name: idx_province_metadata_gin; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_metadata_gin ON public.capability_province USING gin (metadata_json);
+
+
+--
+-- Name: idx_province_province_code_original; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_province_code_original ON public.capability_province USING btree (province_code_original);
+
+
+--
+-- Name: idx_province_region; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_province_region ON public.capability_province USING btree (region);
 
 
 --
@@ -5803,6 +6469,34 @@ CREATE TRIGGER trg_uw_updated_at BEFORE UPDATE ON public.user_wallets FOR EACH R
 
 
 --
+-- Name: capability_country trigger_country_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trigger_country_updated_at BEFORE UPDATE ON public.capability_country FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: capability_locker_location trigger_locker_update_geom; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trigger_locker_update_geom BEFORE INSERT OR UPDATE OF latitude, longitude ON public.capability_locker_location FOR EACH ROW EXECUTE FUNCTION public.update_geom_from_coords();
+
+
+--
+-- Name: capability_locker_location trigger_locker_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trigger_locker_updated_at BEFORE UPDATE ON public.capability_locker_location FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: capability_province trigger_province_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trigger_province_updated_at BEFORE UPDATE ON public.capability_province FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
 -- Name: allocations allocations_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -5832,6 +6526,14 @@ ALTER TABLE ONLY public.auth_sessions
 
 ALTER TABLE ONLY public.capability_context
     ADD CONSTRAINT capability_context_channel_id_fkey FOREIGN KEY (channel_id) REFERENCES public.capability_channel(id) ON DELETE RESTRICT;
+
+
+--
+-- Name: capability_locker_location capability_locker_location_province_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_locker_location
+    ADD CONSTRAINT capability_locker_location_province_code_fkey FOREIGN KEY (province_code) REFERENCES public.capability_province(code) ON DELETE SET NULL;
 
 
 --
@@ -5936,6 +6638,14 @@ ALTER TABLE ONLY public.capability_profile
 
 ALTER TABLE ONLY public.capability_profile_target
     ADD CONSTRAINT capability_profile_target_profile_id_fkey FOREIGN KEY (profile_id) REFERENCES public.capability_profile(id) ON DELETE CASCADE;
+
+
+--
+-- Name: capability_province capability_province_country_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.capability_province
+    ADD CONSTRAINT capability_province_country_code_fkey FOREIGN KEY (country_code) REFERENCES public.capability_country(code) ON DELETE CASCADE;
 
 
 --
@@ -6213,6 +6923,4 @@ ALTER TABLE ONLY public.webhook_deliveries
 --
 -- PostgreSQL database dump complete
 --
-
-\unrestrict H7nEXDtVaDTrf56KQDCCfzSrhVodL2wjyOBCCU7KlcpNLEasfOoUxi09HYmEp1N
 

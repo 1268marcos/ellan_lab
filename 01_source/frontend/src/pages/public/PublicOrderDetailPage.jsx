@@ -2,6 +2,7 @@
 // 18/04/2026 - atualização : function getPickupMessage() 
 // 18/04/2026 - melhoramento UX/CX para localização locker
 // 19/04/2026 - ajuste em datas apresentadas com formatDateTimeByRegion()
+// 21/04/2026 - nova function getPickupMessage(order, pickup) {}
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -131,7 +132,10 @@ export default function PublicOrderDetailPage() {
     };
   }, [token, loading, isAuthenticated, orderId]);
 
-  const pickupMessage = getPickupMessage(order);
+  // const pickupMessage = getPickupMessage(order);
+  const pickupMessage = useMemo(() => {
+    return getPickupMessage(order, pickup);
+  }, [order, pickup]);
 
   const receiptCode = useMemo(() => normalize(order?.receipt_code), [order?.receipt_code]);
 
@@ -149,6 +153,40 @@ export default function PublicOrderDetailPage() {
     if (!receiptCode) return "";
     return `${FRONTEND_BASE}/comprovante?code=${encodeURIComponent(receiptCode)}`;
   }, [receiptCode]);
+
+
+
+  const rawExpiresAt =
+    order?.expires_at ||
+    order?.pickup_deadline_at ||
+    pickup?.expires_at ||
+    null;
+
+  const expiresAtDate = rawExpiresAt ? new Date(rawExpiresAt) : null;
+  const expiredByTime =
+    expiresAtDate instanceof Date &&
+    !Number.isNaN(expiresAtDate.getTime()) &&
+    Date.now() > expiresAtDate.getTime();
+
+  const pickupStatusNormalized = String(
+    pickup?.status || order?.pickup_status || ""
+  ).toUpperCase();
+
+  const orderStatusNormalized = String(order?.status || "").toUpperCase();
+
+  const pickupExpiredEffective =
+    orderStatusNormalized === "EXPIRED" ||
+    orderStatusNormalized === "EXPIRED_CREDIT_50" ||
+    pickupStatusNormalized === "EXPIRED" ||
+    expiredByTime ||
+    order?.pickup_expired_effective === true;
+
+  const canShowPickupCredentials =
+    !!order && !pickupExpiredEffective;
+
+
+
+
 
   function copyReceiptLink() {
     if (!receiptDeepLink) return;
@@ -293,7 +331,6 @@ export default function PublicOrderDetailPage() {
               </div>
 
 
-
               {order ? (
                 <>
                   <div style={detailsGridStyle}>
@@ -307,18 +344,24 @@ export default function PublicOrderDetailPage() {
                     />
                     <Field
                       label="Código de retirada manual"
-                      value={order?.manual_code || pickup?.manual_code_masked || "-"}
+                      value={
+                        canShowPickupCredentials
+                          ? (order?.manual_code || pickup?.manual_code_masked || "-")
+                          : "-"
+                      }
                     />
                   </div>
 
-                  <div style={{ marginTop: 16 }}>
-                    <label style={labelStyle}>QR payload</label>
-                    <textarea
-                      readOnly
-                      value={order?.qr_payload || pickup?.qr_value || ""}
-                      style={textAreaStyle}
-                    />
-                  </div>
+                  {canShowPickupCredentials ? (
+                    <div style={{ marginTop: 16 }}>
+                      <label style={labelStyle}>QR payload</label>
+                      <textarea
+                        readOnly
+                        value={order?.qr_payload || pickup?.qr_value || ""}
+                        style={textAreaStyle}
+                      />
+                    </div>
+                  ) : null}
 
                   <div style={{ marginTop: 12 }}>
                     <p style={infoTextStyle}>{pickupMessage}</p>
@@ -353,28 +396,36 @@ function Field({ label, value }) {
 }
 
 
-
-function getPickupMessage(order) {
+function getPickupMessage(order, pickup) {
   if (!order) {
     return "Não foi possível determinar o estado da retirada deste pedido.";
   }
 
   const status = String(order.status || "").toUpperCase();
   const paymentStatus = String(order.payment_status || "").toUpperCase();
-  const pickupStatus = String(order.pickup_status || "").toUpperCase();
+  const pickupStatus = String(pickup?.status || order.pickup_status || "").toUpperCase();
 
-  // if (status === "EXPIRED") {
-  //   return "Este pedido expirou antes da confirmação do pagamento. A retirada não foi liberada.";
-  // }
+  const rawExpiresAt =
+    order?.expires_at ||
+    order?.pickup_deadline_at ||
+    pickup?.expires_at ||
+    null;
+
+  let expiredByTime = false;
+  if (rawExpiresAt) {
+    const exp = new Date(rawExpiresAt);
+    expiredByTime = !Number.isNaN(exp.getTime()) && Date.now() > exp.getTime();
+  }
 
   const isExpired =
     status === "EXPIRED" ||
-    status === "EXPIRED_CREDIT_50";
+    status === "EXPIRED_CREDIT_50" ||
+    pickupStatus === "EXPIRED" ||
+    expiredByTime;
 
   if (isExpired) {
     return "O prazo de retirada expirou. Este pedido não está mais disponível no locker.";
   }
-
 
   if (status === "CANCELLED" || status === "CANCELED") {
     return "Este pedido foi cancelado. A retirada não está disponível.";
@@ -406,6 +457,8 @@ function getPickupMessage(order) {
 
   return "Os dados de retirada ainda não estão disponíveis para o estado atual deste pedido.";
 }
+
+
 
 
 function formatDateTime(value) {

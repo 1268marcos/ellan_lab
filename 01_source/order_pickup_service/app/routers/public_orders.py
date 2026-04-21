@@ -12,6 +12,7 @@
 # 17/04/2026 - manual_code criptografado/cifrado
 # 18/04/2026 - melhoramento payload - endereço - def _load_locker_snapshot()
 # 19/04/2026 - datatime padrao ISO 8601
+# 21/04/2026 - nova implementação para def _serialize_order()
 
 
 from __future__ import annotations
@@ -510,7 +511,7 @@ def _serialize_order_legacy_manual_code_texto_plano(
 
 
 
-def _serialize_order(
+def _serialize_order_legacy_falha_devolve_sempre_manual_code(
     order: Order,
     fiscal: FiscalDocument | None = None,
     *,
@@ -600,6 +601,117 @@ def _serialize_order(
         "manual_code": _resolve_token_manual_code(token),
         "qr_payload": qr_payload,
         "locker": locker,
+    }
+
+
+def _serialize_order(
+    order: Order,
+    fiscal: FiscalDocument | None = None,
+    *,
+    pickup: Pickup | None = None,
+    token: PickupToken | None = None,
+    allocation: Allocation | None = None,
+    locker: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Serializa pedido para resposta da API"""
+
+    now = datetime.now(timezone.utc)
+
+    slot_value = None
+    if getattr(order, "slot", None) is not None:
+        slot_value = order.slot
+    elif pickup and getattr(pickup, "slot", None) is not None:
+        slot_value = pickup.slot
+    elif allocation and getattr(allocation, "slot", None) is not None:
+        slot_value = allocation.slot
+
+    expires_at_dt = None
+    if pickup and getattr(pickup, "expires_at", None):
+        expires_at_dt = pickup.expires_at
+    elif token and getattr(token, "expires_at", None):
+        expires_at_dt = token.expires_at
+
+    if expires_at_dt and expires_at_dt.tzinfo is None:
+        expires_at_dt = expires_at_dt.replace(tzinfo=timezone.utc)
+
+    expires_at_value = _dt_iso(expires_at_dt)
+
+    status_value = order.status.value if order.status else None
+    pickup_status_value = pickup.status.value if pickup and pickup.status else None
+
+    expired_by_status = status_value in {"EXPIRED", "EXPIRED_CREDIT_50"}
+    expired_by_pickup = pickup_status_value == "EXPIRED"
+    expired_by_time = bool(expires_at_dt and now > expires_at_dt)
+
+    hide_pickup_credentials = expired_by_status or expired_by_pickup or expired_by_time
+
+    qr_payload = None
+    if not hide_pickup_credentials and order and token and token.id and expires_at_value:
+        qr_payload = build_public_pickup_qr_value(
+            order_id=order.id,
+            token_id=token.id,
+            expires_at_iso=expires_at_value,
+        )
+
+    manual_code = None
+    if not hide_pickup_credentials:
+        manual_code = _resolve_token_manual_code(token)
+
+    return {
+        "id": order.id,
+        "order_id": order.id,
+        "user_id": order.user_id,
+        "channel": order.channel.value if order.channel else None,
+        "region": order.region,
+        "totem_id": order.totem_id,
+        "sku_id": order.sku_id,
+        "amount_cents": order.amount_cents,
+        "status": status_value,
+        "gateway_transaction_id": order.gateway_transaction_id,
+        "payment_method": order.payment_method.value if order.payment_method else None,
+        "payment_status": order.payment_status.value if order.payment_status else None,
+        "card_type": order.card_type.value if order.card_type else None,
+        "payment_updated_at": _dt_iso(order.payment_updated_at),
+        "paid_at": _dt_iso(order.paid_at),
+        "pickup_deadline_at": (
+            _dt_iso(order.pickup_deadline_at)
+            or _dt_iso(getattr(pickup, "expires_at", None))
+            or _dt_iso(getattr(token, "expires_at", None))
+        ),
+        "picked_up_at": (
+            _dt_iso(order.picked_up_at)
+            or _dt_iso(getattr(pickup, "redeemed_at", None))
+            or _dt_iso(getattr(pickup, "item_removed_at", None))
+            or _dt_iso(getattr(pickup, "door_closed_at", None))
+        ),
+        "guest_session_id": order.guest_session_id,
+        "consent_marketing": order.consent_marketing,
+        "created_at": _dt_iso(order.created_at),
+        "updated_at": _dt_iso(order.updated_at),
+        "receipt_code": fiscal.receipt_code if fiscal else None,
+        "receipt_print_path": fiscal.print_site_path if fiscal else None,
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None
+        ),
+        "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
+        "customer_phone": order.guest_phone,
+        "guest_email": getattr(order, "guest_email", None),
+
+        "allocation_id": getattr(order, "allocation_id", None) or (allocation.id if allocation else None),
+        "slot": slot_value,
+        "pickup_id": pickup.id if pickup else None,
+        "pickup_status": pickup_status_value,
+        "pickup_lifecycle_stage": (
+            pickup.lifecycle_stage.value
+            if pickup and getattr(pickup, "lifecycle_stage", None)
+            else None
+        ),
+        "expires_at": expires_at_value,
+        "token_id": None if hide_pickup_credentials else (token.id if token else None),
+        "manual_code": manual_code,
+        "qr_payload": qr_payload,
+        "locker": locker,
+        "pickup_expired_effective": hide_pickup_credentials,
     }
 
 

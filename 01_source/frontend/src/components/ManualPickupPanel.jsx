@@ -144,7 +144,7 @@ export default function ManualPickupPanel({
       <div style={{ fontWeight: 800 }}>Retirada por código manual</div>
 
       <button onClick={() => setKeyboardOpen(true)} style={inputStyle}>
-        {manualCode || "Digite o código"}
+        {manualCode || "Use aqui para digitar o código"}
       </button>
 
       <button

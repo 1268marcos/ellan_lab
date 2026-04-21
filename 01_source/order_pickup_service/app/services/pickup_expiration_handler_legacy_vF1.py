@@ -1,28 +1,32 @@
 # 01_source/order_pickup_service/app/services/pickup_expiration_handler.py
-# 21/04/2026 - hardening expiração de retirada
-# - expira order/pickup/allocation
-# - invalida tokens ativos
-# - runtime -> AVAILABLE
-# - idempotente
+# 18/04/2026 - novo
+# 18/04/2026 - handler de expiração de retirada
+# 20/04/2026 - inclusão de log para encontrar bug da expiração de retirada
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
-from app.models.pickup_token import PickupToken
 from app.services import backend_client
 from app.services.pickup_event_publisher import publish_pickup_expired
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
+
+# REGRA OPERACIONAL:
+# - pedido expira
+# - alocação é liberada
+# - runtime fica OUT_OF_STOCK por padrão, pois o item físico continua ocupando a gaveta
+# Se sua regra de negócio for recolocar imediatamente à venda, troque para "AVAILABLE".
+# RUNTIME_STATE_ON_PICKUP_EXPIRED = "OUT_OF_STOCK"
 RUNTIME_STATE_ON_PICKUP_EXPIRED = "AVAILABLE"
 
 
@@ -45,29 +49,6 @@ def _touch(model: Any) -> None:
         model.updated_at = _utc_now()
 
 
-def _invalidate_active_tokens(
-    *,
-    db: Session,
-    pickup: Pickup | None,
-    now: datetime,
-) -> int:
-    if not pickup:
-        return 0
-
-    updated = (
-        db.query(PickupToken)
-        .filter(
-            PickupToken.pickup_id == pickup.id,
-            PickupToken.used_at.is_(None),
-        )
-        .update(
-            {"used_at": now.replace(tzinfo=None)},
-            synchronize_session=False,
-        )
-    )
-    return int(updated or 0)
-
-
 def _apply_internal_state(
     *,
     db: Session,
@@ -77,13 +58,12 @@ def _apply_internal_state(
 ) -> dict[str, Any]:
     now = _utc_now()
 
+    # idempotência / terminal states
     if order.status in {
         OrderStatus.EXPIRED,
         OrderStatus.EXPIRED_CREDIT_50,
         OrderStatus.PICKED_UP,
         OrderStatus.CANCELLED,
-        OrderStatus.REFUNDED,
-        OrderStatus.FAILED,
     }:
         return {
             "already_terminal": True,
@@ -93,47 +73,47 @@ def _apply_internal_state(
             "region": order.region,
             "locker_id": _resolve_locker_id(order=order, allocation=allocation),
             "pickup_id": pickup.id if pickup else None,
-            "invalidated_tokens": 0,
         }
 
-    order.status = OrderStatus.EXPIRED
+    order.mark_as_expired(credit_50=False)
+    # IMPORTANTE:
+    # pagamento já foi aprovado; não chamar mark_payment_expired() aqui.
+    if hasattr(order, "pickup_deadline_at") and order.pickup_deadline_at:
+        pass
     _touch(order)
 
     pickup_id: str | None = None
-    invalidated_tokens = 0
-
     if pickup:
         pickup_id = pickup.id
-        pickup.status = PickupStatus.EXPIRED
-        pickup.lifecycle_stage = PickupLifecycleStage.EXPIRED
-        pickup.expired_at = now
+
+        if pickup.status not in {PickupStatus.REDEEMED, PickupStatus.CANCELLED, PickupStatus.EXPIRED}:
+            pickup.status = PickupStatus.EXPIRED
+
+        if hasattr(PickupLifecycleStage, "EXPIRED"):
+            pickup.lifecycle_stage = PickupLifecycleStage.EXPIRED
+
+        if hasattr(pickup, "expired_at"):
+            pickup.expired_at = now
 
         if getattr(order, "pickup_deadline_at", None):
             pickup.expires_at = order.pickup_deadline_at
-        elif getattr(pickup, "expires_at", None) is None:
+        elif hasattr(pickup, "expires_at") and pickup.expires_at is None:
             pickup.expires_at = now
 
         _touch(pickup)
 
-        invalidated_tokens = _invalidate_active_tokens(
-            db=db,
-            pickup=pickup,
-            now=now,
-        )
-
     alloc_id: str | None = None
     slot: int | None = None
-
     if allocation:
         alloc_id = allocation.id
         slot = allocation.slot
+
         allocation.state = AllocationState.RELEASED
         if hasattr(allocation, "released_at"):
             allocation.released_at = now
         allocation.locked_until = None
         _touch(allocation)
 
-    db.flush()
     db.commit()
 
     locker_id = _resolve_locker_id(order=order, allocation=allocation)
@@ -147,10 +127,9 @@ def _apply_internal_state(
             "slot": slot,
             "region": order.region,
             "locker_id": locker_id,
-            "order_status": getattr(order.status, "value", order.status),
-            "pickup_status": getattr(pickup.status, "value", None) if pickup else None,
-            "allocation_state": getattr(allocation.state, "value", None) if allocation else None,
-            "invalidated_tokens": invalidated_tokens,
+            "order_status": str(order.status),
+            "pickup_status": str(pickup.status) if pickup else None,
+            "allocation_state": str(allocation.state) if allocation else None,
         },
     )
 
@@ -162,7 +141,6 @@ def _apply_internal_state(
         "slot": slot,
         "region": order.region,
         "locker_id": locker_id,
-        "invalidated_tokens": invalidated_tokens,
     }
 
 
@@ -183,6 +161,7 @@ def _apply_external_effects(
                     state=RUNTIME_STATE_ON_PICKUP_EXPIRED,
                     locker_id=locker_id,
                 )
+
                 logger.info(
                     "pickup_expired_set_state_succeeded",
                     extra={
@@ -193,8 +172,10 @@ def _apply_external_effects(
                         "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
                     },
                 )
+
                 break
-            except Exception:
+
+            except Exception as exc:
                 if attempt == MAX_RETRIES - 1:
                     logger.exception(
                         "pickup_expired_set_state_failed",
@@ -226,6 +207,7 @@ def _apply_external_effects(
                     allocation_id=allocation_id,
                     locker_id=locker_id,
                 )
+
                 logger.info(
                     "pickup_expired_locker_release_succeeded",
                     extra={
@@ -235,7 +217,9 @@ def _apply_external_effects(
                         "locker_id": locker_id,
                     },
                 )
+
                 break
+
             except Exception:
                 if attempt == MAX_RETRIES - 1:
                     logger.exception(
@@ -268,10 +252,15 @@ def handle_pickup_expired(
 ) -> bool:
     payload = payload or {}
 
+
     logger.info(
         "handle_pickup_expired_started",
-        extra={"order_id": order_id, "payload": payload},
+        extra={
+            "order_id": order_id,
+            "payload": payload,
+        },
     )
+
 
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -312,10 +301,9 @@ def handle_pickup_expired(
                 correlation_id=payload.get("correlation_id"),
                 payload={
                     "reason": payload.get("reason", "pickup_not_redeemed_before_deadline"),
-                    "deadline_type": payload.get("deadline_type", "PICKUP_TIMEOUT"),
-                    "order_status": getattr(order.status, "value", order.status),
+                    "deadline_type": payload.get("deadline_type", "pickup_timeout"),
+                    "order_status": str(order.status.value if hasattr(order.status, "value") else order.status),
                     "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
-                    "invalidated_tokens": result.get("invalidated_tokens", 0),
                 },
             )
         except Exception:
