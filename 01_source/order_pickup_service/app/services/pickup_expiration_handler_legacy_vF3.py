@@ -1,5 +1,11 @@
 # 01_source/order_pickup_service/app/services/pickup_expiration_handler.py
-# 21/04/2026 - expiração de retirada + crédito 50% com validade de 30 dias
+# 21/04/2026 - expiração de retirada + crédito 50%
+# - expira order/pickup/allocation
+# - invalida tokens ativos
+# - gera crédito 50% quando possível
+# - marca pedido como EXPIRED_CREDIT_50 quando crédito for criado/existir
+# - runtime -> AVAILABLE
+# - idempotente
 
 from __future__ import annotations
 
@@ -94,7 +100,6 @@ def _apply_internal_state(
             "credit_id": None,
             "credit_amount_cents": 0,
             "credit_reason": "order_terminal_without_credit",
-            "credit_expires_at": None,
             "order_status": getattr(order.status, "value", order.status),
         }
 
@@ -167,7 +172,6 @@ def _apply_internal_state(
             "credit_id": credit_result.credit_id,
             "credit_amount_cents": credit_result.amount_cents,
             "credit_reason": credit_result.reason,
-            "credit_expires_at": credit_result.expires_at,
         },
     )
 
@@ -184,7 +188,6 @@ def _apply_internal_state(
         "credit_id": credit_result.credit_id,
         "credit_amount_cents": credit_result.amount_cents,
         "credit_reason": credit_result.reason,
-        "credit_expires_at": credit_result.expires_at,
         "order_status": getattr(order.status, "value", order.status),
     }
 
@@ -343,7 +346,6 @@ def handle_pickup_expired(
                     "credit_id": result.get("credit_id"),
                     "credit_amount_cents": result.get("credit_amount_cents", 0),
                     "credit_reason": result.get("credit_reason"),
-                    "credit_expires_at": result.get("credit_expires_at"),
                 },
             )
         except Exception:
@@ -373,5 +375,3 @@ def handle_pickup_expired(
     )
 
     return True
-
-

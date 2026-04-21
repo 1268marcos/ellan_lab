@@ -1,11 +1,14 @@
 # 01_source/order_pickup_service/app/services/credits_service.py
-# 21/04/2026 - emissão e expiração de crédito 50% por pickup expirado
+# 21/04/2026 - emissão de crédito 50% por expiração de pickup
+# Observação:
+# - usa o schema atual da tabela credits (sem expires_at / created_at)
+# - idempotente por order_id unique
+# - não inventa regra de expiração temporal enquanto o schema não suportar
 
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -13,12 +16,6 @@ from app.models.credit import Credit, CreditStatus
 from app.models.order import Order
 
 logger = logging.getLogger(__name__)
-
-EXPIRED_PICKUP_CREDIT_DAYS = 30
-
-
-def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 @dataclass
@@ -28,41 +25,23 @@ class CreditGrantResult:
     amount_cents: int
     status: str | None
     reason: str
-    expires_at: str | None
 
 
 def _calculate_credit_amount_cents(order: Order, ratio: float = 0.5) -> int:
     amount_cents = int(getattr(order, "amount_cents", 0) or 0)
     if amount_cents <= 0:
         return 0
+
     granted = int(round(amount_cents * ratio))
     return max(granted, 0)
 
 
 def get_credit_by_order_id(db: Session, *, order_id: str) -> Credit | None:
-    return db.query(Credit).filter(Credit.order_id == order_id).first()
-
-
-def expire_overdue_available_credits(db: Session, *, now: datetime | None = None) -> int:
-    ref = now or _utc_now()
-
-    updated = (
+    return (
         db.query(Credit)
-        .filter(
-            Credit.status == CreditStatus.AVAILABLE,
-            Credit.expires_at <= ref,
-            Credit.used_at.is_(None),
-            Credit.revoked_at.is_(None),
-        )
-        .update(
-            {
-                "status": CreditStatus.EXPIRED,
-                "updated_at": ref,
-            },
-            synchronize_session=False,
-        )
+        .filter(Credit.order_id == order_id)
+        .first()
     )
-    return int(updated or 0)
 
 
 def grant_expired_pickup_credit(
@@ -70,16 +49,15 @@ def grant_expired_pickup_credit(
     db: Session,
     order: Order,
     ratio: float = 0.5,
-    validity_days: int = EXPIRED_PICKUP_CREDIT_DAYS,
 ) -> CreditGrantResult:
     """
     Gera crédito de 50% para pedido expirado sem retirada.
 
-    Regras:
+    Regras atuais:
     - 1 crédito por pedido (idempotência por credits.order_id unique)
-    - validade de 30 dias
-    - se já existir crédito do pedido, reaproveita
+    - usa o schema atual minimalista
     - se não houver user_id, não cria crédito
+    - se amount_cents inválido/zero, não cria crédito
     """
     if not order:
         return CreditGrantResult(
@@ -88,10 +66,7 @@ def grant_expired_pickup_credit(
             amount_cents=0,
             status=None,
             reason="order_missing",
-            expires_at=None,
         )
-
-    now = _utc_now()
 
     existing = get_credit_by_order_id(db, order_id=order.id)
     if existing:
@@ -102,7 +77,6 @@ def grant_expired_pickup_credit(
                 "credit_id": existing.id,
                 "credit_status": getattr(existing.status, "value", existing.status),
                 "amount_cents": existing.amount_cents,
-                "expires_at": existing.expires_at.isoformat() if existing.expires_at else None,
             },
         )
         return CreditGrantResult(
@@ -111,7 +85,6 @@ def grant_expired_pickup_credit(
             amount_cents=int(existing.amount_cents or 0),
             status=getattr(existing.status, "value", existing.status),
             reason="already_exists",
-            expires_at=existing.expires_at.isoformat() if existing.expires_at else None,
         )
 
     user_id = getattr(order, "user_id", None)
@@ -126,7 +99,6 @@ def grant_expired_pickup_credit(
             amount_cents=0,
             status=None,
             reason="missing_user_id",
-            expires_at=None,
         )
 
     amount_cents = _calculate_credit_amount_cents(order, ratio=ratio)
@@ -145,10 +117,7 @@ def grant_expired_pickup_credit(
             amount_cents=0,
             status=None,
             reason="invalid_amount",
-            expires_at=None,
         )
-
-    expires_at = now + timedelta(days=validity_days)
 
     credit = Credit()
     credit.id = Credit.new_id()
@@ -156,14 +125,6 @@ def grant_expired_pickup_credit(
     credit.order_id = order.id
     credit.amount_cents = amount_cents
     credit.status = CreditStatus.AVAILABLE
-    credit.created_at = now
-    credit.updated_at = now
-    credit.expires_at = expires_at
-    credit.used_at = None
-    credit.revoked_at = None
-    credit.source_type = "PICKUP_EXPIRATION"
-    credit.source_reason = "pickup_not_redeemed_before_deadline"
-    credit.notes = f"Crédito automático de {int(ratio * 100)}% por expiração de retirada."
 
     db.add(credit)
     db.flush()
@@ -176,7 +137,6 @@ def grant_expired_pickup_credit(
             "user_id": user_id,
             "amount_cents": amount_cents,
             "credit_status": CreditStatus.AVAILABLE.value,
-            "expires_at": expires_at.isoformat(),
         },
     )
 
@@ -186,5 +146,5 @@ def grant_expired_pickup_credit(
         amount_cents=amount_cents,
         status=CreditStatus.AVAILABLE.value,
         reason="created",
-        expires_at=expires_at.isoformat(),
     )
+

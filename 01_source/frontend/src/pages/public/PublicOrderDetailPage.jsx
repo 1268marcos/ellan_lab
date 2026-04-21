@@ -439,14 +439,6 @@ function getPickupMessage(order, pickup) {
     return "O pagamento não foi aprovado. Por isso, a retirada não foi liberada.";
   }
 
-  if (status === "RESERVED") {
-    return "Este pedido ainda está reservado e aguarda a conclusão do pagamento para liberar a retirada.";
-  }
-
-  if (status === "CREATED") {
-    return "Este pedido foi criado, mas a retirada ainda não foi liberada.";
-  }
-
   if (pickupStatus === "REDEEMED" || status === "PICKED_UP" || status === "DISPENSED") {
     return "Este pedido já foi retirado com sucesso.";
   }
@@ -457,8 +449,6 @@ function getPickupMessage(order, pickup) {
 
   return "Os dados de retirada ainda não estão disponíveis para o estado atual deste pedido.";
 }
-
-
 
 
 function formatDateTime(value) {

@@ -1,5 +1,9 @@
 # 01_source/order_pickup_service/app/services/pickup_expiration_handler.py
-# 21/04/2026 - expiração de retirada + crédito 50% com validade de 30 dias
+# 21/04/2026 - hardening expiração de retirada
+# - expira order/pickup/allocation
+# - invalida tokens ativos
+# - runtime -> AVAILABLE
+# - idempotente
 
 from __future__ import annotations
 
@@ -14,14 +18,12 @@ from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.services import backend_client
-from app.services.credits_service import grant_expired_pickup_credit
 from app.services.pickup_event_publisher import publish_pickup_expired
 
 logger = logging.getLogger(__name__)
 
 MAX_RETRIES = 3
 RUNTIME_STATE_ON_PICKUP_EXPIRED = "AVAILABLE"
-EXPIRED_PICKUP_CREDIT_RATIO = 0.5
 
 
 def _utc_now() -> datetime:
@@ -76,6 +78,8 @@ def _apply_internal_state(
     now = _utc_now()
 
     if order.status in {
+        OrderStatus.EXPIRED,
+        OrderStatus.EXPIRED_CREDIT_50,
         OrderStatus.PICKED_UP,
         OrderStatus.CANCELLED,
         OrderStatus.REFUNDED,
@@ -90,13 +94,10 @@ def _apply_internal_state(
             "locker_id": _resolve_locker_id(order=order, allocation=allocation),
             "pickup_id": pickup.id if pickup else None,
             "invalidated_tokens": 0,
-            "credit_created": False,
-            "credit_id": None,
-            "credit_amount_cents": 0,
-            "credit_reason": "order_terminal_without_credit",
-            "credit_expires_at": None,
-            "order_status": getattr(order.status, "value", order.status),
         }
+
+    order.status = OrderStatus.EXPIRED
+    _touch(order)
 
     pickup_id: str | None = None
     invalidated_tokens = 0
@@ -132,19 +133,6 @@ def _apply_internal_state(
         allocation.locked_until = None
         _touch(allocation)
 
-    credit_result = grant_expired_pickup_credit(
-        db=db,
-        order=order,
-        ratio=EXPIRED_PICKUP_CREDIT_RATIO,
-    )
-
-    if credit_result.created or credit_result.reason == "already_exists":
-        order.status = OrderStatus.EXPIRED_CREDIT_50
-    else:
-        order.status = OrderStatus.EXPIRED
-
-    _touch(order)
-
     db.flush()
     db.commit()
 
@@ -163,11 +151,6 @@ def _apply_internal_state(
             "pickup_status": getattr(pickup.status, "value", None) if pickup else None,
             "allocation_state": getattr(allocation.state, "value", None) if allocation else None,
             "invalidated_tokens": invalidated_tokens,
-            "credit_created": credit_result.created,
-            "credit_id": credit_result.credit_id,
-            "credit_amount_cents": credit_result.amount_cents,
-            "credit_reason": credit_result.reason,
-            "credit_expires_at": credit_result.expires_at,
         },
     )
 
@@ -180,12 +163,6 @@ def _apply_internal_state(
         "region": order.region,
         "locker_id": locker_id,
         "invalidated_tokens": invalidated_tokens,
-        "credit_created": credit_result.created,
-        "credit_id": credit_result.credit_id,
-        "credit_amount_cents": credit_result.amount_cents,
-        "credit_reason": credit_result.reason,
-        "credit_expires_at": credit_result.expires_at,
-        "order_status": getattr(order.status, "value", order.status),
     }
 
 
@@ -336,14 +313,9 @@ def handle_pickup_expired(
                 payload={
                     "reason": payload.get("reason", "pickup_not_redeemed_before_deadline"),
                     "deadline_type": payload.get("deadline_type", "PICKUP_TIMEOUT"),
-                    "order_status": result.get("order_status"),
+                    "order_status": getattr(order.status, "value", order.status),
                     "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
                     "invalidated_tokens": result.get("invalidated_tokens", 0),
-                    "credit_created": result.get("credit_created", False),
-                    "credit_id": result.get("credit_id"),
-                    "credit_amount_cents": result.get("credit_amount_cents", 0),
-                    "credit_reason": result.get("credit_reason"),
-                    "credit_expires_at": result.get("credit_expires_at"),
                 },
             )
         except Exception:

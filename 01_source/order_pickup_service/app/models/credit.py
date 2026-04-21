@@ -1,12 +1,19 @@
-# credits (50%) - Ledger de crédito
 # 01_source/order_pickup_service/app/models/credit.py
-import uuid
-import enum
-from sqlalchemy import Column, String, Integer, Enum
-# from app.models.base import Base
+# 21/04/2026 - crédito com validade temporal de 30 dias
 
-from sqlalchemy.orm import Mapped, mapped_column
+from __future__ import annotations
+
+import enum
+import uuid
+from datetime import datetime, timezone, timedelta
+
+from sqlalchemy import Column, String, Integer, Enum, DateTime, Text
+
 from app.core.db import Base
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 class CreditStatus(str, enum.Enum):
@@ -15,42 +22,46 @@ class CreditStatus(str, enum.Enum):
     EXPIRED = "EXPIRED"
     REVOKED = "REVOKED"
 
+
 class Credit(Base):
     __tablename__ = "credits"
 
     id = Column(String, primary_key=True)
-    user_id = Column(String, nullable=True)      # crédito só online (normalmente user_id existe)
+    user_id = Column(String, nullable=True)
     order_id = Column(String, nullable=False, unique=True)
     amount_cents = Column(Integer, nullable=False)
     status = Column(Enum(CreditStatus), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utc_now)
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=_utc_now, onupdate=_utc_now)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    source_type = Column(String(50), nullable=True)
+    source_reason = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
 
     @staticmethod
     def new_id() -> str:
         return str(uuid.uuid4())
 
+    @staticmethod
+    def default_expires_at(*, now: datetime | None = None, days: int = 30) -> datetime:
+        base = now or _utc_now()
+        return base + timedelta(days=days)
 
+    def touch(self) -> None:
+        self.updated_at = _utc_now()
 
-# Abaixo foi a primeira versão - NAO ELIMINAR 
-"""
-import enum
-from sqlalchemy import Column, String, Integer, DateTime, Enum, ForeignKey, Index
-from datetime import datetime
-from app.models.base import Base
-
-class CreditStatus(str, enum.Enum):
-    ACTIVE = "ACTIVE"
-    USED = "USED"
-    REVOKED = "REVOKED"
-
-class Credit(Base):
-    __tablename__ = "credits"
-    id = Column(String, primary_key=True)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False)
-    source_order_id = Column(String, ForeignKey("orders.id"), nullable=False)
-
-    amount_cents = Column(Integer, nullable=False)
-    status = Column(Enum(CreditStatus), nullable=False, default=CreditStatus.ACTIVE)
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-
-    __table_args__ = (Index("ix_credits_user_id", "user_id"),)
-"""
+    def is_available_now(self, *, now: datetime | None = None) -> bool:
+        ref = now or _utc_now()
+        return (
+            self.status == CreditStatus.AVAILABLE
+            and self.expires_at is not None
+            and self.expires_at > ref
+            and self.used_at is None
+            and self.revoked_at is None
+        )
+    
+    
