@@ -1,5 +1,8 @@
-# 01_source/backend/order_lifecycle_service/app/workers/pickup_timeout_worker.py
-# 21/04/2026 - worker com release operacional no mesmo fluxo
+# 01_source/backend/order_lifecycle_service/app/workers/pickup_timeout_worker.p
+# 19/04/2026 - novo arquivo
+# 19/04/2026 - fazer expirar pedido ONLINE pago e não retirado / incluído no docker-compose.yml esse serviço
+# deverá ser aqui a lógica dos 50% de crédito
+#
 
 import logging
 import time
@@ -71,19 +74,10 @@ def run_once() -> None:
                 tx.commit()
                 processed += 1
 
-                logger.info(
-                    "pickup_deadline_executed_successfully",
-                    extra={"deadline_id": str(deadline_id)},
-                )
-
-        except Exception as exc:
+        except Exception:
             logger.exception(
                 "pickup_deadline_execution_failed",
-                extra={
-                    "deadline_id": str(deadline_id),
-                    "error_type": exc.__class__.__name__,
-                    "error_message": str(exc),
-                },
+                extra={"deadline_id": str(deadline_id)},
             )
             with SessionLocal() as err_tx:
                 current = err_tx.get(LifecycleDeadline, deadline_id)
@@ -91,12 +85,7 @@ def run_once() -> None:
                     current.status = DeadlineStatus.FAILED
                     current.failure_count += 1
                     current.updated_at = utc_now()
-
-                    if hasattr(current, "last_error"):
-                        current.last_error = f"{exc.__class__.__name__}: {str(exc)}"[:1000]
-
                     err_tx.commit()
-
 
     if processed:
         logger.info("pickup_worker_cycle_processed", extra={"processed": processed})
@@ -118,4 +107,3 @@ if __name__ == "__main__":
     main()
 
 
-    

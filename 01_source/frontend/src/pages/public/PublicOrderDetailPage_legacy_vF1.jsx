@@ -1,9 +1,8 @@
 // 01_source/frontend/src/pages/public/PublicOrderDetailPage.jsx
-// 18/04/2026 - atualização : function getPickupMessage()
+// 18/04/2026 - atualização : function getPickupMessage() 
 // 18/04/2026 - melhoramento UX/CX para localização locker
 // 19/04/2026 - ajuste em datas apresentadas com formatDateTimeByRegion()
 // 21/04/2026 - nova function getPickupMessage(order, pickup) {}
-// 21/04/2026 - ajuste UX/CX retirada concluída + data real de retirada
 
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -21,6 +20,9 @@ const FRONTEND_BASE =
 function normalize(value) {
   return String(value || "").trim().toUpperCase();
 }
+
+
+
 
 function formatLockerAddress(locker) {
   if (!locker || typeof locker !== "object") return "-";
@@ -59,28 +61,10 @@ function getLockerFullAddress(order) {
   return formatLockerAddress(locker);
 }
 
-function getPickedUpAt(order, pickup) {
-  return (
-    order?.picked_up_at ||
-    order?.redeemed_at ||
-    order?.pickup_redeemed_at ||
-    order?.item_removed_at ||
-    order?.pickup_item_removed_at ||
-    order?.door_closed_at ||
-    order?.pickup_door_closed_at ||
-    order?.door_opened_at ||
-    order?.pickup_door_opened_at ||
-    order?.pickup?.redeemed_at ||
-    order?.pickup?.item_removed_at ||
-    order?.pickup?.door_closed_at ||
-    order?.pickup?.door_opened_at ||
-    pickup?.redeemed_at ||
-    pickup?.item_removed_at ||
-    pickup?.door_closed_at ||
-    pickup?.door_opened_at ||
-    "-"
-  );
-}
+
+
+
+
 
 export default function PublicOrderDetailPage() {
   const { orderId } = useParams();
@@ -148,6 +132,7 @@ export default function PublicOrderDetailPage() {
     };
   }, [token, loading, isAuthenticated, orderId]);
 
+  // const pickupMessage = getPickupMessage(order);
   const pickupMessage = useMemo(() => {
     return getPickupMessage(order, pickup);
   }, [order, pickup]);
@@ -168,6 +153,9 @@ export default function PublicOrderDetailPage() {
     if (!receiptCode) return "";
     return `${FRONTEND_BASE}/comprovante?code=${encodeURIComponent(receiptCode)}`;
   }, [receiptCode]);
+
+
+
 
   const rawExpiresAt =
     order?.expires_at ||
@@ -207,9 +195,13 @@ export default function PublicOrderDetailPage() {
   const canShowPickupCredentials =
     !!order && !pickupExpiredEffective && !pickupRedeemedEffective;
 
-  const pickedUpAtValue = useMemo(() => {
-    return getPickedUpAt(order, pickup);
-  }, [order, pickup]);
+
+
+
+
+
+
+
 
   function copyReceiptLink() {
     if (!receiptDeepLink) return;
@@ -276,23 +268,17 @@ export default function PublicOrderDetailPage() {
 
                 <Field
                   label="Retirado em"
-                  value={formatDateTimeByRegion(order.picked_up_at, order.region)}
-                />
-
-                {/* <Field
-                  label="Retirado em"
                   value={formatDateTimeByRegion(
-                    pickedUpAtValue === "-" ? null : pickedUpAtValue,
+                    order?.picked_up_at ||
+                      pickup?.redeemed_at ||
+                      pickup?.item_removed_at ||
+                      pickup?.door_closed_at ||
+                      pickup?.door_opened_at,
                     order?.region
                   )}
-                /> */}
+                />
 
-                {!pickupRedeemedEffective ? (
-                  <Field
-                    label="Expira a retirada em"
-                    value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
-                  />
-                ) : null}
+                <Field label="Expira a retirada em" value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)} />
               </div>
             </section>
 
@@ -365,15 +351,12 @@ export default function PublicOrderDetailPage() {
 
             <section style={cardStyle}>
               <div style={sectionHeaderStyle}>
-                <h2 style={sectionTitleStyle}>
-                  {pickupRedeemedEffective ? "Retirada concluída" : "Retirada"}
-                </h2>
+                <h2 style={sectionTitleStyle}>Retirada</h2>
                 <p style={sectionMetaStyle}>
-                  {pickupRedeemedEffective
-                    ? "Registro da retirada realizada com sucesso."
-                    : "Informações para uso no kiosk/totem"}
+                  Informações para uso no kiosk/totem
                 </p>
               </div>
+
 
               {order ? (
                 <>
@@ -382,22 +365,10 @@ export default function PublicOrderDetailPage() {
                       label="Status"
                       value={pickup?.status || order?.pickup_status || order?.status}
                     />
-
-                    {pickupRedeemedEffective ? (
-                      <Field
-                        label="Retirado em"
-                        value={formatDateTimeByRegion(
-                          pickedUpAtValue === "-" ? null : pickedUpAtValue,
-                          order?.region
-                        )}
-                      />
-                    ) : (
-                      <Field
-                        label="Expira em"
-                        value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
-                      />
-                    )}
-
+                    <Field
+                      label="Expira em"
+                      value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
+                    />
                     <Field
                       label="Código de retirada manual"
                       value={
@@ -429,6 +400,11 @@ export default function PublicOrderDetailPage() {
                   <p style={infoTextStyle}>{pickupMessage}</p>
                 </div>
               )}
+
+
+
+
+
             </section>
           </>
         ) : null}
@@ -445,6 +421,7 @@ function Field({ label, value }) {
     </div>
   );
 }
+
 
 function getPickupMessage(order, pickup) {
   if (!order) {
@@ -489,19 +466,9 @@ function getPickupMessage(order, pickup) {
     return "O pagamento não foi aprovado. Por isso, a retirada não foi liberada.";
   }
 
-  // if (pickupStatus === "REDEEMED" || status === "PICKED_UP" || status === "DISPENSED") {
-  //  return "Este pedido já foi retirado com sucesso.";
-  // }
-
-
-  if (status === "DISPENSED") {
-    return "A máquina foi liberada para retirada. Se você não conseguiu retirar, entre em contato com a Central de Suporte.";
+  if (pickupStatus === "REDEEMED" || status === "PICKED_UP" || status === "DISPENSED") {
+    return "Este pedido já foi retirado com sucesso.";
   }
-
-  if (pickupStatus === "REDEEMED" || status === "PICKED_UP") {
-    return "Retirada registrada com sucesso.";
-  }
-
 
   if (status === "PAID_PENDING_PICKUP") {
     return "O pedido foi pago e está disponível para retirada no kiosk/totem.";
@@ -509,6 +476,7 @@ function getPickupMessage(order, pickup) {
 
   return "Os dados de retirada ainda não estão disponíveis para o estado atual deste pedido.";
 }
+
 
 function formatDateTime(value) {
   if (!value) return "-";

@@ -2,15 +2,11 @@
 # 21/04/2026 - PRODUÇÃO
 # - PREPAYMENT_TIMEOUT sem duplicação
 # - PICKUP_TIMEOUT com efeito operacional real
-# - runtime release no mesmo fluxo
 # - idempotente
-# - crédito 50% com validade de 30 dias
+# - gera crédito 50% com validade de 30 dias
 # - mantém DomainEvent + AnalyticsFact
-# - observabilidade
 
 from __future__ import annotations
-
-import logging
 
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
@@ -25,45 +21,15 @@ from app.models.lifecycle import (
     EventStatus,
     LifecycleDeadline,
 )
-from app.clients.runtime_client import RuntimeClient, RuntimeClientError
+
 from app.core.datetime_utils import to_iso_utc
 
 
-logger = logging.getLogger(__name__)
-
-
-
+# -------------------------------------
+# HELPERS
+# -------------------------------------
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-def _safe_iso(dt):
-    if dt is None:
-        return None
-    return to_iso_utc(dt)
-
-def _log_pickup_timeout_step(logger, *, step: str, order_id: str, extra: dict | None = None):
-    payload = {
-        "pickup_timeout_step": step,
-        "order_id": order_id,
-    }
-    if extra:
-        payload.update(extra)
-    logger.info("pickup_timeout_step", extra=payload)
-
-def _log_pickup_timeout_error(logger, *, step: str, order_id: str, error: Exception, extra: dict | None = None):
-    payload = {
-        "pickup_timeout_step": step,
-        "order_id": order_id,
-        "error_type": error.__class__.__name__,
-        "error_message": str(error),
-    }
-    if extra:
-        payload.update(extra)
-    logger.exception("pickup_timeout_step_failed", extra=payload)
-
-
-
 
 
 def _mark_deadline_executed(deadline: LifecycleDeadline, now: datetime) -> bool:
@@ -219,6 +185,10 @@ def _invalidate_active_pickup_tokens(db: Session, pickup_id: str, now: datetime)
 
 
 def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
+    """
+    Cria ou reaproveita crédito de 50% com validade de 30 dias.
+    Requer schema já corrigido da tabela public.credits.
+    """
     existing = db.execute(
         text(
             """
@@ -330,167 +300,9 @@ def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
     }
 
 
-def _apply_runtime_release_legacy_sem_observabilidade(
-    *,
-    region_code: str | None,
-    locker_id: str | None,
-    slot: int | None,
-    allocation_id: str | None,
-) -> dict:
-    runtime = RuntimeClient()
-
-    result = {
-        "runtime_release_attempted": False,
-        "runtime_set_state_attempted": False,
-        "runtime_release_ok": False,
-        "runtime_set_state_ok": False,
-        "runtime_error": None,
-    }
-
-    if not region_code:
-        result["runtime_error"] = "missing_region_code"
-        return result
-
-    try:
-        if slot is not None:
-            result["runtime_set_state_attempted"] = True
-            runtime.locker_set_state(
-                region=region_code,
-                slot=int(slot),
-                state="AVAILABLE",
-                locker_id=locker_id,
-            )
-            result["runtime_set_state_ok"] = True
-
-        if allocation_id:
-            result["runtime_release_attempted"] = True
-            runtime.locker_release(
-                region=region_code,
-                allocation_id=allocation_id,
-                locker_id=locker_id,
-            )
-            result["runtime_release_ok"] = True
-
-        return result
-
-    except RuntimeClientError as exc:
-        result["runtime_error"] = str(exc)
-        raise
-
-
-def _apply_runtime_release(
-    *,
-    region_code: str | None,
-    locker_id: str | None,
-    slot: int | None,
-    allocation_id: str | None,
-) -> dict:
-    runtime = RuntimeClient()
-
-    result = {
-        "runtime_release_attempted": False,
-        "runtime_set_state_attempted": False,
-        "runtime_release_ok": False,
-        "runtime_set_state_ok": False,
-        "runtime_error": None,
-    }
-
-    if not region_code:
-        result["runtime_error"] = "missing_region_code"
-        return result
-
-    try:
-        if slot is not None:
-            result["runtime_set_state_attempted"] = True
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_set_state_start",
-                order_id=allocation_id or "unknown",
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "slot": int(slot),
-                    "target_state": "AVAILABLE",
-                },
-            )
-
-            runtime_response = runtime.locker_set_state(
-                region=region_code,
-                slot=int(slot),
-                state="AVAILABLE",
-                locker_id=locker_id,
-            )
-
-            result["runtime_set_state_ok"] = True
-
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_set_state_ok",
-                order_id=allocation_id or "unknown",
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "slot": int(slot),
-                    "runtime_response": runtime_response,
-                },
-            )
-
-        if allocation_id:
-            result["runtime_release_attempted"] = True
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_release_start",
-                order_id=allocation_id,
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "allocation_id": allocation_id,
-                },
-            )
-
-            runtime_response = runtime.locker_release(
-                region=region_code,
-                allocation_id=allocation_id,
-                locker_id=locker_id,
-            )
-
-            result["runtime_release_ok"] = True
-
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_release_ok",
-                order_id=allocation_id,
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "allocation_id": allocation_id,
-                    "runtime_response": runtime_response,
-                },
-            )
-
-        return result
-
-    except RuntimeClientError as exc:
-        result["runtime_error"] = str(exc)
-        _log_pickup_timeout_error(
-            logger,
-            step="runtime_release_failed",
-            order_id=allocation_id or "unknown",
-            error=exc,
-            extra={
-                "region_code": region_code,
-                "locker_id": locker_id,
-                "slot": slot,
-                "allocation_id": allocation_id,
-                **result,
-            },
-        )
-        raise
-
-
-
 def _apply_pickup_timeout_state(db: Session, *, deadline: LifecycleDeadline, now: datetime) -> dict:
     order_id = deadline.order_id
+    payload = deadline.payload or {}
 
     order_row = _get_order_snapshot(db, order_id)
     if not order_row:
@@ -590,13 +402,6 @@ def _apply_pickup_timeout_state(db: Session, *, deadline: LifecycleDeadline, now
         },
     )
 
-    runtime_result = _apply_runtime_release(
-        region_code=order_row.get("region"),
-        locker_id=locker_id or order_row.get("totem_id"),
-        slot=int(slot) if slot is not None else None,
-        allocation_id=allocation_id,
-    )
-
     return {
         "applied": True,
         "reason": "ok",
@@ -619,10 +424,12 @@ def _apply_pickup_timeout_state(db: Session, *, deadline: LifecycleDeadline, now
             else None
         ),
         "channel": order_row.get("channel"),
-        **runtime_result,
     }
 
 
+# -------------------------------------
+# EXECUTORES
+# -------------------------------------
 def execute_prepayment_timeout(db: Session, deadline: LifecycleDeadline) -> None:
     now = _utc_now()
 
@@ -700,36 +507,6 @@ def execute_pickup_timeout(db: Session, deadline: LifecycleDeadline) -> None:
         now=now,
     )
 
-
-
-    _log_pickup_timeout_step(
-        logger,
-        step="pickup_timeout_applied",
-        order_id=order_id,
-        extra={
-            "pickup_id": result.get("pickup_id"),
-            "allocation_id": result.get("allocation_id"),
-            "slot": result.get("slot"),
-            "locker_id": result.get("locker_id"),
-            "region_code": result.get("region_code"),
-            "order_status": result.get("order_status"),
-            "invalidated_tokens": result.get("invalidated_tokens", 0),
-            "credit_created": result.get("credit_created", False),
-            "credit_id": result.get("credit_id"),
-            "credit_amount_cents": result.get("credit_amount_cents", 0),
-            "credit_expires_at": result.get("credit_expires_at"),
-            "runtime_release_attempted": result.get("runtime_release_attempted", False),
-            "runtime_set_state_attempted": result.get("runtime_set_state_attempted", False),
-            "runtime_release_ok": result.get("runtime_release_ok", False),
-            "runtime_set_state_ok": result.get("runtime_set_state_ok", False),
-            "runtime_error": result.get("runtime_error"),
-            "deadline_due_at": _safe_iso(deadline.due_at),
-        },
-    )
-
-
-
-
     pickup_id = result.get("pickup_id") or payload.get("pickup_id")
     region_code = result.get("region_code") or payload.get("region_code")
     slot_id = (
@@ -765,11 +542,6 @@ def execute_pickup_timeout(db: Session, deadline: LifecycleDeadline) -> None:
             "credit_amount_cents": result.get("credit_amount_cents", 0),
             "credit_status": result.get("credit_status"),
             "credit_expires_at": result.get("credit_expires_at"),
-            "runtime_release_attempted": result.get("runtime_release_attempted", False),
-            "runtime_set_state_attempted": result.get("runtime_set_state_attempted", False),
-            "runtime_release_ok": result.get("runtime_release_ok", False),
-            "runtime_set_state_ok": result.get("runtime_set_state_ok", False),
-            "runtime_error": result.get("runtime_error"),
             **payload,
         },
         occurred_at=now,
@@ -804,11 +576,6 @@ def execute_pickup_timeout(db: Session, deadline: LifecycleDeadline) -> None:
             "credit_amount_cents": result.get("credit_amount_cents", 0),
             "credit_status": result.get("credit_status"),
             "credit_expires_at": result.get("credit_expires_at"),
-            "runtime_release_attempted": result.get("runtime_release_attempted", False),
-            "runtime_set_state_attempted": result.get("runtime_set_state_attempted", False),
-            "runtime_release_ok": result.get("runtime_release_ok", False),
-            "runtime_set_state_ok": result.get("runtime_set_state_ok", False),
-            "runtime_error": result.get("runtime_error"),
             **payload,
         },
         occurred_at=now,

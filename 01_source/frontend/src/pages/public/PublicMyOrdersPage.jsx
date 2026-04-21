@@ -22,6 +22,7 @@ function OrderStatusBadge({ status }) {
     EXPIRED: { bg: "#fee2e2", color: "#991b1b", label: "Expirado" },
     CANCELLED: { bg: "#f3f4f6", color: "#374151", label: "Cancelado" },
     DISPENSED: { bg: "rgba(95,61,196,0.22)", color: "rgba(95,61,196,0.45)", label: "Máquina Liberou" },
+    // DISPENSED: { bg: "#d1fae5", color: "#065f46", label: "Retirado" },  // só quando for possível ter evidência
   };
 
   const config = statusConfig[status] || { bg: "#f3f4f6", color: "#374151", label: status };
