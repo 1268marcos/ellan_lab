@@ -96,6 +96,7 @@ class PickupPaymentFulfillmentService:
         slot = payload["slot"]
         payment_method = payload["payment_method"]
         amount_cents = payload["amount_cents"]
+        allocation_id_for_cleanup: str | None = None
 
         try:
             logger.error("🔥 NEW FLOW EXECUTADO - service início")
@@ -113,6 +114,9 @@ class PickupPaymentFulfillmentService:
                 status=OrderStatus.PAYMENT_PENDING,
                 payment_status="CREATED",
                 channel=OrderChannel.KIOSK,
+                # Regra de negocio: pedido KIOSK e anonimo por definicao.
+                user_id=None,
+                guest_session_id=None,
                 created_at=now,
                 updated_at=now,
             )
@@ -134,6 +138,7 @@ class PickupPaymentFulfillmentService:
 
             allocation_id = alloc.get("allocation_id") or f"al_{request_id.replace('-', '')}"
             allocated_slot = alloc.get("slot", slot)
+            allocation_id_for_cleanup = allocation_id
 
             # =========================
             # 🔥 VALIDAÇÃO CRÍTICA DO RUNTIME
@@ -491,6 +496,24 @@ class PickupPaymentFulfillmentService:
 
         except Exception:
             db.rollback()
+            if allocation_id_for_cleanup:
+                try:
+                    backend_client.locker_release(
+                        region,
+                        allocation_id_for_cleanup,
+                        locker_id=locker_id,
+                    )
+                    logger.warning(
+                        "KIOSK_CREATE_ORDER_ROLLBACK_RELEASE_OK allocation_id=%s locker_id=%s",
+                        allocation_id_for_cleanup,
+                        locker_id,
+                    )
+                except Exception:
+                    logger.exception(
+                        "KIOSK_CREATE_ORDER_ROLLBACK_RELEASE_FAILED allocation_id=%s locker_id=%s",
+                        allocation_id_for_cleanup,
+                        locker_id,
+                    )
             logger.exception("KIOSK_CREATE_ORDER_WITH_PAYMENT_FAILED")
             raise
 
@@ -618,10 +641,47 @@ def _generate_id(prefix: str):
 
 
 def _resolve_instruction_type(payment_method: str) -> str:
-    if payment_method in ["pix", "PIX"]:
+    method = str(payment_method or "").strip()
+    method_lower = method.lower()
+
+    # Fluxos com QR/reference/pending customer action.
+    if method_lower in {
+        "pix",
+        "mbway",
+        "multibanco_reference",
+        "boleto",
+        "oxxo",
+        "rapipago",
+        "konbini",
+        "bpay",
+        "alipay",
+        "wechat_pay",
+        "promptpay",
+        "truemoney",
+        "go_pay",
+        "ovo",
+        "dana",
+        "grabpay",
+        "dbs_paylah",
+        "gcash",
+        "paymaya",
+        "crypto",
+        "mercado_pago_wallet",
+    }:
         return "GENERATE_PIX"
-    if payment_method in ["creditCard", "debitCard", "CARTAO"]:
+
+    # Fluxos de captura direta/cartao/wallet de cartao.
+    if method in {"creditCard", "debitCard", "giftCard", "prepaidCard", "CARTAO"} or method_lower in {
+        "apple_pay",
+        "google_pay",
+        "samsung_pay",
+        "nfc",
+        "unionpay",
+        "mir",
+        "troy",
+    }:
         return "CAPTURE_NOW"
+
     raise Exception(f"Unsupported payment_method: {payment_method}")
 
 

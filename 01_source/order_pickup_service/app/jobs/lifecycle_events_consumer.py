@@ -4,6 +4,7 @@
 # - grava order.picked_up_at no pickup.door_opened
 # - sincroniza pickup REDEEMED/COMPLETED
 # - mantém pipeline de pickup.expired
+# 22/04/2026 - uso de finalize_pickup_after_door_closed()
 
 from __future__ import annotations
 
@@ -22,6 +23,9 @@ from app.models.allocation import Allocation
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
 from app.services.pickup_expiration_handler import handle_pickup_expired
+
+from app.services.pickup_completion_service import finalize_pickup_after_door_closed
+
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +150,9 @@ def run_lifecycle_events_consumer_once(db: Session) -> int:
                     order_id=order_id,
                     payload=payload,
                 )
+
+            elif event_name == "pickup.door_closed":
+                handled = finalize_pickup_after_door_closed(order_id)
 
             elif event_name in {
                 "pickup.expired",

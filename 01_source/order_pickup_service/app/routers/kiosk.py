@@ -66,6 +66,7 @@ from app.services.payment_capability_service import get_payment_capabilities
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 from app.services.capability_constraint_service import get_capability_constraint
+from app.services.locker_service import validate_locker_for_order
 
 
 
@@ -214,6 +215,10 @@ def kiosk_identify(
         )
 
     # salva dados no pedido
+    if order.channel == OrderChannel.KIOSK:
+        # Regra de negocio: KIOSK nunca vincula pedido ao usuario logado.
+        order.user_id = None
+
     if payload.email:
         order.receipt_email = payload.email
 
@@ -317,18 +322,19 @@ def kiosk_create_order(
             },
         )
 
-    capabilities = _get_kiosk_capabilities(db, payload.region.value)
-
-    method = _resolve_method(capabilities, payment_method_value)
-
-    payment_interface = _resolve_interface(
-        method,
-        payment_interface_value,
+    # Source of truth operacional: validar o método/interface no locker real.
+    # Isso evita bloqueio falso por capability profile desatualizado para a região.
+    validate_locker_for_order(
+        db=db,
+        locker_id=payload.totem_id,
+        region=payload.region.value,
+        channel="kiosk",
+        payment_method=payment_method_value,
+        payment_interface=payment_interface_value,
     )
 
-    _validate_requirements(method, payload)
-
-    payment_method_code = method["method"]
+    payment_interface = payment_interface_value
+    payment_method_code = payment_method_value
 
     # ===== PATCH: SANITY CHECK ANTES DE CRIAR ORDER =====
     payment_method_enum = _resolve_order_payment_method_enum(payment_method_code)
@@ -458,6 +464,10 @@ def _finalize_kiosk_payment(
             status_code=500,
             detail={"type": "ALLOCATION_NOT_FOUND", "order_id": order.id},
         )
+
+    if order.channel == OrderChannel.KIOSK:
+        # Blindagem extra para impedir associacao acidental no fluxo KIOSK.
+        order.user_id = None
 
     # fluxo real: só prossegue se já aprovado financeiramente
     if not allow_force_confirm and order.payment_status != PaymentStatus.APPROVED:
@@ -785,6 +795,10 @@ def kiosk_payment_simulate_approved(
             status_code=404,
             detail={"type": "ORDER_NOT_FOUND", "order_id": order_id},
         )
+
+    if order.channel == OrderChannel.KIOSK:
+        # Blindagem extra para impedir associacao acidental no fluxo KIOSK.
+        order.user_id = None
 
     if order.payment_status == "FAILED" or order.status == OrderStatus.CANCELLED:
         raise HTTPException(

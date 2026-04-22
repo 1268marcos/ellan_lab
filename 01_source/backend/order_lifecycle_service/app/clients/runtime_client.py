@@ -18,13 +18,14 @@ class RuntimeClient:
         self.base_url = (
             os.getenv("LOCKER_RUNTIME_INTERNAL")
             or os.getenv("RUNTIME_INTERNAL_URL")
-            or "http://runtime:8200"
+            or "http://backend_runtime:8000"
         ).rstrip("/")
 
         self.timeout_sec = int(os.getenv("RUNTIME_TIMEOUT_SEC", "8"))
         self.internal_token = (
             os.getenv("INTERNAL_SERVICE_TOKEN")
             or os.getenv("X_INTERNAL_TOKEN")
+            or os.getenv("INTERNAL_TOKEN")
             or ""
         ).strip()
 

@@ -347,6 +347,8 @@ services:
       HOST: 0.0.0.0
       PORT: 8010
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      INTERNAL_SERVICE_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      LOCKER_RUNTIME_INTERNAL: http://backend_runtime:8000
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
@@ -376,6 +378,8 @@ services:
       APP_ENV: dev
       LOG_LEVEL: INFO
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      INTERNAL_SERVICE_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      LOCKER_RUNTIME_INTERNAL: http://backend_runtime:8000
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
@@ -573,6 +577,8 @@ services:
       APP_ENV: dev
       LOG_LEVEL: INFO
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      INTERNAL_SERVICE_TOKEN: ${ORDER_INTERNAL_TOKEN}
+      LOCKER_RUNTIME_INTERNAL: http://backend_runtime:8000
       POSTGRES_HOST: postgres_central
       POSTGRES_PORT: 5432
       POSTGRES_DB: locker_central
