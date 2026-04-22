@@ -4,13 +4,12 @@ import React, { useEffect, useMemo, useState } from "react";
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
-const GATEWAY_BASE =
-  import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
-
 function normalizeLockerItem(locker) {
   return {
     locker_id: String(locker?.locker_id || "").trim(),
     region: String(locker?.region || "").trim().toUpperCase(),
+    country_code: String(locker?.country_code || "").trim().toUpperCase(),
+    province_code: String(locker?.province_code || "").trim().toUpperCase(),
     display_name: locker?.display_name || locker?.locker_id || "",
     slots: Number(locker?.slots || 24),
     active: Boolean(locker?.active),
@@ -19,7 +18,11 @@ function normalizeLockerItem(locker) {
 
 export default function DevLockerResetPage() {
   const [region, setRegion] = useState("SP");
+  const [countryCode, setCountryCode] = useState("");
+  const [provinceCode, setProvinceCode] = useState("");
   const [lockers, setLockers] = useState([]);
+  const [countryOptions, setCountryOptions] = useState([]);
+  const [provinceOptions, setProvinceOptions] = useState([]);
   const [selectedLockerId, setSelectedLockerId] = useState("");
   const [loadingLockers, setLoadingLockers] = useState(false);
   const [loadingReset, setLoadingReset] = useState(false);
@@ -41,9 +44,13 @@ export default function DevLockerResetPage() {
     setErr("");
 
     try {
-      const res = await fetch(
-        `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
-      );
+      const params = new URLSearchParams();
+      params.set("active_only", "true");
+      if (countryCode) params.set("country_code", countryCode);
+      if (provinceCode) params.set("province_code", provinceCode);
+      else params.set("q", region);
+
+      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -67,9 +74,34 @@ export default function DevLockerResetPage() {
     }
   }
 
+  async function fetchCountryProvinceOptions() {
+    try {
+      const [countriesRes, provincesRes] = await Promise.all([
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`),
+      ]);
+      const [countriesData, provincesData] = await Promise.all([
+        countriesRes.json().catch(() => ({})),
+        provincesRes.json().catch(() => ({})),
+      ]);
+      if (countriesRes.ok) {
+        setCountryOptions(Array.isArray(countriesData?.items) ? countriesData.items : []);
+      }
+      if (provincesRes.ok) {
+        setProvinceOptions(Array.isArray(provincesData?.items) ? provincesData.items : []);
+      }
+    } catch (_e) {
+      // no-op
+    }
+  }
+
   useEffect(() => {
     fetchLockers();
-  }, [region]);
+  }, [region, countryCode, provinceCode]);
+
+  useEffect(() => {
+    fetchCountryProvinceOptions();
+  }, []);
 
   function parseAllocationIds(text) {
     return String(text || "")
@@ -173,10 +205,36 @@ export default function DevLockerResetPage() {
 
         <div style={gridStyle}>
           <label style={labelStyle}>
-            Região
+            Região (compat)
             <select value={region} onChange={(e) => setRegion(e.target.value)} style={inputStyle}>
               <option value="SP">SP</option>
               <option value="PT">PT</option>
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Country code
+            <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)} style={inputStyle}>
+              <option value="">Todos</option>
+              {countryOptions.map((country) => (
+                <option key={country.code} value={String(country.code).toUpperCase()}>
+                  {country.code} - {country.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Province code
+            <select value={provinceCode} onChange={(e) => setProvinceCode(e.target.value)} style={inputStyle}>
+              <option value="">Todas</option>
+              {provinceOptions
+                .filter((province) => !countryCode || String(province.country_code || "").toUpperCase() === countryCode)
+                .map((province) => (
+                  <option key={province.code} value={String(province.code).toUpperCase()}>
+                    {province.code} - {province.name}
+                  </option>
+                ))}
             </select>
           </label>
 
@@ -207,6 +265,8 @@ export default function DevLockerResetPage() {
           <div style={summaryBoxStyle}>
             <div><b>locker_id:</b> {selectedLocker.locker_id}</div>
             <div><b>region:</b> {selectedLocker.region}</div>
+            <div><b>country_code:</b> {selectedLocker.country_code || "-"}</div>
+            <div><b>province_code:</b> {selectedLocker.province_code || "-"}</div>
             <div><b>slots:</b> {selectedLocker.slots}</div>
           </div>
         ) : null}

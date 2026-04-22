@@ -1,8 +1,14 @@
 // 01_source/frontend/src/pages/LockerDashboard.jsx
 
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
+import {
+  clearRuntimeGeoScopeTenantOverride,
+  listConfiguredGeoTenants,
+  resolveGeoScopeTenant,
+  setRuntimeGeoScopeTenantOverride,
+} from "../utils/lockerGeoFilter";
 
 import {
   CurrentOrderCard,
@@ -23,6 +29,9 @@ import {
 
 export default function LockerDashboard({ region = "PT" }) {
   const { token } = useAuth();
+  const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
+  const tenantOptions = useMemo(() => listConfiguredGeoTenants(), []);
+  const [tenantInput, setTenantInput] = useState(resolveGeoScopeTenant(envTenant));
 
   const BACKEND_SP = import.meta.env.VITE_BACKEND_SP_BASE_URL || "http://localhost:8201";
   const BACKEND_PT = import.meta.env.VITE_BACKEND_PT_BASE_URL || "http://localhost:8202";
@@ -58,9 +67,66 @@ export default function LockerDashboard({ region = "PT" }) {
     element.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
+  async function applyTenantOverride() {
+    const next = setRuntimeGeoScopeTenantOverride(tenantInput);
+    setTenantInput(next);
+    await controller.registry.fetchLockersOnce();
+  }
+
+  async function clearTenantOverride() {
+    clearRuntimeGeoScopeTenantOverride();
+    const fallback = resolveGeoScopeTenant(envTenant);
+    setTenantInput(fallback);
+    await controller.registry.fetchLockersOnce();
+  }
+
   return (
     <LockerDashboardLayout>
       <LockerDashboardHeader {...controller.headerProps} />
+      <section
+        style={{
+          display: "grid",
+          gap: 8,
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.10)",
+          borderRadius: 14,
+          padding: 12,
+        }}
+      >
+        <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.86 }}>Escopo Geo por Tenant (DEV)</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <label style={{ display: "grid", gap: 6, fontSize: 12, minWidth: 240 }}>
+            Tenant
+            <input
+              list="geo-tenant-options-locker-dashboard"
+              value={tenantInput}
+              onChange={(e) => setTenantInput(String(e.target.value || "").toUpperCase())}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(15,23,42,0.6)",
+                color: "#fff",
+              }}
+              placeholder="TENANT_X"
+            />
+            <datalist id="geo-tenant-options-locker-dashboard">
+              {tenantOptions.map((tenant) => (
+                <option key={tenant} value={tenant} />
+              ))}
+            </datalist>
+          </label>
+          <button onClick={applyTenantOverride} style={buttonSecondaryStyle} disabled={controller.registry.lockersLoading}>
+            Aplicar tenant
+          </button>
+          <button onClick={clearTenantOverride} style={buttonSecondaryStyle} disabled={controller.registry.lockersLoading}>
+            Limpar override
+          </button>
+          <span style={{ fontSize: 12, opacity: 0.78 }}>
+            Ativo: <b>{resolveGeoScopeTenant(envTenant) || "-"}</b>
+          </span>
+        </div>
+      </section>
       <section style={{ display: "grid", gap: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.86 }}>Contexto Operacional</div>
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
@@ -120,3 +186,13 @@ export default function LockerDashboard({ region = "PT" }) {
     </LockerDashboardLayout>
   );
 }
+
+const buttonSecondaryStyle = {
+  padding: "10px 14px",
+  cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#1b5883",
+  color: "white",
+  fontWeight: 600,
+};

@@ -379,6 +379,56 @@ Fluxo de escrita:
    - esperado: sem `CheckViolation: ck_pickups_v2_evidence_score_range`
    - esperado: sem `PendingRollbackError` em cascata por violacao anterior
 
+### Pendencias abertas + plano de estabilizacao
+
+#### Pendencias abertas (priorizadas)
+- P0 - Confirmar em producao que nao ha regressao de release runtime:
+  - zero novas ocorrencias de `Failed to resolve 'runtime'`
+  - zero slots presos em `RESERVED` apos falha de criacao KIOSK
+- P0 - Validar ciclo completo KIOSK PT com metodos locais:
+  - cenarios minimos: `apple_pay`, `mbway`, `multibanco_reference`
+  - esperado: criacao de pedido + instrucao de pagamento + pickup sem erro de metodo/interface
+- P1 - Instrumentar alertas operacionais de regressao:
+  - alerta para aumento de `KIOSK_CREATE_ORDER_FAILED`
+  - alerta para `CheckViolation`/`PendingRollbackError` em `pickups`
+  - alerta para backlog de eventos nao processados no domain worker
+- P1 - Consolidar monitoria de invariantes V2 em rotina diaria:
+  - executar scripts de validacao V2 em janela fixa
+  - registrar historico de contagens para detectar tendencia/regressao
+- P2 - Planejar desativacao progressiva de caminhos legados de escrita:
+  - mapear pontos restantes de dual-write
+  - definir data de congelamento final de campos legados
+
+#### Owner sugerido por pendencia
+- Regressao de release runtime / slot preso (`Failed to resolve 'runtime'`, `RESERVED`): **lifecycle**
+- Fluxos KIOSK PT e validacao de metodo/interface (`apple_pay`, `mbway`, `multibanco_reference`): **pickup API**
+- Invariantes V2, defaults/constraints e scripts de validacao SQL: **dados/DBA**
+- Alertas, paineis e deteccao de backlog/erros de workers: **observabilidade**
+- Regra de operacao:
+  - owner primario responde pelo fechamento tecnico da pendencia
+  - impactos cruzados devem abrir acao vinculada para os demais owners afetados
+
+#### Plano de estabilizacao (execucao)
+1. Janela T+24h (conter risco imediato):
+   - reprocessar fluxos com erro recente (se houver)
+   - verificar logs dos servicos criticos e runtime
+   - confirmar que nao ha slot preso e que o release acontece no timeout
+2. Janela T+72h (confiabilidade):
+   - executar suite manual dos cenarios KIOSK PT (metodos locais)
+   - comparar volume de falhas antes/depois das correcoes
+   - validar novamente consistencia V2 (resumo + detalhes + divergencia legado vs V2)
+3. Janela T+7 dias (estabilizacao sustentada):
+   - manter monitoramento diario sem regressao
+   - revisar incidentes e remover workarounds temporarios que nao sejam mais necessarios
+   - aprovar avancar para proxima fase de endurecimento (reduzir dependencia do legado)
+
+#### Criterios de saida da estabilizacao
+- 7 dias sem `Failed to resolve 'runtime'` no lifecycle/pickup worker
+- 7 dias sem `CheckViolation` de V2 e sem `PendingRollbackError` em cascata
+- taxa de sucesso de criacao KIOSK PT dentro do baseline esperado (incluindo `apple_pay` e `mbway`)
+- validacao V2 com `total_inconsistencias_v2 = 0` em todas as execucoes da janela
+- sem backlog anormal de eventos no `order_pickup_domain_event_worker`
+
 ---
 
 ## Modelo legado (V1)

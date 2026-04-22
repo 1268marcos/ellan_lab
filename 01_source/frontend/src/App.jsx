@@ -2,6 +2,10 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import {
+  clearRuntimeGeoScopeTenantOverride,
+  getRuntimeGeoScopeTenantOverride,
+} from "./utils/lockerGeoFilter";
 
 // Lazy loading para performance
 const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
@@ -23,6 +27,7 @@ const RegionPage = lazy(() => import("./pages/RegionPage"));
 const RegionPageFirst = lazy(() => import("./pages/RegionPageFirst"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
 const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage"));
+const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 
 // Componente de loading otimizado
@@ -60,8 +65,12 @@ function TopNav() {
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [tenantOverride, setTenantOverride] = useState("");
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
+  const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
+  const hasTenantOverride = Boolean(tenantOverride);
+  const isOpsRoute = location.pathname.startsWith("/ops");
 
   // Detectar tamanho da tela
   useEffect(() => {
@@ -111,6 +120,10 @@ function TopNav() {
     setIsMobileMenuOpen(false);
   };
 
+  const handleClearTenantOverride = () => {
+    clearRuntimeGeoScopeTenantOverride();
+  };
+
   const getNavBackground = () => {
     if (location.pathname.startsWith("/ops")) {
       return "var(--nav-ops-bg)";
@@ -128,6 +141,20 @@ function TopNav() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    const syncTenantOverride = () => {
+      setTenantOverride(getRuntimeGeoScopeTenantOverride());
+    };
+
+    syncTenantOverride();
+    window.addEventListener("ellan:geo-tenant-changed", syncTenantOverride);
+    window.addEventListener("storage", syncTenantOverride);
+    return () => {
+      window.removeEventListener("ellan:geo-tenant-changed", syncTenantOverride);
+      window.removeEventListener("storage", syncTenantOverride);
+    };
+  }, []);
 
   // Links comuns para todos os usuários
   const publicLinks = [
@@ -150,6 +177,7 @@ function TopNav() {
     
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
     { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
+    { to: "/ops/dev/base", label: "ops /dev/base", aria: "Gestão de tabelas e enums base" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" }
   ] : [];
 
@@ -249,6 +277,69 @@ function TopNav() {
           </button>
         </div>
       </nav>
+
+      {isOpsRoute && (
+        <div
+          style={{
+            margin: "8px 16px 0",
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid rgba(96, 165, 250, 0.35)",
+            background: "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.92))",
+            boxShadow: "0 6px 18px rgba(2, 6, 23, 0.35)",
+            display: "inline-flex",
+            width: "fit-content",
+            maxWidth: "calc(100% - 32px)",
+            gap: 10,
+            alignItems: "center",
+            justifyContent: "flex-start",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 12, color: "#f8fafc", display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <span><b style={{ color: "#bfdbfe" }}>Contexto Ops</b></span>
+            <span>Tenant env: <b style={{ color: "#e2e8f0" }}>{envTenant || "-"}</b></span>
+            <span>
+              Tenant ativo:{" "}
+              <b style={{ color: hasTenantOverride ? "#fde68a" : "#f1f5f9" }}>
+                {tenantOverride || envTenant || "-"}
+              </b>
+            </span>
+            {hasTenantOverride ? (
+              <span
+                style={{
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid rgba(245, 158, 11, 0.45)",
+                  background: "rgba(245, 158, 11, 0.18)",
+                  color: "#fde68a",
+                  fontWeight: 700,
+                }}
+              >
+                Override ativo
+              </span>
+            ) : null}
+          </div>
+
+          {hasTenantOverride ? (
+            <button
+              onClick={handleClearTenantOverride}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid rgba(245, 158, 11, 0.45)",
+                background: "rgba(245, 158, 11, 0.18)",
+                color: "#fde68a",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+              title="Remover tenant override e voltar ao tenant do .env"
+            >
+              Limpar override
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {/* Overlay do menu mobile */}
       {isMobileMenuOpen && (
@@ -471,6 +562,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <DevSlotAllocationPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/dev/base"
+              element={
+                <OpsRoute>
+                  <DevBaseCatalogPage />
                 </OpsRoute>
               }
             />

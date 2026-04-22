@@ -5,6 +5,8 @@ const GATEWAY_BASE =
   import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
 const RUNTIME_BASE =
   import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
+const ORDER_PICKUP_BASE =
+  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
 
 function isDevBypassEnabled() {
@@ -49,6 +51,8 @@ function normalizeLocker(locker) {
       locker?.id ||
       "Locker sem nome",
     active: Boolean(locker?.active),
+    country_code: String(locker?.country_code || "").trim().toUpperCase(),
+    province_code: String(locker?.province_code || "").trim().toUpperCase(),
   };
 }
 
@@ -56,6 +60,8 @@ export default function DevSlotAllocationPage() {
   const { user } = useAuth();
 
   const [region, setRegion] = useState("SP");
+  const [countryCode, setCountryCode] = useState("");
+  const [provinceCode, setProvinceCode] = useState("");
   const [lockers, setLockers] = useState([]);
   const [selectedLockerId, setSelectedLockerId] = useState("");
 
@@ -67,6 +73,17 @@ export default function DevSlotAllocationPage() {
   const [slots, setSlots] = useState([]);
   const [skuOptions, setSkuOptions] = useState([]);
   const [slotDraftMap, setSlotDraftMap] = useState({});
+  const [countryOptions, setCountryOptions] = useState([]);
+  const [provinceOptions, setProvinceOptions] = useState([]);
+
+  const [skuCreateForm, setSkuCreateForm] = useState({
+    id: "",
+    name: "",
+    amount_cents: 0,
+    currency: "BRL",
+    is_active: true,
+    description: "",
+  });
 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -86,9 +103,12 @@ export default function DevSlotAllocationPage() {
     setMessage("");
 
     try {
-      const res = await fetch(
-        `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
-      );
+      const params = new URLSearchParams();
+      params.set("active_only", "true");
+      if (countryCode) params.set("country_code", countryCode);
+      if (provinceCode) params.set("province_code", provinceCode);
+      else params.set("q", region);
+      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
@@ -157,13 +177,71 @@ export default function DevSlotAllocationPage() {
     }
   }
 
+  async function fetchCountryProvinceOptions() {
+    try {
+      const [countriesRes, provincesRes] = await Promise.all([
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`),
+      ]);
+      const [countriesData, provincesData] = await Promise.all([
+        countriesRes.json().catch(() => ({})),
+        provincesRes.json().catch(() => ({})),
+      ]);
+      if (countriesRes.ok) {
+        setCountryOptions(Array.isArray(countriesData?.items) ? countriesData.items : []);
+      }
+      if (provincesRes.ok) {
+        setProvinceOptions(Array.isArray(provincesData?.items) ? provincesData.items : []);
+      }
+    } catch (_e) {
+      // Mantém tela funcional mesmo sem opções de filtro.
+    }
+  }
+
+  async function createSkuQuickly() {
+    const skuId = String(skuCreateForm.id || "").trim();
+    const skuName = String(skuCreateForm.name || "").trim();
+    if (!skuId || !skuName) {
+      setError("Informe SKU id e nome para criação rápida.");
+      return;
+    }
+    setError("");
+    setMessage("");
+    try {
+      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/products/${encodeURIComponent(skuId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: skuName,
+          description: skuCreateForm.description || null,
+          amount_cents: Number(skuCreateForm.amount_cents || 0),
+          currency: String(skuCreateForm.currency || "BRL").trim().toUpperCase(),
+          is_active: Boolean(skuCreateForm.is_active),
+          metadata_json: {},
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
+      }
+      setMessage(`SKU ${skuId} criado/atualizado com sucesso.`);
+      await fetchSlotsAndCatalog();
+    } catch (e) {
+      setError(String(e?.message || e));
+    }
+  }
+
   useEffect(() => {
     fetchLockers();
-  }, [region]);
+  }, [region, countryCode, provinceCode]);
 
   useEffect(() => {
     fetchSlotsAndCatalog();
   }, [selectedLockerId]);
+
+  useEffect(() => {
+    fetchCountryProvinceOptions();
+  }, []);
 
   const dirtySlots = useMemo(() => {
     const items = [];
@@ -284,10 +362,36 @@ export default function DevSlotAllocationPage() {
 
         <div style={gridStyle}>
           <label style={labelStyle}>
-            Região
+            Região (compat)
             <select value={region} onChange={(e) => setRegion(e.target.value)} style={inputStyle}>
               <option value="SP">SP</option>
               <option value="PT">PT</option>
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Country code
+            <select value={countryCode} onChange={(e) => setCountryCode(e.target.value)} style={inputStyle}>
+              <option value="">Todos</option>
+              {countryOptions.map((country) => (
+                <option key={country.code} value={String(country.code).toUpperCase()}>
+                  {country.code} - {country.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label style={labelStyle}>
+            Province code
+            <select value={provinceCode} onChange={(e) => setProvinceCode(e.target.value)} style={inputStyle}>
+              <option value="">Todas</option>
+              {provinceOptions
+                .filter((province) => !countryCode || String(province.country_code || "").toUpperCase() === countryCode)
+                .map((province) => (
+                  <option key={province.code} value={String(province.code).toUpperCase()}>
+                    {province.code} - {province.name}
+                  </option>
+                ))}
             </select>
           </label>
 
@@ -326,6 +430,52 @@ export default function DevSlotAllocationPage() {
           >
             {savingBatch ? "Salvando lote..." : `Salvar alterações (${dirtySlots.length})`}
           </button>
+        </div>
+
+        <div style={summaryStyle}>
+          <b>Atalho de SKU:</b> crie SKU sem sair da tela para alocar imediatamente.
+          <div style={gridStyle}>
+            <label style={labelStyle}>
+              SKU ID
+              <input
+                style={inputStyle}
+                placeholder="sku id"
+                value={skuCreateForm.id}
+                onChange={(e) => setSkuCreateForm((prev) => ({ ...prev, id: e.target.value }))}
+              />
+            </label>
+            <label style={labelStyle}>
+              Nome
+              <input
+                style={inputStyle}
+                placeholder="nome"
+                value={skuCreateForm.name}
+                onChange={(e) => setSkuCreateForm((prev) => ({ ...prev, name: e.target.value }))}
+              />
+            </label>
+            <label style={labelStyle}>
+              Amount cents
+              <input
+                style={inputStyle}
+                type="number"
+                placeholder="amount_cents"
+                value={skuCreateForm.amount_cents}
+                onChange={(e) => setSkuCreateForm((prev) => ({ ...prev, amount_cents: Number(e.target.value || 0) }))}
+              />
+            </label>
+            <label style={labelStyle}>
+              Currency
+              <input
+                style={inputStyle}
+                placeholder="currency"
+                value={skuCreateForm.currency}
+                onChange={(e) => setSkuCreateForm((prev) => ({ ...prev, currency: e.target.value }))}
+              />
+            </label>
+            <button style={buttonPrimaryStyle} onClick={createSkuQuickly}>
+              Criar/atualizar SKU rápido
+            </button>
+          </div>
         </div>
 
         {message ? <div style={okStyle}>{message}</div> : null}

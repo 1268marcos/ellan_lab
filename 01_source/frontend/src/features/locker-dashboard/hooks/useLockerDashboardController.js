@@ -19,11 +19,15 @@ export default function useLockerDashboardController({
   orderPickupBase,
   internalToken,
 }) {
+  const geoScopeTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const [syncEnabled, setSyncEnabled] = useState(true);
 
   const registry = useLockerRegistry({
     region,
     gatewayBase,
+    orderPickupBase,
+    channel: "ONLINE",
+    tenant: geoScopeTenant,
   });
 
   const {

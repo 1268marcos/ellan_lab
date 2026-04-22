@@ -18,6 +18,9 @@ import { fetchLockersWithFallback } from "../services/lockerRegistryService.js";
 export default function useLockerRegistry({
   region,
   gatewayBase,
+  orderPickupBase,
+  channel = "ONLINE",
+  tenant = "",
 }) {
   const [lockers, setLockers] = useState([]);
   const [lockersLoading, setLockersLoading] = useState(false);
@@ -38,6 +41,9 @@ export default function useLockerRegistry({
       const result = await fetchLockersWithFallback({
         gatewayBase,
         region,
+        orderPickupBase,
+        channel,
+        tenant,
       });
 
       setLockers(result.items || []);
@@ -46,7 +52,7 @@ export default function useLockerRegistry({
     } finally {
       setLockersLoading(false);
     }
-  }, [gatewayBase, region]);
+  }, [channel, gatewayBase, orderPickupBase, region, tenant]);
 
   useEffect(() => {
     fetchLockersOnce();

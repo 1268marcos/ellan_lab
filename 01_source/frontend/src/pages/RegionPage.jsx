@@ -19,6 +19,13 @@ import {
   paymentMethodLabel,
   requiresCustomerPhone,
 } from "../utils/paymentProfile";
+import {
+  clearRuntimeGeoScopeTenantOverride,
+  fetchGeoScopedLockerIdSet,
+  listConfiguredGeoTenants,
+  resolveGeoScopeTenant,
+  setRuntimeGeoScopeTenantOverride,
+} from "../utils/lockerGeoFilter";
 
 import CardVirtualKeyboard from "../components/CardVirtualKeyboard.jsx";
 import CvvVirtualKeyboard from "../components/CvvVirtualKeyboard.jsx";
@@ -32,6 +39,7 @@ const GATEWAY_BASE =
 
 const RUNTIME_BASE =
   import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
+const GEO_SCOPE_TENANT = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
 
 const initialIdentify = {
   phone: "",
@@ -436,6 +444,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   const [lockersLoading, setLockersLoading] = useState(false);
   const [lockersError, setLockersError] = useState("");
   const [lockersSource, setLockersSource] = useState("loading");
+  const [geoFilterMeta, setGeoFilterMeta] = useState(null);
+  const [tenantInput, setTenantInput] = useState(resolveGeoScopeTenant(GEO_SCOPE_TENANT));
+  const tenantOptions = useMemo(() => listConfiguredGeoTenants(), []);
 
   const [selectedLockerId, setSelectedLockerId] = useState("");
   const selectedLocker = useMemo(
@@ -648,7 +659,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
   useEffect(() => {
     fetchLockersOnce();
-  }, [region]);
+  }, [region, mode]);
 
   useEffect(() => {
     if (!availableLockers.length) {
@@ -753,6 +764,13 @@ export default function RegionPage({ region, mode = "kiosk" }) {
     setLockersError("");
 
     try {
+      const geoScope = await fetchGeoScopedLockerIdSet({
+        orderPickupBase: ORDER_PICKUP_BASE,
+        region,
+        channel: mode,
+        tenant: GEO_SCOPE_TENANT,
+      });
+
       const res = await fetch(
         `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
       );
@@ -762,21 +780,72 @@ export default function RegionPage({ region, mode = "kiosk" }) {
         throw new Error(parseErrorPayload(data));
       }
 
-      const items = Array.isArray(data?.items) ? data.items.map(normalizeLockerItem) : [];
+      let items = Array.isArray(data?.items) ? data.items.map(normalizeLockerItem) : [];
+
+      if (geoScope?.lockerIds instanceof Set) {
+        items = items.filter((item) => geoScope.lockerIds.has(item.locker_id));
+      }
+
+      if (geoScope?.lockerItems?.length) {
+        const geoMap = new Map(
+          geoScope.lockerItems.map((item) => [
+            String(item?.locker_id || "").trim(),
+            {
+              country_code: String(item?.country_code || "").trim().toUpperCase(),
+              province_code: String(item?.province_code || "").trim().toUpperCase(),
+            },
+          ])
+        );
+        items = items.map((item) => ({
+          ...item,
+          country_code: geoMap.get(item.locker_id)?.country_code || item.country_code || "",
+          province_code: geoMap.get(item.locker_id)?.province_code || item.province_code || "",
+        }));
+      }
 
       if (!items.length) {
-        throw new Error(`Nenhum locker ativo retornado pelo gateway para a região ${region}.`);
+        throw new Error(`Nenhum locker ativo disponível para o escopo atual (region=${region}).`);
       }
 
       setAvailableLockers(items);
-      setLockersSource("gateway");
+      if (geoScope?.source === "geo-filter-applied") {
+        setLockersSource("gateway+geo");
+        setGeoFilterMeta({
+          country_code: geoScope.countryCode || "",
+          province_code: geoScope.provinceCode || "",
+          tenant_code: geoScope.tenantCode || "",
+          mode: "applied",
+        });
+      } else {
+        setLockersSource("gateway");
+        setGeoFilterMeta({
+          country_code: "",
+          province_code: "",
+          tenant_code: geoScope?.tenantCode || "",
+          mode: geoScope?.source || "fallback",
+        });
+      }
     } catch (e) {
       setAvailableLockers([]);
       setLockersSource("error");
+      setGeoFilterMeta(null);
       setLockersError(`Falha ao carregar lockers do gateway: ${String(e?.message || e)}`);
     } finally {
       setLockersLoading(false);
     }
+  }
+
+  function applyTenantOverride() {
+    const next = setRuntimeGeoScopeTenantOverride(tenantInput);
+    setTenantInput(next);
+    fetchLockersOnce();
+  }
+
+  function clearTenantOverride() {
+    clearRuntimeGeoScopeTenantOverride();
+    const fallback = resolveGeoScopeTenant(GEO_SCOPE_TENANT);
+    setTenantInput(fallback);
+    fetchLockersOnce();
   }
 
   async function fetchCatalogSlots(silent = false) {
@@ -1190,9 +1259,32 @@ export default function RegionPage({ region, mode = "kiosk" }) {
       <section style={cardStyle}>
         <div style={sectionHeaderStyle}>
           <h2 style={h2Style}>0. Seleção da unidade física</h2>
-          <button onClick={fetchLockersOnce} disabled={lockersLoading} style={buttonSecondaryStyle}>
-            {lockersLoading ? "Atualizando..." : "Atualizar lockers"}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ ...labelStyle, minWidth: 220 }}>
+              Tenant (DEV)
+              <input
+                list="geo-tenant-options-region-page"
+                value={tenantInput}
+                onChange={(e) => setTenantInput(String(e.target.value || "").toUpperCase())}
+                style={inputStyle}
+                placeholder="TENANT_X"
+              />
+              <datalist id="geo-tenant-options-region-page">
+                {tenantOptions.map((tenant) => (
+                  <option key={tenant} value={tenant} />
+                ))}
+              </datalist>
+            </label>
+            <button onClick={applyTenantOverride} disabled={lockersLoading} style={buttonSecondaryStyle}>
+              Aplicar tenant
+            </button>
+            <button onClick={clearTenantOverride} disabled={lockersLoading} style={buttonSecondaryStyle}>
+              Limpar override
+            </button>
+            <button onClick={fetchLockersOnce} disabled={lockersLoading} style={buttonSecondaryStyle}>
+              {lockersLoading ? "Atualizando..." : "Atualizar lockers"}
+            </button>
+          </div>
         </div>
 
         {availableLockers.length === 0 ? (
@@ -1217,6 +1309,9 @@ export default function RegionPage({ region, mode = "kiosk" }) {
               <div><b>locker_id:</b> {selectedLocker?.locker_id || "-"}</div>
               <div><b>site_id:</b> {selectedLocker?.site_id || "-"}</div>
               <div><b>região:</b> {selectedLocker?.region || "-"}</div>
+              <div><b>country_code:</b> {selectedLocker?.country_code || geoFilterMeta?.country_code || "-"}</div>
+              <div><b>province_code:</b> {selectedLocker?.province_code || geoFilterMeta?.province_code || "-"}</div>
+              <div><b>tenant:</b> {geoFilterMeta?.tenant_code || GEO_SCOPE_TENANT || "-"}</div>
               <div><b>slots:</b> {selectedLocker?.slots || "-"}</div>
               <div><b>canais:</b> {(selectedLocker?.channels || []).join(", ") || "-"}</div>
               <div><b>métodos permitidos:</b> {(selectedLocker?.payment_methods || []).join(", ") || "-"}</div>

@@ -20,18 +20,22 @@ export function normalizeLockerItem(locker) {
         };
 
   return {
-    locker_id: String(locker?.locker_id || "").trim(),
+    locker_id: String(locker?.locker_id || locker?.id || locker?.external_id || "").trim(),
     region: String(locker?.region || "").toUpperCase(),
     site_id: locker?.site_id || "",
-    display_name: locker?.display_name || locker?.locker_id || "",
+    display_name: locker?.display_name || locker?.locker_id || locker?.id || "",
     backend_region: String(locker?.backend_region || locker?.region || "").toUpperCase(),
-    slots: Number(locker?.slots || 24),
+    slots: Number(locker?.slots || locker?.slots_count || 24),
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
     payment_methods: Array.isArray(locker?.payment_methods)
       ? locker.payment_methods.map((m) => String(m).trim()) //.toUpperCase()
-      : [],
+      : typeof locker?.allowed_payment_methods === "string"
+        ? locker.allowed_payment_methods.split(",").map((m) => String(m).trim()).filter(Boolean)
+        : [],
     pickup_code_length: Number(locker?.pickup_code_length || 6),
     active: Boolean(locker?.active),
+    country_code: String(locker?.country_code || "").trim().toUpperCase(),
+    province_code: String(locker?.province_code || "").trim().toUpperCase(),
     address,
   };
 }
@@ -51,5 +55,6 @@ export function buildFallbackLockersByRegion(region) {
 export function parseLockersResponse(data) {
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data?.lockers)) return data.lockers;
   return [];
 }

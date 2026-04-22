@@ -5,11 +5,22 @@ import {
   normalizeLockerItem,
   parseLockersResponse,
 } from "../utils/dashboardMappers.js";
+import { fetchGeoScopedLockerIdSet } from "../../../utils/lockerGeoFilter.js";
 
 export async function fetchLockersByRegion({
   gatewayBase,
   region,
+  orderPickupBase,
+  channel = "ONLINE",
+  tenant = "",
 }) {
+  const geoScope = await fetchGeoScopedLockerIdSet({
+    orderPickupBase,
+    region,
+    channel,
+    tenant,
+  });
+
   const res = await fetch(
     `${gatewayBase}/lockers?region=${encodeURIComponent(region)}&active_only=true`
   );
@@ -21,27 +32,55 @@ export async function fetchLockersByRegion({
   }
 
   const data = JSON.parse(text);
-  const items = parseLockersResponse(data)
+  let items = parseLockersResponse(data)
     .map(normalizeLockerItem)
     .filter((item) => item.active);
 
-  if (!items.length) {
-    throw new Error(`Nenhum locker ativo retornado pelo gateway para a região ${region}.`);
+  if (geoScope?.lockerIds instanceof Set) {
+    items = items.filter((item) => geoScope.lockerIds.has(item.locker_id));
   }
 
-  return items;
+  if (geoScope?.lockerItems?.length) {
+    const geoMap = new Map(
+      geoScope.lockerItems.map((item) => [
+        String(item?.locker_id || "").trim(),
+        {
+          country_code: String(item?.country_code || "").trim().toUpperCase(),
+          province_code: String(item?.province_code || "").trim().toUpperCase(),
+        },
+      ])
+    );
+    items = items.map((item) => ({
+      ...item,
+      country_code: geoMap.get(item.locker_id)?.country_code || item.country_code || "",
+      province_code: geoMap.get(item.locker_id)?.province_code || item.province_code || "",
+    }));
+  }
+
+  if (!items.length) {
+    throw new Error(`Nenhum locker ativo para o escopo da região ${region}.`);
+  }
+
+  return {
+    items,
+    geoScope,
+  };
 }
 
 export async function fetchLockersWithFallback({
   gatewayBase,
   region,
+  orderPickupBase,
+  channel = "ONLINE",
+  tenant = "",
 }) {
   try {
-    const items = await fetchLockersByRegion({ gatewayBase, region });
+    const result = await fetchLockersByRegion({ gatewayBase, region, orderPickupBase, channel, tenant });
+    const geoApplied = result?.geoScope?.source === "geo-filter-applied";
 
     return {
-      items,
-      source: "gateway",
+      items: result.items,
+      source: geoApplied ? "gateway+geo" : "gateway",
       error: "",
     };
   } catch (error) {
