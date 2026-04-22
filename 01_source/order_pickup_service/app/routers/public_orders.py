@@ -52,7 +52,7 @@ from app.models.pickup import Pickup
 from app.models.pickup_token import PickupToken
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 
-from sqlalchemy import text
+from sqlalchemy import text, cast, String
 
 from app.services import backend_client
 
@@ -1000,6 +1000,21 @@ def _list_orders_for_public_access(
     payment_method: str | None = None,
 ) -> tuple[list[Order], int]:
     """Lista pedidos para acesso público com filtros"""
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE orders
+                SET payment_method = CAST('creditCard' AS paymentmethod)
+                WHERE upper(trim(payment_method::text)) IN ('CARTAO', 'PAYMENTMETHOD.CARTAO')
+                """
+            )
+        )
+        db.commit()
+    except Exception:
+        logger.exception("Falha ao normalizar payment_method legado em orders.")
+        db.rollback()
+
     if current_user is None and not guest_session_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -1046,6 +1061,14 @@ def _list_orders_for_public_access(
             query = query.filter(Order.payment_method == payment_method_enum)
         except ValueError:
             pass  # Ignora método inválido
+
+    # Defesa adicional: evita 500 caso existam valores legados inválidos
+    # persistidos no banco (ex.: 'CARTAO') e ainda não normalizados.
+    valid_payment_method_values = [pm.value for pm in PaymentMethod]
+    query = query.filter(
+        (Order.payment_method.is_(None))
+        | (cast(Order.payment_method, String).in_(valid_payment_method_values))
+    )
 
     total = query.count()
 

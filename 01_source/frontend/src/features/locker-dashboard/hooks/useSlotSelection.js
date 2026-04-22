@@ -17,6 +17,7 @@ import { groupIndexFromSlot, groupSlots } from "../utils/dashboardSlotUtils.js";
 
 export default function useSlotSelection({
   slots,
+  totalSlots = 24,
   currentOrder,
   selectionTimeoutMs = 45_000,
 }) {
@@ -40,6 +41,12 @@ export default function useSlotSelection({
       slotSelectionRemainingSec > 0,
     [currentOrder, selectedSlot, slotSelectionExpiresAt, slotSelectionRemainingSec]
   );
+
+  const totalGroups = useMemo(
+    () => Math.max(1, Math.ceil((Number(totalSlots) || 0) / 4)),
+    [totalSlots]
+  );
+  const maxGroupIndex = totalGroups - 1;
 
   const groupSlotsList = useMemo(() => groupSlots(activeGroup), [activeGroup]);
 
@@ -76,6 +83,10 @@ export default function useSlotSelection({
     setSelectedSlot(null);
     setSlotSelectionExpiresAt(null);
   }, [slotSelectionExpiresAt, slotSelectionTick]);
+
+  useEffect(() => {
+    setActiveGroup((prev) => Math.min(prev, maxGroupIndex));
+  }, [maxGroupIndex]);
 
   return {
     selectedSlot,

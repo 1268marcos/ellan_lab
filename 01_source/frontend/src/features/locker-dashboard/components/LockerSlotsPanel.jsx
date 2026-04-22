@@ -74,6 +74,11 @@ export default function LockerSlotsPanel({
               <SlotCard
                 slot={slot}
                 state={existsInLocker ? slotData.state : "OUT_OF_STOCK"}
+                name={existsInLocker ? slotData.name : null}
+                skuId={existsInLocker ? slotData.sku_id : null}
+                priceCents={existsInLocker ? slotData.price_cents : null}
+                isActive={existsInLocker ? slotData.is_active : false}
+                hasCatalogData={existsInLocker ? Boolean(slotData.sku_id) : false}
                 selected={selectedSlot === slot}
                 disabled={!existsInLocker || slotData.state !== "AVAILABLE"}
                 onClick={() => onSelectSlot(slot)}

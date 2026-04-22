@@ -25,6 +25,7 @@ export { default as LockerDashboardHeader } from "./components/LockerDashboardHe
 export { default as DashboardLegend } from "./components/DashboardLegend.jsx";
 export { default as SyncStatusBar } from "./components/SyncStatusBar.jsx";
 export { default as SlotSelectionBanner } from "./components/SlotSelectionBanner.jsx";
+export { default as FlowProgressPanel } from "./components/FlowProgressPanel.jsx";
 export { default as LockerDashboardLayout } from "./components/LockerDashboardLayout.jsx";
 
 export * from "./utils/dashboardConstants.js";

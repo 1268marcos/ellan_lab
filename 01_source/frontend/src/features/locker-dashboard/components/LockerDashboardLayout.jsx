@@ -9,15 +9,15 @@ export default function LockerDashboardLayout({ children }) {
         minHeight: "100vh",
         background: "linear-gradient(135deg, #141927 0%, #1c2333 100%)",
         color: "white",
-        padding: 16,
+        padding: "20px 18px 32px",
       }}
     >
       <div
         style={{
-          maxWidth: 1600,
+          maxWidth: 1680,
           margin: "0 auto",
           display: "grid",
-          gap: 16,
+          gap: 20,
         }}
       >
         {children}

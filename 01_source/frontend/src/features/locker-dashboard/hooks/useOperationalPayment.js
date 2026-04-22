@@ -39,6 +39,53 @@ import {
 } from "../utils/dashboardOrderUtils.js";
 import { groupIndexFromSlot } from "../utils/dashboardSlotUtils.js";
 
+const CARD_METHODS = new Set([
+  "CARTAO",
+  "CREDIT_CARD",
+  "DEBIT_CARD",
+  "creditCard",
+  "debitCard",
+]);
+
+function isCardMethod(method) {
+  return CARD_METHODS.has(String(method || "").trim());
+}
+
+function resolveCardType(method, fallbackType) {
+  const normalized = String(method || "").trim();
+  if (normalized === "CREDIT_CARD" || normalized === "creditCard") return "creditCard";
+  if (normalized === "DEBIT_CARD" || normalized === "debitCard") return "debitCard";
+  return fallbackType;
+}
+
+function resolveInternalProvider(method) {
+  const normalized = String(method || "").trim();
+  const upper = normalized.toUpperCase();
+
+  if (upper === "PIX") return "pix";
+  if (upper === "MBWAY") return "mbway";
+  if (upper === "MULTIBANCO_REFERENCE") return "multibanco_reference";
+  if (upper === "NFC") return "nfc";
+  if (upper === "APPLE_PAY") return "apple_pay";
+  if (upper === "GOOGLE_PAY") return "google_pay";
+  if (upper === "MERCADO_PAGO_WALLET") return "mercado_pago_wallet";
+
+  if (upper === "CARTAO") {
+    return "creditCard";
+  }
+  if (upper === "CREDIT_CARD") return "creditCard";
+  if (upper === "DEBIT_CARD") return "debitCard";
+  if (upper === "CREDITCARD") return "creditCard";
+  if (upper === "DEBITCARD") return "debitCard";
+
+  return normalized;
+}
+
+function resolveAmountCentsFromSlot(slots, slotNum) {
+  const slotAmount = Number(slots?.[slotNum]?.price_cents);
+  return Number.isFinite(slotAmount) && slotAmount > 0 ? slotAmount : null;
+}
+
 function buildDefaultSkuId(region, slot, lockerId) {
   const safeLocker = String(lockerId || "LOCKER").replace(/[^A-Z0-9_-]/gi, "_");
   return `${safeLocker}_SLOT_${slot}_${region}`;
@@ -52,6 +99,7 @@ export default function useOperationalPayment({
   orderPickupBase,
   selectedLocker,
   currentOrder,
+  slots,
   selectedSlot,
   slotSelectionRemainingSec,
   fetchOrdersOnce,
@@ -78,7 +126,11 @@ export default function useOperationalPayment({
   );
 
   useEffect(() => {
-    if (payMethod !== "CARTAO") setCardType("creditCard");
+    if (isCardMethod(payMethod)) {
+      setCardType((prev) => resolveCardType(payMethod, prev || "creditCard"));
+    } else {
+      setCardType("creditCard");
+    }
     if (payMethod !== "MBWAY") setCustomerPhone("");
 
     const wallet = getWalletProviderForMethod(payMethod);
@@ -115,7 +167,7 @@ export default function useOperationalPayment({
         region,
         totem_id: totemId,
         channel: "ONLINE",
-        provider: payMethod,
+        provider: resolveInternalProvider(payMethod),
         transaction_id: transactionId,
         amount_cents: amountCents,
         currency: region === "SP" ? "BRL" : "EUR",
@@ -156,17 +208,15 @@ export default function useOperationalPayment({
       return { ok: false, orderError: "A seleção da gaveta expirou. Escolha novamente." };
     }
 
-    if (payMethod === "CARTAO" && !cardType) {
-      return { ok: false, orderError: "Escolha se o cartão é crédito ou débito." };
-    }
-
     if (payMethod === "MBWAY" && !customerPhone.trim()) {
       return { ok: false, orderError: "Informe o telefone para pagamento MB WAY." };
     }
 
     const slotNum = Number(selectedSlot);
-    const skuId = buildDefaultSkuId(region, slotNum, selectedLocker.locker_id);
+    const realSkuId = slots?.[slotNum]?.sku_id;
+    const skuId = realSkuId || buildDefaultSkuId(region, slotNum, selectedLocker.locker_id);
     const totemId = selectedLocker.locker_id;
+    const amountCents = resolveAmountCentsFromSlot(slots, slotNum) ?? Math.round(Number(payValue) * 100);
 
     setOrderLoading(true);
     setPayResp("");
@@ -178,11 +228,13 @@ export default function useOperationalPayment({
         sku_id: skuId,
         totem_id: totemId,
         desired_slot: slotNum,
+        amount_cents: amountCents,
         payment_method: payMethod,
+        payment_interface: "web_token",
       };
 
-      if (payMethod === "CARTAO") {
-        payload.card_type = cardType;
+      if (isCardMethod(payMethod)) {
+        payload.card_type = resolveCardType(payMethod, "creditCard");
       }
 
       if (payMethod === "MBWAY") {
@@ -237,6 +289,7 @@ export default function useOperationalPayment({
     payMethod,
     region,
     selectedLocker,
+    slots,
     selectedSlot,
     slotSelectionRemainingSec,
     token,
@@ -275,11 +328,6 @@ export default function useOperationalPayment({
       return { ok: false };
     }
 
-    if (payMethod === "CARTAO" && !cardType) {
-      setPayResp("❌ Escolha se o cartão é crédito ou débito.");
-      return { ok: false };
-    }
-
     if (payMethod === "MBWAY" && !customerPhone.trim()) {
       setPayResp("❌ Informe o telefone MB WAY.");
       return { ok: false };
@@ -294,17 +342,20 @@ export default function useOperationalPayment({
       const transactionId = generateClientTransactionId();
 
       const payload = {
-        pedido_id: currentOrder.order_id,
-        totem_id: totemId,
+        regiao: region,
+        canal: "ONLINE",
         metodo: payMethod,
         valor:
           typeof currentOrder.amount_cents === "number"
             ? Number(currentOrder.amount_cents) / 100
             : Number(payValue),
+        porta: Number(currentOrder?.allocation?.slot || selectedSlot || paySlot || 0),
+        locker_id: totemId,
+        order_id: currentOrder.order_id,
       };
 
-      if (payMethod === "CARTAO") {
-        payload.card_type = cardType;
+      if (isCardMethod(payMethod)) {
+        payload.card_type = resolveCardType(payMethod, "creditCard");
       }
 
       if (payMethod === "MBWAY") {

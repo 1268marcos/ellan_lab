@@ -14,11 +14,44 @@
 // 01_source/frontend/src/features/locker-dashboard/hooks/useLockerSlotsSync.js
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchLockerSlots, setLockerSlotState } from "../services/lockerSlotsService.js";
+import {
+  fetchCatalogSlots,
+  fetchLockerSlots,
+  setLockerSlotState,
+} from "../services/lockerSlotsService.js";
 import { buildInitialCakes, slotsListToMap } from "../utils/dashboardSlotUtils.js";
 
+function mergeCatalogWithLockerStates({
+  catalogRows,
+  lockerRows,
+  totalSlots,
+}) {
+  const merged = slotsListToMap(lockerRows, totalSlots);
+  const safeCatalogRows = Array.isArray(catalogRows) ? catalogRows : [];
+
+  for (const item of safeCatalogRows) {
+    const slot = Number(item?.slot);
+    if (!Number.isFinite(slot) || slot < 1 || slot > totalSlots) continue;
+
+    merged[slot] = {
+      ...merged[slot],
+      sku_id: item?.sku_id || null,
+      name: item?.name || null,
+      price_cents: Number.isFinite(Number(item?.amount_cents))
+        ? Number(item.amount_cents)
+        : Number.isFinite(Number(item?.price_cents))
+          ? Number(item.price_cents)
+          : null,
+      is_active: Boolean(item?.is_active),
+      catalog_updated_at: item?.updated_at || null,
+    };
+  }
+
+  return merged;
+}
+
 export default function useLockerSlotsSync({
-  backendBase,
+  runtimeBase,
   selectedLocker,
   syncEnabled = true,
   pollIntervalMs = 3000,
@@ -57,13 +90,26 @@ export default function useLockerSlotsSync({
     abortRef.current = controller;
 
     try {
-      const data = await fetchLockerSlots({
-        backendBase,
-        lockerId: selectedLocker.locker_id,
-        signal: controller.signal,
-      });
+      const [lockerData, catalogData] = await Promise.all([
+        fetchLockerSlots({
+          backendBase: runtimeBase,
+          lockerId: selectedLocker.locker_id,
+          signal: controller.signal,
+        }),
+        fetchCatalogSlots({
+          backendBase: runtimeBase,
+          lockerId: selectedLocker.locker_id,
+          signal: controller.signal,
+        }).catch(() => []),
+      ]);
 
-      setSlots(slotsListToMap(data, totalSlots));
+      setSlots(
+        mergeCatalogWithLockerStates({
+          catalogRows: catalogData,
+          lockerRows: lockerData,
+          totalSlots,
+        })
+      );
       setSyncStatus({
         ok: true,
         msg: `Atualizado ${new Date().toLocaleTimeString()} • ${selectedLocker.locker_id}`,
@@ -72,7 +118,7 @@ export default function useLockerSlotsSync({
       if (String(error?.name) === "AbortError") return;
       setSyncStatus({ ok: false, msg: String(error?.message || error) });
     }
-  }, [backendBase, selectedLocker, totalSlots]);
+  }, [runtimeBase, selectedLocker, totalSlots]);
 
   const setStateOnBackend = useCallback(
     async (slot, nextState, onRefreshOrders) => {
@@ -90,7 +136,7 @@ export default function useLockerSlotsSync({
 
       try {
         await setLockerSlotState({
-          backendBase,
+          backendBase: runtimeBase,
           lockerId: selectedLocker.locker_id,
           slot,
           payload,
@@ -112,7 +158,7 @@ export default function useLockerSlotsSync({
         await fetchSlotsOnce();
       }
     },
-    [backendBase, fetchSlotsOnce, selectedLocker, slots]
+    [fetchSlotsOnce, runtimeBase, selectedLocker, slots]
   );
 
   const updateCake = useCallback((slot, patch) => {

@@ -3,6 +3,7 @@
 import React from "react";
 import PickupQRCodePanel from "../../../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../../../components/ManualPickupPanel.jsx";
+import { actionButtonStyle, panelStyle } from "../utils/dashboardUiStyles.js";
 
 export default function PickupOperationsPanel({
   currentOrder,
@@ -15,16 +16,7 @@ export default function PickupOperationsPanel({
   token,
 }) {
   return (
-    <section
-      style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: 16,
-        padding: 16,
-        display: "grid",
-        gap: 16,
-      }}
-    >
+    <section style={{ ...panelStyle, gap: 16 }}>
       <div>
         <div style={{ fontSize: 18, fontWeight: 800 }}>Operações de Pickup</div>
         <div style={{ fontSize: 12, opacity: 0.72 }}>
@@ -36,17 +28,10 @@ export default function PickupOperationsPanel({
         <button
           onClick={onRegenerateManualCode}
           disabled={!canRegenerateManualCode || regenCodeLoading}
-          style={{
-            padding: "12px 14px",
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: canRegenerateManualCode
-              ? "rgba(27,88,131,0.22)"
-              : "rgba(255,255,255,0.06)",
-            color: "white",
-            cursor: canRegenerateManualCode ? "pointer" : "not-allowed",
-            fontWeight: 700,
-          }}
+          style={actionButtonStyle({
+            tone: "primary",
+            disabled: !canRegenerateManualCode || regenCodeLoading,
+          })}
         >
           {regenCodeLoading ? "Regenerando..." : "Regenerar código manual"}
         </button>

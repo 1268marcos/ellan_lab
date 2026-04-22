@@ -14,6 +14,7 @@ export default function useLockerDashboardController({
   region = "PT",
   backendSp,
   backendPt,
+  runtimeBase,
   gatewayBase,
   orderPickupBase,
   internalToken,
@@ -53,7 +54,7 @@ export default function useLockerDashboardController({
   } = currentOrderState;
 
   const slotsSync = useLockerSlotsSync({
-    backendBase,
+    runtimeBase,
     selectedLocker,
     syncEnabled,
     pollIntervalMs: 3000,
@@ -69,6 +70,7 @@ export default function useLockerDashboardController({
 
   const slotSelection = useSlotSelection({
     slots,
+    totalSlots,
     currentOrder,
     selectionTimeoutMs: 45_000,
   });
@@ -88,6 +90,7 @@ export default function useLockerDashboardController({
     orderPickupBase,
     selectedLocker,
     currentOrder,
+    slots,
     selectedSlot: slotSelection.selectedSlot,
     slotSelectionRemainingSec: slotSelection.slotSelectionRemainingSec,
     fetchOrdersOnce: orders.fetchOrdersOnce,
@@ -113,12 +116,7 @@ export default function useLockerDashboardController({
     payment.setPendingPaymentContext(null);
     slotSelection.setSlotSelectionExpiresAt(null);
   }, [
-    payment,
-    pickup,
     selectedLocker?.locker_id,
-    setCurrentOrder,
-    setOrderError,
-    slotSelection,
   ]);
 
   const applyOrderSelectionPatch = useCallback(
@@ -347,10 +345,9 @@ export default function useLockerDashboardController({
       availablePaymentMethods: payment.availablePaymentMethods,
       payMethod: payment.payMethod,
       setPayMethod: payment.setPayMethod,
-      payValue: payment.payValue,
-      setPayValue: payment.setPayValue,
-      cardType: payment.cardType,
-      setCardType: payment.setCardType,
+      selectedSlotPriceCents: slotSelection.selectedSlot
+        ? slots?.[slotSelection.selectedSlot]?.price_cents ?? null
+        : null,
       customerPhone: payment.customerPhone,
       setCustomerPhone: payment.setCustomerPhone,
       walletProvider: payment.walletProvider,
@@ -370,20 +367,18 @@ export default function useLockerDashboardController({
       handleCreateOnlineOrder,
       handleSimulatePayment,
       payment.availablePaymentMethods,
-      payment.cardType,
       payment.customerPhone,
       payment.isWalletMethodSelected,
       payment.orderLoading,
       payment.payLoading,
       payment.payMethod,
       payment.payResp,
-      payment.payValue,
       payment.pendingPaymentContext,
-      payment.setCardType,
       payment.setCustomerPhone,
       payment.setPayMethod,
-      payment.setPayValue,
       payment.walletProvider,
+      slotSelection.selectedSlot,
+      slots,
     ]
   );
 
@@ -442,6 +437,8 @@ export default function useLockerDashboardController({
       visibleOrdersTo: orders.visibleOrdersTo,
       totalOrdersPages: orders.totalOrdersPages,
       fetchOrdersOnce: orders.fetchOrdersOnce,
+      ordersLastUpdatedAt: orders.ordersLastUpdatedAt,
+      syncEnabled,
       useTable: true,
       ordersTableHeight: orders.ordersTableHeight,
     }),
@@ -456,6 +453,7 @@ export default function useLockerDashboardController({
       orders.ordersHasNext,
       orders.ordersHasPrev,
       orders.ordersLoading,
+      orders.ordersLastUpdatedAt,
       orders.ordersPage,
       orders.ordersTableHeight,
       orders.ordersTotal,
@@ -467,8 +465,91 @@ export default function useLockerDashboardController({
       orders.totalOrdersPages,
       orders.visibleOrdersFrom,
       orders.visibleOrdersTo,
+      syncEnabled,
     ]
   );
+
+  const flowProgressProps = useMemo(() => {
+    const hasSlotSelected = Boolean(slotSelection.selectedSlot);
+    const hasOrder = Boolean(currentOrder?.order_id);
+    const isPaymentConfirmed = [
+      "PAID_PENDING_PICKUP",
+      "PICKED_UP",
+      "DISPENSED",
+    ].includes(currentOrder?.status);
+    const isPickedUp = [
+      "PICKED_UP",
+      "DISPENSED",
+    ].includes(currentOrder?.status);
+
+    const firstPendingKey = !hasSlotSelected
+      ? "slot"
+      : !hasOrder
+        ? "order"
+        : !isPaymentConfirmed
+          ? "payment"
+          : !isPickedUp
+            ? "pickup"
+            : null;
+
+    const stepState = (key, done) => {
+      if (done) return "done";
+      if (firstPendingKey === key) return "active";
+      return "pending";
+    };
+
+    const steps = [
+      {
+        key: "slot",
+        label: "1. Selecionar Gaveta",
+        state: stepState("slot", hasSlotSelected),
+        detail: hasSlotSelected
+          ? `Gaveta ${slotSelection.selectedSlot}`
+          : "Nenhuma gaveta selecionada",
+      },
+      {
+        key: "order",
+        label: "2. Criar Pedido Online",
+        state: stepState("order", hasOrder),
+        detail: hasOrder ? `Pedido ${currentOrder.order_id}` : "Pedido ainda nao criado",
+      },
+      {
+        key: "payment",
+        label: "3. Confirmar Pagamento",
+        state: stepState("payment", isPaymentConfirmed),
+        detail: currentOrder?.status
+          ? `Status atual: ${currentOrder.status}`
+          : "Pagamento ainda nao confirmado",
+      },
+      {
+        key: "pickup",
+        label: "4. Realizar Retirada",
+        state: stepState("pickup", isPickedUp),
+        detail: isPickedUp
+          ? `Retirada concluida (${currentOrder?.status})`
+          : "Use QR code ou codigo manual",
+      },
+    ];
+
+    let actionHint = "Fluxo concluido.";
+    if (!hasSlotSelected) {
+      actionHint = "Selecione uma gaveta disponivel no painel de Slots.";
+    } else if (!hasOrder) {
+      actionHint = "Clique em Criar pedido online para reservar a gaveta.";
+    } else if (!isPaymentConfirmed) {
+      actionHint = payment.pendingPaymentContext
+        ? "Confirme o pagamento pendente no painel de Pagamento Operacional."
+        : "Clique em Simular pagamento para confirmar o pedido.";
+    } else if (!isPickedUp) {
+      actionHint = "Execute a retirada via QR code ou codigo manual.";
+    }
+
+    return { steps, actionHint };
+  }, [
+    currentOrder,
+    payment.pendingPaymentContext,
+    slotSelection.selectedSlot,
+  ]);
 
   return {
     region,
@@ -531,5 +612,6 @@ export default function useLockerDashboardController({
     paymentPendingPanelProps,
     pickupPanelProps,
     ordersPanelProps,
+    flowProgressProps,
   };
 }

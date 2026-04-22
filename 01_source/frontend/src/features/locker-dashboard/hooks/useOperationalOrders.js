@@ -11,7 +11,7 @@
 
 // 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchAllOperationalOrders,
   paginateOperationalOrders,
@@ -36,9 +36,13 @@ export default function useOperationalOrders({
   const [ordersHasNext, setOrdersHasNext] = useState(false);
   const [ordersHasPrev, setOrdersHasPrev] = useState(false);
   const [ordersTableDensity, setOrdersTableDensity] = useState("10");
+  const [ordersLastUpdatedAt, setOrdersLastUpdatedAt] = useState(null);
+  const requestSeqRef = useRef(0);
 
   const fetchOrdersOnce = useCallback(
-    async (targetPage = ordersPage, targetPageSize = ordersPageSize) => {
+    async (targetPage = 1, targetPageSize = ordersPageSize) => {
+      const requestSeq = requestSeqRef.current + 1;
+      requestSeqRef.current = requestSeq;
       setOrdersLoading(true);
       setOrdersError("");
 
@@ -63,19 +67,24 @@ export default function useOperationalOrders({
           pageSize: targetPageSize,
         });
 
+        if (requestSeq !== requestSeqRef.current) return;
+
         setOrdersData(page.pageItems);
         setOrdersTotal(page.total);
         setOrdersHasPrev(page.hasPrev);
         setOrdersHasNext(page.hasNext);
         setOrdersPage(page.resolvedPage);
         setOrdersPageSize(targetPageSize);
+        setOrdersLastUpdatedAt(Date.now());
       } catch (error) {
+        if (requestSeq !== requestSeqRef.current) return;
         setOrdersError(String(error?.message || error));
         setOrdersData([]);
         setOrdersTotal(0);
         setOrdersHasPrev(false);
         setOrdersHasNext(false);
       } finally {
+        if (requestSeq !== requestSeqRef.current) return;
         setOrdersLoading(false);
       }
     },
@@ -83,21 +92,20 @@ export default function useOperationalOrders({
       orderPickupBase,
       ordersFilterChannel,
       ordersFilterStatus,
-      ordersPage,
       ordersPageSize,
       region,
-      selectedLocker,
+      selectedLocker?.locker_id,
       token,
     ]
   );
 
   useEffect(() => {
-    fetchOrdersOnce(1, ordersPageSize);
-  }, [fetchOrdersOnce, ordersPageSize, region, selectedLocker?.locker_id]);
+    setOrdersPage(1);
+  }, [region, selectedLocker?.locker_id, ordersFilterStatus, ordersFilterChannel, ordersPageSize]);
 
   useEffect(() => {
-    fetchOrdersOnce(1, ordersPageSize);
-  }, [fetchOrdersOnce, ordersFilterStatus, ordersFilterChannel, ordersPageSize]);
+    fetchOrdersOnce(ordersPage, ordersPageSize);
+  }, [fetchOrdersOnce, ordersPage, ordersPageSize]);
 
   const totalOrdersPages = useMemo(
     () => Math.max(1, Math.ceil(ordersTotal / ordersPageSize)),
@@ -143,6 +151,7 @@ export default function useOperationalOrders({
     visibleOrdersFrom,
     visibleOrdersTo,
     ordersTableHeight,
+    ordersLastUpdatedAt,
     fetchOrdersOnce,
   };
 }

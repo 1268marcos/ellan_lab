@@ -3,6 +3,13 @@
 import React from "react";
 import OrdersCardList from "./OrdersCardList.jsx";
 import OrdersTable from "./OrdersTable.jsx";
+import {
+  actionButtonStyle,
+  errorBannerStyle,
+  fieldStyle,
+  infoBannerStyle,
+  panelStyle,
+} from "../utils/dashboardUiStyles.js";
 
 export default function OperationalOrdersPanel({
   showOrdersPanel,
@@ -25,20 +32,17 @@ export default function OperationalOrdersPanel({
   visibleOrdersTo,
   totalOrdersPages,
   fetchOrdersOnce,
+  ordersLastUpdatedAt,
+  syncEnabled,
   useTable = false,
   ordersTableHeight = 484,
 }) {
+  const formattedUpdatedAt = ordersLastUpdatedAt
+    ? new Date(ordersLastUpdatedAt).toLocaleTimeString()
+    : null;
+
   return (
-    <section
-      style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: 16,
-        padding: 16,
-        display: "grid",
-        gap: 12,
-      }}
-    >
+    <section style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800 }}>Pedidos Operacionais</div>
@@ -49,15 +53,7 @@ export default function OperationalOrdersPanel({
 
         <button
           onClick={() => setShowOrdersPanel((prev) => !prev)}
-          style={{
-            padding: "10px 12px",
-            borderRadius: 10,
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: "rgba(255,255,255,0.08)",
-            color: "white",
-            cursor: "pointer",
-            fontWeight: 700,
-          }}
+          style={actionButtonStyle()}
         >
           {showOrdersPanel ? "Ocultar" : "Mostrar"}
         </button>
@@ -69,22 +65,15 @@ export default function OperationalOrdersPanel({
           <select
             value={ordersFilterStatus}
             onChange={(e) => setOrdersFilterStatus(e.target.value)}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.08)",
-              color: "white",
-            }}
+            style={fieldStyle}
           >
             <option value="">Todos</option>
             <option value="PAYMENT_PENDING">PAYMENT_PENDING</option>
             <option value="PAID_PENDING_PICKUP">PAID_PENDING_PICKUP</option>
-            <option value="PICKED_UP">PICKED_UP</option> {/* PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened */}
-            <option value="DISPENSED">DISPENSED</option> {/* DISPENSED, máquina liberou - pickup.door_opened */}
+            <option value="PICKED_UP">PICKED_UP</option>
+            <option value="DISPENSED">DISPENSED</option>
             <option value="EXPIRED">EXPIRED</option>
             <option value="EXPIRED_CREDIT_50">EXPIRED_CREDIT_50</option>
-            <option value="DISPENSED">DISPENSED</option>
           </select>
         </label>
 
@@ -93,13 +82,7 @@ export default function OperationalOrdersPanel({
           <select
             value={ordersFilterChannel}
             onChange={(e) => setOrdersFilterChannel(e.target.value)}
-            style={{
-              padding: 10,
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.08)",
-              color: "white",
-            }}
+            style={fieldStyle}
           >
             <option value="">Todos</option>
             <option value="ONLINE">ONLINE</option>
@@ -110,33 +93,28 @@ export default function OperationalOrdersPanel({
         <div style={{ display: "flex", alignItems: "end" }}>
           <button
             onClick={() => fetchOrdersOnce?.(1)}
-            style={{
-              padding: "10px 12px",
-              borderRadius: 10,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(27,88,131,0.22)",
-              color: "white",
-              cursor: "pointer",
-              fontWeight: 700,
-            }}
+            style={actionButtonStyle({ tone: "primary" })}
           >
             Atualizar
           </button>
         </div>
       </div>
 
+      {syncEnabled ? (
+        <div style={infoBannerStyle}>
+          O sync automatico atualiza apenas as gavetas. Para refletir mudancas em pedidos, clique em{" "}
+          <b>Atualizar</b>.
+          {formattedUpdatedAt ? (
+            <>
+              {" "}
+              Ultima carga dos pedidos: <b>{formattedUpdatedAt}</b>.
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
       {ordersError ? (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#ffd9d6",
-            background: "rgba(179,38,30,0.18)",
-            border: "1px solid rgba(179,38,30,0.35)",
-            borderRadius: 10,
-            padding: 10,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <div style={errorBannerStyle}>
           {ordersError}
         </div>
       ) : null}
@@ -178,14 +156,7 @@ export default function OperationalOrdersPanel({
               <button
                 onClick={() => setOrdersPage((prev) => Math.max(1, prev - 1))}
                 disabled={!ordersHasPrev}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: ordersHasPrev ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                  color: "white",
-                  cursor: ordersHasPrev ? "pointer" : "not-allowed",
-                }}
+                style={actionButtonStyle({ disabled: !ordersHasPrev })}
               >
                 ◀
               </button>
@@ -197,14 +168,7 @@ export default function OperationalOrdersPanel({
               <button
                 onClick={() => setOrdersPage((prev) => prev + 1)}
                 disabled={!ordersHasNext}
-                style={{
-                  padding: "8px 10px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255,255,255,0.18)",
-                  background: ordersHasNext ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                  color: "white",
-                  cursor: ordersHasNext ? "pointer" : "not-allowed",
-                }}
+                style={actionButtonStyle({ disabled: !ordersHasNext })}
               >
                 ▶
               </button>

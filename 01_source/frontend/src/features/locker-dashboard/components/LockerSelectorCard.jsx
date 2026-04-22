@@ -2,6 +2,7 @@
 
 import React from "react";
 import { formatLockerAddress } from "../utils/dashboardFormatters.js";
+import { errorBannerStyle, fieldStyle, panelStyle } from "../utils/dashboardUiStyles.js";
 
 export default function LockerSelectorCard({
   region,
@@ -14,16 +15,7 @@ export default function LockerSelectorCard({
   selectedLocker,
 }) {
   return (
-    <section
-      style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: 16,
-        padding: 16,
-        display: "grid",
-        gap: 12,
-      }}
-    >
+    <section style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800 }}>Lockers</div>
@@ -40,19 +32,22 @@ export default function LockerSelectorCard({
           onChange={(e) => setSelectedLockerId(e.target.value)}
           disabled={lockersLoading || !lockers.length}
           style={{
-            width: "100%",
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid rgba(255,255,255,0.18)",
-            background: "rgba(255,255,255,0.08)",
-            color: "white",
+            ...fieldStyle,
+            color: "#eef4ff",
+            background: "rgba(20,28,44,0.95)",
           }}
         >
           {!lockers.length ? (
-            <option value="">Nenhum locker disponível</option>
+            <option value="" style={{ color: "#101828", background: "#ffffff" }}>
+              Nenhum locker disponível
+            </option>
           ) : (
             lockers.map((locker) => (
-              <option key={locker.locker_id} value={locker.locker_id}>
+              <option
+                key={locker.locker_id}
+                value={locker.locker_id}
+                style={{ color: "#101828", background: "#ffffff" }}
+              >
                 {locker.display_name}
               </option>
             ))
@@ -61,17 +56,7 @@ export default function LockerSelectorCard({
       </div>
 
       {lockersError ? (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#ffd9d6",
-            background: "rgba(179,38,30,0.18)",
-            border: "1px solid rgba(179,38,30,0.35)",
-            borderRadius: 10,
-            padding: 10,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <div style={errorBannerStyle}>
           {lockersError}
         </div>
       ) : null}

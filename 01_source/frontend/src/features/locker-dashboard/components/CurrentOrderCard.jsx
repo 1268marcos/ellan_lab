@@ -5,6 +5,7 @@ import {
   genericBadgeStyle,
 } from "../utils/dashboardOrderUtils.js";
 import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters.js";
+import { errorBannerStyle, panelStyle } from "../utils/dashboardUiStyles.js";
 
 export default function CurrentOrderCard({
   currentOrder,
@@ -15,16 +16,7 @@ export default function CurrentOrderCard({
   orderError,
 }) {
   return (
-    <section
-      style={{
-        background: "rgba(255,255,255,0.08)",
-        border: "1px solid rgba(255,255,255,0.12)",
-        borderRadius: 16,
-        padding: 16,
-        display: "grid",
-        gap: 12,
-      }}
-    >
+    <section style={panelStyle}>
       <div>
         <div style={{ fontSize: 18, fontWeight: 800 }}>Pedido Atual</div>
         <div style={{ fontSize: 12, opacity: 0.72 }}>
@@ -33,17 +25,7 @@ export default function CurrentOrderCard({
       </div>
 
       {orderError ? (
-        <div
-          style={{
-            fontSize: 12,
-            color: "#ffd9d6",
-            background: "rgba(179,38,30,0.18)",
-            border: "1px solid rgba(179,38,30,0.35)",
-            borderRadius: 10,
-            padding: 10,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <div style={errorBannerStyle}>
           {orderError}
         </div>
       ) : null}

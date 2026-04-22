@@ -18,6 +18,24 @@ export async function fetchLockerSlots({
   return res.json();
 }
 
+export async function fetchCatalogSlots({
+  backendBase,
+  lockerId,
+  signal,
+}) {
+  const res = await fetch(`${backendBase}/catalog/slots`, {
+    signal,
+    headers: { "X-Locker-Id": lockerId },
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+
+  return res.json();
+}
+
 export async function setLockerSlotState({
   backendBase,
   lockerId,
