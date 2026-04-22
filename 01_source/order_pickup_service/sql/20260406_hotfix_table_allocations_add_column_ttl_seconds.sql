@@ -1,1 +1,0 @@
-ALTER TABLE allocations ADD COLUMN ttl_seconds INTEGER;

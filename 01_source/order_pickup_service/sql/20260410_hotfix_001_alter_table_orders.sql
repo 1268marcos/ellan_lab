@@ -1,3 +1,0 @@
-ALTER TABLE orders ADD COLUMN slot INTEGER;
-ALTER TABLE orders ADD COLUMN allocation_id VARCHAR;
-ALTER TABLE orders ADD COLUMN allocation_expires_at TIMESTAMP;
