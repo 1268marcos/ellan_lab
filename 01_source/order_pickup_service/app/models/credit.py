@@ -56,10 +56,15 @@ class Credit(Base):
 
     def is_available_now(self, *, now: datetime | None = None) -> bool:
         ref = now or _utc_now()
+        if ref.tzinfo is None:
+            ref = ref.replace(tzinfo=timezone.utc)
+        exp = self.expires_at
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
         return (
             self.status == CreditStatus.AVAILABLE
-            and self.expires_at is not None
-            and self.expires_at > ref
+            and exp is not None
+            and exp > ref
             and self.used_at is None
             and self.revoked_at is None
         )

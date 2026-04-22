@@ -131,39 +131,44 @@ FROM public.user_roles;
 Checklist de implementacao por sprint
 
 Sprint 1 (P0) - Creditos visiveis + uso no checkout
+STATUS: FECHADA (carimbo 22/04/2026) — contratos reais abaixo; ver testes em `order_pickup_service/tests/`.
 
 Backend
-- [ ] Definir contrato do endpoint `GET /me/credits` (filtros por status e ordenacao por `expires_at`).
-- [ ] Implementar listagem de creditos do usuario autenticado.
-- [ ] Implementar agregacao de saldo disponivel (`AVAILABLE` e nao vencido).
-- [ ] Definir contrato do endpoint `POST /checkout/credit-preview`.
-- [ ] Implementar simulacao de aplicacao de 1 credito elegivel (mais proximo de expirar).
-- [ ] Definir contrato do endpoint `POST /checkout/apply-credit`.
-- [ ] Implementar aplicacao transacional de credito (lock, validacao de status e vencimento).
-- [ ] Persistir auditoria (`order_id`, `used_at`, `updated_at`).
-- [ ] Validar compatibilidade de moeda (pedido x carteira x credito/regra temporaria).
+- [x] Contrato listagem: `GET /public/me/credits` (auth Bearer). Lista ordenada (disponiveis primeiro, `expires_at` asc); agregados em `summary` (saldo disponivel, contagens, `expiring_soon_count` em 7 dias). Filtro por status no frontend (API devolve todos).
+- [x] Implementar listagem de creditos do usuario autenticado (`app/routers/public_me.py`).
+- [x] Implementar agregacao de saldo disponivel (`AVAILABLE` e nao vencido) no mesmo endpoint.
+- [x] Contrato preview checkout: `GET /public/me/credits/checkout-preview` (query: `amount_cents`, `use_credit`, `credit_id` opcional, `region` para moeda do pedido).
+- [x] Simulacao de 1 credito elegivel (mais proximo de expirar) no preview e em `select_checkout_credit_candidate` (`app/services/credits_service.py`).
+- [x] Aplicacao de credito no `POST /public/orders/` via `create_order_core` (`use_credit`, `credit_id`) — nao ha endpoint separado `POST /checkout/apply-credit` (aplicacao transacional no commit do pedido).
+- [x] Lock `SELECT FOR UPDATE`, validacao de status/vencimento, `db.flush` pos-USAGE, restauracao em compensacao de falha (`restore_credit_after_failed_order_creation`).
+- [x] Auditoria em `credits.used_at`, `status`, `notes`; `order_metadata.credit_application` no pedido (assign dict novo para persistir JSONB).
+- [x] Compatibilidade de moeda: carteira (`user_wallets`) vs `OnlineRegion.get_currency(region)` no preview e no apply; sem carteira nao bloqueia.
 
 Frontend
-- [ ] Criar pagina "Meus Creditos" na area logada.
-- [ ] Exibir saldo total disponivel.
-- [ ] Exibir lista de creditos com status, origem, valor e validade.
-- [ ] Destacar visualmente creditos proximos do vencimento.
-- [ ] Adicionar opcao "Aplicar credito" no checkout.
-- [ ] Permitir marcar/desmarcar uso do credito.
-- [ ] Atualizar resumo de pagamento em tempo real com valor abatido.
-- [ ] Exibir mensagens de erro de elegibilidade (vencido, usado, revogado, moeda incompativel).
+- [x] Pagina `PublicMyCreditsPage.jsx` + rota na area logada.
+- [x] Saldo total disponivel (summary).
+- [x] Lista com status, origem, valor, validade; filtro de status.
+- [x] Destaque “proximos de vencer (7 dias)” via `expiring_soon_count` + `days_to_expiration` nos itens disponiveis.
+- [x] Checkout: opcao usar credito + preview em tempo real (`PublicCheckoutPage.jsx`, `previewCheckoutCredit`).
+- [x] Checkbox marcar/desmarcar; fluxo DEV de simulacao tambem envia `use_credit`/`credit_id`.
+- [x] Resumo com total apos credito; detalhe do pedido com faixa + secao “Crédito no checkout” (`PublicOrderDetailPage.jsx`).
+- [x] Motivos de inelegibilidade no preview (`currency_mismatch`, `no_eligible_credit`, etc.).
 
 QA / Testes
-- [ ] Teste unitario: selecao do credito por menor `expires_at`.
-- [ ] Teste unitario: bloqueio de credito invalido.
-- [ ] Teste de integracao: fluxo completo de checkout com credito.
-- [ ] Teste de concorrencia: impedir uso duplicado do mesmo credito.
-- [ ] Teste E2E: usuario aplica e remove credito antes de pagar.
+- [x] Unitario ordenacao: `tests/test_credits_expires_at_ordering.py` (`select_checkout_credit_candidate` → menor `expires_at`).
+- [x] Unitario invalidos: mesmo arquivo (expirado + USED ignorados).
+- [x] Integracao servico checkout + restauracao + segunda aplicacao na mesma sessao: `tests/test_credits_checkout_concurrency.py`.
+- [x] Concorrencia Postgres: `test_concurrent_apply_same_credit_only_one_applies_postgres` (requer `ORDER_PICKUP_TEST_DATABASE_URL` no CI).
+- [x] E2E leve HTTP: `tests/test_e2e_light_public_me_credits.py` (TestClient: listar creditos + preview `use_credit` false/true = simula “ligar/desligar” antes de pagar). Criacao de pedido online continua teste manual ou CI com schema completo.
 
 Definicao de pronto da Sprint 1
-- [ ] Usuario ve creditos e saldo com clareza.
-- [ ] Usuario escolhe usar ou nao usar credito no checkout.
-- [ ] Sistema aplica no maximo 1 credito por pedido sem inconsistencias.
+- [x] Usuario ve creditos e saldo com clareza.
+- [x] Usuario escolhe usar ou nao usar credito no checkout.
+- [x] Sistema aplica no maximo 1 credito por pedido sem inconsistencias (persistencia + detalhe do pedido alinhados).
+
+Comando sugerido (testes automatizados desta sprint, no servico):
+cd 01_source/order_pickup_service && pytest tests/test_credits_expires_at_ordering.py tests/test_e2e_light_public_me_credits.py tests/test_credits_checkout_concurrency.py -v
+(Para concorrencia real em Postgres: exportar ORDER_PICKUP_TEST_DATABASE_URL antes do pytest.)
 
 Sprint 2 (P1) - Seguranca da conta + verificacao de e-mail
 
