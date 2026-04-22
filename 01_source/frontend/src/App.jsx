@@ -14,6 +14,7 @@ const PublicRegisterPage = lazy(() => import("./pages/public/PublicRegisterPage"
 const PublicCatalogPage = lazy(() => import("./pages/public/PublicCatalogPage"));
 const PublicCheckoutPage = lazy(() => import("./pages/public/PublicCheckoutPage"));
 const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"));
+const PublicMyCreditsPage = lazy(() => import("./pages/public/PublicMyCreditsPage"));
 const PublicOrderDetailPage = lazy(() => import("./pages/public/PublicOrderDetailPage"));
 const PublicFiscalSearchPage = lazy(() => import("./pages/public/PublicFiscalSearchPage"));
 const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPage"));
@@ -209,6 +210,11 @@ function TopNav() {
               Meus Pedidos
             </Link>
           )}
+          {!loading && isAuthenticated && (
+            <Link className="nav-link" to="/meus-creditos" aria-label="Ver meus créditos">
+              Meus Créditos
+            </Link>
+          )}
           
           {opsEnabled && opsLinks.length > 0 && (
             <>
@@ -395,6 +401,15 @@ function TopNav() {
                     Meus Pedidos
                   </Link>
                 )}
+                {!loading && isAuthenticated && (
+                  <Link
+                    className="mobile-nav-link"
+                    to="/meus-creditos"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Meus Créditos
+                  </Link>
+                )}
               </div>
 
               {/* Links de operação */}
@@ -477,6 +492,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <PublicMyOrdersPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/meus-creditos"
+              element={
+                <PrivateRoute>
+                  <PublicMyCreditsPage />
                 </PrivateRoute>
               }
             />

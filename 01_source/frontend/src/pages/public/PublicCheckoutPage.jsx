@@ -14,6 +14,7 @@ import {
   buildOnlineOrderPayload,
   paymentMethodLabel,
 } from "../../utils/paymentProfile";
+import { previewCheckoutCredit } from "../../services/publicApi";
 
 
 const ORDER_PICKUP_BASE =
@@ -253,6 +254,9 @@ export default function PublicCheckoutPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
+  const [useCredit, setUseCredit] = useState(false);
+  const [creditPreview, setCreditPreview] = useState(null);
+  const [loadingCreditPreview, setLoadingCreditPreview] = useState(false);
 
   const invalidParams = !lockerId || !skuId || !slot;
 
@@ -382,6 +386,56 @@ export default function PublicCheckoutPage() {
     loadProduct();
   }, [invalidParams, lockerId, runtimeSkuUrl]);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadCreditPreview() {
+      if (!isAuthenticated || !token || !product?.amount_cents) {
+        if (!active) return;
+        setCreditPreview(null);
+        setLoadingCreditPreview(false);
+        return;
+      }
+
+      if (!useCredit) {
+        if (!active) return;
+        setCreditPreview(null);
+        setLoadingCreditPreview(false);
+        return;
+      }
+
+      try {
+        if (active) setLoadingCreditPreview(true);
+        const data = await previewCheckoutCredit(token, {
+          amount_cents: Number(product.amount_cents),
+          use_credit: true,
+          region,
+        });
+        if (!active) return;
+        setCreditPreview(data || null);
+      } catch (error) {
+        if (!active) return;
+        setCreditPreview({
+          eligible: false,
+          reason: "preview_error",
+          requested_use_credit: true,
+          base_amount_cents: Number(product.amount_cents || 0),
+          final_amount_cents: Number(product.amount_cents || 0),
+          discount_cents: 0,
+          currency: product.currency || "BRL",
+          error_message: error?.message || "Falha ao simular crédito.",
+        });
+      } finally {
+        if (active) setLoadingCreditPreview(false);
+      }
+    }
+
+    loadCreditPreview();
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, token, product?.amount_cents, product?.currency, useCredit, region]);
+
   async function handleCreateOrder() {
     if (invalidParams || !product || !locker) {
       setSubmitError("Dados do checkout incompletos.");
@@ -427,6 +481,10 @@ export default function PublicCheckoutPage() {
     const walletProvider = walletProviderForMethod(paymentMethod);
     if (walletProvider) {
       payload.wallet_provider = walletProvider;
+    }
+    payload.use_credit = Boolean(useCredit);
+    if (creditPreview?.eligible && creditPreview?.credit_id) {
+      payload.credit_id = creditPreview.credit_id;
     }
 
     try {
@@ -537,6 +595,11 @@ export default function PublicCheckoutPage() {
     const walletProvider = walletProviderForMethod(paymentMethod);
     if (walletProvider) {
       payload.wallet_provider = walletProvider;
+    }
+
+    payload.use_credit = Boolean(useCredit);
+    if (creditPreview?.eligible && creditPreview?.credit_id) {
+      payload.credit_id = creditPreview.credit_id;
     }
 
     try {
@@ -742,6 +805,17 @@ export default function PublicCheckoutPage() {
                     {formatMoney(product.amount_cents, product.currency)}
                   </span>
                 </div>
+                {useCredit ? (
+                  <div style={summaryItemStyle}>
+                    <span style={summaryLabelStyle}>Total com crédito</span>
+                    <span style={priceStyle}>
+                      {formatMoney(
+                        creditPreview?.final_amount_cents ?? product.amount_cents,
+                        creditPreview?.currency || product.currency
+                      )}
+                    </span>
+                  </div>
+                ) : null}
                 <div style={summaryItemStyle}>
                   <span style={summaryLabelStyle}>Moeda</span>
                   <span style={summaryValueStyle}>{product.currency || "-"}</span>
@@ -792,6 +866,37 @@ export default function PublicCheckoutPage() {
               )}
             </div>
 
+            <div style={creditPanelStyle}>
+              <label style={{ ...labelStyle, margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={useCredit}
+                  onChange={(event) => setUseCredit(event.target.checked)}
+                  disabled={submitting || loadingCreditPreview}
+                  style={{ marginRight: 8 }}
+                />
+                Usar crédito (aplica automaticamente o que vence primeiro)
+              </label>
+
+              {useCredit ? (
+                <div style={{ marginTop: 10 }}>
+                  {loadingCreditPreview ? (
+                    <small style={{ color: "#475569" }}>Simulando crédito disponível...</small>
+                  ) : creditPreview?.eligible ? (
+                    <small style={{ color: "#166534" }}>
+                      Crédito selecionado: {formatMoney(creditPreview.discount_cents, creditPreview.currency || product?.currency)}.
+                      Total final: {formatMoney(creditPreview.final_amount_cents, creditPreview.currency || product?.currency)}.
+                    </small>
+                  ) : (
+                    <small style={{ color: "#b91c1c" }}>
+                      Nenhum crédito elegível no momento.
+                      {creditPreview?.error_message ? ` (${creditPreview.error_message})` : ""}
+                    </small>
+                  )}
+                </div>
+              ) : null}
+            </div>
+
             <div style={noticeStyle}>
               <span style={noticeIconStyle}>ℹ️</span>
               <div>
@@ -831,7 +936,8 @@ export default function PublicCheckoutPage() {
                 !locker ||
                 !paymentMethod ||
                 !allowedPaymentMethods.length ||
-                (paymentMethod === "MBWAY" && !customerPhone.trim())
+                (paymentMethod === "MBWAY" && !customerPhone.trim()) ||
+                (useCredit && loadingCreditPreview)
               }
               style={{
                 ...primaryButtonStyle,
@@ -1126,6 +1232,14 @@ const noticeStyle = {
   display: "flex",
   gap: 12,
   alignItems: "flex-start",
+  marginBottom: 20,
+};
+
+const creditPanelStyle = {
+  padding: 12,
+  borderRadius: 12,
+  background: "#f8fafc",
+  border: "1px solid #e2e8f0",
   marginBottom: 20,
 };
 

@@ -31,6 +31,8 @@ from app.services.payment_capability_service import get_payment_capabilities
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 from app.services.capability_constraint_service import get_capability_constraint
+from app.services.credits_service import apply_credit_for_checkout, restore_credit_after_failed_order_creation
+from app.schemas.orders import OnlineRegion
 
 
 # ==================== Constantes e Patterns ====================
@@ -106,6 +108,7 @@ class CreateOrderCoreResult:
     allocation: Allocation
     ttl_sec: int
     payment_timeout_at: Optional[datetime] = None
+    credit_application: dict | None = None
 
 
 # ==================== Funções Utilitárias ====================
@@ -155,6 +158,15 @@ def _coerce_positive_int(value: object, *, field_name: str) -> int:
         )
 
     return normalized
+
+
+def _resolve_currency_from_region(region: str) -> str:
+    region_upper = str(region or "").strip().upper()
+    try:
+        enum_region = OnlineRegion(region_upper)
+        return OnlineRegion.get_currency(enum_region)
+    except Exception:
+        return "BRL"
 
 
 def resolve_online_prepayment_ttl_sec(
@@ -330,6 +342,10 @@ def compensate_failed_online_creation(
         )
 
     try:
+        restore_credit_after_failed_order_creation(
+            db=db,
+            order_metadata=getattr(order, "order_metadata", None),
+        )
         db.delete(allocation)
         db.delete(order)
         db.commit()
@@ -601,6 +617,8 @@ def create_order_core(
     card_type_value: Optional[str] = None,
     payment_interface: Optional[str] = None,
     wallet_provider: Optional[str] = None,
+    use_credit: bool = False,
+    credit_id: Optional[str] = None,
     # customer_email: Optional[str] = None,
     guest_email: Optional[str] = None,
     device_id: Optional[str] = None,
@@ -781,6 +799,19 @@ def create_order_core(
 
     validate_amount_for_region(amount_cents, region)
 
+    order_currency = _resolve_currency_from_region(region)
+    planned_order_id = str(uuid.uuid4())
+    credit_application = apply_credit_for_checkout(
+        db=db,
+        user_id=user_id,
+        base_amount_cents=amount_cents,
+        order_currency=order_currency,
+        order_id=planned_order_id,
+        use_credit=use_credit,
+        requested_credit_id=credit_id,
+    )
+    final_amount_cents = int(credit_application.final_amount_cents)
+
     # =========================
     # 6. TTL
     # =========================
@@ -789,7 +820,7 @@ def create_order_core(
             db=db,
             region=region,
             payment_method=payment_method.value,
-            amount_cents=amount_cents,
+            amount_cents=final_amount_cents,
         ),
         field_name="alloc_ttl_sec",
     )
@@ -888,13 +919,14 @@ def create_order_core(
     # 8. ORDER
     # =========================
     order = Order(
-        id=str(uuid.uuid4()),
+        id=planned_order_id,
         user_id=user_id,
         channel=OrderChannel.ONLINE,
         region=region,
         totem_id=totem_id,
         sku_id=sku_id,
         amount_cents=int(amount_cents),
+        currency=order_currency,
         status=OrderStatus.PAYMENT_PENDING,
         payment_method=payment_method, # enum ✅
         guest_phone=guest_phone,
@@ -905,6 +937,25 @@ def create_order_core(
         # payment_method=resolved_payment["payment_method"], # ❌ STRING
         payment_interface=resolved_payment["payment_interface"],
     )
+    order.amount_cents = final_amount_cents
+    # Atribuir dict novo (não mutar in-place): JSON/JSONB no ORM pode não detectar
+    # alterações aninhadas sem flag_modified, e o detalhe do pedido perdia credit_application.
+    prev_meta = getattr(order, "order_metadata", None) or {}
+    try:
+        merged_meta = dict(prev_meta) if prev_meta else {}
+    except Exception:
+        merged_meta = {}
+    merged_meta["credit_application"] = {
+        "requested": bool(use_credit),
+        "applied": bool(credit_application.applied),
+        "reason": credit_application.reason,
+        "credit_id": credit_application.credit_id,
+        "discount_cents": int(credit_application.discount_cents or 0),
+        "base_amount_cents": int(amount_cents),
+        "final_amount_cents": final_amount_cents,
+        "currency": credit_application.currency or order_currency,
+    }
+    order.order_metadata = merged_meta
 
     if card_type_value is not None and hasattr(order, "card_type"):
         setattr(order, "card_type", card_type_value)
@@ -1009,7 +1060,7 @@ def create_order_core(
         allocation.id,
         region,
         payment_method.value,
-        amount_cents,
+        final_amount_cents,
         alloc_ttl_sec,
         resolved_payment["payment_interface"],
         resolved_payment["wallet_provider"],
@@ -1020,6 +1071,7 @@ def create_order_core(
         allocation=allocation,
         ttl_sec=alloc_ttl_sec,
         payment_timeout_at=payment_timeout_at,
+        credit_application=order.order_metadata.get("credit_application"),
     )
 
 

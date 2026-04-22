@@ -99,3 +99,34 @@ export async function fetchOrderPickup(token, orderId) {
 
   return parseJson(response);
 }
+
+export async function fetchMyCredits(token) {
+  const response = await fetch(`${API_BASE}/public/me/credits`, {
+    method: "GET",
+    headers: buildAuthHeaders(token),
+  });
+
+  return parseJson(response);
+}
+
+export async function previewCheckoutCredit(
+  token,
+  { amount_cents, use_credit = false, credit_id, region } = {}
+) {
+  const params = new URLSearchParams();
+  params.set("amount_cents", String(Number(amount_cents || 0)));
+  params.set("use_credit", String(Boolean(use_credit)));
+  if (credit_id) {
+    params.set("credit_id", String(credit_id));
+  }
+  if (region) {
+    params.set("region", String(region).trim().toUpperCase());
+  }
+
+  const response = await fetch(`${API_BASE}/public/me/credits/checkout-preview?${params.toString()}`, {
+    method: "GET",
+    headers: buildAuthHeaders(token),
+  });
+
+  return parseJson(response);
+}

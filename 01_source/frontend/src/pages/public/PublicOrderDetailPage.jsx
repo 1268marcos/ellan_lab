@@ -262,6 +262,18 @@ export default function PublicOrderDetailPage() {
                 </p>
               </div>
 
+              {order.credit_application?.applied ? (
+                <div style={creditAppliedBannerStyle}>
+                  <strong style={{ display: "block", marginBottom: 6 }}>
+                    Crédito aplicado neste pedido
+                  </strong>
+                  <span style={{ fontSize: 14, lineHeight: 1.5 }}>
+                    O valor cobrado já inclui o desconto do crédito de loja. Os detalhes aparecem abaixo na
+                    seção &quot;Crédito no checkout&quot;.
+                  </span>
+                </div>
+              ) : null}
+
               <div style={detailsGridStyle}>
                 <Field label="Método" value={order.payment_method} />
                 <Field label="Status" value={order.status} />
@@ -271,7 +283,14 @@ export default function PublicOrderDetailPage() {
                 <Field label="Endereço do locker" value={getLockerFullAddress(order)} />
                 <Field label="Gaveta/Slot" value={order.slot} />
                 <Field label="Produto" value={order.sku_id} />
-                <Field label="Valor" value={formatAmount(order.amount_cents)} />
+                <Field
+                  label={
+                    order.credit_application?.applied
+                      ? "Valor cobrado (após crédito)"
+                      : "Valor"
+                  }
+                  value={formatMoneyCents(order.amount_cents, order.currency || "BRL")}
+                />
                 <Field label="Pago em" value={formatDateTimeByRegion(order.paid_at, order.region)} />
 
                 <Field
@@ -294,6 +313,52 @@ export default function PublicOrderDetailPage() {
                   />
                 ) : null}
               </div>
+
+              {hasCheckoutCreditSection(order.credit_application) ? (
+                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
+                  <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>Crédito no checkout</h3>
+                  <div style={detailsGridStyle}>
+                    <Field
+                      label="Status do crédito"
+                      value={order.credit_application.applied ? "Aplicado" : "Não aplicado"}
+                    />
+                    <Field
+                      label="Motivo"
+                      value={creditReasonLabel(order.credit_application.reason)}
+                    />
+                    {order.credit_application.applied && order.credit_application.credit_id ? (
+                      <Field label="ID do crédito" value={String(order.credit_application.credit_id)} />
+                    ) : null}
+                    {typeof order.credit_application.base_amount_cents === "number" ? (
+                      <Field
+                        label="Valor base (checkout)"
+                        value={formatMoneyCents(
+                          order.credit_application.base_amount_cents,
+                          order.credit_application.currency || order.currency || "BRL"
+                        )}
+                      />
+                    ) : null}
+                    {order.credit_application.applied ? (
+                      <Field
+                        label="Desconto (crédito)"
+                        value={formatMoneyCents(
+                          order.credit_application.discount_cents,
+                          order.credit_application.currency || order.currency || "BRL"
+                        )}
+                      />
+                    ) : null}
+                    {typeof order.credit_application.final_amount_cents === "number" ? (
+                      <Field
+                        label="Valor final cobrado (checkout)"
+                        value={formatMoneyCents(
+                          order.credit_application.final_amount_cents,
+                          order.credit_application.currency || order.currency || "BRL"
+                        )}
+                      />
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
             </section>
 
             {receiptCode ? (
@@ -522,7 +587,7 @@ function formatDateTime(value) {
   }).format(date);
 }
 
-function formatAmount(amountCents) {
+function formatMoneyCents(amountCents, currency = "BRL") {
   if (amountCents == null || amountCents === "") return "-";
 
   const numeric = Number(amountCents);
@@ -530,9 +595,39 @@ function formatAmount(amountCents) {
 
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
-    currency: "BRL",
+    currency: currency || "BRL",
   }).format(numeric / 100);
 }
+
+function hasCheckoutCreditSection(cap) {
+  if (!cap || typeof cap !== "object") return false;
+  return (
+    cap.requested === true ||
+    cap.applied === true ||
+    cap.credit_id != null ||
+    (typeof cap.discount_cents === "number" && cap.discount_cents > 0)
+  );
+}
+
+function creditReasonLabel(reason) {
+  const map = {
+    applied: "Crédito aplicado com sucesso.",
+    not_requested: "Crédito não solicitado no checkout.",
+    missing_user: "Usuário não identificado para aplicar crédito.",
+    currency_mismatch: "Moeda da carteira não compatível com o pedido; crédito não aplicado.",
+    no_eligible_credit: "Nenhum crédito elegível no momento do checkout.",
+  };
+  return map[reason] || reason || "—";
+}
+
+const creditAppliedBannerStyle = {
+  marginBottom: 16,
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+};
 
 const pageStyle = {
   padding: 24,

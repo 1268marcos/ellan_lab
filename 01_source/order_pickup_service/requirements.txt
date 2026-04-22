@@ -12,3 +12,4 @@ bcrypt
 python-multipart
 qrcode[pil]
 cryptography==41.0.7
+pytest

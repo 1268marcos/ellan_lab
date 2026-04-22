@@ -1,0 +1,224 @@
+Plano de melhoria do USUARIO (ELLAN LAB)
+
+Objetivo
+- Melhorar a experiencia da area do usuario com foco em creditos, checkout, seguranca da conta e verificacao de e-mail.
+
+Diagnostico atual
+- Existe a tabela `credits`, mas nao existe tela para o usuario visualizar historico e saldo de creditos.
+- No checkout, a aplicacao ainda nao oferece controle claro para aplicar ou nao credito.
+- Nao existe fluxo visivel de troca de senha na area do usuario.
+- O fluxo de confirmacao de e-mail ainda nao foi implementado.
+- Ja existe `user_wallets` com `currency`, mas a regra entre carteira e creditos precisa ficar explicita.
+- A tabela `user_roles` existe, mas ainda sem uso funcional.
+
+Regras de negocio de credito (proposta)
+1) O usuario pode aplicar credito no checkout manualmente (usar ou nao usar).
+2) Apenas 1 credito por pedido.
+3) Ao aplicar, selecionar automaticamente o credito disponivel com vencimento mais proximo (`expires_at` asc).
+4) Nao permitir aplicacao de credito vencido, revogado ou ja utilizado.
+5) O valor aplicado nao pode ultrapassar o total do pedido.
+6) Creditos e carteira devem respeitar a moeda (`currency`) do contexto do usuario/pedido.
+
+Decisao de modelagem de moeda
+- Opcao recomendada: adicionar `currency` em `credits` para garantir rastreabilidade e validacao direta no momento do pagamento.
+- Regra minima: `credits.currency` deve ser compativel com `user_wallets.currency` e com a moeda do pedido.
+- Se nao for possivel adicionar campo agora, validar moeda via carteira do usuario como regra temporaria.
+
+Requisitos funcionais prioritarios
+
+P0 - Meus Creditos (nova pagina do usuario)
+- Exibir saldo total disponivel.
+- Listar historico com status (`AVAILABLE`, `USED`, `REVOKED`, `EXPIRED`), valor, origem e validade.
+- Destacar os que estao proximos do vencimento.
+
+P0 - Checkout com credito
+- Exibir "Aplicar credito" com valor que sera abatido.
+- Permitir marcar/desmarcar uso do credito antes de confirmar pagamento.
+- Mostrar claramente o novo total apos aplicacao.
+
+P1 - Conta e seguranca
+- Criar fluxo de troca de senha (area logada).
+- Incluir validacoes basicas de seguranca (senha atual obrigatoria e politica minima de nova senha).
+
+P1 - Verificacao de e-mail
+- Enviar link de verificacao no cadastro.
+- Bloquear acoes sensiveis enquanto `email_verified = false` (conforme regra de negocio definida).
+- Nao incluir verificacao por telefone por enquanto (decisao de custo).
+
+P2 - Roles e permissoes
+- Definir primeiro caso de uso real para `user_roles` (ex.: admin de operacao, suporte, auditoria).
+- Ativar somente apos fechar matriz de permissao e escopo.
+
+Requisitos tecnicos (backend)
+- Endpoint para listar creditos do usuario com filtros por status e ordenacao por vencimento.
+- Endpoint/servico para simular e aplicar 1 credito no checkout.
+- Validacoes transacionais para evitar uso duplicado de credito.
+- Auditoria em `used_at`, `revoked_at` e `order_id`.
+
+Requisitos tecnicos (frontend)
+- Nova tela "Meus Creditos" na area logada.
+- Componente de aplicacao de credito no checkout com feedback em tempo real.
+- Pagina "Seguranca" com troca de senha.
+- Tela/estado de "E-mail nao verificado" com acao de reenviar link.
+
+Criterios de aceite (MVP)
+- Usuario consegue visualizar seus creditos e entender saldo/validade.
+- Usuario consegue optar por usar ou nao 1 credito no checkout.
+- Sistema sempre escolhe automaticamente o credito elegivel com vencimento mais proximo.
+- Nao ha aplicacao de credito invalido (vencido, usado, revogado ou moeda incompativel).
+- Usuario consegue trocar senha.
+- Usuario recebe e confirma e-mail por link.
+
+Tabelas de referencia (estado atual)
+
+`public.credits`
+SELECT id,
+       user_id,
+       order_id,
+       amount_cents,
+       status,
+       created_at,
+       updated_at,
+       expires_at,
+       used_at,
+       revoked_at,
+       source_type,
+       source_reason,
+       notes
+FROM public.credits;
+
+`public.users`
+SELECT id,
+       full_name,
+       email,
+       phone,
+       is_active,
+       email_verified,
+       phone_verified,
+       created_at,
+       updated_at,
+       anonymized_at,
+       locale,
+       totp_enabled,
+       totp_secret_ref,
+       created_by,
+       updated_by,
+       deleted_at
+FROM public.users;
+
+`public.user_wallets`
+SELECT id,
+       user_id,
+       balance_cents,
+       currency,
+       status,
+       last_transaction_at,
+       created_at,
+       updated_at
+FROM public.user_wallets;
+
+`public.user_roles`
+SELECT id,
+       user_id,
+       role,
+       scope_type,
+       scope_id,
+       is_active,
+       granted_at,
+       revoked_at
+FROM public.user_roles;
+
+Checklist de implementacao por sprint
+
+Sprint 1 (P0) - Creditos visiveis + uso no checkout
+
+Backend
+- [ ] Definir contrato do endpoint `GET /me/credits` (filtros por status e ordenacao por `expires_at`).
+- [ ] Implementar listagem de creditos do usuario autenticado.
+- [ ] Implementar agregacao de saldo disponivel (`AVAILABLE` e nao vencido).
+- [ ] Definir contrato do endpoint `POST /checkout/credit-preview`.
+- [ ] Implementar simulacao de aplicacao de 1 credito elegivel (mais proximo de expirar).
+- [ ] Definir contrato do endpoint `POST /checkout/apply-credit`.
+- [ ] Implementar aplicacao transacional de credito (lock, validacao de status e vencimento).
+- [ ] Persistir auditoria (`order_id`, `used_at`, `updated_at`).
+- [ ] Validar compatibilidade de moeda (pedido x carteira x credito/regra temporaria).
+
+Frontend
+- [ ] Criar pagina "Meus Creditos" na area logada.
+- [ ] Exibir saldo total disponivel.
+- [ ] Exibir lista de creditos com status, origem, valor e validade.
+- [ ] Destacar visualmente creditos proximos do vencimento.
+- [ ] Adicionar opcao "Aplicar credito" no checkout.
+- [ ] Permitir marcar/desmarcar uso do credito.
+- [ ] Atualizar resumo de pagamento em tempo real com valor abatido.
+- [ ] Exibir mensagens de erro de elegibilidade (vencido, usado, revogado, moeda incompativel).
+
+QA / Testes
+- [ ] Teste unitario: selecao do credito por menor `expires_at`.
+- [ ] Teste unitario: bloqueio de credito invalido.
+- [ ] Teste de integracao: fluxo completo de checkout com credito.
+- [ ] Teste de concorrencia: impedir uso duplicado do mesmo credito.
+- [ ] Teste E2E: usuario aplica e remove credito antes de pagar.
+
+Definicao de pronto da Sprint 1
+- [ ] Usuario ve creditos e saldo com clareza.
+- [ ] Usuario escolhe usar ou nao usar credito no checkout.
+- [ ] Sistema aplica no maximo 1 credito por pedido sem inconsistencias.
+
+Sprint 2 (P1) - Seguranca da conta + verificacao de e-mail
+
+Backend
+- [ ] Implementar endpoint de troca de senha autenticada.
+- [ ] Exigir senha atual para alteracao.
+- [ ] Aplicar politica minima de senha (tamanho e complexidade definidos pelo time).
+- [ ] Implementar emissao de token de verificacao de e-mail.
+- [ ] Implementar endpoint de confirmacao por link.
+- [ ] Implementar endpoint de reenvio de verificacao.
+- [ ] Definir quais acoes sensiveis exigem `email_verified = true`.
+
+Frontend
+- [ ] Criar pagina "Seguranca" com formulario de troca de senha.
+- [ ] Validar campos (senha atual, nova senha, confirmacao).
+- [ ] Criar estado/tela de e-mail nao verificado.
+- [ ] Incluir acao de reenviar e-mail de verificacao.
+- [ ] Exibir status de verificacao no perfil do usuario.
+
+QA / Testes
+- [ ] Teste unitario: regras de validacao de senha.
+- [ ] Teste de integracao: troca de senha com senha atual incorreta/correta.
+- [ ] Teste de integracao: token de verificacao expirado e valido.
+- [ ] Teste E2E: cadastro -> recebimento de link -> confirmacao de e-mail.
+
+Definicao de pronto da Sprint 2
+- [ ] Usuario consegue trocar senha com seguranca.
+- [ ] Usuario recebe e confirma e-mail por link.
+- [ ] Regras de bloqueio por e-mail nao verificado funcionam como esperado.
+
+Sprint 3 (P2) - Roles e permissoes
+
+Backend
+- [ ] Mapear papeis iniciais (ex.: admin_operacao, suporte, auditoria).
+- [ ] Definir matriz de permissao por `scope_type` e `scope_id`.
+- [ ] Implementar middleware/guard de autorizacao.
+- [ ] Implementar consulta de roles ativas por usuario.
+
+Frontend
+- [ ] Condicionar exibicao de funcionalidades por permissao.
+- [ ] Criar fallback de acesso negado.
+
+QA / Testes
+- [ ] Teste unitario: avaliacao de permissao por role e escopo.
+- [ ] Teste de integracao: endpoints protegidos com role ausente/presente.
+- [ ] Teste E2E: usuario com perfil comum nao acessa telas administrativas.
+
+Definicao de pronto da Sprint 3
+- [ ] Primeiro caso de uso de `user_roles` ativo em producao.
+- [ ] Acessos sensiveis protegidos por matriz de permissao.
+
+Checklist tecnico transversal (executar em todas as sprints)
+- [ ] Padronizar codigos de erro e mensagens de API.
+- [ ] Adicionar logs estruturados para eventos criticos.
+- [ ] Instrumentar metricas (taxa de uso de credito, falha de verificacao, erro de permissao).
+- [ ] Revisar migrations e estrategia de rollback.
+- [ ] Atualizar documentacao de API e fluxos de produto.
+

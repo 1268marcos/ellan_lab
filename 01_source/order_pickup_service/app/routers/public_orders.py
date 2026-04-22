@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from typing import Any, Optional, List, Dict
 import hashlib
@@ -715,6 +717,24 @@ def _serialize_order_legacy_sem_credito50(
     }
 
 
+def _order_metadata_as_dict(order: Order) -> dict[str, Any]:
+    """Normaliza order_metadata para dict (JSONB, Mapping ou JSON em string)."""
+    raw = getattr(order, "order_metadata", None)
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, Mapping):
+        return dict(raw)
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except (json.JSONDecodeError, TypeError):
+            return {}
+    return {}
+
+
 def _serialize_order(
     order: Order,
     fiscal: FiscalDocument | None = None,
@@ -809,6 +829,8 @@ def _serialize_order(
         "qr_payload": qr_payload,
         "locker": locker,
         "pickup_expired_effective": hide_pickup_credentials,
+        "currency": getattr(order, "currency", None),
+        "credit_application": _order_metadata_as_dict(order).get("credit_application"),
     }
 
 
@@ -1119,6 +1141,8 @@ def _create_public_order_via_existing_flow(
         user_id=current_user.id,
         payment_interface=payload.payment_interface,
         wallet_provider=payload.wallet_provider,
+        use_credit=payload.use_credit,
+        credit_id=payload.credit_id,
         device_id=device_fp,
         ip_address=request.client.host if request.client else None,
     )
@@ -1164,6 +1188,7 @@ def _create_public_order_via_existing_flow(
         "guest_session_id": guest_session_id,
         "user_id": order.user_id,
         "region": order.region,
+        "credit_application": result.credit_application,
     }
 
 
@@ -1182,6 +1207,8 @@ class PublicCreateOrderRequest(BaseModel):
     # customer_email: Optional[str] = Field(default=None, max_length=255)
     guest_email: Optional[str] = Field(default=None, max_length=255)
     wallet_provider: Optional[str] = Field(default=None, max_length=64)
+    use_credit: bool = False
+    credit_id: Optional[str] = Field(default=None, max_length=64)
     consent_marketing: bool = False
     
     @field_validator("region")
@@ -1253,6 +1280,7 @@ class PublicOrderCreateResponse(BaseModel):
     guest_session_id: str
     user_id: str
     region: str
+    credit_application: Optional[Dict[str, Any]] = None
 
 
 # ==================== Endpoints ====================
@@ -1348,6 +1376,7 @@ def create_public_order(
             "guest_session_id": existing_order.guest_session_id,
             "user_id": existing_order.user_id,
             "region": existing_order.region,
+            "credit_application": _order_metadata_as_dict(existing_order).get("credit_application"),
         }
 
     return _create_public_order_via_existing_flow(

@@ -19,6 +19,7 @@ from app.routers import dev_admin, dev_base_catalog, internal, kiosk, orders, pi
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
+from app.routers.public_me import router as public_me_router
 from app.routers.public_orders import router as public_orders_router
 from app.routers.public_pickup import router as public_pickup_router
 from app.routers.public_fiscal import router as public_fiscal_router
@@ -44,6 +45,7 @@ app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
 app.include_router(public_auth_router)
 app.include_router(public_catalog_router)
+app.include_router(public_me_router)
 app.include_router(public_orders_router)
 app.include_router(public_pickup_router)
 app.include_router(public_fiscal_router)
