@@ -17,6 +17,7 @@ from app.routers.allocations import router as allocations_router
 from app.routers.locker_state import router as locker_state_router
 from app.routers.hardware import router as hardware_router
 from app.routers.catalog import router as catalog_router
+from app.routers.dev_catalog import router as dev_catalog_router
 from app.services.runtime_bootstrap_service import safe_bootstrap_runtime_on_startup
 
 logging.basicConfig(level=logging.INFO)
@@ -72,6 +73,7 @@ app.include_router(allocations_router)
 app.include_router(locker_state_router)
 app.include_router(hardware_router)
 app.include_router(catalog_router)
+app.include_router(dev_catalog_router)
 
 
 app.add_middleware(

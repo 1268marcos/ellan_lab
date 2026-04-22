@@ -22,6 +22,7 @@ const LockerDashboardFirst = lazy(() => import("./pages/LockerDashboardFirst"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
 const RegionPageFirst = lazy(() => import("./pages/RegionPageFirst"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
+const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 
 // Componente de loading otimizado
@@ -148,6 +149,7 @@ function TopNav() {
 
     
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
+    { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" }
   ] : [];
 
@@ -461,6 +463,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <DevLockerResetPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/dev/slots"
+              element={
+                <OpsRoute>
+                  <DevSlotAllocationPage />
                 </OpsRoute>
               }
             />

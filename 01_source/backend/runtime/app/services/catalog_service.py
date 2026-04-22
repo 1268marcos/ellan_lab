@@ -8,6 +8,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from app.core.db import get_conn
 from app.core.locker_runtime_resolver import resolve_runtime_locker
 from app.core.slot_topology import get_valid_slot_ids
 from app.schemas.catalog import CatalogSkuOut, CatalogSlotOut
@@ -404,6 +405,27 @@ def _build_slot_out(
     )
 
 
+def _read_slot_overrides_for_machine(*, machine_id: str) -> dict[int, str]:
+    conn = get_conn()
+    rows = conn.execute(
+        """
+        SELECT door_id, sku_id
+        FROM catalog_slot_overrides
+        WHERE machine_id = ?
+        """,
+        (machine_id,),
+    ).fetchall()
+
+    out: dict[int, str] = {}
+    for row in rows:
+        slot = int(row["door_id"])
+        sku_id = str(row["sku_id"] or "").strip()
+        if not sku_id:
+            continue
+        out[slot] = sku_id
+    return out
+
+
 def list_catalog_skus(*, x_locker_id: str | None) -> list[CatalogSkuOut]:
     locker_ctx = resolve_runtime_locker(x_locker_id)
     locker_id = locker_ctx["locker_id"]
@@ -442,6 +464,7 @@ def get_catalog_sku(*, x_locker_id: str | None, sku_id: str) -> CatalogSkuOut:
 def list_catalog_slots(*, x_locker_id: str | None) -> list[CatalogSlotOut]:
     locker_ctx = resolve_runtime_locker(x_locker_id)
     locker_id = locker_ctx["locker_id"]
+    machine_id = locker_ctx["machine_id"]
 
     slot_ids = get_valid_slot_ids(locker_ctx)
     sku_catalog = _load_sku_catalog()
@@ -451,11 +474,22 @@ def list_catalog_slots(*, x_locker_id: str | None) -> list[CatalogSlotOut]:
         slot_ids=slot_ids,
         sku_catalog=sku_catalog,
     )
+    slot_overrides = _read_slot_overrides_for_machine(machine_id=machine_id)
 
     items: list[CatalogSlotOut] = []
+    valid_slots = set(slot_ids)
+    active_skus = {
+        sku_id
+        for sku_id, item in sku_catalog.items()
+        if bool(item.get("is_active", True))
+    }
 
     for slot in sorted(slot_ids):
         sku_id = slot_plan.get(int(slot))
+        override_sku_id = slot_overrides.get(int(slot))
+        if override_sku_id and int(slot) in valid_slots and override_sku_id in active_skus:
+            sku_id = override_sku_id
+
         sku_item = sku_catalog.get(sku_id) if sku_id else None
 
         if sku_item and not bool(sku_item.get("is_active", True)):

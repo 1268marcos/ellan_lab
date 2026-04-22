@@ -256,6 +256,31 @@ def _create_pending_sync_operations_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _create_catalog_slot_overrides_table(conn: sqlite3.Connection) -> None:
+    """
+    Mapeamento operacional editável de slot -> sku por locker.
+    Usado pela interface de alocação de produtos em ambiente operacional.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS catalog_slot_overrides (
+            machine_id TEXT NOT NULL,
+            door_id INTEGER NOT NULL,
+            sku_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (machine_id, door_id)
+        );
+        """
+    )
+
+    conn.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_catalog_slot_overrides_machine
+        ON catalog_slot_overrides(machine_id, door_id);
+        """
+    )
+
+
 # =========================================================
 # Migração - Verificação de índice antigo
 # =========================================================
@@ -289,6 +314,7 @@ def init_db() -> None:
     _create_door_state_table(conn)
     _create_allocations_table(conn)
     _create_pending_sync_operations_table(conn)
+    _create_catalog_slot_overrides_table(conn)
 
     conn.commit()
 

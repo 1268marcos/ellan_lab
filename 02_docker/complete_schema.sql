@@ -1520,7 +1520,19 @@ CREATE TABLE public.credits (
     user_id character varying,
     order_id character varying NOT NULL,
     amount_cents integer NOT NULL,
-    status public.creditstatus NOT NULL
+    status public.creditstatus NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    used_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    source_type character varying(50),
+    source_reason character varying(255),
+    notes text,
+    CONSTRAINT ck_credits_amount_positive CHECK ((amount_cents > 0)),
+    CONSTRAINT ck_credits_expiry_after_create CHECK ((expires_at > created_at)),
+    CONSTRAINT ck_credits_revoked_after_create CHECK (((revoked_at IS NULL) OR (revoked_at >= created_at))),
+    CONSTRAINT ck_credits_used_after_create CHECK (((used_at IS NULL) OR (used_at >= created_at)))
 );
 
 
@@ -5241,6 +5253,34 @@ CREATE INDEX ix_cpt_locker_id ON public.capability_profile_target USING btree (l
 --
 
 CREATE INDEX ix_cpt_target ON public.capability_profile_target USING btree (target_type, target_key);
+
+
+--
+-- Name: ix_credits_expires_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_credits_expires_at ON public.credits USING btree (expires_at);
+
+
+--
+-- Name: ix_credits_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_credits_status ON public.credits USING btree (status);
+
+
+--
+-- Name: ix_credits_user_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_credits_user_id ON public.credits USING btree (user_id);
+
+
+--
+-- Name: ix_credits_user_status_expires; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_credits_user_status_expires ON public.credits USING btree (user_id, status, expires_at);
 
 
 --
