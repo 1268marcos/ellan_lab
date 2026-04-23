@@ -146,10 +146,18 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   [ ] DELIVERY: DANFE PDF simplificado + payload JSON impressora térmica
         (MQTT/HTTP)
 
+  [~] DELIVERY: fila `invoice_email_outbox` + 4º loop no `invoice_issue_worker`;
+        env `INVOICE_SMTP_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`,
+        `SMTP_FROM`, `SMTP_USE_TLS` / `SMTP_USE_SSL`; log `SENT` | `SENT_STUB` | retries
+  [~] INTEGRATION: CC-e stub BR — campo `xml_event_preview` (evento 110110) + espelho em `raw`
+        (pré-SVRS; não assinado)
+
   SCHEMA: fiscal_authority_callbacks (invoice_id, authority, raw_payload, ...)
 
   Registro de evolução
-  -
+  - 2026-04-23: F-3 parcial — tabela `invoice_email_outbox` (migração startup),
+    `invoice_email_queue_service` (claim/retry/backoff), SMTP real quando habilitado;
+    `sefaz_sp_cc_e_stub` passa a expor `xml_event_preview` orientado ao evento SEFAZ.
 
 
 -------------------------------------------------------------------------------
@@ -181,17 +189,24 @@ Objetivo: política cancelamento SEFAZ (<30 min / 30min–24h CC / >24h NF comp.
           e-mail DANFE; payload térmico; reissue com chave anterior.
 
   User stories
-  [ ] SERVICE: cancellation policy engine (gatilho orders.status = REFUNDED)
-  [ ] SERVICE: saga CANCELLING → SEFAZ → CANCELLED + invoice.cancelled
-  [ ] DELIVERY: e-mail PDF para orders.receipt_email + notification_logs
-  [ ] API: GET /internal/fiscal/danfe/{id}/thermal — JSON impressora
-  [ ] API: fluxo reissue — cancela anterior, nova nota com previous_receipt_code
+  [x] SERVICE: cancellation policy engine (BR <30m / 30m–24h / >24h) — cancellation_policy_service
+  [x] SERVICE: saga CANCELLING → stub SEFAZ/AT/AEAT → CANCELLED (invoice_issue_worker)
+  [x] DELIVERY: e-mail DANFE — invoice_delivery_log (QUEUED; conclusão SENT/SENT_STUB via worker F-3)
+        ou SKIPPED_NO_RECIPIENT; gatilhos: pós-emissão (ISSUED), pós-cancelamento void, pós-CC-e stub
+  [x] API: GET /internal/fiscal/danfe/{invoice_id}/thermal — JSON impressora (stub)
+  [x] API: POST /internal/invoices/{id}/cce-request — fila CORRECTION_REQUESTED → worker CC-e stub (BR/PT/ES)
+  [~] API: fluxo reissue — POST /internal/invoices/{id}/reissue já existia; previous_receipt_code F-3
 
-  SCHEMA: novos InvoiceStatus — CANCELLING, CANCELLED, CORRECTION_REQUESTED,
-           COMPLEMENTARY_ISSUED + invoice_delivery_log
+  SCHEMA: novos InvoiceStatus — CANCELLING, CORRECTION_REQUESTED, COMPLEMENTARY_ISSUED +
+           invoice_delivery_log (I-2 parcial)
 
   Registro de evolução
-  -
+  - 2026-04-23: I-2 parcial — enum + invoice_delivery_log; request_invoice_cancel;
+    POST /internal/invoices/{id}/cancel-request; worker processa CANCELLING; domain order.refunded;
+    GET /internal/fiscal/danfe/{id}/thermal; estados CC/complemento sem worker SEFAZ real.
+  - 2026-04-23: I-2 — e-mail (invoice_email_service + delivery log); worker CC-e stub
+    (CORRECTION_REQUESTED→ISSUED, cce_events); sefaz_sp_cc_e_stub / at_pt / aeat; POST /cce-request.
+  - 2026-04-23: I-2 + F-3 — e-mail enfileirado em `invoice_email_outbox`; worker emite SENT_STUB ou SENT (SMTP).
 
 
 -------------------------------------------------------------------------------
@@ -221,9 +236,9 @@ Quadro rápido de status por sprint (atualizar semanalmente)
   O-1      Contrato Orders + eventos              [x]
   F-1      Schema unificado NFC-e 65              [x]
   F-2      Tax engine BR/PT                       [x]
-  F-3      Integração provedores + DANFE          [ ]
+  F-3      Integração provedores + DANFE          [~]       fila e-mail + SMTP env; CC-e XML preview stub
   I-1      Integração Orders resiliente           [x]       VIEW + fallbacks HTTP
-  I-2      Cancelamento + entrega documento       [ ]
+  I-2      Cancelamento + entrega documento       [~]       policy+API+worker stub
   I-3      Reconciliação + exports + monitor      [ ]
 
 Riscos / decisões pendentes (lista viva)

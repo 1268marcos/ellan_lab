@@ -11,7 +11,7 @@ from app.models.processed_event import ProcessedEvent  # 👈 IMPORTANTE
 logger = logging.getLogger(__name__)
 
 
-REQUIRED_TABLES = {"invoices", "product_fiscal_config"}
+REQUIRED_TABLES = {"invoices", "product_fiscal_config", "invoice_delivery_log", "invoice_email_outbox"}
 
 REQUIRED_COLUMNS = {
     "invoices": {
@@ -93,6 +93,9 @@ def _ensure_invoice_status_enum(engine: Engine) -> None:
         "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'FAILED';",
         "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'DEAD_LETTER';",
         "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'CANCELLED';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'CANCELLING';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'CORRECTION_REQUESTED';",
+        "ALTER TYPE invoicestatus ADD VALUE IF NOT EXISTS 'COMPLEMENTARY_ISSUED';",
     ]
 
     with engine.begin() as conn:
@@ -125,6 +128,53 @@ def _ensure_indexes(engine: Engine) -> None:
     with engine.begin() as conn:
         for stmt in statements:
             conn.execute(text(stmt))
+
+
+def _ensure_invoice_email_outbox(engine: Engine) -> None:
+    """F-3: fila de e-mail fiscal (SMTP worker)."""
+    stmt = """
+    CREATE TABLE IF NOT EXISTS invoice_email_outbox (
+        id VARCHAR(50) NOT NULL PRIMARY KEY,
+        invoice_id VARCHAR(50) NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        template VARCHAR(32) NOT NULL,
+        to_email VARCHAR(255) NOT NULL,
+        subject VARCHAR(500) NOT NULL,
+        body_text TEXT NOT NULL,
+        detail_json JSONB,
+        status VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+        retry_count INTEGER NOT NULL DEFAULT 0,
+        next_retry_at TIMESTAMPTZ,
+        last_error VARCHAR(2000),
+        locked_by VARCHAR(120),
+        locked_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        sent_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS ix_invoice_email_outbox_status
+        ON invoice_email_outbox (status, next_retry_at);
+    CREATE INDEX IF NOT EXISTS ix_invoice_email_outbox_invoice
+        ON invoice_email_outbox (invoice_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_invoice_delivery_log(engine: Engine) -> None:
+    """I-2: auditoria de entrega (e-mail DANFE, etc.)."""
+    stmt = """
+    CREATE TABLE IF NOT EXISTS invoice_delivery_log (
+        id VARCHAR(50) NOT NULL PRIMARY KEY,
+        invoice_id VARCHAR(50) NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        channel VARCHAR(32) NOT NULL,
+        status VARCHAR(32) NOT NULL,
+        detail JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS ix_invoice_delivery_log_invoice
+        ON invoice_delivery_log (invoice_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
 
 
 def _ensure_invoice_order_view(engine: Engine) -> None:
@@ -179,6 +229,8 @@ def _ensure_unique_constraint(engine: Engine) -> None:
 
 def run_startup_migrations(engine: Engine) -> None:
     from app.models.base import Base
+    from app.models.invoice_delivery_log import InvoiceDeliveryLog  # noqa: F401
+    from app.models.invoice_email_outbox import InvoiceEmailOutbox  # noqa: F401
     from app.models.invoice_model import Invoice  # noqa: F401
     from app.models.product_fiscal_config import ProductFiscalConfig  # noqa: F401
 
@@ -210,6 +262,8 @@ def run_startup_migrations(engine: Engine) -> None:
 
     _ensure_indexes(engine)
     _ensure_unique_constraint(engine)
+    _ensure_invoice_delivery_log(engine)
+    _ensure_invoice_email_outbox(engine)
     _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)

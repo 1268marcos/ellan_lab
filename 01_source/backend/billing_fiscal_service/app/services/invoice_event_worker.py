@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.models.external_domain_event import DomainEvent
 from app.models.invoice_model import Invoice, InvoiceStatus
+from app.services.invoice_cancel_service import request_cancel_for_order_if_issued
 from app.services.invoice_orchestrator import ensure_and_process_invoice
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,17 @@ def _worker_id() -> str:
     host = socket.gethostname()
     pid = os.getpid()
     return f"billing_invoice_worker:{host}:{pid}"
+
+
+def _iter_candidate_order_refunded_events(db: Session, limit: int) -> list[DomainEvent]:
+    stmt = (
+        select(DomainEvent)
+        .where(DomainEvent.aggregate_type == "order")
+        .where(DomainEvent.event_name == "order.refunded")
+        .order_by(DomainEvent.created_at.asc())
+        .limit(limit)
+    )
+    return list(db.execute(stmt).scalars().all())
 
 
 def _iter_candidate_order_paid_events(db: Session, limit: int) -> list[DomainEvent]:
@@ -98,12 +110,45 @@ def process_pending_order_paid_events_once(
                 )
                 db.rollback()
 
+        refunded_ok = 0
+        refunded_skip = 0
+        refunded_fail = 0
+        refund_events = _iter_candidate_order_refunded_events(db, batch_size)
+        for event in refund_events:
+            order_id = str(event.aggregate_id).strip()
+            try:
+                inv = request_cancel_for_order_if_issued(
+                    db,
+                    order_id=order_id,
+                    reason="order.refunded",
+                    source="domain_event",
+                )
+                if inv is None:
+                    refunded_skip += 1
+                else:
+                    refunded_ok += 1
+            except Exception:
+                refunded_fail += 1
+                logger.exception(
+                    "invoice_refund_event_worker_failed",
+                    extra={
+                        "order_id": order_id,
+                        "event_key": event.event_key,
+                        "event_name": event.event_name,
+                    },
+                )
+                db.rollback()
+
         return {
             "ok": True,
             "processed": processed,
             "skipped": skipped,
             "failed": failed,
             "scanned": len(events),
+            "refunded_ok": refunded_ok,
+            "refunded_skipped": refunded_skip,
+            "refunded_failed": refunded_fail,
+            "refunded_scanned": len(refund_events),
         }
     finally:
         db.close()

@@ -77,3 +77,27 @@ def at_pt_issue_invoice(invoice: Invoice) -> dict:
             "processed_at": _at_pt_now_iso(),
         },
     }
+
+
+def at_pt_cc_e_stub(invoice: Invoice, correction_text: str | None) -> dict:
+    """Stub análogo a CC-e para PT (integração AT em F-3)."""
+    text = (correction_text or "").strip() or "Correção documental (stub)."
+    return {
+        "provider": "at_pt",
+        "kind": "correction_stub",
+        "country": "PT",
+        "access_key": invoice.access_key or _at_pt_generate_access_key(invoice),
+        "correction_text": text[:1000],
+        "processed_at": _at_pt_now_iso(),
+    }
+
+
+def at_pt_cancel_invoice(invoice: Invoice) -> dict:
+    """Stub I-2 — anular documento PT (integração AT real em F-3)."""
+    return {
+        "provider": "at_pt",
+        "country": "PT",
+        "cancel_status": "STUB_CANCELLED",
+        "access_key": invoice.access_key or _at_pt_generate_access_key(invoice),
+        "processed_at": _at_pt_now_iso(),
+    }

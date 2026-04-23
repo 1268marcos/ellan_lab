@@ -1,5 +1,18 @@
 # 01_source/backend/billing_fiscal_service/app/schemas/invoice_schema.py
-from pydantic import BaseModel
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class CancelRequestIn(BaseModel):
+    reason: Optional[str] = Field(default=None, max_length=500)
+    source: Optional[str] = Field(default="api", max_length=64)
+
+
+class CcRequestIn(BaseModel):
+    """Solicita CC-e / correção (entra em CORRECTION_REQUESTED para o worker stub)."""
+
+    correction_text: Optional[str] = Field(default=None, max_length=2000)
 
 
 class InvoiceResponse(BaseModel):

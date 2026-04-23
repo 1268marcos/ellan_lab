@@ -40,6 +40,18 @@ class Settings(BaseSettings):
     )
     invoice_issue_worker_id: str = Field(default="billing_fiscal_issue_worker", alias="INVOICE_ISSUE_WORKER_ID")
 
+    # F-3 — E-mail fiscal (SMTP opcional + fila invoice_email_outbox)
+    invoice_smtp_enabled: bool = Field(default=False, alias="INVOICE_SMTP_ENABLED")
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_user: str | None = Field(default=None, alias="SMTP_USER")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from: str | None = Field(default=None, alias="SMTP_FROM")
+    smtp_use_tls: bool = Field(default=True, alias="SMTP_USE_TLS")
+    smtp_use_ssl: bool = Field(default=False, alias="SMTP_USE_SSL")
+    invoice_email_max_retries: int = Field(default=5, alias="INVOICE_EMAIL_MAX_RETRIES")
+    invoice_email_lock_sec: int = Field(default=120, alias="INVOICE_EMAIL_LOCK_SEC")
+
     @property
     def database_url(self) -> str:
         return (

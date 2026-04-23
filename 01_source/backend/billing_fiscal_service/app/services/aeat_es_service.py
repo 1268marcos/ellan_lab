@@ -67,3 +67,26 @@ def aeat_es_issue_invoice(invoice: Invoice) -> dict:
             "processed_at": _aeat_es_now_iso(),
         },
     }
+
+
+def aeat_es_cc_e_stub(invoice: Invoice, correction_text: str | None) -> dict:
+    text = (correction_text or "").strip() or "Corrección documental (stub)."
+    return {
+        "provider": "aeat_es",
+        "kind": "correction_stub",
+        "country": "ES",
+        "access_key": invoice.access_key or _aeat_es_generate_access_key(invoice),
+        "correction_text": text[:1000],
+        "processed_at": _aeat_es_now_iso(),
+    }
+
+
+def aeat_es_cancel_invoice(invoice: Invoice) -> dict:
+    """Stub I-2 — anulação ES (AEAT real em F-3)."""
+    return {
+        "provider": "aeat_es",
+        "country": "ES",
+        "cancel_status": "STUB_CANCELLED",
+        "access_key": invoice.access_key or _aeat_es_generate_access_key(invoice),
+        "processed_at": _aeat_es_now_iso(),
+    }

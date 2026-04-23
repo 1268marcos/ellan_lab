@@ -28,6 +28,57 @@ def _sefaz_sp_generate_access_key(invoice: Invoice) -> str:
     return f"sefaz_sp_{uuid.uuid4().hex}"
 
 
+def _cce_chave_nfe_44(access_key: str) -> str:
+    """Pré-visualização: chave 44 dígitos (stub preenche com zeros à direita)."""
+    digits = "".join(ch for ch in (access_key or "") if ch.isdigit())
+    if len(digits) >= 44:
+        return digits[:44]
+    return (digits + "0" * 44)[:44]
+
+
+def _xml_escape_text(s: str) -> str:
+    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _xml_escape_attr(s: str) -> str:
+    return _xml_escape_text(s).replace('"', "&quot;")
+
+
+def build_cce_xml_event_preview(
+    *,
+    access_key: str,
+    sequence: int,
+    correction_text: str,
+    protocol_number: str,
+) -> str:
+    """
+    XML mínimo orientado ao evento SEFAZ 110110 (Carta de Correção) — apenas pré-visualização / stub F-3.
+    Não assina nem substitui o payload oficial da NT.
+    """
+    ch = _cce_chave_nfe_44(access_key)
+    nseq = max(1, min(99, int(sequence)))
+    inf_id = f"ID110110{ch}{nseq:02d}"
+    xtxt = _xml_escape_text((correction_text or "").strip()[:1000])
+    nprot = _xml_escape_text(protocol_number)
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<evento xmlns="http://www.portalfiscal.inf.br/nfe">'
+        f'<infEvento Id="{_xml_escape_attr(inf_id)}">'
+        "<cOrgao>35</cOrgao>"
+        "<tpAmb>2</tpAmb>"
+        f"<chNFe>{ch}</chNFe>"
+        "<tpEvento>110110</tpEvento>"
+        f"<nSeqEvento>{nseq}</nSeqEvento>"
+        '<detEvento versao="1.00">'
+        "<descEvento>Carta de Correção</descEvento>"
+        f"<xCorrecao>{xtxt}</xCorrecao>"
+        "</detEvento>"
+        f"<nProt>{nprot}</nProt>"
+        "</infEvento>"
+        "</evento>"
+    )
+
+
 def _sefaz_sp_build_tax_details(invoice: Invoice) -> dict:
     amount_cents = invoice.amount_cents or 0
     amount = round(amount_cents / 100, 2)
@@ -190,4 +241,58 @@ def sefaz_sp_issue_invoice(invoice: Invoice) -> dict:
         "tax_details": tax_details,
         "xml_content": xml_content,
         "government_response": government_response,
+    }
+
+
+def sefaz_sp_cc_e_stub(invoice: Invoice, correction_text: str | None) -> dict:
+    """Stub CC-e (carta de correção) pós-emissão NFC-e — integração SEFAZ em F-3."""
+    text = (correction_text or "").strip() or "Correção cadastral (stub CC-e)."
+    access_key = invoice.access_key or _sefaz_sp_generate_access_key(invoice)
+    seq = 1
+    gr = invoice.government_response or {}
+    existing = gr.get("cce_events") if isinstance(gr, dict) else None
+    if isinstance(existing, list):
+        seq = len(existing) + 1
+    protocol_number = f"sefaz_sp_cce_{uuid.uuid4().hex[:18]}"
+    xml_event_preview = build_cce_xml_event_preview(
+        access_key=access_key,
+        sequence=seq,
+        correction_text=text,
+        protocol_number=protocol_number,
+    )
+    return {
+        "provider": "sefaz_sp",
+        "kind": "cce",
+        "country": "BR",
+        "access_key": access_key,
+        "sequence": seq,
+        "correction_text": text[:1000],
+        "protocol_number": protocol_number,
+        "processed_at": _sefaz_sp_now_iso(),
+        "xml_event_preview": xml_event_preview,
+        "raw": {
+            "environment": "stub",
+            "integration_mode": "local_stub",
+            "order_id": invoice.order_id,
+            "xml_event_preview": xml_event_preview,
+        },
+    }
+
+
+def sefaz_sp_cancel_invoice(invoice: Invoice) -> dict:
+    """Stub: evento de cancelamento NFC-e homologado (I-2)."""
+    access_key = invoice.access_key or _sefaz_sp_generate_access_key(invoice)
+    return {
+        "provider": "sefaz_sp",
+        "country": "BR",
+        "cancel_status": "CANCELLED",
+        "access_key": access_key,
+        "protocol_number": f"sefaz_sp_cancel_{uuid.uuid4().hex[:20]}",
+        "processed_at": _sefaz_sp_now_iso(),
+        "raw": {
+            "environment": "stub",
+            "integration_mode": "local_stub",
+            "order_id": invoice.order_id,
+            "note": "Cancelamento NFC-e (stub) — substituir por integração SEFAZ real (F-3).",
+        },
     }

@@ -4,17 +4,20 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.db import get_db
-from app.models.invoice_model import Invoice
-from app.schemas.invoice_schema import InvoiceResponse
+from app.models.invoice_model import Invoice, InvoiceStatus
+from app.schemas.invoice_schema import CancelRequestIn, CcRequestIn, InvoiceResponse
 
 # from app.services.invoice_issue_service import reset_invoice_for_retry
 # from app.services.invoice_service import generate_invoice
 from app.services.invoice_issue_service import reset_invoice_for_retry
+from app.services.invoice_cancel_service import request_invoice_cancel
 from app.services.invoice_orchestrator import ensure_and_process_invoice
 
 from app.core.datetime_utils import to_iso_utc
@@ -123,6 +126,64 @@ def retry_invoice(
 
     invoice = reset_invoice_for_retry(db, invoice, clear_identifiers=False)
     return _to_invoice_response(invoice)
+
+
+@router.post("/{invoice_id}/cce-request", response_model=InvoiceResponse)
+def request_cce_stub_queue(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+    body: CcRequestIn | None = Body(default=None),
+):
+    """
+    Enfileira correção (CC-e stub): ISSUED → CORRECTION_REQUESTED.
+    O worker aplica `route_cc_e_stub` e volta para ISSUED com `cce_events` no government_response.
+    """
+    payload = body or CcRequestIn()
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if inv.status != InvoiceStatus.ISSUED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Apenas invoice ISSUED pode solicitar CC-e; status={inv.status.value}",
+        )
+    pj = dict(inv.payload_json or {})
+    pj["cce_manual_request"] = {
+        "correction_text": (payload.correction_text or "").strip() or None,
+        "requested_at": to_iso_utc(datetime.now(timezone.utc)),
+    }
+    inv.payload_json = pj
+    inv.status = InvoiceStatus.CORRECTION_REQUESTED
+    inv.next_retry_at = None
+    inv.error_message = None
+    inv.last_error_code = None
+    db.commit()
+    db.refresh(inv)
+    return _to_invoice_response(inv)
+
+
+@router.post("/{invoice_id}/cancel-request", response_model=InvoiceResponse)
+def request_cancel_invoice_endpoint(
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+    body: CancelRequestIn | None = Body(default=None),
+):
+    """
+    I-2: solicita cancelamento conforme política (void / CC-e / complemento — stub SEFAZ no worker).
+    """
+    payload = body or CancelRequestIn()
+    try:
+        inv = request_invoice_cancel(
+            db,
+            invoice_id=invoice_id,
+            reason=payload.reason,
+            source=payload.source or "api",
+        )
+        return _to_invoice_response(inv)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{invoice_id}/reissue", response_model=InvoiceResponse)

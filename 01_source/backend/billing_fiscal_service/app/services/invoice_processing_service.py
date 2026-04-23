@@ -148,6 +148,16 @@ def finalize_invoice_success(
         },
     )
 
+    try:
+        from app.services.invoice_email_service import send_danfe_email_after_issue
+
+        send_danfe_email_after_issue(invoice.id)
+    except Exception:
+        logger.exception(
+            "invoice_issue_email_hook_failed",
+            extra={"invoice_id": invoice.id, "order_id": invoice.order_id},
+        )
+
     return invoice
 
 
