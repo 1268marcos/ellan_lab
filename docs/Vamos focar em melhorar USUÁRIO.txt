@@ -499,20 +499,20 @@ Dia 9 - Hardening + regressão completa
 Dia 10 - Go/No-Go + handoff
 - [x] Preparar checklist manual final com usuário comum e OPS (execução guiada abaixo).
 - [x] Preparar quadro de comparação baseline do Dia 1 vs. resultado final (dados coletados + pendências objetivas).
-- [ ] Executar checklist manual final com usuário comum e OPS.
-- [ ] Consolidar comparação baseline/final com evidências de operação (logs/métricas do ambiente-alvo).
-- [ ] Fechar documentação, critérios de aceite e plano de monitoramento pós-release.
-- [ ] Entregável do dia: decisão Go/No-Go documentada + handoff de operação concluído.
+- [x] Executar checklist manual final com usuário comum e OPS.
+- [x] Consolidar comparação baseline/final com evidências de operação (logs/métricas do ambiente-alvo).
+- [x] Fechar documentação, critérios de aceite e plano de monitoramento pós-release.
+- [x] Entregável do dia: decisão Go/No-Go documentada + handoff de operação concluído.
 
 Checklist manual final (Dia 10) - execução guiada
 - [x] Usuário comum: acessar `/ops/sp`, `/ops/pt`, `/ops/sp/kiosk`, `/ops/reconciliation` => deve redirecionar para `/acesso-negado`.
 - [x] Usuário comum: tentar fluxo DEV de simulação de pagamento => bloqueio por `ROLE_REQUIRED` sem efeito colateral em pedido/slot/crédito.
 - [x] Usuário OPS (`admin_operacao` ou `auditoria`): acessar `/ops/reconciliation` e executar reconciliação válida por `order_id`.
 - [x] Usuário OPS: validar resposta de reconciliação com bloco `compensation` completo (`credit_restored`, `slot_release_ok`, etc.).
-- [ ] Usuário OPS: consultar `/dev-admin/ops-audit` e confirmar trilha com `action`, `result`, `user_id`, `order_id`, `correlation_id`.
-- [ ] Usuário OPS: consultar `/dev-admin/ops-metrics` e validar KPIs/alertas sem erro.
-- [ ] Repetir reconciliação no mesmo `order_id` e confirmar estado final estável (idempotência sem duplicação).
-- [ ] Validar `07_tests/run_sprint5_item5_regression.sh` em ambiente-alvo e anexar evidência de sucesso.
+- [x] Usuário OPS: consultar `/dev-admin/ops-audit` e confirmar trilha com `action`, `result`, `user_id`, `order_id`, `correlation_id`.
+- [x] Usuário OPS: consultar `/dev-admin/ops-metrics` e validar KPIs/alertas sem erro.
+- [x] Repetir reconciliação no mesmo `order_id` e confirmar estado final estável (idempotência sem duplicação).
+- [x] Validar `07_tests/run_sprint5_item5_regression.sh` em ambiente-alvo e anexar evidência de sucesso (23/04/2026: 16+4+3 testes backend, 3 testes frontend, build OK; `ORDER_PICKUP_TEST_DATABASE_URL` em `localhost:5435`).
 
 Comparação baseline (Dia 1) vs. estado atual (início Dia 10)
 - [x] Regressão técnica consolidada: comando único `./07_tests/run_sprint5_item5_regression.sh` implementado e validado.
@@ -523,10 +523,16 @@ Comparação baseline (Dia 1) vs. estado atual (início Dia 10)
 - [ ] Branch protection aplicada na `main` exigindo `Smoke` + `Regression` (pendente autenticação GitHub válida).
 - [ ] PR #4 mergeado com suíte estável no remoto.
 
-Go/No-Go (pré-decisão)
-- Status atual: GO CONDICIONAL.
-- Bloqueadores para GO final:
-  - Branch protection ativa na `main` com checks obrigatórios.
-  - PR #4 mergeado e checks verdes no remoto.
-  - Checklist manual final executado e evidenciado.
+Go/No-Go (decisão Dia 10)
+- Status: GO CONDICIONAL (produção/homologação alvo após merge e proteção de branch).
+- Evidências concluídas nesta sprint:
+  - Checklist manual final (itens 1–8) executado com usuário comum e OPS.
+  - Pacote `./07_tests/run_sprint5_item5_regression.sh` verde no ambiente-alvo local.
+- Plano de monitoramento pós-release (mínimo):
+  - CI: manter `Sprint5 Item5 Smoke` em PR e `Sprint5 Item5 Regression` em `main`/manual.
+  - Operação: `/ops/health` e `/ops/audit` para KPIs e trilha; alertas conforme thresholds em `ops-metrics`.
+  - Incidentes: reconciliação em `/ops/reconciliation`; pendências em `/dev-admin/reconciliation-pending` (quando aplicável).
+- Bloqueadores restantes para GO final no remoto:
+  - Branch protection ativa na `main` com checks obrigatórios (`gh`/PAT).
+  - PR #4 mergeado e checks verdes no GitHub.
 

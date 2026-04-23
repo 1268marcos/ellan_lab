@@ -62,6 +62,19 @@ function formatScore(value) {
   return n.toFixed(2);
 }
 
+function formatSlotEquipmentLine(item) {
+  if (String(item?.entity_type || "").toLowerCase() !== "slot") return "";
+  const locker = item?.locker_id;
+  const machine = item?.machine_id;
+  const site = item?.site_id;
+  const bits = [];
+  if (locker) bits.push(`armário ${locker}`);
+  if (machine) bits.push(`máquina ${machine}`);
+  if (site) bits.push(`site ${site}`);
+  if (!bits.length) return "sem vínculo nos fatos deste período";
+  return bits.join(" · ");
+}
+
 function buildInternalHeaders(internalToken) {
   return {
     "Content-Type": "application/json",
@@ -310,6 +323,12 @@ export default function PickupHealthPanel({
                     <div style={{ fontSize: 15, fontWeight: 800 }}>
                       {item.entity_type} • {item.entity_id || "N/D"}
                     </div>
+                    {String(item.entity_type || "").toLowerCase() === "slot" ? (
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#93c5fd", marginTop: 4 }}>
+                        Equipamento:{" "}
+                        <span style={{ fontWeight: 600, color: "#e0f2fe" }}>{formatSlotEquipmentLine(item)}</span>
+                      </div>
+                    ) : null}
                     <div style={{ fontSize: 12, opacity: 0.74 }}>
                       tenant: <b>{item.tenant_id || "-"}</b> • operator: <b>{item.operator_id || "-"}</b> • region: <b>{item.region || "-"}</b>
                     </div>

@@ -299,6 +299,8 @@ def build_entity_context(
         row["site_id"] = entity_id
     elif entity_type == "region":
         row["region"] = entity_id
+    elif entity_type == "slot" and entity_id:
+        row["slot_id"] = str(entity_id)
 
     return row
 

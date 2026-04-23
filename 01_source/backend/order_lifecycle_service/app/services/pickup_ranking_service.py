@@ -399,3 +399,68 @@ def build_pickup_ranking(
         },
     )
 
+
+def resolve_equipment_bundle_for_slot(
+    db: Session,
+    *,
+    slot_id: str,
+    start_at: datetime | None,
+    end_at: datetime | None,
+    region: str | None,
+    channel: str | None,
+    slot: str | None,
+    locker_id: str | None,
+    machine_id: str | None,
+    operator_id: str | None,
+    tenant_id: str | None,
+    site_id: str | None,
+) -> dict[str, str | None]:
+    """
+    Para ranking por slot_id: retorna o trio (locker_id, machine_id, site_id) mais frequente
+    nos fatos pickup_terminal_state do periodo (mesmos filtros do ranking).
+    """
+    if not slot_id:
+        return {"locker_id": None, "machine_id": None, "site_id": None}
+
+    locker_expr = AnalyticsFact.payload["locker_id"].astext
+    machine_expr = AnalyticsFact.payload["machine_id"].astext
+    site_expr = AnalyticsFact.payload["site_id"].astext
+    cnt = func.count(AnalyticsFact.id).label("cnt")
+
+    query = (
+        db.query(
+            locker_expr.label("locker_id"),
+            machine_expr.label("machine_id"),
+            site_expr.label("site_id"),
+            cnt,
+        )
+        .filter(AnalyticsFact.fact_name == "pickup_terminal_state")
+        .filter(AnalyticsFact.slot_id == slot_id)
+    )
+
+    query = _apply_filters(
+        query,
+        start_at=start_at,
+        end_at=end_at,
+        region=region,
+        channel=channel,
+        slot=slot,
+        locker_id=locker_id,
+        machine_id=machine_id,
+        operator_id=operator_id,
+        tenant_id=tenant_id,
+        site_id=site_id,
+    )
+
+    query = query.group_by(locker_expr, machine_expr, site_expr).order_by(cnt.desc())
+
+    row = query.first()
+    if row is None:
+        return {"locker_id": None, "machine_id": None, "site_id": None}
+
+    return {
+        "locker_id": (str(row.locker_id).strip() if row.locker_id else None) or None,
+        "machine_id": (str(row.machine_id).strip() if row.machine_id else None) or None,
+        "site_id": (str(row.site_id).strip() if row.site_id else None) or None,
+    }
+

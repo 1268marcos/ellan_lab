@@ -50,7 +50,7 @@ from app.services.pickup_health_service import (
 )
 
 from app.services.pickup_metrics_service import build_pickup_metrics
-from app.services.pickup_ranking_service import build_pickup_ranking
+from app.services.pickup_ranking_service import build_pickup_ranking, resolve_equipment_bundle_for_slot
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
@@ -551,6 +551,29 @@ def get_pickup_health(
                 machine_id=machine_id,
                 locker_id=locker_id,
             )
+
+            if current_entity_type == "slot" and item.dimension_value is not None:
+                slot_dim = str(item.dimension_value)
+                bundle = resolve_equipment_bundle_for_slot(
+                    db,
+                    slot_id=slot_dim,
+                    start_at=start_at,
+                    end_at=end_at,
+                    region=region,
+                    channel=channel,
+                    slot=slot,
+                    locker_id=locker_id,
+                    machine_id=machine_id,
+                    operator_id=operator_id,
+                    tenant_id=tenant_id,
+                    site_id=site_id,
+                )
+                if bundle.get("locker_id"):
+                    row["locker_id"] = bundle["locker_id"]
+                if bundle.get("machine_id"):
+                    row["machine_id"] = bundle["machine_id"]
+                if bundle.get("site_id"):
+                    row["site_id"] = bundle["site_id"]
 
             priority_score = compute_priority_score(
                 health_score=health["health_score"],
