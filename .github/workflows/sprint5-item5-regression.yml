@@ -1,0 +1,116 @@
+name: Sprint5 Item5 Regression
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "01_source/order_pickup_service/**"
+      - "01_source/frontend/**"
+      - "07_tests/run_sprint5_item5_smoke.sh"
+      - "07_tests/run_sprint5_item5_regression.sh"
+      - ".github/workflows/sprint5-item5-regression.yml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "01_source/order_pickup_service/**"
+      - "01_source/frontend/**"
+      - "07_tests/run_sprint5_item5_smoke.sh"
+      - "07_tests/run_sprint5_item5_regression.sh"
+      - ".github/workflows/sprint5-item5-regression.yml"
+
+jobs:
+  sprint5-item5-smoke:
+    name: Sprint5 Item5 Smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create backend test venv
+        run: python -m venv 01_source/order_pickup_service/.venv_test
+
+      - name: Install backend dependencies
+        run: |
+          01_source/order_pickup_service/.venv_test/bin/python -m pip install --upgrade pip
+          01_source/order_pickup_service/.venv_test/bin/python -m pip install -r 01_source/order_pickup_service/requirements.txt
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: 01_source/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: 01_source/frontend
+
+      - name: Run Sprint 5 Item 5 smoke script
+        run: ./07_tests/run_sprint5_item5_smoke.sh
+
+  sprint5-item5-regression:
+    name: Sprint5 Item5 Regression
+    runs-on: ubuntu-latest
+    needs: sprint5-item5-smoke
+    if: >
+      github.event_name != 'pull_request' ||
+      (github.event_name == 'pull_request' &&
+       (github.base_ref == 'main' || github.base_ref == 'master'))
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_DB: locker_central
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin123
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d locker_central"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      ORDER_PICKUP_TEST_DATABASE_URL: postgresql+psycopg://admin:admin123@localhost:5432/locker_central
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Create backend test venv
+        run: python -m venv 01_source/order_pickup_service/.venv_test
+
+      - name: Install backend dependencies
+        run: |
+          01_source/order_pickup_service/.venv_test/bin/python -m pip install --upgrade pip
+          01_source/order_pickup_service/.venv_test/bin/python -m pip install -r 01_source/order_pickup_service/requirements.txt
+          01_source/order_pickup_service/.venv_test/bin/python -m pip install "psycopg[binary]"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: 01_source/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: 01_source/frontend
+
+      - name: Run Sprint 5 Item 5 regression script
+        run: ./07_tests/run_sprint5_item5_regression.sh
