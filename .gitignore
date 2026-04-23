@@ -119,6 +119,12 @@ env/
 ENV/
 *.venv
 
+# --- ADICIONE ESTAS 3 LINHAS AQUI ---
+tests/
+venv/
+venv_tests/
+# --------------------------------------
+
 # Distribuição e empacotamento
 dist/
 build/

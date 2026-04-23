@@ -34,7 +34,7 @@ async function readJson(res) {
 }
 
 export default function DevBaseCatalogPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [tab, setTab] = useState("overview");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -110,7 +110,16 @@ export default function DevBaseCatalogPage() {
     setError("");
     setMessage("");
     try {
-      const res = await fetch(url, options);
+      const mergedHeaders = {
+        ...(options.headers || {}),
+      };
+      if (token) {
+        mergedHeaders.Authorization = `Bearer ${token}`;
+      }
+      const res = await fetch(url, {
+        ...options,
+        headers: mergedHeaders,
+      });
       const data = await readJson(res);
       if (!res.ok) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));

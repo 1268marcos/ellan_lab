@@ -201,25 +201,26 @@ Definicao de pronto da Sprint 2
 - [x] Regras de bloqueio por e-mail nao verificado funcionam como esperado.
 
 Sprint 3 (P2) - Roles e permissoes
+STATUS: EM ANDAMENTO (bloco 1 implementado em 23/04/2026)
 
 Backend
-- [ ] Mapear papeis iniciais (ex.: admin_operacao, suporte, auditoria).
-- [ ] Definir matriz de permissao por `scope_type` e `scope_id`.
-- [ ] Implementar middleware/guard de autorizacao.
-- [ ] Implementar consulta de roles ativas por usuario.
+- [x] Mapear papeis iniciais (admin_operacao, suporte, auditoria) como primeiro caso de uso operacional.
+- [x] Definir matriz inicial por role e escopo (consulta por `scope_type`/`scope_id` no serviço de roles).
+- [x] Implementar guard de autorizacao reutilizavel (`require_user_roles`) e aplicar em endpoints operacionais (`/dev-admin`).
+- [x] Implementar consulta de roles ativas por usuario (`GET /public/auth/me/roles`).
 
 Frontend
-- [ ] Condicionar exibicao de funcionalidades por permissao.
-- [ ] Criar fallback de acesso negado.
+- [x] Condicionar exibicao de funcionalidades por permissao (links e rotas `/ops/*` baseados em roles).
+- [x] Criar fallback de acesso negado (`/acesso-negado`).
 
 QA / Testes
-- [ ] Teste unitario: avaliacao de permissao por role e escopo.
-- [ ] Teste de integracao: endpoints protegidos com role ausente/presente.
-- [ ] Teste E2E: usuario com perfil comum nao acessa telas administrativas.
+- [x] Teste unitario: avaliacao de permissao por role e escopo (`tests/test_user_roles_sprint3.py`).
+- [x] Teste de integracao: endpoint de roles e consulta protegida por role no backend.
+- [ ] Teste E2E: usuario com perfil comum nao acessa telas administrativas (pendente automacao E2E; fluxo validado manualmente na UI).
 
 Definicao de pronto da Sprint 3
-- [ ] Primeiro caso de uso de `user_roles` ativo em producao.
-- [ ] Acessos sensiveis protegidos por matriz de permissao.
+- [x] Primeiro caso de uso de `user_roles` ativo em producao.
+- [x] Acessos sensiveis protegidos por matriz de permissao.
 
 Checklist tecnico transversal (executar em todas as sprints)
 - [ ] Padronizar codigos de erro e mensagens de API.

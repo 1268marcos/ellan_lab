@@ -8,10 +8,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.auth_dep import require_user_roles
 from app.core.config import settings
 from app.core.db import get_db
 
-router = APIRouter(prefix="/dev-admin/base", tags=["dev-base-catalog"])
+router = APIRouter(
+    prefix="/dev-admin/base",
+    tags=["dev-base-catalog"],
+    dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria", "suporte"}))],
+)
 
 
 def _ensure_dev_mode() -> None:

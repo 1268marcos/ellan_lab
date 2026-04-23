@@ -62,3 +62,19 @@ class PublicEmailVerificationConfirmOut(BaseModel):
     ok: bool = True
     message: str = "email_verified"
     user: PublicUserOut
+
+
+class PublicUserRoleOut(BaseModel):
+    id: str | int | None = None
+    user_id: str
+    role: str
+    scope_type: str | None = None
+    scope_id: str | None = None
+    is_active: bool = True
+    granted_at: str | None = None
+    revoked_at: str | None = None
+
+
+class PublicAuthRolesOut(BaseModel):
+    user_id: str
+    roles: list[PublicUserRoleOut]

@@ -8,6 +8,7 @@ from app.core.auth_dep import get_current_public_user
 from app.core.db import get_db
 from app.schemas.public_auth import (
     PublicAuthMeOut,
+    PublicAuthRolesOut,
     PublicAuthTokenOut,
     PublicChangePasswordIn,
     PublicChangePasswordOut,
@@ -15,6 +16,7 @@ from app.schemas.public_auth import (
     PublicEmailVerificationSendOut,
     PublicLoginIn,
     PublicRegisterIn,
+    PublicUserRoleOut,
     PublicUserOut,
 )
 from app.services.auth_service import (
@@ -31,6 +33,7 @@ from app.services.auth_service import (
     register_user,
     send_email_verification,
 )
+from app.services.user_roles_service import list_active_user_roles
 
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
 
@@ -101,6 +104,16 @@ def public_me(current_user=Depends(get_current_public_user)):
         authenticated=True,
         user=PublicUserOut.model_validate(current_user),
     )
+
+
+@router.get("/me/roles", response_model=PublicAuthRolesOut)
+def public_me_roles(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_public_user),
+):
+    roles = list_active_user_roles(db, user_id=current_user.id)
+    items = [PublicUserRoleOut.model_validate(item) for item in roles]
+    return PublicAuthRolesOut(user_id=current_user.id, roles=items)
 
 
 @router.post("/change-password", response_model=PublicChangePasswordOut)

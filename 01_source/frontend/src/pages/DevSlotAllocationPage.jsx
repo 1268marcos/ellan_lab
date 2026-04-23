@@ -57,7 +57,7 @@ function normalizeLocker(locker) {
 }
 
 export default function DevSlotAllocationPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
 
   const [region, setRegion] = useState("SP");
   const [countryCode, setCountryCode] = useState("");
@@ -97,6 +97,10 @@ export default function DevSlotAllocationPage() {
     return normalized.some((role) => allowedRoles.has(role));
   }, [allowedRoles, currentRoles]);
 
+  const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
+
   async function fetchLockers() {
     setLoadingLockers(true);
     setError("");
@@ -108,7 +112,9 @@ export default function DevSlotAllocationPage() {
       if (countryCode) params.set("country_code", countryCode);
       if (provinceCode) params.set("province_code", provinceCode);
       else params.set("q", region);
-      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`);
+      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`, {
+        headers: authHeaders,
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
@@ -180,8 +186,12 @@ export default function DevSlotAllocationPage() {
   async function fetchCountryProvinceOptions() {
     try {
       const [countriesRes, provincesRes] = await Promise.all([
-        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`),
-        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`, {
+          headers: authHeaders,
+        }),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`, {
+          headers: authHeaders,
+        }),
       ]);
       const [countriesData, provincesData] = await Promise.all([
         countriesRes.json().catch(() => ({})),
@@ -210,7 +220,7 @@ export default function DevSlotAllocationPage() {
     try {
       const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/products/${encodeURIComponent(skuId)}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({
           name: skuName,
           description: skuCreateForm.description || null,
@@ -233,7 +243,7 @@ export default function DevSlotAllocationPage() {
 
   useEffect(() => {
     fetchLockers();
-  }, [region, countryCode, provinceCode]);
+  }, [region, countryCode, provinceCode, authHeaders]);
 
   useEffect(() => {
     fetchSlotsAndCatalog();
@@ -241,7 +251,7 @@ export default function DevSlotAllocationPage() {
 
   useEffect(() => {
     fetchCountryProvinceOptions();
-  }, []);
+  }, [authHeaders]);
 
   const dirtySlots = useMemo(() => {
     const items = [];

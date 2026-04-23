@@ -1,5 +1,6 @@
 // 01_source/frontend/src/pages/DevLockerResetPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "../context/AuthContext";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -17,6 +18,7 @@ function normalizeLockerItem(locker) {
 }
 
 export default function DevLockerResetPage() {
+  const { token } = useAuth();
   const [region, setRegion] = useState("SP");
   const [countryCode, setCountryCode] = useState("");
   const [provinceCode, setProvinceCode] = useState("");
@@ -33,6 +35,9 @@ export default function DevLockerResetPage() {
   const [result, setResult] = useState(null);
   const [releaseResult, setReleaseResult] = useState(null);
   const [err, setErr] = useState("");
+  const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
 
   const selectedLocker = useMemo(
     () => lockers.find((item) => item.locker_id === selectedLockerId) || null,
@@ -50,7 +55,9 @@ export default function DevLockerResetPage() {
       if (provinceCode) params.set("province_code", provinceCode);
       else params.set("q", region);
 
-      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`);
+      const res = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/lockers?${params.toString()}`, {
+        headers: authHeaders,
+      });
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -77,8 +84,12 @@ export default function DevLockerResetPage() {
   async function fetchCountryProvinceOptions() {
     try {
       const [countriesRes, provincesRes] = await Promise.all([
-        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`),
-        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/countries?active_only=true&limit=500`, {
+          headers: authHeaders,
+        }),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/base/provinces?active_only=true&limit=5000`, {
+          headers: authHeaders,
+        }),
       ]);
       const [countriesData, provincesData] = await Promise.all([
         countriesRes.json().catch(() => ({})),
@@ -97,11 +108,11 @@ export default function DevLockerResetPage() {
 
   useEffect(() => {
     fetchLockers();
-  }, [region, countryCode, provinceCode]);
+  }, [region, countryCode, provinceCode, authHeaders]);
 
   useEffect(() => {
     fetchCountryProvinceOptions();
-  }, []);
+  }, [authHeaders]);
 
   function parseAllocationIds(text) {
     return String(text || "")
@@ -130,6 +141,7 @@ export default function DevLockerResetPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
         },
         body: JSON.stringify({
           region,
@@ -173,6 +185,7 @@ export default function DevLockerResetPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders,
         },
         body: JSON.stringify({
           region,

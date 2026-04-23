@@ -18,6 +18,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.auth_dep import require_user_roles
 from app.core.config import settings
 from app.core.db import get_db
 
@@ -54,7 +55,11 @@ from app.core.datetime_utils import to_iso_utc
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/dev-admin", tags=["dev-admin"])
+router = APIRouter(
+    prefix="/dev-admin",
+    tags=["dev-admin"],
+    dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria"}))],
+)
 
 #-------------------------------------
 # HELPERS

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.db import get_db
 from app.models.user import User
 from app.services.auth_service import get_user_by_session_token
+from app.services.user_roles_service import user_has_any_role
 
 
 def _extract_bearer_token(authorization: str | None) -> str | None:
@@ -85,3 +86,34 @@ def get_current_verified_public_user(
             },
         )
     return current_user
+
+
+def require_user_roles(
+    *,
+    allowed_roles: set[str],
+    scope_type: str | None = None,
+    scope_id: str | None = None,
+):
+    def _dependency(
+        current_user: User = Depends(get_current_public_user),
+        db: Session = Depends(get_db),
+    ) -> User:
+        has_role = user_has_any_role(
+            db,
+            user_id=current_user.id,
+            allowed_roles=allowed_roles,
+            scope_type=scope_type,
+            scope_id=scope_id,
+        )
+        if not has_role:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "type": "ROLE_REQUIRED",
+                    "message": "Você não possui permissão de role para acessar este recurso.",
+                    "allowed_roles": sorted(allowed_roles),
+                },
+            )
+        return current_user
+
+    return _dependency

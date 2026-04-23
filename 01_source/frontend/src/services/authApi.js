@@ -45,6 +45,16 @@ export async function fetchPublicMe(token) {
   return parseJson(response);
 }
 
+export async function fetchPublicRoles(token) {
+  const response = await fetch(`${API_BASE}/public/auth/me/roles`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+  });
+  return parseJson(response);
+}
+
 function authHeaders(token) {
   return {
     Authorization: `Bearer ${token}`,

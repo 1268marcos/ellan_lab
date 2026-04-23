@@ -658,6 +658,9 @@ export default function PublicCheckoutPage() {
         `${ORDER_PICKUP_BASE}/dev-admin/simulate-online-payment?order_id=${encodeURIComponent(orderId)}`,
         {
           method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         }
       );
 

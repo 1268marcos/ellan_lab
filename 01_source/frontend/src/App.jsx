@@ -24,6 +24,7 @@ const PublicNotFoundPage = lazy(() => import("./pages/public/PublicNotFoundPage"
 const PublicSupportPage = lazy(() => import("./pages/public/PublicSupportPage")); // NOVA IMPORT
 const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyPolicyPage"));
 const PublicTermsOfUsePage = lazy(() => import("./pages/public/PublicTermsOfUsePage"));
+const PublicAccessDeniedPage = lazy(() => import("./pages/public/PublicAccessDeniedPage"));
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
 const LockerDashboardFirst = lazy(() => import("./pages/LockerDashboardFirst"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
@@ -61,10 +62,12 @@ function isOpsEnabled() {
 function TopNav() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, isAuthenticated, logout, loading } = useAuth();
+  const { user, isAuthenticated, logout, loading, hasRole } = useAuth();
   const fullName = user?.full_name || user?.email || "";
   const initials = initialsFromName(fullName);
   const opsEnabled = isOpsEnabled();
+  const canAccessOps =
+    isAuthenticated && (hasRole("admin_operacao") || hasRole("suporte") || hasRole("auditoria"));
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -223,7 +226,7 @@ function TopNav() {
             </Link>
           )}
           
-          {opsEnabled && opsLinks.length > 0 && (
+          {opsEnabled && canAccessOps && opsLinks.length > 0 && (
             <>
               <div className="nav-divider" aria-hidden="true">|</div>
               <div className="nav-ops-group" role="group" aria-label="Ferramentas operacionais">
@@ -429,7 +432,7 @@ function TopNav() {
               </div>
 
               {/* Links de operação */}
-              {opsEnabled && opsLinks.length > 0 && (
+              {opsEnabled && canAccessOps && opsLinks.length > 0 && (
                 <div className="mobile-menu-section">
                   <h3 className="mobile-menu-section-title">Ferramentas Operacionais</h3>
                   {opsLinks.map(link => (
@@ -479,8 +482,20 @@ function PrivateRoute({ children }) {
 }
 
 function OpsRoute({ children }) {
+  const { isAuthenticated, loading, hasRole } = useAuth();
   if (!isOpsEnabled()) {
     return <Navigate to="/" replace />;
+  }
+  if (loading) {
+    return <PageLoader />;
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  const allowed =
+    hasRole("admin_operacao") || hasRole("suporte") || hasRole("auditoria");
+  if (!allowed) {
+    return <Navigate to="/acesso-negado" replace />;
   }
   return children;
 }
@@ -536,6 +551,7 @@ function AppContent() {
               }
             />
             <Route path="/verificar-email" element={<PublicEmailVerificationPage />} />
+            <Route path="/acesso-negado" element={<PublicAccessDeniedPage />} />
             <Route
               path="/ops/sp"
               element={

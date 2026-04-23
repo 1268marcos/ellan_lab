@@ -205,9 +205,13 @@ export async function fetchGeoScopedLockerIdSet({ orderPickupBase, region, chann
   params.set("active_only", "true");
   if (geo.country_code) params.set("country_code", geo.country_code);
   if (geo.province_code) params.set("province_code", geo.province_code);
+  const token = localStorage.getItem("ellan_public_auth_token");
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
   try {
-    const res = await fetch(`${orderPickupBase}/dev-admin/base/lockers?${params.toString()}`);
+    const res = await fetch(`${orderPickupBase}/dev-admin/base/lockers?${params.toString()}`, {
+      headers,
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return { lockerIds: null, lockerItems: [], source: "geo-filter-fallback", reason: JSON.stringify(data) };
