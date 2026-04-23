@@ -341,12 +341,16 @@ Item 5 - E2E negativo de autorização OPS
   - Logar com usuário comum, tentar `/ops/sp/kiosk` e ação DEV; confirmar bloqueio e ausência de efeitos colaterais.
 
 Sprint 5 (P1/P2) - Escala operacional + prevenção de incidentes (1-2 semanas)
-STATUS: PLANEJADA
+STATUS: EM ANDAMENTO (progresso forte; fechamento pendente do Item 5)
 
 Objetivo da sprint
 - Reduzir intervenção manual em incidentes, aumentar previsibilidade de recuperação e acelerar operação em produção.
 
 Item 1 - Reconciliação assíncrona automática (fila + retry)
+- STATUS DE EXECUCAO:
+  - [x] Fila de pendências implementada (`reconciliation_pending`).
+  - [x] Retry assíncrono com backoff e estados finais (`DONE`/`FAILED_FINAL`).
+  - [x] Endpoints OPS para backlog e processamento manual (`/dev-admin/reconciliation-pending*`).
 - Escopo:
   - Criar fila interna de pendências de compensação para casos em que `slot_release` e/ou `credit_restore` falharem no fluxo síncrono.
   - Implementar retry com backoff e limite de tentativas por `order_id` mantendo idempotência.
@@ -362,6 +366,10 @@ Item 1 - Reconciliação assíncrona automática (fila + retry)
   - Simular falha de integração no release de slot, confirmar criação da pendência e execução automática até status final.
 
 Item 2 - Auditoria operacional completa (trilha de ações OPS)
+- STATUS DE EXECUCAO:
+  - [x] Tabela de auditoria operacional implementada (`ops_action_audit`).
+  - [x] Rotas OPS críticas com trilha (`action`, `result`, `user_id`, `order_id`, `correlation_id`).
+  - [x] Consulta paginada disponível (`GET /dev-admin/ops-audit`).
 - Escopo:
   - Registrar trilha de auditoria para ações críticas (`/ops/reconciliation`, `/dev-admin/*`) com `user_id`, `role`, `action`, `order_id`, `result`, `timestamp`, `correlation_id`.
   - Permitir consulta paginada da trilha para investigação de incidentes.
@@ -375,6 +383,10 @@ Item 2 - Auditoria operacional completa (trilha de ações OPS)
   - Executar reconciliação com usuário OPS e validar entrada correspondente na trilha de auditoria.
 
 Item 3 - Alertas mínimos de confiabilidade (KPIs operacionais)
+- STATUS DE EXECUCAO:
+  - [x] Endpoint de KPIs e alertas implementado (`GET /dev-admin/ops-metrics`).
+  - [x] Thresholds configuráveis por ambiente.
+  - [x] Alertas mínimos ativos para backlog, taxa de erro e `FAILED_FINAL`.
 - Escopo:
   - Publicar métricas básicas: total de reconciliações, falhas, retries, pendências abertas e tempo médio de compensação.
   - Definir thresholds iniciais de alerta para falha recorrente e fila de pendências acima do limite.
@@ -388,6 +400,10 @@ Item 3 - Alertas mínimos de confiabilidade (KPIs operacionais)
   - Gerar falhas repetidas em reconciliação e confirmar evidência de alerta/limiar no ambiente.
 
 Item 4 - UX OPS v2 (navegação por contexto e produtividade)
+- STATUS DE EXECUCAO:
+  - [x] Menu OPS consolidado/colapsável (desktop e mobile).
+  - [x] Página dedicada de saúde operacional (`/ops/health`).
+  - [x] Atalhos cruzados entre reconciliação e saúde (`Ver saúde` / `Ir para reconciliação`).
 - Escopo:
   - Agrupar menu OPS por contexto (`Região`, `Kiosk`, `Dev`, `Analytics`, `Auth`) com busca rápida de rota.
   - Melhorar fluxo de incidentes na página de reconciliação (atalhos, histórico filtrável, acesso rápido ao pedido).
@@ -400,6 +416,9 @@ Item 4 - UX OPS v2 (navegação por contexto e produtividade)
   - Validar em viewport desktop padrão (100%) e mobile: acesso rápido às principais rotas OPS e reconciliação.
 
 Item 5 - Pacote de regressão E2E "incident-safe"
+- STATUS DE EXECUCAO:
+  - [ ] Automatização completa ainda pendente (etapa atual de fechamento da sprint).
+  - [ ] Prioridade imediata: bloquear rotas OPS sem role com evidência automatizada de ausência de side effects.
 - Escopo:
   - Automatizar fluxos críticos de falha/recuperação: `ROLE_REQUIRED`, expiração com crédito aplicado, reconciliação idempotente e bloqueio de rotas OPS.
   - Garantir ausência de efeito colateral órfão (pedido indevido, slot preso, crédito não reaberto quando aplicável).
@@ -415,49 +434,49 @@ Item 5 - Pacote de regressão E2E "incident-safe"
 Ordem de execução sugerida (dia 1..10) - Sprint 5
 
 Dia 1 - Kickoff técnico + baseline
-- [ ] Alinhar escopo final dos 5 itens, responsáveis e riscos.
-- [ ] Congelar baseline de métricas/erros atuais para comparação pós-sprint.
-- [ ] Definir contratos mínimos de eventos de auditoria e pendências de reconciliação.
-- [ ] Entregável do dia: kickoff registrado + baseline publicado no doc técnico.
+- [x] Alinhar escopo final dos 5 itens, responsáveis e riscos.
+- [x] Congelar baseline de métricas/erros atuais para comparação pós-sprint.
+- [x] Definir contratos mínimos de eventos de auditoria e pendências de reconciliação.
+- [x] Entregável do dia: kickoff registrado + baseline publicado no doc técnico.
 
 Dia 2 - Modelagem da reconciliação assíncrona (Item 1)
-- [ ] Definir modelo de pendência (`order_id`, `attempt`, `next_retry_at`, `status`, `last_error`).
-- [ ] Implementar criação da pendência no fallback do fluxo síncrono.
-- [ ] Garantir chave de idempotência por `order_id` + tipo de compensação.
-- [ ] Entregável do dia: PR #1 aberto (modelagem + persistência inicial de pendências).
+- [x] Definir modelo de pendência (`order_id`, `attempt`, `next_retry_at`, `status`, `last_error`).
+- [x] Implementar criação da pendência no fallback do fluxo síncrono.
+- [x] Garantir chave de idempotência por `order_id` + tipo de compensação.
+- [x] Entregável do dia: PR #1 aberto (modelagem + persistência inicial de pendências).
 
 Dia 3 - Worker de retry + backoff (Item 1)
-- [ ] Implementar job/worker para processar pendências em lote.
-- [ ] Aplicar política de retry com limite e estados finais (`DONE`, `FAILED_FINAL`).
-- [ ] Expor endpoint/consulta para backlog de pendências.
-- [ ] Entregável do dia: PR #1 mergeado com fluxo assíncrono funcional + consulta de backlog.
+- [x] Implementar job/worker para processar pendências em lote.
+- [x] Aplicar política de retry com limite e estados finais (`DONE`, `FAILED_FINAL`).
+- [x] Expor endpoint/consulta para backlog de pendências.
+- [x] Entregável do dia: PR #1 mergeado com fluxo assíncrono funcional + consulta de backlog.
 
 Dia 4 - Auditoria OPS (Item 2)
-- [ ] Instrumentar auditoria em `/ops/reconciliation` e `/dev-admin/*`.
-- [ ] Persistir/emitir `user_id`, `role`, `action`, `order_id`, `result`, `correlation_id`, `timestamp`.
-- [ ] Criar consulta paginada para trilha operacional.
-- [ ] Entregável do dia: PR #2 aberto (auditoria operacional ponta a ponta).
+- [x] Instrumentar auditoria em `/ops/reconciliation` e `/dev-admin/*`.
+- [x] Persistir/emitir `user_id`, `role`, `action`, `order_id`, `result`, `correlation_id`, `timestamp`.
+- [x] Criar consulta paginada para trilha operacional.
+- [x] Entregável do dia: PR #2 aberto (auditoria operacional ponta a ponta).
 
 Dia 5 - Métricas e alertas (Item 3)
-- [ ] Publicar contadores/KPIs de reconciliação, falha, retry e backlog.
-- [ ] Definir thresholds iniciais de alerta (ex.: erro recorrente e fila acima do limite).
-- [ ] Validar logs/métricas em ambiente de desenvolvimento integrado.
-- [ ] Entregável do dia: PR #2 mergeado + dashboard/consulta de KPIs básicos disponível.
+- [x] Publicar contadores/KPIs de reconciliação, falha, retry e backlog.
+- [x] Definir thresholds iniciais de alerta (ex.: erro recorrente e fila acima do limite).
+- [x] Validar logs/métricas em ambiente de desenvolvimento integrado.
+- [x] Entregável do dia: PR #2 mergeado + dashboard/consulta de KPIs básicos disponível.
 
 Dia 6 - UX OPS v2: navegação (Item 4)
-- [ ] Finalizar agrupamento por contexto (`Região`, `Kiosk`, `Dev`, `Analytics`, `Auth`).
+- [x] Finalizar agrupamento por contexto (`Região`, `Kiosk`, `Dev`, `Analytics`, `Auth`).
 - [ ] Implementar busca rápida de rota no menu OPS.
-- [ ] Revisar responsividade desktop/mobile sem dependência de zoom.
-- [ ] Entregável do dia: PR #3 aberto (navegação OPS v2 com foco em produtividade).
+- [x] Revisar responsividade desktop/mobile sem dependência de zoom.
+- [x] Entregável do dia: PR #3 aberto (navegação OPS v2 com foco em produtividade).
 
 Dia 7 - UX OPS v2: fluxo de incidente (Item 4)
-- [ ] Melhorar página de reconciliação com atalhos operacionais e histórico.
-- [ ] Garantir acesso rápido ao detalhe do pedido e estado de compensação.
+- [x] Melhorar página de reconciliação com atalhos operacionais e histórico.
+- [x] Garantir acesso rápido ao detalhe do pedido e estado de compensação.
 - [ ] Ajustar microcopy para reduzir ambiguidade durante incidentes.
-- [ ] Entregável do dia: PR #3 mergeado + validação UX desktop/mobile concluída.
+- [x] Entregável do dia: PR #3 mergeado + validação UX desktop/mobile concluída.
 
 Dia 8 - E2E incident-safe (Item 5)
-- [ ] Automatizar cenários negativos: `ROLE_REQUIRED`, bloqueio `/ops/*`, tentativa DEV sem role.
+- [ ] Automatizar cenários negativos: `ROLE_REQUIRED`, bloqueio `/ops/*`, tentativa DEV sem role. (em execução)
 - [ ] Automatizar recuperação: reconciliação idempotente e expiração com crédito aplicado.
 - [ ] Incluir asserts de ausência de efeitos colaterais órfãos.
 - [ ] Entregável do dia: PR #4 aberto (pacote E2E incident-safe inicial).

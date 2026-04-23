@@ -5,4 +5,5 @@ psycopg[binary]==3.2.5
 pydantic==2.10.6
 pydantic-settings==2.7.1
 requests>=2.31.0
-uvloop==0.22.1  
+uvloop==0.22.1
+pytest
