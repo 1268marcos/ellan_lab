@@ -260,7 +260,7 @@ export default function PublicCheckoutPage() {
 
   const invalidParams = !lockerId || !skuId || !slot;
 
-  const { token, isAuthenticated } = useAuth();
+  const { token, isAuthenticated, user } = useAuth();
 
   const runtimeSkuUrl = useMemo(
     () => `${RUNTIME_BASE}/catalog/skus/${encodeURIComponent(skuId)}`,
@@ -278,6 +278,7 @@ export default function PublicCheckoutPage() {
   const canShowDevSimulateButton = useMemo(() => {
     return isDevBypassEnabled() && Boolean(lockerId) && Boolean(region);
   }, [lockerId, region]);
+  const emailVerified = Boolean(user?.email_verified);
 
 
 
@@ -908,6 +909,16 @@ export default function PublicCheckoutPage() {
               </div>
             </div>
 
+            {!emailVerified ? (
+              <div style={errorBoxStyle}>
+                <strong>E-mail não verificado.</strong>
+                <p style={{ margin: "6px 0 0 0" }}>
+                  Para criar pedidos, confirme seu e-mail em{" "}
+                  <Link to="/seguranca">Segurança da conta</Link>.
+                </p>
+              </div>
+            ) : null}
+
             {submitError ? (
               <div style={errorBoxStyle}>
                 <strong>Erro ao processar:</strong>
@@ -937,7 +948,8 @@ export default function PublicCheckoutPage() {
                 !paymentMethod ||
                 !allowedPaymentMethods.length ||
                 (paymentMethod === "MBWAY" && !customerPhone.trim()) ||
-                (useCredit && loadingCreditPreview)
+                (useCredit && loadingCreditPreview) ||
+                !emailVerified
               }
               style={{
                 ...primaryButtonStyle,
@@ -975,7 +987,8 @@ export default function PublicCheckoutPage() {
                   !locker ||
                   !paymentMethod ||
                   !allowedPaymentMethods.length ||
-                  (paymentMethod === "MBWAY" && !customerPhone.trim())
+                  (paymentMethod === "MBWAY" && !customerPhone.trim()) ||
+                  !emailVerified
                 }
                 style={{
                   ...buttonDangerStyleDev,

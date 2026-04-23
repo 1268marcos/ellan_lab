@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
-from app.core.auth_dep import get_current_public_user
+from app.core.auth_dep import get_current_verified_public_user
 from app.core.datetime_utils import to_iso_utc
 from app.core.db import get_db
 from app.models.credit import Credit, CreditStatus
@@ -78,7 +78,7 @@ def _order_currency_from_region(region: str) -> str:
 @router.get("/credits", response_model=PublicCreditsListOut)
 def list_my_credits(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_public_user),
+    current_user: User = Depends(get_current_verified_public_user),
 ):
     now = _utc_now()
 
@@ -152,7 +152,7 @@ def preview_checkout_credit(
     credit_id: str | None = Query(default=None),
     region: str = Query(default="SP", min_length=2, max_length=8),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_public_user),
+    current_user: User = Depends(get_current_verified_public_user),
 ):
     base_amount = int(amount_cents or 0)
     wallet_currency = get_user_wallet_currency(db, user_id=current_user.id)

@@ -39,3 +39,26 @@ class PublicAuthTokenOut(BaseModel):
 class PublicAuthMeOut(BaseModel):
     authenticated: bool
     user: PublicUserOut | None
+
+
+class PublicChangePasswordIn(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class PublicChangePasswordOut(BaseModel):
+    ok: bool = True
+    message: str = "password_updated"
+
+
+class PublicEmailVerificationSendOut(BaseModel):
+    ok: bool = True
+    already_verified: bool = False
+    delivery: str
+    verification_link: str | None = None
+
+
+class PublicEmailVerificationConfirmOut(BaseModel):
+    ok: bool = True
+    message: str = "email_verified"
+    user: PublicUserOut

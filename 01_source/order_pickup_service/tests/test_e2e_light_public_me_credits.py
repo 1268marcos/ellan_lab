@@ -22,6 +22,7 @@ from app.routers.public_me import router as public_me_router
 class FakeUser:
     id = "user-e2e-light"
     is_active = True
+    email_verified = True
 
 
 @pytest.fixture()

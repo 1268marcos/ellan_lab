@@ -1,7 +1,7 @@
 # 01_source/order_pickup_service/app/routers/public_auth.py
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_public_user
@@ -9,16 +9,27 @@ from app.core.db import get_db
 from app.schemas.public_auth import (
     PublicAuthMeOut,
     PublicAuthTokenOut,
+    PublicChangePasswordIn,
+    PublicChangePasswordOut,
+    PublicEmailVerificationConfirmOut,
+    PublicEmailVerificationSendOut,
     PublicLoginIn,
     PublicRegisterIn,
     PublicUserOut,
 )
 from app.services.auth_service import (
+    AuthCurrentPasswordMismatchError,
+    AuthEmailDeliveryError,
     AuthEmailAlreadyExistsError,
+    AuthEmailVerificationTokenError,
     AuthInvalidCredentialsError,
+    AuthWeakPasswordError,
     authenticate_user,
+    change_user_password,
+    confirm_user_email_verification,
     create_auth_session,
     register_user,
+    send_email_verification,
 )
 
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
@@ -90,3 +101,56 @@ def public_me(current_user=Depends(get_current_public_user)):
         authenticated=True,
         user=PublicUserOut.model_validate(current_user),
     )
+
+
+@router.post("/change-password", response_model=PublicChangePasswordOut)
+def public_change_password(
+    payload: PublicChangePasswordIn,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_public_user),
+):
+    try:
+        change_user_password(
+            db,
+            user=current_user,
+            current_password=payload.current_password,
+            new_password=payload.new_password,
+        )
+        return PublicChangePasswordOut(ok=True, message="password_updated")
+    except AuthCurrentPasswordMismatchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AuthWeakPasswordError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/email-verification/resend", response_model=PublicEmailVerificationSendOut)
+def public_resend_email_verification(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_public_user),
+):
+    try:
+        result = send_email_verification(db, user=current_user)
+        return PublicEmailVerificationSendOut(
+            ok=True,
+            already_verified=bool(result.get("already_verified")),
+            delivery=str(result.get("delivery") or "unknown"),
+            verification_link=result.get("verification_link"),
+        )
+    except AuthEmailDeliveryError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/email-verification/confirm", response_model=PublicEmailVerificationConfirmOut)
+def public_confirm_email_verification(
+    token: str = Query(..., min_length=16),
+    db: Session = Depends(get_db),
+):
+    try:
+        user = confirm_user_email_verification(db, token=token)
+        return PublicEmailVerificationConfirmOut(
+            ok=True,
+            message="email_verified",
+            user=PublicUserOut.model_validate(user),
+        )
+    except AuthEmailVerificationTokenError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

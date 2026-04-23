@@ -15,7 +15,9 @@ const PublicCatalogPage = lazy(() => import("./pages/public/PublicCatalogPage"))
 const PublicCheckoutPage = lazy(() => import("./pages/public/PublicCheckoutPage"));
 const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"));
 const PublicMyCreditsPage = lazy(() => import("./pages/public/PublicMyCreditsPage"));
+const PublicSecurityPage = lazy(() => import("./pages/public/PublicSecurityPage"));
 const PublicOrderDetailPage = lazy(() => import("./pages/public/PublicOrderDetailPage"));
+const PublicEmailVerificationPage = lazy(() => import("./pages/public/PublicEmailVerificationPage"));
 const PublicFiscalSearchPage = lazy(() => import("./pages/public/PublicFiscalSearchPage"));
 const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPage"));
 const PublicNotFoundPage = lazy(() => import("./pages/public/PublicNotFoundPage"));
@@ -215,6 +217,11 @@ function TopNav() {
               Meus Créditos
             </Link>
           )}
+          {!loading && isAuthenticated && (
+            <Link className="nav-link" to="/seguranca" aria-label="Gerenciar segurança da conta">
+              Segurança
+            </Link>
+          )}
           
           {opsEnabled && opsLinks.length > 0 && (
             <>
@@ -410,6 +417,15 @@ function TopNav() {
                     Meus Créditos
                   </Link>
                 )}
+                {!loading && isAuthenticated && (
+                  <Link
+                    className="mobile-nav-link"
+                    to="/seguranca"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Segurança
+                  </Link>
+                )}
               </div>
 
               {/* Links de operação */}
@@ -504,6 +520,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/seguranca"
+              element={
+                <PrivateRoute>
+                  <PublicSecurityPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="/meus-pedidos/:orderId"
               element={
                 <PrivateRoute>
@@ -511,6 +535,7 @@ function AppContent() {
                 </PrivateRoute>
               }
             />
+            <Route path="/verificar-email" element={<PublicEmailVerificationPage />} />
             <Route
               path="/ops/sp"
               element={

@@ -70,3 +70,18 @@ def get_current_public_user(
 ):
     """Alias para get_current_user (mantido por compatibilidade)."""
     return get_current_user(authorization=authorization, db=db)
+
+
+def get_current_verified_public_user(
+    current_user: User = Depends(get_current_public_user),
+) -> User:
+    """Usuário autenticado com e-mail verificado para ações sensíveis."""
+    if not current_user.email_verified:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "type": "EMAIL_NOT_VERIFIED",
+                "message": "Confirme seu e-mail para executar esta ação.",
+            },
+        )
+    return current_user

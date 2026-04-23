@@ -171,33 +171,34 @@ cd 01_source/order_pickup_service && pytest tests/test_credits_expires_at_orderi
 (Para concorrencia real em Postgres: exportar ORDER_PICKUP_TEST_DATABASE_URL antes do pytest.)
 
 Sprint 2 (P1) - Seguranca da conta + verificacao de e-mail
+STATUS: FECHADA (testes validados em 23/04/2026)
 
 Backend
-- [ ] Implementar endpoint de troca de senha autenticada.
-- [ ] Exigir senha atual para alteracao.
-- [ ] Aplicar politica minima de senha (tamanho e complexidade definidos pelo time).
-- [ ] Implementar emissao de token de verificacao de e-mail.
-- [ ] Implementar endpoint de confirmacao por link.
-- [ ] Implementar endpoint de reenvio de verificacao.
-- [ ] Definir quais acoes sensiveis exigem `email_verified = true`.
+- [x] Implementar endpoint de troca de senha autenticada (`POST /public/auth/change-password`).
+- [x] Exigir senha atual para alteracao.
+- [x] Aplicar politica minima de senha (8+, maiuscula, minuscula e numero).
+- [x] Implementar emissao de token de verificacao de e-mail (JWT purpose=`email_verification`).
+- [x] Implementar endpoint de confirmacao por link (`GET /public/auth/email-verification/confirm`).
+- [x] Implementar endpoint de reenvio de verificacao (`POST /public/auth/email-verification/resend`).
+- [x] Definir acoes sensiveis com `email_verified = true` (checkout real e creditos em `/public/me/credits`).
 
 Frontend
-- [ ] Criar pagina "Seguranca" com formulario de troca de senha.
-- [ ] Validar campos (senha atual, nova senha, confirmacao).
-- [ ] Criar estado/tela de e-mail nao verificado.
-- [ ] Incluir acao de reenviar e-mail de verificacao.
-- [ ] Exibir status de verificacao no perfil do usuario.
+- [x] Criar pagina "Seguranca" com formulario de troca de senha (`/seguranca`).
+- [x] Validar campos (senha atual, nova senha, confirmacao).
+- [x] Criar estado/tela de e-mail nao verificado (pagina de seguranca + aviso no checkout).
+- [x] Incluir acao de reenviar e-mail de verificacao.
+- [x] Exibir status de verificacao no perfil do usuario (pagina de seguranca).
 
 QA / Testes
-- [ ] Teste unitario: regras de validacao de senha.
-- [ ] Teste de integracao: troca de senha com senha atual incorreta/correta.
-- [ ] Teste de integracao: token de verificacao expirado e valido.
-- [ ] Teste E2E: cadastro -> recebimento de link -> confirmacao de e-mail.
+- [x] Teste unitario: regras de validacao de senha.
+- [x] Teste de integracao: troca de senha com senha atual incorreta/correta.
+- [x] Teste de integracao: token de verificacao expirado e valido.
+- [x] Teste E2E: cadastro -> recebimento de link -> confirmacao de e-mail.
 
 Definicao de pronto da Sprint 2
-- [ ] Usuario consegue trocar senha com seguranca.
-- [ ] Usuario recebe e confirma e-mail por link.
-- [ ] Regras de bloqueio por e-mail nao verificado funcionam como esperado.
+- [x] Usuario consegue trocar senha com seguranca.
+- [x] Usuario recebe e confirma e-mail por link.
+- [x] Regras de bloqueio por e-mail nao verificado funcionam como esperado.
 
 Sprint 3 (P2) - Roles e permissoes
 

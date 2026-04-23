@@ -106,6 +106,14 @@ export function AuthProvider({ children }) {
     }
   }
 
+  async function refreshUser() {
+    if (!token) return null;
+    const data = await fetchPublicMe(token);
+    const nextUser = data?.user || null;
+    setUser(nextUser);
+    return nextUser;
+  }
+
   function logout() {
     localStorage.removeItem(STORAGE_KEY);
     setToken(null);
@@ -123,6 +131,7 @@ export function AuthProvider({ children }) {
       isAuthenticated,
       login,
       register,
+      refreshUser,
       logout,
     }),
     [token, user, loading, isAuthenticated]

@@ -19,6 +19,12 @@ function resolveApiErrorMessage(response, data) {
   }
 
   if (response.status === 403) {
+    if (
+      detail === "EMAIL_NOT_VERIFIED" ||
+      (typeof detail === "string" && detail.toLowerCase().includes("confirme seu e-mail"))
+    ) {
+      return "E-mail não verificado. Para criar pedidos, confirme seu e-mail em Segurança da conta.";
+    }
     return "Você não tem permissão para acessar este recurso.";
   }
 
@@ -46,6 +52,15 @@ function extractDetail(data) {
 
   if (typeof data.detail === "string") {
     return data.detail;
+  }
+
+  if (data.detail && typeof data.detail === "object") {
+    if (typeof data.detail.message === "string") {
+      return data.detail.message;
+    }
+    if (typeof data.detail.type === "string") {
+      return data.detail.type;
+    }
   }
 
   if (Array.isArray(data.detail)) {

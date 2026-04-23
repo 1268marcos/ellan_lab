@@ -36,7 +36,11 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
-from app.core.auth_dep import get_current_public_user, get_current_user
+from app.core.auth_dep import (
+    get_current_public_user,
+    get_current_user,
+    get_current_verified_public_user,
+)
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
@@ -1292,7 +1296,7 @@ def create_public_order(
     db: Session = Depends(get_db),
     idempotency_key: str = Header(..., alias="Idempotency-Key"),
     device_fp: str = Header(..., alias="X-Device-Fingerprint"),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_verified_public_user),
 ):
     """
     Cria um novo pedido público.

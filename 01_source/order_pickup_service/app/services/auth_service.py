@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
+
+from jose import JWTError, jwt
 
 from sqlalchemy.orm import Session
 
@@ -12,11 +15,15 @@ from app.core.security import (
     hash_token,
     verify_password,
 )
+from app.core.config import settings
 from app.models.auth_session import AuthSession
 from app.models.user import User
+from app.services.email_notification_service import EmailNotificationError, send_email
 
 
 SESSION_TTL_HOURS = 24
+EMAIL_VERIFICATION_TTL_MIN = 60 * 24
+PASSWORD_MIN_LENGTH = 8
 
 
 class AuthServiceError(Exception):
@@ -28,6 +35,22 @@ class AuthInvalidCredentialsError(AuthServiceError):
 
 
 class AuthEmailAlreadyExistsError(AuthServiceError):
+    pass
+
+
+class AuthWeakPasswordError(AuthServiceError):
+    pass
+
+
+class AuthCurrentPasswordMismatchError(AuthServiceError):
+    pass
+
+
+class AuthEmailVerificationTokenError(AuthServiceError):
+    pass
+
+
+class AuthEmailDeliveryError(AuthServiceError):
     pass
 
 
@@ -70,6 +93,17 @@ def normalize_phone(phone: str | None) -> str | None:
         return None
     return phone.replace(" ", "").replace("-", "")
 
+
+def validate_password_policy(password: str) -> None:
+    if len(password or "") < PASSWORD_MIN_LENGTH:
+        raise AuthWeakPasswordError("password_too_short")
+    if not any(ch.isupper() for ch in password):
+        raise AuthWeakPasswordError("password_missing_uppercase")
+    if not any(ch.islower() for ch in password):
+        raise AuthWeakPasswordError("password_missing_lowercase")
+    if not any(ch.isdigit() for ch in password):
+        raise AuthWeakPasswordError("password_missing_digit")
+
 def authenticate_user(db: Session, *, email: str, password: str) -> User:
     user = db.query(User).filter(User.email == email.lower().strip()).first()
     if not user:
@@ -84,6 +118,142 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User:
     user.updated_at = utc_now_naive()
     db.commit()
 
+    return user
+
+
+def change_user_password(
+    db: Session,
+    *,
+    user: User,
+    current_password: str,
+    new_password: str,
+) -> User:
+    if not verify_password(current_password, user.password_hash):
+        raise AuthCurrentPasswordMismatchError("current_password_invalid")
+    validate_password_policy(new_password)
+    if verify_password(new_password, user.password_hash):
+        raise AuthWeakPasswordError("new_password_must_be_different")
+
+    user.password_hash = hash_password(new_password)
+    user.updated_at = utc_now_naive()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _build_email_verification_html(*, full_name: str, verification_link: str) -> str:
+    safe_name = (full_name or "").strip() or "usuário"
+    return f"""
+    <div style="font-family: Arial, sans-serif; line-height:1.55; color:#111;">
+      <h2>Confirme seu e-mail</h2>
+      <p>Olá, {safe_name}.</p>
+      <p>Para concluir a segurança da sua conta, confirme seu endereço de e-mail clicando no botão abaixo:</p>
+      <p style="margin:20px 0;">
+        <a href="{verification_link}" style="background:#2563eb;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700;">
+          Confirmar e-mail
+        </a>
+      </p>
+      <p>Se o botão não funcionar, copie e cole este link no navegador:</p>
+      <p><a href="{verification_link}">{verification_link}</a></p>
+      <hr/>
+      <small>Este link expira em 24 horas.</small>
+    </div>
+    """
+
+
+def create_email_verification_token(*, user: User, ttl_min: int = EMAIL_VERIFICATION_TTL_MIN) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "email": str(user.email).lower().strip(),
+        "purpose": "email_verification",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=ttl_min)).timestamp()),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
+
+
+def decode_email_verification_token(*, token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_alg])
+    except JWTError as exc:
+        raise AuthEmailVerificationTokenError("email_verification_token_invalid_or_expired") from exc
+
+    if payload.get("purpose") != "email_verification":
+        raise AuthEmailVerificationTokenError("email_verification_token_invalid_purpose")
+    if not payload.get("sub") or not payload.get("email"):
+        raise AuthEmailVerificationTokenError("email_verification_token_invalid_payload")
+    return payload
+
+
+def send_email_verification(
+    db: Session,
+    *,
+    user: User,
+    frontend_base_url: str | None = None,
+) -> dict:
+    token = create_email_verification_token(user=user)
+    base = (frontend_base_url or settings.frontend_base_url or "").rstrip("/")
+    if not base:
+        raise AuthEmailDeliveryError("frontend_base_url_not_configured")
+
+    query = urlencode({"token": token})
+    verification_link = f"{base}/verificar-email?{query}"
+
+    if user.email_verified:
+        return {
+            "already_verified": True,
+            "delivery": "not_sent_already_verified",
+            "verification_link": None,
+        }
+
+    if not settings.email_enabled:
+        return {
+            "already_verified": False,
+            "delivery": "disabled_preview_only",
+            "verification_link": verification_link,
+        }
+
+    try:
+        send_email(
+            to_email=user.email,
+            subject="Confirme seu e-mail",
+            html=_build_email_verification_html(
+                full_name=user.full_name,
+                verification_link=verification_link,
+            ),
+        )
+    except EmailNotificationError as exc:
+        raise AuthEmailDeliveryError(str(exc)) from exc
+
+    user.updated_at = utc_now_naive()
+    db.add(user)
+    db.commit()
+
+    return {
+        "already_verified": False,
+        "delivery": "sent",
+        "verification_link": None,
+    }
+
+
+def confirm_user_email_verification(db: Session, *, token: str) -> User:
+    payload = decode_email_verification_token(token=token)
+    user_id = str(payload["sub"])
+    token_email = str(payload["email"]).lower().strip()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise AuthEmailVerificationTokenError("email_verification_user_not_found")
+    if str(user.email).lower().strip() != token_email:
+        raise AuthEmailVerificationTokenError("email_verification_email_mismatch")
+
+    if not user.email_verified:
+        user.email_verified = True
+        user.updated_at = utc_now_naive()
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user
 
 
