@@ -103,7 +103,7 @@ pip-log.txt
 
 
 # ==============================================================
-# [6] PYTHON — ARTEFATOS DE RUNTIME E BUILD
+# [6] PYTHON — ARTEFATOS DE RUNTIME AND BUILD
 # ==============================================================
 
 # Bytecode
@@ -112,20 +112,23 @@ __pycache__/
 *$py.class
 *.pyo
 
-# Ambientes virtuais
-.venv/
-venv/
-env/
-ENV/
-*.venv
+# Ambientes virtuais - NUNCA versionar
+.venv
+venv
+env
+ENV
+.venv_test
+venv_test
+.venv_tests
+venv_tests
 
-# --- ADICIONE ESTAS 3 LINHAS AQUI ---
-tests/
-venv/
-venv_tests/
-**/.venv/
-**/venv/
-# --------------------------------------
+# Ambientes virtuais em QUALQUER nível (inclusive subpastas)
+**/.venv
+**/venv
+**/.venv_test
+**/venv_test
+**/venv_tests
+**/.venv_tests
 
 # Distribuição e empacotamento
 dist/
