@@ -35,6 +35,7 @@ const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage")
 const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
+const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -72,10 +73,14 @@ function TopNav() {
     isAuthenticated && (hasRole("admin_operacao") || hasRole("suporte") || hasRole("auditoria"));
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false);
+  const [isMobileOpsOpen, setIsMobileOpsOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [tenantOverride, setTenantOverride] = useState("");
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
+  const opsMenuRef = useRef(null);
+  const opsButtonRef = useRef(null);
   const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const hasTenantOverride = Boolean(tenantOverride);
   const isOpsRoute = location.pathname.startsWith("/ops");
@@ -109,6 +114,23 @@ function TopNav() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMobileMenuOpen]);
+
+  useEffect(() => {
+    const handleOpsClickOutside = (event) => {
+      if (
+        isOpsMenuOpen &&
+        opsMenuRef.current &&
+        !opsMenuRef.current.contains(event.target) &&
+        opsButtonRef.current &&
+        !opsButtonRef.current.contains(event.target)
+      ) {
+        setIsOpsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOpsClickOutside);
+    return () => document.removeEventListener("mousedown", handleOpsClickOutside);
+  }, [isOpsMenuOpen]);
 
   // Prevenir scroll do body quando menu estiver aberto
   useEffect(() => {
@@ -148,6 +170,8 @@ function TopNav() {
   // Fechar menu ao navegar
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsOpsMenuOpen(false);
+    setIsMobileOpsOpen(false);
   }, [location]);
 
   useEffect(() => {
@@ -186,6 +210,7 @@ function TopNav() {
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
     { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
     { to: "/ops/dev/base", label: "ops /dev/base", aria: "Gestão de tabelas e enums base" },
+    { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -232,12 +257,37 @@ function TopNav() {
           {opsEnabled && canAccessOps && opsLinks.length > 0 && (
             <>
               <div className="nav-divider" aria-hidden="true">|</div>
-              <div className="nav-ops-group" role="group" aria-label="Ferramentas operacionais">
-                {opsLinks.map(link => (
-                  <Link key={link.to} className="nav-link nav-link--dev" to={link.to} aria-label={link.aria}>
-                    {link.label}
-                  </Link>
-                ))}
+              <div
+                className="nav-ops-dropdown"
+                role="group"
+                aria-label="Ferramentas operacionais"
+                ref={opsMenuRef}
+              >
+                <button
+                  ref={opsButtonRef}
+                  type="button"
+                  className="nav-link nav-link--dev nav-ops-toggle"
+                  onClick={() => setIsOpsMenuOpen((value) => !value)}
+                  aria-haspopup="menu"
+                  aria-expanded={isOpsMenuOpen}
+                >
+                  OPS menu ({opsLinks.length}) {isOpsMenuOpen ? "▲" : "▼"}
+                </button>
+                {isOpsMenuOpen ? (
+                  <div className="nav-ops-panel" role="menu" aria-label="Menu OPS">
+                    {opsLinks.map(link => (
+                      <Link
+                        key={link.to}
+                        className="nav-ops-item"
+                        to={link.to}
+                        aria-label={link.aria}
+                        onClick={() => setIsOpsMenuOpen(false)}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </>
           )}
@@ -437,17 +487,28 @@ function TopNav() {
               {/* Links de operação */}
               {opsEnabled && canAccessOps && opsLinks.length > 0 && (
                 <div className="mobile-menu-section">
-                  <h3 className="mobile-menu-section-title">Ferramentas Operacionais</h3>
-                  {opsLinks.map(link => (
-                    <Link 
-                      key={link.to} 
-                      className="mobile-nav-link mobile-nav-link--dev" 
-                      to={link.to} 
-                      onClick={() => setIsMobileMenuOpen(false)}
-                    >
-                      {link.label}
-                    </Link>
-                  ))}
+                  <button
+                    type="button"
+                    className="mobile-ops-toggle"
+                    onClick={() => setIsMobileOpsOpen((value) => !value)}
+                    aria-expanded={isMobileOpsOpen}
+                  >
+                    Ferramentas Operacionais ({opsLinks.length}) {isMobileOpsOpen ? "▲" : "▼"}
+                  </button>
+                  {isMobileOpsOpen ? (
+                    <div className="mobile-ops-list">
+                      {opsLinks.map(link => (
+                        <Link 
+                          key={link.to} 
+                          className="mobile-nav-link mobile-nav-link--dev" 
+                          to={link.to} 
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
               )}
 
@@ -638,6 +699,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <DevBaseCatalogPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/reconciliation"
+              element={
+                <OpsRoute>
+                  <OpsReconciliationPage />
                 </OpsRoute>
               }
             />

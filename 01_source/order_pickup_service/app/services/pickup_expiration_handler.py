@@ -9,14 +9,17 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.allocation import Allocation, AllocationState
+from app.models.allocation import Allocation
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.services import backend_client
 from app.services.credits_service import (
     grant_expired_pickup_credit,
-    restore_credit_after_failed_order_creation,
+)
+from app.services.order_reconciliation_service import (
+    mark_allocation_released_locally,
+    restore_checkout_credit_if_needed,
 )
 from app.services.pickup_event_publisher import publish_pickup_expired
 
@@ -129,7 +132,7 @@ def _apply_internal_state(
     if allocation:
         alloc_id = allocation.id
         slot = allocation.slot
-        allocation.state = AllocationState.RELEASED
+        mark_allocation_released_locally(allocation=allocation)
         if hasattr(allocation, "released_at"):
             allocation.released_at = now
         allocation.locked_until = None
@@ -137,11 +140,7 @@ def _apply_internal_state(
 
     # Se houve crédito aplicado no checkout deste pedido, reabre o crédito
     # quando a retirada expira (pedido não concluído).
-    credit_restored = restore_credit_after_failed_order_creation(
-        db=db,
-        order_metadata=getattr(order, "order_metadata", None),
-        now=now,
-    )
+    credit_restored = restore_checkout_credit_if_needed(db=db, order=order)
 
     credit_result = grant_expired_pickup_credit(
         db=db,

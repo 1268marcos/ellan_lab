@@ -47,15 +47,19 @@ from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
 from app.schemas.orders import CreateOrderIn, OnlineRegion, OnlinePaymentMethod
 from app.services.order_creation_service import create_order_core, CreateOrderCoreResult
-from app.services.credits_service import restore_credit_after_failed_order_creation
+from app.services.order_reconciliation_service import (
+    reconcile_order_compensation,
+    resolve_latest_allocation,
+    resolve_latest_pickup,
+)
 
 # ==================== Importações adicionais ====================
-from app.models.allocation import Allocation, AllocationState
+from app.models.allocation import Allocation
 
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 
-from app.models.pickup import Pickup, PickupStatus
+from app.models.pickup import Pickup
 from app.models.pickup_token import PickupToken
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 
@@ -1703,56 +1707,15 @@ def cancel_public_order(
                 },
             )
 
-    allocation = None
-    if getattr(order, "allocation_id", None):
-        allocation = db.query(Allocation).filter(Allocation.id == order.allocation_id).first()
-    if allocation is None:
-        allocation = (
-            db.query(Allocation)
-            .filter(Allocation.order_id == order.id)
-            .order_by(Allocation.created_at.desc(), Allocation.id.desc())
-            .first()
-        )
-
-    pickup = (
-        db.query(Pickup)
-        .filter(Pickup.order_id == order.id)
-        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
-        .first()
-    )
-
-    slot_release_ok = False
-    slot_release_error: str | None = None
-    slot_release_attempted = False
-
-    if allocation:
-        slot_release_attempted = True
-        try:
-            backend_client.locker_release(
-                order.region,
-                allocation.id,
-                locker_id=order.totem_id,
-            )
-            allocation.mark_released()
-            slot_release_ok = True
-        except Exception as exc:
-            slot_release_error = str(exc)
-            logger.exception(
-                "public_order_cancel_release_failed",
-                extra={
-                    "order_id": order.id,
-                    "allocation_id": allocation.id,
-                    "locker_id": order.totem_id,
-                },
-            )
-
-    credit_restored = restore_credit_after_failed_order_creation(
+    allocation = resolve_latest_allocation(db, order=order)
+    pickup = resolve_latest_pickup(db, order=order)
+    compensation = reconcile_order_compensation(
         db=db,
-        order_metadata=getattr(order, "order_metadata", None),
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+        cancel_reason="public_order_cancelled",
     )
-
-    if pickup and pickup.status != PickupStatus.CANCELLED:
-        pickup.mark_cancelled("public_order_cancelled")
 
     if order.status != OrderStatus.CANCELLED:
         order.mark_as_cancelled()
@@ -1765,8 +1728,8 @@ def cancel_public_order(
         "Public order cancelled/reconciled - order_id=%s, user_id=%s, slot_release_ok=%s, credit_restored=%s",
         order_id,
         current_user.id,
-        slot_release_ok,
-        credit_restored,
+        compensation.slot_release_ok,
+        compensation.credit_restored,
     )
 
     return {
@@ -1774,12 +1737,12 @@ def cancel_public_order(
         "status": order.status.value,
         "message": "Pedido cancelado com sucesso",
         "compensation": {
-            "credit_restored": bool(credit_restored),
-            "slot_release_attempted": bool(slot_release_attempted),
-            "slot_release_ok": bool(slot_release_ok),
-            "slot_release_error": slot_release_error,
-            "allocation_id": allocation.id if allocation else None,
-            "allocation_state": allocation.state.value if allocation and allocation.state else None,
+            "credit_restored": compensation.credit_restored,
+            "slot_release_attempted": compensation.slot_release_attempted,
+            "slot_release_ok": compensation.slot_release_ok,
+            "slot_release_error": compensation.slot_release_error,
+            "allocation_id": compensation.allocation_id,
+            "allocation_state": compensation.allocation_state,
         },
     }
 

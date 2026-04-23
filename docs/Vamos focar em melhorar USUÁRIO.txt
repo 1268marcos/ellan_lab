@@ -271,3 +271,72 @@ Checklist tecnico transversal (executar em todas as sprints)
 - [ ] Revisar migrations e estrategia de rollback.
 - [ ] Atualizar documentacao de API e fluxos de produto.
 
+Sprint 4 (P1/P2) - Confiabilidade operacional + UX de reconciliação (1-2 semanas)
+STATUS: PLANEJADA
+
+Objetivo da sprint
+- Reduzir incidentes de inconsistência entre pedido/crédito/slot e melhorar rastreabilidade para usuário e operação.
+
+Item 1 - Reconciliacao transacional unificada
+- Escopo:
+  - Consolidar regra de compensação para fluxos de falha em um serviço único (cancel, expiração, falha pós-criação).
+  - Garantir idempotência da reconciliação por `order_id`.
+- Criterios de aceite:
+  - Repetir reconciliação no mesmo pedido não cria efeitos duplicados.
+  - Pedido com crédito aplicado e slot preso termina com: crédito `AVAILABLE` + allocation `RELEASED`.
+  - Resposta da API informa resultado da compensação por etapa (`credit_restored`, `slot_release_ok`).
+- Validacao tecnica:
+  - `cd 01_source/order_pickup_service && pytest tests/test_credits_checkout_concurrency.py tests/test_public_order_cancel_compensation.py -v`
+- Validacao manual:
+  - Criar cenário com falha de simulação/expiração, executar reconciliação 2x no mesmo `order_id` e confirmar estado final estável (sem duplicação).
+
+Item 2 - Observabilidade mínima (logs + correlação)
+- Escopo:
+  - Padronizar logs estruturados com chaves: `order_id`, `allocation_id`, `credit_id`, `user_id`, `region`, `locker_id`, `correlation_id`.
+  - Garantir logs de início/fim/erro para reconciliação e expiração.
+- Criterios de aceite:
+  - Cada fluxo crítico gera log de sucesso ou erro com os identificadores mínimos.
+  - Erros de integração (runtime/lifecycle) ficam pesquisáveis por `order_id`.
+- Validacao tecnica:
+  - `docker compose logs order_pickup_service --tail=200 | rg "order_id|allocation_id|credit_id|correlation_id"`
+- Validacao manual:
+  - Executar um cancelamento com reconciliação e verificar no log as etapas e resultado final.
+
+Item 3 - Padronização de erros de API
+- Escopo:
+  - Aplicar contrato único de erro em endpoints críticos (`type`, `message`, `retryable`, `action`, `correlation_id` quando aplicável).
+  - Uniformizar mensagens de `CANCEL_NOT_ALLOWED`, `ROLE_REQUIRED` e falhas de integração.
+- Criterios de aceite:
+  - Endpoints críticos não retornam erro bruto de exceção para cliente final.
+  - Frontend consegue exibir mensagem amigável sem parsing ad-hoc por endpoint.
+- Validacao tecnica:
+  - `cd 01_source/order_pickup_service && pytest -q`
+  - `cd 01_source/frontend && npm run build`
+- Validacao manual:
+  - Forçar erros conhecidos (sem role, pedido inválido, cancel fora de regra) e confirmar payload consistente.
+
+Item 4 - UX do pedido e créditos (rastreabilidade)
+- Escopo:
+  - Exibir linha de eventos básicos no detalhe do pedido (criado, pago, expirado/cancelado, crédito aplicado/reaberto quando houver).
+  - Manter navegação cruzada pedido <-> crédito com links consistentes.
+- Criterios de aceite:
+  - Usuário entende por que o pedido expirou/cancelou e o que ocorreu com o crédito.
+  - Link de crédito para pedido (e vice-versa quando aplicável) funcionando.
+- Validacao tecnica:
+  - `cd 01_source/frontend && npm run build`
+- Validacao manual:
+  - Abrir um pedido com crédito aplicado e outro reaberto por compensação; validar timeline e links na UI.
+
+Item 5 - E2E negativo de autorização OPS
+- Escopo:
+  - Automatizar teste E2E de usuário comum sem role tentando acessar rotas `/ops/*`.
+  - Cobrir também tentativa de fluxo DEV sem role (sem persistir pedido/slot/credito indevido).
+- Criterios de aceite:
+  - Usuário sem role recebe bloqueio (`/acesso-negado`) em todas as rotas OPS testadas.
+  - Tentativa de DEV sem role não deixa pedido persistido nem slot reservado.
+- Validacao tecnica:
+  - `cd 01_source/frontend && npm run build`
+  - `cd 01_source/order_pickup_service && pytest tests/test_user_roles_sprint3.py tests/test_public_order_cancel_compensation.py -v`
+- Validacao manual:
+  - Logar com usuário comum, tentar `/ops/sp/kiosk` e ação DEV; confirmar bloqueio e ausência de efeitos colaterais.
+

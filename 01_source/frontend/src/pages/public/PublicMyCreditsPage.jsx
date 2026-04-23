@@ -61,6 +61,41 @@ function renderCreditNotes(notes) {
   return parts;
 }
 
+function extractOrderIdsFromNotes(notes) {
+  const text = String(notes || "");
+  const pattern = /order_id=([0-9a-fA-F-]{36})/g;
+  const found = [];
+  let match;
+  while ((match = pattern.exec(text)) !== null) {
+    const orderId = String(match[1] || "").trim();
+    if (orderId) found.push(orderId);
+  }
+  return [...new Set(found)];
+}
+
+function renderCreditOrderLinks(credit) {
+  const primaryOrderId = String(credit?.order_id || "").trim();
+  const fromNotes = extractOrderIdsFromNotes(credit?.notes);
+  const ids = primaryOrderId ? [primaryOrderId, ...fromNotes] : fromNotes;
+  const uniqueIds = [...new Set(ids)];
+
+  if (uniqueIds.length === 0) return null;
+
+  return (
+    <p style={{ margin: "6px 0 0", color: "#0f172a" }}>
+      Pedido relacionado:{" "}
+      {uniqueIds.map((orderId, index) => (
+        <React.Fragment key={orderId}>
+          {index > 0 ? " | " : ""}
+          <Link to={`/meus-pedidos/${encodeURIComponent(orderId)}`}>Ver pedido</Link>
+          {" "}
+          <span style={{ color: "#64748b" }}>({orderId})</span>
+        </React.Fragment>
+      ))}
+    </p>
+  );
+}
+
 export default function PublicMyCreditsPage() {
   const { token, loading: authLoading, isAuthenticated } = useAuth();
   const [payload, setPayload] = useState(null);
@@ -225,6 +260,7 @@ export default function PublicMyCreditsPage() {
                   ? ` (${credit.days_to_expiration} dia(s))`
                   : ""}
               </p>
+              {renderCreditOrderLinks(credit)}
               {credit.notes ? (
                 <p style={{ margin: "6px 0 0", color: "#0f172a" }}>{renderCreditNotes(credit.notes)}</p>
               ) : null}

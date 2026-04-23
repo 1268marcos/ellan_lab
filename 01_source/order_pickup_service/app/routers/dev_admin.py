@@ -25,6 +25,8 @@ from app.core.db import get_db
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup
 from app.schemas.dev_admin import (
+    DevReconcileOrderIn,
+    DevReconcileOrderOut,
     DevReleaseRegionalAllocationsIn,
     DevReleaseRegionalAllocationsOut,
     DevResetLockerIn,
@@ -45,6 +47,11 @@ from app.services.pickup_payment_fulfillment_service import (
     _create_pickup_token,
     _ensure_online_pickup,
     fulfill_payment_post_approval,
+)
+from app.services.order_reconciliation_service import (
+    reconcile_order_compensation,
+    resolve_latest_allocation,
+    resolve_latest_pickup,
 )
 
 from app.routers.internal import _ensure_allocation
@@ -122,6 +129,140 @@ def _validate_locker_region(*, region: str, locker_id: str) -> dict:
         )
 
     return locker
+
+
+def _resolve_effective_pickup_deadline(db: Session, *, order: Order) -> tuple[datetime | None, str | None]:
+    deadline = getattr(order, "pickup_deadline_at", None)
+    if deadline is not None:
+        return deadline, "order.pickup_deadline_at"
+
+    latest_pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .first()
+    )
+    if latest_pickup and getattr(latest_pickup, "expires_at", None):
+        return latest_pickup.expires_at, "pickup.expires_at"
+    return None, None
+
+
+def _assert_order_reconciliation_allowed(db: Session, *, order: Order) -> None:
+    allowed_statuses = {
+        OrderStatus.PAYMENT_PENDING,
+        OrderStatus.FAILED,
+        OrderStatus.CANCELLED,
+        OrderStatus.EXPIRED,
+        OrderStatus.EXPIRED_CREDIT_50,
+    }
+    if order.status in allowed_statuses:
+        return
+
+    if order.status == OrderStatus.PAID_PENDING_PICKUP:
+        deadline, deadline_source = _resolve_effective_pickup_deadline(db, order=order)
+        now = datetime.now(timezone.utc)
+
+        if deadline is None:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "RECONCILIATION_NOT_ALLOWED",
+                    "message": (
+                        "Pedido em status PAID_PENDING_PICKUP sem deadline efetivo "
+                        "(order/pickup) não pode ser reconciliado por segurança."
+                    ),
+                    "current_status": order.status.value,
+                },
+            )
+
+        if getattr(deadline, "tzinfo", None) is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+
+        if deadline > now:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "type": "RECONCILIATION_NOT_ALLOWED",
+                    "message": (
+                        "Pedido em status PAID_PENDING_PICKUP ainda dentro do prazo de retirada "
+                        "não pode ser reconciliado."
+                    ),
+                    "current_status": order.status.value,
+                    "effective_deadline_at": to_iso_utc(deadline),
+                    "effective_deadline_source": deadline_source,
+                },
+            )
+        return
+
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "type": "RECONCILIATION_NOT_ALLOWED",
+            "message": f"Pedido em status {order.status.value} não pode ser reconciliado.",
+            "current_status": order.status.value,
+        },
+    )
+
+
+@router.post("/reconcile-order", response_model=DevReconcileOrderOut)
+def dev_reconcile_order(
+    payload: DevReconcileOrderIn,
+    db: Session = Depends(get_db),
+):
+    order_id = str(payload.order_id or "").strip()
+    if not order_id:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "ORDER_ID_REQUIRED",
+                "message": "order_id é obrigatório.",
+            },
+        )
+
+    order = db.get(Order, order_id)
+    if not order:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "ORDER_NOT_FOUND",
+                "message": "Pedido não encontrado.",
+                "order_id": order_id,
+            },
+        )
+
+    _assert_order_reconciliation_allowed(db, order=order)
+
+    allocation = resolve_latest_allocation(db, order=order)
+    pickup = resolve_latest_pickup(db, order=order)
+    compensation = reconcile_order_compensation(
+        db=db,
+        order=order,
+        allocation=allocation,
+        pickup=pickup,
+        cancel_reason="ops_order_reconciliation",
+    )
+
+    if order.status != OrderStatus.CANCELLED:
+        order.mark_as_cancelled()
+    else:
+        order.touch()
+
+    db.commit()
+
+    return DevReconcileOrderOut(
+        ok=True,
+        order_id=order.id,
+        status=order.status.value,
+        message="Reconciliação operacional executada com sucesso.",
+        compensation={
+            "credit_restored": compensation.credit_restored,
+            "slot_release_attempted": compensation.slot_release_attempted,
+            "slot_release_ok": compensation.slot_release_ok,
+            "slot_release_error": compensation.slot_release_error,
+            "allocation_id": compensation.allocation_id,
+            "allocation_state": compensation.allocation_state,
+        },
+    )
 
 
 @router.post("/release-regional-allocations", response_model=DevReleaseRegionalAllocationsOut)

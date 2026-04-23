@@ -51,3 +51,15 @@ class DevReleaseRegionalAllocationsOut(BaseModel):
     released_count: int
     failed_count: int
     message: str
+
+
+class DevReconcileOrderIn(BaseModel):
+    order_id: str = Field(..., description="ID do pedido a reconciliar")
+
+
+class DevReconcileOrderOut(BaseModel):
+    ok: bool
+    order_id: str
+    status: str
+    message: str
+    compensation: dict[str, Any]
