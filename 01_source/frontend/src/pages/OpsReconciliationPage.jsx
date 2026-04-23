@@ -34,6 +34,9 @@ export default function OpsReconciliationPage() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState([]);
   const [historyFilter, setHistoryFilter] = useState("ALL");
+  const [health, setHealth] = useState(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthError, setHealthError] = useState("");
 
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -76,6 +79,37 @@ export default function OpsReconciliationPage() {
     };
   }, [history]);
 
+  async function loadOpsHealth({ silent = false } = {}) {
+    if (!token) return;
+    if (!silent) {
+      setHealthLoading(true);
+      setHealthError("");
+    }
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-metrics?lookback_hours=24`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar saúde operacional."));
+      }
+      setHealth(payload || null);
+    } catch (err) {
+      setHealthError(String(err?.message || err));
+    } finally {
+      if (!silent) setHealthLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadOpsHealth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
   async function handleReconcile() {
     const normalizedOrderId = String(orderId || "").trim();
     if (!normalizedOrderId) {
@@ -105,6 +139,7 @@ export default function OpsReconciliationPage() {
       }
 
       setResult(payload);
+      void loadOpsHealth({ silent: true });
       setHistory((previous) => {
         const item = {
           key: `${Date.now()}-${payload.order_id || normalizedOrderId}`,
@@ -147,6 +182,66 @@ export default function OpsReconciliationPage() {
 
   return (
     <div style={pageStyle}>
+      <section style={cardStyle}>
+        <div style={healthHeaderStyle}>
+          <h2 style={{ margin: 0 }}>Saúde Operacional (24h)</h2>
+          <button
+            type="button"
+            onClick={() => void loadOpsHealth()}
+            disabled={healthLoading}
+            style={buttonGhostStyle}
+          >
+            {healthLoading ? "Atualizando..." : "Atualizar"}
+          </button>
+        </div>
+
+        {healthError ? (
+          <pre style={errorStyle}>{healthError}</pre>
+        ) : health ? (
+          <>
+            <div style={kpiGridStyle}>
+              <div style={kpiBoxStyle}>
+                <small>Ações OPS</small>
+                <strong>{health?.kpis?.total_ops_actions ?? 0}</strong>
+              </div>
+              <div style={kpiBoxStyle}>
+                <small>Taxa de erro</small>
+                <strong>{((Number(health?.kpis?.error_rate || 0) * 100).toFixed(1))}%</strong>
+              </div>
+              <div style={kpiBoxStyle}>
+                <small>Pendências abertas</small>
+                <strong>{health?.kpis?.pending_open_count ?? 0}</strong>
+              </div>
+              <div style={kpiBoxStyle}>
+                <small>FAILED_FINAL</small>
+                <strong>{health?.kpis?.pending_failed_final_count ?? 0}</strong>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 10, color: "rgba(245, 247, 250, 0.78)", fontSize: 13 }}>
+              Janela: {health?.window?.from ? new Date(health.window.from).toLocaleString("pt-BR") : "-"} até{" "}
+              {health?.window?.to ? new Date(health.window.to).toLocaleString("pt-BR") : "-"}
+            </div>
+
+            <div style={alertsWrapStyle}>
+              {(health?.alerts || []).length === 0 ? (
+                <span style={alertBadgeStyle("OK")}>Sem alertas ativos</span>
+              ) : (
+                (health?.alerts || []).map((alert, index) => (
+                  <span key={`${alert.code}-${index}`} style={alertBadgeStyle(alert.severity)}>
+                    {alert.code}: {alert.message}
+                  </span>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <p style={{ marginBottom: 0, color: "rgba(245, 247, 250, 0.8)" }}>
+            Carregando saúde operacional...
+          </p>
+        )}
+      </section>
+
       <section style={cardStyle}>
         <h1 style={{ marginTop: 0 }}>OPS - Reconciliação de pedido</h1>
         <p style={mutedTextStyle}>
@@ -336,6 +431,37 @@ const historyHeaderStyle = {
   flexWrap: "wrap",
 };
 
+const healthHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const kpiGridStyle = {
+  marginTop: 12,
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+};
+
+const kpiBoxStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.03)",
+  padding: "10px 12px",
+  display: "grid",
+  gap: 4,
+};
+
+const alertsWrapStyle = {
+  marginTop: 10,
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+};
+
 const historyToolbarStyle = {
   display: "flex",
   alignItems: "center",
@@ -456,6 +582,43 @@ const historyBadgeStyle = (ok) => ({
     : "1px solid rgba(179,38,30,0.45)",
   color: ok ? "#86efac" : "#fecaca",
 });
+
+const alertBadgeStyle = (severity) => {
+  if (severity === "HIGH") {
+    return {
+      display: "inline-flex",
+      borderRadius: 999,
+      padding: "4px 10px",
+      fontSize: 12,
+      fontWeight: 700,
+      border: "1px solid rgba(179,38,30,0.65)",
+      background: "rgba(179,38,30,0.20)",
+      color: "#fecaca",
+    };
+  }
+  if (severity === "WARN") {
+    return {
+      display: "inline-flex",
+      borderRadius: 999,
+      padding: "4px 10px",
+      fontSize: 12,
+      fontWeight: 700,
+      border: "1px solid rgba(199,146,0,0.65)",
+      background: "rgba(199,146,0,0.18)",
+      color: "#fde68a",
+    };
+  }
+  return {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 700,
+    border: "1px solid rgba(31,122,63,0.65)",
+    background: "rgba(31,122,63,0.18)",
+    color: "#86efac",
+  };
+};
 
 const summaryBoxStyle = {
   marginTop: 6,
