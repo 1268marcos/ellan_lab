@@ -123,6 +123,8 @@ ENV/
 tests/
 venv/
 venv_tests/
+**/.venv/
+**/venv/
 # --------------------------------------
 
 # Distribuição e empacotamento
