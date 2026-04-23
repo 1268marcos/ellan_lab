@@ -183,6 +183,11 @@ export default function OpsReconciliationPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
+        <div style={crossShortcutStyle}>
+          <Link to="/ops/health" style={crossShortcutLinkStyle}>
+            Ver saúde
+          </Link>
+        </div>
         <div style={healthHeaderStyle}>
           <h2 style={{ margin: 0 }}>Saúde Operacional (24h)</h2>
           <button
@@ -437,6 +442,23 @@ const healthHeaderStyle = {
   alignItems: "center",
   gap: 10,
   flexWrap: "wrap",
+};
+
+const crossShortcutStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const crossShortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
 };
 
 const kpiGridStyle = {
