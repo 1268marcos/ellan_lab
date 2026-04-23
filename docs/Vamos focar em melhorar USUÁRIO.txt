@@ -272,7 +272,7 @@ Checklist tecnico transversal (executar em todas as sprints)
 - [ ] Atualizar documentacao de API e fluxos de produto.
 
 Sprint 4 (P1/P2) - Confiabilidade operacional + UX de reconciliação (1-2 semanas)
-STATUS: PLANEJADA
+STATUS: FECHADA (carimbo 23/04/2026)
 
 Objetivo da sprint
 - Reduzir incidentes de inconsistência entre pedido/crédito/slot e melhorar rastreabilidade para usuário e operação.
@@ -339,4 +339,138 @@ Item 5 - E2E negativo de autorização OPS
   - `cd 01_source/order_pickup_service && pytest tests/test_user_roles_sprint3.py tests/test_public_order_cancel_compensation.py -v`
 - Validacao manual:
   - Logar com usuário comum, tentar `/ops/sp/kiosk` e ação DEV; confirmar bloqueio e ausência de efeitos colaterais.
+
+Sprint 5 (P1/P2) - Escala operacional + prevenção de incidentes (1-2 semanas)
+STATUS: PLANEJADA
+
+Objetivo da sprint
+- Reduzir intervenção manual em incidentes, aumentar previsibilidade de recuperação e acelerar operação em produção.
+
+Item 1 - Reconciliação assíncrona automática (fila + retry)
+- Escopo:
+  - Criar fila interna de pendências de compensação para casos em que `slot_release` e/ou `credit_restore` falharem no fluxo síncrono.
+  - Implementar retry com backoff e limite de tentativas por `order_id` mantendo idempotência.
+  - Expor endpoint de consulta de pendências de reconciliação para operação.
+- Criterios de aceite:
+  - Falha temporária de integração gera pendência e reprocessamento automático sem ação manual.
+  - Reprocessar a mesma pendência não duplica efeito (crédito/slot permanecem consistentes).
+  - Pendência sai do backlog ao concluir sucesso ou atingir estado final de erro tratado.
+- Validacao tecnica:
+  - `cd 01_source/order_pickup_service && pytest -q`
+  - `cd 01_source/order_pickup_service && pytest tests/test_credits_checkout_concurrency.py tests/test_public_order_cancel_compensation.py -v`
+- Validacao manual:
+  - Simular falha de integração no release de slot, confirmar criação da pendência e execução automática até status final.
+
+Item 2 - Auditoria operacional completa (trilha de ações OPS)
+- Escopo:
+  - Registrar trilha de auditoria para ações críticas (`/ops/reconciliation`, `/dev-admin/*`) com `user_id`, `role`, `action`, `order_id`, `result`, `timestamp`, `correlation_id`.
+  - Permitir consulta paginada da trilha para investigação de incidentes.
+- Criterios de aceite:
+  - Toda ação OPS crítica gera evento de auditoria de sucesso ou erro.
+  - Operação consegue responder "quem executou, quando e com qual resultado" para um `order_id`.
+- Validacao tecnica:
+  - `cd 01_source/order_pickup_service && pytest -q`
+  - `docker compose logs order_pickup_service --tail=300 | rg "audit|order_id|user_id|correlation_id"`
+- Validacao manual:
+  - Executar reconciliação com usuário OPS e validar entrada correspondente na trilha de auditoria.
+
+Item 3 - Alertas mínimos de confiabilidade (KPIs operacionais)
+- Escopo:
+  - Publicar métricas básicas: total de reconciliações, falhas, retries, pendências abertas e tempo médio de compensação.
+  - Definir thresholds iniciais de alerta para falha recorrente e fila de pendências acima do limite.
+- Criterios de aceite:
+  - Métricas ficam disponíveis para acompanhamento técnico e operação.
+  - Alertas disparam quando thresholds configurados forem ultrapassados.
+- Validacao tecnica:
+  - `docker compose logs order_pickup_service --tail=300 | rg "reconciliation|retry|pending|metric"`
+  - `cd 01_source/order_pickup_service && pytest -q`
+- Validacao manual:
+  - Gerar falhas repetidas em reconciliação e confirmar evidência de alerta/limiar no ambiente.
+
+Item 4 - UX OPS v2 (navegação por contexto e produtividade)
+- Escopo:
+  - Agrupar menu OPS por contexto (`Região`, `Kiosk`, `Dev`, `Analytics`, `Auth`) com busca rápida de rota.
+  - Melhorar fluxo de incidentes na página de reconciliação (atalhos, histórico filtrável, acesso rápido ao pedido).
+- Criterios de aceite:
+  - Operador chega à ferramenta desejada em até 2 cliques na maioria dos casos.
+  - Navegação não exige zoom forçado para visualizar todas as opções OPS.
+- Validacao tecnica:
+  - `cd 01_source/frontend && npm run build`
+- Validacao manual:
+  - Validar em viewport desktop padrão (100%) e mobile: acesso rápido às principais rotas OPS e reconciliação.
+
+Item 5 - Pacote de regressão E2E "incident-safe"
+- Escopo:
+  - Automatizar fluxos críticos de falha/recuperação: `ROLE_REQUIRED`, expiração com crédito aplicado, reconciliação idempotente e bloqueio de rotas OPS.
+  - Garantir ausência de efeito colateral órfão (pedido indevido, slot preso, crédito não reaberto quando aplicável).
+- Criterios de aceite:
+  - Suíte E2E cobre cenários negativos e de recuperação priorizados.
+  - Nenhum cenário crítico deixa estado inconsistente após execução dos testes.
+- Validacao tecnica:
+  - `cd 01_source/order_pickup_service && pytest tests/test_user_roles_sprint3.py tests/test_public_order_cancel_compensation.py -v`
+  - `cd 01_source/frontend && npm run build`
+- Validacao manual:
+  - Rodar checklist de incidente com usuário comum e OPS, validando bloqueios, reconciliação e estado final de slot/crédito/pedido.
+
+Ordem de execução sugerida (dia 1..10) - Sprint 5
+
+Dia 1 - Kickoff técnico + baseline
+- [ ] Alinhar escopo final dos 5 itens, responsáveis e riscos.
+- [ ] Congelar baseline de métricas/erros atuais para comparação pós-sprint.
+- [ ] Definir contratos mínimos de eventos de auditoria e pendências de reconciliação.
+- [ ] Entregável do dia: kickoff registrado + baseline publicado no doc técnico.
+
+Dia 2 - Modelagem da reconciliação assíncrona (Item 1)
+- [ ] Definir modelo de pendência (`order_id`, `attempt`, `next_retry_at`, `status`, `last_error`).
+- [ ] Implementar criação da pendência no fallback do fluxo síncrono.
+- [ ] Garantir chave de idempotência por `order_id` + tipo de compensação.
+- [ ] Entregável do dia: PR #1 aberto (modelagem + persistência inicial de pendências).
+
+Dia 3 - Worker de retry + backoff (Item 1)
+- [ ] Implementar job/worker para processar pendências em lote.
+- [ ] Aplicar política de retry com limite e estados finais (`DONE`, `FAILED_FINAL`).
+- [ ] Expor endpoint/consulta para backlog de pendências.
+- [ ] Entregável do dia: PR #1 mergeado com fluxo assíncrono funcional + consulta de backlog.
+
+Dia 4 - Auditoria OPS (Item 2)
+- [ ] Instrumentar auditoria em `/ops/reconciliation` e `/dev-admin/*`.
+- [ ] Persistir/emitir `user_id`, `role`, `action`, `order_id`, `result`, `correlation_id`, `timestamp`.
+- [ ] Criar consulta paginada para trilha operacional.
+- [ ] Entregável do dia: PR #2 aberto (auditoria operacional ponta a ponta).
+
+Dia 5 - Métricas e alertas (Item 3)
+- [ ] Publicar contadores/KPIs de reconciliação, falha, retry e backlog.
+- [ ] Definir thresholds iniciais de alerta (ex.: erro recorrente e fila acima do limite).
+- [ ] Validar logs/métricas em ambiente de desenvolvimento integrado.
+- [ ] Entregável do dia: PR #2 mergeado + dashboard/consulta de KPIs básicos disponível.
+
+Dia 6 - UX OPS v2: navegação (Item 4)
+- [ ] Finalizar agrupamento por contexto (`Região`, `Kiosk`, `Dev`, `Analytics`, `Auth`).
+- [ ] Implementar busca rápida de rota no menu OPS.
+- [ ] Revisar responsividade desktop/mobile sem dependência de zoom.
+- [ ] Entregável do dia: PR #3 aberto (navegação OPS v2 com foco em produtividade).
+
+Dia 7 - UX OPS v2: fluxo de incidente (Item 4)
+- [ ] Melhorar página de reconciliação com atalhos operacionais e histórico.
+- [ ] Garantir acesso rápido ao detalhe do pedido e estado de compensação.
+- [ ] Ajustar microcopy para reduzir ambiguidade durante incidentes.
+- [ ] Entregável do dia: PR #3 mergeado + validação UX desktop/mobile concluída.
+
+Dia 8 - E2E incident-safe (Item 5)
+- [ ] Automatizar cenários negativos: `ROLE_REQUIRED`, bloqueio `/ops/*`, tentativa DEV sem role.
+- [ ] Automatizar recuperação: reconciliação idempotente e expiração com crédito aplicado.
+- [ ] Incluir asserts de ausência de efeitos colaterais órfãos.
+- [ ] Entregável do dia: PR #4 aberto (pacote E2E incident-safe inicial).
+
+Dia 9 - Hardening + regressão completa
+- [ ] Rodar suíte técnica completa backend/frontend.
+- [ ] Corrigir flakiness de testes e ruídos de observabilidade.
+- [ ] Revisar payloads de erro e consistência de contratos.
+- [ ] Entregável do dia: PR #4 mergeado com suíte estável e sem regressões críticas.
+
+Dia 10 - Go/No-Go + handoff
+- [ ] Executar checklist manual final com usuário comum e OPS.
+- [ ] Comparar baseline do Dia 1 vs. resultado final (incidentes, tempo de recuperação, backlog).
+- [ ] Fechar documentação, critérios de aceite e plano de monitoramento pós-release.
+- [ ] Entregável do dia: decisão Go/No-Go documentada + handoff de operação concluído.
 

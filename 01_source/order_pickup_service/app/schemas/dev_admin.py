@@ -63,3 +63,40 @@ class DevReconcileOrderOut(BaseModel):
     status: str
     message: str
     compensation: dict[str, Any]
+
+
+class DevReconciliationPendingItemOut(BaseModel):
+    id: str
+    order_id: str
+    reason: str
+    status: str
+    attempt_count: int
+    max_attempts: int
+    next_retry_at: str | None = None
+    last_error: str | None = None
+    updated_at: str | None = None
+
+
+class DevReconciliationPendingListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[DevReconciliationPendingItemOut]
+
+
+class DevOpsAuditItemOut(BaseModel):
+    id: str
+    action: str
+    result: str
+    correlation_id: str
+    user_id: str | None = None
+    role: str | None = None
+    order_id: str | None = None
+    error_message: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    created_at: str | None = None
+
+
+class DevOpsAuditListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[DevOpsAuditItemOut]

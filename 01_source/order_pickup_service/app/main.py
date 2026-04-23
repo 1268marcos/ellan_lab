@@ -16,6 +16,7 @@ from app.health.health import router as health_router
 from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
+from app.jobs.reconciliation_retry import run_reconciliation_retry_once
 from app.routers import dev_admin, dev_base_catalog, internal, kiosk, orders, pickup
 
 from app.routers.public_auth import router as public_auth_router
@@ -79,6 +80,7 @@ app.add_middleware(
 
 expiry_task: asyncio.Task | None = None
 lifecycle_events_task: asyncio.Task | None = None
+reconciliation_retry_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
@@ -110,6 +112,13 @@ async def startup():
             name="lifecycle_events_loop",
         )
 
+    global reconciliation_retry_task
+    if reconciliation_retry_task is None:
+        reconciliation_retry_task = asyncio.create_task(
+            reconciliation_retry_loop(),
+            name="reconciliation_retry_loop",
+        )
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -130,6 +139,15 @@ async def shutdown():
         except asyncio.CancelledError:
             pass
         lifecycle_events_task = None
+
+    global reconciliation_retry_task
+    if reconciliation_retry_task:
+        reconciliation_retry_task.cancel()
+        try:
+            await reconciliation_retry_task
+        except asyncio.CancelledError:
+            pass
+        reconciliation_retry_task = None
 
 
 async def expiry_loop():
@@ -156,6 +174,23 @@ async def lifecycle_events_loop():
             db.close()
 
         await asyncio.sleep(settings.lifecycle_events_poll_sec)
+
+
+async def reconciliation_retry_loop():
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(
+                run_reconciliation_retry_once,
+                db,
+                batch_size=settings.reconciliation_retry_batch_size,
+            )
+        except Exception:
+            logger.exception("reconciliation retry loop failed")
+        finally:
+            db.close()
+
+        await asyncio.sleep(settings.reconciliation_retry_poll_sec)
 
 
 @app.exception_handler(Exception)

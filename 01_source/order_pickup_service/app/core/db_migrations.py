@@ -1538,6 +1538,110 @@ def _create_domain_event_outbox(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_reconciliation_pending(conn, applied: list[str]) -> None:
+    name = "reconciliation_pending.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS reconciliation_pending (
+            id                      VARCHAR(40) PRIMARY KEY,
+            dedupe_key              VARCHAR(180) NOT NULL,
+            order_id                VARCHAR(36) NOT NULL REFERENCES orders(id),
+            reason                  VARCHAR(80) NOT NULL,
+            status                  VARCHAR(24) NOT NULL DEFAULT 'PENDING',
+            payload_json            TEXT,
+            attempt_count           INTEGER NOT NULL DEFAULT 0,
+            max_attempts            INTEGER NOT NULL DEFAULT 5,
+            next_retry_at           TIMESTAMPTZ,
+            processing_started_at   TIMESTAMPTZ,
+            last_error              TEXT,
+            completed_at            TIMESTAMPTZ,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ops_action_audit (
+            id              TEXT PRIMARY KEY,
+            action          TEXT NOT NULL,
+            result          TEXT NOT NULL,
+            correlation_id  TEXT NOT NULL,
+            user_id         TEXT,
+            role            TEXT,
+            order_id        TEXT,
+            error_message   TEXT,
+            details_json    TEXT,
+            created_at      TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+    conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_recon_pending_dedupe "
+            "ON reconciliation_pending (dedupe_key)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_recon_pending_status_next "
+            "ON reconciliation_pending (status, next_retry_at)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_recon_pending_order_id "
+            "ON reconciliation_pending (order_id)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_ops_action_audit(conn, applied: list[str]) -> None:
+    name = "ops_action_audit.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ops_action_audit (
+            id              VARCHAR(40) PRIMARY KEY,
+            action          VARCHAR(120) NOT NULL,
+            result          VARCHAR(20) NOT NULL,
+            correlation_id  VARCHAR(80) NOT NULL,
+            user_id         VARCHAR(36),
+            role            VARCHAR(80),
+            order_id        VARCHAR(36),
+            error_message   TEXT,
+            details_json    TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ops_audit_created_at "
+            "ON ops_action_audit (created_at)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ops_audit_order_id "
+            "ON ops_action_audit (order_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ops_audit_action_result "
+            "ON ops_action_audit (action, result)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ops_audit_corr_id "
+            "ON ops_action_audit (correlation_id)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ---------------------------------------------------------------------------
 # ══════════════════════════════════════════════════════════════════════════
 # BLOCO 11 — LGPD / GDPR
@@ -2443,9 +2547,33 @@ def _kiosk_sqlite_ensure_core_tables(conn, applied: list[str]) -> None:
         )
     """))
 
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS reconciliation_pending (
+            id                      TEXT PRIMARY KEY,
+            dedupe_key              TEXT NOT NULL,
+            order_id                TEXT NOT NULL,
+            reason                  TEXT NOT NULL,
+            status                  TEXT NOT NULL DEFAULT 'PENDING',
+            payload_json            TEXT,
+            attempt_count           INTEGER NOT NULL DEFAULT 0,
+            max_attempts            INTEGER NOT NULL DEFAULT 5,
+            next_retry_at           TIMESTAMP,
+            processing_started_at   TIMESTAMP,
+            last_error              TEXT,
+            completed_at            TIMESTAMP,
+            created_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at              TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """))
+
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_orders_status   ON orders (status)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_pickups_status  ON pickups (status)"))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_kiosk_sync_pending    ON sync_outbox (synced_at) WHERE synced_at IS NULL"))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_recon_pending_dedupe ON reconciliation_pending (dedupe_key)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_recon_pending_status_next ON reconciliation_pending (status, next_retry_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_audit_created_at ON ops_action_audit (created_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_audit_order_id ON ops_action_audit (order_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ops_audit_action_result ON ops_action_audit (action, result)"))
 
     applied.append("kiosk_sqlite.core_tables")
 
@@ -2483,6 +2611,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,
+    _create_reconciliation_pending,
+    _create_ops_action_audit,
     _create_privacy_consents,
     _create_data_deletion_requests,
 

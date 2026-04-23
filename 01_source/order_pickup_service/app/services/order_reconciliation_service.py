@@ -14,6 +14,7 @@ from app.services.credits_service import restore_credit_after_failed_order_creat
 @dataclass
 class OrderReconciliationResult:
     credit_restored: bool
+    credit_restore_error: str | None
     slot_release_attempted: bool
     slot_release_ok: bool
     slot_release_error: str | None
@@ -67,6 +68,7 @@ def reconcile_order_compensation(
     allocation: Allocation | None,
     pickup: Pickup | None,
     cancel_reason: str = "public_order_cancelled",
+    record_pending_on_failure: bool = True,
 ) -> OrderReconciliationResult:
     slot_release_ok = False
     slot_release_error: str | None = None
@@ -85,13 +87,56 @@ def reconcile_order_compensation(
         except Exception as exc:
             slot_release_error = str(exc)
 
-    credit_restored = restore_checkout_credit_if_needed(db=db, order=order)
+    credit_restored = False
+    credit_restore_error: str | None = None
+    try:
+        credit_restored = restore_checkout_credit_if_needed(db=db, order=order)
+    except Exception as exc:
+        credit_restore_error = str(exc)
 
     if pickup and pickup.status != PickupStatus.CANCELLED:
         pickup.mark_cancelled(cancel_reason)
 
+    if record_pending_on_failure:
+        try:
+            from app.services.reconciliation_pending_service import (
+                enqueue_reconciliation_pending,
+            )
+
+            common_payload = {
+                "order_id": order.id,
+                "region": getattr(order, "region", None),
+                "locker_id": getattr(order, "totem_id", None),
+                "allocation_id": allocation.id if allocation else None,
+                "pickup_id": pickup.id if pickup else None,
+            }
+            if slot_release_error:
+                enqueue_reconciliation_pending(
+                    db=db,
+                    order_id=order.id,
+                    reason="slot_release_failed",
+                    payload={
+                        **common_payload,
+                        "error": slot_release_error,
+                    },
+                )
+            if credit_restore_error:
+                enqueue_reconciliation_pending(
+                    db=db,
+                    order_id=order.id,
+                    reason="credit_restore_failed",
+                    payload={
+                        **common_payload,
+                        "error": credit_restore_error,
+                    },
+                )
+        except Exception:
+            # Falha de enfileiramento não deve interromper o fluxo síncrono.
+            pass
+
     return OrderReconciliationResult(
         credit_restored=bool(credit_restored),
+        credit_restore_error=credit_restore_error,
         slot_release_attempted=bool(slot_release_attempted),
         slot_release_ok=bool(slot_release_ok),
         slot_release_error=slot_release_error,

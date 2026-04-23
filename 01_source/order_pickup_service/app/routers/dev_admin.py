@@ -15,17 +15,22 @@ from typing import Any
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.auth_dep import require_user_roles
+from app.core.auth_dep import get_current_user, require_user_roles
 from app.core.config import settings
-from app.core.db import get_db
+from app.core.db import SessionLocal, get_db
 
 from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup
+from app.models.user import User
 from app.schemas.dev_admin import (
+    DevOpsAuditItemOut,
+    DevOpsAuditListOut,
     DevReconcileOrderIn,
+    DevReconciliationPendingItemOut,
+    DevReconciliationPendingListOut,
     DevReconcileOrderOut,
     DevReleaseRegionalAllocationsIn,
     DevReleaseRegionalAllocationsOut,
@@ -53,6 +58,9 @@ from app.services.order_reconciliation_service import (
     resolve_latest_allocation,
     resolve_latest_pickup,
 )
+from app.services.reconciliation_pending_service import list_reconciliation_pending
+from app.jobs.reconciliation_retry import run_reconciliation_retry_once
+from app.services.ops_audit_service import list_ops_action_audit, record_ops_action_audit
 
 from app.routers.internal import _ensure_allocation
 
@@ -204,65 +212,270 @@ def _assert_order_reconciliation_allowed(db: Session, *, order: Order) -> None:
     )
 
 
+def _resolve_correlation_id(header_value: str | None) -> str:
+    value = str(header_value or "").strip()
+    return value or str(uuid4())
+
+
+def _safe_record_ops_audit(
+    *,
+    action: str,
+    result: str,
+    correlation_id: str,
+    user_id: str | None = None,
+    role: str | None = None,
+    order_id: str | None = None,
+    error_message: str | None = None,
+    details: dict | None = None,
+) -> None:
+    db = SessionLocal()
+    try:
+        record_ops_action_audit(
+            db=db,
+            action=action,
+            result=result,
+            correlation_id=correlation_id,
+            user_id=user_id,
+            role=role,
+            order_id=order_id,
+            error_message=error_message,
+            details=details or {},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "ops_audit_write_failed action=%s correlation_id=%s order_id=%s",
+            action,
+            correlation_id,
+            order_id,
+        )
+    finally:
+        db.close()
+
+
 @router.post("/reconcile-order", response_model=DevReconcileOrderOut)
 def dev_reconcile_order(
     payload: DevReconcileOrderIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
     db: Session = Depends(get_db),
 ):
+    corr_id = _resolve_correlation_id(correlation_id)
     order_id = str(payload.order_id or "").strip()
-    if not order_id:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "ORDER_ID_REQUIRED",
-                "message": "order_id é obrigatório.",
+    try:
+        if not order_id:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "ORDER_ID_REQUIRED",
+                    "message": "order_id é obrigatório.",
+                },
+            )
+
+        order = db.get(Order, order_id)
+        if not order:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "type": "ORDER_NOT_FOUND",
+                    "message": "Pedido não encontrado.",
+                    "order_id": order_id,
+                },
+            )
+
+        _assert_order_reconciliation_allowed(db, order=order)
+
+        allocation = resolve_latest_allocation(db, order=order)
+        pickup = resolve_latest_pickup(db, order=order)
+        compensation = reconcile_order_compensation(
+            db=db,
+            order=order,
+            allocation=allocation,
+            pickup=pickup,
+            cancel_reason="ops_order_reconciliation",
+        )
+
+        if order.status != OrderStatus.CANCELLED:
+            order.mark_as_cancelled()
+        else:
+            order.touch()
+
+        db.commit()
+        _safe_record_ops_audit(
+            action="OPS_RECONCILE_ORDER",
+            result="SUCCESS",
+            correlation_id=corr_id,
+            user_id=current_user.id,
+            role="ops_user",
+            order_id=order.id,
+            details={
+                "status": order.status.value,
+                "slot_release_ok": compensation.slot_release_ok,
+                "credit_restored": compensation.credit_restored,
             },
         )
 
-    order = db.get(Order, order_id)
-    if not order:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "type": "ORDER_NOT_FOUND",
-                "message": "Pedido não encontrado.",
-                "order_id": order_id,
+        return DevReconcileOrderOut(
+            ok=True,
+            order_id=order.id,
+            status=order.status.value,
+            message="Reconciliação operacional executada com sucesso.",
+            compensation={
+                "credit_restored": compensation.credit_restored,
+                "credit_restore_error": compensation.credit_restore_error,
+                "slot_release_attempted": compensation.slot_release_attempted,
+                "slot_release_ok": compensation.slot_release_ok,
+                "slot_release_error": compensation.slot_release_error,
+                "allocation_id": compensation.allocation_id,
+                "allocation_state": compensation.allocation_state,
             },
         )
+    except HTTPException as exc:
+        detail_message = (
+            str(exc.detail.get("message"))
+            if isinstance(exc.detail, dict) and exc.detail.get("message")
+            else str(exc.detail)
+        )
+        _safe_record_ops_audit(
+            action="OPS_RECONCILE_ORDER",
+            result="ERROR",
+            correlation_id=corr_id,
+            user_id=current_user.id if current_user else None,
+            role="ops_user",
+            order_id=order_id or None,
+            error_message=detail_message,
+            details={"status_code": exc.status_code},
+        )
+        raise
+    except Exception as exc:
+        _safe_record_ops_audit(
+            action="OPS_RECONCILE_ORDER",
+            result="ERROR",
+            correlation_id=corr_id,
+            user_id=current_user.id if current_user else None,
+            role="ops_user",
+            order_id=order_id or None,
+            error_message=str(exc),
+        )
+        raise
 
-    _assert_order_reconciliation_allowed(db, order=order)
 
-    allocation = resolve_latest_allocation(db, order=order)
-    pickup = resolve_latest_pickup(db, order=order)
-    compensation = reconcile_order_compensation(
-        db=db,
-        order=order,
-        allocation=allocation,
-        pickup=pickup,
-        cancel_reason="ops_order_reconciliation",
-    )
-
-    if order.status != OrderStatus.CANCELLED:
-        order.mark_as_cancelled()
-    else:
-        order.touch()
-
-    db.commit()
-
-    return DevReconcileOrderOut(
+@router.get("/reconciliation-pending", response_model=DevReconciliationPendingListOut)
+def dev_reconciliation_pending_list(
+    status: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    rows = list_reconciliation_pending(db, status=status, limit=limit)
+    items = [
+        DevReconciliationPendingItemOut(
+            id=row.id,
+            order_id=row.order_id,
+            reason=row.reason,
+            status=row.status,
+            attempt_count=int(row.attempt_count or 0),
+            max_attempts=int(row.max_attempts or 0),
+            next_retry_at=to_iso_utc(row.next_retry_at),
+            last_error=row.last_error,
+            updated_at=to_iso_utc(row.updated_at),
+        )
+        for row in rows
+    ]
+    response = DevReconciliationPendingListOut(
         ok=True,
-        order_id=order.id,
-        status=order.status.value,
-        message="Reconciliação operacional executada com sucesso.",
-        compensation={
-            "credit_restored": compensation.credit_restored,
-            "slot_release_attempted": compensation.slot_release_attempted,
-            "slot_release_ok": compensation.slot_release_ok,
-            "slot_release_error": compensation.slot_release_error,
-            "allocation_id": compensation.allocation_id,
-            "allocation_state": compensation.allocation_state,
+        total=len(items),
+        items=items,
+    )
+    _safe_record_ops_audit(
+        action="OPS_RECON_PENDING_LIST",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={"status_filter": status, "limit": limit, "returned": len(items)},
+    )
+    return response
+
+
+@router.post("/reconciliation-pending/run-once")
+def dev_reconciliation_pending_run_once(
+    batch_size: int = Query(default=25, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    processed = run_reconciliation_retry_once(db, batch_size=batch_size)
+    _safe_record_ops_audit(
+        action="OPS_RECON_PENDING_RUN_ONCE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={"batch_size": batch_size, "processed": int(processed or 0)},
+    )
+    return {
+        "ok": True,
+        "processed": int(processed or 0),
+        "message": "Processamento manual de pendências executado.",
+    }
+
+
+@router.get("/ops-audit", response_model=DevOpsAuditListOut)
+def dev_ops_audit_list(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    order_id: str | None = Query(default=None),
+    action: str | None = Query(default=None),
+    result: str | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    rows = list_ops_action_audit(
+        db=db,
+        limit=limit,
+        offset=offset,
+        order_id=order_id,
+        action=action,
+        result=result,
+    )
+    items = [
+        DevOpsAuditItemOut(
+            id=row.id,
+            action=row.action,
+            result=row.result,
+            correlation_id=row.correlation_id,
+            user_id=row.user_id,
+            role=row.role,
+            order_id=row.order_id,
+            error_message=row.error_message,
+            details=row.details_json if isinstance(row.details_json, dict) else {},
+            created_at=to_iso_utc(row.created_at),
+        )
+        for row in rows
+    ]
+    _safe_record_ops_audit(
+        action="OPS_AUDIT_LIST",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "limit": limit,
+            "offset": offset,
+            "order_id": order_id,
+            "action_filter": action,
+            "result_filter": result,
+            "returned": len(items),
         },
     )
+    return DevOpsAuditListOut(ok=True, total=len(items), items=items)
 
 
 @router.post("/release-regional-allocations", response_model=DevReleaseRegionalAllocationsOut)

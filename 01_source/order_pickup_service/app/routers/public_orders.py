@@ -1738,6 +1738,7 @@ def cancel_public_order(
         "message": "Pedido cancelado com sucesso",
         "compensation": {
             "credit_restored": compensation.credit_restored,
+            "credit_restore_error": compensation.credit_restore_error,
             "slot_release_attempted": compensation.slot_release_attempted,
             "slot_release_ok": compensation.slot_release_ok,
             "slot_release_error": compensation.slot_release_error,

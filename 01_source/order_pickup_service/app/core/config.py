@@ -85,6 +85,14 @@ class Settings(BaseSettings):
 
     expiry_poll_sec: int = Field(default=60, alias="EXPIRY_POLL_SEC")
     lifecycle_events_poll_sec: int = Field(default=10, alias="LIFECYCLE_EVENTS_POLL_SEC")
+    reconciliation_retry_poll_sec: int = Field(
+        default=15,
+        alias="RECONCILIATION_RETRY_POLL_SEC",
+    )
+    reconciliation_retry_batch_size: int = Field(
+        default=25,
+        alias="RECONCILIATION_RETRY_BATCH_SIZE",
+    )
 
     expiry_batch_size: int = Field(default=100, alias="EXPIRY_BATCH_SIZE")
     expiry_max_retries: int = Field(default=3, alias="EXPIRY_MAX_RETRIES")
