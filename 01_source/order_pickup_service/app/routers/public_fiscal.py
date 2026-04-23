@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
+from app.services.fiscal_resolve import FiscalReadable
 
 from app.core.datetime_utils import to_iso_utc
 
@@ -36,7 +37,7 @@ def _normalize_receipt_code(receipt_code: str) -> str:
     return normalized_code
 
 
-def _serialize_fiscal_document(doc: FiscalDocument) -> dict:
+def _serialize_fiscal_document(doc: FiscalReadable) -> dict:
     payload = doc.payload_json or {}
 
     if isinstance(payload, str):
@@ -106,7 +107,7 @@ def _serialize_fiscal_document(doc: FiscalDocument) -> dict:
     }
 
 
-def _build_print_html(doc: FiscalDocument) -> str:
+def _build_print_html(doc: FiscalReadable) -> str:
     data = _serialize_fiscal_document(doc)
     payload = data.get("payload") or {}
     order = data.get("order") or {}
@@ -680,6 +681,11 @@ def public_fiscal_by_code(
     receipt_code: str,
     db: Session = Depends(get_db),
 ):
+    """
+    Código de comprovante do stub local (fiscal_documents.receipt_code).
+    Para chave de invoice do billing, use order_id + GET público de pedido ou
+    expansão futura de lookup no billing.
+    """
     normalized_code = _normalize_receipt_code(receipt_code)
 
     doc = (

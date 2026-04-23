@@ -58,12 +58,20 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
     order = snapshot.get("order") or {}
     pickup = snapshot.get("pickup") or {}
 
+    locker_id = invoice.locker_id or pickup.get("locker_id")
+    slot = invoice.slot_label if invoice.slot_label is not None else pickup.get("slot")
+    emit_name = invoice.emitter_name or "ELLAN STUB SP"
+    dest_name = invoice.consumer_name or "CLIENTE FINAL"
+    fiscal_subtype = invoice.fiscal_doc_subtype or "NFC_E_65"
+
     return {
         "format": "xml_stub",
         "country": "BR",
         "authority": "SEFAZ-SP",
         "provider_namespace": "sefaz_sp",
         "invoice_type": invoice.invoice_type,
+        "fiscal_doc_subtype": fiscal_subtype,
+        "emission_mode": invoice.emission_mode,
         "invoice_number": invoice_number,
         "invoice_series": invoice_series,
         "access_key": access_key,
@@ -72,15 +80,20 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
         "currency": invoice.currency,
         "payment_method": invoice.payment_method,
         "amount_cents": invoice.amount_cents,
-        "locker_id": pickup.get("locker_id"),
-        "slot": pickup.get("slot"),
+        "locker_id": locker_id,
+        "totem_id": invoice.totem_id,
+        "slot": slot,
+        "emitter_cnpj": invoice.emitter_cnpj,
+        "consumer_cpf": invoice.consumer_cpf,
+        "locker_address": invoice.locker_address,
+        "items_json": invoice.items_json,
         "generated_at": _sefaz_sp_now_iso(),
         "xml_preview": (
             f"<NFe>"
             f"<infNFe Id='{access_key}'>"
             f"<ide><nNF>{invoice_number}</nNF><serie>{invoice_series}</serie></ide>"
-            f"<emit><xNome>ELLAN STUB SP</xNome></emit>"
-            f"<dest><xNome>CLIENTE FINAL</xNome></dest>"
+            f"<emit><xNome>{emit_name}</xNome></emit>"
+            f"<dest><xNome>{dest_name}</xNome></dest>"
             f"<det><prod><cProd>{order.get('sku_id')}</cProd></prod></det>"
             f"</infNFe>"
             f"</NFe>"

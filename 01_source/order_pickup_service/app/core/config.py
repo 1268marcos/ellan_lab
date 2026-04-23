@@ -257,6 +257,18 @@ class Settings(BaseSettings):
     internal_token: str = Field(default="dev-internal-token", alias="INTERNAL_TOKEN")
     internal_health_token: str = Field(default="secret-token-123", alias="INTERNAL_HEALTH_TOKEN")
 
+    billing_fiscal_service_url: Optional[str] = Field(
+        default=None,
+        alias="BILLING_FISCAL_SERVICE_URL",
+        description="Base URL do billing_fiscal_service (health + leitura de invoices).",
+    )
+
+    billing_fiscal_timeout_sec: int = Field(
+        default=5,
+        alias="BILLING_FISCAL_TIMEOUT_SEC",
+        description="Timeout HTTP para chamadas ao billing_fiscal_service.",
+    )
+
     jwt_secret: str = Field(default="CHANGE_ME_IN_PROD", alias="JWT_SECRET")
     jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
     jwt_access_ttl_min: int = Field(default=60, alias="JWT_ACCESS_TTL_MIN")

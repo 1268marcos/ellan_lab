@@ -357,6 +357,9 @@ class Order(Base):
     # Canal e região
     channel = Column(Enum(OrderChannel), nullable=False)
     region = Column(String, nullable=False)
+
+    # Tenant SaaS (opcional; também pode vir do cadastro do locker)
+    tenant_id = Column(String(100), nullable=True, index=True)
     
     # Produto e locker
     totem_id = Column(String, nullable=False)

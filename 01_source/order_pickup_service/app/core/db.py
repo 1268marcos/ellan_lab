@@ -61,6 +61,7 @@ def _get_indexes_set(inspector, table_name: str) -> set[str]:
 def _assert_required_schema() -> None:
     inspector = inspect(engine)
     tables = set(inspector.get_table_names())
+    dialect = engine.dialect.name
 
     required_tables = {
         "orders",
@@ -94,6 +95,9 @@ def _assert_required_schema() -> None:
         "capability_profile_target",
         "capability_profile_snapshot",
     }
+
+    if dialect == "postgresql":
+        required_tables.add("tenant_fiscal_config")
 
     missing_tables = sorted(required_tables - tables)
     if missing_tables:
@@ -650,6 +654,7 @@ def init_db():
     from app.models.notification_log import NotificationLog  # noqa: F401
     from app.models.domain_event_outbox import DomainEventOutbox  # noqa: F401
     from app.models.fiscal_document import FiscalDocument  # noqa: F401
+    from app.models.tenant_fiscal_config import TenantFiscalConfig  # noqa: F401
 
     # 🔥 LOCKERS (EXPLÍCITO — ESSENCIAL)
     from app.models.locker import Locker, LockerSlotConfig, LockerOperator  # noqa: F401

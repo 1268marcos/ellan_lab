@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 
 
 class OrderPaidPayload(BaseModel):
+    """Payload canônico order.paid (v2 enriquecido — campos extras opcionais)."""
+
     order_id: str = Field(..., min_length=1)
     region: str = Field(..., min_length=1)
     channel: str = Field(..., min_length=1)
@@ -25,6 +27,9 @@ class OrderPaidPayload(BaseModel):
     operator_id: Optional[str] = None
     site_id: Optional[str] = None
     source_service: str = Field(..., min_length=1)
+    consumer_cpf: Optional[str] = None
+    consumer_name: Optional[str] = None
+    tenant_cnpj: Optional[str] = None
 
 
 class DomainEventEnvelope(BaseModel):

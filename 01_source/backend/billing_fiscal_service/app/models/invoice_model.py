@@ -25,6 +25,12 @@ class InvoiceStatus(str, enum.Enum):
 
 
 class Invoice(Base):
+    """
+    Documento fiscal unificado (F-1+).
+    Campos locker / NFC-e modelo 65 / emissão / emitente / consumidor
+    complementam order_snapshot (JSONB) para emissão e auditoria.
+    """
+
     __tablename__ = "invoices"
 
     __table_args__ = (
@@ -34,6 +40,8 @@ class Invoice(Base):
         Index("ix_invoice_country_status", "country", "status"),
         Index("ix_invoice_created_at", "created_at"),
         Index("ix_invoice_next_retry_at", "next_retry_at"),
+        Index("ix_invoice_locker_id", "locker_id"),
+        Index("ix_invoice_fiscal_doc_subtype", "fiscal_doc_subtype"),
     )
 
     id: Mapped[str] = mapped_column(String(50), primary_key=True)
@@ -63,6 +71,23 @@ class Invoice(Base):
     tax_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     government_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     order_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # --- F-1 schema (NFC-e locker / unificação com documento fiscal) ---
+    locker_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    totem_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    slot_label: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    fiscal_doc_subtype: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="NFC_E_65"
+    )
+    emission_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ONLINE"
+    )
+    emitter_cnpj: Mapped[str | None] = mapped_column(String(18), nullable=True)
+    emitter_name: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    consumer_cpf: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    consumer_name: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    locker_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    items_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
     last_error_code: Mapped[str | None] = mapped_column(String(120), nullable=True)

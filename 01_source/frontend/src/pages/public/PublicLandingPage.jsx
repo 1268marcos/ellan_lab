@@ -67,7 +67,7 @@ export default function PublicLandingPage() {
             >
               <span>✅ Pagamento Seguro</span>
               <span>✅ Retirada 24/7</span>
-              <span>✅ SP & Portugal</span>
+              <span>✅ O mundo é aqui na Santa Janela</span>
             </div>
             
             {/* CTAs Hierárquicos */}
@@ -210,7 +210,7 @@ export default function PublicLandingPage() {
               <div style={{ color: 'var(--color-text-muted)' }}>Disponibilidade</div>
             </div>
             <div>
-              <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary)' }}>SP + PT</div>
+              <div style={{ fontSize: '32px', fontWeight: 800, color: 'var(--color-primary)' }}>BR + PT + ES +...</div>
               <div style={{ color: 'var(--color-text-muted)' }}>Regiões Atendidas</div>
             </div>
             <div>

@@ -1,0 +1,231 @@
+================================================================================
+ELLAN LAB — Acompanhamento de Sprints · Fiscal & Invoices
+================================================================================
+Fonte de planejamento: docs/Sprint_Backlog_Fiscal_and_Invoices.pdf
+Serviço principal: billing_fiscal_service
+Última atualização do plano (PDF): 2026-04-23
+
+Objetivo
+--------
+Evoluir o billing_fiscal_service do estado stub atual para padrão de indústria de
+lockers: NFC-e modelo 65, cálculo de tributos, integrações SEFAZ (BR) e AT (PT),
+cancelamento, reconciliação fiscal e integração ao domínio de Orders (contrato
+enriquecido + stub coordenado).
+
+Resumo quantitativo
+-------------------
+  3 sprints eixo Fiscal   (F-1, F-2, F-3)
+  3 sprints eixo Invoice  (I-1, I-2, I-3)
+  1 sprint Orders (stub)  (O-1)
+  ~103 story points total (referência do backlog)
+
+Sequenciamento oficial (dependências)
+-------------------------------------
+  O-1  →  desbloqueador da cadeia (contrato rico Orders ↔ Fiscal)
+
+  Após O-1, em paralelo:
+    F-1  (schema / documento unificado — pré-requisito dos demais fiscais)
+    I-1  (integração Orders → invoice completa)
+
+  Depois de F-1 e I-1, em paralelo:
+    F-2  (tax engine BR + PT)
+    I-2  (cancelamento + entrega DANFE)
+
+  Encerramento produção:
+    F-3  (provedores reais NFC-e / SAT / AT — exige F-2 para XML correto)
+    I-3  (reconciliação, monitoramento, exports SPED / SAF-T)
+
+Legenda de status (preencher ao longo dos sprints)
+----------------------------------------------------
+  [ ] Não iniciado   [~] Em andamento   [x] Concluído   [!] Bloqueado / risco
+
+-------------------------------------------------------------------------------
+SPRINT O-1 — Order-to-invoice contract & event enrichment (Orders stub)
+-------------------------------------------------------------------------------
+Duração referência: 1 semana  |  Esforço: 8 pts
+Escopo: não refatorar o domínio Orders completo; enriquecer contrato interno
+        para o billing_fiscal_service consumir dados fiscais completos.
+
+  Contexto
+  - Novo endpoint interno no order_pickup_service com payload que a invoice
+    precisa (locker_address, tenant_cnpj, consumer_cpf).
+  - Desbloqueia F-1 e I-1.
+
+  User stories
+  [x] API: GET /internal/orders/{id}/fiscal-context — order + items +
+        locker_address + tenant_cnpj + consumer_cpf (contrato versionado v2)
+  [x] EVENT: order.paid payload v2 — locker_id, tenant_id, consumer_cpf
+        (nullable), region, currency
+  [x] SCHEMA: tenant_fiscal_config — tenant_id, CNPJ, razão social, IE, regime,
+        CRT, cert A1 (ref vault)
+  [x] API: GET /internal/fiscal/health — SEFAZ/AT acessíveis (consulta locker)
+
+  Registro de evolução (datas / notas / PR / commit)
+  - 2026-04-23: O-1 implementado no código — order_pickup_service (endpoints,
+    tabela tenant_fiscal_config, modelo Order.tenant_id, outbox v2) +
+    billing_fiscal_service (get_order_snapshot_for_invoice → fiscal-context).
+    Variável opcional BILLING_FISCAL_SERVICE_URL no pickup para health remoto.
+
+
+-------------------------------------------------------------------------------
+SPRINT F-1 — Schema evolution & document unification (Fiscal)
+-------------------------------------------------------------------------------
+Duração referência: 2 semanas  |  Esforço: 13 pts
+Objetivo: unificar fiscal_documents e invoices; campos obrigatórios NFC-e 65;
+          contexto locker no documento. Pré-requisito para os demais sprints
+          fiscais.
+
+  User stories
+  [x] SCHEMA: fiscal_doc_subtype — valores VARCHAR (NFC_E_65, NFE_55, …) +
+        default NFC_E_65 no billing_fiscal_service.invoices
+  [x] SCHEMA: emission_mode — ONLINE (+ constantes CONTINGENCY_SVRS, OFFLINE_SAT)
+  [x] SCHEMA: locker context na invoice — locker_id, totem_id, slot_label;
+        locker_address JSONB
+  [x] SCHEMA: emitter & consumer — emitter_*, consumer_*, items_json JSONB
+  [x] REFACTOR: leituras passam a preferir invoice no billing_fiscal_service
+        (BILLING_FISCAL_SERVICE_URL); fiscal_documents permanece para stub
+        local / reimpressão até remoção futura.
+
+  DDL resumo (invoices — referência backlog)
+  - locker_id, totem_id, fiscal_doc_subtype, emission_mode
+  - emitter_cnpj, emitter_name, consumer_cpf, consumer_name, locker_address
+  - items_json (espelho order_items)
+
+  Registro de evolução
+  - 2026-04-23: F-1 no billing_fiscal_service — colunas na tabela invoices
+    (migrations REQUIRED_COLUMNS + índices), modelo SQLAlchemy, preenchimento
+    via invoice_snapshot_fiscal.fiscal_columns_from_order_snapshot no
+    ensure_invoice_for_order e generate_invoice; API InvoiceResponse; stub
+    SEFAZ-SP usa colunas F-1. Testes: tests/test_invoice_snapshot_fiscal.py
+    (pytest na .venv do serviço).
+  - 2026-04-23: Redirecionamento de leitura no order_pickup_service —
+    integrations/billing_fiscal_client, fiscal_read_adapter.FiscalReadView,
+    fiscal_resolve.resolve_fiscal_for_order; internal/status
+    (fiscal_invoice_in_billing), public_orders, kiosk identify,
+    get_fiscal_document_by_order; /public/fiscal/by-code permanece só
+    fiscal_documents (comentário na rota). InvoiceResponse + issued_at etc.
+    no billing. Testes: tests/test_fiscal_read_adapter.py.
+
+
+-------------------------------------------------------------------------------
+SPRINT F-2 — Tax calculation engine — BR + PT (Fiscal)
+-------------------------------------------------------------------------------
+Duração referência: 2 semanas  |  Esforço: 21 pts
+Objetivo: implementar tax_service.py; ICMS por UF (CONFAZ), PIS/COFINS, NCM;
+          Portugal IVA por categoria (CIVA); breakdown por order_item.
+
+  User stories
+  [ ] SERVICE: TaxEngine BR — ICMS UF, PIS 0,65%, COFINS 3%, CST Simples/RN,
+        lookup NCM
+  [ ] SERVICE: TaxEngine PT — IVA 23/13/6%, enquadramento CIVA
+  [ ] SCHEMA: product_fiscal_config — sku_id, ncm, cest, CSTs, iva_category
+  [ ] SERVICE: tax_breakdown_json por item; soma = amount_cents
+  [ ] TEST: suite regressão fiscal (pytest CI) — SP, RJ, PT, Simples
+
+  Registro de evolução
+  -
+
+
+-------------------------------------------------------------------------------
+SPRINT F-3 — Provider integration — NFC-e & SAT (BR) + AT (PT) (Fiscal)
+-------------------------------------------------------------------------------
+Duração referência: 3 semanas  |  Esforço: 34 pts
+Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
+          DANFE térmica; callbacks autoridade.
+
+  User stories
+  [ ] INTEGRATION: NFC-e XML schema v4.0 (NT 2015.002 + 2019.001), assinatura A1
+  [ ] INTEGRATION: client SVRS/SEFAZ — autorização, retry lote
+  [ ] INTEGRATION: modo contingência SAT/MFe offline + sync ao reconectar
+  [ ] INTEGRATION: client AT Portugal real (REST AT2024 ou SOAP legacy)
+  [ ] INTEGRATION: POST /internal/fiscal/callback — retorno async autoridades
+  [ ] DELIVERY: DANFE PDF simplificado + payload JSON impressora térmica
+        (MQTT/HTTP)
+
+  SCHEMA: fiscal_authority_callbacks (invoice_id, authority, raw_payload, ...)
+
+  Registro de evolução
+  -
+
+
+-------------------------------------------------------------------------------
+SPRINT I-1 — Orders integration — da pickup ao modelo completo (Invoice)
+-------------------------------------------------------------------------------
+Duração referência: 2 semanas  |  Esforço: 13 pts
+Objetivo: resiliência além do order_pickup_service; fallback orders DB;
+          items_json multi-linha; locker_id resolvido; view reconciliação.
+
+  User stories
+  [ ] INTEGRATION: fallback direto orders + order_items se pickup 404/timeout
+  [ ] SERVICE: ingestão order_items → items_json (qty, NCM, valor unitário)
+  [ ] SERVICE: locker_id via orders.totem_id → lockers
+  [ ] SCHEMA: MATERIALIZED VIEW invoice_order_view (invoices + orders + items)
+  [ ] EVENT: enriquecer order.paid — payload v2 (coord. order_lifecycle_service)
+
+  Registro de evolução
+  -
+
+
+-------------------------------------------------------------------------------
+SPRINT I-2 — Cancellation flow & document delivery (Invoice)
+-------------------------------------------------------------------------------
+Duração referência: 2 semanas  |  Esforço: 21 pts
+Objetivo: política cancelamento SEFAZ (<30 min / 30min–24h CC / >24h NF comp.);
+          e-mail DANFE; payload térmico; reissue com chave anterior.
+
+  User stories
+  [ ] SERVICE: cancellation policy engine (gatilho orders.status = REFUNDED)
+  [ ] SERVICE: saga CANCELLING → SEFAZ → CANCELLED + invoice.cancelled
+  [ ] DELIVERY: e-mail PDF para orders.receipt_email + notification_logs
+  [ ] API: GET /internal/fiscal/danfe/{id}/thermal — JSON impressora
+  [ ] API: fluxo reissue — cancela anterior, nova nota com previous_receipt_code
+
+  SCHEMA: novos InvoiceStatus — CANCELLING, CANCELLED, CORRECTION_REQUESTED,
+           COMPLEMENTARY_ISSUED + invoice_delivery_log
+
+  Registro de evolução
+  -
+
+
+-------------------------------------------------------------------------------
+SPRINT I-3 — Reconciliation, monitoring & fiscal reporting (Invoice)
+-------------------------------------------------------------------------------
+Duração referência: 2 semanas  |  Esforço: 13 pts
+Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
+
+  User stories
+  [ ] WORKER: reconciliação — PAID sem invoice / ISSUED sem PAID — cron alerts
+  [ ] API: GET /admin/fiscal/gaps?date= + POST .../force-issue/{order_id}
+  [ ] EXPORT: job mensal SPED/EFD (BR)
+  [ ] EXPORT: job mensal SAF-T (PT, Portaria 302/2016)
+  [ ] MONITOR: /admin/fiscal/dead-letters + alertas threshold
+
+  SCHEMA: fiscal_reconciliation_gaps
+
+  Registro de evolução
+  -
+
+
+================================================================================
+Quadro rápido de status por sprint (atualizar semanalmente)
+================================================================================
+  Sprint   Nome curto                              Status    Notas
+  ------   ------------------------------------   ------    -----
+  O-1      Contrato Orders + eventos              [x]
+  F-1      Schema unificado NFC-e 65              [x]
+  F-2      Tax engine BR/PT                       [ ]
+  F-3      Integração provedores + DANFE          [ ]
+  I-1      Integração Orders resiliente           [ ]
+  I-2      Cancelamento + entrega documento       [ ]
+  I-3      Reconciliação + exports + monitor      [ ]
+
+Riscos / decisões pendentes (lista viva)
+----------------------------------------
+  -
+  -
+
+Próxima revisão sugerida do documento: _______________  Responsável: ___________
+
+================================================================================
+Fim do template de acompanhamento — editar este arquivo conforme as entregas.
+================================================================================

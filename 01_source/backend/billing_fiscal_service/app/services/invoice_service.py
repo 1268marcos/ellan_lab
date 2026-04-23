@@ -7,9 +7,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.integrations.lifecycle_client import has_order_paid_event
-from app.integrations.order_pickup_client import OrderPickupClientError, get_order_snapshot
+from app.integrations.order_pickup_client import OrderPickupClientError, get_order_snapshot_for_invoice
 from app.models.invoice_model import Invoice, InvoiceStatus
 from app.utils.id_generator import generate_invoice_id
+from app.services.invoice_snapshot_fiscal import fiscal_columns_from_order_snapshot
 
 
 def _country_from_region(region: str | None) -> str:
@@ -150,19 +151,35 @@ def _extract_order_snapshot_fields(snapshot: dict) -> dict:
     region = order.get("region")
     country = _country_from_region(region)
 
+    currency = order.get("currency") or _currency_from_country(country)
+    tenant_fiscal = snapshot.get("tenant_fiscal") or {}
+    tenant_id = order.get("tenant_id") or tenant_fiscal.get("tenant_id")
+
+    order_snapshot = {
+        "order": order,
+        "allocation": allocation,
+        "pickup": pickup,
+    }
+    if snapshot.get("contract_version"):
+        order_snapshot["contract_version"] = snapshot.get("contract_version")
+        order_snapshot["order_items"] = snapshot.get("order_items")
+        order_snapshot["locker_address"] = snapshot.get("locker_address")
+        order_snapshot["tenant_fiscal"] = snapshot.get("tenant_fiscal")
+        order_snapshot["tenant_cnpj"] = snapshot.get("tenant_cnpj")
+        order_snapshot["tenant_razao_social"] = snapshot.get("tenant_razao_social")
+        order_snapshot["consumer_cpf"] = snapshot.get("consumer_cpf")
+        order_snapshot["consumer_name"] = snapshot.get("consumer_name")
+        order_snapshot["locker_id"] = snapshot.get("locker_id")
+
     return {
-        "tenant_id": None,
+        "tenant_id": tenant_id,
         "region": region,
         "country": country,
-        "currency": _currency_from_country(country),
+        "currency": currency,
         "payment_method": order.get("payment_method"),
         "amount_cents": order.get("amount_cents"),
         "invoice_type": _invoice_type_from_country(country),
-        "order_snapshot": {
-            "order": order,
-            "allocation": allocation,
-            "pickup": pickup,
-        },
+        "order_snapshot": order_snapshot,
         "payload_json": {
             "source": "manual_generate_endpoint",
             "trigger_event": "order.paid",
@@ -188,11 +205,12 @@ def generate_invoice(db: Session, order_id: str) -> Invoice:
         )
 
     try:
-        snapshot = get_order_snapshot(normalized_order_id)
+        snapshot = get_order_snapshot_for_invoice(normalized_order_id)
     except OrderPickupClientError as exc:
         raise ValueError(f"Não foi possível enriquecer invoice com dados canônicos do pedido: {exc}") from exc
 
     fields = _extract_order_snapshot_fields(snapshot)
+    fiscal_cols = fiscal_columns_from_order_snapshot(snapshot, country=fields["country"])
     now = datetime.now(timezone.utc)
 
     invoice = Invoice(
@@ -214,6 +232,7 @@ def generate_invoice(db: Session, order_id: str) -> Invoice:
         tax_details=None,
         government_response=None,
         order_snapshot=fields["order_snapshot"],
+        **fiscal_cols,
         error_message=None,
         last_error_code=None,
         retry_count=0,

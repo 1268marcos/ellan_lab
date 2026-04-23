@@ -31,6 +31,7 @@ from app.core.internal_auth import require_internal_token
 from app.core.lifecycle_client import LifecycleClientError
 from app.models.allocation import Allocation, AllocationState
 from app.models.fiscal_document import FiscalDocument  # ← IMPORT ADICIONADO
+from app.integrations.billing_fiscal_client import fetch_invoice_by_order_id
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import (
     Pickup,
@@ -56,6 +57,7 @@ from app.services.payment_confirm_service import (
     apply_payment_confirmation,
     emit_order_paid_and_simulate_fiscal,
 )
+from app.services.fiscal_context_service import build_fiscal_context
 # from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
 from app.core.datetime_utils import to_iso_utc
@@ -860,6 +862,52 @@ def internal_set_slot_state(
     }
 
 
+@router.get("/orders/{order_id}/fiscal-context")
+def internal_order_fiscal_context(
+    order_id: str,
+    _=Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    """
+    Contrato v2 para emissão fiscal: pedido, itens, endereço do locker, CNPJ tenant, consumidor.
+    """
+    try:
+        ctx = build_fiscal_context(db, order_id)
+    except ValueError as exc:
+        if str(exc) == "order_not_found":
+            raise HTTPException(status_code=404, detail="order not found") from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True, **ctx}
+
+
+@router.get("/fiscal/health")
+def internal_fiscal_health(_=Depends(require_internal_token)):
+    """
+    Stub operacional: indica se dependências fiscais estão acessíveis.
+    Quando BILLING_FISCAL_SERVICE_URL está definida, consulta GET /health do serviço.
+    """
+    out: dict = {
+        "ok": True,
+        "sefaz_sp": {"reachable": True, "mode": "stub"},
+        "at_pt": {"reachable": True, "mode": "stub"},
+    }
+    base = (settings.billing_fiscal_service_url or "").strip()
+    if not base:
+        out["billing_fiscal_service"] = {"checked": False, "detail": "BILLING_FISCAL_SERVICE_URL not set"}
+        return out
+    try:
+        r = requests.get(f"{base.rstrip('/')}/health", timeout=2.5)
+        out["billing_fiscal_service"] = {
+            "checked": True,
+            "ok": r.status_code < 400,
+            "status_code": r.status_code,
+        }
+    except Exception as exc:
+        out["billing_fiscal_service"] = {"checked": True, "ok": False, "error": str(exc)}
+        out["ok"] = False
+    return out
+
+
 @router.get("/orders/{order_id}/status")
 def internal_order_status(
     order_id: str,
@@ -870,11 +918,18 @@ def internal_order_status(
     allocation = db.query(Allocation).filter(Allocation.order_id == order.id).first()
     pickup = _get_latest_pickup_by_order(db, order.id)
 
-    # Tenta extrair o número de tentativas do documento fiscal
+    # Tentativas de reimpressão ficam no fiscal_documents local (stub pickup).
     fiscal_attempt = 1
-    fiscal = db.query(FiscalDocument).filter(FiscalDocument.order_id == order.id).first()
-    if fiscal and fiscal.payload_json:
-        fiscal_attempt = _extract_attempt_from_fiscal(fiscal.payload_json)
+    local_fiscal = (
+        db.query(FiscalDocument)
+        .filter(FiscalDocument.order_id == order.id)
+        .order_by(FiscalDocument.attempt.desc())
+        .first()
+    )
+    if local_fiscal and local_fiscal.payload_json:
+        fiscal_attempt = _extract_attempt_from_fiscal(local_fiscal.payload_json)
+
+    billing_inv = fetch_invoice_by_order_id(order.id)
 
     return {
         "ok": True,
@@ -933,6 +988,7 @@ def internal_order_status(
             "notes": pickup.notes,
         },
         "fiscal_attempt": fiscal_attempt,  # NOVO: número de tentativas de emissão fiscal
+        "fiscal_invoice_in_billing": bool(billing_inv and billing_inv.get("id")),
     }
 
 

@@ -595,6 +595,31 @@ def _create_lockers(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_tenant_fiscal_config(conn, applied: list[str]) -> None:
+    """Dados fiscais do emitente por tenant (O-1 — NFC-e / faturação)."""
+    name = "tenant_fiscal_config.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS tenant_fiscal_config (
+            tenant_id       VARCHAR(100) PRIMARY KEY,
+            cnpj            VARCHAR(18)  NOT NULL,
+            razao_social    VARCHAR(140) NOT NULL,
+            ie              VARCHAR(20),
+            regime          VARCHAR(20)  NOT NULL,
+            crt             CHAR(1)      NOT NULL,
+            cert_a1_ref     VARCHAR(255),
+            is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_tenant_fiscal_active ON tenant_fiscal_config (is_active)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_locker_slot_configs(conn, applied: list[str]) -> None:
     """Configuração estática de tamanhos disponíveis por locker."""
     name = "locker_slot_configs.create_table_v2"
@@ -2591,6 +2616,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_auth_sessions,
     _create_locker_operators,
     _create_lockers,
+    _create_tenant_fiscal_config,
     _create_locker_slot_configs,
     _create_locker_slots,
     _create_locker_telemetry,

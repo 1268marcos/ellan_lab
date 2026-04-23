@@ -34,6 +34,7 @@ from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus, PaymentStatus, PaymentMethod
 from app.models.pickup import Pickup, PickupChannel, PickupLifecycleStage, PickupStatus
 from app.models.fiscal_document import FiscalDocument
+from app.services.fiscal_resolve import resolve_fiscal_for_order
 from app.schemas.kiosk import (
     KioskCustomerIdentifyIn,
     KioskIdentifyOut,
@@ -227,27 +228,25 @@ def kiosk_identify(
 
     db.commit()
 
-    # buscar último fiscal do pedido
-    existing_fiscal = (
-        db.query(FiscalDocument)
-        .filter(FiscalDocument.order_id == order.id)
-        .order_by(FiscalDocument.attempt.desc())
-        .first()
-    )
-
-    receipt_code = None
-    if existing_fiscal and existing_fiscal.receipt_code:
-        receipt_code = existing_fiscal.receipt_code
-    else:
-        # receipt_code = f"SIM-{order.id[:8].upper()}"
-        if not existing_fiscal or not existing_fiscal.receipt_code:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "type": "FISCAL_NOT_AVAILABLE",
-                    "order_id": order.id,
-                },
-            )
+    # Comprovante: billing (canônico) ou fiscal_documents local
+    existing_fiscal = resolve_fiscal_for_order(db, order.id)
+    if not existing_fiscal:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "FISCAL_NOT_AVAILABLE",
+                "order_id": order.id,
+            },
+        )
+    receipt_code = getattr(existing_fiscal, "receipt_code", None)
+    if not receipt_code:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "FISCAL_NOT_AVAILABLE",
+                "order_id": order.id,
+            },
+        )
 
     # dispara envio (fila)
     try:

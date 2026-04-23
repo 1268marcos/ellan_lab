@@ -12,10 +12,11 @@ from sqlalchemy.orm import Session
 from app.integrations.lifecycle_client import has_order_paid_event
 from app.integrations.order_pickup_client import (
     OrderPickupClientError,
-    get_order_snapshot,
+    get_order_snapshot_for_invoice,
 )
 from app.models.invoice_model import Invoice
 from app.services.invoice_processing_service import claim_and_process_invoice_by_id
+from app.services.invoice_snapshot_fiscal import fiscal_columns_from_order_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +179,7 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
         )
 
     try:
-        snapshot = get_order_snapshot(normalized_order_id)
+        snapshot = get_order_snapshot_for_invoice(normalized_order_id)
     except OrderPickupClientError as exc:
         # raise ValueError(str(exc)) from exc
         raise OrderPickupClientError(str(exc)) from exc
@@ -194,10 +195,12 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
     
     invoice_type = _resolve_invoice_type(country)
 
+    fiscal_cols = fiscal_columns_from_order_snapshot(snapshot, country=country)
+
     invoice = Invoice(
         id=f"inv_{uuid.uuid4().hex}",
         order_id=normalized_order_id,
-        tenant_id=order.get("tenant_id"),
+        tenant_id=order.get("tenant_id") or (snapshot.get("tenant_fiscal") or {}).get("tenant_id"),
         region=order.get("region"),
         country=country,
         invoice_type=invoice_type,
@@ -205,6 +208,7 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
         currency=order.get("currency") or ("BRL" if country == "BR" else "EUR"),
         amount_cents=order.get("amount_cents"),
         order_snapshot=snapshot,
+        **fiscal_cols,
     )
 
     db.add(invoice)

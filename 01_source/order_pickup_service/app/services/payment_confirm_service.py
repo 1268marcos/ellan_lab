@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -20,6 +21,8 @@ from app.models.domain_event_outbox import DomainEventOutbox
 from app.models.fiscal_document import FiscalDocument
 from app.models.order import Order, PaymentMethod, OrderChannel, PaymentStatus
 from app.services.domain_event_outbox_service import enqueue_order_paid_event
+from app.services.fiscal_context_service import resolve_order_fiscal_emit_fields
+from app.services.fiscal_resolve import resolve_fiscal_for_order
 from app.services import backend_client
 
 from app.core.datetime_utils import to_iso_utc
@@ -429,6 +432,9 @@ def emit_order_paid_and_simulate_fiscal(
 
     # Enfileira evento se necessário
     if not existing:
+        eff_tenant_id, tenant_cnpj, consumer_cpf, consumer_name = resolve_order_fiscal_emit_fields(
+            db, order, allocation, pickup
+        )
         enqueue_order_paid_event(
             db,
             order_id=order.id,
@@ -443,10 +449,14 @@ def emit_order_paid_and_simulate_fiscal(
             slot=(pickup.slot if pickup else allocation.slot),
             allocation_id=allocation.id,
             pickup_id=(pickup.id if pickup else None),
-            tenant_id=None,
+            tenant_id=eff_tenant_id,
             operator_id=None,
             site_id=None,
             source_service="order_pickup_service",
+            consumer_cpf=consumer_cpf,
+            consumer_name=consumer_name,
+            tenant_cnpj=tenant_cnpj,
+            event_version="2",
         )
 
         logger.info(
@@ -742,18 +752,20 @@ def get_fiscal_document_by_order(
     order_id: str,
 ) -> Optional[Dict[str, Any]]:
     """
-    Recupera documento fiscal de um pedido.
+    Recupera documento fiscal de um pedido (billing canônico; fallback local).
     """
-    fiscal = (
-        db.query(FiscalDocument)
-        .filter(FiscalDocument.order_id == order_id)
-        .first()
-    )
-    
-    if fiscal:
-        return fiscal.payload_json
-    
-    return None
+    readable = resolve_fiscal_for_order(db, order_id)
+    if readable is None:
+        return None
+    payload = getattr(readable, "payload_json", None) or {}
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except Exception:
+            payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    return payload
 
 
 def regenerate_fiscal_document(

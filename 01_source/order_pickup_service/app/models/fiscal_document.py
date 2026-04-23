@@ -12,6 +12,11 @@ from app.core.db import Base
 
 
 class FiscalDocument(Base):
+    """
+    Simulação / cupom legado no pickup. Novo fluxo canônico: invoices no
+    billing_fiscal_service (F-1+); migrar leitores gradualmente.
+    """
+
     __tablename__ = "fiscal_documents"
 
     __table_args__ = (

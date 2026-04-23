@@ -42,7 +42,7 @@ from app.core.auth_dep import (
     get_current_verified_public_user,
 )
 from app.core.db import get_db
-from app.models.fiscal_document import FiscalDocument
+from app.services.fiscal_resolve import FiscalReadable, resolve_fiscal_for_order
 from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
 from app.schemas.orders import CreateOrderIn, OnlineRegion, OnlinePaymentMethod
@@ -381,7 +381,7 @@ def _resolve_token_manual_code(token: PickupToken | None) -> str | None:
 
 
 
-def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalDocument | None = None) -> dict[str, Any]:
+def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalReadable | None = None) -> dict[str, Any]:
     """Serializa pedido para resposta da API"""
     return {
         "id": order.id,
@@ -419,7 +419,7 @@ def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalDocument 
 
 def _serialize_order_legacy_manual_code_texto_plano(
     order: Order,
-    fiscal: FiscalDocument | None = None,
+    fiscal: FiscalReadable | None = None,
     *,
     pickup: Pickup | None = None,
     token: PickupToken | None = None,
@@ -524,7 +524,7 @@ def _serialize_order_legacy_manual_code_texto_plano(
 
 def _serialize_order_legacy_falha_devolve_sempre_manual_code(
     order: Order,
-    fiscal: FiscalDocument | None = None,
+    fiscal: FiscalReadable | None = None,
     *,
     pickup: Pickup | None = None,
     token: PickupToken | None = None,
@@ -617,7 +617,7 @@ def _serialize_order_legacy_falha_devolve_sempre_manual_code(
 
 def _serialize_order_legacy_sem_credito50(
     order: Order,
-    fiscal: FiscalDocument | None = None,
+    fiscal: FiscalReadable | None = None,
     *,
     pickup: Pickup | None = None,
     token: PickupToken | None = None,
@@ -746,7 +746,7 @@ def _order_metadata_as_dict(order: Order) -> dict[str, Any]:
 
 def _serialize_order(
     order: Order,
-    fiscal: FiscalDocument | None = None,
+    fiscal: FiscalReadable | None = None,
     *,
     pickup: Pickup | None = None,
     token: PickupToken | None = None,
@@ -1431,16 +1431,13 @@ def list_my_public_orders(
         payment_method=payment_method,
     )
 
-    # Busca documentos fiscais
+    # Documento fiscal: billing (canônico) com fallback em fiscal_documents
     order_ids = [order.id for order in items]
-    fiscal_docs = (
-        db.query(FiscalDocument)
-        .filter(FiscalDocument.order_id.in_(order_ids))
-        .all()
-        if order_ids
-        else []
-    )
-    fiscal_by_order_id = {doc.order_id: doc for doc in fiscal_docs}
+    fiscal_by_order_id: dict[str, FiscalReadable] = {}
+    for oid in order_ids:
+        doc = resolve_fiscal_for_order(db, oid)
+        if doc:
+            fiscal_by_order_id[oid] = doc
 
     return {
         "items": [
@@ -1518,20 +1515,7 @@ def get_my_public_order(
             },
         )
 
-    # Busca documento fiscal
-    # fiscal = (
-    #     db.query(FiscalDocument)
-    #     .filter(FiscalDocument.order_id == order.id)
-    #     .first()
-    # )
-    # 
-    # return _serialize_order(order, fiscal=fiscal)
-    # Busca documento fiscal
-    fiscal = (
-        db.query(FiscalDocument)
-        .filter(FiscalDocument.order_id == order.id)
-        .first()
-    )
+    fiscal = resolve_fiscal_for_order(db, order.id)
 
     # Busca allocation associada
     allocation = None

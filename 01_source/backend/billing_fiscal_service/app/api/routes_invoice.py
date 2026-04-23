@@ -47,6 +47,9 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
         status=str(getattr(invoice.status, "value", invoice.status)),
         retry_count=int(invoice.retry_count or 0),
         next_retry_at=_iso_or_none(invoice.next_retry_at),
+        issued_at=_iso_or_none(invoice.issued_at),
+        created_at=_iso_or_none(invoice.created_at),
+        updated_at=_iso_or_none(invoice.updated_at),
         invoice_number=invoice.invoice_number,
         invoice_series=invoice.invoice_series,
         access_key=invoice.access_key,
@@ -56,6 +59,17 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
         tax_details=invoice.tax_details,
         xml_content=invoice.xml_content,
         order_snapshot=invoice.order_snapshot,
+        locker_id=invoice.locker_id,
+        totem_id=invoice.totem_id,
+        slot_label=invoice.slot_label,
+        fiscal_doc_subtype=invoice.fiscal_doc_subtype,
+        emission_mode=invoice.emission_mode,
+        emitter_cnpj=invoice.emitter_cnpj,
+        emitter_name=invoice.emitter_name,
+        consumer_cpf=invoice.consumer_cpf,
+        consumer_name=invoice.consumer_name,
+        locker_address=invoice.locker_address,
+        items_json=invoice.items_json,
     )
 
 

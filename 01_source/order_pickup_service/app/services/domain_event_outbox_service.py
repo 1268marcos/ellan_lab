@@ -39,6 +39,10 @@ def enqueue_order_paid_event(
     operator_id: str | None = None,
     site_id: str | None = None,
     source_service: str = "order_pickup_service",
+    consumer_cpf: str | None = None,
+    consumer_name: str | None = None,
+    tenant_cnpj: str | None = None,
+    event_version: str = "2",
 ) -> DomainEventOutbox:
 
     # 🔒 VALIDAÇÃO CANÔNICA (NOVA)
@@ -105,6 +109,9 @@ def enqueue_order_paid_event(
         "operator_id": operator_id,
         "site_id": site_id,
         "source_service": source_service,
+        "consumer_cpf": consumer_cpf,
+        "consumer_name": consumer_name,
+        "tenant_cnpj": tenant_cnpj,
     }
 
     row = DomainEventOutbox(
@@ -113,7 +120,7 @@ def enqueue_order_paid_event(
         aggregate_type="order",
         aggregate_id=order_id,
         event_name="order.paid",
-        event_version="1",
+        event_version=str(event_version),
         status="PENDING",
         payload_json=payload,
         occurred_at=occurred_at,

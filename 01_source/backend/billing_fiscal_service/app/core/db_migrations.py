@@ -45,6 +45,18 @@ REQUIRED_COLUMNS = {
         "issued_at": "TIMESTAMP WITH TIME ZONE",
         "created_at": "TIMESTAMP WITH TIME ZONE",
         "updated_at": "TIMESTAMP WITH TIME ZONE",
+        # F-1 — NFC-e / locker / emitente / consumidor
+        "locker_id": "VARCHAR(64)",
+        "totem_id": "VARCHAR(64)",
+        "slot_label": "VARCHAR(32)",
+        "fiscal_doc_subtype": "VARCHAR(20) NOT NULL DEFAULT 'NFC_E_65'",
+        "emission_mode": "VARCHAR(20) NOT NULL DEFAULT 'ONLINE'",
+        "emitter_cnpj": "VARCHAR(18)",
+        "emitter_name": "VARCHAR(140)",
+        "consumer_cpf": "VARCHAR(14)",
+        "consumer_name": "VARCHAR(140)",
+        "locker_address": "JSONB",
+        "items_json": "JSONB",
     }
 }
 
@@ -106,6 +118,8 @@ def _ensure_indexes(engine: Engine) -> None:
         "CREATE INDEX IF NOT EXISTS ix_invoice_country_status ON invoices (country, status)",
         "CREATE INDEX IF NOT EXISTS ix_invoice_created_at ON invoices (created_at)",
         "CREATE INDEX IF NOT EXISTS ix_invoice_next_retry_at ON invoices (next_retry_at)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_locker_id ON invoices (locker_id)",
+        "CREATE INDEX IF NOT EXISTS ix_invoice_fiscal_doc_subtype ON invoices (fiscal_doc_subtype)",
     ]
     with engine.begin() as conn:
         for stmt in statements:
