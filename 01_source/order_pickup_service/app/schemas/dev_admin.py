@@ -100,3 +100,37 @@ class DevOpsAuditListOut(BaseModel):
     ok: bool
     total: int
     items: list[DevOpsAuditItemOut]
+
+
+class DevOpsMetricAlertOut(BaseModel):
+    severity: str
+    code: str
+    message: str
+    value: float | int
+    threshold: float | int
+
+
+class DevOpsMetricsWindowOut(BaseModel):
+    lookback_hours: int
+    from_: str = Field(..., alias="from")
+    to: str
+
+
+class DevOpsMetricsKpisOut(BaseModel):
+    total_ops_actions: int
+    success_actions: int
+    error_actions: int
+    error_rate: float
+    reconciliation_actions: int
+    pending_open_count: int
+    pending_due_retry_count: int
+    pending_processing_stale_count: int
+    pending_failed_final_count: int
+    avg_open_pending_age_min: float
+
+
+class DevOpsMetricsOut(BaseModel):
+    ok: bool
+    window: DevOpsMetricsWindowOut
+    kpis: DevOpsMetricsKpisOut
+    alerts: list[DevOpsMetricAlertOut]

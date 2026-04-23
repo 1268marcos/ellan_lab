@@ -93,6 +93,22 @@ class Settings(BaseSettings):
         default=25,
         alias="RECONCILIATION_RETRY_BATCH_SIZE",
     )
+    ops_metrics_lookback_hours: int = Field(
+        default=24,
+        alias="OPS_METRICS_LOOKBACK_HOURS",
+    )
+    ops_alert_pending_open_threshold: int = Field(
+        default=10,
+        alias="OPS_ALERT_PENDING_OPEN_THRESHOLD",
+    )
+    ops_alert_error_rate_threshold: float = Field(
+        default=0.25,
+        alias="OPS_ALERT_ERROR_RATE_THRESHOLD",
+    )
+    ops_alert_failed_final_threshold: int = Field(
+        default=1,
+        alias="OPS_ALERT_FAILED_FINAL_THRESHOLD",
+    )
 
     expiry_batch_size: int = Field(default=100, alias="EXPIRY_BATCH_SIZE")
     expiry_max_retries: int = Field(default=3, alias="EXPIRY_MAX_RETRIES")

@@ -28,6 +28,7 @@ from app.models.user import User
 from app.schemas.dev_admin import (
     DevOpsAuditItemOut,
     DevOpsAuditListOut,
+    DevOpsMetricsOut,
     DevReconcileOrderIn,
     DevReconciliationPendingItemOut,
     DevReconciliationPendingListOut,
@@ -61,6 +62,7 @@ from app.services.order_reconciliation_service import (
 from app.services.reconciliation_pending_service import list_reconciliation_pending
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
 from app.services.ops_audit_service import list_ops_action_audit, record_ops_action_audit
+from app.services.ops_metrics_service import build_ops_metrics
 
 from app.routers.internal import _ensure_allocation
 
@@ -476,6 +478,58 @@ def dev_ops_audit_list(
         },
     )
     return DevOpsAuditListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/ops-metrics", response_model=DevOpsMetricsOut)
+def dev_ops_metrics(
+    lookback_hours: int = Query(default=settings.ops_metrics_lookback_hours, ge=1, le=168),
+    pending_open_threshold: int = Query(
+        default=settings.ops_alert_pending_open_threshold,
+        ge=1,
+        le=10000,
+    ),
+    error_rate_threshold: float = Query(
+        default=settings.ops_alert_error_rate_threshold,
+        ge=0.0,
+        le=1.0,
+    ),
+    failed_final_threshold: int = Query(
+        default=settings.ops_alert_failed_final_threshold,
+        ge=1,
+        le=10000,
+    ),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    metrics = build_ops_metrics(
+        db=db,
+        lookback_hours=lookback_hours,
+        pending_open_threshold=pending_open_threshold,
+        error_rate_threshold=error_rate_threshold,
+        failed_final_threshold=failed_final_threshold,
+    )
+    _safe_record_ops_audit(
+        action="OPS_METRICS_VIEW",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "lookback_hours": lookback_hours,
+            "pending_open_threshold": pending_open_threshold,
+            "error_rate_threshold": error_rate_threshold,
+            "failed_final_threshold": failed_final_threshold,
+            "alerts_count": len(metrics.get("alerts", [])),
+        },
+    )
+    return DevOpsMetricsOut.model_validate(
+        {
+            "ok": True,
+            **metrics,
+        }
+    )
 
 
 @router.post("/release-regional-allocations", response_model=DevReleaseRegionalAllocationsOut)
