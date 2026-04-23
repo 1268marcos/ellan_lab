@@ -11,7 +11,7 @@ from app.models.processed_event import ProcessedEvent  # 👈 IMPORTANTE
 logger = logging.getLogger(__name__)
 
 
-REQUIRED_TABLES = {"invoices"}
+REQUIRED_TABLES = {"invoices", "product_fiscal_config"}
 
 REQUIRED_COLUMNS = {
     "invoices": {
@@ -31,6 +31,7 @@ REQUIRED_COLUMNS = {
         "xml_content": "JSONB",
         "payload_json": "JSONB",
         "tax_details": "JSONB",
+        "tax_breakdown_json": "JSONB",
         "government_response": "JSONB",
         "order_snapshot": "JSONB",
         "error_message": "VARCHAR(1000)",
@@ -126,6 +127,38 @@ def _ensure_indexes(engine: Engine) -> None:
             conn.execute(text(stmt))
 
 
+def _ensure_invoice_order_view(engine: Engine) -> None:
+    """
+    I-1: visão de reconciliação no Postgres do billing (sem join cross-DB a orders).
+    Une invoice + order_snapshot + items_json em colunas consultáveis.
+    """
+    stmt = """
+    CREATE OR REPLACE VIEW invoice_order_view AS
+    SELECT
+        i.id AS invoice_id,
+        i.order_id,
+        i.tenant_id,
+        i.region,
+        i.country,
+        i.status::text AS invoice_status,
+        i.locker_id,
+        i.totem_id,
+        i.slot_label,
+        i.amount_cents,
+        i.currency,
+        i.created_at,
+        i.issued_at,
+        i.items_json,
+        i.order_snapshot,
+        (i.order_snapshot->'order') AS order_json,
+        (i.order_snapshot->'order_items') AS order_items_snapshot,
+        COALESCE(i.items_json->'lines', '[]'::jsonb) AS items_lines
+    FROM invoices i;
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
 def _ensure_unique_constraint(engine: Engine) -> None:
     stmt = """
     DO $$
@@ -147,6 +180,7 @@ def _ensure_unique_constraint(engine: Engine) -> None:
 def run_startup_migrations(engine: Engine) -> None:
     from app.models.base import Base
     from app.models.invoice_model import Invoice  # noqa: F401
+    from app.models.product_fiscal_config import ProductFiscalConfig  # noqa: F401
 
     _ensure_invoice_status_enum(engine)
 
@@ -176,6 +210,7 @@ def run_startup_migrations(engine: Engine) -> None:
 
     _ensure_indexes(engine)
     _ensure_unique_constraint(engine)
+    _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)
     for table_name, required_columns in REQUIRED_COLUMNS.items():

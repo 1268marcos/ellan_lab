@@ -9,6 +9,7 @@ from re import compile as re_compile
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.core.datetime_utils import to_iso_utc
+from app.schemas.order_items import normalize_ncm_optional
 
 
 
@@ -594,6 +595,11 @@ class CreateOrderIn(BaseModel):
 
     sku_id: str
     totem_id: str = Field(..., description="Identificador da unidade física / locker")
+    ncm: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        description="NCM Mercosul opcional (2–10 dígitos) para a linha principal do pedido",
+    )
 
     payment_method: OnlinePaymentMethod
     payment_interface: OnlinePaymentInterface
@@ -656,6 +662,17 @@ class CreateOrderIn(BaseModel):
         if len(normalized) > 100:
             raise ValueError("sku_id must be less than 100 characters")
         return normalized
+
+    @field_validator("ncm", mode="before")
+    @classmethod
+    def validate_order_ncm(cls, value: Optional[str | int | float]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            value = str(int(value))
+        if isinstance(value, str) and not value.strip():
+            return None
+        return normalize_ncm_optional(str(value).strip())
 
     @field_validator("customer_phone")
     @classmethod

@@ -69,6 +69,7 @@ class Invoice(Base):
     xml_content: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     payload_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     tax_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tax_breakdown_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     government_response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     order_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 

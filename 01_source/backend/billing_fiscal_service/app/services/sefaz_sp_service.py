@@ -31,24 +31,66 @@ def _sefaz_sp_generate_access_key(invoice: Invoice) -> str:
 def _sefaz_sp_build_tax_details(invoice: Invoice) -> dict:
     amount_cents = invoice.amount_cents or 0
     amount = round(amount_cents / 100, 2)
+    tb = invoice.tax_breakdown_json or {}
+    lines = tb.get("lines") or []
+    summary = tb.get("summary") or {}
+
+    taxes: list[dict] = []
+    if lines:
+        tot_icms = sum(int(x.get("icms_cents") or 0) for x in lines)
+        tot_pis = sum(int(x.get("pis_cents") or 0) for x in lines)
+        tot_cof = sum(int(x.get("cofins_cents") or 0) for x in lines)
+        base = int(summary.get("total_taxable_cents") or amount_cents)
+        if tot_icms:
+            taxes.append(
+                {
+                    "tax_type": "ICMS",
+                    "tax_rate": round(tot_icms / max(base, 1), 6),
+                    "tax_amount": round(tot_icms / 100, 2),
+                    "amount_cents": tot_icms,
+                }
+            )
+        if tot_pis:
+            taxes.append(
+                {
+                    "tax_type": "PIS",
+                    "tax_rate": 0.0065,
+                    "tax_amount": round(tot_pis / 100, 2),
+                    "amount_cents": tot_pis,
+                }
+            )
+        if tot_cof:
+            taxes.append(
+                {
+                    "tax_type": "COFINS",
+                    "tax_rate": 0.03,
+                    "tax_amount": round(tot_cof / 100, 2),
+                    "amount_cents": tot_cof,
+                }
+            )
+    if not taxes:
+        taxes.append(
+            {
+                "tax_type": "ICMS",
+                "tax_rate": 0.0,
+                "tax_amount": 0.0,
+                "note": "Sem linhas de imposto calculadas.",
+            }
+        )
+
+    regime = "simples_nacional" if tb.get("regime_simples_nacional") else "normal"
 
     return {
         "country": "BR",
         "authority": "SEFAZ-SP",
         "provider_namespace": "sefaz_sp",
-        "regime": "stub_simples_nacional",
+        "regime": regime,
         "base_amount_cents": amount_cents,
         "base_amount": amount,
         "currency": invoice.currency,
         "payment_method": invoice.payment_method,
-        "taxes": [
-            {
-                "tax_type": "ICMS",
-                "tax_rate": 0.0,
-                "tax_amount": 0.0,
-                "note": "Stub inicial; cálculo real ainda pendente.",
-            }
-        ],
+        "taxes": taxes,
+        "breakdown_lines": lines,
         "calculated_at": _sefaz_sp_now_iso(),
     }
 

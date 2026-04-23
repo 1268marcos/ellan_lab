@@ -157,6 +157,7 @@ def build_fiscal_context(db: Session, order_id: str) -> dict[str, Any]:
                 "order_id": order.id,
                 "sku_id": order.sku_id,
                 "sku_description": getattr(order, "sku_description", None),
+                "ncm": None,
                 "quantity": 1,
                 "unit_amount_cents": order.amount_cents,
                 "total_amount_cents": order.amount_cents,

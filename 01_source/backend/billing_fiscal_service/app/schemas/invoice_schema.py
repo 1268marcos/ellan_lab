@@ -25,6 +25,7 @@ class InvoiceResponse(BaseModel):
     last_error_code: str | None = None
     government_response: dict | None = None
     tax_details: dict | None = None
+    tax_breakdown_json: dict | None = None
     xml_content: dict | None = None
     order_snapshot: dict | None = None
     # F-1

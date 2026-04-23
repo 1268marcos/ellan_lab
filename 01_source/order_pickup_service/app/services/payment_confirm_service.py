@@ -435,6 +435,10 @@ def emit_order_paid_and_simulate_fiscal(
         eff_tenant_id, tenant_cnpj, consumer_cpf, consumer_name = resolve_order_fiscal_emit_fields(
             db, order, allocation, pickup
         )
+        try:
+            _item_count = len(order.items or [])
+        except Exception:
+            _item_count = 0
         enqueue_order_paid_event(
             db,
             order_id=order.id,
@@ -456,6 +460,8 @@ def emit_order_paid_and_simulate_fiscal(
             consumer_cpf=consumer_cpf,
             consumer_name=consumer_name,
             tenant_cnpj=tenant_cnpj,
+            totem_id=getattr(order, "totem_id", None),
+            order_item_count=_item_count,
             event_version="2",
         )
 

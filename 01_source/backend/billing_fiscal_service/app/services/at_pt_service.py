@@ -32,6 +32,13 @@ def at_pt_issue_invoice(invoice: Invoice) -> dict:
     invoice_series = _at_pt_generate_series()
     access_key = _at_pt_generate_access_key(invoice)
 
+    tb = invoice.tax_breakdown_json or {}
+    lines = tb.get("lines") or []
+    summary = tb.get("summary") or {}
+    tot_iva = sum(int(x.get("iva_cents") or 0) for x in lines)
+    base = int(summary.get("total_taxable_cents") or invoice.amount_cents or 0)
+    iva_rate = round(tot_iva / max(base, 1), 6) if tot_iva and base else 0.0
+
     return {
         "provider": "at_pt",
         "country": "PT",
@@ -45,11 +52,13 @@ def at_pt_issue_invoice(invoice: Invoice) -> dict:
             "taxes": [
                 {
                     "tax_type": "IVA",
-                    "tax_rate": 0.0,
-                    "tax_amount": 0.0,
-                    "note": "Stub inicial AT/PT.",
+                    "tax_rate": iva_rate,
+                    "tax_amount": round(tot_iva / 100, 2),
+                    "amount_cents": tot_iva,
+                    "note": "Motor F-2 (tax_service).",
                 }
             ],
+            "breakdown_lines": lines,
             "calculated_at": _at_pt_now_iso(),
         },
         "xml_content": {

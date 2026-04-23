@@ -42,6 +42,8 @@ def enqueue_order_paid_event(
     consumer_cpf: str | None = None,
     consumer_name: str | None = None,
     tenant_cnpj: str | None = None,
+    totem_id: str | None = None,
+    order_item_count: int | None = None,
     event_version: str = "2",
 ) -> DomainEventOutbox:
 
@@ -112,6 +114,8 @@ def enqueue_order_paid_event(
         "consumer_cpf": consumer_cpf,
         "consumer_name": consumer_name,
         "tenant_cnpj": tenant_cnpj,
+        "totem_id": totem_id,
+        "order_item_count": order_item_count,
     }
 
     row = DomainEventOutbox(

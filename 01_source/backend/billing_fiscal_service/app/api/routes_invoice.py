@@ -57,6 +57,7 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
         last_error_code=invoice.last_error_code,
         government_response=invoice.government_response,
         tax_details=invoice.tax_details,
+        tax_breakdown_json=invoice.tax_breakdown_json,
         xml_content=invoice.xml_content,
         order_snapshot=invoice.order_snapshot,
         locker_id=invoice.locker_id,

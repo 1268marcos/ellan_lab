@@ -23,6 +23,8 @@ from app.core.lifecycle_client import LifecycleClientError
 # from app.core.payment_timeout_policy import resolve_prepayment_timeout_seconds
 from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus, PaymentMethod
+from app.schemas.order_items import normalize_ncm_optional
+from app.services.order_items_service import insert_primary_line_if_absent
 from app.services import backend_client
 from app.services.lifecycle_integration import register_prepayment_timeout_deadline
 from app.services.locker_service import validate_locker_for_order
@@ -623,6 +625,7 @@ def create_order_core(
     guest_email: Optional[str] = None,
     device_id: Optional[str] = None,
     ip_address: Optional[str] = None,
+    order_line_ncm: Optional[str] = None,
 ) -> CreateOrderCoreResult:
     """
     Criação de pedido ONLINE com source of truth no capability profile do banco.
@@ -812,6 +815,15 @@ def create_order_core(
     )
     final_amount_cents = int(credit_application.final_amount_cents)
 
+    if order_line_ncm:
+        try:
+            normalize_ncm_optional(str(order_line_ncm).strip())
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"type": "INVALID_NCM", "message": str(exc)},
+            ) from exc
+
     # =========================
     # 6. TTL
     # =========================
@@ -978,6 +990,14 @@ def create_order_core(
         )
 
         db.add(allocation)
+        insert_primary_line_if_absent(
+            db,
+            order=order,
+            sku_id=sku_id,
+            amount_cents=final_amount_cents,
+            sku_description=getattr(order, "sku_description", None),
+            order_line_ncm=order_line_ncm,
+        )
         db.commit()
         db.refresh(order)
         db.refresh(allocation)

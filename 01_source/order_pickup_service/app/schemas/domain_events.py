@@ -30,6 +30,8 @@ class OrderPaidPayload(BaseModel):
     consumer_cpf: Optional[str] = None
     consumer_name: Optional[str] = None
     tenant_cnpj: Optional[str] = None
+    totem_id: Optional[str] = None
+    order_item_count: Optional[int] = None
 
 
 class DomainEventEnvelope(BaseModel):

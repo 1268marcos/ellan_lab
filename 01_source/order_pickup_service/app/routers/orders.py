@@ -122,6 +122,7 @@ def create_order(
         customer_email=payload.customer_email,
         device_id=payload.device_id,
         ip_address=payload.ip_address,
+        order_line_ncm=payload.ncm,
     )
 
     order = result.order

@@ -34,6 +34,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field, field_validator
+
+from app.schemas.order_items import normalize_ncm_optional
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import (
@@ -1154,6 +1156,7 @@ def _create_public_order_via_existing_flow(
         credit_id=payload.credit_id,
         device_id=device_fp,
         ip_address=request.client.host if request.client else None,
+        order_line_ncm=payload.ncm,
     )
 
     order = result.order
@@ -1219,7 +1222,12 @@ class PublicCreateOrderRequest(BaseModel):
     use_credit: bool = False
     credit_id: Optional[str] = Field(default=None, max_length=64)
     consent_marketing: bool = False
-    
+    ncm: Optional[str] = Field(
+        default=None,
+        max_length=32,
+        description="NCM Mercosul opcional (2–10 dígitos) para a linha principal do pedido",
+    )
+
     @field_validator("region")
     @classmethod
     def validate_region(cls, v: str) -> str:
@@ -1267,6 +1275,17 @@ class PublicCreateOrderRequest(BaseModel):
         
         # return v.lower()
         return v_normalized
+
+    @field_validator("ncm", mode="before")
+    @classmethod
+    def validate_public_order_ncm(cls, value: Optional[str | int | float]) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            value = str(int(value))
+        if isinstance(value, str) and not value.strip():
+            return None
+        return normalize_ncm_optional(value.strip())
 
 
 class PublicOrderListResponse(BaseModel):

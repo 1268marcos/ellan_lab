@@ -45,6 +45,8 @@ class OrderItem(Base):
     # produto
     sku_id = Column(String, nullable=False)
     sku_description = Column(String, nullable=True)
+    # NCM (Mercosul) — 8 dígitos; VARCHAR permite zeros à esquerda e evolução de formato
+    ncm = Column(String(10), nullable=True)
 
     # quantidade / valor
     quantity = Column(Integer, nullable=False, default=1)
@@ -88,6 +90,7 @@ class OrderItem(Base):
             "order_id": self.order_id,
             "sku_id": self.sku_id,
             "sku_description": self.sku_description,
+            "ncm": self.ncm,
             "quantity": self.quantity,
             "unit_amount_cents": self.unit_amount_cents,
             "total_amount_cents": self.total_amount_cents,

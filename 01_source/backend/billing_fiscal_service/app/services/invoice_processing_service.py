@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.models.invoice_model import Invoice, InvoiceStatus
 from app.services.fiscal_router_service import route_issue_invoice
+from app.services.tax_service import apply_tax_to_invoice
 
 from app.core.datetime_utils import to_iso_utc
 
@@ -119,7 +120,10 @@ def finalize_invoice_success(
     invoice.invoice_number = result.get("invoice_number")
     invoice.invoice_series = result.get("invoice_series")
     invoice.access_key = result.get("access_key")
-    invoice.tax_details = result.get("tax_details")
+    td = dict(result.get("tax_details") or {})
+    if invoice.tax_breakdown_json:
+        td["breakdown"] = invoice.tax_breakdown_json
+    invoice.tax_details = td if td else None
     invoice.xml_content = result.get("xml_content")
     invoice.government_response = result.get("government_response")
     invoice.payload_json = result
@@ -194,6 +198,8 @@ def process_claimed_invoice(
     invoice: Invoice,
 ) -> Invoice:
     try:
+        apply_tax_to_invoice(db, invoice)
+        db.flush()
         result = route_issue_invoice(invoice)
         return finalize_invoice_success(db, invoice=invoice, result=result)
     except Exception as exc:

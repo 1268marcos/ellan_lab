@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
@@ -58,6 +58,8 @@ from app.services.payment_confirm_service import (
     emit_order_paid_and_simulate_fiscal,
 )
 from app.services.fiscal_context_service import build_fiscal_context
+from app.schemas.order_items import OrderItemCreateIn, OrderItemPatchIn, OrderItemOut
+from app.services.order_items_service import create_order_item, list_order_items, patch_order_item
 # from app.services.pickup_payment_fulfillment_service import fulfill_payment_post_approval
 
 from app.core.datetime_utils import to_iso_utc
@@ -880,6 +882,58 @@ def internal_order_fiscal_context(
     return {"ok": True, **ctx}
 
 
+@router.get("/orders/{order_id}/invoice-source")
+def internal_order_invoice_source(
+    order_id: str,
+    _=Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    """
+    I-1: mesma carga que fiscal-context, lida só com ORM (sem chamadas externas).
+    Rota alternativa para o billing retentar após timeout/5xx na URL principal.
+    """
+    try:
+        ctx = build_fiscal_context(db, order_id)
+    except ValueError as exc:
+        if str(exc) == "order_not_found":
+            raise HTTPException(status_code=404, detail="order not found") from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"ok": True, **ctx}
+
+
+@router.get("/orders/{order_id}/items", response_model=list[OrderItemOut])
+def internal_list_order_items(
+    order_id: str,
+    _=Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    rows = list_order_items(db, order_id)
+    return [OrderItemOut.from_orm_item(r) for r in rows]
+
+
+@router.post("/orders/{order_id}/items", response_model=OrderItemOut)
+def internal_create_order_item(
+    order_id: str,
+    body: OrderItemCreateIn,
+    _=Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    row = create_order_item(db, order_id, body)
+    return OrderItemOut.from_orm_item(row)
+
+
+@router.patch("/orders/{order_id}/items/{item_id}", response_model=OrderItemOut)
+def internal_patch_order_item(
+    order_id: str,
+    item_id: int,
+    body: OrderItemPatchIn,
+    _=Depends(require_internal_token),
+    db: Session = Depends(get_db),
+):
+    row = patch_order_item(db, order_id, item_id, body)
+    return OrderItemOut.from_orm_item(row)
+
+
 @router.get("/fiscal/health")
 def internal_fiscal_health(_=Depends(require_internal_token)):
     """
@@ -911,6 +965,10 @@ def internal_fiscal_health(_=Depends(require_internal_token)):
 @router.get("/orders/{order_id}/status")
 def internal_order_status(
     order_id: str,
+    full_fiscal: bool = Query(
+        False,
+        description="I-1: inclui contract_version, order_items, tenant_fiscal e locker (mesmo núcleo que fiscal-context).",
+    ),
     _=Depends(require_internal_token),
     db: Session = Depends(get_db),
 ):
@@ -931,7 +989,7 @@ def internal_order_status(
 
     billing_inv = fetch_invoice_by_order_id(order.id)
 
-    return {
+    base: dict = {
         "ok": True,
         "order": {
             "id": order.id,
@@ -990,6 +1048,37 @@ def internal_order_status(
         "fiscal_attempt": fiscal_attempt,  # NOVO: número de tentativas de emissão fiscal
         "fiscal_invoice_in_billing": bool(billing_inv and billing_inv.get("id")),
     }
+
+    if full_fiscal:
+        try:
+            fc = build_fiscal_context(db, order_id)
+            base["contract_version"] = fc.get("contract_version")
+            base["order_items"] = fc.get("order_items")
+            base["locker_id"] = fc.get("locker_id")
+            base["locker_address"] = fc.get("locker_address")
+            base["tenant_fiscal"] = fc.get("tenant_fiscal")
+            base["tenant_cnpj"] = fc.get("tenant_cnpj")
+            base["tenant_razao_social"] = fc.get("tenant_razao_social")
+            base["consumer_cpf"] = fc.get("consumer_cpf")
+            base["consumer_name"] = fc.get("consumer_name")
+            o = base.get("order")
+            fo = fc.get("order") or {}
+            if isinstance(o, dict) and isinstance(fo, dict):
+                for k in (
+                    "tenant_id",
+                    "currency",
+                    "payment_status",
+                    "user_id",
+                    "receipt_email",
+                    "receipt_phone",
+                    "order_metadata",
+                ):
+                    if fo.get(k) is not None:
+                        o[k] = fo[k]
+        except ValueError:
+            pass
+
+    return base
 
 
 """

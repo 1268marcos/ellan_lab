@@ -115,15 +115,19 @@ Objetivo: implementar tax_service.py; ICMS por UF (CONFAZ), PIS/COFINS, NCM;
           Portugal IVA por categoria (CIVA); breakdown por order_item.
 
   User stories
-  [ ] SERVICE: TaxEngine BR — ICMS UF, PIS 0,65%, COFINS 3%, CST Simples/RN,
-        lookup NCM
-  [ ] SERVICE: TaxEngine PT — IVA 23/13/6%, enquadramento CIVA
-  [ ] SCHEMA: product_fiscal_config — sku_id, ncm, cest, CSTs, iva_category
-  [ ] SERVICE: tax_breakdown_json por item; soma = amount_cents
-  [ ] TEST: suite regressão fiscal (pytest CI) — SP, RJ, PT, Simples
+  [x] SERVICE: TaxEngine BR — ICMS por UF, PIS 0,65%, COFINS 3%, CST 102/000,
+        lookup NCM via product_fiscal_config (opcional)
+  [x] SERVICE: TaxEngine PT — IVA 23/13/6/isenta por iva_category
+  [x] SCHEMA: product_fiscal_config — tabela + modelo SQLAlchemy
+  [x] SERVICE: tax_breakdown_json + integração emissão (apply_tax antes do
+        route_issue; SEFAZ/AT stubs leem breakdown)
+  [x] TEST: pytest — SP, RJ, PT, Simples (tests/test_tax_service.py)
 
   Registro de evolução
-  -
+  - 2026-04-23: F-2 — tax_service.build_tax_breakdown / apply_tax_to_invoice,
+    coluna invoices.tax_breakdown_json, product_fiscal_config, ICMS_UF_RATE,
+    IVA_PT_RATE, regime Simples (ICMS zero + PIS/COFINS). CI: rodar pytest
+    no billing_fiscal_service.
 
 
 -------------------------------------------------------------------------------
@@ -156,14 +160,17 @@ Objetivo: resiliência além do order_pickup_service; fallback orders DB;
           items_json multi-linha; locker_id resolvido; view reconciliação.
 
   User stories
-  [ ] INTEGRATION: fallback direto orders + order_items se pickup 404/timeout
-  [ ] SERVICE: ingestão order_items → items_json (qty, NCM, valor unitário)
-  [ ] SERVICE: locker_id via orders.totem_id → lockers
-  [ ] SCHEMA: MATERIALIZED VIEW invoice_order_view (invoices + orders + items)
-  [ ] EVENT: enriquecer order.paid — payload v2 (coord. order_lifecycle_service)
+  [x] INTEGRATION: fallback fiscal-context → invoice-source (ORM) → /status?full_fiscal=1
+        em 404 ou timeout/5xx (billing_fiscal_service)
+  [x] SERVICE: order_items no contrato v2 → items_json (F-1; reforçado no fallback status)
+  [x] SERVICE: locker_id resolvido em build_fiscal_context (allocation/pickup → lockers)
+  [x] SCHEMA: VIEW invoice_order_view no Postgres do billing (snapshot + items_json; sem cross-DB)
+  [x] EVENT: order.paid v2 — totem_id + order_item_count no payload (outbox)
 
   Registro de evolução
-  -
+  - 2026-04-23: I-1 — pickup: GET /internal/orders/{id}/invoice-source; /status?full_fiscal=1;
+    billing: cadeia get_order_snapshot_for_invoice; startup VIEW invoice_order_view;
+    order.paid com totem_id e order_item_count. MV cross-db não aplicável (invoices ≠ orders DB).
 
 
 -------------------------------------------------------------------------------
@@ -213,9 +220,9 @@ Quadro rápido de status por sprint (atualizar semanalmente)
   ------   ------------------------------------   ------    -----
   O-1      Contrato Orders + eventos              [x]
   F-1      Schema unificado NFC-e 65              [x]
-  F-2      Tax engine BR/PT                       [ ]
+  F-2      Tax engine BR/PT                       [x]
   F-3      Integração provedores + DANFE          [ ]
-  I-1      Integração Orders resiliente           [ ]
+  I-1      Integração Orders resiliente           [x]       VIEW + fallbacks HTTP
   I-2      Cancelamento + entrega documento       [ ]
   I-3      Reconciliação + exports + monitor      [ ]
 

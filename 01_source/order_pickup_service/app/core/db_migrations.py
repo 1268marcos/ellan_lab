@@ -281,6 +281,15 @@ def _ensure_orders_columns(conn) -> None:
     # PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
 
 
+def _ensure_order_items_columns(conn) -> None:
+    inspector = inspect(conn)
+    if not _has_table(inspector, "order_items"):
+        return
+    _ensure_columns(conn, "order_items", {
+        "ncm": "VARCHAR(10)",
+    })
+
+
 def _ensure_allocations_columns(conn) -> None:
     _ensure_columns(conn, "allocations", {
         "slot_size": "VARCHAR(8)",
@@ -390,6 +399,7 @@ def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
     _ensure_lockers_columns(conn)
     _ensure_locker_slot_configs_columns(conn)
     _ensure_orders_columns(conn)
+    _ensure_order_items_columns(conn)
     _ensure_allocations_columns(conn)
     _ensure_pickup_tokens_columns(conn)
     _ensure_notification_logs_columns(conn)
