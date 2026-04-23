@@ -47,14 +47,15 @@ from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
 from app.schemas.orders import CreateOrderIn, OnlineRegion, OnlinePaymentMethod
 from app.services.order_creation_service import create_order_core, CreateOrderCoreResult
+from app.services.credits_service import restore_credit_after_failed_order_creation
 
 # ==================== Importações adicionais ====================
-from app.models.allocation import Allocation
+from app.models.allocation import Allocation, AllocationState
 
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 
-from app.models.pickup import Pickup
+from app.models.pickup import Pickup, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.services.pickup_qr_service import build_public_pickup_qr_value
 
@@ -1634,28 +1635,152 @@ def cancel_public_order(
             },
         )
     
-    # Verifica se pode cancelar
-    if order.status not in [OrderStatus.PAYMENT_PENDING, OrderStatus.PAYMENT_FAILED]:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "type": "CANCEL_NOT_ALLOWED",
-                "message": f"Pedido em status {order.status.value} não pode ser cancelado",
-                "current_status": order.status.value,
-            },
+    # Verifica se pode cancelar/reconciliar.
+    # CANCELLED/EXPIRED* são aceitos para reconciliação tardia
+    # (ex.: crédito ficou USED e/ou slot ficou RESERVED após falha parcial).
+    allowed_statuses = {
+        OrderStatus.PAYMENT_PENDING,
+        OrderStatus.FAILED,
+        OrderStatus.CANCELLED,
+        OrderStatus.EXPIRED,
+        OrderStatus.EXPIRED_CREDIT_50,
+    }
+    if order.status not in allowed_statuses:
+        # Caso especial: pedido pago aguardando retirada, mas com prazo já expirado,
+        # pode passar por cancel/reconciliação para destravar crédito e slot.
+        if order.status == OrderStatus.PAID_PENDING_PICKUP:
+            deadline = getattr(order, "pickup_deadline_at", None)
+            deadline_source = "order.pickup_deadline_at"
+
+            if deadline is None:
+                latest_pickup = (
+                    db.query(Pickup)
+                    .filter(Pickup.order_id == order.id)
+                    .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+                    .first()
+                )
+                if latest_pickup and getattr(latest_pickup, "expires_at", None):
+                    deadline = latest_pickup.expires_at
+                    deadline_source = "pickup.expires_at"
+
+            now = datetime.now(timezone.utc)
+            if deadline is not None:
+                if getattr(deadline, "tzinfo", None) is None:
+                    deadline = deadline.replace(tzinfo=timezone.utc)
+                if deadline <= now:
+                    pass
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail={
+                            "type": "CANCEL_NOT_ALLOWED",
+                            "message": (
+                                "Pedido em status PAID_PENDING_PICKUP ainda dentro do prazo de retirada não pode ser cancelado."
+                            ),
+                            "current_status": order.status.value,
+                            "effective_deadline_at": _dt_iso(deadline),
+                            "effective_deadline_source": deadline_source,
+                        },
+                    )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "type": "CANCEL_NOT_ALLOWED",
+                        "message": (
+                            "Pedido em status PAID_PENDING_PICKUP sem deadline efetivo (order/pickup) não pode ser cancelado por segurança."
+                        ),
+                        "current_status": order.status.value,
+                    },
+                )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "type": "CANCEL_NOT_ALLOWED",
+                    "message": f"Pedido em status {order.status.value} não pode ser cancelado",
+                    "current_status": order.status.value,
+                },
+            )
+
+    allocation = None
+    if getattr(order, "allocation_id", None):
+        allocation = db.query(Allocation).filter(Allocation.id == order.allocation_id).first()
+    if allocation is None:
+        allocation = (
+            db.query(Allocation)
+            .filter(Allocation.order_id == order.id)
+            .order_by(Allocation.created_at.desc(), Allocation.id.desc())
+            .first()
         )
-    
-    # Atualiza status
-    order.status = OrderStatus.CANCELLED
-    order.touch()
+
+    pickup = (
+        db.query(Pickup)
+        .filter(Pickup.order_id == order.id)
+        .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+        .first()
+    )
+
+    slot_release_ok = False
+    slot_release_error: str | None = None
+    slot_release_attempted = False
+
+    if allocation:
+        slot_release_attempted = True
+        try:
+            backend_client.locker_release(
+                order.region,
+                allocation.id,
+                locker_id=order.totem_id,
+            )
+            allocation.mark_released()
+            slot_release_ok = True
+        except Exception as exc:
+            slot_release_error = str(exc)
+            logger.exception(
+                "public_order_cancel_release_failed",
+                extra={
+                    "order_id": order.id,
+                    "allocation_id": allocation.id,
+                    "locker_id": order.totem_id,
+                },
+            )
+
+    credit_restored = restore_credit_after_failed_order_creation(
+        db=db,
+        order_metadata=getattr(order, "order_metadata", None),
+    )
+
+    if pickup and pickup.status != PickupStatus.CANCELLED:
+        pickup.mark_cancelled("public_order_cancelled")
+
+    if order.status != OrderStatus.CANCELLED:
+        order.mark_as_cancelled()
+    else:
+        order.touch()
+
     db.commit()
-    
-    logger.info(f"Public order cancelled - order_id={order_id}, user_id={current_user.id}")
-    
+
+    logger.info(
+        "Public order cancelled/reconciled - order_id=%s, user_id=%s, slot_release_ok=%s, credit_restored=%s",
+        order_id,
+        current_user.id,
+        slot_release_ok,
+        credit_restored,
+    )
+
     return {
         "order_id": order.id,
         "status": order.status.value,
         "message": "Pedido cancelado com sucesso",
+        "compensation": {
+            "credit_restored": bool(credit_restored),
+            "slot_release_attempted": bool(slot_release_attempted),
+            "slot_release_ok": bool(slot_release_ok),
+            "slot_release_error": slot_release_error,
+            "allocation_id": allocation.id if allocation else None,
+            "allocation_state": allocation.state.value if allocation and allocation.state else None,
+        },
     }
 
 

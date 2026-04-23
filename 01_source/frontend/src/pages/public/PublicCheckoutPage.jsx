@@ -260,7 +260,7 @@ export default function PublicCheckoutPage() {
 
   const invalidParams = !lockerId || !skuId || !slot;
 
-  const { token, isAuthenticated, user } = useAuth();
+  const { token, isAuthenticated, user, hasRole } = useAuth();
 
   const runtimeSkuUrl = useMemo(
     () => `${RUNTIME_BASE}/catalog/skus/${encodeURIComponent(skuId)}`,
@@ -276,8 +276,9 @@ export default function PublicCheckoutPage() {
   const [simulateResult, setSimulateResult] = useState(null);
 
   const canShowDevSimulateButton = useMemo(() => {
-    return isDevBypassEnabled() && Boolean(lockerId) && Boolean(region);
-  }, [lockerId, region]);
+    const hasDevRole = hasRole("admin_operacao") || hasRole("auditoria");
+    return isDevBypassEnabled() && Boolean(lockerId) && Boolean(region) && hasDevRole;
+  }, [lockerId, region, hasRole]);
   const emailVerified = Boolean(user?.email_verified);
 
 
@@ -667,12 +668,30 @@ export default function PublicCheckoutPage() {
       const simulateData = await simulateRes.json().catch(() => ({}));
 
       if (!simulateRes.ok) {
+        let cancelAttempt = null;
+        const roleRequired = simulateData?.detail?.type === "ROLE_REQUIRED";
+
+        if (roleRequired) {
+          const cancelRes = await fetch(
+            `${ORDER_PICKUP_BASE}/public/orders/${encodeURIComponent(orderId)}/cancel`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "X-Device-Fingerprint": deviceFp,
+              },
+            }
+          );
+          cancelAttempt = await cancelRes.json().catch(() => ({}));
+        }
+
         throw new Error(
           JSON.stringify(
             {
               error: "Falha ao simular pagamento ONLINE DEV",
               order_id: orderId,
               response_json: simulateData,
+              compensation_cancel_attempt: cancelAttempt,
             },
             null,
             2

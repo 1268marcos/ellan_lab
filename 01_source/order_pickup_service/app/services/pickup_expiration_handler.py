@@ -14,7 +14,10 @@ from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.services import backend_client
-from app.services.credits_service import grant_expired_pickup_credit
+from app.services.credits_service import (
+    grant_expired_pickup_credit,
+    restore_credit_after_failed_order_creation,
+)
 from app.services.pickup_event_publisher import publish_pickup_expired
 
 logger = logging.getLogger(__name__)
@@ -132,6 +135,14 @@ def _apply_internal_state(
         allocation.locked_until = None
         _touch(allocation)
 
+    # Se houve crédito aplicado no checkout deste pedido, reabre o crédito
+    # quando a retirada expira (pedido não concluído).
+    credit_restored = restore_credit_after_failed_order_creation(
+        db=db,
+        order_metadata=getattr(order, "order_metadata", None),
+        now=now,
+    )
+
     credit_result = grant_expired_pickup_credit(
         db=db,
         order=order,
@@ -164,6 +175,7 @@ def _apply_internal_state(
             "allocation_state": getattr(allocation.state, "value", None) if allocation else None,
             "invalidated_tokens": invalidated_tokens,
             "credit_created": credit_result.created,
+            "credit_restored": bool(credit_restored),
             "credit_id": credit_result.credit_id,
             "credit_amount_cents": credit_result.amount_cents,
             "credit_reason": credit_result.reason,
@@ -181,6 +193,7 @@ def _apply_internal_state(
         "locker_id": locker_id,
         "invalidated_tokens": invalidated_tokens,
         "credit_created": credit_result.created,
+        "credit_restored": bool(credit_restored),
         "credit_id": credit_result.credit_id,
         "credit_amount_cents": credit_result.amount_cents,
         "credit_reason": credit_result.reason,
@@ -340,6 +353,7 @@ def handle_pickup_expired(
                     "runtime_state": RUNTIME_STATE_ON_PICKUP_EXPIRED,
                     "invalidated_tokens": result.get("invalidated_tokens", 0),
                     "credit_created": result.get("credit_created", False),
+                    "credit_restored": result.get("credit_restored", False),
                     "credit_id": result.get("credit_id"),
                     "credit_amount_cents": result.get("credit_amount_cents", 0),
                     "credit_reason": result.get("credit_reason"),

@@ -24,6 +24,7 @@ import requests
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
@@ -522,6 +523,15 @@ def internal_health(_=Depends(require_internal_token)):
         "ok": True,
         "service": "order_pickup_service",
         "time": _utc_now().isoformat(),
+    }
+
+
+@router.get("/docs/authorization")
+def internal_authorization_docs(_=Depends(require_internal_token)):
+    return {
+        "ok": True,
+        "title": "Politica de autorizacao (fonte unica)",
+        "markdown": AUTHORIZATION_POLICY_MD.strip(),
     }
 
 

@@ -36,6 +36,7 @@ export default function PublicLoginPage() {
     const payload = {
       email: form.email.trim().toLowerCase(),
       password: form.password,
+      remember_me: form.rememberMe,
     };
 
     if (!payload.email || !payload.password) {
@@ -158,10 +159,6 @@ export default function PublicLoginPage() {
               <Link 
                 to="/recuperar-senha" 
                 style={forgotLinkStyle}
-                onClick={(e) => {
-                  e.preventDefault();
-                  alert("Funcionalidade em desenvolvimento");
-                }}
               >
                 Esqueceu a senha?
               </Link>

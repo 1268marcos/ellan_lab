@@ -12,6 +12,7 @@ from app.models.allocation import Allocation, AllocationState
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
+from app.services.credits_service import restore_credit_after_failed_order_creation
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,13 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
 
     locker_id = _resolve_locker_id(order=order, allocation=allocation)
 
+    credit_restored = restore_credit_after_failed_order_creation(
+        db=db,
+        order_metadata=getattr(order, "order_metadata", None),
+    )
+    if credit_restored:
+        logger.info("[expiry] crédito de checkout reaberto order=%s", order.id)
+
     if ENABLE_CREDIT:
         Credit, CreditStatus = _try_import_credit()
         if Credit and CreditStatus and getattr(order, "user_id", None) and getattr(order, "amount_cents", None):
@@ -188,7 +196,8 @@ def _process_one(db: Session, order: Order) -> Optional[dict]:
         f"[expiry] order={order.id} -> EXPIRED; "
         f"locker_id={locker_id}; "
         f"pickup={pickup_id} -> {pickup.status.value if pickup else 'NONE'}; "
-        f"alloc={alloc_id} slot={slot}"
+        f"alloc={alloc_id} slot={slot}; "
+        f"credit_restored={credit_restored}"
     )
 
     return {

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -15,6 +17,7 @@ class PublicRegisterIn(BaseModel):
 class PublicLoginIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6, max_length=128)
+    remember_me: bool = False
 
 
 class PublicUserOut(BaseModel):
@@ -71,10 +74,35 @@ class PublicUserRoleOut(BaseModel):
     scope_type: str | None = None
     scope_id: str | None = None
     is_active: bool = True
-    granted_at: str | None = None
-    revoked_at: str | None = None
+    granted_at: datetime | None = None
+    revoked_at: datetime | None = None
 
 
 class PublicAuthRolesOut(BaseModel):
     user_id: str
     roles: list[PublicUserRoleOut]
+
+
+class PublicForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+class PublicForgotPasswordOut(BaseModel):
+    ok: bool = True
+    message: str = "Se o e-mail existir, você receberá um link para redefinir a senha."
+
+
+class PublicResetPasswordIn(BaseModel):
+    token: str = Field(min_length=16)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class PublicResetPasswordOut(BaseModel):
+    ok: bool = True
+    message: str = "password_reset_success"
+
+
+class PublicAuthorizationPolicyOut(BaseModel):
+    ok: bool = True
+    title: str
+    markdown: str

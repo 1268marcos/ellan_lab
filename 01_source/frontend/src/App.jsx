@@ -11,6 +11,7 @@ import {
 const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
 const PublicLoginPage = lazy(() => import("./pages/public/PublicLoginPage"));
 const PublicRegisterPage = lazy(() => import("./pages/public/PublicRegisterPage"));
+const PublicForgotPasswordPage = lazy(() => import("./pages/public/PublicForgotPasswordPage"));
 const PublicCatalogPage = lazy(() => import("./pages/public/PublicCatalogPage"));
 const PublicCheckoutPage = lazy(() => import("./pages/public/PublicCheckoutPage"));
 const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"));
@@ -33,6 +34,7 @@ const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
 const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage"));
 const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
+const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -184,7 +186,8 @@ function TopNav() {
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
     { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
     { to: "/ops/dev/base", label: "ops /dev/base", aria: "Gestão de tabelas e enums base" },
-    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" }
+    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
+    { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
 
   return (
@@ -509,6 +512,7 @@ function AppContent() {
           <Routes>
             <Route path="/" element={<PublicLandingPage />} />
             <Route path="/login" element={<PublicLoginPage />} />
+            <Route path="/recuperar-senha" element={<PublicForgotPasswordPage />} />
             <Route path="/cadastro" element={<PublicRegisterPage />} />
             <Route path="/comprar" element={<PublicCatalogPage />} />
             <Route path="/checkout" element={<PublicCheckoutPage />} />
@@ -642,6 +646,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <PickupHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/auth/policy"
+              element={
+                <OpsRoute>
+                  <OpsAuthorizationPolicyPage />
                 </OpsRoute>
               }
             />

@@ -8,6 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
 from app.core.config import settings
 from app.core.db import SessionLocal, init_db
 from app.core.version import get_version
@@ -33,6 +34,7 @@ logger = logging.getLogger("order_pickup_service")
 app = FastAPI(
     title="ELLAN Order Pickup Service",
     version=get_version(),
+    description=AUTHORIZATION_POLICY_MD,
 )
 
 

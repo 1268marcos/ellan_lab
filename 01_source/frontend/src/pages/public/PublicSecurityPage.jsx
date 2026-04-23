@@ -9,6 +9,10 @@ export default function PublicSecurityPage() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState(0);
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState("");
   const [passwordError, setPasswordError] = useState("");
@@ -19,6 +23,18 @@ export default function PublicSecurityPage() {
   const [previewLink, setPreviewLink] = useState("");
 
   const isVerified = Boolean(user?.email_verified);
+  const strengthInfo = getPasswordStrengthLabel(passwordStrength);
+  const isPasswordAcceptable = passwordStrength >= 3;
+
+  React.useEffect(() => {
+    let strength = 0;
+    if (newPassword.length >= 6) strength++;
+    if (newPassword.length >= 10) strength++;
+    if (/[a-z]/.test(newPassword) && /[A-Z]/.test(newPassword)) strength++;
+    if (/\d/.test(newPassword)) strength++;
+    if (/[^a-zA-Z0-9]/.test(newPassword)) strength++;
+    setPasswordStrength(strength);
+  }, [newPassword]);
 
   async function handleChangePassword(event) {
     event.preventDefault();
@@ -118,35 +134,95 @@ export default function PublicSecurityPage() {
         <form onSubmit={handleChangePassword} style={{ display: "grid", gap: 12 }}>
           <label style={labelStyle}>
             Senha atual
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              style={inputStyle}
-              autoComplete="current-password"
-            />
+            <div style={passwordWrapperStyle}>
+              <input
+                type={showCurrentPassword ? "text" : "password"}
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                style={{ ...inputStyle, paddingRight: 50 }}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrentPassword((prev) => !prev)}
+                style={togglePasswordStyle}
+                aria-label={showCurrentPassword ? "Ocultar senha atual" : "Mostrar senha atual"}
+                tabIndex={-1}
+              >
+                {showCurrentPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
           </label>
           <label style={labelStyle}>
             Nova senha
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              style={inputStyle}
-              autoComplete="new-password"
-            />
+            <div style={passwordWrapperStyle}>
+              <input
+                type={showNewPassword ? "text" : "password"}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                style={{ ...inputStyle, paddingRight: 50 }}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowNewPassword((prev) => !prev)}
+                style={togglePasswordStyle}
+                aria-label={showNewPassword ? "Ocultar nova senha" : "Mostrar nova senha"}
+                tabIndex={-1}
+              >
+                {showNewPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
+            {newPassword ? (
+              <div style={passwordStrengthContainerStyle}>
+                <div style={passwordStrengthBarStyle}>
+                  <div
+                    style={{
+                      ...passwordStrengthFillStyle,
+                      width: `${(passwordStrength / 5) * 100}%`,
+                      background: strengthInfo.color,
+                    }}
+                  />
+                </div>
+                <span style={{ fontSize: 11, color: strengthInfo.color }}>{strengthInfo.text}</span>
+              </div>
+            ) : null}
           </label>
           <label style={labelStyle}>
             Confirmar nova senha
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              style={inputStyle}
-              autoComplete="new-password"
-            />
+            <div style={passwordWrapperStyle}>
+              <input
+                type={showConfirmPassword ? "text" : "password"}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                style={{ ...inputStyle, paddingRight: 50 }}
+                autoComplete="new-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword((prev) => !prev)}
+                style={togglePasswordStyle}
+                aria-label={showConfirmPassword ? "Ocultar confirmação da senha" : "Mostrar confirmação da senha"}
+                tabIndex={-1}
+              >
+                {showConfirmPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
           </label>
-          <small style={{ color: "#64748b" }}>
+          <small
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              color: newPassword
+                ? isPasswordAcceptable
+                  ? "#166534"
+                  : strengthInfo.color
+                : "#64748b",
+              fontWeight: newPassword ? 600 : 400,
+            }}
+          >
+            {newPassword ? (isPasswordAcceptable ? "✅" : "⚠️") : null}
             A senha deve ter ao menos 8 caracteres, com maiúscula, minúscula e número.
           </small>
           <div>
@@ -190,6 +266,26 @@ const inputStyle = {
   borderRadius: 8,
   padding: "10px 12px",
   fontSize: 14,
+  width: "100%",
+  boxSizing: "border-box",
+};
+
+const passwordWrapperStyle = {
+  position: "relative",
+  display: "flex",
+  alignItems: "center",
+};
+
+const togglePasswordStyle = {
+  position: "absolute",
+  right: 10,
+  top: "50%",
+  transform: "translateY(-50%)",
+  border: "none",
+  background: "none",
+  cursor: "pointer",
+  fontSize: 16,
+  padding: 4,
 };
 
 const buttonStyle = {
@@ -211,3 +307,42 @@ const errStyle = {
   margin: 0,
   color: "#b91c1c",
 };
+
+const passwordStrengthContainerStyle = {
+  marginTop: 6,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const passwordStrengthBarStyle = {
+  flex: 1,
+  height: 4,
+  background: "#e5e7eb",
+  borderRadius: 2,
+  overflow: "hidden",
+};
+
+const passwordStrengthFillStyle = {
+  height: "100%",
+  borderRadius: 2,
+  transition: "all 0.3s ease",
+};
+
+function getPasswordStrengthLabel(strength) {
+  switch (strength) {
+    case 0:
+    case 1:
+      return { text: "Muito fraca", color: "#ef4444" };
+    case 2:
+      return { text: "Fraca", color: "#f97316" };
+    case 3:
+      return { text: "Média", color: "#eab308" };
+    case 4:
+      return { text: "Forte", color: "#22c55e" };
+    case 5:
+      return { text: "Muito forte", color: "#16a34a" };
+    default:
+      return { text: "", color: "#d1d5db" };
+  }
+}

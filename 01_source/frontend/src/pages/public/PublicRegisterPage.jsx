@@ -231,8 +231,16 @@ export default function PublicRegisterPage() {
                       }} 
                     />
                   </div>
-                  <span style={{ fontSize: 11, color: strengthInfo.color }}>
-                    {strengthInfo.text}
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: strengthInfo.color,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {passwordStrength >= 3 ? "✅" : "⚠️"} {strengthInfo.text}
                   </span>
                 </div>
               )}

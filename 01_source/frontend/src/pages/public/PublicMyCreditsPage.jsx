@@ -29,6 +29,38 @@ function statusLabel(status) {
   return labels[status] || status;
 }
 
+function renderCreditNotes(notes) {
+  const text = String(notes || "");
+  const pattern = /(order_id=)([0-9a-fA-F-]{36})/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = pattern.exec(text)) !== null) {
+    const [fullMatch, prefix, orderId] = match;
+    const start = match.index;
+    if (start > lastIndex) {
+      parts.push(<React.Fragment key={`text-${key++}`}>{text.slice(lastIndex, start)}</React.Fragment>);
+    }
+    parts.push(<React.Fragment key={`prefix-${key++}`}>{prefix}</React.Fragment>);
+    parts.push(<React.Fragment key={`id-${key++}`}>{orderId}</React.Fragment>);
+    parts.push(<React.Fragment key={`space-${key++}`}> </React.Fragment>);
+    parts.push(
+      <Link key={`link-${key++}`} to={`/meus-pedidos/${encodeURIComponent(orderId)}`}>
+        Ver pedido
+      </Link>
+    );
+    lastIndex = start + fullMatch.length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(<React.Fragment key={`text-${key++}`}>{text.slice(lastIndex)}</React.Fragment>);
+  }
+
+  return parts;
+}
+
 export default function PublicMyCreditsPage() {
   const { token, loading: authLoading, isAuthenticated } = useAuth();
   const [payload, setPayload] = useState(null);
@@ -193,7 +225,9 @@ export default function PublicMyCreditsPage() {
                   ? ` (${credit.days_to_expiration} dia(s))`
                   : ""}
               </p>
-              {credit.notes ? <p style={{ margin: "6px 0 0", color: "#0f172a" }}>{credit.notes}</p> : null}
+              {credit.notes ? (
+                <p style={{ margin: "6px 0 0", color: "#0f172a" }}>{renderCreditNotes(credit.notes)}</p>
+              ) : null}
             </article>
           ))}
         </div>

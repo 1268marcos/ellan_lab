@@ -5,8 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_public_user
+from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
 from app.core.db import get_db
 from app.schemas.public_auth import (
+    PublicAuthorizationPolicyOut,
     PublicAuthMeOut,
     PublicAuthRolesOut,
     PublicAuthTokenOut,
@@ -14,8 +16,12 @@ from app.schemas.public_auth import (
     PublicChangePasswordOut,
     PublicEmailVerificationConfirmOut,
     PublicEmailVerificationSendOut,
+    PublicForgotPasswordIn,
+    PublicForgotPasswordOut,
     PublicLoginIn,
     PublicRegisterIn,
+    PublicResetPasswordIn,
+    PublicResetPasswordOut,
     PublicUserRoleOut,
     PublicUserOut,
 )
@@ -25,17 +31,29 @@ from app.services.auth_service import (
     AuthEmailAlreadyExistsError,
     AuthEmailVerificationTokenError,
     AuthInvalidCredentialsError,
+    AuthPasswordResetTokenError,
     AuthWeakPasswordError,
     authenticate_user,
     change_user_password,
     confirm_user_email_verification,
     create_auth_session,
+    request_password_reset,
     register_user,
+    reset_password_with_token,
     send_email_verification,
 )
 from app.services.user_roles_service import list_active_user_roles
 
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
+
+
+@router.get("/authorization-policy", response_model=PublicAuthorizationPolicyOut)
+def public_authorization_policy():
+    return PublicAuthorizationPolicyOut(
+        ok=True,
+        title="Politica de autorizacao (fonte unica)",
+        markdown=AUTHORIZATION_POLICY_MD.strip(),
+    )
 
 
 @router.post("/register", response_model=PublicAuthTokenOut)
@@ -87,6 +105,7 @@ def public_login(
             user=user,
             user_agent=request.headers.get("user-agent"),
             ip_address=request.client.host if request.client else None,
+            remember_me=bool(payload.remember_me),
         )
 
         return PublicAuthTokenOut(
@@ -131,6 +150,37 @@ def public_change_password(
         )
         return PublicChangePasswordOut(ok=True, message="password_updated")
     except AuthCurrentPasswordMismatchError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AuthWeakPasswordError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/forgot-password", response_model=PublicForgotPasswordOut)
+def public_forgot_password(
+    payload: PublicForgotPasswordIn,
+    db: Session = Depends(get_db),
+):
+    try:
+        request_password_reset(db, email=payload.email)
+        return PublicForgotPasswordOut()
+    except AuthEmailDeliveryError:
+        # Mesmo comportamento para não expor existência de conta.
+        return PublicForgotPasswordOut()
+
+
+@router.post("/reset-password", response_model=PublicResetPasswordOut)
+def public_reset_password(
+    payload: PublicResetPasswordIn,
+    db: Session = Depends(get_db),
+):
+    try:
+        reset_password_with_token(
+            db,
+            token=payload.token,
+            new_password=payload.new_password,
+        )
+        return PublicResetPasswordOut(ok=True, message="password_reset_success")
+    except AuthPasswordResetTokenError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except AuthWeakPasswordError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

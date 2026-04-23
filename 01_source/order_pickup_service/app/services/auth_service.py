@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
@@ -22,8 +23,11 @@ from app.services.email_notification_service import EmailNotificationError, send
 
 
 SESSION_TTL_HOURS = 24
+SESSION_TTL_REMEMBER_DAYS = 30
 EMAIL_VERIFICATION_TTL_MIN = 60 * 24
+PASSWORD_RESET_TTL_MIN = 30
 PASSWORD_MIN_LENGTH = 8
+logger = logging.getLogger(__name__)
 
 
 class AuthServiceError(Exception):
@@ -51,6 +55,10 @@ class AuthEmailVerificationTokenError(AuthServiceError):
 
 
 class AuthEmailDeliveryError(AuthServiceError):
+    pass
+
+
+class AuthPasswordResetTokenError(AuthServiceError):
     pass
 
 
@@ -109,7 +117,16 @@ def authenticate_user(db: Session, *, email: str, password: str) -> User:
     if not user:
         raise AuthInvalidCredentialsError("invalid_credentials")
 
-    if not verify_password(password, user.password_hash):
+    try:
+        password_ok = verify_password(password, user.password_hash)
+    except Exception:
+        logger.exception(
+            "verify_password_failed",
+            extra={"user_id": getattr(user, "id", None), "email": email.lower().strip()},
+        )
+        raise AuthInvalidCredentialsError("invalid_credentials")
+
+    if not password_ok:
         raise AuthInvalidCredentialsError("invalid_credentials")
 
     if not user.is_active:
@@ -162,12 +179,45 @@ def _build_email_verification_html(*, full_name: str, verification_link: str) ->
     """
 
 
+def _build_password_reset_html(*, full_name: str, reset_link: str) -> str:
+    safe_name = (full_name or "").strip() or "usuário"
+    return f"""
+    <div style="font-family: Arial, sans-serif; line-height:1.55; color:#111;">
+      <h2>Redefinição de senha</h2>
+      <p>Olá, {safe_name}.</p>
+      <p>Recebemos uma solicitação para redefinir sua senha.</p>
+      <p style="margin:20px 0;">
+        <a href="{reset_link}" style="background:#0f172a;color:#fff;padding:12px 16px;border-radius:8px;text-decoration:none;font-weight:700;">
+          Redefinir senha
+        </a>
+      </p>
+      <p>Se você não solicitou, ignore este e-mail.</p>
+      <p>Se o botão não funcionar, use este link:</p>
+      <p><a href="{reset_link}">{reset_link}</a></p>
+      <hr/>
+      <small>Este link expira em 30 minutos.</small>
+    </div>
+    """
+
+
 def create_email_verification_token(*, user: User, ttl_min: int = EMAIL_VERIFICATION_TTL_MIN) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "sub": str(user.id),
         "email": str(user.email).lower().strip(),
         "purpose": "email_verification",
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=ttl_min)).timestamp()),
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_alg)
+
+
+def create_password_reset_token(*, user: User, ttl_min: int = PASSWORD_RESET_TTL_MIN) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "email": str(user.email).lower().strip(),
+        "purpose": "password_reset",
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=ttl_min)).timestamp()),
     }
@@ -184,6 +234,19 @@ def decode_email_verification_token(*, token: str) -> dict:
         raise AuthEmailVerificationTokenError("email_verification_token_invalid_purpose")
     if not payload.get("sub") or not payload.get("email"):
         raise AuthEmailVerificationTokenError("email_verification_token_invalid_payload")
+    return payload
+
+
+def decode_password_reset_token(*, token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_alg])
+    except JWTError as exc:
+        raise AuthPasswordResetTokenError("password_reset_token_invalid_or_expired") from exc
+
+    if payload.get("purpose") != "password_reset":
+        raise AuthPasswordResetTokenError("password_reset_token_invalid_purpose")
+    if not payload.get("sub") or not payload.get("email"):
+        raise AuthPasswordResetTokenError("password_reset_token_invalid_payload")
     return payload
 
 
@@ -257,24 +320,91 @@ def confirm_user_email_verification(db: Session, *, token: str) -> User:
     return user
 
 
+def request_password_reset(
+    db: Session,
+    *,
+    email: str,
+    frontend_base_url: str | None = None,
+) -> dict:
+    normalized_email = str(email or "").lower().strip()
+    user = db.query(User).filter(User.email == normalized_email).first()
+    base = (frontend_base_url or settings.frontend_base_url or "").rstrip("/")
+    if not base:
+        logger.warning("password_reset_frontend_base_url_missing")
+        return {"accepted": True}
+
+    if not user:
+        # Resposta indistinguível para evitar enumeração de usuário.
+        return {"accepted": True}
+
+    reset_token = create_password_reset_token(user=user)
+    reset_link = f"{base}/recuperar-senha?token={urlencode({'token': reset_token})[6:]}"
+
+    if not settings.email_enabled:
+        logger.info("password_reset_email_disabled_preview_link=%s", reset_link)
+        return {"accepted": True}
+
+    try:
+        send_email(
+            to_email=user.email,
+            subject="Redefinir senha da sua conta",
+            html=_build_password_reset_html(full_name=user.full_name, reset_link=reset_link),
+        )
+    except EmailNotificationError as exc:
+        logger.exception("password_reset_email_failed")
+        raise AuthEmailDeliveryError(str(exc)) from exc
+
+    return {"accepted": True}
+
+
+def reset_password_with_token(
+    db: Session,
+    *,
+    token: str,
+    new_password: str,
+) -> User:
+    payload = decode_password_reset_token(token=token)
+    user_id = str(payload["sub"])
+    token_email = str(payload["email"]).lower().strip()
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise AuthPasswordResetTokenError("password_reset_user_not_found")
+    if str(user.email).lower().strip() != token_email:
+        raise AuthPasswordResetTokenError("password_reset_email_mismatch")
+
+    validate_password_policy(new_password)
+    if verify_password(new_password, user.password_hash):
+        raise AuthWeakPasswordError("new_password_must_be_different")
+
+    user.password_hash = hash_password(new_password)
+    user.updated_at = utc_now_naive()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 def create_auth_session(
     db: Session,
     *,
     user: User,
     user_agent: str | None,
     ip_address: str | None,
+    remember_me: bool = False,
 ) -> tuple[str, AuthSession]:
     raw_token = generate_session_token()
     token_hash = hash_token(raw_token)
     now = utc_now_naive()
 
+    expires_delta = timedelta(days=SESSION_TTL_REMEMBER_DAYS) if remember_me else timedelta(hours=SESSION_TTL_HOURS)
     session = AuthSession(
         user_id=user.id,
         session_token_hash=token_hash,
         user_agent=user_agent,
         ip_address=ip_address,
         created_at=now,
-        expires_at=now + timedelta(hours=SESSION_TTL_HOURS),
+        expires_at=now + expires_delta,
         revoked_at=None,
     )
     db.add(session)
