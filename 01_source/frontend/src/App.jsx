@@ -37,6 +37,7 @@ const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
+const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -212,6 +213,7 @@ function TopNav() {
     { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
     { to: "/ops/dev/base", label: "ops /dev/base", aria: "Gestão de tabelas e enums base" },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id" },
+    { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional" },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
@@ -709,6 +711,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsReconciliationPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/audit"
+              element={
+                <OpsRoute>
+                  <OpsAuditPage />
                 </OpsRoute>
               }
             />

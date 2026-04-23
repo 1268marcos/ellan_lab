@@ -497,8 +497,36 @@ Dia 9 - Hardening + regressão completa
 - [ ] Entregável do dia: PR #4 mergeado com suíte estável e sem regressões críticas (pendente merge).
 
 Dia 10 - Go/No-Go + handoff
+- [x] Preparar checklist manual final com usuário comum e OPS (execução guiada abaixo).
+- [x] Preparar quadro de comparação baseline do Dia 1 vs. resultado final (dados coletados + pendências objetivas).
 - [ ] Executar checklist manual final com usuário comum e OPS.
-- [ ] Comparar baseline do Dia 1 vs. resultado final (incidentes, tempo de recuperação, backlog).
+- [ ] Consolidar comparação baseline/final com evidências de operação (logs/métricas do ambiente-alvo).
 - [ ] Fechar documentação, critérios de aceite e plano de monitoramento pós-release.
 - [ ] Entregável do dia: decisão Go/No-Go documentada + handoff de operação concluído.
+
+Checklist manual final (Dia 10) - execução guiada
+- [x] Usuário comum: acessar `/ops/sp`, `/ops/pt`, `/ops/sp/kiosk`, `/ops/reconciliation` => deve redirecionar para `/acesso-negado`.
+- [x] Usuário comum: tentar fluxo DEV de simulação de pagamento => bloqueio por `ROLE_REQUIRED` sem efeito colateral em pedido/slot/crédito.
+- [x] Usuário OPS (`admin_operacao` ou `auditoria`): acessar `/ops/reconciliation` e executar reconciliação válida por `order_id`.
+- [x] Usuário OPS: validar resposta de reconciliação com bloco `compensation` completo (`credit_restored`, `slot_release_ok`, etc.).
+- [ ] Usuário OPS: consultar `/dev-admin/ops-audit` e confirmar trilha com `action`, `result`, `user_id`, `order_id`, `correlation_id`.
+- [ ] Usuário OPS: consultar `/dev-admin/ops-metrics` e validar KPIs/alertas sem erro.
+- [ ] Repetir reconciliação no mesmo `order_id` e confirmar estado final estável (idempotência sem duplicação).
+- [ ] Validar `07_tests/run_sprint5_item5_regression.sh` em ambiente-alvo e anexar evidência de sucesso.
+
+Comparação baseline (Dia 1) vs. estado atual (início Dia 10)
+- [x] Regressão técnica consolidada: comando único `./07_tests/run_sprint5_item5_regression.sh` implementado e validado.
+- [x] Gate rápido de PR: `Sprint5 Item5 Smoke` implementado para reduzir tempo de feedback.
+- [x] Regressão completa: `Sprint5 Item5 Regression` implementado para cobertura integral backend/frontend.
+- [x] Cobertura incident-safe ampliada: bloqueios `ROLE_REQUIRED`, ausência de side effects, reconciliação de recuperação e idempotência 2x no mesmo `order_id`.
+- [x] Ruído de pipeline reduzido: warnings deprecados conhecidos filtrados de forma cirúrgica em `pytest.ini`.
+- [ ] Branch protection aplicada na `main` exigindo `Smoke` + `Regression` (pendente autenticação GitHub válida).
+- [ ] PR #4 mergeado com suíte estável no remoto.
+
+Go/No-Go (pré-decisão)
+- Status atual: GO CONDICIONAL.
+- Bloqueadores para GO final:
+  - Branch protection ativa na `main` com checks obrigatórios.
+  - PR #4 mergeado e checks verdes no remoto.
+  - Checklist manual final executado e evidenciado.
 

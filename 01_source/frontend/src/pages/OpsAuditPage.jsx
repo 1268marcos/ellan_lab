@@ -1,0 +1,308 @@
+import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+
+const ORDER_PICKUP_BASE =
+  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+
+function extractErrorMessage(payload, fallback = "Não foi possível carregar trilha de auditoria.") {
+  if (!payload) return fallback;
+  if (typeof payload.detail === "string" && payload.detail.trim()) {
+    return payload.detail.trim();
+  }
+  if (payload.detail && typeof payload.detail === "object") {
+    if (typeof payload.detail.message === "string" && payload.detail.message.trim()) {
+      return payload.detail.message.trim();
+    }
+    if (typeof payload.detail.type === "string" && payload.detail.type.trim()) {
+      return payload.detail.type.trim();
+    }
+  }
+  if (typeof payload.message === "string" && payload.message.trim()) {
+    return payload.message.trim();
+  }
+  return fallback;
+}
+
+export default function OpsAuditPage() {
+  const { token } = useAuth();
+  const [items, setItems] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [limit, setLimit] = useState(20);
+  const [offset, setOffset] = useState(0);
+  const [orderId, setOrderId] = useState("");
+  const [action, setAction] = useState("");
+  const [result, setResult] = useState("");
+
+  const authHeaders = useMemo(() => {
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }, [token]);
+
+  async function loadAudit() {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(Math.min(Math.max(Number(limit || 20), 1), 200)));
+      params.set("offset", String(Math.max(Number(offset || 0), 0)));
+      if (orderId.trim()) params.set("order_id", orderId.trim());
+      if (action.trim()) params.set("action", action.trim());
+      if (result.trim()) params.set("result", result.trim());
+
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-audit?${params.toString()}`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload));
+      }
+      setItems(Array.isArray(payload?.items) ? payload.items : []);
+      setTotal(Number(payload?.total || 0));
+    } catch (err) {
+      setError(String(err?.message || err));
+      setItems([]);
+      setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={pageStyle}>
+      <section style={cardStyle}>
+        <div style={shortcutRowStyle}>
+          <Link to="/ops/reconciliation" style={shortcutLinkStyle}>
+            Ir para reconciliação
+          </Link>
+          <Link to="/ops/health" style={shortcutLinkStyle}>
+            Ir para saúde operacional
+          </Link>
+        </div>
+
+        <h1 style={{ marginTop: 0 }}>OPS - Trilha de Auditoria</h1>
+        <p style={mutedTextStyle}>
+          Consulte ações operacionais por ordem, resultado e tipo de ação.
+        </p>
+
+        <div style={filtersGridStyle}>
+          <label style={labelStyle}>
+            Order ID
+            <input
+              type="text"
+              value={orderId}
+              onChange={(event) => setOrderId(event.target.value)}
+              placeholder="2dd793dd-..."
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Action
+            <input
+              type="text"
+              value={action}
+              onChange={(event) => setAction(event.target.value)}
+              placeholder="OPS_RECONCILE_ORDER"
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Result
+            <input
+              type="text"
+              value={result}
+              onChange={(event) => setResult(event.target.value)}
+              placeholder="SUCCESS ou ERROR"
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Limit
+            <input
+              type="number"
+              min={1}
+              max={200}
+              value={limit}
+              onChange={(event) => setLimit(Number(event.target.value || 20))}
+              style={inputStyle}
+            />
+          </label>
+          <label style={labelStyle}>
+            Offset
+            <input
+              type="number"
+              min={0}
+              value={offset}
+              onChange={(event) => setOffset(Number(event.target.value || 0))}
+              style={inputStyle}
+            />
+          </label>
+        </div>
+
+        <div style={actionsRowStyle}>
+          <button type="button" onClick={loadAudit} style={buttonStyle} disabled={loading}>
+            {loading ? "Consultando..." : "Consultar auditoria"}
+          </button>
+          <span style={{ color: "rgba(245,247,250,0.8)" }}>Total retornado: {total}</span>
+        </div>
+
+        {error ? <pre style={errorStyle}>{error}</pre> : null}
+
+        {!error && items.length > 0 ? (
+          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+            {items.map((item) => (
+              <article key={item.id} style={rowStyle}>
+                <div style={rowHeadStyle}>
+                  <strong>{item.action || "-"}</strong>
+                  <span style={badgeStyle(item.result)}>{item.result || "-"}</span>
+                </div>
+                <small style={smallStyle}>order_id: {item.order_id || "-"}</small>
+                <small style={smallStyle}>user_id: {item.user_id || "-"}</small>
+                <small style={smallStyle}>correlation_id: {item.correlation_id || "-"}</small>
+                <small style={smallStyle}>created_at: {item.created_at || "-"}</small>
+              </article>
+            ))}
+          </div>
+        ) : null}
+
+        {!error && !loading && items.length === 0 ? (
+          <p style={{ marginTop: 14 }}>Nenhum evento encontrado com os filtros atuais.</p>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
+const pageStyle = {
+  width: "100%",
+  maxWidth: "none",
+  padding: 24,
+  boxSizing: "border-box",
+  color: "#f5f7fa",
+  fontFamily: "system-ui, sans-serif",
+};
+
+const cardStyle = {
+  width: "100%",
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 16,
+  boxSizing: "border-box",
+};
+
+const mutedTextStyle = {
+  color: "rgba(245, 247, 250, 0.8)",
+  marginTop: 8,
+  marginBottom: 0,
+};
+
+const shortcutRowStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const shortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const filtersGridStyle = {
+  marginTop: 14,
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+};
+
+const labelStyle = {
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+};
+
+const inputStyle = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
+
+const actionsRowStyle = {
+  marginTop: 12,
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const buttonStyle = {
+  padding: "8px 12px",
+  cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "transparent",
+  color: "#e2e8f0",
+  fontWeight: 600,
+};
+
+const errorStyle = {
+  marginTop: 16,
+  background: "#2b1d1d",
+  color: "#ffb4b4",
+  padding: 12,
+  borderRadius: 12,
+  overflow: "auto",
+};
+
+const rowStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.03)",
+  padding: 10,
+  display: "grid",
+  gap: 4,
+};
+
+const rowHeadStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+};
+
+const smallStyle = {
+  color: "rgba(226,232,240,0.9)",
+  fontSize: 12,
+  wordBreak: "break-word",
+};
+
+const badgeStyle = (result) => {
+  const ok = String(result || "").toUpperCase() === "SUCCESS";
+  return {
+    display: "inline-flex",
+    borderRadius: 999,
+    padding: "4px 10px",
+    fontSize: 12,
+    fontWeight: 700,
+    border: ok ? "1px solid rgba(31,122,63,0.65)" : "1px solid rgba(179,38,30,0.65)",
+    background: ok ? "rgba(31,122,63,0.18)" : "rgba(179,38,30,0.20)",
+    color: ok ? "#86efac" : "#fecaca",
+  };
+};
