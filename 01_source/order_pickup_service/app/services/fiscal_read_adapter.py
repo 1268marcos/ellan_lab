@@ -84,6 +84,7 @@ def fiscal_read_view_from_billing_invoice(inv: dict[str, Any]) -> FiscalReadView
         oid = str(inv.get("order_id") or "")
         receipt = f"BILL-{oid[:12].upper()}" if oid else "BILL-UNKNOWN"
 
+    inv_payload = _coerce_dict(inv.get("payload_json"))
     payload: dict[str, Any] = {
         "order": order,
         "allocation": allocation,
@@ -93,6 +94,8 @@ def fiscal_read_view_from_billing_invoice(inv: dict[str, Any]) -> FiscalReadView
         "receipt_code": receipt,
         "invoice_id": inv.get("id"),
         "invoice_status": inv.get("status"),
+        "manual_generated_without_domain_event": bool(inv_payload.get("manual_generated_without_domain_event")),
+        "receipt_lookup_supported": False,
     }
 
     amount = inv.get("amount_cents")
@@ -121,7 +124,7 @@ def fiscal_read_view_from_billing_invoice(inv: dict[str, Any]) -> FiscalReadView
         send_status=st or None,
         send_target=None,
         print_status="READY" if st == "ISSUED" else "PENDING",
-        print_site_path=f"/public/fiscal/print/{receipt}",
+        print_site_path=None,
         payload_json=payload,
         issued_at=issued_at or datetime.now(timezone.utc),
         created_at=created_at or datetime.now(timezone.utc),

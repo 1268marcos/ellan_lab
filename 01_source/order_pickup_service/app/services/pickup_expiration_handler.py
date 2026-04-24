@@ -83,6 +83,9 @@ def _apply_internal_state(
 
     if order.status in {
         OrderStatus.PICKED_UP,
+        OrderStatus.DISPENSED,
+        OrderStatus.EXPIRED,
+        OrderStatus.EXPIRED_CREDIT_50,
         OrderStatus.CANCELLED,
         OrderStatus.REFUNDED,
         OrderStatus.FAILED,

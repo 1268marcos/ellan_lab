@@ -142,3 +142,34 @@ def fetch_invoice_pdf_by_order_id(order_id: str) -> dict[str, Any]:
         detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
         raise RuntimeError(f"billing_fiscal pdf failed: status={pdf_resp.status_code} detail={detail}")
     return payload if isinstance(payload, dict) else {"ok": True}
+
+
+def force_issue_invoice_by_order_id(order_id: str) -> dict[str, Any]:
+    """
+    Força emissão de invoice por order_id no billing (uso operacional).
+    """
+    base = (getattr(settings, "billing_fiscal_service_url", None) or "").strip()
+    if not base:
+        raise RuntimeError("BILLING_FISCAL_SERVICE_URL not set")
+    timeout = int(getattr(settings, "billing_fiscal_timeout_sec", 5) or 5)
+    headers = {
+        "X-Internal-Token": settings.internal_token,
+        "Accept": "application/json",
+    }
+    url = (
+        f"{base.rstrip('/')}/admin/fiscal/force-issue/{order_id}"
+        "?allow_missing_paid_event=true"
+    )
+    try:
+        resp = requests.post(url, headers=headers, timeout=timeout)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"billing_fiscal force-issue unreachable: {exc}") from exc
+    payload = {}
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"raw": (resp.text or "")[:300]}
+    if resp.status_code >= 400:
+        detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
+        raise RuntimeError(f"billing_fiscal force-issue failed: status={resp.status_code} detail={detail}")
+    return payload if isinstance(payload, dict) else {"ok": True}

@@ -7,6 +7,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
+from fastapi import Query
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -104,11 +105,16 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
 @router.post("/generate/{order_id}", response_model=InvoiceResponse)
 def create_invoice(
     order_id: str,
+    allow_missing_paid_event: bool = Query(default=False),
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
     try:
-        invoice = ensure_and_process_invoice(db, order_id)
+        invoice = ensure_and_process_invoice(
+            db,
+            order_id,
+            allow_missing_paid_event=allow_missing_paid_event,
+        )
         return _to_invoice_response(invoice)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

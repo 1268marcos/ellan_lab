@@ -60,9 +60,11 @@ from app.models.allocation import Allocation
 
 from app.services.payment_resolution_service import resolve_payment_ui_code
 from app.integrations.billing_fiscal_client import (
+    force_issue_invoice_by_order_id,
     fetch_invoice_pdf_by_order_id,
     resend_invoice_email_by_order_id,
 )
+from app.services.user_roles_service import user_has_any_role
 
 
 from app.models.pickup import Pickup
@@ -79,6 +81,20 @@ from app.services import backend_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
+INVOICE_MANUAL_ALLOWED_ROLES = {"admin_operacao", "suporte", "auditoria"}
+
+
+def _map_invoice_proxy_exception(exc: Exception) -> HTTPException:
+    msg = str(exc)
+    if "BILLING_FISCAL_SERVICE_URL not set" in msg:
+        return HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Integração fiscal indisponível: BILLING_FISCAL_SERVICE_URL não configurada "
+                "no order_pickup_service."
+            ),
+        )
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
 
 # ==================== Funções Utilitárias / HELPERS ====================
@@ -803,6 +819,14 @@ def _serialize_order(
     if not hide_pickup_credentials:
         manual_code = _resolve_token_manual_code(token)
 
+    fiscal_payload = (
+        dict(getattr(fiscal, "payload_json", {}) or {})
+        if fiscal is not None
+        else {}
+    )
+    receipt_lookup_supported = bool(fiscal_payload.get("receipt_lookup_supported", True)) if fiscal else False
+    is_billing_source = str(getattr(fiscal, "source", "")).lower() == "billing" if fiscal else False
+
     return {
         "id": order.id,
         "order_id": order.id,
@@ -826,8 +850,21 @@ def _serialize_order(
         "created_at": _dt_iso(order.created_at),
         "updated_at": _dt_iso(order.updated_at),
         "receipt_code": fiscal.receipt_code if fiscal else None,
-        "receipt_print_path": fiscal.print_site_path if fiscal else None,
-        "receipt_json_path": f"/public/fiscal/by-code/{fiscal.receipt_code}" if fiscal else None,
+        "receipt_print_path": (
+            fiscal.print_site_path
+            if fiscal and receipt_lookup_supported
+            else None
+        ),
+        "receipt_json_path": (
+            f"/public/fiscal/by-code/{fiscal.receipt_code}"
+            if fiscal and receipt_lookup_supported
+            else None
+        ),
+        "receipt_lookup_supported": receipt_lookup_supported,
+        "fiscal_source": getattr(fiscal, "source", None) if fiscal else None,
+        "invoice_id": fiscal_payload.get("invoice_id") if fiscal else None,
+        "invoice_manual_fallback": bool(fiscal_payload.get("manual_generated_without_domain_event")) if fiscal else False,
+        "is_billing_invoice": is_billing_source,
         "public_access_enabled": bool(getattr(order, "public_access_token_hash", None)),
         "customer_phone": order.guest_phone,
         "guest_email": getattr(order, "guest_email", None),
@@ -1625,7 +1662,7 @@ def resend_public_order_invoice_email(
     try:
         out = resend_invoice_email_by_order_id(order.id)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise _map_invoice_proxy_exception(exc) from exc
     return {
         "ok": True,
         "order_id": order.id,
@@ -1659,11 +1696,59 @@ def get_public_order_invoice_pdf(
     try:
         out = fetch_invoice_pdf_by_order_id(order.id)
     except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise _map_invoice_proxy_exception(exc) from exc
     return {
         "ok": True,
         "order_id": order.id,
         **out,
+    }
+
+
+@router.post("/{order_id}/invoice-generate")
+def generate_public_order_invoice_now(
+    order_id: str,
+    current_user: User | None = Depends(get_current_public_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    public_token_query: str | None = Query(default=None, alias="token"),
+    public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
+):
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    public_token = public_token_header or public_token_query
+    order = _get_order_for_public_access(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=public_token,
+    )
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pedido não encontrado")
+    if current_user and order.user_id and order.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este pedido")
+    if current_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Somente usuário autenticado com role operacional pode gerar invoice manualmente.",
+        )
+    if not user_has_any_role(
+        db,
+        user_id=current_user.id,
+        allowed_roles=INVOICE_MANUAL_ALLOWED_ROLES,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Role operacional obrigatória para gerar invoice manualmente.",
+        )
+    try:
+        out = force_issue_invoice_by_order_id(order.id)
+    except Exception as exc:
+        raise _map_invoice_proxy_exception(exc) from exc
+    return {
+        "ok": True,
+        "order_id": order.id,
+        "message": "Geração manual da invoice executada.",
+        "billing": out,
     }
 
 

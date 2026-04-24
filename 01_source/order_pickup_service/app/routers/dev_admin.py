@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 import logging
+import csv
+import io
 
 from typing import Any
 
@@ -16,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -26,6 +29,9 @@ from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup
 from app.models.user import User
 from app.schemas.dev_admin import (
+    DevOrderStatusAuditItemOut,
+    DevOrderStatusAuditListOut,
+    DevOrderStatusAuditPagedOut,
     DevOpsAuditItemOut,
     DevOpsAuditListOut,
     DevOpsMetricsOut,
@@ -217,6 +223,94 @@ def _assert_order_reconciliation_allowed(db: Session, *, order: Order) -> None:
 def _resolve_correlation_id(header_value: str | None) -> str:
     value = str(header_value or "").strip()
     return value or str(uuid4())
+
+
+def _parse_iso_datetime_utc(raw_value: str, *, field_name: str) -> datetime:
+    value = str(raw_value or "").strip()
+    if not value:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DATE_RANGE",
+                "message": f"{field_name} é obrigatório.",
+                "field": field_name,
+            },
+        )
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DATE_RANGE",
+                "message": f"{field_name} inválido. Use ISO-8601.",
+                "field": field_name,
+                "value": value,
+            },
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _collect_orders_status_audit(
+    *,
+    db: Session,
+    created_from: datetime,
+    created_to: datetime,
+    limit: int,
+    offset: int = 0,
+) -> tuple[list[DevOrderStatusAuditItemOut], int]:
+    order_query = (
+        db.query(Order)
+        .filter(
+            Order.created_at >= created_from,
+            Order.created_at <= created_to,
+        )
+        .order_by(Order.created_at.desc(), Order.id.desc())
+    )
+    candidate_orders = order_query.offset(offset).limit(limit + 1).all()
+
+    items: list[DevOrderStatusAuditItemOut] = []
+    for order in candidate_orders:
+        pickup = (
+            db.query(Pickup)
+            .filter(Pickup.order_id == order.id)
+            .order_by(Pickup.created_at.desc(), Pickup.id.desc())
+            .first()
+        )
+
+        reasons: list[str] = []
+        if order.picked_up_at is not None and order.status in {OrderStatus.EXPIRED, OrderStatus.EXPIRED_CREDIT_50}:
+            reasons.append("picked_up_at_not_null_but_order_expired")
+        if order.status == OrderStatus.DISPENSED and pickup is not None and pickup.status == PickupStatus.EXPIRED:
+            reasons.append("order_dispensed_but_pickup_expired")
+        if order.status in {OrderStatus.EXPIRED, OrderStatus.EXPIRED_CREDIT_50} and pickup is not None and pickup.status == PickupStatus.REDEEMED:
+            reasons.append("order_expired_but_pickup_redeemed")
+        if not reasons:
+            continue
+
+        items.append(
+            DevOrderStatusAuditItemOut(
+                order_id=order.id,
+                order_status=order.status.value if order.status else "",
+                payment_status=order.payment_status.value if order.payment_status else None,
+                paid_at=to_iso_utc(order.paid_at),
+                picked_up_at=to_iso_utc(order.picked_up_at),
+                pickup_deadline_at=to_iso_utc(order.pickup_deadline_at),
+                pickup_status=(pickup.status.value if pickup and pickup.status else None),
+                pickup_lifecycle_stage=(
+                    pickup.lifecycle_stage.value
+                    if pickup and getattr(pickup, "lifecycle_stage", None)
+                    else None
+                ),
+                pickup_id=(pickup.id if pickup else None),
+                reason=";".join(reasons),
+            )
+        )
+
+    return items[:limit], len(candidate_orders)
 
 
 def _safe_record_ops_audit(
@@ -529,6 +623,188 @@ def dev_ops_metrics(
             "ok": True,
             **metrics,
         }
+    )
+
+
+@router.get("/orders-status-audit", response_model=DevOrderStatusAuditListOut)
+def dev_orders_status_audit(
+    lookback_hours: int = Query(default=48, ge=1, le=24 * 30),
+    limit: int = Query(default=200, ge=1, le=2000),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=lookback_hours)
+    items, _ = _collect_orders_status_audit(
+        db=db,
+        created_from=cutoff,
+        created_to=datetime.now(timezone.utc),
+        limit=limit,
+        offset=0,
+    )
+
+    _safe_record_ops_audit(
+        action="OPS_ORDERS_STATUS_AUDIT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "lookback_hours": lookback_hours,
+            "limit": limit,
+            "returned": len(items),
+        },
+    )
+
+    return DevOrderStatusAuditListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/orders-status-audit/range", response_model=DevOrderStatusAuditPagedOut)
+def dev_orders_status_audit_range(
+    from_: str = Query(..., alias="from"),
+    to: str = Query(...),
+    limit: int = Query(default=200, ge=1, le=2000),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    created_from = _parse_iso_datetime_utc(from_, field_name="from")
+    created_to = _parse_iso_datetime_utc(to, field_name="to")
+    if created_from > created_to:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DATE_RANGE",
+                "message": "from deve ser menor ou igual a to.",
+            },
+        )
+
+    items, fetched_count = _collect_orders_status_audit(
+        db=db,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+        offset=offset,
+    )
+    has_more = fetched_count > limit
+
+    _safe_record_ops_audit(
+        action="OPS_ORDERS_STATUS_AUDIT_RANGE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "from": to_iso_utc(created_from),
+            "to": to_iso_utc(created_to),
+            "limit": limit,
+            "offset": offset,
+            "returned": len(items),
+            "has_more": has_more,
+        },
+    )
+
+    return DevOrderStatusAuditPagedOut.model_validate(
+        {
+            "ok": True,
+            "total": len(items),
+            "limit": limit,
+            "offset": offset,
+            "has_more": has_more,
+            "from": to_iso_utc(created_from),
+            "to": to_iso_utc(created_to),
+            "items": items,
+        }
+    )
+
+
+@router.get("/orders-status-audit/export.csv")
+def dev_orders_status_audit_export_csv(
+    from_: str = Query(..., alias="from"),
+    to: str = Query(...),
+    limit: int = Query(default=5000, ge=1, le=20000),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    created_from = _parse_iso_datetime_utc(from_, field_name="from")
+    created_to = _parse_iso_datetime_utc(to, field_name="to")
+    if created_from > created_to:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "type": "INVALID_DATE_RANGE",
+                "message": "from deve ser menor ou igual a to.",
+            },
+        )
+
+    items, _ = _collect_orders_status_audit(
+        db=db,
+        created_from=created_from,
+        created_to=created_to,
+        limit=limit,
+        offset=0,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "order_id",
+            "order_status",
+            "payment_status",
+            "paid_at",
+            "picked_up_at",
+            "pickup_deadline_at",
+            "pickup_status",
+            "pickup_lifecycle_stage",
+            "pickup_id",
+            "reason",
+        ]
+    )
+    for item in items:
+        writer.writerow(
+            [
+                item.order_id,
+                item.order_status,
+                item.payment_status or "",
+                item.paid_at or "",
+                item.picked_up_at or "",
+                item.pickup_deadline_at or "",
+                item.pickup_status or "",
+                item.pickup_lifecycle_stage or "",
+                item.pickup_id or "",
+                item.reason,
+            ]
+        )
+    output.seek(0)
+
+    _safe_record_ops_audit(
+        action="OPS_ORDERS_STATUS_AUDIT_EXPORT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "from": to_iso_utc(created_from),
+            "to": to_iso_utc(created_to),
+            "limit": limit,
+            "returned": len(items),
+        },
+    )
+
+    filename = (
+        f"orders_status_audit_{created_from.strftime('%Y%m%dT%H%M%SZ')}"
+        f"_{created_to.strftime('%Y%m%dT%H%M%SZ')}.csv"
+    )
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

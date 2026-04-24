@@ -131,6 +131,7 @@ def get_reconciliation_gaps(
 def force_issue_order_invoice(
     order_id: str,
     refresh_after: bool = Query(default=True),
+    allow_missing_paid_event: bool = Query(default=True),
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
@@ -138,7 +139,11 @@ def force_issue_order_invoice(
     if not normalized_order_id:
         raise HTTPException(status_code=400, detail="order_id is required")
     try:
-        invoice = ensure_and_process_invoice(db, normalized_order_id)
+        invoice = ensure_and_process_invoice(
+            db,
+            normalized_order_id,
+            allow_missing_paid_event=allow_missing_paid_event,
+        )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

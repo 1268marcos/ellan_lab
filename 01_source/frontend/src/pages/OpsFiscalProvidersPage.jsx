@@ -22,7 +22,9 @@ export default function OpsFiscalProvidersPage() {
   const [testing, setTesting] = useState("");
   const [error, setError] = useState("");
   const [invoiceId, setInvoiceId] = useState("");
+  const [orderId, setOrderId] = useState("");
   const [danfeBusy, setDanfeBusy] = useState(false);
+  const [forceBusy, setForceBusy] = useState(false);
   const [danfeResult, setDanfeResult] = useState(null);
 
   async function loadStatus() {
@@ -171,6 +173,46 @@ export default function OpsFiscalProvidersPage() {
     }
   }
 
+  async function handleForceIssueByOrderId() {
+    const normalized = String(orderId || "").trim();
+    if (!normalized) {
+      setError("Informe um order_id válido para gerar invoice.");
+      return;
+    }
+    setForceBusy(true);
+    setError("");
+    setDanfeResult(null);
+    try {
+      const r = await fetch(
+        `${BILLING_BASE}/admin/fiscal/force-issue/${encodeURIComponent(normalized)}`,
+        {
+          method: "POST",
+          headers: headersJson(),
+        }
+      );
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao gerar invoice por order_id.");
+      setDanfeResult({
+        ok: true,
+        order_id: normalized,
+        invoice_id: payload?.invoice?.id || payload?.invoice_id || "-",
+        message: "Invoice gerada/garantida com sucesso para o pedido.",
+        payload,
+      });
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setForceBusy(false);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
   }, []);
@@ -221,10 +263,38 @@ export default function OpsFiscalProvidersPage() {
           </div>
           {danfeResult ? (
             <div style={danfeResultStyle}>
-              Download iniciado: <b>{danfeResult.filename}</b> ({danfeResult.format})
-              {danfeResult.copied_json ? " • JSON copiado para área de transferência." : ""}
+              {danfeResult.filename ? (
+                <>
+                  Download iniciado: <b>{danfeResult.filename}</b> ({danfeResult.format})
+                  {danfeResult.copied_json ? " • JSON copiado para área de transferência." : ""}
+                </>
+              ) : (
+                <>
+                  {danfeResult.message || "Operação concluída."}{" "}
+                  {danfeResult.order_id ? `order_id=${danfeResult.order_id}` : ""}{" "}
+                  {danfeResult.invoice_id ? `invoice_id=${danfeResult.invoice_id}` : ""}
+                </>
+              )}
             </div>
           ) : null}
+        </div>
+
+        <div style={danfeBoxStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: 8 }}>Gerar invoice por order_id</h3>
+          <p style={{ ...mutedTextStyle, marginTop: 0 }}>
+            Operação de suporte: força emissão/garantia da invoice para um pedido.
+          </p>
+          <div style={toolbarStyle}>
+            <input
+              value={orderId}
+              onChange={(e) => setOrderId(e.target.value)}
+              placeholder="order_id (ex.: 1b9a54e8-...)"
+              style={inputStyle}
+            />
+            <button onClick={() => void handleForceIssueByOrderId()} style={buttonPrimaryStyle} disabled={forceBusy}>
+              {forceBusy ? "Gerando..." : "Gerar invoice por order_id"}
+            </button>
+          </div>
         </div>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}

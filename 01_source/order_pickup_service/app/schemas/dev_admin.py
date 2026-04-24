@@ -134,3 +134,33 @@ class DevOpsMetricsOut(BaseModel):
     window: DevOpsMetricsWindowOut
     kpis: DevOpsMetricsKpisOut
     alerts: list[DevOpsMetricAlertOut]
+
+
+class DevOrderStatusAuditItemOut(BaseModel):
+    order_id: str
+    order_status: str
+    payment_status: str | None = None
+    paid_at: str | None = None
+    picked_up_at: str | None = None
+    pickup_deadline_at: str | None = None
+    pickup_status: str | None = None
+    pickup_lifecycle_stage: str | None = None
+    pickup_id: str | None = None
+    reason: str
+
+
+class DevOrderStatusAuditListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[DevOrderStatusAuditItemOut]
+
+
+class DevOrderStatusAuditPagedOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    items: list[DevOrderStatusAuditItemOut]

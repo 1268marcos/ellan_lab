@@ -10,6 +10,7 @@ import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import {
   fetchOrderDetail,
+  generateOrderInvoiceNow,
   fetchOrderInvoicePdf,
   fetchOrderPickup,
   resendOrderInvoiceEmail,
@@ -87,9 +88,11 @@ function getPickedUpAt(order, pickup) {
   );
 }
 
+const INVOICE_OPS_ROLES = ["admin_operacao", "suporte", "auditoria"];
+
 export default function PublicOrderDetailPage() {
   const { orderId } = useParams();
-  const { token, loading, isAuthenticated } = useAuth();
+  const { token, loading, isAuthenticated, hasRole } = useAuth();
 
   const [order, setOrder] = useState(null);
   const [pickup, setPickup] = useState(null);
@@ -98,6 +101,8 @@ export default function PublicOrderDetailPage() {
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMessage, setResendMessage] = useState("");
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [forceBusy, setForceBusy] = useState(false);
+  const [showFiscalLegend, setShowFiscalLegend] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -162,21 +167,65 @@ export default function PublicOrderDetailPage() {
 
   const receiptCode = useMemo(() => normalize(order?.receipt_code), [order?.receipt_code]);
   const hasOrderForInvoiceActions = Boolean(order?.id);
+  const canForceGenerateInvoice = INVOICE_OPS_ROLES.some((role) => hasRole(role));
+  const receiptLookupSupported = Boolean(order?.receipt_lookup_supported);
+  const invoiceManualFallback = Boolean(order?.invoice_manual_fallback);
+  const isBillingInvoice = Boolean(order?.is_billing_invoice);
+  const invoiceId = String(order?.invoice_id || "").trim();
+  const hasInvoiceGenerated = Boolean(invoiceId || receiptCode);
+  const hasEmailTarget = Boolean(String(order?.guest_email || "").trim());
+  const fiscalState = useMemo(() => {
+    if (invoiceManualFallback) {
+      return {
+        code: "GERADO_MANUALMENTE",
+        label: "Gerado manualmente",
+        detail: "Invoice gerada por ação operacional (fallback sem domain_event).",
+      };
+    }
+    if (hasInvoiceGenerated) {
+      return {
+        code: "GERADO",
+        label: "Gerado",
+        detail: "Documento fiscal já associado ao pedido.",
+      };
+    }
+    if (!hasEmailTarget) {
+      return {
+        code: "SEM_DESTINATARIO_EMAIL",
+        label: "Pendente (sem destinatário de e-mail)",
+        detail: "Não há e-mail de destinatário no pedido para envio automático.",
+      };
+    }
+    return {
+      code: "PENDENTE",
+      label: "Pendente",
+      detail: "Aguardando materialização da invoice no billing fiscal.",
+    };
+  }, [hasEmailTarget, hasInvoiceGenerated, invoiceManualFallback]);
+  const fiscalStateVisual = useMemo(() => getFiscalStateVisual(fiscalState.code), [fiscalState.code]);
 
   const receiptPrintUrl = useMemo(() => {
-    if (!receiptCode) return "";
+    const fromOrder = String(order?.receipt_print_path || "").trim();
+    if (fromOrder) {
+      return `${API_BASE}${fromOrder.startsWith("/") ? "" : "/"}${fromOrder}`;
+    }
+    if (!receiptCode || !receiptLookupSupported) return "";
     return `${API_BASE}/public/fiscal/print/${encodeURIComponent(receiptCode)}`;
-  }, [receiptCode]);
+  }, [order?.receipt_print_path, receiptCode, receiptLookupSupported]);
 
   const receiptJsonUrl = useMemo(() => {
-    if (!receiptCode) return "";
+    const fromOrder = String(order?.receipt_json_path || "").trim();
+    if (fromOrder) {
+      return `${API_BASE}${fromOrder.startsWith("/") ? "" : "/"}${fromOrder}`;
+    }
+    if (!receiptCode || !receiptLookupSupported) return "";
     return `${API_BASE}/public/fiscal/by-code/${encodeURIComponent(receiptCode)}`;
-  }, [receiptCode]);
+  }, [order?.receipt_json_path, receiptCode, receiptLookupSupported]);
 
   const receiptDeepLink = useMemo(() => {
-    if (!receiptCode) return "";
+    if (!receiptCode || !receiptLookupSupported) return "";
     return `${FRONTEND_BASE}/comprovante?code=${encodeURIComponent(receiptCode)}`;
-  }, [receiptCode]);
+  }, [receiptCode, receiptLookupSupported]);
 
   const rawExpiresAt =
     order?.expires_at ||
@@ -226,6 +275,16 @@ export default function PublicOrderDetailPage() {
     window.alert("Link do comprovante copiado.");
   }
 
+  async function copyInvoiceId() {
+    if (!invoiceId) return;
+    try {
+      await navigator.clipboard?.writeText(invoiceId);
+      setResendMessage(`invoice_id copiado: ${invoiceId}`);
+    } catch {
+      setResendMessage("Não foi possível copiar o invoice_id.");
+    }
+  }
+
   async function handleResendInvoiceEmail() {
     if (!token || !order?.id) return;
     setResendBusy(true);
@@ -273,6 +332,27 @@ export default function PublicOrderDetailPage() {
       setResendMessage(String(err?.message || err));
     } finally {
       setPdfBusy(false);
+    }
+  }
+
+  async function handleGenerateInvoiceNow() {
+    if (!token || !order?.id) return;
+    setForceBusy(true);
+    setResendMessage("");
+    try {
+      const out = await generateOrderInvoiceNow(token, order.id);
+      const generatedInvoiceId = out?.billing?.invoice?.id;
+      setResendMessage(
+        generatedInvoiceId
+          ? `Invoice gerada com sucesso (invoice_id=${generatedInvoiceId}).`
+          : (out?.message || "Invoice gerada com sucesso.")
+      );
+      const orderData = await fetchOrderDetail(token, order.id);
+      setOrder(orderData);
+    } catch (err) {
+      setResendMessage(String(err?.message || err));
+    } finally {
+      setForceBusy(false);
     }
   }
 
@@ -430,12 +510,49 @@ export default function PublicOrderDetailPage() {
                 </div>
 
                 <div style={detailsGridStyle}>
+                  <Field
+                    label="Estado fiscal"
+                    value={
+                      <span
+                        style={{
+                          ...fiscalStateBadgeStyleBase,
+                          ...fiscalStateVisual.style,
+                        }}
+                        aria-label={`Estado fiscal ${fiscalState.label}`}
+                      >
+                        <span aria-hidden="true">{fiscalStateVisual.icon}</span>
+                        <span>{fiscalState.label}</span>
+                      </span>
+                    }
+                  />
                   <Field label="Código" value={receiptCode || "Ainda não disponível"} />
-                  <Field label="Página pública" value={receiptCode ? receiptDeepLink : "-"} />
+                  <Field label="Invoice ID" value={invoiceId || "Ainda não disponível"} />
+                  <Field label="Página pública" value={receiptDeepLink || "-"} />
                 </div>
+                <div
+                  style={{
+                    ...fiscalStateHintStyle,
+                    borderColor: fiscalStateVisual.style.borderColor,
+                    background: fiscalStateVisual.hintBackground,
+                    color: fiscalStateVisual.hintColor,
+                  }}
+                >
+                  <strong>Estado atual:</strong> {fiscalState.code} - {fiscalState.detail}
+                </div>
+                {invoiceManualFallback ? (
+                  <div style={invoiceManualBadgeStyle}>
+                    Invoice gerada manualmente (fallback sem domain_event)
+                  </div>
+                ) : null}
+                {isBillingInvoice ? (
+                  <div style={invoiceSourceBadgeStyle}>
+                    Fonte: billing fiscal
+                    {invoiceId ? ` • invoice_id=${invoiceId}` : ""}
+                  </div>
+                ) : null}
 
                 <div style={actionsRowStyle}>
-                  {receiptCode ? (
+                  {receiptDeepLink ? (
                     <a
                       href={receiptDeepLink}
                       target="_blank"
@@ -446,7 +563,7 @@ export default function PublicOrderDetailPage() {
                     </a>
                   ) : null}
 
-                  {receiptCode ? (
+                  {receiptDeepLink ? (
                     <button
                       type="button"
                       onClick={copyReceiptLink}
@@ -456,7 +573,7 @@ export default function PublicOrderDetailPage() {
                     </button>
                   ) : null}
 
-                  {receiptCode ? (
+                  {receiptPrintUrl ? (
                     <a
                       href={receiptPrintUrl}
                       target="_blank"
@@ -467,7 +584,7 @@ export default function PublicOrderDetailPage() {
                     </a>
                   ) : null}
 
-                  {receiptCode ? (
+                  {receiptJsonUrl ? (
                     <a
                       href={receiptJsonUrl}
                       target="_blank"
@@ -478,7 +595,7 @@ export default function PublicOrderDetailPage() {
                     </a>
                   ) : null}
 
-                  {receiptCode ? (
+                  {receiptPrintUrl ? (
                     <button
                       type="button"
                       onClick={() =>
@@ -511,17 +628,98 @@ export default function PublicOrderDetailPage() {
                   >
                     {pdfBusy ? "Preparando..." : "Baixar PDF da invoice"}
                   </button>
+
+                  {canForceGenerateInvoice ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleGenerateInvoiceNow()}
+                      style={actionButtonStyle}
+                      disabled={forceBusy}
+                    >
+                      {forceBusy ? "Gerando..." : "Gerar invoice agora"}
+                    </button>
+                  ) : null}
+
+                  {invoiceId ? (
+                    <button
+                      type="button"
+                      onClick={() => void copyInvoiceId()}
+                      style={actionButtonStyle}
+                    >
+                      Copiar invoice_id
+                    </button>
+                  ) : null}
                 </div>
 
                 <div style={invoiceHintStyle}>
                   <strong>Invoice associada ao pedido:</strong>{" "}
                   use os botões acima para consultar JSON/print da invoice vinculada.
+                  {isBillingInvoice && !receiptLookupSupported ? (
+                    <>
+                      {" "}
+                      Para invoice do billing, os links de comprovante legado
+                      (`/public/fiscal/by-code`) podem não existir para esse código.
+                    </>
+                  ) : null}
                   {order?.channel === "ONLINE" ? (
                     <>
                       {" "}
                       Para pedidos online, o envio de e-mail fiscal é disparado no fluxo de emissão (quando
                       `receipt_email`/`guest_email` está disponível).
                     </>
+                  ) : null}
+                </div>
+                <div style={fiscalLegendStyle}>
+                  <button
+                    type="button"
+                    onClick={() => setShowFiscalLegend((prev) => !prev)}
+                    style={fiscalLegendToggleButtonStyle}
+                    aria-expanded={showFiscalLegend}
+                  >
+                    {showFiscalLegend ? "Ocultar legenda" : "Mostrar legenda"}
+                  </button>
+                  {showFiscalLegend ? (
+                    <div style={{ marginTop: 8 }}>
+                      <strong style={{ display: "block", marginBottom: 8 }}>Legenda de estados fiscais</strong>
+                      <div style={fiscalLegendRowStyle}>
+                        <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("GERADO").style }}>
+                          <span aria-hidden="true">{getFiscalStateVisual("GERADO").icon}</span>
+                          <span>Gerado</span>
+                        </span>
+                        <span style={fiscalLegendTextStyle}>Documento fiscal disponível e associado ao pedido.</span>
+                      </div>
+                      <div style={fiscalLegendRowStyle}>
+                        <span
+                          style={{
+                            ...fiscalStateBadgeStyleBase,
+                            ...getFiscalStateVisual("GERADO_MANUALMENTE").style,
+                          }}
+                        >
+                          <span aria-hidden="true">{getFiscalStateVisual("GERADO_MANUALMENTE").icon}</span>
+                          <span>Gerado manualmente</span>
+                        </span>
+                        <span style={fiscalLegendTextStyle}>Emitido por ação operacional (fallback de suporte).</span>
+                      </div>
+                      <div style={fiscalLegendRowStyle}>
+                        <span
+                          style={{
+                            ...fiscalStateBadgeStyleBase,
+                            ...getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").style,
+                          }}
+                        >
+                          <span aria-hidden="true">{getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").icon}</span>
+                          <span>Sem destinatário de e-mail</span>
+                        </span>
+                        <span style={fiscalLegendTextStyle}>Pedido sem e-mail para envio automático da invoice.</span>
+                      </div>
+                      <div style={fiscalLegendRowStyle}>
+                        <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("PENDENTE").style }}>
+                          <span aria-hidden="true">{getFiscalStateVisual("PENDENTE").icon}</span>
+                          <span>Pendente</span>
+                        </span>
+                        <span style={fiscalLegendTextStyle}>Aguardando geração/materialização no billing fiscal.</span>
+                      </div>
+                    </div>
                   ) : null}
                 </div>
                 {resendMessage ? <p style={invoiceResendMsgStyle}>{resendMessage}</p> : null}
@@ -720,6 +918,56 @@ function creditReasonLabel(reason) {
   return map[reason] || reason || "—";
 }
 
+function getFiscalStateVisual(code) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (normalized === "GERADO") {
+    return {
+      icon: "✔",
+      style: {
+        color: "#14532d",
+        borderColor: "rgba(22,163,74,0.65)",
+        background: "rgba(22,163,74,0.18)",
+      },
+      hintBackground: "rgba(22,163,74,0.13)",
+      hintColor: "#14532d",
+    };
+  }
+  if (normalized === "GERADO_MANUALMENTE") {
+    return {
+      icon: "⚠",
+      style: {
+        color: "#854d0e",
+        borderColor: "rgba(217,119,6,0.65)",
+        background: "rgba(217,119,6,0.18)",
+      },
+      hintBackground: "rgba(217,119,6,0.13)",
+      hintColor: "#854d0e",
+    };
+  }
+  if (normalized === "SEM_DESTINATARIO_EMAIL") {
+    return {
+      icon: "ℹ",
+      style: {
+        color: "#0c4a6e",
+        borderColor: "rgba(14,116,144,0.65)",
+        background: "rgba(14,116,144,0.16)",
+      },
+      hintBackground: "rgba(14,116,144,0.13)",
+      hintColor: "#0c4a6e",
+    };
+  }
+  return {
+    icon: "…",
+    style: {
+      color: "#374151",
+      borderColor: "rgba(107,114,128,0.65)",
+      background: "rgba(107,114,128,0.16)",
+    },
+    hintBackground: "rgba(107,114,128,0.12)",
+    hintColor: "#374151",
+  };
+}
+
 const creditAppliedBannerStyle = {
   marginBottom: 16,
   padding: "12px 14px",
@@ -899,4 +1147,83 @@ const invoiceResendMsgStyle = {
   marginBottom: 0,
   fontSize: 13,
   color: "#334155",
+};
+
+const invoiceManualBadgeStyle = {
+  marginTop: 10,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(245,158,11,0.65)",
+  background: "rgba(245,158,11,0.18)",
+  color: "#92400e",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const fiscalStateHintStyle = {
+  marginTop: 10,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(100,116,139,0.45)",
+  background: "rgba(100,116,139,0.12)",
+  color: "#334155",
+  fontSize: 13,
+  lineHeight: 1.4,
+};
+
+const fiscalStateBadgeStyleBase = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid transparent",
+  fontSize: 12,
+  fontWeight: 800,
+  letterSpacing: 0.2,
+};
+
+const fiscalLegendStyle = {
+  marginTop: 12,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.45)",
+  background: "rgba(148,163,184,0.1)",
+  color: "#334155",
+  fontSize: 12,
+};
+
+const fiscalLegendRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  marginBottom: 6,
+};
+
+const fiscalLegendTextStyle = {
+  color: "#475569",
+  fontSize: 12,
+};
+
+const fiscalLegendToggleButtonStyle = {
+  padding: "6px 10px",
+  borderRadius: 8,
+  border: "1px solid rgba(100,116,139,0.45)",
+  background: "rgba(255,255,255,0.7)",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const invoiceSourceBadgeStyle = {
+  marginTop: 8,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(14,116,144,0.65)",
+  background: "rgba(14,116,144,0.16)",
+  color: "#0c4a6e",
+  fontSize: 13,
+  fontWeight: 700,
 };

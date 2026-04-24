@@ -196,6 +196,37 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
     PDF válido (xref/trailer), e `order_pickup_service` adiciona fallback automático
     para `POST /internal/invoices/generate/{order_id}` quando `by-order` retorna 404
     nos fluxos de reenvio e download de invoice.
+  - 2026-04-24: F-3 ops suporte — página `ops/fiscal/providers` recebe ação
+    "Gerar invoice por order_id" (chama `POST /admin/fiscal/force-issue/{order_id}`);
+    compose do `order_pickup_service` define `BILLING_FISCAL_SERVICE_URL` para habilitar
+    proxy público de invoice (resend/pdf).
+  - 2026-04-24: F-3 suporte manual no detalhe público — novo endpoint
+    `POST /public/orders/{order_id}/invoice-generate` (role-gated: `admin_operacao`,
+    `suporte`, `auditoria`) e botão "Gerar invoice agora" na página de detalhe;
+    `force-issue`/`generate` no billing passam a aceitar `allow_missing_paid_event=true`
+    para cenários de pagamento sem `order.paid` em `domain_events`.
+  - 2026-04-24: F-3 UX invoice/manual fallback — detalhe público exibe badge
+    "Invoice gerada manualmente (fallback sem domain_event)" e deixa de abrir links
+    de comprovante legado para códigos de invoice vindos do billing quando
+    `receipt_lookup_supported=false` (evita 404 em `/public/fiscal/by-code/*`).
+  - 2026-04-24: F-3 UX suporte — detalhe público passa a exibir badge
+    "Fonte: billing fiscal" e `invoice_id` explícito ao lado do código para
+    facilitar triagem operacional.
+  - 2026-04-24: F-3 UX suporte — detalhe público adiciona botão
+    "Copiar invoice_id" para agilizar atendimento operacional.
+  - 2026-04-24: F-3 UX padrão global — detalhe público passa a exibir
+    "Estado fiscal" explícito (`PENDENTE`, `GERADO`, `GERADO_MANUALMENTE`,
+    `SEM_DESTINATARIO_EMAIL`) com descrição operacional no card de invoice.
+  - 2026-04-24: F-3 UX/CX suporte — estado fiscal ganha badge com ícone/cor
+    para leitura instantânea (`GERADO` verde, `GERADO_MANUALMENTE` âmbar,
+    `SEM_DESTINATARIO_EMAIL` azul, `PENDENTE` cinza), mantendo descrição textual.
+  - 2026-04-24: F-3 onboarding UX — card de invoice no detalhe público recebe
+    mini legenda de estados fiscais com significado operacional para novos operadores.
+  - 2026-04-24: F-3 UX avançado — legenda de estados fiscais passa a ser colapsável
+    ("Mostrar legenda" / "Ocultar legenda"), iniciando fechada para reduzir ruído.
+  - 2026-04-24: Correção de consistência pós-retirada — `pickup_expiration_handler`
+    passa a tratar `DISPENSED` e `EXPIRED*` como terminais na expiração tardia para
+    evitar regressão de pedido já retirado para `EXPIRED_CREDIT_50`.
 
 
 -------------------------------------------------------------------------------
@@ -277,6 +308,15 @@ Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
   - 2026-04-24: I-3 — monitor `GET /admin/fiscal/dead-letters` (invoice/email outbox + threshold),
     exports `GET /admin/fiscal/exports/sped-efd` e `GET /admin/fiscal/exports/saft-pt`
     (payload mensal stub v1 para operacionalizar jobs cron).
+  - 2026-04-24: OPS audit urgente (order_pickup_service) — endpoint
+    `GET /dev-admin/orders-status-audit` para detectar pedidos potencialmente
+    afetados no histórico (ex.: `picked_up_at` preenchido com `status` expirado),
+    incluindo sinais de inconsistência order/pickup para triagem rápida.
+  - 2026-04-24: OPS audit histórico — endpoints complementares
+    `GET /dev-admin/orders-status-audit/range?from=&to=&limit=&offset=`
+    (paginado por intervalo) e
+    `GET /dev-admin/orders-status-audit/export.csv?from=&to=&limit=`
+    (export CSV para investigação longa).
 
 
 ================================================================================

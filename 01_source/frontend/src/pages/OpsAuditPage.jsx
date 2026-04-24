@@ -24,8 +24,27 @@ function extractErrorMessage(payload, fallback = "Não foi possível carregar tr
   return fallback;
 }
 
+function toDateTimeLocalInputValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
+function toIsoOrNull(localDateTimeValue) {
+  const raw = String(localDateTimeValue || "").trim();
+  if (!raw) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toISOString();
+}
+
 export default function OpsAuditPage() {
   const { token } = useAuth();
+  const now = new Date();
+  const last72h = new Date(now.getTime() - 72 * 60 * 60 * 1000);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -35,6 +54,12 @@ export default function OpsAuditPage() {
   const [orderId, setOrderId] = useState("");
   const [action, setAction] = useState("");
   const [result, setResult] = useState("");
+  const [auditFrom, setAuditFrom] = useState(toDateTimeLocalInputValue(last72h));
+  const [auditTo, setAuditTo] = useState(toDateTimeLocalInputValue(now));
+  const [statusLimit, setStatusLimit] = useState(200);
+  const [statusOffset, setStatusOffset] = useState(0);
+  const [statusHasMore, setStatusHasMore] = useState(false);
+  const [statusAuditItems, setStatusAuditItems] = useState([]);
 
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -69,6 +94,96 @@ export default function OpsAuditPage() {
       setError(String(err?.message || err));
       setItems([]);
       setTotal(0);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadStatusAudit(nextOffset = null) {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const fromIso = toIsoOrNull(auditFrom);
+      const toIso = toIsoOrNull(auditTo);
+      if (!fromIso || !toIso) {
+        throw new Error("Preencha from/to com datas válidas.");
+      }
+
+      const effectiveOffset = Math.max(Number(nextOffset ?? statusOffset ?? 0), 0);
+      const effectiveLimit = Math.min(Math.max(Number(statusLimit || 200), 1), 2000);
+      const params = new URLSearchParams();
+      params.set("from", fromIso);
+      params.set("to", toIso);
+      params.set("limit", String(effectiveLimit));
+      params.set("offset", String(effectiveOffset));
+      const response = await fetch(
+        `${ORDER_PICKUP_BASE}/dev-admin/orders-status-audit/range?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            ...authHeaders,
+          },
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar auditoria de status."));
+      }
+      setStatusAuditItems(Array.isArray(payload?.items) ? payload.items : []);
+      setStatusHasMore(Boolean(payload?.has_more));
+      setStatusOffset(effectiveOffset);
+    } catch (err) {
+      setError(String(err?.message || err));
+      setStatusAuditItems([]);
+      setStatusHasMore(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function exportStatusAuditCsv() {
+    if (!token) return;
+    setLoading(true);
+    setError("");
+    try {
+      const fromIso = toIsoOrNull(auditFrom);
+      const toIso = toIsoOrNull(auditTo);
+      if (!fromIso || !toIso) {
+        throw new Error("Preencha from/to com datas válidas.");
+      }
+      const params = new URLSearchParams();
+      params.set("from", fromIso);
+      params.set("to", toIso);
+      params.set("limit", "20000");
+
+      const response = await fetch(
+        `${ORDER_PICKUP_BASE}/dev-admin/orders-status-audit/export.csv?${params.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "text/csv",
+            ...authHeaders,
+          },
+        }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(extractErrorMessage(payload, "Não foi possível exportar CSV."));
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = objectUrl;
+      downloadLink.download = `ops-orders-status-audit-${new Date().toISOString()}.csv`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (err) {
+      setError(String(err?.message || err));
     } finally {
       setLoading(false);
     }
@@ -152,6 +267,83 @@ export default function OpsAuditPage() {
           <span style={{ color: "rgba(245,247,250,0.8)" }}>Total retornado: {total}</span>
         </div>
 
+        <section style={subCardStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: 8 }}>Auditoria histórica de status</h3>
+          <p style={subtleTextStyle}>
+            Investigue períodos longos com paginação por intervalo e exportação CSV.
+          </p>
+
+          <div style={filtersGridStyle}>
+            <label style={labelStyle}>
+              From
+              <input
+                type="datetime-local"
+                value={auditFrom}
+                onChange={(event) => setAuditFrom(event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              To
+              <input
+                type="datetime-local"
+                value={auditTo}
+                onChange={(event) => setAuditTo(event.target.value)}
+                style={inputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              Limit
+              <input
+                type="number"
+                min={1}
+                max={2000}
+                value={statusLimit}
+                onChange={(event) => setStatusLimit(Number(event.target.value || 200))}
+                style={inputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              Offset
+              <input
+                type="number"
+                min={0}
+                value={statusOffset}
+                onChange={(event) => setStatusOffset(Number(event.target.value || 0))}
+                style={inputStyle}
+              />
+            </label>
+          </div>
+
+          <div style={actionsRowStyle}>
+            <button type="button" onClick={() => loadStatusAudit(0)} style={buttonWarnStyle} disabled={loading}>
+              {loading ? "Consultando..." : "Consultar inconsistências"}
+            </button>
+            <button type="button" onClick={exportStatusAuditCsv} style={buttonStyle} disabled={loading}>
+              {loading ? "Exportando..." : "Exportar CSV"}
+            </button>
+            <button
+              type="button"
+              onClick={() => loadStatusAudit(Math.max(statusOffset - statusLimit, 0))}
+              style={buttonStyle}
+              disabled={loading || statusOffset <= 0}
+            >
+              Página anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => loadStatusAudit(statusOffset + statusLimit)}
+              style={buttonStyle}
+              disabled={loading || !statusHasMore}
+            >
+              Próxima página
+            </button>
+            <span style={{ color: "rgba(245,247,250,0.8)" }}>
+              Offset atual: {statusOffset} | Itens nesta página: {statusAuditItems.length}
+            </span>
+          </div>
+        </section>
+
         {error ? <pre style={errorStyle}>{error}</pre> : null}
 
         {!error && items.length > 0 ? (
@@ -168,6 +360,26 @@ export default function OpsAuditPage() {
                 <small style={smallStyle}>created_at: {item.created_at || "-"}</small>
               </article>
             ))}
+          </div>
+        ) : null}
+
+        {!error && statusAuditItems.length > 0 ? (
+          <div style={{ marginTop: 16 }}>
+            <h3 style={{ marginTop: 0 }}>Inconsistências de status</h3>
+            <div style={{ display: "grid", gap: 10 }}>
+              {statusAuditItems.map((item) => (
+                <article key={`${item.order_id}-${item.reason}`} style={rowStyle}>
+                  <div style={rowHeadStyle}>
+                    <strong>{item.order_id}</strong>
+                    <span style={badgeStyle("ERROR")}>ATENÇÃO</span>
+                  </div>
+                  <small style={smallStyle}>order_status: {item.order_status || "-"}</small>
+                  <small style={smallStyle}>pickup_status: {item.pickup_status || "-"}</small>
+                  <small style={smallStyle}>picked_up_at: {item.picked_up_at || "-"}</small>
+                  <small style={smallStyle}>reason: {item.reason || "-"}</small>
+                </article>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -195,6 +407,20 @@ const cardStyle = {
   borderRadius: 16,
   padding: 16,
   boxSizing: "border-box",
+};
+
+const subCardStyle = {
+  marginTop: 16,
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.02)",
+  padding: 12,
+};
+
+const subtleTextStyle = {
+  marginTop: 0,
+  marginBottom: 8,
+  color: "rgba(245,247,250,0.75)",
 };
 
 const mutedTextStyle = {
@@ -260,6 +486,13 @@ const buttonStyle = {
   background: "transparent",
   color: "#e2e8f0",
   fontWeight: 600,
+};
+
+const buttonWarnStyle = {
+  ...buttonStyle,
+  border: "1px solid rgba(245,158,11,0.55)",
+  color: "#fde68a",
+  background: "rgba(245,158,11,0.12)",
 };
 
 const errorStyle = {

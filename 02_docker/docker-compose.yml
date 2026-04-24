@@ -290,6 +290,8 @@ services:
       # gateway central
       - PAYMENT_GATEWAY_INTERNAL=http://payment_gateway:8000
       - PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE=/lockers/{locker_id}
+      - BILLING_FISCAL_SERVICE_URL=http://billing_fiscal_service:8020
+      - BILLING_FISCAL_TIMEOUT_SEC=5
 
       # internal token
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}

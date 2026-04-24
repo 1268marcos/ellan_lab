@@ -161,7 +161,12 @@ def _resolve_invoice_type(country: str) -> str:
     return invoice_type
 
 
-def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
+def ensure_invoice_for_order(
+    db: Session,
+    order_id: str,
+    *,
+    allow_missing_paid_event: bool = False,
+) -> Invoice:
     normalized_order_id = str(order_id).strip()
 
     existing = (
@@ -172,7 +177,8 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
     if existing:
         return existing
 
-    if not has_order_paid_event(db, normalized_order_id):
+    paid_event_present = has_order_paid_event(db, normalized_order_id)
+    if (not allow_missing_paid_event) and (not paid_event_present):
         raise ValueError(
             f"Evento financeiro oficial não encontrado para order_id={normalized_order_id}. "
             f"Esperado: order.paid em domain_events."
@@ -208,6 +214,11 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
         currency=order.get("currency") or ("BRL" if country == "BR" else "EUR"),
         amount_cents=order.get("amount_cents"),
         order_snapshot=snapshot,
+        payload_json={
+            "source": "invoice_orchestrator",
+            "manual_generated_without_domain_event": bool(allow_missing_paid_event and not paid_event_present),
+            "paid_event_present": bool(paid_event_present),
+        },
         **fiscal_cols,
     )
 
@@ -228,8 +239,17 @@ def ensure_invoice_for_order(db: Session, order_id: str) -> Invoice:
     return invoice
 
 
-def ensure_and_process_invoice(db: Session, order_id: str) -> Invoice:
-    invoice = ensure_invoice_for_order(db, order_id)
+def ensure_and_process_invoice(
+    db: Session,
+    order_id: str,
+    *,
+    allow_missing_paid_event: bool = False,
+) -> Invoice:
+    invoice = ensure_invoice_for_order(
+        db,
+        order_id,
+        allow_missing_paid_event=allow_missing_paid_event,
+    )
 
     processed = claim_and_process_invoice_by_id(
         db,

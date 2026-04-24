@@ -134,6 +134,17 @@ export async function fetchOrderInvoicePdf(token, orderId) {
   return parseJson(response);
 }
 
+export async function generateOrderInvoiceNow(token, orderId) {
+  const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-generate`, {
+    method: "POST",
+    headers: {
+      ...buildAuthHeaders(token),
+      "Content-Type": "application/json",
+    },
+  });
+  return parseJson(response);
+}
+
 export async function fetchMyCredits(token) {
   const response = await fetch(`${API_BASE}/public/me/credits`, {
     method: "GET",
