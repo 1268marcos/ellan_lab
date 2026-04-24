@@ -539,6 +539,12 @@ Próximo eixo recomendado (cross-sprint): Revisão de domínio de Usuário (fisc
   c) indicador `fiscal_profile_completeness` no payload de autenticação pública,
   d) inclusão de `consumer_fiscal_profile` no `fiscal-context` para enriquecer
      emissão e fallback no billing.
+  - 2026-04-24: Checkout público (`PublicCheckoutPage`) com painel guiado de perfil
+    fiscal + bloqueio de “Criar pedido” até `fiscal_profile_completeness=100%`;
+    billing com gate `FISCAL_REQUIRE_COMPLETE_CONSUMER_FOR_REAL_ISSUE` (default
+    true) antes de `route_issue_invoice` quando provedor real BR/PT está ativo,
+    com bypass por `stub_scenario` / smoke e query `skip_consumer_fiscal_gate`
+    em `POST /admin/fiscal/force-issue/{order_id}`.
 
 Próxima revisão sugerida do documento: 2026-04-29  Responsável: Squad Fiscal/Invoices (operação + backend)
 

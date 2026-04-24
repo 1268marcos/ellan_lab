@@ -170,6 +170,8 @@ def _extract_order_snapshot_fields(snapshot: dict) -> dict:
         order_snapshot["consumer_cpf"] = snapshot.get("consumer_cpf")
         order_snapshot["consumer_name"] = snapshot.get("consumer_name")
         order_snapshot["locker_id"] = snapshot.get("locker_id")
+        if snapshot.get("consumer_fiscal_profile") is not None:
+            order_snapshot["consumer_fiscal_profile"] = snapshot.get("consumer_fiscal_profile")
 
     return {
         "tenant_id": tenant_id,

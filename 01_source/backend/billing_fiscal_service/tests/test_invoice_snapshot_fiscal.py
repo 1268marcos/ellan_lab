@@ -63,3 +63,15 @@ def test_invalid_locker_address_dropped():
     snap = {"order": {"region": "SP", "totem_id": "t"}, "locker_address": "not-a-dict"}
     out = fiscal_columns_from_order_snapshot(snap, country="BR")
     assert out["locker_address"] is None
+
+
+def test_br_consumer_cpf_from_fiscal_profile_when_missing_top_level():
+    snap = {
+        "order": {"region": "SP", "totem_id": "t"},
+        "consumer_fiscal_profile": {
+            "tax_document_type": "CPF",
+            "tax_document_value": "123.456.789-09",
+        },
+    }
+    out = fiscal_columns_from_order_snapshot(snap, country="BR")
+    assert out["consumer_cpf"] == "12345678909"

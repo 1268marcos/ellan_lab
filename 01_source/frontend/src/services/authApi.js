@@ -128,3 +128,15 @@ export async function fetchPublicAuthorizationPolicy() {
   });
   return parseJson(response);
 }
+
+export async function upsertPublicFiscalProfile(token, payload) {
+  const response = await fetch(`${API_BASE}/public/auth/me/fiscal-profile`, {
+    method: "PUT",
+    headers: {
+      ...authHeaders(token),
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return parseJson(response);
+}

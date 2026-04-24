@@ -62,6 +62,11 @@ class Settings(BaseSettings):
     fiscal_real_provider_api_key_br: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_API_KEY_BR")
     fiscal_real_provider_api_key_pt: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_API_KEY_PT")
 
+    fiscal_require_complete_consumer_for_real_issue: bool = Field(
+        default=True,
+        alias="FISCAL_REQUIRE_COMPLETE_CONSUMER_FOR_REAL_ISSUE",
+    )
+
     @property
     def database_url(self) -> str:
         return (

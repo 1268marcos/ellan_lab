@@ -68,6 +68,14 @@ def fiscal_columns_from_order_snapshot(
     if consumer_name is not None:
         consumer_name = str(consumer_name).strip() or None
 
+    profile = snapshot.get("consumer_fiscal_profile") or {}
+    if isinstance(profile, dict) and (country or "").strip().upper() == "BR":
+        if not consumer_cpf and (profile.get("tax_document_type") or "").strip().upper() == "CPF":
+            v = profile.get("tax_document_value")
+            if v is not None:
+                digits = "".join(ch for ch in str(v) if ch.isdigit())
+                consumer_cpf = digits or None
+
     locker_address = snapshot.get("locker_address")
     if locker_address is not None and not isinstance(locker_address, dict):
         locker_address = None

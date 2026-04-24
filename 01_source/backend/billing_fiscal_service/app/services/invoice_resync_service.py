@@ -8,6 +8,7 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.invoice_model import Invoice
+from app.services.fiscal_consumer_gate import assert_consumer_fiscal_ready_for_real_issue
 from app.services.fiscal_router_service import route_issue_invoice_reconnect
 
 
@@ -107,6 +108,7 @@ def claim_and_process_resync_invoice_by_id(
         return None
 
     try:
+        assert_consumer_fiscal_ready_for_real_issue(invoice)
         fiscal_result = route_issue_invoice_reconnect(invoice)
         gov_after = dict(fiscal_result.get("government_response") or {})
         gov_after["sync_pending"] = False

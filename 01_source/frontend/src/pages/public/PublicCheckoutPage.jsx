@@ -9,6 +9,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
+import FiscalProfileCheckoutPanel from "../../components/public/FiscalProfileCheckoutPanel";
 
 import {
   buildOnlineOrderPayload,
@@ -260,7 +261,12 @@ export default function PublicCheckoutPage() {
 
   const invalidParams = !lockerId || !skuId || !slot;
 
-  const { token, isAuthenticated, user, hasRole } = useAuth();
+  const { token, isAuthenticated, user, hasRole, refreshUser } = useAuth();
+
+  const checkoutFiscalCountry = region === "PT" ? "PT" : "BR";
+  const requiresFiscalProfile = checkoutFiscalCountry === "BR" || checkoutFiscalCountry === "PT";
+  const fiscalProfileComplete = Number(user?.fiscal_profile_completeness ?? 0) >= 100;
+  const fiscalReadyForCheckout = !requiresFiscalProfile || fiscalProfileComplete;
 
   const runtimeSkuUrl = useMemo(
     () => `${RUNTIME_BASE}/catalog/skus/${encodeURIComponent(skuId)}`,
@@ -941,6 +947,15 @@ export default function PublicCheckoutPage() {
               </div>
             ) : null}
 
+            {emailVerified && requiresFiscalProfile && !fiscalProfileComplete && token ? (
+              <FiscalProfileCheckoutPanel
+                token={token}
+                user={user}
+                fiscalCountry={checkoutFiscalCountry}
+                onSaved={refreshUser}
+              />
+            ) : null}
+
             {submitError ? (
               <div style={errorBoxStyle}>
                 <strong>Erro ao processar:</strong>
@@ -971,7 +986,8 @@ export default function PublicCheckoutPage() {
                 !allowedPaymentMethods.length ||
                 (paymentMethod === "MBWAY" && !customerPhone.trim()) ||
                 (useCredit && loadingCreditPreview) ||
-                !emailVerified
+                !emailVerified ||
+                !fiscalReadyForCheckout
               }
               style={{
                 ...primaryButtonStyle,
@@ -1010,7 +1026,8 @@ export default function PublicCheckoutPage() {
                   !paymentMethod ||
                   !allowedPaymentMethods.length ||
                   (paymentMethod === "MBWAY" && !customerPhone.trim()) ||
-                  !emailVerified
+                  !emailVerified ||
+                  !fiscalReadyForCheckout
                 }
                 style={{
                   ...buttonDangerStyleDev,

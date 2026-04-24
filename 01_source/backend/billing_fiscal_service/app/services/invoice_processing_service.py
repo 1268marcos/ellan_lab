@@ -12,6 +12,10 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.models.invoice_model import Invoice, InvoiceStatus
+from app.services.fiscal_consumer_gate import (
+    ConsumerFiscalIncompleteError,
+    assert_consumer_fiscal_ready_for_real_issue,
+)
 from app.services.fiscal_router_service import route_issue_invoice
 from app.services.tax_service import apply_tax_to_invoice
 
@@ -166,12 +170,15 @@ def finalize_invoice_failure(
     *,
     invoice: Invoice,
     exc: Exception,
+    error_code: str = "ISSUE_FAILED",
 ) -> Invoice:
-    next_retry_count = int(invoice.retry_count or 0) + 1
     max_retries = _max_retries()
+    next_retry_count = int(invoice.retry_count or 0) + 1
+    if error_code == "CONSUMER_FISCAL_INCOMPLETE":
+        next_retry_count = max_retries
 
     invoice.error_message = str(exc)
-    invoice.last_error_code = "ISSUE_FAILED"
+    invoice.last_error_code = error_code
     invoice.retry_count = next_retry_count
     invoice.locked_by = None
     invoice.locked_at = None
@@ -210,8 +217,16 @@ def process_claimed_invoice(
     try:
         apply_tax_to_invoice(db, invoice)
         db.flush()
+        assert_consumer_fiscal_ready_for_real_issue(invoice)
         result = route_issue_invoice(invoice)
         return finalize_invoice_success(db, invoice=invoice, result=result)
+    except ConsumerFiscalIncompleteError as exc:
+        return finalize_invoice_failure(
+            db,
+            invoice=invoice,
+            exc=exc,
+            error_code="CONSUMER_FISCAL_INCOMPLETE",
+        )
     except Exception as exc:
         return finalize_invoice_failure(db, invoice=invoice, exc=exc)
 

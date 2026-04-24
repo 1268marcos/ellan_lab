@@ -139,6 +139,10 @@ def force_issue_order_invoice(
     order_id: str,
     refresh_after: bool = Query(default=True),
     allow_missing_paid_event: bool = Query(default=True),
+    skip_consumer_fiscal_gate: bool = Query(
+        default=False,
+        description="Operação: ignora gate de perfil fiscal mínimo (ex.: dados legados ou ambiente de teste).",
+    ),
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
@@ -150,6 +154,7 @@ def force_issue_order_invoice(
             db,
             normalized_order_id,
             allow_missing_paid_event=allow_missing_paid_event,
+            skip_consumer_fiscal_gate=skip_consumer_fiscal_gate,
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

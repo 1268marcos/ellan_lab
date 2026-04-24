@@ -244,12 +244,21 @@ def ensure_and_process_invoice(
     order_id: str,
     *,
     allow_missing_paid_event: bool = False,
+    skip_consumer_fiscal_gate: bool = False,
 ) -> Invoice:
     invoice = ensure_invoice_for_order(
         db,
         order_id,
         allow_missing_paid_event=allow_missing_paid_event,
     )
+
+    if skip_consumer_fiscal_gate:
+        payload = dict(invoice.payload_json or {})
+        payload["skip_consumer_fiscal_gate"] = True
+        invoice.payload_json = payload
+        db.add(invoice)
+        db.commit()
+        db.refresh(invoice)
 
     processed = claim_and_process_invoice_by_id(
         db,
