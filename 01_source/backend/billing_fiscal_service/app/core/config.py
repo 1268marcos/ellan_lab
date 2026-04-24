@@ -52,6 +52,16 @@ class Settings(BaseSettings):
     invoice_email_max_retries: int = Field(default=5, alias="INVOICE_EMAIL_MAX_RETRIES")
     invoice_email_lock_sec: int = Field(default=120, alias="INVOICE_EMAIL_LOCK_SEC")
 
+    # F-3 — adapters de provider real (primeiro slice: estrutura + feature flags)
+    fiscal_real_provider_br_enabled: bool = Field(default=False, alias="FISCAL_REAL_PROVIDER_BR_ENABLED")
+    fiscal_real_provider_pt_enabled: bool = Field(default=False, alias="FISCAL_REAL_PROVIDER_PT_ENABLED")
+    fiscal_real_provider_timeout_sec: int = Field(default=8, alias="FISCAL_REAL_PROVIDER_TIMEOUT_SEC")
+    fiscal_real_provider_retries: int = Field(default=2, alias="FISCAL_REAL_PROVIDER_RETRIES")
+    fiscal_real_provider_base_url_br: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_BASE_URL_BR")
+    fiscal_real_provider_base_url_pt: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_BASE_URL_PT")
+    fiscal_real_provider_api_key_br: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_API_KEY_BR")
+    fiscal_real_provider_api_key_pt: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_API_KEY_PT")
+
     @property
     def database_url(self) -> str:
         return (

@@ -142,8 +142,8 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   [ ] INTEGRATION: client SVRS/SEFAZ — autorização, retry lote
   [ ] INTEGRATION: modo contingência SAT/MFe offline + sync ao reconectar
   [ ] INTEGRATION: client AT Portugal real (REST AT2024 ou SOAP legacy)
-  [ ] INTEGRATION: POST /internal/fiscal/callback — retorno async autoridades
-  [ ] DELIVERY: DANFE PDF simplificado + payload JSON impressora térmica
+  [x] INTEGRATION: POST /internal/fiscal/callback — retorno async autoridades
+  [~] DELIVERY: DANFE PDF simplificado + payload JSON impressora térmica
         (MQTT/HTTP)
 
   [~] DELIVERY: fila `invoice_email_outbox` + 4º loop no `invoice_issue_worker`;
@@ -151,6 +151,13 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
         `SMTP_FROM`, `SMTP_USE_TLS` / `SMTP_USE_SSL`; log `SENT` | `SENT_STUB` | retries
   [~] INTEGRATION: CC-e stub BR — campo `xml_event_preview` (evento 110110) + espelho em `raw`
         (pré-SVRS; não assinado)
+  [~] INTEGRATION: feature flags de provider real BR/PT no router
+        (`FISCAL_REAL_PROVIDER_BR_ENABLED`, `FISCAL_REAL_PROVIDER_PT_ENABLED`)
+        com adapters `*_real_adapter` e fallback explícito para stubs atuais
+  [~] INTEGRATION: client HTTP real BR/PT com timeout/retry + normalização para contrato
+        interno (`issue/cancel/correction-event`) e fallback em indisponibilidade
+  [~] OPS: painel mínimo de providers fiscais (status por país, health/last_error,
+        botão de teste de conectividade BR/PT)
 
   SCHEMA: fiscal_authority_callbacks (invoice_id, authority, raw_payload, ...)
 
@@ -158,6 +165,21 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   - 2026-04-23: F-3 parcial — tabela `invoice_email_outbox` (migração startup),
     `invoice_email_queue_service` (claim/retry/backoff), SMTP real quando habilitado;
     `sefaz_sp_cc_e_stub` passa a expor `xml_event_preview` orientado ao evento SEFAZ.
+  - 2026-04-24: F-3 slice 1 — `fiscal_router_service` passa a selecionar provider por
+    feature flag (BR/PT); novos adapters `sefaz_svrs_real_adapter` e
+    `at_pt_real_adapter` adicionam ponto único para integração real, preservando
+    fallback para os stubs.
+  - 2026-04-24: F-3 slice 2 — `fiscal_real_provider_client` (requests + timeout/retry)
+    conectado aos adapters BR/PT; respostas normalizadas para o contrato atual de
+    emissão/cancelamento/correção; falha de provider aciona fallback automático.
+  - 2026-04-24: F-3 ops — endpoints `GET /admin/fiscal/providers/status` e
+    `POST /admin/fiscal/providers/test-connectivity`; tabela
+    `fiscal_provider_health_status`; página `ops /fiscal/providers` no frontend.
+  - 2026-04-24: F-3 — endpoint `POST /internal/fiscal/callback` implementado com
+    persistência em `fiscal_authority_callbacks` e espelho de histórico em
+    `invoice.government_response.authority_callbacks`.
+  - 2026-04-24: F-3 — endpoint `GET /admin/fiscal/danfe/{invoice_id}/pdf`
+    adiciona DANFE PDF simplificado em `content_base64` (`pdf_stub_base64_v1`).
 
 
 -------------------------------------------------------------------------------
@@ -219,10 +241,10 @@ Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
 
   User stories
   [x] WORKER: reconciliação — PAID sem invoice / ISSUED sem PAID — cron alerts
-  [~] API: GET /admin/fiscal/gaps?date= + POST .../force-issue/{order_id}
-  [ ] EXPORT: job mensal SPED/EFD (BR)
-  [ ] EXPORT: job mensal SAF-T (PT, Portaria 302/2016)
-  [ ] MONITOR: /admin/fiscal/dead-letters + alertas threshold
+  [x] API: GET /admin/fiscal/gaps?date= + POST /admin/fiscal/force-issue/{order_id}
+  [x] EXPORT: job mensal SPED/EFD (BR)
+  [x] EXPORT: job mensal SAF-T (PT, Portaria 302/2016)
+  [x] MONITOR: /admin/fiscal/dead-letters + alertas threshold
 
   SCHEMA: fiscal_reconciliation_gaps
 
@@ -231,6 +253,11 @@ Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
     `fiscal_reconciliation_service` (scan + resolve), worker dedicado
     `invoice_reconciliation_worker`, endpoint `GET /admin/fiscal/gaps`
     (`refresh=1`, `status`, `date`, `limit`).
+  - 2026-04-24: I-3 — endpoint `POST /admin/fiscal/force-issue/{order_id}` força
+    emissão via orquestrador e resolve gap `paid_without_invoice:{order_id}` quando aberto.
+  - 2026-04-24: I-3 — monitor `GET /admin/fiscal/dead-letters` (invoice/email outbox + threshold),
+    exports `GET /admin/fiscal/exports/sped-efd` e `GET /admin/fiscal/exports/saft-pt`
+    (payload mensal stub v1 para operacionalizar jobs cron).
 
 
 ================================================================================
@@ -241,10 +268,10 @@ Quadro rápido de status por sprint (atualizar semanalmente)
   O-1      Contrato Orders + eventos              [x]
   F-1      Schema unificado NFC-e 65              [x]
   F-2      Tax engine BR/PT                       [x]
-  F-3      Integração provedores + DANFE          [~]       fila e-mail + SMTP env; CC-e XML preview stub
+  F-3      Integração provedores + DANFE          [~]       smtp+cc-e+adapters+http retry/fallback
   I-1      Integração Orders resiliente           [x]       VIEW + fallbacks HTTP
   I-2      Cancelamento + entrega documento       [x]       cancel+CC-e+danfe thermal+reissue receipt code
-  I-3      Reconciliação + exports + monitor      [~]       worker+GET /admin/fiscal/gaps
+  I-3      Reconciliação + exports + monitor      [x]       worker+gaps+force-issue+exports+dead-letters
 
 Riscos / decisões pendentes (lista viva)
 ----------------------------------------

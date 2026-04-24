@@ -38,6 +38,7 @@ const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPo
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
+const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -215,6 +216,7 @@ function TopNav() {
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id" },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional" },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas" },
+    { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -727,6 +729,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/fiscal/providers"
+              element={
+                <OpsRoute>
+                  <OpsFiscalProvidersPage />
                 </OpsRoute>
               }
             />

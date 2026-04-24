@@ -17,6 +17,8 @@ REQUIRED_TABLES = {
     "invoice_delivery_log",
     "invoice_email_outbox",
     "fiscal_reconciliation_gaps",
+    "fiscal_provider_health_status",
+    "fiscal_authority_callbacks",
 }
 
 REQUIRED_COLUMNS = {
@@ -243,6 +245,52 @@ def _ensure_fiscal_reconciliation_gaps(engine: Engine) -> None:
         conn.execute(text(stmt))
 
 
+def _ensure_fiscal_provider_health_status(engine: Engine) -> None:
+    stmt = """
+    CREATE TABLE IF NOT EXISTS fiscal_provider_health_status (
+        country VARCHAR(5) NOT NULL PRIMARY KEY,
+        provider_name VARCHAR(80) NOT NULL,
+        mode VARCHAR(20) NOT NULL DEFAULT 'stub',
+        enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        base_url VARCHAR(300),
+        last_status VARCHAR(20) NOT NULL DEFAULT 'UNKNOWN',
+        last_http_status INTEGER,
+        last_latency_ms INTEGER,
+        last_error VARCHAR(1000),
+        checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS ix_fiscal_provider_health_country
+        ON fiscal_provider_health_status (country);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_provider_health_checked_at
+        ON fiscal_provider_health_status (checked_at);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_fiscal_authority_callbacks(engine: Engine) -> None:
+    stmt = """
+    CREATE TABLE IF NOT EXISTS fiscal_authority_callbacks (
+        id VARCHAR(60) NOT NULL PRIMARY KEY,
+        invoice_id VARCHAR(50) NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+        authority VARCHAR(30) NOT NULL,
+        event_type VARCHAR(80),
+        status VARCHAR(40),
+        protocol_number VARCHAR(120),
+        raw_payload JSONB,
+        received_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS ix_fiscal_cb_invoice
+        ON fiscal_authority_callbacks (invoice_id);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_cb_authority
+        ON fiscal_authority_callbacks (authority);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_cb_received_at
+        ON fiscal_authority_callbacks (received_at);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
 def _ensure_unique_constraint(engine: Engine) -> None:
     stmt = """
     DO $$
@@ -263,6 +311,8 @@ def _ensure_unique_constraint(engine: Engine) -> None:
 
 def run_startup_migrations(engine: Engine) -> None:
     from app.models.base import Base
+    from app.models.fiscal_authority_callback import FiscalAuthorityCallback  # noqa: F401
+    from app.models.fiscal_provider_health_status import FiscalProviderHealthStatus  # noqa: F401
     from app.models.fiscal_reconciliation_gap import FiscalReconciliationGap  # noqa: F401
     from app.models.invoice_delivery_log import InvoiceDeliveryLog  # noqa: F401
     from app.models.invoice_email_outbox import InvoiceEmailOutbox  # noqa: F401
@@ -300,6 +350,8 @@ def run_startup_migrations(engine: Engine) -> None:
     _ensure_invoice_delivery_log(engine)
     _ensure_invoice_email_outbox(engine)
     _ensure_fiscal_reconciliation_gaps(engine)
+    _ensure_fiscal_provider_health_status(engine)
+    _ensure_fiscal_authority_callbacks(engine)
     _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)

@@ -1,5 +1,6 @@
 # 01_source/backend/billing_fiscal_service/app/main.py
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_admin_fiscal import router as admin_fiscal_router
 from app.api.routes_fiscal import router as fiscal_router
@@ -7,6 +8,14 @@ from app.api.routes_invoice import router as invoice_router
 from app.core.db import init_db
 
 app = FastAPI(title="Billing Fiscal Service")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.on_event("startup")
