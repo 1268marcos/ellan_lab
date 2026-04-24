@@ -7,6 +7,14 @@ from app.integrations.fiscal_real_provider_client import cancel_invoice as provi
 from app.integrations.fiscal_real_provider_client import correction_event as provider_correction_event
 from app.integrations.fiscal_real_provider_client import issue_invoice as provider_issue_invoice
 from app.models.invoice_model import Invoice
+from app.services.fiscal_provider_contract import (
+    build_cancel_payload,
+    build_correction_payload,
+    build_issue_payload,
+    normalize_cancel_response,
+    normalize_correction_response,
+    normalize_issue_response,
+)
 from app.services.sefaz_sp_service import (
     sefaz_sp_cancel_invoice,
     sefaz_sp_cc_e_stub,
@@ -16,56 +24,19 @@ from app.services.sefaz_sp_service import (
 logger = logging.getLogger(__name__)
 
 
-def _issue_payload(invoice: Invoice) -> dict:
-    return {
-        "invoice_id": invoice.id,
-        "order_id": invoice.order_id,
-        "country": "BR",
-        "region": invoice.region,
-        "amount_cents": int(invoice.amount_cents or 0),
-        "currency": invoice.currency,
-        "payment_method": invoice.payment_method,
-        "tax_breakdown_json": invoice.tax_breakdown_json,
-        "order_snapshot": invoice.order_snapshot,
-    }
-
-
-def _normalize_issue_response(invoice: Invoice, raw: dict) -> dict:
-    invoice_number = raw.get("invoice_number") or raw.get("number") or f"SVRS-{invoice.id[-6:]}"
-    invoice_series = raw.get("invoice_series") or raw.get("series") or "SVRS-1"
-    access_key = raw.get("access_key") or raw.get("chave") or invoice.access_key
-    gov = raw.get("government_response") if isinstance(raw.get("government_response"), dict) else {}
-    if not gov:
-        gov = {
-            "provider_namespace": "svrs_real",
-            "provider_status": str(raw.get("provider_status") or raw.get("status") or "AUTHORIZED"),
-            "provider_code": str(raw.get("provider_code") or raw.get("code") or "100"),
-            "provider_message": str(raw.get("provider_message") or raw.get("message") or "Autorizado."),
-            "receipt_number": raw.get("receipt_number"),
-            "protocol_number": raw.get("protocol_number"),
-            "raw": raw,
-        }
-    return {
-        "provider": "svrs_real",
-        "country": "BR",
-        "status": "ISSUED",
-        "invoice_number": invoice_number,
-        "invoice_series": invoice_series,
-        "access_key": access_key,
-        "tax_details": raw.get("tax_details") or invoice.tax_details or {},
-        "xml_content": raw.get("xml_content") or invoice.xml_content or {"format": "xml_real_provider"},
-        "government_response": gov,
-    }
-
-
 def issue_invoice_real_or_fallback(invoice: Invoice) -> dict:
     """
     Slice F-3: ponto único para integrar SVRS/SEFAZ real.
     Enquanto o client oficial não está plugado, mantém fallback para stub atual.
     """
     try:
-        raw = provider_issue_invoice("BR", _issue_payload(invoice))
-        return _normalize_issue_response(invoice, raw)
+        raw = provider_issue_invoice("BR", build_issue_payload(invoice=invoice, country="BR"))
+        return normalize_issue_response(
+            invoice=invoice,
+            country="BR",
+            provider="svrs_real",
+            raw=raw,
+        )
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_svrs_real_failed_fallback_stub",
@@ -83,23 +54,13 @@ def issue_invoice_real_or_fallback(invoice: Invoice) -> dict:
 
 def cancel_invoice_real_or_fallback(invoice: Invoice) -> dict:
     try:
-        raw = provider_cancel_invoice(
-            "BR",
-            {
-                "invoice_id": invoice.id,
-                "order_id": invoice.order_id,
-                "access_key": invoice.access_key,
-            },
+        raw = provider_cancel_invoice("BR", build_cancel_payload(invoice=invoice, country="BR"))
+        return normalize_cancel_response(
+            invoice=invoice,
+            country="BR",
+            provider="svrs_real",
+            raw=raw,
         )
-        return {
-            "provider": "svrs_real",
-            "country": "BR",
-            "cancel_status": str(raw.get("cancel_status") or raw.get("status") or "CANCELLED"),
-            "access_key": raw.get("access_key") or invoice.access_key,
-            "protocol_number": raw.get("protocol_number"),
-            "processed_at": raw.get("processed_at"),
-            "raw": raw,
-        }
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_svrs_cancel_real_failed_fallback_stub",
@@ -117,25 +78,15 @@ def cce_event_real_or_fallback(invoice: Invoice, correction_text: str | None) ->
     try:
         raw = provider_correction_event(
             "BR",
-            {
-                "invoice_id": invoice.id,
-                "order_id": invoice.order_id,
-                "access_key": invoice.access_key,
-                "correction_text": correction_text,
-            },
+            build_correction_payload(invoice=invoice, country="BR", correction_text=correction_text),
         )
-        return {
-            "provider": "svrs_real",
-            "kind": "cce",
-            "country": "BR",
-            "access_key": raw.get("access_key") or invoice.access_key,
-            "sequence": int(raw.get("sequence") or 1),
-            "correction_text": str(raw.get("correction_text") or correction_text or "")[:1000],
-            "protocol_number": raw.get("protocol_number"),
-            "processed_at": raw.get("processed_at"),
-            "xml_event_preview": raw.get("xml_event_preview"),
-            "raw": raw,
-        }
+        return normalize_correction_response(
+            invoice=invoice,
+            country="BR",
+            provider="svrs_real",
+            correction_text=correction_text,
+            raw=raw,
+        )
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_svrs_cce_real_failed_fallback_stub",

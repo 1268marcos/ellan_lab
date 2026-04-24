@@ -159,6 +159,26 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   [~] OPS: painel mínimo de providers fiscais (status por país, health/last_error,
         botão de teste de conectividade BR/PT)
 
+  Definition of Done para fechamento F-3 (itens em aberto/parciais)
+  - NFC-e XML + A1 [~] → XML validado contra schema v4.00, assinatura A1 real
+    (sem `A1_STUB_PENDING`), homologação com evidência de autorização e rejeições
+    tratadas (código SEFAZ + retry/backoff observado).
+  - Client SVRS/SEFAZ [ ] → autorização/cancelamento/correção via provider real,
+    lote com retry idempotente, timeout e circuito de fallback validados em teste
+    de indisponibilidade.
+  - Client AT PT real [ ] → emissão/cancelamento no provedor PT (REST/SOAP definido),
+    normalização de erros para contrato interno e evidência de chamada homologada.
+  - DANFE delivery [~] → payload PDF/JSON consumível em operação (download + impressão
+    térmica) com smoke test manual e log de rastreabilidade por invoice.
+  - SMTP/outbox [~] → fluxo `QUEUED→SENT` estável em ambiente alvo, retries observáveis,
+    métricas de erro e cooldown operacional documentado.
+  - CC-e [~] → sair de preview stub para fluxo assinado/envio real ou registrar decisão
+    formal de escopo (feature flag + rollout posterior).
+  - Feature flags/adapters/client [~] → critério de go-live definido (flag por país,
+    rollback imediato, runbook, owner de plantão).
+  - OPS providers [~] → alertas acionáveis (latência/erro), health com timestamp de
+    última checagem e playbook de resposta operacional.
+
   SCHEMA: fiscal_authority_callbacks (invoice_id, authority, raw_payload, ...)
 
   Registro de evolução
@@ -227,6 +247,155 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   - 2026-04-24: Correção de consistência pós-retirada — `pickup_expiration_handler`
     passa a tratar `DISPENSED` e `EXPIRED*` como terminais na expiração tardia para
     evitar regressão de pedido já retirado para `EXPIRED_CREDIT_50`.
+  - 2026-04-24: F-3 planejamento de fechamento — definida estratégia em ondas:
+    F-3A (SVRS/SEFAZ real), F-3B (AT PT real), F-3C (hardening operacional:
+    assinatura A1 real, alertas/runbook, contingência e rollback).
+  - 2026-04-24: F-3 execução orientada a ambiente sem credenciais oficiais —
+    backlog tático prioriza STUB-READY (contrato, observabilidade, fallback e
+    feature flags) para permitir avanço imediato sem bloqueio SEFAZ/AT.
+  - 2026-04-24: Execução Dia 1 iniciada (F3A-STUB-01/F3A-STUB-02) —
+    criado `fiscal_provider_contract` (payload/normalização canônicos BR/PT),
+    adapters BR/PT migrados para contrato único e `fiscal_real_provider_client`
+    evoluído com matriz determinística de falhas (`stub_scenario`) + classificação
+    retryable/non-retryable para evolução STUB-READY.
+  - 2026-04-24: F3A-STUB-02 (ops triagem) — `/admin/fiscal/providers/status`
+    passa a expor `canonical_error_codes` e metadados de erro por provider
+    (`last_error_code`, `last_error_retryable`, `last_error_attempts`), com
+    exibição no painel `ops/fiscal/providers` para diagnóstico rápido em plantão.
+  - 2026-04-24: F3A-STUB-03 iniciado — simulador avançado de lote SVRS/SEFAZ
+    em `/admin/fiscal/providers/stub/svrs/*` com submissão assíncrona (recibo),
+    consulta de processamento por `receipt_number` e idempotência por
+    `idempotency_key` (state em memória para desenvolvimento).
+  - 2026-04-24: F3A-STUB-03 integração no fluxo de emissão — `stub_scenario=svrs_batch_async`
+    conectado ao `fiscal_real_provider_client.issue_invoice` (BR), com suporte a
+    `stub_batch_poll_count` e reaproveitamento de `idempotency_key`; payload de
+    emissão (contrato canônico) passa a aceitar controles stub via `invoice.payload_json`.
+  - 2026-04-24: F3A-STUB-03 smoke test one-click — endpoint
+    `POST /admin/fiscal/providers/stub/svrs/smoke-issue/{order_id}` injeta
+    automaticamente `payload_json` (`stub_scenario=svrs_batch_async`) e executa
+    emissão imediata para validação operacional rápida no ELLAN LAB.
+  - 2026-04-24: Smoke endpoint aprimorado — parâmetro `force_reprocess=true`
+    permite reset/reemissão da invoice no mesmo `order_id` (mesmo se já `ISSUED`)
+    para validar cenários `svrs_batch_async` sem necessidade de novo pedido.
+  - 2026-04-24: Validação operacional E2E concluída — fluxo público exibindo
+    invoice billing com código curto `BR-ONL-XXXXXXXX`, `invoice_id` e estado
+    fiscal `GERADO` após emissão; smoke reprocess validado com semáforo `OK`
+    no OPS (`provider_namespace=svrs_real`, `batch_async=true`).
+  - 2026-04-24: Correção UX/CX de impressão pública — rota
+    `/public/fiscal/print/{code}` passa a resolver também invoices billing por
+    código curto (fallback além de `FiscalDocument` legado), eliminando 404 nos
+    botões "Abrir impressão" / "Imprimir PDF" para recibos `BR-ONL-*`.
+  - 2026-04-24: UX comprovante fiscal (billing) — adicionado código reduzido
+    no padrão `BR-ONL-XXXXXXXX` para invoices billing; lookup público
+    `/public/fiscal/by-code/{code}` passa a resolver também invoices do billing
+    (via endpoint interno `GET /internal/invoices/by-receipt-code/{receipt_code}`).
+
+  Backlog executável (próximo sprint) — foco STUB-READY
+  ------------------------------------------------------
+  Convenção
+  - Owner sugerido: BE-Fiscal (backend fiscal), BE-Pickup (order_pickup), FE-OPS (frontend ops), SRE/OPS.
+  - Estimativa: P (0.5–1 dia), M (1–2 dias), G (3–4 dias).
+  - Critério global: tudo deve operar com provider STUB por default e ativação real via flags.
+
+  Ordem de ataque recomendada (execução imediata)
+
+  1) F3A-STUB-01 — Contrato único de provider BR/PT (issue/cancel/cce)
+     Owner: BE-Fiscal | Estimativa: M
+     Entrega: normalização final de request/response + códigos de erro canônicos.
+     DoD: testes de contrato passando com adapters stub BR/PT; sem dependência externa.
+
+  2) F3A-STUB-02 — Matriz de erros e retry/backoff determinístico
+     Owner: BE-Fiscal | Estimativa: M
+     Entrega: catálogo de falhas simuladas (timeout, 429, 5xx, rejeição fiscal).
+     DoD: cenários cobertos por testes; fallback automático validado em logs.
+
+  3) F3A-STUB-03 — Simulador de lote SVRS/SEFAZ (stub avançado)
+     Owner: BE-Fiscal | Estimativa: G
+     Entrega: endpoint stub que simula autorização em lote, recibo e consulta de processamento.
+     DoD: fluxo fim-a-fim em staging local com estados consistentes e idempotência.
+
+  4) F3B-STUB-01 — Simulador AT PT (REST/SOAP abstraction)
+     Owner: BE-Fiscal | Estimativa: G
+     Entrega: camada de abstração AT com mock provider intercambiável (REST/SOAP).
+     DoD: issue/cancel funcionais em stub PT; contrato interno estável para go-live futuro.
+
+  5) F3C-STUB-01 — Assinatura A1 “dry-run” (sem certificado oficial)
+     Owner: BE-Fiscal | Estimativa: M
+     Entrega: pipeline de assinatura preparado para chave de teste/local, mantendo compatibilidade A1 real.
+     DoD: xml assinado em modo teste + verificação local + flag de ambiente.
+
+  6) F3C-STUB-02 — Observabilidade operacional de providers
+     Owner: SRE/OPS + BE-Fiscal | Estimativa: M
+     Entrega: métricas mínimas (latência, erro, fallback_count, sync_pending_count).
+     DoD: `/admin/fiscal/providers/status` refletindo métricas e último erro de forma acionável.
+
+  7) F3C-STUB-03 — Runbook único de incidentes fiscais
+     Owner: SRE/OPS | Estimativa: P
+     Entrega: playbook com árvore de decisão (provider down, timeout, rejeição, fila travada).
+     DoD: documento publicado + checklist de plantão + responsável por turno.
+
+  8) F3C-STUB-04 — Testes de regressão de contingência e re-sync
+     Owner: BE-Fiscal | Estimativa: M
+     Entrega: suíte de regressão para `OFFLINE_SAT`/`CONTINGENCY_SVRS` + `sync_pending`.
+     DoD: teste automatizado cobrindo ida/volta de conectividade e consistência final.
+
+  9) OPS-UX-01 — Finalização UX da auditoria (plantão)
+     Owner: FE-OPS | Estimativa: P
+     Entrega: presets, paginação, export CSV e reset de filtros (já implementado) com smoke test guiado.
+     DoD: roteiro curto de operação validado por suporte (sem erros de fluxo).
+
+  10) RELEASE-GATE-01 — Gate de ativação real por feature flag
+      Owner: BE-Fiscal + SRE/OPS | Estimativa: P
+      Entrega: checklist de go-live por país (`BR`, `PT`) com rollback one-click via env.
+      DoD: decisão explícita “stub only” vs “real enabled” por ambiente.
+
+  Dependências críticas (para não travar sprint)
+  - Enquanto não houver credenciais oficiais SEFAZ/AT, manter `FISCAL_REAL_PROVIDER_*_ENABLED=false`.
+  - Todas as histórias acima devem ser entregáveis em modo stub, com evidência em testes/logs.
+  - Qualquer integração real fica atrás de flag e nunca bloqueia deploy de melhoria operacional.
+
+  Sprint Board (pronto para execução diária)
+  ------------------------------------------
+  Status inicial sugerido (início do sprint)
+
+  To Do
+  - F3A-STUB-01 — Contrato único de provider BR/PT (issue/cancel/cce)
+  - F3A-STUB-02 — Matriz de erros e retry/backoff determinístico
+  - F3A-STUB-03 — Simulador de lote SVRS/SEFAZ (stub avançado)
+  - F3B-STUB-01 — Simulador AT PT (REST/SOAP abstraction)
+  - F3C-STUB-01 — Assinatura A1 “dry-run” (sem certificado oficial)
+  - F3C-STUB-02 — Observabilidade operacional de providers
+  - F3C-STUB-03 — Runbook único de incidentes fiscais
+  - F3C-STUB-04 — Testes de regressão de contingência e re-sync
+  - OPS-UX-01 — Finalização UX da auditoria (plantão)
+  - RELEASE-GATE-01 — Gate de ativação real por feature flag
+
+  In Progress
+  - (iniciar pelo item F3A-STUB-01)
+
+  Done
+  - (preencher diariamente)
+
+  Sequência sugerida de 5 dias (execução objetiva)
+  - Dia 1 (fundação de contrato + estabilidade):
+    F3A-STUB-01, F3A-STUB-02
+  - Dia 2 (simulação BR avançada):
+    F3A-STUB-03
+  - Dia 3 (simulação PT + assinatura dry-run):
+    F3B-STUB-01, F3C-STUB-01
+  - Dia 4 (ops + qualidade):
+    F3C-STUB-02, F3C-STUB-04, OPS-UX-01
+  - Dia 5 (go-live controlado + operação):
+    F3C-STUB-03, RELEASE-GATE-01
+
+  Regra diária de execução (cadência)
+  - Daily: mover no máximo 2 itens para In Progress por vez (foco e throughput).
+  - Critério de Done: código + evidência (teste/log/smoke) + nota curta no Registro de evolução.
+  - Encerramento do dia: atualizar board e riscos com bloqueios reais (se houver).
+
+  Definição de início imediato (hoje)
+  - Iniciar agora: F3A-STUB-01 (BE-Fiscal) + F3A-STUB-02 (BE-Fiscal).
+  - Se houver capacidade paralela: abrir F3C-STUB-03 (SRE/OPS) em paralelo.
 
 
 -------------------------------------------------------------------------------
@@ -334,10 +503,35 @@ Quadro rápido de status por sprint (atualizar semanalmente)
 
 Riscos / decisões pendentes (lista viva)
 ----------------------------------------
-  -
-  -
+  - Risco: certificado A1 (provisionamento/rotação/segurança) atrasar entrada em produção.
+    Mitigação: checklist de vault + owner + janela de rotação + teste de assinatura diário.
+  - Risco: indisponibilidade/intermitência SEFAZ/SVRS impactar emissão em pico.
+    Mitigação: contingência OFFLINE_SAT/CONTINGENCY_SVRS com runbook e monitoração ativa.
+  - Risco: integração AT PT real (REST/SOAP) exigir ajustes de contrato fora do previsto.
+    Mitigação: decisão técnica antecipada do provider/protocolo e spike dedicado F-3B.
+  - Decisão pendente: escopo final de CC-e (real agora vs rollout posterior com flag).
+    Mitigação: formalizar decisão de produto/compliance antes do code freeze F-3.
+  - Risco: ruído operacional sem playbook único para suporte.
+    Mitigação: publicar runbook F-3 com matriz de falhas/ação e responsáveis de plantão.
+  - Risco estrutural (próximo sprint): domínio de Usuário incompleto para fiscal
+    (endereço, documento fiscal, atributos de destinatário e consentimentos).
+    Mitigação: abrir trilha dedicada de revisão/normalização de dados de usuário
+    com contrato mínimo obrigatório por país antes do go-live real SEFAZ/AT.
 
-Próxima revisão sugerida do documento: _______________  Responsável: ___________
+Próximo eixo recomendado (cross-sprint): Revisão de domínio de Usuário (fiscal)
+----------------------------------------------------------------------------
+- Objetivo: garantir que emissão fiscal, entrega de documento e compliance
+  tenham dados mínimos obrigatórios por país (BR/PT e expansão futura).
+- Escopo inicial:
+  1) Documento fiscal do destinatário (CPF/NIF/etc.) + regras por país.
+  2) Endereço estruturado e validado (logradouro, número, cidade, UF/PAÍS, CEP).
+  3) Contato de entrega fiscal (e-mail/telefone) com status de validade.
+  4) Política de consentimentos e retenção de dados.
+  5) Retrocompatibilidade + migração/backfill para usuários legados.
+- Saída esperada: contrato de usuário fiscal v1 + checklist de completude no
+  frontend/backend + métricas de cobertura (% pedidos com dados fiscais completos).
+
+Próxima revisão sugerida do documento: 2026-04-29  Responsável: Squad Fiscal/Invoices (operação + backend)
 
 ================================================================================
 Fim do template de acompanhamento — editar este arquivo conforme as entregas.

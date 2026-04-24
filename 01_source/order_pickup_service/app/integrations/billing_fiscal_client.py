@@ -85,6 +85,44 @@ def fetch_invoice_by_order_id(order_id: str) -> dict[str, Any] | None:
         return None
 
 
+def fetch_invoice_by_receipt_code(receipt_code: str) -> dict[str, Any] | None:
+    base = (getattr(settings, "billing_fiscal_service_url", None) or "").strip()
+    if not base:
+        return None
+
+    code = str(receipt_code or "").strip()
+    if not code:
+        return None
+
+    url = f"{base.rstrip('/')}/internal/invoices/by-receipt-code/{code}"
+    headers = {
+        "X-Internal-Token": settings.internal_token,
+        "Accept": "application/json",
+    }
+    timeout = int(getattr(settings, "billing_fiscal_timeout_sec", 5) or 5)
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+    except requests.RequestException as exc:
+        logger.warning("billing_fiscal_fetch_by_receipt_failed code=%s err=%s", code, exc)
+        return None
+
+    if resp.status_code == 404:
+        return None
+    if resp.status_code >= 400:
+        logger.warning(
+            "billing_fiscal_fetch_by_receipt_http code=%s status=%s body=%s",
+            code,
+            resp.status_code,
+            (resp.text or "")[:500],
+        )
+        return None
+    try:
+        return resp.json()
+    except Exception as exc:
+        logger.warning("billing_fiscal_fetch_by_receipt_bad_json code=%s err=%s", code, exc)
+        return None
+
+
 def resend_invoice_email_by_order_id(order_id: str) -> dict[str, Any]:
     """
     Resolve invoice por order_id e solicita reenvio de e-mail fiscal no billing.

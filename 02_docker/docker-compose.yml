@@ -424,6 +424,23 @@ services:
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
       TZ: UTC
+
+      # F-3 STUB-READY (SVRS batch async via adapter real flag)
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "true"
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+
+      # Pode ser URL fictícia; o stub_scenario intercepta antes do HTTP real
+      FISCAL_REAL_PROVIDER_BASE_URL_BR: "http://stub.local"
+      FISCAL_REAL_PROVIDER_BASE_URL_PT: ""
+
+      # Opcional em stub
+      FISCAL_REAL_PROVIDER_API_KEY_BR: ""
+      FISCAL_REAL_PROVIDER_API_KEY_PT: ""
+
+      # Retry/timeout do client (útil para simulações)
+      FISCAL_REAL_PROVIDER_TIMEOUT_SEC: 8
+      FISCAL_REAL_PROVIDER_RETRIES: 2
+
     ports:
       - "8020:8020"
     depends_on:
@@ -464,6 +481,23 @@ services:
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
       TZ: UTC
+
+      # F-3 STUB-READY (SVRS batch async via adapter real flag)
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "true"
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+
+      # Pode ser URL fictícia; o stub_scenario intercepta antes do HTTP real
+      FISCAL_REAL_PROVIDER_BASE_URL_BR: "http://stub.local"
+      FISCAL_REAL_PROVIDER_BASE_URL_PT: ""
+
+      # Opcional em stub
+      FISCAL_REAL_PROVIDER_API_KEY_BR: ""
+      FISCAL_REAL_PROVIDER_API_KEY_PT: ""
+
+      # Retry/timeout do client (útil para simulações)
+      FISCAL_REAL_PROVIDER_TIMEOUT_SEC: 8
+      FISCAL_REAL_PROVIDER_RETRIES: 2
+
     depends_on:
       postgres_central:
         condition: service_healthy

@@ -23,10 +23,12 @@ def test_fiscal_read_view_from_billing_minimal():
     }
     v = fiscal_read_view_from_billing_invoice(inv)
     assert v.source == "billing"
-    assert v.receipt_code == "ABC123KEY"
+    assert v.receipt_code.startswith("BR-")
     assert v.order_id == "ord-1"
     assert v.payload_json["pickup"]["locker_id"] == "L1"
-    assert v.print_site_path == "/public/fiscal/print/ABC123KEY"
+    assert v.payload_json["receipt_code_full"] == "ABC123KEY"
+    assert v.payload_json["receipt_lookup_supported"] is True
+    assert v.print_site_path is None
 
 
 def test_extract_attempt_from_payload():

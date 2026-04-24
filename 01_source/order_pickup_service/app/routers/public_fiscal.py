@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 
 from app.core.db import get_db
 from app.models.fiscal_document import FiscalDocument
+from app.integrations.billing_fiscal_client import fetch_invoice_by_receipt_code
+from app.services.fiscal_read_adapter import fiscal_read_view_from_billing_invoice
 from app.services.fiscal_resolve import FiscalReadable
 
 from app.core.datetime_utils import to_iso_utc
@@ -695,6 +697,10 @@ def public_fiscal_by_code(
     )
 
     if not doc:
+        billing_inv = fetch_invoice_by_receipt_code(normalized_code)
+        if billing_inv:
+            billing_doc = fiscal_read_view_from_billing_invoice(billing_inv)
+            return JSONResponse(content=_serialize_fiscal_document(billing_doc), status_code=200)
         raise HTTPException(
             status_code=404,
             detail={
@@ -721,6 +727,10 @@ def public_fiscal_print(
     )
 
     if not doc:
+        billing_inv = fetch_invoice_by_receipt_code(normalized_code)
+        if billing_inv:
+            billing_doc = fiscal_read_view_from_billing_invoice(billing_inv)
+            return HTMLResponse(content=_build_print_html(billing_doc), status_code=200)
         raise HTTPException(
             status_code=404,
             detail={

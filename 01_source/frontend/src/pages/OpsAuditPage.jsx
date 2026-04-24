@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
@@ -41,10 +41,26 @@ function toIsoOrNull(localDateTimeValue) {
   return parsed.toISOString();
 }
 
+const ACTION_OPTIONS = [
+  "",
+  "OPS_RECONCILE_ORDER",
+  "OPS_RECON_PENDING_LIST",
+  "OPS_RECON_PENDING_RUN_ONCE",
+  "OPS_AUDIT_LIST",
+  "OPS_METRICS_VIEW",
+  "OPS_ORDERS_STATUS_AUDIT",
+  "OPS_ORDERS_STATUS_AUDIT_RANGE",
+  "OPS_ORDERS_STATUS_AUDIT_EXPORT",
+];
+
+const RESULT_OPTIONS = ["", "SUCCESS", "ERROR"];
+const MAIN_LIMIT_OPTIONS = [20, 50, 100, 200];
+const STATUS_LIMIT_OPTIONS = [100, 200, 500, 1000, 2000];
+
 export default function OpsAuditPage() {
   const { token } = useAuth();
   const now = new Date();
-  const last72h = new Date(now.getTime() - 72 * 60 * 60 * 1000);
+  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -54,28 +70,94 @@ export default function OpsAuditPage() {
   const [orderId, setOrderId] = useState("");
   const [action, setAction] = useState("");
   const [result, setResult] = useState("");
-  const [auditFrom, setAuditFrom] = useState(toDateTimeLocalInputValue(last72h));
+  const [auditFrom, setAuditFrom] = useState(toDateTimeLocalInputValue(last24h));
   const [auditTo, setAuditTo] = useState(toDateTimeLocalInputValue(now));
   const [statusLimit, setStatusLimit] = useState(200);
   const [statusOffset, setStatusOffset] = useState(0);
   const [statusHasMore, setStatusHasMore] = useState(false);
+  const [opsHasMore, setOpsHasMore] = useState(false);
   const [statusAuditItems, setStatusAuditItems] = useState([]);
+  const [selectedPreset, setSelectedPreset] = useState("24h");
+  const didInitialLoadRef = useRef(false);
 
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, [token]);
+  const storageKey = useMemo(() => {
+    const suffix = token ? token.slice(0, 16) : "anonymous";
+    return `ops-audit-filters:v1:${suffix}`;
+  }, [token]);
 
-  async function loadAudit() {
+  function applyRangePreset(presetId) {
+    const referenceNow = new Date();
+    let start = new Date(referenceNow.getTime() - 24 * 60 * 60 * 1000);
+    if (presetId === "7d") {
+      start = new Date(referenceNow.getTime() - 7 * 24 * 60 * 60 * 1000);
+    } else if (presetId === "30d") {
+      start = new Date(referenceNow.getTime() - 30 * 24 * 60 * 60 * 1000);
+    } else if (presetId === "month") {
+      start = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), 1, 0, 0, 0, 0);
+    }
+    setAuditFrom(toDateTimeLocalInputValue(start));
+    setAuditTo(toDateTimeLocalInputValue(referenceNow));
+    setStatusOffset(0);
+    setSelectedPreset(presetId);
+  }
+
+  function resetToShiftDefaults() {
+    const confirmation = window.confirm(
+      "Resetar todos os filtros para o padrão de plantão (24h e offsets zerados)?"
+    );
+    if (!confirmation) return;
+
+    const referenceNow = new Date();
+    const start24h = new Date(referenceNow.getTime() - 24 * 60 * 60 * 1000);
+
+    setOrderId("");
+    setAction("");
+    setResult("");
+    setLimit(20);
+    setOffset(0);
+
+    setAuditFrom(toDateTimeLocalInputValue(start24h));
+    setAuditTo(toDateTimeLocalInputValue(referenceNow));
+    setStatusLimit(200);
+    setStatusOffset(0);
+    setSelectedPreset("24h");
+
+    const nextAuditFrom = toDateTimeLocalInputValue(start24h);
+    const nextAuditTo = toDateTimeLocalInputValue(referenceNow);
+    loadAudit(0, {
+      orderId: "",
+      action: "",
+      result: "",
+      limit: 20,
+      offset: 0,
+    });
+    loadStatusAudit(0, {
+      auditFrom: nextAuditFrom,
+      auditTo: nextAuditTo,
+      statusLimit: 200,
+      statusOffset: 0,
+    });
+  }
+
+  async function loadAudit(nextOffset = null, overrides = null) {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
+      const effectiveOffset = Math.max(Number(nextOffset ?? overrides?.offset ?? offset ?? 0), 0);
+      const effectiveLimit = Math.min(Math.max(Number((overrides?.limit ?? limit) ?? 20), 1), 200);
+      const effectiveOrderId = String(overrides?.orderId ?? orderId ?? "").trim();
+      const effectiveAction = String(overrides?.action ?? action ?? "").trim();
+      const effectiveResult = String(overrides?.result ?? result ?? "").trim();
       const params = new URLSearchParams();
-      params.set("limit", String(Math.min(Math.max(Number(limit || 20), 1), 200)));
-      params.set("offset", String(Math.max(Number(offset || 0), 0)));
-      if (orderId.trim()) params.set("order_id", orderId.trim());
-      if (action.trim()) params.set("action", action.trim());
-      if (result.trim()) params.set("result", result.trim());
+      params.set("limit", String(effectiveLimit));
+      params.set("offset", String(effectiveOffset));
+      if (effectiveOrderId) params.set("order_id", effectiveOrderId);
+      if (effectiveAction) params.set("action", effectiveAction);
+      if (effectiveResult) params.set("result", effectiveResult);
 
       const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-audit?${params.toString()}`, {
         method: "GET",
@@ -88,30 +170,34 @@ export default function OpsAuditPage() {
       if (!response.ok) {
         throw new Error(extractErrorMessage(payload));
       }
-      setItems(Array.isArray(payload?.items) ? payload.items : []);
-      setTotal(Number(payload?.total || 0));
+      const rows = Array.isArray(payload?.items) ? payload.items : [];
+      setItems(rows);
+      setTotal(Number(payload?.total || rows.length || 0));
+      setOffset(effectiveOffset);
+      setOpsHasMore(rows.length >= effectiveLimit);
     } catch (err) {
       setError(String(err?.message || err));
       setItems([]);
       setTotal(0);
+      setOpsHasMore(false);
     } finally {
       setLoading(false);
     }
   }
 
-  async function loadStatusAudit(nextOffset = null) {
+  async function loadStatusAudit(nextOffset = null, overrides = null) {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
-      const fromIso = toIsoOrNull(auditFrom);
-      const toIso = toIsoOrNull(auditTo);
+      const fromIso = toIsoOrNull(overrides?.auditFrom ?? auditFrom);
+      const toIso = toIsoOrNull(overrides?.auditTo ?? auditTo);
       if (!fromIso || !toIso) {
         throw new Error("Preencha from/to com datas válidas.");
       }
 
-      const effectiveOffset = Math.max(Number(nextOffset ?? statusOffset ?? 0), 0);
-      const effectiveLimit = Math.min(Math.max(Number(statusLimit || 200), 1), 2000);
+      const effectiveOffset = Math.max(Number(nextOffset ?? overrides?.statusOffset ?? statusOffset ?? 0), 0);
+      const effectiveLimit = Math.min(Math.max(Number((overrides?.statusLimit ?? statusLimit) ?? 200), 1), 2000);
       const params = new URLSearchParams();
       params.set("from", fromIso);
       params.set("to", toIso);
@@ -189,6 +275,86 @@ export default function OpsAuditPage() {
     }
   }
 
+  function handleMainFiltersKeyDown(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      loadAudit(0);
+    }
+  }
+
+  function handleStatusFiltersKeyDown(event) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      loadStatusAudit(0);
+    }
+  }
+
+  useEffect(() => {
+    if (!token) return;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed.orderId === "string") setOrderId(parsed.orderId);
+      if (typeof parsed.action === "string") setAction(parsed.action);
+      if (typeof parsed.result === "string") setResult(parsed.result);
+      if (Number.isFinite(parsed.limit)) setLimit(Math.min(Math.max(Number(parsed.limit), 1), 200));
+      if (Number.isFinite(parsed.offset)) setOffset(Math.max(Number(parsed.offset), 0));
+      if (typeof parsed.auditFrom === "string" && parsed.auditFrom.trim()) setAuditFrom(parsed.auditFrom);
+      if (typeof parsed.auditTo === "string" && parsed.auditTo.trim()) setAuditTo(parsed.auditTo);
+      if (Number.isFinite(parsed.statusLimit)) {
+        setStatusLimit(Math.min(Math.max(Number(parsed.statusLimit), 1), 2000));
+      }
+      if (Number.isFinite(parsed.statusOffset)) setStatusOffset(Math.max(Number(parsed.statusOffset), 0));
+      if (typeof parsed.selectedPreset === "string" && parsed.selectedPreset.trim()) {
+        setSelectedPreset(parsed.selectedPreset);
+      }
+    } catch (_err) {
+      // Ignore corrupted local storage payloads and keep defaults.
+    }
+  }, [token, storageKey]);
+
+  useEffect(() => {
+    if (!token) return;
+    const payload = {
+      orderId,
+      action,
+      result,
+      limit,
+      offset,
+      auditFrom,
+      auditTo,
+      statusLimit,
+      statusOffset,
+      selectedPreset,
+    };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(payload));
+    } catch (_err) {
+      // Ignore storage quota/access errors in restricted browsers.
+    }
+  }, [
+    token,
+    storageKey,
+    orderId,
+    action,
+    result,
+    limit,
+    offset,
+    auditFrom,
+    auditTo,
+    statusLimit,
+    statusOffset,
+    selectedPreset,
+  ]);
+
+  useEffect(() => {
+    if (!token || didInitialLoadRef.current) return;
+    didInitialLoadRef.current = true;
+    loadAudit(0);
+    loadStatusAudit(0);
+  }, [token]);
+
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
@@ -213,40 +379,55 @@ export default function OpsAuditPage() {
               type="text"
               value={orderId}
               onChange={(event) => setOrderId(event.target.value)}
+              onKeyDown={handleMainFiltersKeyDown}
               placeholder="2dd793dd-..."
               style={inputStyle}
             />
           </label>
           <label style={labelStyle}>
             Action
-            <input
-              type="text"
+            <select
               value={action}
               onChange={(event) => setAction(event.target.value)}
-              placeholder="OPS_RECONCILE_ORDER"
+              onKeyDown={handleMainFiltersKeyDown}
               style={inputStyle}
-            />
+            >
+              {ACTION_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "Todos"}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={labelStyle}>
             Result
-            <input
-              type="text"
+            <select
               value={result}
               onChange={(event) => setResult(event.target.value)}
-              placeholder="SUCCESS ou ERROR"
+              onKeyDown={handleMainFiltersKeyDown}
               style={inputStyle}
-            />
+            >
+              {RESULT_OPTIONS.map((option) => (
+                <option key={option || "all"} value={option}>
+                  {option || "Todos"}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={labelStyle}>
             Limit
-            <input
-              type="number"
-              min={1}
-              max={200}
+            <select
               value={limit}
               onChange={(event) => setLimit(Number(event.target.value || 20))}
+              onKeyDown={handleMainFiltersKeyDown}
               style={inputStyle}
-            />
+            >
+              {MAIN_LIMIT_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
           </label>
           <label style={labelStyle}>
             Offset
@@ -255,16 +436,47 @@ export default function OpsAuditPage() {
               min={0}
               value={offset}
               onChange={(event) => setOffset(Number(event.target.value || 0))}
+              onKeyDown={handleMainFiltersKeyDown}
               style={inputStyle}
             />
           </label>
         </div>
 
         <div style={actionsRowStyle}>
-          <button type="button" onClick={loadAudit} style={buttonStyle} disabled={loading}>
+          <button type="button" onClick={() => loadAudit(0)} style={buttonStyle} disabled={loading}>
             {loading ? "Consultando..." : "Consultar auditoria"}
           </button>
+          <button type="button" onClick={resetToShiftDefaults} style={buttonDangerStyle} disabled={loading}>
+            Resetar filtros
+          </button>
+          <button
+            type="button"
+            onClick={() => loadAudit(0)}
+            style={buttonStyle}
+            disabled={loading || offset === 0}
+          >
+            Primeira página
+          </button>
+          <button
+            type="button"
+            onClick={() => loadAudit(Math.max(offset - limit, 0))}
+            style={buttonStyle}
+            disabled={loading || offset === 0}
+          >
+            Página anterior
+          </button>
+          <button
+            type="button"
+            onClick={() => loadAudit(offset + limit)}
+            style={buttonStyle}
+            disabled={loading || !opsHasMore}
+          >
+            Próxima página
+          </button>
           <span style={{ color: "rgba(245,247,250,0.8)" }}>Total retornado: {total}</span>
+          <span style={{ color: "rgba(245,247,250,0.8)" }}>
+            Offset atual: {offset} | Itens nesta página: {items.length}
+          </span>
         </div>
 
         <section style={subCardStyle}>
@@ -280,6 +492,7 @@ export default function OpsAuditPage() {
                 type="datetime-local"
                 value={auditFrom}
                 onChange={(event) => setAuditFrom(event.target.value)}
+                onKeyDown={handleStatusFiltersKeyDown}
                 style={inputStyle}
               />
             </label>
@@ -289,19 +502,24 @@ export default function OpsAuditPage() {
                 type="datetime-local"
                 value={auditTo}
                 onChange={(event) => setAuditTo(event.target.value)}
+                onKeyDown={handleStatusFiltersKeyDown}
                 style={inputStyle}
               />
             </label>
             <label style={labelStyle}>
               Limit
-              <input
-                type="number"
-                min={1}
-                max={2000}
+              <select
                 value={statusLimit}
                 onChange={(event) => setStatusLimit(Number(event.target.value || 200))}
+                onKeyDown={handleStatusFiltersKeyDown}
                 style={inputStyle}
-              />
+              >
+                {STATUS_LIMIT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
             <label style={labelStyle}>
               Offset
@@ -310,9 +528,46 @@ export default function OpsAuditPage() {
                 min={0}
                 value={statusOffset}
                 onChange={(event) => setStatusOffset(Number(event.target.value || 0))}
+                onKeyDown={handleStatusFiltersKeyDown}
                 style={inputStyle}
               />
             </label>
+          </div>
+
+          <div style={presetRowStyle}>
+            <span style={presetLabelStyle}>Presets globais:</span>
+            <button
+              type="button"
+              onClick={() => applyRangePreset("24h")}
+              style={buttonPresetStyle(selectedPreset === "24h")}
+              disabled={loading}
+            >
+              24h
+            </button>
+            <button
+              type="button"
+              onClick={() => applyRangePreset("7d")}
+              style={buttonPresetStyle(selectedPreset === "7d")}
+              disabled={loading}
+            >
+              7d
+            </button>
+            <button
+              type="button"
+              onClick={() => applyRangePreset("30d")}
+              style={buttonPresetStyle(selectedPreset === "30d")}
+              disabled={loading}
+            >
+              30d
+            </button>
+            <button
+              type="button"
+              onClick={() => applyRangePreset("month")}
+              style={buttonPresetStyle(selectedPreset === "month")}
+              disabled={loading}
+            >
+              Mês atual
+            </button>
           </div>
 
           <div style={actionsRowStyle}>
@@ -383,7 +638,7 @@ export default function OpsAuditPage() {
           </div>
         ) : null}
 
-        {!error && !loading && items.length === 0 ? (
+        {!error && !loading && items.length === 0 && statusAuditItems.length === 0 ? (
           <p style={{ marginTop: 14 }}>Nenhum evento encontrado com os filtros atuais.</p>
         ) : null}
       </section>
@@ -493,6 +748,35 @@ const buttonWarnStyle = {
   border: "1px solid rgba(245,158,11,0.55)",
   color: "#fde68a",
   background: "rgba(245,158,11,0.12)",
+};
+
+const buttonPresetStyle = (isActive) => ({
+  ...buttonStyle,
+  border: isActive ? "1px solid rgba(59,130,246,0.9)" : "1px solid rgba(96,165,250,0.5)",
+  color: isActive ? "#dbeafe" : "#bfdbfe",
+  background: isActive ? "rgba(59,130,246,0.28)" : "rgba(96,165,250,0.12)",
+  padding: "6px 10px",
+  fontSize: 12,
+});
+
+const buttonDangerStyle = {
+  ...buttonStyle,
+  border: "1px solid rgba(248,113,113,0.6)",
+  color: "#fecaca",
+  background: "rgba(127,29,29,0.25)",
+};
+
+const presetRowStyle = {
+  marginTop: 8,
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
+const presetLabelStyle = {
+  color: "rgba(245,247,250,0.78)",
+  fontSize: 12,
 };
 
 const errorStyle = {

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from fastapi import Query
@@ -102,6 +103,30 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
     )
 
 
+def _short_mode_tag(emission_mode: str | None) -> str:
+    mode = str(emission_mode or "").strip().upper()
+    if mode == "ONLINE":
+        return "ONL"
+    if mode == "OFFLINE_SAT":
+        return "SAT"
+    if mode == "CONTINGENCY_SVRS":
+        return "CSV"
+    return (mode[:3] or "UNK").ljust(3, "X")
+
+
+def _build_short_receipt_code(invoice: Invoice) -> str:
+    country = str(invoice.country or "BR").strip().upper()[:2] or "BR"
+    mode = _short_mode_tag(invoice.emission_mode)
+    seed = (
+        str(invoice.access_key or "").strip()
+        or str(invoice.invoice_number or "").strip()
+        or str(invoice.id or "").strip()
+        or str(invoice.order_id or "").strip()
+    )
+    digest8 = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8].upper()
+    return f"{country}-{mode}-{digest8}"
+
+
 @router.post("/generate/{order_id}", response_model=InvoiceResponse)
 def create_invoice(
     order_id: str,
@@ -142,6 +167,31 @@ def get_invoice_by_order(
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found for order")
     return _to_invoice_response(invoice)
+
+
+@router.get("/by-receipt-code/{receipt_code}", response_model=InvoiceResponse)
+def get_invoice_by_receipt_code(
+    receipt_code: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    code = str(receipt_code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=400, detail="receipt_code is required")
+
+    invoice = (
+        db.query(Invoice)
+        .filter(Invoice.access_key.isnot(None))
+        .all()
+    )
+    for inv in invoice:
+        access_key = str(inv.access_key or "").strip().upper()
+        if access_key and code == access_key:
+            return _to_invoice_response(inv)
+        if code == _build_short_receipt_code(inv):
+            return _to_invoice_response(inv)
+
+    raise HTTPException(status_code=404, detail="Invoice not found for receipt_code")
 
 
 @router.post("/{invoice_id}/retry", response_model=InvoiceResponse)

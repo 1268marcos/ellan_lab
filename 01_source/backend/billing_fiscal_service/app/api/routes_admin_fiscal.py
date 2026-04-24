@@ -12,7 +12,7 @@ from app.core.db import get_db
 from app.models.fiscal_reconciliation_gap import FiscalReconciliationGap
 from app.models.invoice_delivery_log import InvoiceDeliveryLog
 from app.models.invoice_model import Invoice
-from app.services.invoice_orchestrator import ensure_and_process_invoice
+from app.services.invoice_orchestrator import ensure_and_process_invoice, ensure_invoice_for_order
 from app.services.fiscal_reconciliation_service import (
     list_reconciliation_gaps,
     scan_and_persist_reconciliation_gaps,
@@ -25,8 +25,15 @@ from app.services.fiscal_reporting_service import (
     get_issued_invoices_for_period,
 )
 from app.services.fiscal_provider_ops_service import list_provider_status, test_provider_connectivity
+from app.integrations.fiscal_real_provider_client import list_canonical_error_codes
 from app.services.invoice_delivery_service import record_invoice_delivery
 from app.services.invoice_email_service import send_danfe_email_stub
+from app.services.invoice_issue_service import reset_invoice_for_retry
+from app.services.sefaz_svrs_batch_stub_service import (
+    query_svrs_issue_batch_stub,
+    reset_svrs_issue_batch_stub_state,
+    submit_svrs_issue_batch_stub,
+)
 
 router = APIRouter(prefix="/admin/fiscal", tags=["admin-fiscal"])
 
@@ -239,6 +246,7 @@ def get_provider_status(
 ):
     return {
         "items": list_provider_status(db),
+        "canonical_error_codes": list_canonical_error_codes(),
     }
 
 
@@ -257,6 +265,106 @@ def post_test_provider_connectivity(
             ]
         }
     return {"items": [test_provider_connectivity(db, country=c)]}
+
+
+@router.post("/providers/stub/svrs/batch-submit")
+def post_svrs_batch_submit_stub(
+    payload: dict,
+    _: None = Depends(validate_internal_token),
+):
+    """
+    F3A-STUB-03: simulador de lote SVRS/SEFAZ (assíncrono).
+    Retorna recibo e aplica idempotência por `idempotency_key`.
+    """
+    try:
+        out = submit_svrs_issue_batch_stub(payload or {})
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **out}
+
+
+@router.get("/providers/stub/svrs/batch-query")
+def get_svrs_batch_query_stub(
+    receipt_number: str = Query(...),
+    _: None = Depends(validate_internal_token),
+):
+    try:
+        out = query_svrs_issue_batch_stub(receipt_number)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"ok": True, **out}
+
+
+@router.post("/providers/stub/svrs/batch-reset")
+def post_svrs_batch_reset_stub(
+    _: None = Depends(validate_internal_token),
+):
+    return reset_svrs_issue_batch_stub_state()
+
+
+@router.post("/providers/stub/svrs/smoke-issue/{order_id}")
+def post_svrs_smoke_issue_by_order(
+    order_id: str,
+    ready_after_polls: int = Query(default=1, ge=1, le=20),
+    stub_batch_poll_count: int = Query(default=1, ge=1, le=20),
+    idempotency_key: str | None = Query(default=None),
+    allow_missing_paid_event: bool = Query(default=True),
+    force_reprocess: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """
+    One-click smoke test:
+    - garante/cria invoice por order_id
+    - injeta payload_json para stub_scenario=svrs_batch_async
+    - processa emissão imediatamente
+    """
+    normalized_order_id = str(order_id or "").strip()
+    if not normalized_order_id:
+        raise HTTPException(status_code=400, detail="order_id is required")
+
+    invoice = ensure_invoice_for_order(
+        db,
+        normalized_order_id,
+        allow_missing_paid_event=allow_missing_paid_event,
+    )
+
+    payload = dict(invoice.payload_json or {})
+    payload["stub_scenario"] = "svrs_batch_async"
+    payload["ready_after_polls"] = int(ready_after_polls)
+    payload["stub_batch_poll_count"] = int(stub_batch_poll_count)
+    payload["idempotency_key"] = str(idempotency_key or "").strip() or f"smoke:{invoice.id}"
+    payload["smoke_svrs_batch_async"] = True
+    invoice.payload_json = payload
+    db.commit()
+    db.refresh(invoice)
+
+    if force_reprocess:
+        # Força reprocessamento do mesmo pedido/invoice para validar smoke
+        # mesmo quando a invoice já está em ISSUED.
+        invoice = reset_invoice_for_retry(db, invoice, clear_identifiers=True)
+
+    processed = ensure_and_process_invoice(
+        db,
+        normalized_order_id,
+        allow_missing_paid_event=allow_missing_paid_event,
+    )
+    return {
+        "ok": True,
+        "order_id": normalized_order_id,
+        "invoice": _to_invoice_response(processed).model_dump(),
+        "smoke_config": {
+            "stub_scenario": "svrs_batch_async",
+            "ready_after_polls": ready_after_polls,
+            "stub_batch_poll_count": stub_batch_poll_count,
+            "idempotency_key": payload["idempotency_key"],
+            "force_reprocess": force_reprocess,
+        },
+        "note": (
+            "Smoke test aplicado. Se status não for ISSUED na primeira chamada, "
+            "repita o endpoint para validar retries/idempotência."
+        ),
+    }
 
 
 @router.post("/invoices/{invoice_id}/resend-email")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import re
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -31,6 +32,28 @@ def _provider_config(country: str) -> dict:
             "base_url": settings.fiscal_real_provider_base_url_pt,
         }
     raise ValueError(f"country_not_supported: {country}")
+
+
+def _derive_error_meta(err: str | None) -> dict:
+    raw = str(err or "").strip()
+    if not raw:
+        return {
+            "last_error_code": None,
+            "last_error_retryable": None,
+            "last_error_attempts": None,
+        }
+    code = raw.split(":", 1)[0].strip() if ":" in raw else raw
+    retryable_match = re.search(r"retryable=(True|False)", raw)
+    attempts_match = re.search(r"attempts=(\d+)", raw)
+    retryable = None
+    if retryable_match:
+        retryable = retryable_match.group(1) == "True"
+    attempts = int(attempts_match.group(1)) if attempts_match else None
+    return {
+        "last_error_code": code or None,
+        "last_error_retryable": retryable,
+        "last_error_attempts": attempts,
+    }
 
 
 def _upsert_health_row(db: Session, *, cfg: dict, status: str, http_status: int | None, latency_ms: int | None, err: str | None) -> FiscalProviderHealthStatus:
@@ -114,7 +137,11 @@ def test_provider_connectivity(db: Session, *, country: str) -> dict:
             latency_ms=latency_ms,
             err=str(exc)[:1000],
         )
-        return _row_to_dict(row)
+        out = _row_to_dict(row)
+        out["last_error_code"] = exc.code
+        out["last_error_retryable"] = exc.retryable
+        out["last_error_attempts"] = exc.attempts
+        return out
 
 
 def list_provider_status(db: Session) -> list[dict]:
@@ -141,6 +168,7 @@ def list_provider_status(db: Session) -> list[dict]:
 
 
 def _row_to_dict(row: FiscalProviderHealthStatus) -> dict:
+    error_meta = _derive_error_meta(row.last_error)
     return {
         "country": row.country,
         "provider_name": row.provider_name,
@@ -151,5 +179,8 @@ def _row_to_dict(row: FiscalProviderHealthStatus) -> dict:
         "last_http_status": row.last_http_status,
         "last_latency_ms": row.last_latency_ms,
         "last_error": row.last_error,
+        "last_error_code": error_meta["last_error_code"],
+        "last_error_retryable": error_meta["last_error_retryable"],
+        "last_error_attempts": error_meta["last_error_attempts"],
         "checked_at": row.checked_at.isoformat() if row.checked_at else None,
     }

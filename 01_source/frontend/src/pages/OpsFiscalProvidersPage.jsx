@@ -18,6 +18,7 @@ function headersJson() {
 
 export default function OpsFiscalProvidersPage() {
   const [items, setItems] = useState([]);
+  const [canonicalErrorCodes, setCanonicalErrorCodes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState("");
   const [error, setError] = useState("");
@@ -25,6 +26,7 @@ export default function OpsFiscalProvidersPage() {
   const [orderId, setOrderId] = useState("");
   const [danfeBusy, setDanfeBusy] = useState(false);
   const [forceBusy, setForceBusy] = useState(false);
+  const [smokeBusy, setSmokeBusy] = useState(false);
   const [danfeResult, setDanfeResult] = useState(null);
 
   async function loadStatus() {
@@ -38,6 +40,7 @@ export default function OpsFiscalProvidersPage() {
       const payload = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(payload?.detail || "Falha ao carregar status dos providers.");
       setItems(Array.isArray(payload?.items) ? payload.items : []);
+      setCanonicalErrorCodes(Array.isArray(payload?.canonical_error_codes) ? payload.canonical_error_codes : []);
     } catch (err) {
       const raw = String(err?.message || err);
       if (raw.toLowerCase().includes("failed to fetch")) {
@@ -213,9 +216,65 @@ export default function OpsFiscalProvidersPage() {
     }
   }
 
+  async function handleSmokeReprocessByOrderId() {
+    const normalized = String(orderId || "").trim();
+    if (!normalized) {
+      setError("Informe um order_id válido para executar smoke reprocess.");
+      return;
+    }
+    setSmokeBusy(true);
+    setError("");
+    setDanfeResult(null);
+    try {
+      const qs = new URLSearchParams({
+        ready_after_polls: "1",
+        stub_batch_poll_count: "1",
+        allow_missing_paid_event: "true",
+        force_reprocess: "true",
+      }).toString();
+      const r = await fetch(
+        `${BILLING_BASE}/admin/fiscal/providers/stub/svrs/smoke-issue/${encodeURIComponent(normalized)}?${qs}`,
+        {
+          method: "POST",
+          headers: headersJson(),
+        }
+      );
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha no Smoke Reprocess.");
+      setDanfeResult({
+        ok: true,
+        order_id: normalized,
+        invoice_id: payload?.invoice?.id || "-",
+        message:
+          "Smoke Reprocess executado. Verifique provider_namespace=svrs_real e batch_async=true.",
+        payload,
+      });
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setSmokeBusy(false);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
   }, []);
+
+  const smokeInvoice = danfeResult?.payload?.invoice || null;
+  const smokeProviderNamespace =
+    smokeInvoice?.government_response?.provider_namespace ||
+    smokeInvoice?.government_response?.raw?.provider_namespace ||
+    "";
+  const smokeBatchAsync = Boolean(smokeInvoice?.government_response?.raw?.batch_async);
+  const smokeIsOk =
+    String(smokeProviderNamespace || "").toLowerCase() === "svrs_real" && smokeBatchAsync;
 
   return (
     <div style={pageStyle}>
@@ -294,10 +353,60 @@ export default function OpsFiscalProvidersPage() {
             <button onClick={() => void handleForceIssueByOrderId()} style={buttonPrimaryStyle} disabled={forceBusy}>
               {forceBusy ? "Gerando..." : "Gerar invoice por order_id"}
             </button>
+            <button
+              onClick={() => void handleSmokeReprocessByOrderId()}
+              style={buttonWarnStyle}
+              disabled={smokeBusy}
+            >
+              {smokeBusy ? "Processando..." : "Smoke Reprocess (SVRS Async)"}
+            </button>
           </div>
         </div>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}
+
+        {danfeResult?.payload?.invoice ? (
+          <div style={smokeSummaryCardStyle}>
+            <div style={smokeSummaryHeaderStyle}>
+              <h3 style={{ margin: 0 }}>Resumo do Smoke</h3>
+              <span style={smokeSemaphoreStyle(smokeIsOk)}>
+                {smokeIsOk ? "OK" : "FALLBACK"}
+              </span>
+            </div>
+            <p style={{ ...mutedTextStyle, marginTop: 0, marginBottom: 10 }}>
+              Leitura rápida do resultado fiscal para triagem operacional.
+            </p>
+            <div style={smokeSummaryGridStyle}>
+              <SummaryItem
+                label="Provider"
+                value={smokeProviderNamespace || "-"}
+              />
+              <SummaryItem
+                label="Receipt Number"
+                value={
+                  danfeResult?.payload?.invoice?.government_response?.receipt_number ||
+                  danfeResult?.payload?.invoice?.government_response?.raw?.receipt_number ||
+                  "-"
+                }
+              />
+              <SummaryItem
+                label="Protocol Number"
+                value={
+                  danfeResult?.payload?.invoice?.government_response?.protocol_number ||
+                  danfeResult?.payload?.invoice?.government_response?.raw?.protocol_number ||
+                  "-"
+                }
+              />
+              <SummaryItem
+                label="Batch Status"
+                value={
+                  smokeInvoice?.government_response?.raw?.batch_status ||
+                  (smokeBatchAsync ? "PROCESSED" : "-")
+                }
+              />
+            </div>
+          </div>
+        ) : null}
 
         <div style={tableWrapStyle}>
           <table style={tableStyle}>
@@ -309,6 +418,7 @@ export default function OpsFiscalProvidersPage() {
                 <th style={thStyle}>Status</th>
                 <th style={thStyle}>Health</th>
                 <th style={thStyle}>Último erro</th>
+                <th style={thStyle}>Código canônico</th>
                 <th style={thStyle}>Ações</th>
               </tr>
             </thead>
@@ -333,6 +443,13 @@ export default function OpsFiscalProvidersPage() {
                     <small style={smallStyle}>{item.last_error || "-"}</small>
                   </td>
                   <td style={tdStyle}>
+                    <small style={smallStyle}>
+                      {item.last_error_code || "-"}
+                      {item.last_error_retryable == null ? "" : ` | retryable=${item.last_error_retryable ? "yes" : "no"}`}
+                      {item.last_error_attempts == null ? "" : ` | attempts=${item.last_error_attempts}`}
+                    </small>
+                  </td>
+                  <td style={tdStyle}>
                     <button
                       onClick={() => void runTest(item.country)}
                       style={buttonGhostStyle}
@@ -345,7 +462,7 @@ export default function OpsFiscalProvidersPage() {
               ))}
               {!loading && items.length === 0 ? (
                 <tr>
-                  <td style={tdStyle} colSpan={7}>
+                  <td style={tdStyle} colSpan={8}>
                     Nenhum provider encontrado.
                   </td>
                 </tr>
@@ -353,7 +470,31 @@ export default function OpsFiscalProvidersPage() {
             </tbody>
           </table>
         </div>
+        {canonicalErrorCodes.length > 0 ? (
+          <div style={danfeBoxStyle}>
+            <h3 style={{ marginTop: 0, marginBottom: 8 }}>Códigos canônicos de erro (triagem)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 0 }}>
+              Use estes códigos para identificar rapidamente cenário retryável vs não retryável.
+            </p>
+            <div style={chipsWrapStyle}>
+              {canonicalErrorCodes.map((code) => (
+                <span key={code} style={chipStyle}>
+                  {code}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
+    </div>
+  );
+}
+
+function SummaryItem({ label, value }) {
+  return (
+    <div style={smokeSummaryItemStyle}>
+      <div style={smokeSummaryLabelStyle}>{label}</div>
+      <div style={smokeSummaryValueStyle}>{String(value || "-")}</div>
     </div>
   );
 }
@@ -385,6 +526,15 @@ const inputStyle = {
 };
 const buttonGhostStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.16)", background: "transparent", color: "#e2e8f0", cursor: "pointer", fontWeight: 600 };
 const buttonPrimaryStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(31,122,63,0.50)", background: "#1f7a3f", color: "#fff", cursor: "pointer", fontWeight: 700 };
+const buttonWarnStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(217,119,6,0.55)",
+  background: "rgba(217,119,6,0.18)",
+  color: "#fde68a",
+  cursor: "pointer",
+  fontWeight: 700,
+};
 const errorStyle = { marginTop: 12, background: "#2b1d1d", color: "#ffb4b4", padding: 12, borderRadius: 12, overflow: "auto" };
 const danfeBoxStyle = {
   marginTop: 14,
@@ -414,3 +564,62 @@ const badgeWarnStyle = { ...badgeBaseStyle, color: "#fde68a", border: "1px solid
 const badgeOkStyle = { ...badgeBaseStyle, color: "#86efac", border: "1px solid rgba(22,163,74,0.65)", background: "rgba(22,163,74,0.2)" };
 const crossShortcutStyle = { display: "flex", justifyContent: "flex-end", marginBottom: 10 };
 const crossShortcutLinkStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(96,165,250,0.55)", background: "rgba(96,165,250,0.15)", color: "#bfdbfe", textDecoration: "none", fontWeight: 700, fontSize: 13 };
+const chipsWrapStyle = { display: "flex", gap: 8, flexWrap: "wrap" };
+const chipStyle = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid rgba(148,163,184,0.45)",
+  background: "rgba(148,163,184,0.12)",
+  color: "#e2e8f0",
+  fontSize: 12,
+  fontWeight: 600,
+};
+const smokeSummaryCardStyle = {
+  marginTop: 14,
+  marginBottom: 10,
+  border: "1px solid rgba(34,197,94,0.35)",
+  borderRadius: 12,
+  background: "rgba(22,163,74,0.10)",
+  padding: 12,
+};
+const smokeSummaryGridStyle = {
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+};
+const smokeSummaryHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  marginBottom: 8,
+  flexWrap: "wrap",
+};
+const smokeSemaphoreStyle = (ok) => ({
+  display: "inline-flex",
+  borderRadius: 999,
+  padding: "4px 12px",
+  fontSize: 12,
+  fontWeight: 800,
+  border: ok ? "1px solid rgba(34,197,94,0.65)" : "1px solid rgba(239,68,68,0.65)",
+  background: ok ? "rgba(34,197,94,0.20)" : "rgba(239,68,68,0.22)",
+  color: ok ? "#bbf7d0" : "#fecaca",
+});
+const smokeSummaryItemStyle = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.04)",
+  padding: "8px 10px",
+};
+const smokeSummaryLabelStyle = {
+  fontSize: 12,
+  color: "rgba(226,232,240,0.8)",
+  marginBottom: 4,
+};
+const smokeSummaryValueStyle = {
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#f8fafc",
+  wordBreak: "break-word",
+};

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import re
+import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any
@@ -75,8 +76,26 @@ def fiscal_read_view_from_billing_invoice(inv: dict[str, Any]) -> FiscalReadView
     pickup = _coerce_dict(snap.get("pickup"))
     gov = _coerce_dict(inv.get("government_response"))
 
+    def _short_mode_tag(emission_mode: str | None) -> str:
+        mode = str(emission_mode or "").strip().upper()
+        if mode == "ONLINE":
+            return "ONL"
+        if mode == "OFFLINE_SAT":
+            return "SAT"
+        if mode == "CONTINGENCY_SVRS":
+            return "CSV"
+        return (mode[:3] or "UNK").ljust(3, "X")
+
+    access_key = str(inv.get("access_key") or "").strip()
+    short_receipt = None
+    if access_key:
+        seed = access_key or str(inv.get("id") or "")
+        digest8 = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:8].upper()
+        short_receipt = f"{str(inv.get('country') or 'BR').upper()[:2]}-{_short_mode_tag(inv.get('emission_mode'))}-{digest8}"
+
     receipt = (
-        inv.get("access_key")
+        short_receipt
+        or inv.get("access_key")
         or inv.get("invoice_number")
         or gov.get("receipt_number")
     )
@@ -92,10 +111,11 @@ def fiscal_read_view_from_billing_invoice(inv: dict[str, Any]) -> FiscalReadView
         "mode": "BILLING",
         "print_label": "Documento fiscal (billing)",
         "receipt_code": receipt,
+        "receipt_code_full": access_key or None,
         "invoice_id": inv.get("id"),
         "invoice_status": inv.get("status"),
         "manual_generated_without_domain_event": bool(inv_payload.get("manual_generated_without_domain_event")),
-        "receipt_lookup_supported": False,
+        "receipt_lookup_supported": True,
     }
 
     amount = inv.get("amount_cents")

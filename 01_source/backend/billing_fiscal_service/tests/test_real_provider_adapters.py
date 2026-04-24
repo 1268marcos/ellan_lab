@@ -36,7 +36,18 @@ def test_br_real_adapter_normalizes_issue(monkeypatch):
 
 
 def test_br_real_adapter_fallback_on_error(monkeypatch):
-    monkeypatch.setattr(br, "provider_issue_invoice", lambda *_args, **_kwargs: (_ for _ in ()).throw(br.RealProviderClientError("boom")))
+    monkeypatch.setattr(
+        br,
+        "provider_issue_invoice",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            br.RealProviderClientError(
+                code="PROVIDER_TEST_ERROR",
+                message="boom",
+                retryable=False,
+                attempts=1,
+            )
+        ),
+    )
     monkeypatch.setattr(br, "sefaz_sp_issue_invoice", lambda *_: {"provider": "sefaz_sp", "government_response": {"raw": {}}})
     out = br.issue_invoice_real_or_fallback(_inv("BR"))
     assert out["provider"] == "sefaz_sp"

@@ -1,0 +1,1116 @@
+# ELLAN LAB — Sprint Roadmap
+## Domains: Partners · Logistics · Products · Integration (Orders/Fiscal)
+> Gerado em 24/04/2026 · Base: schema `locker_central` + estrutura de serviços atual
+
+---
+
+## Contexto & Diagnóstico
+
+| Domínio | Tabelas atuais | Gap crítico |
+|---|---|---|
+| **Partners** | `ecommerce_partners`, `locker_operators` | Sem lifecycle de status, sem gestão de webhooks, sem liquidação financeira |
+| **Logistics** | `logistics_partners`, `inbound_deliveries` | Sem eventos multi-hop de rastreio, sem retornos, sem manifesto |
+| **Products** | `products`, `product_categories`, `product_fiscal_config` | Sem lifecycle, sem inventory por locker, sem variantes/barcodes |
+| **Orders ↔ Partners** | `orders.ecommerce_partner_id` existe | Sem outbox de eventos para o parceiro, sem fulfillment tracking |
+| **Orders ↔ Fiscal** | `invoices` sólido, `product_fiscal_config` existe | Sem auto-classificação fiscal via sku_id no momento da emissão |
+
+**Referências de mercado consideradas:** Amazon Locker, MercadoLivre Flex, UPS Access Point, Correios Mini, InPost.
+
+---
+
+## DOMAIN 1 — PARTNERS
+
+### Sprint P-1 · "Partner Identity & Onboarding" (2 semanas)
+
+**Objetivo:** Elevar `ecommerce_partners` e `locker_operators` para um modelo de onboarding rastreável com lifecycle de status e contatos estruturados.
+
+#### Novas tabelas
+
+```sql
+-- Histórico de transições de status do parceiro
+CREATE TABLE partner_status_history (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL CHECK (partner_type IN ('ECOMMERCE','OPERATOR','LOGISTICS')),
+    from_status     VARCHAR(30),
+    to_status       VARCHAR(30) NOT NULL,
+    reason          TEXT,
+    changed_by      VARCHAR(36),
+    changed_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_psh_partner ON partner_status_history(partner_id, changed_at DESC);
+
+-- Contatos comerciais, técnicos e de billing por parceiro
+CREATE TABLE partner_contacts (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL,
+    contact_type    VARCHAR(20) NOT NULL CHECK (contact_type IN ('COMMERCIAL','TECHNICAL','BILLING','EMERGENCY')),
+    name            VARCHAR(128) NOT NULL,
+    email           VARCHAR(128),
+    phone           VARCHAR(32),
+    is_primary      BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- SLA acordado por parceiro, país e categoria de produto
+CREATE TABLE partner_sla_agreements (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id          VARCHAR(36) NOT NULL,
+    partner_type        VARCHAR(20) NOT NULL,
+    country             VARCHAR(2) NOT NULL DEFAULT 'BR',
+    product_category    VARCHAR(64),          -- NULL = aplica a todas
+    sla_pickup_hours    INTEGER NOT NULL DEFAULT 72,
+    sla_return_hours    INTEGER NOT NULL DEFAULT 24,
+    penalty_pct         NUMERIC(5,2) DEFAULT 0,
+    valid_from          DATE NOT NULL,
+    valid_until         DATE,
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Alterações em tabelas existentes
+
+```sql
+-- ecommerce_partners: lifecycle + dados jurídicos
+ALTER TABLE ecommerce_partners
+    ADD COLUMN status       VARCHAR(30) NOT NULL DEFAULT 'DRAFT'
+                            CHECK (status IN ('DRAFT','PENDING_REVIEW','ACTIVE','SUSPENDED','TERMINATED')),
+    ADD COLUMN legal_name   VARCHAR(140),
+    ADD COLUMN tax_id       VARCHAR(32),        -- CNPJ/NIF
+    ADD COLUMN tier         VARCHAR(20) DEFAULT 'STANDARD'
+                            CHECK (tier IN ('STANDARD','PREMIUM','ENTERPRISE')),
+    ADD COLUMN support_email VARCHAR(128),
+    ADD COLUMN support_phone VARCHAR(32);
+
+-- locker_operators: mesmos campos
+ALTER TABLE locker_operators
+    ADD COLUMN status       VARCHAR(30) NOT NULL DEFAULT 'DRAFT'
+                            CHECK (status IN ('DRAFT','PENDING_REVIEW','ACTIVE','SUSPENDED','TERMINATED')),
+    ADD COLUMN legal_name   VARCHAR(140),
+    ADD COLUMN tier         VARCHAR(20) DEFAULT 'STANDARD';
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `PATCH` | `/partners/ecommerce/{id}/status` | Grava `partner_status_history` |
+| `GET` | `/partners/ecommerce/{id}/contacts` | Lista contatos |
+| `POST` | `/partners/ecommerce/{id}/contacts` | Cria contato |
+| `GET/POST` | `/partners/ecommerce/{id}/sla-agreements` | CRUD de SLA |
+| `GET` | `/partners/ecommerce/{id}/status-history` | Audit trail |
+
+#### Critérios de aceite
+- Transição de status invalida (ex: ACTIVE → DRAFT) retorna 422 com reason.
+- `partner_status_history` registra toda transição com `changed_by`.
+- Deve haver exatamente 1 contato `is_primary=true` por `contact_type` por parceiro.
+
+---
+
+### Sprint P-2 · "Partner Integration Health & Webhooks" (2 semanas)
+
+**Objetivo:** Gestão de API keys com rotação, endpoints de webhook versionados e monitoramento de saúde de integração — padrão Amazon Seller Central / MercadoLivre Partners API.
+
+#### Novas tabelas
+
+```sql
+-- API keys com hash + scopes (nunca armazenar o valor plain)
+CREATE TABLE partner_api_keys (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL,
+    key_prefix      VARCHAR(8) NOT NULL,        -- ex: "elln_pk_" para identificação
+    key_hash        VARCHAR(128) NOT NULL,       -- bcrypt do valor real
+    label           VARCHAR(64),
+    scopes_json     JSONB NOT NULL DEFAULT '[]', -- ["orders:read","deliveries:write"]
+    expires_at      TIMESTAMPTZ,
+    last_used_at    TIMESTAMPTZ,
+    revoked_at      TIMESTAMPTZ,
+    created_by      VARCHAR(36),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Endpoints de webhook por parceiro (múltiplos, versionados)
+CREATE TABLE partner_webhook_endpoints (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL,
+    url             VARCHAR(500) NOT NULL,
+    secret_hash     VARCHAR(128) NOT NULL,       -- HMAC-SHA256 signing key hash
+    events_json     JSONB NOT NULL DEFAULT '["*"]',
+    api_version     VARCHAR(10) NOT NULL DEFAULT 'v1',
+    retry_policy    JSONB NOT NULL DEFAULT '{"max_attempts":5,"backoff_sec":30}',
+    active          BOOLEAN NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Log de entregas de webhooks (outbound events para o parceiro)
+CREATE TABLE partner_webhook_deliveries (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    endpoint_id     VARCHAR(36) NOT NULL REFERENCES partner_webhook_endpoints(id),
+    event_id        VARCHAR(36) NOT NULL,
+    event_type      VARCHAR(80) NOT NULL,
+    payload_hash    VARCHAR(64),
+    http_status     INTEGER,
+    attempt_count   INTEGER NOT NULL DEFAULT 0,
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING','DELIVERED','FAILED','DEAD_LETTER')),
+    last_error      TEXT,
+    next_retry_at   TIMESTAMPTZ,
+    delivered_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_pwd_status_retry ON partner_webhook_deliveries(status, next_retry_at)
+    WHERE status IN ('PENDING','FAILED');
+
+-- Health check periódico de integração
+CREATE TABLE partner_integration_health (
+    id              BIGSERIAL PRIMARY KEY,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL,
+    endpoint_url    VARCHAR(500),
+    checked_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status          VARCHAR(20) NOT NULL CHECK (status IN ('UP','DOWN','DEGRADED','TIMEOUT')),
+    latency_ms      INTEGER,
+    http_status     INTEGER,
+    error_message   VARCHAR(500)
+);
+CREATE INDEX idx_pih_partner_time ON partner_integration_health(partner_id, checked_at DESC);
+
+-- Rate limits por parceiro e padrão de endpoint
+CREATE TABLE partner_rate_limits (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id          VARCHAR(36) NOT NULL,
+    partner_type        VARCHAR(20) NOT NULL,
+    endpoint_pattern    VARCHAR(255) NOT NULL,   -- ex: "/orders/*"
+    rpm                 INTEGER NOT NULL DEFAULT 60,
+    rph                 INTEGER NOT NULL DEFAULT 1000,
+    burst_limit         INTEGER,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `POST` | `/partners/{id}/api-keys` | Retorna o valor plain UMA VEZ |
+| `DELETE` | `/partners/{id}/api-keys/{key_id}` | Revoga key (sets revoked_at) |
+| `GET/POST` | `/partners/{id}/webhooks` | CRUD de endpoints |
+| `GET` | `/partners/{id}/webhooks/{wh_id}/deliveries` | Paginado, filtro por status |
+| `POST` | `/partners/{id}/webhooks/{wh_id}/deliveries/{d_id}/retry` | Reprocessa manualmente |
+| `GET` | `/partners/{id}/health` | Histórico das últimas 24h |
+
+#### Critérios de aceite
+- O valor da API key nunca é persistido — apenas prefix + hash.
+- Webhook delivery usa HMAC-SHA256 no header `X-Ellan-Signature`.
+- Health check roda a cada 5 min via worker (similar ao `invoice_issue_worker`).
+- Dead-letter após 5 tentativas com backoff exponencial.
+
+---
+
+### Sprint P-3 · "Partner Financials & Service Areas" (2 semanas)
+
+**Objetivo:** Liquidação de revenue share periódica, cobertura geográfica por locker e métricas de desempenho — padrão UPS Partner Settlement / MercadoPago Marketplace Split.
+
+#### Novas tabelas
+
+```sql
+-- Batch de liquidação mensal/quinzenal
+CREATE TABLE partner_settlement_batches (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id          VARCHAR(36) NOT NULL,
+    partner_type        VARCHAR(20) NOT NULL DEFAULT 'ECOMMERCE',
+    period_start        DATE NOT NULL,
+    period_end          DATE NOT NULL,
+    currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+    total_orders        INTEGER NOT NULL DEFAULT 0,
+    gross_revenue_cents BIGINT NOT NULL DEFAULT 0,
+    revenue_share_pct   NUMERIC(6,4) NOT NULL,
+    revenue_share_cents BIGINT NOT NULL DEFAULT 0,
+    fees_cents          BIGINT NOT NULL DEFAULT 0,
+    net_amount_cents    BIGINT NOT NULL DEFAULT 0,
+    status              VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+                        CHECK (status IN ('DRAFT','APPROVED','PAID','DISPUTED','CANCELLED')),
+    settled_at          TIMESTAMPTZ,
+    settlement_ref      VARCHAR(128),           -- referência bancária ou PIX
+    notes               TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Itens da liquidação (por order)
+CREATE TABLE partner_settlement_items (
+    id              BIGSERIAL PRIMARY KEY,
+    batch_id        VARCHAR(36) NOT NULL REFERENCES partner_settlement_batches(id),
+    order_id        VARCHAR(36) NOT NULL,
+    order_date      TIMESTAMPTZ NOT NULL,
+    gross_cents     BIGINT NOT NULL,
+    share_pct       NUMERIC(6,4) NOT NULL,
+    share_cents     BIGINT NOT NULL,
+    currency        VARCHAR(8) NOT NULL DEFAULT 'BRL'
+);
+CREATE INDEX idx_psi_batch ON partner_settlement_items(batch_id);
+
+-- Cobertura: quais lockers cada parceiro atende (prioridade e vigência)
+CREATE TABLE partner_service_areas (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    partner_type    VARCHAR(20) NOT NULL,
+    locker_id       VARCHAR(36) NOT NULL REFERENCES lockers(id),
+    priority        INTEGER NOT NULL DEFAULT 100,  -- menor = maior prioridade
+    exclusive       BOOLEAN NOT NULL DEFAULT false,
+    valid_from      DATE NOT NULL,
+    valid_until     DATE,
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_psa_partner_locker 
+    ON partner_service_areas(partner_id, locker_id) WHERE is_active = true;
+
+-- Snapshot de performance mensal por parceiro
+CREATE TABLE partner_performance_metrics (
+    id                      VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id              VARCHAR(36) NOT NULL,
+    period_month            CHAR(7) NOT NULL,   -- "2026-04"
+    total_orders            INTEGER NOT NULL DEFAULT 0,
+    on_time_pickup_pct      NUMERIC(5,2),       -- % retirados antes do deadline
+    return_rate_pct         NUMERIC(5,2),       -- % devoluções
+    avg_pickup_hours        NUMERIC(6,2),
+    sla_compliance_pct      NUMERIC(5,2),
+    webhook_success_rate    NUMERIC(5,2),
+    generated_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Integração com Orders (stub)
+
+- Quando `orders.status` muda para `PICKED_UP`, `EXPIRED`, `CANCELLED` → registrar evento em `partner_webhook_deliveries` para todos os endpoints ativos do `ecommerce_partner_id` associado ao pedido.
+- Usar o padrão `domain_event_outbox` já existente no projeto.
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `GET` | `/partners/{id}/settlements` | Lista batches com filtro de período |
+| `POST` | `/partners/{id}/settlements/generate` | Backoffice: gera batch do período |
+| `PATCH` | `/partners/{id}/settlements/{batch_id}/approve` | Aprova para pagamento |
+| `GET` | `/partners/{id}/performance` | Métricas dos últimos 6 meses |
+| `GET/POST` | `/partners/{id}/service-areas` | Cobertura por locker |
+
+---
+
+## DOMAIN 2 — LOGISTICS
+
+### Sprint L-1 · "Carrier Tracking & Event Model" (2 semanas)
+
+**Objetivo:** Modelo de eventos de rastreio multi-hop (padrão Correios/UPS), gestão de labels de envio e tentativas de entrega estruturadas.
+
+#### Novas tabelas
+
+```sql
+-- Eventos de rastreio por entrega (cada scan do carrier)
+CREATE TABLE logistics_tracking_events (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+    event_code      VARCHAR(30) NOT NULL,        -- ex: "BDO","OFD","DLV","RTN"
+    description     VARCHAR(255),
+    location_name   VARCHAR(128),
+    city            VARCHAR(64),
+    state           VARCHAR(10),
+    country         VARCHAR(2) DEFAULT 'BR',
+    latitude        DOUBLE PRECISION,
+    longitude       DOUBLE PRECISION,
+    source          VARCHAR(20) NOT NULL DEFAULT 'CARRIER_WEBHOOK'
+                    CHECK (source IN ('CARRIER_WEBHOOK','MANUAL','POLL','LOCKER_SENSOR')),
+    occurred_at     TIMESTAMPTZ NOT NULL,
+    received_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    raw_payload     JSONB
+);
+CREATE INDEX idx_lte_delivery_time ON logistics_tracking_events(delivery_id, occurred_at DESC);
+
+-- Tentativas de entrega por pacote
+CREATE TABLE logistics_delivery_attempts (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+    attempt_number  INTEGER NOT NULL,
+    attempted_at    TIMESTAMPTZ NOT NULL,
+    outcome         VARCHAR(30) NOT NULL
+                    CHECK (outcome IN (
+                        'SUCCESS','FAILED_NOT_HOME','FAILED_REFUSED',
+                        'FAILED_LOCKER_FULL','FAILED_ADDRESS','FAILED_OTHER'
+                    )),
+    next_attempt_at TIMESTAMPTZ,
+    carrier_note    TEXT,
+    carrier_agent   VARCHAR(128),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+UNIQUE INDEX idx_lda_delivery_attempt ON logistics_delivery_attempts(delivery_id, attempt_number);
+
+-- Labels de envio/coleta
+CREATE TABLE logistics_shipment_labels (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+    carrier_code    VARCHAR(20) NOT NULL,
+    tracking_code   VARCHAR(128) NOT NULL,
+    label_format    VARCHAR(10) NOT NULL CHECK (label_format IN ('PDF','ZPL','PNG','HTML')),
+    label_url       VARCHAR(500),
+    label_data      TEXT,                       -- base64 para formatos binários
+    generated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    expires_at      TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Alterações em tabelas existentes
+
+```sql
+ALTER TABLE logistics_partners
+    ADD COLUMN carrier_code     VARCHAR(20),    -- "UPS","CORREIOS","FEDEX","JADLOG"
+    ADD COLUMN coverage_type    VARCHAR(20) DEFAULT 'LAST_MILE'
+                                CHECK (coverage_type IN ('LAST_MILE','FIRST_MILE','BOTH','HUB_TO_LOCKER')),
+    ADD COLUMN max_parcel_weight_g INTEGER,
+    ADD COLUMN max_dimensions_json JSONB,       -- {"width_mm":300,"height_mm":200,"depth_mm":150}
+    ADD COLUMN webhook_secret_ref VARCHAR(255), -- para validar POSTs do carrier
+    ADD COLUMN tracking_poll_enabled BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN tracking_poll_interval_sec INTEGER DEFAULT 3600;
+
+-- Novos status em inbound_deliveries
+-- status atual: 'PENDING' → adicionar: 'IN_TRANSIT','AT_LOCKER','FAILED_DELIVERY','RETURNING'
+ALTER TABLE inbound_deliveries
+    ADD COLUMN attempt_count    INTEGER NOT NULL DEFAULT 0,
+    ADD COLUMN last_attempt_at  TIMESTAMPTZ,
+    ADD COLUMN label_id         VARCHAR(36) REFERENCES logistics_shipment_labels(id);
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `POST` | `/logistics/webhook/{carrier_code}` | Ingere eventos do carrier (valida HMAC) |
+| `GET` | `/logistics/deliveries/{id}/tracking` | Timeline de eventos ordenados |
+| `GET` | `/logistics/deliveries/{id}/attempts` | Tentativas de entrega |
+| `POST` | `/logistics/deliveries/{id}/labels` | Gera/registra label |
+| `GET` | `/logistics/deliveries/{id}/labels/{label_id}` | Download do label |
+
+---
+
+### Sprint L-2 · "Returns & Reverse Logistics" (2 semanas)
+
+**Objetivo:** Ciclo completo de devoluções — padrão Amazon Returns / MercadoLivre Devoluções com rastreio de perna reversa, catálogo de motivos e monitoramento de breach de SLA.
+
+#### Novas tabelas
+
+```sql
+-- Solicitação de devolução
+CREATE TABLE return_requests (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    original_delivery_id VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+    locker_id           VARCHAR(36) REFERENCES lockers(id),
+    requester_type      VARCHAR(20) NOT NULL CHECK (requester_type IN ('RECIPIENT','SENDER','SYSTEM','OPS')),
+    requester_id        VARCHAR(36),            -- user_id ou NULL para sistema
+    return_reason_code  VARCHAR(30) NOT NULL,   -- FK implícita em return_reasons_catalog
+    return_reason_detail TEXT,
+    photo_url           VARCHAR(500),
+    status              VARCHAR(30) NOT NULL DEFAULT 'REQUESTED'
+                        CHECK (status IN (
+                            'REQUESTED','APPROVED','REJECTED',
+                            'LABEL_ISSUED','IN_TRANSIT','RECEIVED','CLOSED','DISPUTED'
+                        )),
+    requested_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    approved_at         TIMESTAMPTZ,
+    approved_by         VARCHAR(36),
+    closed_at           TIMESTAMPTZ,
+    close_reason        VARCHAR(255),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Perna de transporte reverso
+CREATE TABLE return_legs (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    return_request_id   VARCHAR(36) NOT NULL REFERENCES return_requests(id),
+    logistics_partner_id VARCHAR(36) REFERENCES logistics_partners(id),
+    tracking_code       VARCHAR(128),
+    label_id            VARCHAR(36) REFERENCES logistics_shipment_labels(id),
+    from_locker_id      VARCHAR(36) REFERENCES lockers(id),
+    to_hub_address      JSONB,                  -- {"street":"...","city":"...","postal_code":"..."}
+    status              VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                        CHECK (status IN ('PENDING','IN_TRANSIT','RECEIVED','LOST','CANCELLED')),
+    shipped_at          TIMESTAMPTZ,
+    received_at         TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Eventos de rastreio da perna reversa
+CREATE TABLE return_tracking_events (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    return_leg_id   VARCHAR(36) NOT NULL REFERENCES return_legs(id),
+    event_code      VARCHAR(30) NOT NULL,
+    description     VARCHAR(255),
+    location_name   VARCHAR(128),
+    occurred_at     TIMESTAMPTZ NOT NULL,
+    source          VARCHAR(20) NOT NULL DEFAULT 'CARRIER_WEBHOOK',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Catálogo de motivos de devolução (configurável por operação)
+CREATE TABLE return_reasons_catalog (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    code                VARCHAR(30) NOT NULL UNIQUE,
+    label_pt            VARCHAR(128) NOT NULL,
+    label_en            VARCHAR(128),
+    category            VARCHAR(30),            -- "PRODUCT","LOGISTICS","CHANGE_OF_MIND"
+    requires_photo      BOOLEAN NOT NULL DEFAULT false,
+    requires_detail     BOOLEAN NOT NULL DEFAULT false,
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Breaches de SLA (pickup timeout, return timeout, etc.)
+CREATE TABLE sla_breach_events (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    delivery_id         VARCHAR(36) REFERENCES inbound_deliveries(id),
+    return_request_id   VARCHAR(36) REFERENCES return_requests(id),
+    logistics_partner_id VARCHAR(36) REFERENCES logistics_partners(id),
+    breach_type         VARCHAR(40) NOT NULL
+                        CHECK (breach_type IN (
+                            'PICKUP_TIMEOUT','RETURN_TIMEOUT',
+                            'NOTIFICATION_FAILURE','DELIVERY_ATTEMPT_EXCEEDED',
+                            'RETURN_TRANSIT_TIMEOUT'
+                        )),
+    severity            VARCHAR(10) NOT NULL CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+    expected_at         TIMESTAMPTZ NOT NULL,
+    detected_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    notified_at         TIMESTAMPTZ,
+    resolved_at         TIMESTAMPTZ,
+    notes               TEXT
+);
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `POST` | `/logistics/deliveries/{id}/return-request` | Cria solicitação |
+| `GET` | `/logistics/return-requests/{id}` | Detalhe com perna reversa |
+| `PATCH` | `/logistics/return-requests/{id}/status` | Aprovação/rejeição (ops) |
+| `POST` | `/logistics/return-requests/{id}/labels` | Emite label reversa |
+| `GET` | `/logistics/sla-breaches` | Filtro: partner, type, severity, resolved |
+| `GET/POST` | `/logistics/return-reasons` | CRUD do catálogo |
+
+---
+
+### Sprint L-3 · "Manifests, Capacity & Order Integration" (2 semanas)
+
+**Objetivo:** Manifesto de carga (drop-off batch), planejamento de capacidade por locker e stub de integração com orders.
+
+#### Novas tabelas
+
+```sql
+-- Manifesto de carga: lote de entregas de um carrier para um locker
+CREATE TABLE logistics_manifests (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    logistics_partner_id VARCHAR(36) NOT NULL REFERENCES logistics_partners(id),
+    locker_id           VARCHAR(36) NOT NULL REFERENCES lockers(id),
+    manifest_date       DATE NOT NULL,
+    carrier_route_code  VARCHAR(64),
+    carrier_vehicle_id  VARCHAR(64),
+    expected_parcel_count INTEGER NOT NULL DEFAULT 0,
+    actual_parcel_count INTEGER NOT NULL DEFAULT 0,
+    status              VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                        CHECK (status IN ('PENDING','IN_TRANSIT','DELIVERED','PARTIAL','FAILED','CANCELLED')),
+    dispatched_at       TIMESTAMPTZ,
+    delivered_at        TIMESTAMPTZ,
+    carrier_note        TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Itens do manifesto (parcela por parcela)
+CREATE TABLE logistics_manifest_items (
+    id              BIGSERIAL PRIMARY KEY,
+    manifest_id     VARCHAR(36) NOT NULL REFERENCES logistics_manifests(id),
+    delivery_id     VARCHAR(36) REFERENCES inbound_deliveries(id),
+    tracking_code   VARCHAR(128) NOT NULL,
+    sequence_number INTEGER,
+    status          VARCHAR(20) NOT NULL DEFAULT 'EXPECTED'
+                    CHECK (status IN ('EXPECTED','STORED','EXCEPTION','MISSING')),
+    exception_note  TEXT,
+    processed_at    TIMESTAMPTZ
+);
+CREATE INDEX idx_lmi_manifest ON logistics_manifest_items(manifest_id);
+
+-- Capacidade reservada por parceiro por locker (planejamento)
+CREATE TABLE logistics_capacity_allocations (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    logistics_partner_id VARCHAR(36) NOT NULL REFERENCES logistics_partners(id),
+    locker_id           VARCHAR(36) NOT NULL REFERENCES lockers(id),
+    slot_size           VARCHAR(8) NOT NULL,    -- S / M / L / XL
+    reserved_slots      INTEGER NOT NULL,
+    valid_from          DATE NOT NULL,
+    valid_until         DATE,
+    priority            INTEGER NOT NULL DEFAULT 100,
+    notes               TEXT,
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Tabela de fretes por carrier (para cotação interna)
+CREATE TABLE logistics_carrier_rates (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    carrier_code        VARCHAR(20) NOT NULL,
+    origin_zone         VARCHAR(10) NOT NULL,   -- CEP-zone ou UF
+    destination_zone    VARCHAR(10) NOT NULL,
+    weight_tier_g       INTEGER NOT NULL,       -- limite superior do tier
+    size_tier           VARCHAR(8),             -- S/M/L/XL
+    amount_cents        INTEGER NOT NULL,
+    currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+    valid_from          DATE NOT NULL,
+    valid_until         DATE,
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Integração com Orders (stub)
+
+```
+inbound_deliveries.partner_order_ref
+    → GET /orders?partner_order_ref={ref}&partner_id={id}
+    → Retorna order.id, status, slot, locker_id
+
+Quando inbound_deliveries.status → 'AT_LOCKER' (stored):
+    → Dispara domain_event_outbox: "DELIVERY_STORED_AT_LOCKER"
+    → Consumido por: partner_webhook_deliveries worker
+
+Quando inbound_deliveries.status → 'PICKED_UP':
+    → Dispara domain_event_outbox: "DELIVERY_PICKED_UP"
+    → Trigger para invoicing (se aplicável)
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `POST` | `/logistics/manifests` | Cria manifesto com lista de tracking codes |
+| `POST` | `/logistics/manifests/{id}/close` | Fecha manifesto (compara expected vs actual) |
+| `GET` | `/logistics/manifests/{id}/items` | Lista itens com status |
+| `POST` | `/logistics/manifests/{id}/items/{item_id}/exception` | Registra exceção |
+| `GET` | `/logistics/{partner_id}/capacity` | Capacidade atual e reservas |
+| `POST` | `/logistics/{partner_id}/capacity` | Cria/atualiza reserva por slot_size |
+| `GET` | `/logistics/{partner_id}/carrier-rates` | Tabela de fretes |
+
+---
+
+## DOMAIN 3 — PRODUCTS
+
+### Sprint Pr-1 · "Product Catalog & Lifecycle" (2 semanas)
+
+**Objetivo:** Catalog de produtos com lifecycle completo (DRAFT→ACTIVE→DISCONTINUED), media, barcodes e gestão de fornecedores — padrão Amazon Product Catalog.
+
+#### Novas tabelas
+
+```sql
+-- Mídia do produto (imagens, PDFs de ficha técnica)
+CREATE TABLE product_media (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+    media_type      VARCHAR(10) NOT NULL CHECK (media_type IN ('IMAGE','VIDEO','PDF','3D')),
+    url             VARCHAR(500) NOT NULL,
+    cdn_key         VARCHAR(255),
+    alt_text        VARCHAR(255),
+    sort_order      INTEGER NOT NULL DEFAULT 0,
+    is_primary      BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_pm_primary ON product_media(product_id) WHERE is_primary = true;
+
+-- Barcodes por produto (EAN, QR, GTIN, Code128)
+CREATE TABLE product_barcodes (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+    barcode_type    VARCHAR(20) NOT NULL
+                    CHECK (barcode_type IN ('EAN13','EAN8','GTIN14','QR','CODE128','DATAMATRIX')),
+    barcode_value   VARCHAR(128) NOT NULL UNIQUE,
+    is_primary      BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Fornecedores
+CREATE TABLE suppliers (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    name            VARCHAR(128) NOT NULL,
+    code            VARCHAR(32) NOT NULL UNIQUE,
+    country         VARCHAR(2) NOT NULL DEFAULT 'BR',
+    tax_id          VARCHAR(32),                -- CNPJ/NIF
+    contact_email   VARCHAR(128),
+    contact_phone   VARCHAR(32),
+    website         VARCHAR(255),
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Relação produto-fornecedor com custo e prazo
+CREATE TABLE product_suppliers (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+    supplier_id     VARCHAR(36) NOT NULL REFERENCES suppliers(id),
+    supplier_sku    VARCHAR(128),
+    cost_price_cents INTEGER NOT NULL,
+    currency        VARCHAR(8) NOT NULL DEFAULT 'BRL',
+    lead_time_days  INTEGER,
+    moq             INTEGER DEFAULT 1,          -- minimum order quantity
+    is_primary      BOOLEAN NOT NULL DEFAULT false,
+    valid_from      DATE NOT NULL,
+    valid_until     DATE,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Variantes de produto (cor, tamanho, sabor, etc.)
+CREATE TABLE product_variants (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    parent_product_id   VARCHAR(255) NOT NULL REFERENCES products(id),
+    sku_id              VARCHAR(255) NOT NULL UNIQUE,
+    variant_attrs       JSONB NOT NULL,         -- {"color":"red","size":"M"}
+    amount_cents        INTEGER NOT NULL,
+    weight_g            INTEGER,
+    width_mm            INTEGER,
+    height_mm           INTEGER,
+    depth_mm            INTEGER,
+    is_active           BOOLEAN NOT NULL DEFAULT true,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+#### Alterações em tabelas existentes
+
+```sql
+ALTER TABLE products
+    ADD COLUMN status       VARCHAR(20) NOT NULL DEFAULT 'DRAFT'
+                            CHECK (status IN ('DRAFT','ACTIVE','DISCONTINUED','ARCHIVED')),
+    ADD COLUMN brand        VARCHAR(128),
+    ADD COLUMN gtin         VARCHAR(14),        -- Global Trade Item Number
+    ADD COLUMN min_age      INTEGER,            -- null = sem restrição
+    ADD COLUMN tags_json    JSONB DEFAULT '[]',
+    ADD COLUMN slug         VARCHAR(255),       -- para URLs amigáveis
+    ADD COLUMN discontinued_at TIMESTAMPTZ,
+    ADD COLUMN discontinued_reason VARCHAR(255);
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `POST` | `/products` | Cria em status DRAFT |
+| `PATCH` | `/products/{id}/status` | Transição validada (DRAFT→ACTIVE requer fiscal_config) |
+| `POST` | `/products/{id}/media` | Upload de imagem/PDF |
+| `POST` | `/products/{id}/barcodes` | Registra barcode (unicidade global) |
+| `GET/POST` | `/products/{id}/variants` | CRUD de variantes |
+| `GET/POST` | `/suppliers` | Gestão de fornecedores |
+| `POST` | `/products/{id}/suppliers` | Vincula fornecedor |
+
+#### Critérios de aceite
+- Transição para `ACTIVE` requer: `product_fiscal_config` cadastrada + pelo menos 1 barcode primário.
+- Slug único global, gerado automaticamente do nome se não fornecido.
+- Variante herda `requires_age_verification`, `is_hazardous` do pai se não sobrescrito.
+
+---
+
+### Sprint Pr-2 · "Inventory & Availability per Locker" (2 semanas)
+
+**Objetivo:** Controle de estoque em tempo real por locker — padrão Amazon FBA Inventory / MercadoLivre Envios stock management.
+
+#### Novas tabelas
+
+```sql
+-- Estoque atual por produto/locker/tamanho de slot
+CREATE TABLE product_inventory (
+    id                  VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id          VARCHAR(255) NOT NULL REFERENCES products(id),
+    locker_id           VARCHAR(36) NOT NULL REFERENCES lockers(id),
+    slot_size           VARCHAR(8) NOT NULL,
+    quantity_on_hand    INTEGER NOT NULL DEFAULT 0,
+    quantity_reserved   INTEGER NOT NULL DEFAULT 0,
+    quantity_available  INTEGER GENERATED ALWAYS AS (quantity_on_hand - quantity_reserved) STORED,
+    reorder_point       INTEGER DEFAULT 0,
+    reorder_quantity    INTEGER DEFAULT 0,
+    last_counted_at     TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_inv_non_negative CHECK (quantity_on_hand >= 0 AND quantity_reserved >= 0),
+    CONSTRAINT ck_inv_reserved_leq_hand CHECK (quantity_reserved <= quantity_on_hand)
+);
+CREATE UNIQUE INDEX idx_pi_product_locker_size ON product_inventory(product_id, locker_id, slot_size);
+
+-- Movimentações de estoque (ledger imutável)
+CREATE TABLE inventory_movements (
+    id              BIGSERIAL PRIMARY KEY,
+    product_id      VARCHAR(255) NOT NULL,
+    locker_id       VARCHAR(36) NOT NULL,
+    movement_type   VARCHAR(30) NOT NULL
+                    CHECK (movement_type IN (
+                        'RESTOCK','SALE','RESERVATION','RESERVATION_RELEASE',
+                        'ADJUSTMENT','RETURN','DAMAGE','EXPIRED','TRANSFER_IN','TRANSFER_OUT'
+                    )),
+    quantity_delta  INTEGER NOT NULL,           -- positivo = entrada, negativo = saída
+    reference_id    VARCHAR(36),                -- order_id, return_request_id, etc.
+    reference_type  VARCHAR(30),               -- 'ORDER','RETURN','MANUAL_COUNT'
+    note            TEXT,
+    occurred_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_by      VARCHAR(36),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_im_product_locker ON inventory_movements(product_id, locker_id, occurred_at DESC);
+
+-- Reservas de estoque vinculadas a orders (evita oversell)
+CREATE TABLE inventory_reservations (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id      VARCHAR(255) NOT NULL,
+    locker_id       VARCHAR(36) NOT NULL,
+    order_id        VARCHAR(36) NOT NULL,
+    quantity        INTEGER NOT NULL DEFAULT 1,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'
+                    CHECK (status IN ('ACTIVE','RELEASED','CONSUMED','EXPIRED')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_ir_order ON inventory_reservations(order_id);
+CREATE INDEX idx_ir_expiry ON inventory_reservations(expires_at) WHERE status = 'ACTIVE';
+
+-- Alertas de estoque por produto/locker
+CREATE TABLE inventory_alert_configs (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    product_id      VARCHAR(255) NOT NULL,
+    locker_id       VARCHAR(36),                -- NULL = todos os lockers
+    alert_type      VARCHAR(20) NOT NULL
+                    CHECK (alert_type IN ('LOW_STOCK','OUT_OF_STOCK','EXPIRY_SOON')),
+    threshold       INTEGER NOT NULL DEFAULT 0,
+    notify_channels JSONB NOT NULL DEFAULT '["EMAIL"]',
+    notify_targets  JSONB NOT NULL DEFAULT '[]',  -- ["ops@ellan.com"]
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    last_fired_at   TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Contagem cíclica de estoque
+CREATE TABLE inventory_counts (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    locker_id       VARCHAR(36) NOT NULL,
+    counted_by      VARCHAR(36),
+    status          VARCHAR(20) NOT NULL DEFAULT 'OPEN'
+                    CHECK (status IN ('OPEN','COMPLETED','CANCELLED')),
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE inventory_count_items (
+    id              BIGSERIAL PRIMARY KEY,
+    count_id        VARCHAR(36) NOT NULL REFERENCES inventory_counts(id),
+    product_id      VARCHAR(255) NOT NULL,
+    slot_size       VARCHAR(8) NOT NULL,
+    system_quantity INTEGER NOT NULL,           -- snapshot no momento da contagem
+    counted_quantity INTEGER,
+    variance        INTEGER GENERATED ALWAYS AS (counted_quantity - system_quantity) STORED,
+    note            TEXT
+);
+```
+
+#### Integração com Orders (stub)
+
+```
+Order criada (PAYMENT_PENDING):
+    → POST /inventory/reserve: cria inventory_reservation (expira em prepayment_timeout)
+
+Order paga (PAID_PENDING_PICKUP):
+    → inventory_reservation.status = 'ACTIVE' (mantém)
+
+Order retirada (DISPENSED/PICKED_UP):
+    → inventory_reservation.status = 'CONSUMED'
+    → inventory_movements: movement_type='SALE', quantity_delta = -quantity
+
+Order cancelada/expirada:
+    → inventory_reservation.status = 'RELEASED'
+    → inventory_movements: movement_type='RESERVATION_RELEASE'
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `GET` | `/products/{id}/inventory` | Estoque em todos os lockers |
+| `GET` | `/inventory/{locker_id}` | Todo estoque de um locker |
+| `POST` | `/inventory/reserve` | Reserva para um order (idempotente) |
+| `POST` | `/inventory/{locker_id}/restock` | Entrada de estoque manual |
+| `GET` | `/inventory/{product_id}/{locker_id}/movements` | Ledger de movimentações |
+| `POST` | `/inventory/counts` | Inicia contagem cíclica |
+| `POST` | `/inventory/counts/{id}/submit` | Finaliza com variances |
+| `GET/POST` | `/inventory/alert-configs` | Configuração de alertas |
+
+---
+
+### Sprint Pr-3 · "Pricing, Bundles & Fiscal Auto-Classification" (2 semanas)
+
+**Objetivo:** Bundles de produto, promoções/cupons e auto-classificação fiscal via `product_fiscal_config` no momento da emissão de nota — eliminando classificação manual por NF.
+
+#### Novas tabelas
+
+```sql
+-- Bundles (kits): ex: "Combo Snack + Bebida"
+CREATE TABLE product_bundles (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    name            VARCHAR(128) NOT NULL,
+    code            VARCHAR(32) NOT NULL UNIQUE,
+    description     TEXT,
+    amount_cents    INTEGER NOT NULL,
+    currency        VARCHAR(8) NOT NULL DEFAULT 'BRL',
+    bundle_type     VARCHAR(20) DEFAULT 'FIXED' CHECK (bundle_type IN ('FIXED','CONFIGURABLE')),
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    valid_from      TIMESTAMPTZ,
+    valid_until     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE product_bundle_items (
+    id              BIGSERIAL PRIMARY KEY,
+    bundle_id       VARCHAR(36) NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
+    product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+    quantity        INTEGER NOT NULL DEFAULT 1,
+    unit_price_cents INTEGER,                   -- NULL = proporcional ao bundle
+    sort_order      INTEGER NOT NULL DEFAULT 0
+);
+
+-- Promoções e cupons
+CREATE TABLE promotions (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    code            VARCHAR(32) UNIQUE,         -- NULL = promoção automática sem cupom
+    name            VARCHAR(128) NOT NULL,
+    type            VARCHAR(30) NOT NULL
+                    CHECK (type IN ('PERCENT_OFF','FIXED_OFF','BUY_X_GET_Y','FREE_ITEM','BUNDLE_DISCOUNT')),
+    discount_pct    NUMERIC(5,2),
+    discount_cents  INTEGER,
+    min_order_cents INTEGER DEFAULT 0,
+    max_discount_cents INTEGER,
+    max_uses        INTEGER,
+    uses_count      INTEGER NOT NULL DEFAULT 0,
+    per_user_limit  INTEGER DEFAULT 1,
+    conditions_json JSONB DEFAULT '{}',         -- {"locker_ids":["..."],"categories":["..."]}
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    valid_from      TIMESTAMPTZ NOT NULL,
+    valid_until     TIMESTAMPTZ,
+    created_by      VARCHAR(36),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Exclusões de promoção por produto
+CREATE TABLE promotion_product_exclusions (
+    promotion_id    VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+    product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+    PRIMARY KEY (promotion_id, product_id)
+);
+
+-- Log de auto-classificação fiscal (auditoria)
+CREATE TABLE fiscal_auto_classification_log (
+    id              BIGSERIAL PRIMARY KEY,
+    order_id        VARCHAR(36) NOT NULL,
+    invoice_id      VARCHAR(50),
+    sku_id          VARCHAR(255) NOT NULL,
+    ncm_applied     VARCHAR(10),
+    icms_cst_applied VARCHAR(3),
+    pis_cst_applied  VARCHAR(2),
+    cofins_cst_applied VARCHAR(2),
+    cfop_applied    VARCHAR(5),
+    source          VARCHAR(20) NOT NULL
+                    CHECK (source IN ('AUTO_PRODUCT_CONFIG','CATEGORY_FALLBACK','MANUAL','DEFAULT')),
+    classified_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_facl_order ON fiscal_auto_classification_log(order_id);
+```
+
+#### Alterações em tabelas existentes
+
+```sql
+-- product_fiscal_config: campos obrigatórios para NFC-e padrão
+ALTER TABLE product_fiscal_config
+    ADD COLUMN unit_of_measure  VARCHAR(6) NOT NULL DEFAULT 'UN',   -- UN, KG, L, M, CX
+    ADD COLUMN origin_type      CHAR(1) NOT NULL DEFAULT '0',       -- 0=nacional, 1=import. direto
+    ADD COLUMN cfop             VARCHAR(5),                         -- 5102, 5405, etc.
+    ADD COLUMN tax_rate_pct     NUMERIC(7,4),
+    ADD COLUMN is_service       BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN updated_at       TIMESTAMPTZ NOT NULL DEFAULT now();
+```
+
+#### Integração Fiscal Automática (stub)
+
+```
+Quando invoice criada (status=PENDING):
+    Para cada item em invoice.items_json:
+        1. Busca product_fiscal_config WHERE sku_id = item.sku_id
+        2. Se encontrado → aplica ncm, cst, cfop → preenche items_json enriquecido
+           → grava fiscal_auto_classification_log com source='AUTO_PRODUCT_CONFIG'
+        3. Se não encontrado → busca config da product_categories pai
+           → source='CATEGORY_FALLBACK'
+        4. Se nenhum → usa defaults do tenant_fiscal_config
+           → source='DEFAULT', emite alerta OPS
+
+Resultado: invoice.items_json e invoice.tax_breakdown_json sempre populados
+           antes de enviar ao provedor fiscal.
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `GET/POST` | `/products/bundles` | CRUD de bundles |
+| `POST` | `/products/bundles/{id}/items` | Adiciona produto ao bundle |
+| `GET/POST` | `/promotions` | CRUD de promoções |
+| `PATCH` | `/promotions/{id}/status` | Ativa/desativa |
+| `POST` | `/promotions/validate` | Valida cupom para um order (idempotente) |
+| `GET` | `/products/{id}/fiscal-config` | Config fiscal atual |
+| `PUT` | `/products/{id}/fiscal-config` | Cria ou substitui |
+| `GET` | `/fiscal/auto-classification-log` | Filtro: order_id, sku_id, source |
+
+---
+
+## INTEGRATION SPRINT
+
+### Sprint I-1 · "Orders ↔ Partners ↔ Fiscal — Wiring" (2 semanas)
+
+**Objetivo:** Fechar os três fios soltos críticos: eventos de order para parceiros, fulfillment tracking e auto-classificação fiscal. Tudo como stubs rastreáveis e operacionalizáveis.
+
+#### Novas tabelas
+
+```sql
+-- Outbox de eventos de order para parceiros ecommerce (padrão já usado em domain_event_outbox)
+CREATE TABLE partner_order_events_outbox (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    partner_id      VARCHAR(36) NOT NULL,
+    order_id        VARCHAR(36) NOT NULL,
+    event_type      VARCHAR(50) NOT NULL
+                    CHECK (event_type IN (
+                        'ORDER_CREATED','ORDER_PAID','ORDER_DISPENSED',
+                        'ORDER_PICKED_UP','ORDER_EXPIRED','ORDER_CANCELLED',
+                        'ORDER_REFUNDED','DELIVERY_STORED','DELIVERY_PICKED_UP'
+                    )),
+    payload_json    JSONB NOT NULL,
+    api_version     VARCHAR(10) NOT NULL DEFAULT 'v1',
+    status          VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING','DELIVERED','FAILED','DEAD_LETTER','SKIPPED')),
+    attempt_count   INTEGER NOT NULL DEFAULT 0,
+    max_attempts    INTEGER NOT NULL DEFAULT 5,
+    next_retry_at   TIMESTAMPTZ,
+    last_error      TEXT,
+    delivered_at    TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_poeo_status_retry ON partner_order_events_outbox(status, next_retry_at)
+    WHERE status IN ('PENDING','FAILED');
+CREATE INDEX idx_poeo_partner_order ON partner_order_events_outbox(partner_id, order_id);
+
+-- Tracking de fulfillment por order (cola Orders ↔ Logistics/Products)
+CREATE TABLE order_fulfillment_tracking (
+    id              VARCHAR(36) PRIMARY KEY DEFAULT gen_random_uuid()::text,
+    order_id        VARCHAR(36) NOT NULL REFERENCES orders(id),
+    fulfillment_type VARCHAR(30) NOT NULL
+                    CHECK (fulfillment_type IN ('DIRECT_SALE','ECOMMERCE_PARTNER','LOGISTICS_DELIVERY','RENTAL')),
+    partner_id      VARCHAR(36),
+    delivery_id     VARCHAR(36) REFERENCES inbound_deliveries(id),
+    allocation_id   VARCHAR(36),
+    status          VARCHAR(30) NOT NULL DEFAULT 'PENDING'
+                    CHECK (status IN ('PENDING','ALLOCATED','DISPENSED','PICKED_UP','RETURNED','CANCELLED')),
+    allocated_at    TIMESTAMPTZ,
+    dispensed_at    TIMESTAMPTZ,
+    picked_up_at    TIMESTAMPTZ,
+    returned_at     TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX idx_oft_order ON order_fulfillment_tracking(order_id);
+```
+
+#### Worker: Partner Order Events
+
+```
+Novo worker: partner_order_events_worker
+Padrão: idêntico ao billing_fiscal_issue_worker
+
+Polling: partner_order_events_outbox WHERE status IN ('PENDING','FAILED')
+         AND next_retry_at <= now()
+         LIMIT 50 ORDER BY created_at ASC
+
+Para cada item:
+    1. Busca partner_webhook_endpoints ativos do partner_id com event_type na lista
+    2. POST para cada endpoint com HMAC-SHA256 no header
+    3. Sucesso (2xx) → status='DELIVERED', grava partner_webhook_deliveries
+    4. Falha → incrementa attempt_count, calcula next_retry_at (backoff exponencial)
+    5. attempt_count >= max_attempts → status='DEAD_LETTER', alerta OPS
+```
+
+#### Triggers de population do outbox
+
+```sql
+-- Via domain_event_outbox já existente (sem trigger SQL — via application layer):
+-- Quando orders.status muda para qualquer valor da lista de event_types:
+--   1. INSERT domain_event_outbox (já existente)
+--   2. INSERT partner_order_events_outbox se orders.ecommerce_partner_id IS NOT NULL
+--   3. UPDATE order_fulfillment_tracking.status = novo estado mapeado
+```
+
+#### Endpoints
+
+| Método | Path | Notas |
+|---|---|---|
+| `GET` | `/orders/{id}/fulfillment` | Estado atual do fulfillment |
+| `GET` | `/orders/{id}/partner-events` | Outbox de eventos para parceiro |
+| `POST` | `/orders/{id}/partner-events/retry` | Reprocessa evento falho (ops) |
+| `GET` | `/fiscal/auto-classification-log/{order_id}` | Log de classificação fiscal |
+| `POST` | `/fiscal/auto-classification/{order_id}/reprocess` | Reclassifica (ops) |
+
+---
+
+## Resumo executivo
+
+| Sprint | Domínio | Tabelas novas | Endpoints novos | Integração |
+|---|---|---|---|---|
+| P-1 | Partners | 3 | 5 | — |
+| P-2 | Partners | 5 | 6 | — |
+| P-3 | Partners | 4 | 5 | Orders → Partner Webhook stub |
+| L-1 | Logistics | 3 | 5 | Carrier Webhook ingestion |
+| L-2 | Logistics | 5 | 6 | — |
+| L-3 | Logistics | 4 | 7 | Orders ↔ inbound_deliveries |
+| Pr-1 | Products | 5 | 7 | — |
+| Pr-2 | Products | 6 | 8 | Orders → Inventory reservation |
+| Pr-3 | Products | 4 (+1 alter) | 8 | Orders → Fiscal auto-classification |
+| I-1 | Integration | 2 | 5 | Partner Outbox + Fulfillment wire |
+| **Total** | | **41** | **62** | |
+
+### Ordem recomendada de execução
+
+```
+P-1 → L-1 → Pr-1   (semanas 1-2: fundação dos três domínios)
+P-2 → L-2 → Pr-2   (semanas 3-4: profundidade operacional)
+P-3 → L-3 → Pr-3   (semanas 5-6: financeiro + manifesto + fiscal)
+I-1                  (semana 7-8: wiring final)
+```
+
+### Dependências críticas
+
+- `I-1` depende de `P-2` (webhooks) e `Pr-3` (fiscal config completo).
+- `Pr-2` (inventory reservation) pode ser paralelizado com `L-2` (returns) — sem dependência entre si.
+- `L-3` (manifests) depende de `L-1` (tracking events model) estar estável.
+- `P-3` (settlements) precisa de orders com `ecommerce_partner_id` já populado — ✅ já existe no schema.
+
+---
+
+*ELLAN LAB · Roadmap gerado por análise direta do schema `locker_central` + codebase*
