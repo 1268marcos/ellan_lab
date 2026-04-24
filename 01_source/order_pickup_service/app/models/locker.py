@@ -147,16 +147,25 @@ class LockerSlotConfig(Base):
     locker = relationship("Locker", back_populates="slot_configs")
 
     def to_dict(self) -> dict:
+        def _mm_to_cm(mm: int | None) -> float | None:
+            if mm is None:
+                return None
+            return round(mm / 10.0, 2)
+
+        max_kg = None
+        if self.max_weight_g is not None:
+            max_kg = round(self.max_weight_g / 1000.0, 3)
+
         return {
             "slot_size": self.slot_size,
             "slot_count": self.slot_count,
             "available_count": self.available_count if self.available_count is not None else self.slot_count,
             "dimensions": {
-                "width_cm": self.width_cm,
-                "height_cm": self.height_cm,
-                "depth_cm": self.depth_cm,
-                "max_weight_kg": self.max_weight_kg,
-            }
+                "width_cm": _mm_to_cm(self.width_mm),
+                "height_cm": _mm_to_cm(self.height_mm),
+                "depth_cm": _mm_to_cm(self.depth_mm),
+                "max_weight_kg": max_kg,
+            },
         }
 
 

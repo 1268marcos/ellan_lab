@@ -306,16 +306,13 @@ def _assert_required_schema() -> None:
         "has_nfc",
     }
 
+    # Armazenamento canônico: mm + g (inteiros). cm/kg só em API / to_dict.
     required_locker_slot_configs_columns = {
         "id",
         "locker_id",
         "slot_size",
         "slot_count",
         "available_count",
-        "width_cm",
-        "height_cm",
-        "depth_cm",
-        "max_weight_kg",
         "created_at",
         "updated_at",
         "width_mm",

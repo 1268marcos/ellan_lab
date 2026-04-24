@@ -195,7 +195,7 @@ Objetivo: política cancelamento SEFAZ (<30 min / 30min–24h CC / >24h NF comp.
         ou SKIPPED_NO_RECIPIENT; gatilhos: pós-emissão (ISSUED), pós-cancelamento void, pós-CC-e stub
   [x] API: GET /internal/fiscal/danfe/{invoice_id}/thermal — JSON impressora (stub)
   [x] API: POST /internal/invoices/{id}/cce-request — fila CORRECTION_REQUESTED → worker CC-e stub (BR/PT/ES)
-  [~] API: fluxo reissue — POST /internal/invoices/{id}/reissue já existia; previous_receipt_code F-3
+  [x] API: fluxo reissue — POST /internal/invoices/{id}/reissue preserva `previous_receipt_code`
 
   SCHEMA: novos InvoiceStatus — CANCELLING, CORRECTION_REQUESTED, COMPLEMENTARY_ISSUED +
            invoice_delivery_log (I-2 parcial)
@@ -207,6 +207,8 @@ Objetivo: política cancelamento SEFAZ (<30 min / 30min–24h CC / >24h NF comp.
   - 2026-04-23: I-2 — e-mail (invoice_email_service + delivery log); worker CC-e stub
     (CORRECTION_REQUESTED→ISSUED, cce_events); sefaz_sp_cc_e_stub / at_pt / aeat; POST /cce-request.
   - 2026-04-23: I-2 + F-3 — e-mail enfileirado em `invoice_email_outbox`; worker emite SENT_STUB ou SENT (SMTP).
+  - 2026-04-24: I-2 — reissue passa a derivar/salvar `previous_receipt_code` (protocolo/access_key/número)
+    em `payload_json`, e retorna no `InvoiceResponse`.
 
 
 -------------------------------------------------------------------------------
@@ -216,8 +218,8 @@ Duração referência: 2 semanas  |  Esforço: 13 pts
 Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
 
   User stories
-  [ ] WORKER: reconciliação — PAID sem invoice / ISSUED sem PAID — cron alerts
-  [ ] API: GET /admin/fiscal/gaps?date= + POST .../force-issue/{order_id}
+  [x] WORKER: reconciliação — PAID sem invoice / ISSUED sem PAID — cron alerts
+  [~] API: GET /admin/fiscal/gaps?date= + POST .../force-issue/{order_id}
   [ ] EXPORT: job mensal SPED/EFD (BR)
   [ ] EXPORT: job mensal SAF-T (PT, Portaria 302/2016)
   [ ] MONITOR: /admin/fiscal/dead-letters + alertas threshold
@@ -225,7 +227,10 @@ Objetivo: 1 invoice ISSUED por order.paid; dead letters; SPED BR; SAF-T PT.
   SCHEMA: fiscal_reconciliation_gaps
 
   Registro de evolução
-  -
+  - 2026-04-24: I-3 parcial — tabela `fiscal_reconciliation_gaps`, serviço
+    `fiscal_reconciliation_service` (scan + resolve), worker dedicado
+    `invoice_reconciliation_worker`, endpoint `GET /admin/fiscal/gaps`
+    (`refresh=1`, `status`, `date`, `limit`).
 
 
 ================================================================================
@@ -238,8 +243,8 @@ Quadro rápido de status por sprint (atualizar semanalmente)
   F-2      Tax engine BR/PT                       [x]
   F-3      Integração provedores + DANFE          [~]       fila e-mail + SMTP env; CC-e XML preview stub
   I-1      Integração Orders resiliente           [x]       VIEW + fallbacks HTTP
-  I-2      Cancelamento + entrega documento       [~]       policy+API+worker stub
-  I-3      Reconciliação + exports + monitor      [ ]
+  I-2      Cancelamento + entrega documento       [x]       cancel+CC-e+danfe thermal+reissue receipt code
+  I-3      Reconciliação + exports + monitor      [~]       worker+GET /admin/fiscal/gaps
 
 Riscos / decisões pendentes (lista viva)
 ----------------------------------------

@@ -38,6 +38,18 @@ import json
 import hashlib
 
 
+def _seed_cm_to_mm(value_cm: float | int | None) -> int | None:
+    if value_cm is None:
+        return None
+    return int(round(float(value_cm) * 10))
+
+
+def _seed_kg_to_g(value_kg: float | int | None) -> int | None:
+    if value_kg is None:
+        return None
+    return int(round(float(value_kg) * 1000))
+
+
 def log(msg: str):
     print(f"[SEED] {msg}")
 
@@ -1678,10 +1690,10 @@ def seed_lockers(db: Session):
                 slot_size=slot["size"],
                 slot_count=slot["count"],
                 available_count=slot["count"],
-                width_cm=slot.get("width_cm"),
-                height_cm=slot.get("height_cm"),
-                depth_cm=slot.get("depth_cm"),
-                max_weight_kg=slot.get("max_weight_kg"),
+                width_mm=_seed_cm_to_mm(slot.get("width_cm")),
+                height_mm=_seed_cm_to_mm(slot.get("height_cm")),
+                depth_mm=_seed_cm_to_mm(slot.get("depth_cm")),
+                max_weight_g=_seed_kg_to_g(slot.get("max_weight_kg")),
                 created_at=datetime.now(timezone.utc),
                 updated_at=datetime.now(timezone.utc),
             )

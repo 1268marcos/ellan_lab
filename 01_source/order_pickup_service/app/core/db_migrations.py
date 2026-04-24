@@ -384,6 +384,58 @@ def _ensure_capability_profile_target_columns(conn) -> None:
     )
 
 
+def _backfill_locker_slot_configs_mm_from_legacy_cm(conn, applied: list[str]) -> None:
+    """
+    Bancos legados: colunas width_cm / max_weight_kg etc. preenchiam dimensões;
+    o modelo canônico usa width_mm / max_weight_g. Copia valores faltantes uma vez.
+    """
+    name = "locker_slot_configs.backfill_mm_from_cm_v1"
+    if _migration_applied(conn, name):
+        return
+    inspector = inspect(conn)
+    if not _has_table(inspector, "locker_slot_configs"):
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    cols = {c["name"] for c in inspector.get_columns("locker_slot_configs")}
+    has_any_legacy = bool(
+        {"width_cm", "height_cm", "depth_cm", "max_weight_kg"} & cols
+    )
+    if not has_any_legacy:
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+
+    if "width_cm" in cols and "width_mm" in cols:
+        conn.execute(text("""
+            UPDATE locker_slot_configs
+            SET width_mm = COALESCE(width_mm, (width_cm * 10)::integer)
+            WHERE width_cm IS NOT NULL AND width_mm IS NULL
+        """))
+    if "height_cm" in cols and "height_mm" in cols:
+        conn.execute(text("""
+            UPDATE locker_slot_configs
+            SET height_mm = COALESCE(height_mm, (height_cm * 10)::integer)
+            WHERE height_cm IS NOT NULL AND height_mm IS NULL
+        """))
+    if "depth_cm" in cols and "depth_mm" in cols:
+        conn.execute(text("""
+            UPDATE locker_slot_configs
+            SET depth_mm = COALESCE(depth_mm, (depth_cm * 10)::integer)
+            WHERE depth_cm IS NOT NULL AND depth_mm IS NULL
+        """))
+    if "max_weight_kg" in cols and "max_weight_g" in cols:
+        conn.execute(text("""
+            UPDATE locker_slot_configs
+            SET max_weight_g = COALESCE(max_weight_g, (max_weight_kg * 1000)::integer)
+            WHERE max_weight_kg IS NOT NULL AND max_weight_g IS NULL
+        """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+    logger.info("locker_slot_configs_legacy_cm_backfilled", extra={"migration": name})
+
+
 def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
     """
     Corrige drift de schema antes do assert rígido.
@@ -398,6 +450,7 @@ def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
     _ensure_locker_operators_columns(conn)
     _ensure_lockers_columns(conn)
     _ensure_locker_slot_configs_columns(conn)
+    _backfill_locker_slot_configs_mm_from_legacy_cm(conn, applied)
     _ensure_orders_columns(conn)
     _ensure_order_items_columns(conn)
     _ensure_allocations_columns(conn)

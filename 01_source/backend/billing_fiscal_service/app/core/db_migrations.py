@@ -11,7 +11,13 @@ from app.models.processed_event import ProcessedEvent  # 👈 IMPORTANTE
 logger = logging.getLogger(__name__)
 
 
-REQUIRED_TABLES = {"invoices", "product_fiscal_config", "invoice_delivery_log", "invoice_email_outbox"}
+REQUIRED_TABLES = {
+    "invoices",
+    "product_fiscal_config",
+    "invoice_delivery_log",
+    "invoice_email_outbox",
+    "fiscal_reconciliation_gaps",
+}
 
 REQUIRED_COLUMNS = {
     "invoices": {
@@ -209,6 +215,34 @@ def _ensure_invoice_order_view(engine: Engine) -> None:
         conn.execute(text(stmt))
 
 
+def _ensure_fiscal_reconciliation_gaps(engine: Engine) -> None:
+    stmt = """
+    CREATE TABLE IF NOT EXISTS fiscal_reconciliation_gaps (
+        id VARCHAR(60) NOT NULL PRIMARY KEY,
+        dedupe_key VARCHAR(180) NOT NULL UNIQUE,
+        gap_type VARCHAR(80) NOT NULL,
+        severity VARCHAR(20) NOT NULL DEFAULT 'WARN',
+        status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+        order_id VARCHAR(100),
+        invoice_id VARCHAR(50),
+        details_json JSONB,
+        first_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        last_detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        resolved_at TIMESTAMPTZ
+    );
+    CREATE INDEX IF NOT EXISTS ix_fiscal_gap_status_last
+        ON fiscal_reconciliation_gaps (status, last_detected_at);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_gap_order
+        ON fiscal_reconciliation_gaps (order_id);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_gap_invoice
+        ON fiscal_reconciliation_gaps (invoice_id);
+    CREATE INDEX IF NOT EXISTS ix_fiscal_gap_type
+        ON fiscal_reconciliation_gaps (gap_type);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
 def _ensure_unique_constraint(engine: Engine) -> None:
     stmt = """
     DO $$
@@ -229,6 +263,7 @@ def _ensure_unique_constraint(engine: Engine) -> None:
 
 def run_startup_migrations(engine: Engine) -> None:
     from app.models.base import Base
+    from app.models.fiscal_reconciliation_gap import FiscalReconciliationGap  # noqa: F401
     from app.models.invoice_delivery_log import InvoiceDeliveryLog  # noqa: F401
     from app.models.invoice_email_outbox import InvoiceEmailOutbox  # noqa: F401
     from app.models.invoice_model import Invoice  # noqa: F401
@@ -264,6 +299,7 @@ def run_startup_migrations(engine: Engine) -> None:
     _ensure_unique_constraint(engine)
     _ensure_invoice_delivery_log(engine)
     _ensure_invoice_email_outbox(engine)
+    _ensure_fiscal_reconciliation_gaps(engine)
     _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)

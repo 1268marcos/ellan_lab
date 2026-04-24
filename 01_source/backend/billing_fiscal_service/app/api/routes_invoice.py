@@ -36,7 +36,30 @@ def _iso_or_none(value):
     return to_iso_utc(value)
 
 
+def _derive_previous_receipt_code(invoice: Invoice) -> str | None:
+    """
+    Referência do comprovante anterior para reemissão.
+    Prioridade: protocolo fiscal > access_key > número/série.
+    """
+    gr = invoice.government_response or {}
+    if isinstance(gr, dict):
+        protocol = gr.get("protocol_number")
+        if protocol:
+            return str(protocol)
+    if invoice.access_key:
+        return str(invoice.access_key)
+    if invoice.invoice_number and invoice.invoice_series:
+        return f"{invoice.invoice_series}-{invoice.invoice_number}"
+    if invoice.invoice_number:
+        return str(invoice.invoice_number)
+    return None
+
+
 def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
+    pj = invoice.payload_json or {}
+    previous_receipt_code = None
+    if isinstance(pj, dict):
+        previous_receipt_code = pj.get("previous_receipt_code")
     return InvoiceResponse(
         id=invoice.id,
         order_id=invoice.order_id,
@@ -74,6 +97,7 @@ def _to_invoice_response(invoice: Invoice) -> InvoiceResponse:
         consumer_name=invoice.consumer_name,
         locker_address=invoice.locker_address,
         items_json=invoice.items_json,
+        previous_receipt_code=previous_receipt_code,
     )
 
 
@@ -195,6 +219,15 @@ def reissue_invoice(
     invoice = db.query(Invoice).filter(Invoice.id == invoice_id).first()
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
+
+    prev_code = _derive_previous_receipt_code(invoice)
+    if prev_code:
+        pj = dict(invoice.payload_json or {})
+        pj["previous_receipt_code"] = prev_code
+        pj["reissue_requested_at"] = to_iso_utc(datetime.now(timezone.utc))
+        invoice.payload_json = pj
+        db.commit()
+        db.refresh(invoice)
 
     invoice = reset_invoice_for_retry(db, invoice, clear_identifiers=True)
     return _to_invoice_response(invoice)

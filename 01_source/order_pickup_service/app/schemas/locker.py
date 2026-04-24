@@ -15,10 +15,11 @@ from pydantic import BaseModel, Field, validator
 
 # ==================== SLOT CONFIG ====================
 class SlotDimensions(BaseModel):
-    width_cm: Optional[int] = None
-    height_cm: Optional[int] = None
-    depth_cm: Optional[int] = None
-    max_weight_kg: Optional[float] = None
+    """Dimensões no padrão de persistência: milímetros e gramas (inteiros)."""
+    width_mm: Optional[int] = None
+    height_mm: Optional[int] = None
+    depth_mm: Optional[int] = None
+    max_weight_g: Optional[int] = None
 
 
 class LockerSlotConfigSchema(BaseModel):

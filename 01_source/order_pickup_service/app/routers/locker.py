@@ -145,23 +145,30 @@ def create_locker(locker_data: LockerCreateSchema, db: Session = Depends(get_db)
             )
             db.add(slot_config)
     
-    # Cria product configs
+    def _cm_to_mm(v):
+        if v is None:
+            return None
+        return int(round(float(v) * 10))
+
+    def _kg_to_g(v):
+        if v is None:
+            return None
+        return int(round(float(v) * 1000))
+
+    # Cria product configs (API em cm/kg → persistência mm/g)
     if locker_data.product_configs:
         for prod in locker_data.product_configs:
+            md = prod.max_dimensions or {}
             product_config = ProductLockerConfig(
                 locker_id=locker.id,
                 category=prod.category,
-                subcategory=prod.subcategory,
                 allowed=prod.allowed,
                 temperature_zone=prod.temperature_zone,
-                min_value=prod.value_range.get("min") if prod.value_range else None,
-                max_value=prod.value_range.get("max") if prod.value_range else None,
-                max_weight_kg=prod.max_weight_kg,
-                max_width_cm=prod.max_dimensions.get("width") if prod.max_dimensions else None,
-                max_height_cm=prod.max_dimensions.get("height") if prod.max_dimensions else None,
-                max_depth_cm=prod.max_dimensions.get("depth") if prod.max_dimensions else None,
-                requires_signature=prod.requirements.requires_signature if prod.requirements else False,
-                requires_id=prod.requirements.requires_id if prod.requirements else False,
+                min_value=int(prod.value_range["min"]) if prod.value_range and prod.value_range.get("min") is not None else None,
+                max_weight_g=_kg_to_g(prod.max_weight_kg),
+                max_width_mm=_cm_to_mm(md.get("width")),
+                max_height_mm=_cm_to_mm(md.get("height")),
+                max_depth_mm=_cm_to_mm(md.get("depth")),
                 is_fragile=prod.requirements.is_fragile if prod.requirements else False,
                 is_hazardous=prod.requirements.is_hazardous if prod.requirements else False,
                 priority=prod.priority,

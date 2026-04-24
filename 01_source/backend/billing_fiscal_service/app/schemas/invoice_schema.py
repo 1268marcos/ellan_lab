@@ -53,3 +53,4 @@ class InvoiceResponse(BaseModel):
     consumer_name: str | None = None
     locker_address: dict | None = None
     items_json: dict | None = None
+    previous_receipt_code: str | None = None

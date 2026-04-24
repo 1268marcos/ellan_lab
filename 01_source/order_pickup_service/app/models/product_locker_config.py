@@ -75,6 +75,15 @@ class ProductLockerConfig(Base):
     )
 
     def to_dict(self) -> dict:
+        def _mm_to_cm(mm: int | None) -> float | None:
+            if mm is None:
+                return None
+            return round(mm / 10.0, 2)
+
+        max_kg = None
+        if self.max_weight_g is not None:
+            max_kg = round(self.max_weight_g / 1000.0, 3)
+
         return {
             "locker_id": self.locker_id,
             "category": self.category,
@@ -84,11 +93,11 @@ class ProductLockerConfig(Base):
                 "min": self.min_value,
                 # "max": self.max_value,
             },
-            "max_weight_kg": self.max_weight_kg,
+            "max_weight_kg": max_kg,
             "max_dimensions": {
-                "width_cm": self.max_width_cm,
-                "height_cm": self.max_height_cm,
-                "depth_cm": self.max_depth_cm,
+                "width_cm": _mm_to_cm(self.max_width_mm),
+                "height_cm": _mm_to_cm(self.max_height_mm),
+                "depth_cm": _mm_to_cm(self.max_depth_mm),
             },
             "requirements": {
                 # "requires_signature": self.requires_signature,
