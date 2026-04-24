@@ -28,6 +28,19 @@ class PublicUserOut(BaseModel):
     is_active: bool
     email_verified: bool
     phone_verified: bool
+    tax_country: str | None = None
+    tax_document_type: str | None = None
+    tax_document_value: str | None = None
+    fiscal_email: EmailStr | None = None
+    fiscal_phone: str | None = None
+    fiscal_address_line1: str | None = None
+    fiscal_address_line2: str | None = None
+    fiscal_address_city: str | None = None
+    fiscal_address_state: str | None = None
+    fiscal_address_postal_code: str | None = None
+    fiscal_address_country: str | None = None
+    fiscal_data_consent: bool = False
+    fiscal_profile_completeness: int = 0
 
     class Config:
         from_attributes = True
@@ -106,3 +119,23 @@ class PublicAuthorizationPolicyOut(BaseModel):
     ok: bool = True
     title: str
     markdown: str
+
+
+class PublicFiscalProfileIn(BaseModel):
+    tax_country: str = Field(min_length=2, max_length=2)
+    tax_document_type: str = Field(min_length=2, max_length=16)
+    tax_document_value: str = Field(min_length=3, max_length=32)
+    fiscal_email: EmailStr
+    fiscal_phone: str | None = Field(default=None, max_length=32)
+    fiscal_address_line1: str = Field(min_length=3, max_length=255)
+    fiscal_address_line2: str | None = Field(default=None, max_length=255)
+    fiscal_address_city: str = Field(min_length=2, max_length=120)
+    fiscal_address_state: str = Field(min_length=2, max_length=120)
+    fiscal_address_postal_code: str = Field(min_length=3, max_length=32)
+    fiscal_address_country: str = Field(min_length=2, max_length=2)
+    fiscal_data_consent: bool = True
+
+
+class PublicFiscalProfileOut(BaseModel):
+    ok: bool = True
+    user: PublicUserOut

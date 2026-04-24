@@ -13,6 +13,7 @@ from app.models.locker import Locker
 from app.models.order import Order
 from app.models.pickup import Pickup
 from app.models.tenant_fiscal_config import TenantFiscalConfig
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,17 @@ def extract_consumer_from_order(order: Order) -> tuple[str | None, str | None]:
     if name is not None:
         name = str(name).strip() or None
     return cpf, name
+
+
+def _extract_consumer_from_user(user: User | None) -> tuple[str | None, str | None]:
+    if not user:
+        return None, None
+    doc_country = (user.tax_country or "").strip().upper()
+    doc_type = (user.tax_document_type or "").strip().upper()
+    doc_value = (user.tax_document_value or "").strip()
+    if doc_country == "BR" and doc_type == "CPF" and doc_value:
+        return doc_value, (user.full_name or None)
+    return None, (user.full_name or None)
 
 
 def _locker_address_dict(locker: Locker | None) -> dict[str, Any] | None:
@@ -99,6 +111,11 @@ def resolve_order_fiscal_emit_fields(
         if row:
             tenant_cnpj = row.cnpj
     consumer_cpf, consumer_name = extract_consumer_from_order(order)
+    if getattr(order, "user_id", None):
+        user = db.query(User).filter(User.id == order.user_id).first()
+        user_cpf, user_name = _extract_consumer_from_user(user)
+        consumer_cpf = consumer_cpf or user_cpf
+        consumer_name = consumer_name or user_name
     return effective_tenant_id, tenant_cnpj, consumer_cpf, consumer_name
 
 
@@ -143,6 +160,12 @@ def build_fiscal_context(db: Session, order_id: str) -> dict[str, Any]:
                 tenant_razao = row.razao_social
 
     consumer_cpf, consumer_name = extract_consumer_from_order(order)
+    user = None
+    if getattr(order, "user_id", None):
+        user = db.query(User).filter(User.id == order.user_id).first()
+        user_cpf, user_name = _extract_consumer_from_user(user)
+        consumer_cpf = consumer_cpf or user_cpf
+        consumer_name = consumer_name or user_name
 
     items: list[dict[str, Any]] = []
     try:
@@ -220,4 +243,18 @@ def build_fiscal_context(db: Session, order_id: str) -> dict[str, Any]:
         "tenant_razao_social": tenant_razao,
         "consumer_cpf": consumer_cpf,
         "consumer_name": consumer_name,
+        "consumer_fiscal_profile": {
+            "tax_country": user.tax_country if user else None,
+            "tax_document_type": user.tax_document_type if user else None,
+            "tax_document_value": user.tax_document_value if user else None,
+            "fiscal_email": user.fiscal_email if user else None,
+            "fiscal_phone": user.fiscal_phone if user else None,
+            "fiscal_address_line1": user.fiscal_address_line1 if user else None,
+            "fiscal_address_line2": user.fiscal_address_line2 if user else None,
+            "fiscal_address_city": user.fiscal_address_city if user else None,
+            "fiscal_address_state": user.fiscal_address_state if user else None,
+            "fiscal_address_postal_code": user.fiscal_address_postal_code if user else None,
+            "fiscal_address_country": user.fiscal_address_country if user else None,
+            "fiscal_data_consent": bool(user.fiscal_data_consent) if user else False,
+        },
     }

@@ -102,6 +102,49 @@ def normalize_phone(phone: str | None) -> str | None:
     return phone.replace(" ", "").replace("-", "")
 
 
+def _normalize_tax_document(value: str | None) -> str | None:
+    if not value:
+        return None
+    return "".join(ch for ch in str(value).strip() if ch.isalnum()).upper() or None
+
+
+def _validate_fiscal_document(*, tax_country: str, tax_document_type: str, tax_document_value: str) -> str:
+    country = (tax_country or "").strip().upper()
+    doc_type = (tax_document_type or "").strip().upper()
+    normalized = _normalize_tax_document(tax_document_value)
+    if not normalized:
+        raise AuthServiceError("tax_document_invalid")
+    if country == "BR" and doc_type == "CPF":
+        digits = "".join(ch for ch in normalized if ch.isdigit())
+        if len(digits) != 11:
+            raise AuthServiceError("cpf_invalid_length")
+        return digits
+    if country == "PT" and doc_type == "NIF":
+        digits = "".join(ch for ch in normalized if ch.isdigit())
+        if len(digits) != 9:
+            raise AuthServiceError("nif_invalid_length")
+        return digits
+    return normalized
+
+
+def fiscal_profile_completeness(user: User) -> int:
+    required = (
+        user.tax_country,
+        user.tax_document_type,
+        user.tax_document_value,
+        user.fiscal_email,
+        user.fiscal_address_line1,
+        user.fiscal_address_city,
+        user.fiscal_address_state,
+        user.fiscal_address_postal_code,
+        user.fiscal_address_country,
+    )
+    filled = sum(1 for item in required if item and str(item).strip())
+    if not user.fiscal_data_consent:
+        return 0
+    return int((filled / len(required)) * 100)
+
+
 def validate_password_policy(password: str) -> None:
     if len(password or "") < PASSWORD_MIN_LENGTH:
         raise AuthWeakPasswordError("password_too_short")
@@ -449,4 +492,50 @@ def get_user_by_session_token(db: Session, *, raw_token: str) -> User | None:
     if not user:
         return None
 
+    return user
+
+
+def update_user_fiscal_profile(
+    db: Session,
+    *,
+    user: User,
+    tax_country: str,
+    tax_document_type: str,
+    tax_document_value: str,
+    fiscal_email: str,
+    fiscal_phone: str | None,
+    fiscal_address_line1: str,
+    fiscal_address_line2: str | None,
+    fiscal_address_city: str,
+    fiscal_address_state: str,
+    fiscal_address_postal_code: str,
+    fiscal_address_country: str,
+    fiscal_data_consent: bool,
+) -> User:
+    if not fiscal_data_consent:
+        raise AuthServiceError("fiscal_data_consent_required")
+    normalized_country = tax_country.strip().upper()
+    normalized_doc_type = tax_document_type.strip().upper()
+    normalized_doc = _validate_fiscal_document(
+        tax_country=normalized_country,
+        tax_document_type=normalized_doc_type,
+        tax_document_value=tax_document_value,
+    )
+    user.tax_country = normalized_country
+    user.tax_document_type = normalized_doc_type
+    user.tax_document_value = normalized_doc
+    user.fiscal_email = fiscal_email.strip().lower()
+    user.fiscal_phone = normalize_phone(fiscal_phone)
+    user.fiscal_address_line1 = fiscal_address_line1.strip()
+    user.fiscal_address_line2 = fiscal_address_line2.strip() if fiscal_address_line2 else None
+    user.fiscal_address_city = fiscal_address_city.strip()
+    user.fiscal_address_state = fiscal_address_state.strip()
+    user.fiscal_address_postal_code = fiscal_address_postal_code.strip().upper()
+    user.fiscal_address_country = fiscal_address_country.strip().upper()
+    user.fiscal_data_consent = True
+    user.fiscal_profile_updated_at = utc_now_naive()
+    user.updated_at = utc_now_naive()
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user

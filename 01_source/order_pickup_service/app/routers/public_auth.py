@@ -16,6 +16,8 @@ from app.schemas.public_auth import (
     PublicChangePasswordOut,
     PublicEmailVerificationConfirmOut,
     PublicEmailVerificationSendOut,
+    PublicFiscalProfileIn,
+    PublicFiscalProfileOut,
     PublicForgotPasswordIn,
     PublicForgotPasswordOut,
     PublicLoginIn,
@@ -26,6 +28,7 @@ from app.schemas.public_auth import (
     PublicUserOut,
 )
 from app.services.auth_service import (
+    AuthServiceError,
     AuthCurrentPasswordMismatchError,
     AuthEmailDeliveryError,
     AuthEmailAlreadyExistsError,
@@ -41,10 +44,18 @@ from app.services.auth_service import (
     register_user,
     reset_password_with_token,
     send_email_verification,
+    fiscal_profile_completeness,
+    update_user_fiscal_profile,
 )
 from app.services.user_roles_service import list_active_user_roles
 
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
+
+
+def _public_user_payload(user) -> PublicUserOut:
+    payload = PublicUserOut.model_validate(user).model_dump()
+    payload["fiscal_profile_completeness"] = fiscal_profile_completeness(user)
+    return PublicUserOut.model_validate(payload)
 
 
 @router.get("/authorization-policy", response_model=PublicAuthorizationPolicyOut)
@@ -80,7 +91,7 @@ def public_register(
 
         return PublicAuthTokenOut(
             access_token=raw_token,
-            user=PublicUserOut.model_validate(user),
+            user=_public_user_payload(user),
         )
 
     except AuthEmailAlreadyExistsError as exc:
@@ -110,7 +121,7 @@ def public_login(
 
         return PublicAuthTokenOut(
             access_token=raw_token,
-            user=PublicUserOut.model_validate(user),
+            user=_public_user_payload(user),
         )
 
     except AuthInvalidCredentialsError as exc:
@@ -121,8 +132,36 @@ def public_login(
 def public_me(current_user=Depends(get_current_public_user)):
     return PublicAuthMeOut(
         authenticated=True,
-        user=PublicUserOut.model_validate(current_user),
+        user=_public_user_payload(current_user),
     )
+
+
+@router.put("/me/fiscal-profile", response_model=PublicFiscalProfileOut)
+def public_upsert_fiscal_profile(
+    payload: PublicFiscalProfileIn,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_public_user),
+):
+    try:
+        updated_user = update_user_fiscal_profile(
+            db,
+            user=current_user,
+            tax_country=payload.tax_country,
+            tax_document_type=payload.tax_document_type,
+            tax_document_value=payload.tax_document_value,
+            fiscal_email=str(payload.fiscal_email),
+            fiscal_phone=payload.fiscal_phone,
+            fiscal_address_line1=payload.fiscal_address_line1,
+            fiscal_address_line2=payload.fiscal_address_line2,
+            fiscal_address_city=payload.fiscal_address_city,
+            fiscal_address_state=payload.fiscal_address_state,
+            fiscal_address_postal_code=payload.fiscal_address_postal_code,
+            fiscal_address_country=payload.fiscal_address_country,
+            fiscal_data_consent=payload.fiscal_data_consent,
+        )
+        return PublicFiscalProfileOut(ok=True, user=_public_user_payload(updated_user))
+    except AuthServiceError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/me/roles", response_model=PublicAuthRolesOut)
@@ -213,7 +252,7 @@ def public_confirm_email_verification(
         return PublicEmailVerificationConfirmOut(
             ok=True,
             message="email_verified",
-            user=PublicUserOut.model_validate(user),
+            user=_public_user_payload(user),
         )
     except AuthEmailVerificationTokenError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

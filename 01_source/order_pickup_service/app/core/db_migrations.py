@@ -197,6 +197,19 @@ def _ensure_users_columns(conn) -> None:
         "totp_secret_ref": "VARCHAR(255)",
         "totp_enabled": "BOOLEAN NOT NULL DEFAULT FALSE",
         "anonymized_at": "TIMESTAMPTZ",
+        "tax_country": "VARCHAR(2)",
+        "tax_document_type": "VARCHAR(16)",
+        "tax_document_value": "VARCHAR(32)",
+        "fiscal_email": "VARCHAR(255)",
+        "fiscal_phone": "VARCHAR(32)",
+        "fiscal_address_line1": "VARCHAR(255)",
+        "fiscal_address_line2": "VARCHAR(255)",
+        "fiscal_address_city": "VARCHAR(120)",
+        "fiscal_address_state": "VARCHAR(120)",
+        "fiscal_address_postal_code": "VARCHAR(32)",
+        "fiscal_address_country": "VARCHAR(2)",
+        "fiscal_profile_updated_at": "TIMESTAMPTZ",
+        "fiscal_data_consent": "BOOLEAN NOT NULL DEFAULT FALSE",
     })
     _ensure_index(
         conn,
@@ -204,6 +217,12 @@ def _ensure_users_columns(conn) -> None:
         "ux_users_email",
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email "
         "ON users (email) WHERE anonymized_at IS NULL",
+    )
+    _ensure_index(
+        conn,
+        "users",
+        "ix_users_tax_document_value",
+        "CREATE INDEX IF NOT EXISTS ix_users_tax_document_value ON users (tax_document_value)",
     )
 
 
@@ -482,6 +501,19 @@ def _create_users(conn, applied: list[str]) -> None:
             full_name           VARCHAR(255) NOT NULL,
             email               VARCHAR(255) NOT NULL,
             phone               VARCHAR(32),
+            tax_country         VARCHAR(2),
+            tax_document_type   VARCHAR(16),
+            tax_document_value  VARCHAR(32),
+            fiscal_email        VARCHAR(255),
+            fiscal_phone        VARCHAR(32),
+            fiscal_address_line1 VARCHAR(255),
+            fiscal_address_line2 VARCHAR(255),
+            fiscal_address_city VARCHAR(120),
+            fiscal_address_state VARCHAR(120),
+            fiscal_address_postal_code VARCHAR(32),
+            fiscal_address_country VARCHAR(2),
+            fiscal_profile_updated_at TIMESTAMPTZ,
+            fiscal_data_consent BOOLEAN      NOT NULL DEFAULT FALSE,
             password_hash       VARCHAR(255) NOT NULL,
             is_active           BOOLEAN      NOT NULL DEFAULT TRUE,
             email_verified      BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -502,6 +534,7 @@ def _create_users(conn, applied: list[str]) -> None:
         "WHERE anonymized_at IS NULL"
     ))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_phone ON users (phone)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_tax_document_value ON users (tax_document_value)"))
     _mark_migration(conn, name)
     applied.append(name)
 

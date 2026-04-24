@@ -99,6 +99,7 @@ def _snapshot_from_fiscal_payload(payload: dict[str, Any]) -> dict[str, Any] | N
         "tenant_razao_social": payload.get("tenant_razao_social"),
         "consumer_cpf": payload.get("consumer_cpf"),
         "consumer_name": payload.get("consumer_name"),
+        "consumer_fiscal_profile": payload.get("consumer_fiscal_profile"),
         "locker_id": payload.get("locker_id"),
         "contract_version": payload.get("contract_version"),
     }
