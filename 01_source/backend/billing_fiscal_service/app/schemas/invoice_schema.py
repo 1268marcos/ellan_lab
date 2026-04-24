@@ -15,6 +15,12 @@ class CcRequestIn(BaseModel):
     correction_text: Optional[str] = Field(default=None, max_length=2000)
 
 
+class RebuildOrderSnapshotsIn(BaseModel):
+    """order_pickup → billing: atualizar snapshots após mudança de perfil fiscal do utilizador."""
+
+    order_ids: list[str] = Field(default_factory=list, max_length=50)
+
+
 class InvoiceResponse(BaseModel):
     id: str
     order_id: str

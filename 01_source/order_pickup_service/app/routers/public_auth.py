@@ -47,6 +47,9 @@ from app.services.auth_service import (
     fiscal_profile_completeness,
     update_user_fiscal_profile,
 )
+from app.services.fiscal_invoice_snapshot_sync_service import (
+    sync_billing_invoice_snapshots_after_fiscal_profile,
+)
 from app.services.user_roles_service import list_active_user_roles
 
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
@@ -159,7 +162,12 @@ def public_upsert_fiscal_profile(
             fiscal_address_country=payload.fiscal_address_country,
             fiscal_data_consent=payload.fiscal_data_consent,
         )
-        return PublicFiscalProfileOut(ok=True, user=_public_user_payload(updated_user))
+        sync_summary = sync_billing_invoice_snapshots_after_fiscal_profile(db, user_id=updated_user.id)
+        return PublicFiscalProfileOut(
+            ok=True,
+            user=_public_user_payload(updated_user),
+            snapshot_rebuild=sync_summary,
+        )
     except AuthServiceError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 

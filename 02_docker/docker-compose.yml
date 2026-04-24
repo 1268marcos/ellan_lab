@@ -426,8 +426,8 @@ services:
       TZ: UTC
 
       # F-3 STUB-READY (SVRS batch async via adapter real flag)
-      FISCAL_REAL_PROVIDER_BR_ENABLED: "true"
-      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "true" # Dependência explícita: manter false até haver credenciais e critérios de gate
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false" # Dependência explícita: manter false até haver credenciais e critérios de gate
 
       # Pode ser URL fictícia; o stub_scenario intercepta antes do HTTP real
       FISCAL_REAL_PROVIDER_BASE_URL_BR: "http://stub.local"
@@ -483,8 +483,8 @@ services:
       TZ: UTC
 
       # F-3 STUB-READY (SVRS batch async via adapter real flag)
-      FISCAL_REAL_PROVIDER_BR_ENABLED: "true"
-      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "true" # Dependência explícita: manter false até haver credenciais e critérios de gate
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false" # Dependência explícita: manter false até haver credenciais e critérios de gate
 
       # Pode ser URL fictícia; o stub_scenario intercepta antes do HTTP real
       FISCAL_REAL_PROVIDER_BASE_URL_BR: "http://stub.local"

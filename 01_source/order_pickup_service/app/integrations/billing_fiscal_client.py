@@ -211,3 +211,32 @@ def force_issue_invoice_by_order_id(order_id: str) -> dict[str, Any]:
         detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
         raise RuntimeError(f"billing_fiscal force-issue failed: status={resp.status_code} detail={detail}")
     return payload if isinstance(payload, dict) else {"ok": True}
+
+
+def rebuild_invoice_snapshots_for_orders(order_ids: list[str]) -> dict[str, Any]:
+    """
+    POST /internal/invoices/rebuild-order-snapshots
+    Atualiza order_snapshot nas invoices PENDING/FAILED (e reabre DL por perfil incompleto).
+    """
+    base = (getattr(settings, "billing_fiscal_service_url", None) or "").strip()
+    if not base:
+        raise RuntimeError("BILLING_FISCAL_SERVICE_URL not set")
+    timeout = int(getattr(settings, "billing_fiscal_timeout_sec", 8) or 8)
+    headers = {
+        "X-Internal-Token": settings.internal_token,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    url = f"{base.rstrip('/')}/internal/invoices/rebuild-order-snapshots"
+    try:
+        resp = requests.post(url, headers=headers, json={"order_ids": order_ids}, timeout=timeout)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"billing_fiscal rebuild snapshots unreachable: {exc}") from exc
+    try:
+        payload = resp.json()
+    except Exception:
+        payload = {"raw": (resp.text or "")[:500]}
+    if resp.status_code >= 400:
+        detail = payload.get("detail") if isinstance(payload, dict) else str(payload)
+        raise RuntimeError(f"billing_fiscal rebuild snapshots failed: status={resp.status_code} detail={detail}")
+    return payload if isinstance(payload, dict) else {"ok": True}

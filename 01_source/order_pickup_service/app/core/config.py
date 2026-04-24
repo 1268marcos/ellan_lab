@@ -272,7 +272,17 @@ class Settings(BaseSettings):
     jwt_secret: str = Field(default="CHANGE_ME_IN_PROD", alias="JWT_SECRET")
     jwt_alg: str = Field(default="HS256", alias="JWT_ALG")
     jwt_access_ttl_min: int = Field(default=60, alias="JWT_ACCESS_TTL_MIN")
-    
+
+    fiscal_pii_fernet_key: str | None = Field(
+        default=None,
+        alias="FISCAL_PII_FERNET_KEY",
+        description=(
+            "Chave Fernet (base64 url-safe) para cifrar PII fiscal em users em repouso; "
+            "gerar: python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\""
+        ),
+    )
+
     # Tokens específicos por região (para integrações regionais)
     regional_internal_tokens: Dict[str, str] = Field(
         default_factory=dict,
@@ -678,6 +688,7 @@ internal_health_token = settings.internal_health_token
 jwt_secret = settings.jwt_secret
 jwt_alg = settings.jwt_alg
 jwt_access_ttl_min = settings.jwt_access_ttl_min
+fiscal_pii_fernet_key = settings.fiscal_pii_fernet_key
 
 qr_rotate_sec = settings.qr_rotate_sec
 pickup_qr_payload_version = settings.pickup_qr_payload_version

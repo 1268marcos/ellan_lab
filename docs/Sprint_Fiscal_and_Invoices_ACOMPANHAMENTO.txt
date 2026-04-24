@@ -4,6 +4,7 @@ ELLAN LAB — Acompanhamento de Sprints · Fiscal & Invoices
 Fonte de planejamento: docs/Sprint_Backlog_Fiscal_and_Invoices.pdf
 Serviço principal: billing_fiscal_service
 Última atualização do plano (PDF): 2026-04-23
+Última atualização deste arquivo (ACOMPANHAMENTO): 2026-04-24
 
 Objetivo
 --------
@@ -289,6 +290,9 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
     no padrão `BR-ONL-XXXXXXXX` para invoices billing; lookup público
     `/public/fiscal/by-code/{code}` passa a resolver também invoices do billing
     (via endpoint interno `GET /internal/invoices/by-receipt-code/{receipt_code}`).
+  - 2026-04-24: Board F-3 STUB-READY — F3A-STUB-01/02/03, F3C-STUB-02 e OPS-UX-01 movidos para
+    Done no `Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt`; próxima execução: F3B/F3C-STUB-01,
+    runbook, regressão contingência, release gate.
 
   Backlog executável (próximo sprint) — foco STUB-READY
   ------------------------------------------------------
@@ -356,25 +360,24 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
 
   Sprint Board (pronto para execução diária)
   ------------------------------------------
-  Status inicial sugerido (início do sprint)
+  Atualizado conforme código + testes no repositório (2026-04-24).
 
   To Do
-  - F3A-STUB-01 — Contrato único de provider BR/PT (issue/cancel/cce)
-  - F3A-STUB-02 — Matriz de erros e retry/backoff determinístico
-  - F3A-STUB-03 — Simulador de lote SVRS/SEFAZ (stub avançado)
-  - F3B-STUB-01 — Simulador AT PT (REST/SOAP abstraction)
-  - F3C-STUB-01 — Assinatura A1 “dry-run” (sem certificado oficial)
-  - F3C-STUB-02 — Observabilidade operacional de providers
-  - F3C-STUB-03 — Runbook único de incidentes fiscais
-  - F3C-STUB-04 — Testes de regressão de contingência e re-sync
-  - OPS-UX-01 — Finalização UX da auditoria (plantão)
-  - RELEASE-GATE-01 — Gate de ativação real por feature flag
+  - F3B-STUB-01 — Simulador AT PT (REST/SOAP abstraction) — stub dedicado tipo SVRS ainda não
+  - F3C-STUB-01 — Assinatura A1 “dry-run” (pipeline completo vs scaffold `nfce_xml_builder_v40`)
+  - F3C-STUB-03 — Runbook único de incidentes fiscais (documento SRE/OPS)
+  - F3C-STUB-04 — Testes de regressão amplos contingência + re-sync (além de testes pontuais atuais)
+  - RELEASE-GATE-01 — Gate de ativação real por feature flag (checklist formal por ambiente)
 
   In Progress
-  - (iniciar pelo item F3A-STUB-01)
+  - (prioridade imediata: F3B-STUB-01 ou F3C-STUB-01 conforme owner/credenciais)
 
   Done
-  - (preencher diariamente)
+  - F3A-STUB-01 — Contrato único de provider BR/PT (`fiscal_provider_contract` + adapters)
+  - F3A-STUB-02 — Matriz de erros e retry/backoff (`fiscal_real_provider_client` + testes matriz)
+  - F3A-STUB-03 — Simulador lote SVRS (`sefaz_svrs_batch_stub_service`, rotas `/providers/stub/svrs/*`, smoke)
+  - F3C-STUB-02 — Observabilidade mínima providers (`/admin/fiscal/providers/status` + códigos canônicos/retryable no OPS)
+  - OPS-UX-01 — UX auditoria plantão (presets, paginação, export CSV, reset filtros — conforme registro 2026-04-24)
 
   Sequência sugerida de 5 dias (execução objetiva)
   - Dia 1 (fundação de contrato + estabilidade):
@@ -393,9 +396,9 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
   - Critério de Done: código + evidência (teste/log/smoke) + nota curta no Registro de evolução.
   - Encerramento do dia: atualizar board e riscos com bloqueios reais (se houver).
 
-  Definição de início imediato (hoje)
-  - Iniciar agora: F3A-STUB-01 (BE-Fiscal) + F3A-STUB-02 (BE-Fiscal).
-  - Se houver capacidade paralela: abrir F3C-STUB-03 (SRE/OPS) em paralelo.
+  Definição de início imediato (pós-board 2026-04-24)
+  - Iniciar agora: F3B-STUB-01 (BE-Fiscal) e/ou F3C-STUB-01 (A1 dry-run), conforme spike AT vs certificado.
+  - Em paralelo (SRE/OPS): F3C-STUB-03 runbook + RELEASE-GATE-01 checklist por ambiente.
 
 
 -------------------------------------------------------------------------------
@@ -517,6 +520,8 @@ Riscos / decisões pendentes (lista viva)
     (endereço, documento fiscal, atributos de destinatário e consentimentos).
     Mitigação: abrir trilha dedicada de revisão/normalização de dados de usuário
     com contrato mínimo obrigatório por país antes do go-live real SEFAZ/AT.
+    Mitigação (segurança em repouso, 2026-04-24): PII fiscal em `users` cifrado com Fernet
+    no `order_pickup_service` (`FISCAL_PII_FERNET_KEY`); não dispensa completude nem consentimento.
 
 Próximo eixo recomendado (cross-sprint): Revisão de domínio de Usuário (fiscal)
 ----------------------------------------------------------------------------
@@ -545,8 +550,21 @@ Próximo eixo recomendado (cross-sprint): Revisão de domínio de Usuário (fisc
     true) antes de `route_issue_invoice` quando provedor real BR/PT está ativo,
     com bypass por `stub_scenario` / smoke e query `skip_consumer_fiscal_gate`
     em `POST /admin/fiscal/force-issue/{order_id}`.
+  - 2026-04-24: Página `GET /conta/dados-fiscais` (formulário reutilizável) + após
+    `PUT /public/auth/me/fiscal-profile` o order_pickup chama o billing
+    `POST /internal/invoices/rebuild-order-snapshots` para atualizar
+    `order_snapshot` em invoices PENDING/FAILED (e reabrir DL
+    `CONSUMER_FISCAL_INCOMPLETE`).
+  - 2026-04-24: Resposta `snapshot_rebuild` no PUT perfil fiscal + UI com totais;
+    lista de pedidos para sync restrita a `payment_status=APPROVED` (pagos).
+  - 2026-04-24: Segurança em repouso — `order_pickup_service`: campos PII fiscal em `users`
+    (documento, e-mail/telefone fiscal, endereço) persistidos com cifragem Fernet via ORM
+    (`EncryptedPIIString`); variável de ambiente `FISCAL_PII_FERNET_KEY` apenas no pickup
+    (não no billing — o billing consome JSON já descriptografado pelas rotas internas);
+    migração PostgreSQL `users.fiscal_pii_encryption_schema_v2026_01` (VARCHAR(1024) + drop
+    índice `ix_users_tax_document_value`); leitura legado em texto plano até regravar com chave.
 
-Próxima revisão sugerida do documento: 2026-04-29  Responsável: Squad Fiscal/Invoices (operação + backend)
+Próxima revisão sugerida do documento: 2026-05-01  Responsável: Squad Fiscal/Invoices (operação + backend)
 
 ================================================================================
 Fim do template de acompanhamento — editar este arquivo conforme as entregas.

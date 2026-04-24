@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from typing import Any
+
 from pydantic import BaseModel, EmailStr, Field
 
 
@@ -139,3 +141,4 @@ class PublicFiscalProfileIn(BaseModel):
 class PublicFiscalProfileOut(BaseModel):
     ok: bool = True
     user: PublicUserOut
+    snapshot_rebuild: dict[str, Any] | None = None

@@ -199,14 +199,14 @@ def _ensure_users_columns(conn) -> None:
         "anonymized_at": "TIMESTAMPTZ",
         "tax_country": "VARCHAR(2)",
         "tax_document_type": "VARCHAR(16)",
-        "tax_document_value": "VARCHAR(32)",
-        "fiscal_email": "VARCHAR(255)",
-        "fiscal_phone": "VARCHAR(32)",
-        "fiscal_address_line1": "VARCHAR(255)",
-        "fiscal_address_line2": "VARCHAR(255)",
-        "fiscal_address_city": "VARCHAR(120)",
-        "fiscal_address_state": "VARCHAR(120)",
-        "fiscal_address_postal_code": "VARCHAR(32)",
+        "tax_document_value": "VARCHAR(1024)",
+        "fiscal_email": "VARCHAR(1024)",
+        "fiscal_phone": "VARCHAR(1024)",
+        "fiscal_address_line1": "VARCHAR(1024)",
+        "fiscal_address_line2": "VARCHAR(1024)",
+        "fiscal_address_city": "VARCHAR(1024)",
+        "fiscal_address_state": "VARCHAR(1024)",
+        "fiscal_address_postal_code": "VARCHAR(1024)",
         "fiscal_address_country": "VARCHAR(2)",
         "fiscal_profile_updated_at": "TIMESTAMPTZ",
         "fiscal_data_consent": "BOOLEAN NOT NULL DEFAULT FALSE",
@@ -218,12 +218,54 @@ def _ensure_users_columns(conn) -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS ux_users_email "
         "ON users (email) WHERE anonymized_at IS NULL",
     )
-    _ensure_index(
-        conn,
-        "users",
-        "ix_users_tax_document_value",
-        "CREATE INDEX IF NOT EXISTS ix_users_tax_document_value ON users (tax_document_value)",
+
+
+def _migrate_users_fiscal_pii_encryption_schema(conn, applied: list[str]) -> None:
+    """
+    Amplia colunas de PII fiscal para ciphertext Fernet e remove índice em documento
+    (busca por documento em repouso cifrado não é suportada).
+    """
+    name = "users.fiscal_pii_encryption_schema_v2026_01"
+    if _migration_applied(conn, name):
+        return
+    if _dialect(conn) != "postgresql":
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    inspector = inspect(conn)
+    if not _has_table(inspector, "users"):
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    try:
+        conn.execute(text("DROP INDEX IF EXISTS ix_users_tax_document_value"))
+    except Exception as exc:
+        logger.warning("users_fiscal_pii_drop_index_failed err=%s", exc)
+    widen = (
+        "tax_document_value",
+        "fiscal_email",
+        "fiscal_phone",
+        "fiscal_address_line1",
+        "fiscal_address_line2",
+        "fiscal_address_city",
+        "fiscal_address_state",
+        "fiscal_address_postal_code",
     )
+    for col in widen:
+        if not _has_column(inspector, "users", col):
+            continue
+        try:
+            conn.execute(
+                text(
+                    f"ALTER TABLE {_quote_ident('users')} "
+                    f"ALTER COLUMN {_quote_ident(col)} TYPE VARCHAR(1024)"
+                )
+            )
+        except Exception as exc:
+            logger.warning("users_fiscal_pii_widen_column_failed col=%s err=%s", col, exc)
+    _mark_migration(conn, name)
+    applied.append(name)
+    logger.info("users_fiscal_pii_encryption_schema_done", extra={"migration": name})
 
 
 def _ensure_locker_operators_columns(conn) -> None:
@@ -466,6 +508,7 @@ def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
         pass
 
     _ensure_users_columns(conn)
+    _migrate_users_fiscal_pii_encryption_schema(conn, applied)
     _ensure_locker_operators_columns(conn)
     _ensure_lockers_columns(conn)
     _ensure_locker_slot_configs_columns(conn)
@@ -503,14 +546,14 @@ def _create_users(conn, applied: list[str]) -> None:
             phone               VARCHAR(32),
             tax_country         VARCHAR(2),
             tax_document_type   VARCHAR(16),
-            tax_document_value  VARCHAR(32),
-            fiscal_email        VARCHAR(255),
-            fiscal_phone        VARCHAR(32),
-            fiscal_address_line1 VARCHAR(255),
-            fiscal_address_line2 VARCHAR(255),
-            fiscal_address_city VARCHAR(120),
-            fiscal_address_state VARCHAR(120),
-            fiscal_address_postal_code VARCHAR(32),
+            tax_document_value  VARCHAR(1024),
+            fiscal_email        VARCHAR(1024),
+            fiscal_phone        VARCHAR(1024),
+            fiscal_address_line1 VARCHAR(1024),
+            fiscal_address_line2 VARCHAR(1024),
+            fiscal_address_city VARCHAR(1024),
+            fiscal_address_state VARCHAR(1024),
+            fiscal_address_postal_code VARCHAR(1024),
             fiscal_address_country VARCHAR(2),
             fiscal_profile_updated_at TIMESTAMPTZ,
             fiscal_data_consent BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -534,7 +577,6 @@ def _create_users(conn, applied: list[str]) -> None:
         "WHERE anonymized_at IS NULL"
     ))
     conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_phone ON users (phone)"))
-    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_users_tax_document_value ON users (tax_document_value)"))
     _mark_migration(conn, name)
     applied.append(name)
 

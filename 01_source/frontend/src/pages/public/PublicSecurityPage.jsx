@@ -99,6 +99,11 @@ export default function PublicSecurityPage() {
         <p style={{ marginTop: 8, color: "#475569" }}>
           Gerencie senha e verificação de e-mail da sua conta.
         </p>
+        <p style={{ marginTop: 12 }}>
+          <Link to="/conta/dados-fiscais" style={{ color: "#0f766e", fontWeight: 600 }}>
+            Dados fiscais (nota e morada)
+          </Link>
+        </p>
       </header>
 
       <section style={cardStyle}>

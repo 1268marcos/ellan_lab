@@ -9,6 +9,7 @@ from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.db import Base
+from app.models.encrypted_pii import EncryptedPIIString
 
 
 class User(Base):
@@ -25,14 +26,14 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
     tax_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     tax_document_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    tax_document_value: Mapped[str | None] = mapped_column(String(32), index=True, nullable=True)
-    fiscal_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    fiscal_phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    fiscal_address_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    fiscal_address_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    fiscal_address_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    fiscal_address_state: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    fiscal_address_postal_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tax_document_value: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_email: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_phone: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_address_line1: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_address_line2: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_address_city: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_address_state: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
+    fiscal_address_postal_code: Mapped[str | None] = mapped_column(EncryptedPIIString(), nullable=True)
     fiscal_address_country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     fiscal_profile_updated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fiscal_data_consent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

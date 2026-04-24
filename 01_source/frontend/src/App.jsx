@@ -17,6 +17,7 @@ const PublicCheckoutPage = lazy(() => import("./pages/public/PublicCheckoutPage"
 const PublicMyOrdersPage = lazy(() => import("./pages/public/PublicMyOrdersPage"));
 const PublicMyCreditsPage = lazy(() => import("./pages/public/PublicMyCreditsPage"));
 const PublicSecurityPage = lazy(() => import("./pages/public/PublicSecurityPage"));
+const PublicFiscalDataPage = lazy(() => import("./pages/public/PublicFiscalDataPage"));
 const PublicOrderDetailPage = lazy(() => import("./pages/public/PublicOrderDetailPage"));
 const PublicEmailVerificationPage = lazy(() => import("./pages/public/PublicEmailVerificationPage"));
 const PublicFiscalSearchPage = lazy(() => import("./pages/public/PublicFiscalSearchPage"));
@@ -259,6 +260,11 @@ function TopNav() {
               Segurança
             </Link>
           )}
+          {!loading && isAuthenticated && (
+            <Link className="nav-link" to="/conta/dados-fiscais" aria-label="Dados fiscais da conta">
+              Dados fiscais
+            </Link>
+          )}
           
           {opsEnabled && canAccessOps && opsLinks.length > 0 && (
             <>
@@ -488,6 +494,15 @@ function TopNav() {
                     Segurança
                   </Link>
                 )}
+                {!loading && isAuthenticated && (
+                  <Link
+                    className="mobile-nav-link"
+                    to="/conta/dados-fiscais"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Dados fiscais
+                  </Link>
+                )}
               </div>
 
               {/* Links de operação */}
@@ -610,6 +625,14 @@ function AppContent() {
               element={
                 <PrivateRoute>
                   <PublicSecurityPage />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/conta/dados-fiscais"
+              element={
+                <PrivateRoute>
+                  <PublicFiscalDataPage />
                 </PrivateRoute>
               }
             />

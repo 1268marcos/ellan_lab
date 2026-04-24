@@ -14,7 +14,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.invoice_model import Invoice, InvoiceStatus
-from app.schemas.invoice_schema import CancelRequestIn, CcRequestIn, InvoiceResponse
+from app.schemas.invoice_schema import (
+    CancelRequestIn,
+    CcRequestIn,
+    InvoiceResponse,
+    RebuildOrderSnapshotsIn,
+)
 
 # from app.services.invoice_issue_service import reset_invoice_for_retry
 # from app.services.invoice_service import generate_invoice
@@ -143,6 +148,21 @@ def create_invoice(
         return _to_invoice_response(invoice)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/rebuild-order-snapshots")
+def post_rebuild_order_snapshots(
+    body: RebuildOrderSnapshotsIn,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """
+    Reidrata `order_snapshot` + colunas F-1 para invoices ainda não emitidas,
+    após o utilizador completar o perfil fiscal no order_pickup.
+    """
+    from app.services.invoice_snapshot_refresh_service import rebuild_snapshots_for_order_ids
+
+    return rebuild_snapshots_for_order_ids(db, body.order_ids)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceResponse)
