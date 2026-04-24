@@ -138,9 +138,9 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
           DANFE térmica; callbacks autoridade.
 
   User stories
-  [ ] INTEGRATION: NFC-e XML schema v4.0 (NT 2015.002 + 2019.001), assinatura A1
+  [~] INTEGRATION: NFC-e XML schema v4.0 (NT 2015.002 + 2019.001), assinatura A1
   [ ] INTEGRATION: client SVRS/SEFAZ — autorização, retry lote
-  [ ] INTEGRATION: modo contingência SAT/MFe offline + sync ao reconectar
+  [x] INTEGRATION: modo contingência SAT/MFe offline + sync ao reconectar
   [ ] INTEGRATION: client AT Portugal real (REST AT2024 ou SOAP legacy)
   [x] INTEGRATION: POST /internal/fiscal/callback — retorno async autoridades
   [~] DELIVERY: DANFE PDF simplificado + payload JSON impressora térmica
@@ -180,6 +180,22 @@ Objetivo: substituir stubs sefaz_sp_service / at_pt_provedor; contingência SAT;
     `invoice.government_response.authority_callbacks`.
   - 2026-04-24: F-3 — endpoint `GET /admin/fiscal/danfe/{invoice_id}/pdf`
     adiciona DANFE PDF simplificado em `content_base64` (`pdf_stub_base64_v1`).
+  - 2026-04-24: F-3 contingência slice — `route_issue_invoice` passa a respeitar
+    `emission_mode` (`OFFLINE_SAT`, `CONTINGENCY_SVRS`) para BR, emitindo via
+    `sefaz_contingency_service` com status `CONTINGENCY_PENDING_SYNC` e `sync_pending=true`.
+  - 2026-04-24: F-3 contingência sync — novo `invoice_resync_service` (seleção de
+    invoices com `government_response.sync_pending=true`, claim atômico com lock e
+    reprocesso via `route_issue_invoice_reconnect`), integrado como loop adicional
+    no `invoice_issue_worker`; sincronização bem-sucedida marca `sync_pending=false`
+    (`sync_state=SYNCED`) e falha marca `sync_state=FAILED_RETRY` com reattempt.
+  - 2026-04-24: F-3 XML/A1 scaffold — `nfce_xml_builder_v40` adicionado com
+    `schema_version=4.00`, `xml_preview` NFC-e mínimo e bloco `signature` com anchors
+    para assinatura A1 (`A1_STUB_PENDING`); `sefaz_sp_service` passa a preencher
+    `xml_content` NFC-e com essa estrutura para `fiscal_doc_subtype=NFC_E_65`.
+  - 2026-04-24: F-3 UX correções operacionais — PDF DANFE stub passa a gerar binário
+    PDF válido (xref/trailer), e `order_pickup_service` adiciona fallback automático
+    para `POST /internal/invoices/generate/{order_id}` quando `by-order` retorna 404
+    nos fluxos de reenvio e download de invoice.
 
 
 -------------------------------------------------------------------------------
@@ -231,6 +247,9 @@ Objetivo: política cancelamento SEFAZ (<30 min / 30min–24h CC / >24h NF comp.
   - 2026-04-23: I-2 + F-3 — e-mail enfileirado em `invoice_email_outbox`; worker emite SENT_STUB ou SENT (SMTP).
   - 2026-04-24: I-2 — reissue passa a derivar/salvar `previous_receipt_code` (protocolo/access_key/número)
     em `payload_json`, e retorna no `InvoiceResponse`.
+  - 2026-04-24: I-2 UX/ops — reenvio de invoice por e-mail disponível no detalhe do pedido
+    (`POST /public/orders/{order_id}/invoice-resend-email`), com backend billing aplicando
+    cooldown/auditoria em `invoice_delivery_log`.
 
 
 -------------------------------------------------------------------------------

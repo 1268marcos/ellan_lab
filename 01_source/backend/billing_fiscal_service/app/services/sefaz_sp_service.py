@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models.invoice_model import Invoice
+from app.services.nfce_xml_builder_v40 import build_nfce_xml_v40_stub
 
 from app.core.datetime_utils import to_iso_utc
 
@@ -157,7 +158,7 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
     dest_name = invoice.consumer_name or "CLIENTE FINAL"
     fiscal_subtype = invoice.fiscal_doc_subtype or "NFC_E_65"
 
-    return {
+    base = {
         "format": "xml_stub",
         "country": "BR",
         "authority": "SEFAZ-SP",
@@ -192,6 +193,19 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
             f"</NFe>"
         ),
     }
+    # F-3 scaffold: estrutura NFC-e v4.00 + pontos de assinatura A1
+    if str(invoice.fiscal_doc_subtype or "").upper() == "NFC_E_65":
+        nfce = build_nfce_xml_v40_stub(
+            invoice,
+            access_key=access_key,
+            invoice_number=invoice_number,
+            invoice_series=invoice_series,
+        )
+        base["format"] = nfce.get("format") or base["format"]
+        base["schema_version"] = nfce.get("schema_version")
+        base["xml_preview"] = nfce.get("xml_preview") or base["xml_preview"]
+        base["signature"] = nfce.get("signature")
+    return base
 
 
 def _sefaz_sp_build_government_response(invoice: Invoice, invoice_number: str, invoice_series: str, access_key: str) -> dict:

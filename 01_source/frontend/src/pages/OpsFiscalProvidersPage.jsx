@@ -21,6 +21,9 @@ export default function OpsFiscalProvidersPage() {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState("");
   const [error, setError] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [danfeBusy, setDanfeBusy] = useState(false);
+  const [danfeResult, setDanfeResult] = useState(null);
 
   async function loadStatus() {
     setLoading(true);
@@ -73,6 +76,101 @@ export default function OpsFiscalProvidersPage() {
     }
   }
 
+  function downloadBase64Pdf(base64Content, filename) {
+    const byteChars = atob(base64Content);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i += 1) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "danfe-stub.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function handleGenerateDanfePdf() {
+    const normalized = String(invoiceId || "").trim();
+    if (!normalized) {
+      setError("Informe um invoice_id válido para gerar DANFE PDF stub.");
+      return;
+    }
+    setDanfeBusy(true);
+    setDanfeResult(null);
+    setError("");
+    try {
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/danfe/${encodeURIComponent(normalized)}/pdf`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao gerar DANFE PDF stub.");
+      if (!payload?.content_base64) throw new Error("Resposta sem content_base64.");
+      downloadBase64Pdf(payload.content_base64, payload.filename || `danfe-${normalized}.pdf`);
+      setDanfeResult({
+        ok: true,
+        invoice_id: payload.invoice_id,
+        filename: payload.filename,
+        format: payload.format,
+        payload,
+      });
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setDanfeBusy(false);
+    }
+  }
+
+  async function handleCopyDanfeJson() {
+    const normalized = String(invoiceId || "").trim();
+    if (!normalized) {
+      setError("Informe um invoice_id válido para copiar JSON do DANFE.");
+      return;
+    }
+    setDanfeBusy(true);
+    setError("");
+    try {
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/danfe/${encodeURIComponent(normalized)}/pdf`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao carregar JSON do DANFE.");
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setDanfeResult({
+        ok: true,
+        invoice_id: payload.invoice_id,
+        filename: payload.filename,
+        format: payload.format,
+        payload,
+        copied_json: true,
+      });
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setDanfeBusy(false);
+    }
+  }
+
   useEffect(() => {
     void loadStatus();
   }, []);
@@ -100,6 +198,33 @@ export default function OpsFiscalProvidersPage() {
               {testing === "ALL" ? "Testando..." : "Testar BR + PT"}
             </button>
           </div>
+        </div>
+
+        <div style={danfeBoxStyle}>
+          <h3 style={{ marginTop: 0, marginBottom: 8 }}>Gerar DANFE PDF (stub)</h3>
+          <p style={{ ...mutedTextStyle, marginTop: 0 }}>
+            Operação rápida por `invoice_id` para baixar PDF simplificado base64.
+          </p>
+          <div style={toolbarStyle}>
+            <input
+              value={invoiceId}
+              onChange={(e) => setInvoiceId(e.target.value)}
+              placeholder="invoice_id (ex.: inv_abc123)"
+              style={inputStyle}
+            />
+            <button onClick={() => void handleGenerateDanfePdf()} style={buttonPrimaryStyle} disabled={danfeBusy}>
+              {danfeBusy ? "Gerando..." : "Gerar DANFE PDF stub"}
+            </button>
+            <button onClick={() => void handleCopyDanfeJson()} style={buttonGhostStyle} disabled={danfeBusy}>
+              {danfeBusy ? "Copiando..." : "Copiar JSON do DANFE"}
+            </button>
+          </div>
+          {danfeResult ? (
+            <div style={danfeResultStyle}>
+              Download iniciado: <b>{danfeResult.filename}</b> ({danfeResult.format})
+              {danfeResult.copied_json ? " • JSON copiado para área de transferência." : ""}
+            </div>
+          ) : null}
         </div>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}
@@ -180,9 +305,34 @@ const cardStyle = { background: "#11161c", border: "1px solid rgba(255,255,255,0
 const headerRowStyle = { display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" };
 const mutedTextStyle = { color: "rgba(245,247,250,0.8)", marginTop: 8, marginBottom: 0 };
 const toolbarStyle = { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" };
+const inputStyle = {
+  minWidth: 260,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
 const buttonGhostStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.16)", background: "transparent", color: "#e2e8f0", cursor: "pointer", fontWeight: 600 };
 const buttonPrimaryStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(31,122,63,0.50)", background: "#1f7a3f", color: "#fff", cursor: "pointer", fontWeight: 700 };
 const errorStyle = { marginTop: 12, background: "#2b1d1d", color: "#ffb4b4", padding: 12, borderRadius: 12, overflow: "auto" };
+const danfeBoxStyle = {
+  marginTop: 14,
+  marginBottom: 10,
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.03)",
+  padding: 12,
+};
+const danfeResultStyle = {
+  marginTop: 8,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(22,163,74,0.55)",
+  background: "rgba(22,163,74,0.18)",
+  color: "#bbf7d0",
+  fontSize: 13,
+};
 const tableWrapStyle = { marginTop: 14, overflowX: "auto" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 900 };
 const thStyle = { textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.14)", padding: "8px 10px", fontSize: 13 };

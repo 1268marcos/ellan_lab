@@ -8,7 +8,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { fetchOrderDetail, fetchOrderPickup } from "../../services/publicApi";
+import {
+  fetchOrderDetail,
+  fetchOrderInvoicePdf,
+  fetchOrderPickup,
+  resendOrderInvoiceEmail,
+} from "../../services/publicApi";
 
 import { formatDateTimeByRegion } from "../../utils/datetime";
 
@@ -90,6 +95,9 @@ export default function PublicOrderDetailPage() {
   const [pickup, setPickup] = useState(null);
   const [error, setError] = useState("");
   const [pageLoading, setPageLoading] = useState(true);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendMessage, setResendMessage] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +161,7 @@ export default function PublicOrderDetailPage() {
   }, [order, pickup]);
 
   const receiptCode = useMemo(() => normalize(order?.receipt_code), [order?.receipt_code]);
+  const hasOrderForInvoiceActions = Boolean(order?.id);
 
   const receiptPrintUrl = useMemo(() => {
     if (!receiptCode) return "";
@@ -215,6 +224,56 @@ export default function PublicOrderDetailPage() {
     if (!receiptDeepLink) return;
     navigator.clipboard?.writeText(receiptDeepLink);
     window.alert("Link do comprovante copiado.");
+  }
+
+  async function handleResendInvoiceEmail() {
+    if (!token || !order?.id) return;
+    setResendBusy(true);
+    setResendMessage("");
+    try {
+      const out = await resendOrderInvoiceEmail(token, order.id);
+      setResendMessage(out?.message || "Reenvio solicitado com sucesso.");
+    } catch (err) {
+      setResendMessage(String(err?.message || err));
+    } finally {
+      setResendBusy(false);
+    }
+  }
+
+  function downloadBase64Pdf(base64Content, filename) {
+    const byteChars = atob(base64Content);
+    const byteNumbers = new Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i += 1) {
+      byteNumbers[i] = byteChars.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const blob = new Blob([byteArray], { type: "application/pdf" });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename || "invoice.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  async function handleDownloadInvoicePdf() {
+    if (!token || !order?.id) return;
+    setPdfBusy(true);
+    setResendMessage("");
+    try {
+      const out = await fetchOrderInvoicePdf(token, order.id);
+      if (!out?.content_base64) {
+        throw new Error("PDF da invoice ainda não disponível.");
+      }
+      downloadBase64Pdf(out.content_base64, out.filename || `invoice-${order.id}.pdf`);
+      setResendMessage("Download do PDF da invoice iniciado.");
+    } catch (err) {
+      setResendMessage(String(err?.message || err));
+    } finally {
+      setPdfBusy(false);
+    }
   }
 
   return (
@@ -361,70 +420,111 @@ export default function PublicOrderDetailPage() {
               ) : null}
             </section>
 
-            {receiptCode ? (
+            {hasOrderForInvoiceActions ? (
               <section style={cardStyle}>
                 <div style={sectionHeaderStyle}>
-                  <h2 style={sectionTitleStyle}>Comprovante fiscal</h2>
+                  <h2 style={sectionTitleStyle}>Invoice / comprovante fiscal</h2>
                   <p style={sectionMetaStyle}>
-                    Código disponível para consulta, página pública, impressão e PDF.
+                    Ações fiscais do pedido (consulta e reenvio por e-mail).
                   </p>
                 </div>
 
                 <div style={detailsGridStyle}>
-                  <Field label="Código" value={receiptCode} />
-                  <Field label="Página pública" value={receiptDeepLink} />
+                  <Field label="Código" value={receiptCode || "Ainda não disponível"} />
+                  <Field label="Página pública" value={receiptCode ? receiptDeepLink : "-"} />
                 </div>
 
                 <div style={actionsRowStyle}>
-                  <a
-                    href={receiptDeepLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={actionButtonStyle}
-                  >
-                    Abrir página do comprovante
-                  </a>
+                  {receiptCode ? (
+                    <a
+                      href={receiptDeepLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={actionButtonStyle}
+                    >
+                      Abrir página do comprovante
+                    </a>
+                  ) : null}
+
+                  {receiptCode ? (
+                    <button
+                      type="button"
+                      onClick={copyReceiptLink}
+                      style={actionButtonStyle}
+                    >
+                      Copiar link
+                    </button>
+                  ) : null}
+
+                  {receiptCode ? (
+                    <a
+                      href={receiptPrintUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={actionButtonStyle}
+                    >
+                      Abrir impressão
+                    </a>
+                  ) : null}
+
+                  {receiptCode ? (
+                    <a
+                      href={receiptJsonUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={actionButtonStyle}
+                    >
+                      Ver invoice associada (JSON)
+                    </a>
+                  ) : null}
+
+                  {receiptCode ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          receiptPrintUrl,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
+                      }
+                      style={actionButtonStyle}
+                    >
+                      Imprimir / PDF
+                    </button>
+                  ) : null}
 
                   <button
                     type="button"
-                    onClick={copyReceiptLink}
+                    onClick={() => void handleResendInvoiceEmail()}
                     style={actionButtonStyle}
+                    disabled={resendBusy}
                   >
-                    Copiar link
+                    {resendBusy ? "Solicitando..." : "Reenviar invoice por e-mail"}
                   </button>
 
-                  <a
-                    href={receiptPrintUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={actionButtonStyle}
-                  >
-                    Abrir impressão
-                  </a>
-
-                  <a
-                    href={receiptJsonUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={actionButtonStyle}
-                  >
-                    Ver JSON
-                  </a>
-
                   <button
                     type="button"
-                    onClick={() =>
-                      window.open(
-                        receiptPrintUrl,
-                        "_blank",
-                        "noopener,noreferrer"
-                      )
-                    }
+                    onClick={() => void handleDownloadInvoicePdf()}
                     style={actionButtonStyle}
+                    disabled={pdfBusy}
                   >
-                    Imprimir / PDF
+                    {pdfBusy ? "Preparando..." : "Baixar PDF da invoice"}
                   </button>
                 </div>
+
+                <div style={invoiceHintStyle}>
+                  <strong>Invoice associada ao pedido:</strong>{" "}
+                  use os botões acima para consultar JSON/print da invoice vinculada.
+                  {order?.channel === "ONLINE" ? (
+                    <>
+                      {" "}
+                      Para pedidos online, o envio de e-mail fiscal é disparado no fluxo de emissão (quando
+                      `receipt_email`/`guest_email` está disponível).
+                    </>
+                  ) : null}
+                </div>
+                {resendMessage ? <p style={invoiceResendMsgStyle}>{resendMessage}</p> : null}
               </section>
             ) : null}
 
@@ -781,4 +881,22 @@ const actionButtonStyle = {
   textDecoration: "none",
   fontWeight: 600,
   cursor: "pointer",
+};
+
+const invoiceHintStyle = {
+  marginTop: 12,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
+  fontSize: 13,
+  lineHeight: 1.5,
+};
+
+const invoiceResendMsgStyle = {
+  marginTop: 8,
+  marginBottom: 0,
+  fontSize: 13,
+  color: "#334155",
 };

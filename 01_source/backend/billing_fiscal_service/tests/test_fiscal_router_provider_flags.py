@@ -29,3 +29,20 @@ def test_route_issue_pt_real_adapter_when_flag_on(monkeypatch):
     monkeypatch.setattr(fr, "at_issue_real_or_fallback", lambda _: {"provider": "at_real_adapter"})
     out = fr.route_issue_invoice(_inv("PT"))
     assert out["provider"] == "at_real_adapter"
+
+
+def test_route_issue_br_contingency_sat(monkeypatch):
+    inv = _inv("BR")
+    inv.emission_mode = "OFFLINE_SAT"
+    monkeypatch.setattr(fr, "issue_invoice_contingency_stub", lambda _: {"provider": "sefaz_contingency"})
+    out = fr.route_issue_invoice(inv)
+    assert out["provider"] == "sefaz_contingency"
+
+
+def test_route_issue_reconnect_br_ignores_contingency(monkeypatch):
+    inv = _inv("BR")
+    inv.emission_mode = "OFFLINE_SAT"
+    monkeypatch.setattr(fr.settings, "fiscal_real_provider_br_enabled", False)
+    monkeypatch.setattr(fr, "sefaz_sp_issue_invoice", lambda _: {"provider": "sefaz_sp"})
+    out = fr.route_issue_invoice_reconnect(inv)
+    assert out["provider"] == "sefaz_sp"

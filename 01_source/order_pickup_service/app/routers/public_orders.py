@@ -59,6 +59,10 @@ from app.services.order_reconciliation_service import (
 from app.models.allocation import Allocation
 
 from app.services.payment_resolution_service import resolve_payment_ui_code
+from app.integrations.billing_fiscal_client import (
+    fetch_invoice_pdf_by_order_id,
+    resend_invoice_email_by_order_id,
+)
 
 
 from app.models.pickup import Pickup
@@ -1594,6 +1598,73 @@ def get_my_public_order(
         allocation=allocation,
         locker=locker,
     )
+
+
+@router.post("/{order_id}/invoice-resend-email")
+def resend_public_order_invoice_email(
+    order_id: str,
+    current_user: User | None = Depends(get_current_public_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    public_token_query: str | None = Query(default=None, alias="token"),
+    public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
+):
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    public_token = public_token_header or public_token_query
+    order = _get_order_for_public_access(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=public_token,
+    )
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pedido não encontrado")
+    if current_user and order.user_id and order.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este pedido")
+    try:
+        out = resend_invoice_email_by_order_id(order.id)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "order_id": order.id,
+        "message": "Reenvio da invoice solicitado com sucesso.",
+        "billing": out,
+    }
+
+
+@router.get("/{order_id}/invoice-pdf")
+def get_public_order_invoice_pdf(
+    order_id: str,
+    current_user: User | None = Depends(get_current_public_user),
+    db: Session = Depends(get_db),
+    device_fp: str | None = Header(default=None, alias="X-Device-Fingerprint"),
+    public_token_query: str | None = Query(default=None, alias="token"),
+    public_token_header: str | None = Header(default=None, alias="X-Public-Access-Token"),
+):
+    guest_session_id = _resolve_guest_session_id(device_fp)
+    public_token = public_token_header or public_token_query
+    order = _get_order_for_public_access(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+        guest_session_id=guest_session_id,
+        public_token=public_token,
+    )
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pedido não encontrado")
+    if current_user and order.user_id and order.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para este pedido")
+    try:
+        out = fetch_invoice_pdf_by_order_id(order.id)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return {
+        "ok": True,
+        "order_id": order.id,
+        **out,
+    }
 
 
 

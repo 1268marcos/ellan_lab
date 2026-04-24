@@ -15,6 +15,7 @@ from app.services.at_pt_real_adapter import (
 )
 from app.services.at_pt_service import at_pt_cancel_invoice, at_pt_cc_e_stub, at_pt_issue_invoice
 from app.services.sefaz_sp_service import sefaz_sp_cancel_invoice, sefaz_sp_cc_e_stub, sefaz_sp_issue_invoice
+from app.services.sefaz_contingency_service import issue_invoice_contingency_stub
 from app.services.sefaz_svrs_real_adapter import (
     cancel_invoice_real_or_fallback as svrs_cancel_real_or_fallback,
     cce_event_real_or_fallback as svrs_cce_real_or_fallback,
@@ -23,6 +24,32 @@ from app.services.sefaz_svrs_real_adapter import (
 
 
 def route_issue_invoice(invoice: Invoice) -> dict:
+    country = str(invoice.country or "").strip().upper()
+    emission_mode = str(invoice.emission_mode or "").strip().upper()
+
+    if country == "BR":
+        if emission_mode in {"OFFLINE_SAT", "CONTINGENCY_SVRS"}:
+            return issue_invoice_contingency_stub(invoice)
+        if settings.fiscal_real_provider_br_enabled:
+            return svrs_issue_real_or_fallback(invoice)
+        return sefaz_sp_issue_invoice(invoice)
+
+    if country == "PT":
+        if settings.fiscal_real_provider_pt_enabled:
+            return at_issue_real_or_fallback(invoice)
+        return at_pt_issue_invoice(invoice)
+
+    if country == "ES":
+        return aeat_es_issue_invoice(invoice)
+
+    raise ValueError(f"País não suportado para emissão fiscal: {country}")
+
+
+def route_issue_invoice_reconnect(invoice: Invoice) -> dict:
+    """
+    Fluxo de re-sync pós contingência:
+    tenta autorização oficial sem reaplicar o stub de contingência.
+    """
     country = str(invoice.country or "").strip().upper()
 
     if country == "BR":
@@ -38,7 +65,7 @@ def route_issue_invoice(invoice: Invoice) -> dict:
     if country == "ES":
         return aeat_es_issue_invoice(invoice)
 
-    raise ValueError(f"País não suportado para emissão fiscal: {country}")
+    raise ValueError(f"País não suportado para re-sync fiscal: {country}")
 
 
 def route_cancel_invoice(invoice: Invoice) -> dict:

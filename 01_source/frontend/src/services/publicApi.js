@@ -115,6 +115,25 @@ export async function fetchOrderPickup(token, orderId) {
   return parseJson(response);
 }
 
+export async function resendOrderInvoiceEmail(token, orderId) {
+  const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-resend-email`, {
+    method: "POST",
+    headers: {
+      ...buildAuthHeaders(token),
+      "Content-Type": "application/json",
+    },
+  });
+  return parseJson(response);
+}
+
+export async function fetchOrderInvoicePdf(token, orderId) {
+  const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-pdf`, {
+    method: "GET",
+    headers: buildAuthHeaders(token),
+  });
+  return parseJson(response);
+}
+
 export async function fetchMyCredits(token) {
   const response = await fetch(`${API_BASE}/public/me/credits`, {
     method: "GET",

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.models.fiscal_reconciliation_gap import FiscalReconciliationGap
+from app.models.invoice_delivery_log import InvoiceDeliveryLog
 from app.models.invoice_model import Invoice
 from app.services.invoice_orchestrator import ensure_and_process_invoice
 from app.services.fiscal_reconciliation_service import (
@@ -24,6 +25,8 @@ from app.services.fiscal_reporting_service import (
     get_issued_invoices_for_period,
 )
 from app.services.fiscal_provider_ops_service import list_provider_status, test_provider_connectivity
+from app.services.invoice_delivery_service import record_invoice_delivery
+from app.services.invoice_email_service import send_danfe_email_stub
 
 router = APIRouter(prefix="/admin/fiscal", tags=["admin-fiscal"])
 
@@ -51,8 +54,41 @@ def _build_danfe_pdf_stub_base64(invoice: Invoice) -> str:
         "status": str(getattr(invoice.status, "value", invoice.status)),
     }
     body = json.dumps(payload, ensure_ascii=False)
-    pdf_like = f"%PDF-1.4\n%ELLAN-DANFE-STUB\n1 0 obj\n<< /Type /Catalog >>\nendobj\n% {body}\n%%EOF\n"
-    return base64.b64encode(pdf_like.encode("utf-8")).decode("ascii")
+    safe_body = body.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+    text = f"DANFE STUB V1 - order_id={invoice.order_id} - invoice_id={invoice.id}\\n{safe_body}"
+
+    objects: list[bytes] = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+        (
+            "4 0 obj\n"
+            f"<< /Length {len(('BT /F1 10 Tf 40 800 Td (' + text + ') Tj ET').encode('latin-1', errors='replace'))} >>\n"
+            "stream\n"
+            f"BT /F1 10 Tf 40 800 Td ({text}) Tj ET\n"
+            "endstream\n"
+            "endobj\n"
+        ).encode("latin-1", errors="replace"),
+        b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    offsets = [0]
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+    xref_pos = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects)+1}\n".encode("ascii"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for off in offsets[1:]:
+        pdf.extend(f"{off:010d} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        (
+            f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_pos}\n%%EOF\n"
+        ).encode("ascii")
+    )
+    return base64.b64encode(bytes(pdf)).decode("ascii")
 
 
 @router.get("/gaps")
@@ -216,3 +252,56 @@ def post_test_provider_connectivity(
             ]
         }
     return {"items": [test_provider_connectivity(db, country=c)]}
+
+
+@router.post("/invoices/{invoice_id}/resend-email")
+def resend_invoice_email(
+    invoice_id: str,
+    cooldown_sec: int = Query(default=600, ge=60, le=86400),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    inv = db.query(Invoice).filter(Invoice.id == invoice_id).first()
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+
+    now = datetime.now(timezone.utc)
+    latest = (
+        db.query(InvoiceDeliveryLog)
+        .filter(InvoiceDeliveryLog.invoice_id == inv.id)
+        .filter(InvoiceDeliveryLog.channel == "EMAIL_DANFE")
+        .order_by(InvoiceDeliveryLog.created_at.desc())
+        .first()
+    )
+    if latest and latest.created_at:
+        elapsed = (now - latest.created_at).total_seconds()
+        if elapsed < cooldown_sec:
+            wait_sec = int(cooldown_sec - elapsed)
+            record_invoice_delivery(
+                db,
+                invoice_id=inv.id,
+                channel="EMAIL_DANFE",
+                status="RESEND_RATE_LIMITED",
+                detail={"cooldown_sec": cooldown_sec, "wait_sec": wait_sec},
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=429,
+                detail=f"Reenvio em cooldown. Aguarde {wait_sec}s.",
+            )
+
+    record_invoice_delivery(
+        db,
+        invoice_id=inv.id,
+        channel="EMAIL_DANFE",
+        status="RESEND_REQUESTED",
+        detail={"requested_at": now.isoformat(), "source": "admin_api"},
+    )
+    send_danfe_email_stub(db, invoice=inv, template="issued", extra_detail={"resend": True})
+    db.commit()
+    return {
+        "ok": True,
+        "invoice_id": inv.id,
+        "order_id": inv.order_id,
+        "status": "RESEND_QUEUED",
+    }

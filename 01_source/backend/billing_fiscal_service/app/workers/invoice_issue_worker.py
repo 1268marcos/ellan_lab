@@ -26,6 +26,10 @@ from app.services.invoice_processing_service import (
     claim_and_process_invoice_by_id,
     list_eligible_invoice_ids,
 )
+from app.services.invoice_resync_service import (
+    claim_and_process_resync_invoice_by_id,
+    list_eligible_resync_invoice_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +142,30 @@ def process_batch_once(batch_size: int):
                     str(exc),
                 )
 
+        resync_processed = 0
+        resync_skipped = 0
+        resync_failed = 0
+        resync_ids = list_eligible_resync_invoice_ids(db, batch_size=batch_size)
+        for invoice_id in resync_ids:
+            try:
+                rres = claim_and_process_resync_invoice_by_id(db, invoice_id=invoice_id)
+                if rres is None:
+                    resync_skipped += 1
+                    logger.info(
+                        "invoice_resync_worker_skipped invoice_id=%s reason=claim_not_acquired_or_not_eligible",
+                        invoice_id,
+                    )
+                else:
+                    resync_processed += 1
+                    logger.info("invoice_resync_worker_processed invoice_id=%s", invoice_id)
+            except Exception as exc:
+                resync_failed += 1
+                logger.exception(
+                    "invoice_resync_worker_error invoice_id=%s error=%s",
+                    invoice_id,
+                    str(exc),
+                )
+
         return {
             "processed": processed,
             "skipped": skipped,
@@ -155,6 +183,10 @@ def process_batch_once(batch_size: int):
             "email_skipped": email_skipped,
             "email_failed": email_failed,
             "email_scanned": len(email_ids),
+            "resync_processed": resync_processed,
+            "resync_skipped": resync_skipped,
+            "resync_failed": resync_failed,
+            "resync_scanned": len(resync_ids),
         }
 
     finally:
@@ -181,7 +213,8 @@ def run():
             result = process_batch_once(batch)
             logger.info(
                 "invoice_issue_worker_cycle processed=%s skipped=%s failed=%s scanned=%s "
-                "email_processed=%s email_skipped=%s email_failed=%s email_scanned=%s",
+                "email_processed=%s email_skipped=%s email_failed=%s email_scanned=%s "
+                "resync_processed=%s resync_skipped=%s resync_failed=%s resync_scanned=%s",
                 result["processed"],
                 result["skipped"],
                 result["failed"],
@@ -190,6 +223,10 @@ def run():
                 result["email_skipped"],
                 result["email_failed"],
                 result["email_scanned"],
+                result["resync_processed"],
+                result["resync_skipped"],
+                result["resync_failed"],
+                result["resync_scanned"],
             )
         except Exception as exc:
             logger.exception(

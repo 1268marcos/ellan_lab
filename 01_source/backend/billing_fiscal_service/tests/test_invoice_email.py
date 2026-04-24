@@ -1,4 +1,5 @@
 from app.models.invoice_model import Invoice
+from app.services.nfce_xml_builder_v40 import build_nfce_xml_v40_stub
 from app.services.invoice_email_service import build_danfe_email_content, extract_receipt_email
 from app.services.sefaz_sp_service import build_cce_xml_event_preview, sefaz_sp_cc_e_stub
 
@@ -77,3 +78,25 @@ def test_sefaz_sp_cc_e_stub_includes_xml_preview():
     assert "xCorrecao" in out["xml_event_preview"]
     assert out["sequence"] == 2
     assert out["raw"].get("xml_event_preview") == out["xml_event_preview"]
+
+
+def test_build_nfce_xml_v40_stub_has_signature_points():
+    inv = Invoice(
+        id="inv_nfce",
+        order_id="ord_nfce",
+        country="BR",
+        fiscal_doc_subtype="NFC_E_65",
+        emitter_cnpj="12.345.678/0001-99",
+        consumer_cpf="123.456.789-09",
+        amount_cents=4495,
+        order_snapshot={"order": {"sku_id": "mini_cookie_iogurte"}},
+    )
+    out = build_nfce_xml_v40_stub(
+        inv,
+        access_key="35200123456789012345678901234567890123456789",
+        invoice_number="1001",
+        invoice_series="1",
+    )
+    assert out["schema_version"] == "4.00"
+    assert "<infNFe versao=\"4.00\"" in out["xml_preview"]
+    assert out["signature"]["mode"] == "A1_STUB_PENDING"
