@@ -42,6 +42,8 @@ const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
+const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
+const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -222,6 +224,8 @@ function TopNav() {
     { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT" },
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners" },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
+    { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
+    { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -780,6 +784,22 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLogisticsDashboardPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/logistics/returns"
+              element={
+                <OpsRoute>
+                  <OpsLogisticsReturnsPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/catalog"
+              element={
+                <OpsRoute>
+                  <OpsProductsCatalogPage />
                 </OpsRoute>
               }
             />

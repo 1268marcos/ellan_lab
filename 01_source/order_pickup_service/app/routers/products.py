@@ -12,6 +12,8 @@ from app.core.db import get_db
 from app.models.product_status_history import ProductStatusHistory
 from app.models.user import User
 from app.schemas.products import (
+    ProductListItemOut,
+    ProductListOut,
     ProductStatusHistoryItemOut,
     ProductStatusHistoryListOut,
     ProductStatusOut,
@@ -56,6 +58,107 @@ def _load_product_status(db: Session, product_id: str) -> str:
             },
         )
     return str(row.get("status") or "DRAFT").strip().upper()
+
+
+def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) -> datetime | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATETIME", "message": f"{field_name} inválido. Use ISO-8601."},
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+@router.get("", response_model=ProductListOut)
+def list_products(
+    status: str | None = Query(default=None),
+    category: str | None = Query(default=None),
+    updated_from: str | None = Query(default=None),
+    updated_to: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    normalized_status = str(status or "").strip().upper()
+    if normalized_status and normalized_status not in _PRODUCT_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_PRODUCT_STATUS",
+                "message": "Status inválido para filtro de produtos.",
+                "allowed_statuses": sorted(_PRODUCT_STATUSES),
+            },
+        )
+    normalized_category = str(category or "").strip()
+    dt_from = _parse_iso_datetime_utc_optional(updated_from, field_name="updated_from")
+    dt_to = _parse_iso_datetime_utc_optional(updated_to, field_name="updated_to")
+    if dt_from and dt_to and dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "updated_from deve ser <= updated_to."},
+        )
+
+    where_parts = ["1=1"]
+    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    if normalized_status:
+        where_parts.append("COALESCE(status, 'DRAFT') = :status")
+        params["status"] = normalized_status
+    if normalized_category:
+        where_parts.append("category_id = :category")
+        params["category"] = normalized_category
+    if dt_from is not None:
+        where_parts.append("updated_at >= :updated_from")
+        params["updated_from"] = dt_from
+    if dt_to is not None:
+        where_parts.append("updated_at <= :updated_to")
+        params["updated_to"] = dt_to
+
+    where_sql = " AND ".join(where_parts)
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS total FROM products WHERE {where_sql}"),
+        params,
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                id,
+                name,
+                category_id,
+                COALESCE(status, 'DRAFT') AS status,
+                COALESCE(is_active, FALSE) AS is_active,
+                updated_at
+            FROM products
+            WHERE {where_sql}
+            ORDER BY updated_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    items = [
+        ProductListItemOut(
+            id=str(row.get("id") or ""),
+            name=str(row.get("name") or ""),
+            category_id=(str(row.get("category_id")) if row.get("category_id") is not None else None),
+            status=str(row.get("status") or "DRAFT"),
+            is_active=bool(row.get("is_active")),
+            updated_at=_to_iso_utc(row.get("updated_at")),
+        )
+        for row in rows
+    ]
+    return ProductListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
 
 
 @router.patch("/{product_id}/status", response_model=ProductStatusOut)

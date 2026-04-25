@@ -830,6 +830,15 @@ def patch_logistics_return_status(
         )
     now = datetime.now(timezone.utc)
     reason = payload.reason.strip() if payload.reason else None
+    before = {
+        "id": row.id,
+        "order_id": row.order_id,
+        "partner_id": row.partner_id,
+        "reason_code": row.reason_code,
+        "status": from_status,
+        "notes": row.notes,
+        "updated_at": _to_iso_utc(row.updated_at),
+    }
     row.status = to_status
     row.updated_at = now
     db.add(
@@ -851,6 +860,15 @@ def patch_logistics_return_status(
             return_row=row,
             to_status=to_status,
         )
+    after = {
+        "id": row.id,
+        "order_id": row.order_id,
+        "partner_id": row.partner_id,
+        "reason_code": row.reason_code,
+        "status": to_status,
+        "notes": row.notes,
+        "updated_at": _to_iso_utc(row.updated_at),
+    }
 
     _audit_ops(
         db=db,
@@ -859,10 +877,12 @@ def patch_logistics_return_status(
         correlation_id=corr_id,
         user_id=str(current_user.id),
         details={
+            "partner_id": row.partner_id,
             "return_id": row.id,
-            "from_status": from_status,
-            "to_status": to_status,
-            "reason": reason,
+            "before": before,
+            "after": after,
+            "transition": {"from_status": from_status, "to_status": to_status},
+            "change_reason": reason,
             "webhook_deliveries_enqueued": enqueued_deliveries,
         },
     )

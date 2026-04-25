@@ -58,7 +58,7 @@ Requisitos tecnicos (backend)
 Requisitos tecnicos (frontend)
 - Nova tela "Meus Creditos" na area logada.
 - Componente de aplicacao de credito no checkout com feedback em tempo real.
-- Pagina "Seguranca" com troca de senha.
+- Página "Segurança" com troca de senha.
 - Tela/estado de "E-mail nao verificado" com acao de reenviar link.
 
 Criterios de aceite (MVP)
@@ -145,7 +145,7 @@ Backend
 - [x] Compatibilidade de moeda: carteira (`user_wallets`) vs `OnlineRegion.get_currency(region)` no preview e no apply; sem carteira nao bloqueia.
 
 Frontend
-- [x] Pagina `PublicMyCreditsPage.jsx` + rota na area logada.
+- [x] Página `PublicMyCreditsPage.jsx` + rota na area logada.
 - [x] Saldo total disponivel (summary).
 - [x] Lista com status, origem, valor, validade; filtro de status.
 - [x] Destaque “proximos de vencer (7 dias)” via `expiring_soon_count` + `days_to_expiration` nos itens disponiveis.

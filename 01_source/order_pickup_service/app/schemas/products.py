@@ -31,3 +31,20 @@ class ProductStatusHistoryListOut(BaseModel):
     ok: bool
     total: int
     items: list[ProductStatusHistoryItemOut]
+
+
+class ProductListItemOut(BaseModel):
+    id: str
+    name: str
+    category_id: str | None = None
+    status: str
+    is_active: bool
+    updated_at: str
+
+
+class ProductListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    items: list[ProductListItemOut]

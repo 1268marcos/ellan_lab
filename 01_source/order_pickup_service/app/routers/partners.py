@@ -839,7 +839,7 @@ def get_partners_ops_audit(
 
     filtered: list[OpsActionAudit] = []
     for row in rows:
-        details = row.details_json if isinstance(row.details_json, dict) else {}
+        details = _json_load_dict(row.details_json, default={})
         row_partner_id = _extract_partner_id(details)
         if partner_id and str(row_partner_id or "").strip() != str(partner_id).strip():
             continue
@@ -848,7 +848,7 @@ def get_partners_ops_audit(
     sliced = filtered[offset : offset + limit]
     items = []
     for row in sliced:
-        details = row.details_json if isinstance(row.details_json, dict) else {}
+        details = _json_load_dict(row.details_json, default={})
         row_partner_id = _extract_partner_id(details)
         items.append(
             PartnerOpsAuditItemOut(

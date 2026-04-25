@@ -83,7 +83,7 @@ export default function FlowProgressPanel({
             border: "1px solid rgba(27,88,131,0.35)",
           }}
         >
-          <b>Proxima acao sugerida:</b> {actionHint}
+          <b>Próxima ação sugerida:</b> {actionHint}
         </div>
       ) : null}
     </section>
