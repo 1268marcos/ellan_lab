@@ -1339,36 +1339,113 @@ Order cancelada/expirada:
 - [ ] Registrar auditoria operacional de escrita para entidades críticas de Pr-3 (criação/edição de bundle, promoção e config fiscal), com `before/after` quando aplicável.
 
 ##### D2 — Endpoints mínimos backend (v1) para começar operação
-- [ ] Implementar endpoints base de bundles:
+- [x] Implementar endpoints base de bundles:
       - `GET/POST /products/bundles`
       - `POST /products/bundles/{id}/items`
-- [ ] Implementar endpoints base de promoções:
+- [x] Implementar endpoints base de promoções:
       - `GET/POST /promotions`
       - `PATCH /promotions/{id}/status`
-      - `POST /promotions/validate` (stub idempotente para validação inicial de cupom/regra)
-- [ ] Implementar endpoints de configuração fiscal por produto:
+      - `POST /promotions/validate` (funcional com auditoria operacional `PR3_PROMOTION_VALIDATE`)
+- [x] Implementar endpoints de configuração fiscal por produto:
       - `GET /products/{id}/fiscal-config`
-      - `PUT /products/{id}/fiscal-config`
-- [ ] Implementar endpoint de leitura operacional de classificação:
+      - `PUT /products/{id}/fiscal-config` (upsert com auditoria `before/after`)
+- [x] Implementar endpoint de leitura operacional de classificação:
       - `GET /fiscal/auto-classification-log` (filtros: `order_id`, `sku_id`, `source`, período, paginação)
-- [ ] Padronizar respostas de erro operacional (mensagens claras, sem depender apenas de erro genérico de rede).
-- [~] **Observação importante (estado atual):** os endpoints D2 já estão contratados e publicados como **stub operacional** (sem persistência funcional completa), para habilitar estratégia **backend-first** com integração progressiva sem bloquear o fluxo do sprint.
-- [ ] Próximo passo direto do D2: implementar persistência real de `bundles`, `promotions` e `product_fiscal_config`, além da leitura real de `fiscal_auto_classification_log` com filtros operacionais, mantendo auditoria `before/after`.
+- [x] Padronizar respostas de erro operacional (mensagens claras, sem depender apenas de erro genérico de rede).
+- [x] **Observação importante (histórico):** os endpoints D2 iniciaram como **stub operacional** e foram evoluídos para persistência funcional completa mantendo o fluxo **backend-first**.
+- [x] Próximo passo direto do D2 concluído: persistência real de `bundles`, `promotions` e `product_fiscal_config`, além da leitura real de `fiscal_auto_classification_log` com filtros operacionais e auditoria `before/after`.
 
 ##### D3 — Rota OPS de validação (backend first, frontend leve)
-- [ ] Implementar rota OPS consolidada para validação rápida do Pr-3:
+- [x] Implementar rota OPS consolidada para validação rápida do Pr-3:
       - `GET /ops/products/pricing-fiscal/overview`
-- [ ] Entregar no payload mínimo:
+- [x] Entregar no payload mínimo:
       - KPIs: bundles ativos, promoções ativas, validações de promoção (janela), classificações fiscais por `source`
       - top listas operacionais: promoções mais acionadas, SKUs sem config fiscal, ocorrências `DEFAULT`
       - janela atual vs anterior com deltas percentuais e `confidence_badge`
-- [ ] Incluir filtros operacionais base (`from`, `to`, `source`, `promotion_code`, `limit`) com compatibilidade para presets e persistência no frontend OPS.
-- [ ] Disponibilizar rota de visualização de apoio (HTML simples) para inspeção imediata em navegador durante desenvolvimento.
+- [x] Incluir filtros operacionais base (`from`, `to`, `source`, `promotion_code`, `limit`) com compatibilidade para presets e persistência no frontend OPS.
+- [x] Disponibilizar rota de visualização de apoio (HTML simples) para inspeção imediata em navegador durante desenvolvimento.
+- [x] Evidência operacional D3: `GET /ops/products/pricing-fiscal/overview` e `GET /ops/products/pricing-fiscal/view` implementados para monitoramento imediato em navegador.
 
 **Critério de pronto D1-D3 (mínimo para seguir para D4+):**
-- [ ] Migrações aplicam sem quebra e com idempotência.
-- [ ] Endpoints v1 respondem com autenticação OPS e payload consistente.
-- [ ] Rota OPS consolidada permite validar tendência e gargalos sem abrir JSON bruto.
+- [x] Migrações aplicam sem quebra e com idempotência.
+- [x] Endpoints v1 respondem com autenticação OPS e payload consistente.
+- [x] Rota OPS consolidada permite validar tendência e gargalos sem abrir JSON bruto.
+
+##### D4 — Promoções avançadas + idempotência de validação (início com escopo mínimo)
+- [~] Implementar regras avançadas em `POST /promotions/validate`:
+      - `BUY_X_GET_Y`
+      - `FREE_ITEM`
+      - `BUNDLE_DISCOUNT`
+- [~] Implementar idempotência mínima por (`order_id`, `promotion_code`) em `POST /promotions/validate`.
+- [~] Manter trilha de auditoria operacional para validação (`PR3_PROMOTION_VALIDATE`) e hit idempotente (`PR3_PROMOTION_VALIDATE_IDEMPOTENT_HIT`).
+- [x] Evidência parcial D4: resposta de validação passou a incluir `idempotent` e os eventos passam a alimentar continuamente o overview OPS.
+- [x] Evidência operacional D4 (execução real): promoção `D4BUYXGETYSMOKE` validada com sucesso (`discount_cents=1000`), repetição idempotente confirmada e refletida no overview OPS.
+
+**Smoke test curto D4 (2-3 chamadas)**
+- [x] Chamada 1 — validar promoção avançada:
+      - `POST /promotions/validate` com `promotion_code` configurado para `BUY_X_GET_Y` (ou `FREE_ITEM`/`BUNDLE_DISCOUNT`) e payload de itens elegível.
+      - Esperado: `ok=true`, `valid=true`, `idempotent=false`, `discount_cents > 0`.
+- [x] Chamada 2 — repetir mesma validação (idempotência):
+      - repetir `POST /promotions/validate` com o mesmo (`order_id`, `promotion_code`).
+      - Esperado: `ok=true`, `valid=true`, `idempotent=true` e `discount_cents` igual à chamada anterior.
+- [x] Chamada 3 — evidência no monitoramento OPS:
+      - `GET /ops/products/pricing-fiscal/overview`.
+      - Esperado: incremento de validações em KPI/top de promoções e manutenção da leitura de tendência na janela atual.
+
+##### D5 — Auto-classificação fiscal no fluxo + fallback + alerta OPS
+- [x] Aplicar auto-classificação fiscal no fluxo de contexto/emissão por item (`order_items`) com ordem de fallback:
+      - `AUTO_PRODUCT_CONFIG` (config por SKU)
+      - `CATEGORY_FALLBACK` (config por categoria)
+      - `DEFAULT` (fallback técnico)
+- [x] Registrar trilha em `fiscal_auto_classification_log` durante o fluxo operacional (evitando duplicidade por `order_id + sku_id`).
+- [x] Gerar alerta OPS quando houver fallback em `DEFAULT`:
+      - ação `PR3_FISCAL_CLASSIFICATION_DEFAULT_ALERT`
+      - `result=ERROR`
+- [x] Evidência operacional inicial D5 (execução real):
+      - `order_id=0fce1a6b-8a5d-4e7f-b723-53039cbc4a8e`
+      - `has_fiscal_classification=true`
+      - `sources=['DEFAULT']`
+      - `fiscal_log_count_for_order=1`
+      - `default_alert_count_for_order=1`
+- [x] Hardening D5 (OPS resumido por source na janela):
+      - endpoint `GET /ops/products/pricing-fiscal/classification-sources` (janela atual vs anterior, tendência e `confidence_badge`).
+      - evidência: `summary_total_current=1`, item `DEFAULT` com `current=1`, `previous=0`, `trend=up`.
+- [x] Hardening adicional D5 (monitoramento dedicado de alertas `DEFAULT`):
+      - endpoint `GET /ops/products/pricing-fiscal/default-alerts` (janela atual vs anterior, tendência, confiança e lista paginada de alertas).
+      - evidência: `total_current=2`, `total_previous=0`, `trend=up`, item com `source=DEFAULT`, `order_id`, `sku_id` e `correlation_id`.
+
+##### D6 — Fechamento operacional do dia (Pr-3)
+- [x] Consolidar validação E2E final do Pr-3 (D1..D5) em um bloco único de evidências.
+- [x] Registrar checklist de go/no-go para integração I-1 (Orders ↔ Fiscal) com base nos endpoints já disponíveis.
+- [x] Confirmar runbook curto de operação:
+      - onde monitorar (`/ops/products/pricing-fiscal/overview`, `/ops/products/pricing-fiscal/classification-sources`, `/ops/products/pricing-fiscal/default-alerts`);
+      - quais ações tomar quando `DEFAULT` subir (priorizar cadastro em `product_fiscal_config` por SKU e depois categoria).
+- [x] Critério de encerramento D6: backlog do Pr-3 pronto para transição ao bloco de integração sem pendência crítica aberta.
+
+**Consolidação automática de evidências técnicas (D1..D5)**
+- [x] D4 validação avançada + idempotência comprovadas:
+      - promoção `D4BUYXGETYSMOKE` criada (`type=BUY_X_GET_Y`);
+      - 1ª validação: `valid=true`, `idempotent=false`, `discount_cents=1000`;
+      - repetição: `valid=true`, `idempotent=true`, `discount_cents=1000`.
+- [x] D4 refletido no OPS overview:
+      - `comparison.current=1`, `comparison.previous=0`, `trend=up`;
+      - top de promoções inclui `D4BUYXGETYSMOKE`.
+- [x] D5 auto-classificação em fluxo interno:
+      - `has_fiscal_classification=true` em `order_items`;
+      - `sources=['DEFAULT']` para `order_id=0fce1a6b-8a5d-4e7f-b723-53039cbc4a8e`;
+      - `fiscal_log_count_for_order=1`.
+- [x] D5 alerta OPS quando `DEFAULT`:
+      - `default_alert_count_for_order=1`;
+      - `PR3_FISCAL_CLASSIFICATION_DEFAULT_ALERT` com `order_id`, `sku_id` e `correlation_id`.
+- [x] D5 hardening monitorável:
+      - `GET /ops/products/pricing-fiscal/classification-sources` validado (`DEFAULT current=1`, `previous=0`, `trend=up`);
+      - `GET /ops/products/pricing-fiscal/default-alerts` validado (`total_current=2`, `total_previous=0`, `trend=up`).
+
+**Checklist go/no-go para entrada no I-1 (Orders ↔ Fiscal)**
+- [x] **Go** quando: classificação por source, alertas `DEFAULT` e validação de promoções responderem 200 com autenticação OPS.
+- [x] **Go** quando: trilhas de auditoria `PR3_PROMOTION_VALIDATE` e `PR3_FISCAL_CLASSIFICATION_DEFAULT_ALERT` estiverem sendo registradas.
+- [x] **No-go** se: `default-alerts` subir sem ação corretiva em `product_fiscal_config` por SKU/categoria.
+- [x] **No-go** se: regressão de idempotência em `POST /promotions/validate` (`idempotent=true` não reaproveitar resultado).
 
 #### Novas tabelas
 

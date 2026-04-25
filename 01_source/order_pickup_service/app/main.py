@@ -22,6 +22,7 @@ from app.jobs.reconciliation_retry import run_reconciliation_retry_once
 from app.routers import (
     dev_admin,
     dev_base_catalog,
+    integration_ops,
     internal,
     inventory,
     kiosk,
@@ -61,6 +62,7 @@ app.include_router(partners.router)
 app.include_router(logistics.router)
 app.include_router(products.router)
 app.include_router(pricing_fiscal.router)
+app.include_router(integration_ops.router)
 app.include_router(inventory.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)

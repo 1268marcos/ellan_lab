@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -15,6 +17,14 @@ from app.models.user import User
 from app.schemas.pricing_fiscal import (
     FiscalAutoClassificationLogItemOut,
     FiscalAutoClassificationLogListOut,
+    PricingFiscalBadgeOut,
+    PricingFiscalDefaultAlertItemOut,
+    PricingFiscalDefaultAlertsOut,
+    PricingFiscalOverviewKpiOut,
+    PricingFiscalOverviewOut,
+    PricingFiscalOverviewTopItemOut,
+    PricingFiscalSourceSummaryItemOut,
+    PricingFiscalSourceSummaryOut,
     ProductBundleItemOut,
     ProductBundleCreateIn,
     ProductBundleListOut,
@@ -97,6 +107,149 @@ def _to_audit_payload(value):
     if isinstance(value, (list, tuple)):
         return [_to_audit_payload(v) for v in value]
     return value
+
+
+def _safe_delta_pct(current: int, previous: int) -> float:
+    if previous <= 0:
+        if current <= 0:
+            return 0.0
+        return 100.0
+    return round(((current - previous) / previous) * 100, 2)
+
+
+def _resolve_trend(current: int, previous: int) -> str:
+    if current > previous:
+        return "up"
+    if current < previous:
+        return "down"
+    return "stable"
+
+
+def _resolve_confidence_and_note(*, total_current: int, total_previous: int) -> tuple[str, str]:
+    min_volume = min(int(total_current or 0), int(total_previous or 0))
+    if min_volume < 10:
+        return (
+            "LOW",
+            "Base de eventos muito pequena no período comparado; variações percentuais podem oscilar bastante.",
+        )
+    if min_volume < 30:
+        return (
+            "MEDIUM",
+            "Base de eventos moderada; use a variação percentual junto com os valores absolutos.",
+        )
+    return (
+        "HIGH",
+        "Base de eventos suficiente para leitura mais estável das tendências percentuais.",
+    )
+
+
+def _resolve_confidence_badge(confidence_level: str) -> PricingFiscalBadgeOut:
+    level = str(confidence_level or "").upper()
+    if level == "LOW":
+        return PricingFiscalBadgeOut(
+            key="confidence_low",
+            label="Confianca baixa",
+            color="#DC2626",
+            icon="alert-triangle",
+        )
+    if level == "MEDIUM":
+        return PricingFiscalBadgeOut(
+            key="confidence_medium",
+            label="Confianca moderada",
+            color="#D97706",
+            icon="alert-circle",
+        )
+    return PricingFiscalBadgeOut(
+        key="confidence_high",
+        label="Confianca alta",
+        color="#16A34A",
+        icon="check-circle",
+    )
+
+
+def _to_int(value, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_validate_out_from_audit(details: dict) -> PromotionValidateOut | None:
+    payload = _json_load_dict(details.get("after"), default={}) if isinstance(details, dict) else {}
+    if not payload:
+        return None
+    return PromotionValidateOut(
+        ok=bool(payload.get("ok", True)),
+        valid=bool(payload.get("valid", False)),
+        idempotent=True,
+        promotion_id=(str(payload.get("promotion_id")) if payload.get("promotion_id") is not None else None),
+        promotion_code=(str(payload.get("promotion_code")) if payload.get("promotion_code") is not None else None),
+        discount_cents=_to_int(payload.get("discount_cents"), 0),
+        reason=(str(payload.get("reason")) if payload.get("reason") is not None else None),
+    )
+
+
+def _compute_advanced_discount(
+    *,
+    promo_type: str,
+    total_amount_cents: int,
+    discount_pct: float | None,
+    discount_cents: int | None,
+    max_discount_cents: int | None,
+    conditions_json: dict,
+    items: list[dict],
+) -> int:
+    normalized_type = str(promo_type or "").strip().upper()
+    item_quantities = [max(_to_int(item.get("quantity"), 1), 1) for item in (items or [])]
+    item_unit_prices = [max(_to_int(item.get("unit_price_cents"), 0), 0) for item in (items or [])]
+    total_qty = sum(item_quantities)
+    fallback_unit_price = min(item_unit_prices) if item_unit_prices else 0
+
+    resolved_discount = 0
+    if normalized_type == "PERCENT_OFF":
+        pct = float(discount_pct or 0)
+        resolved_discount = int(round((total_amount_cents * pct) / 100))
+    elif normalized_type == "FIXED_OFF":
+        resolved_discount = max(_to_int(discount_cents, 0), 0)
+    elif normalized_type == "BUY_X_GET_Y":
+        buy_qty = max(_to_int(conditions_json.get("buy_qty"), 1), 1)
+        get_qty = max(_to_int(conditions_json.get("get_qty"), 1), 1)
+        group_size = buy_qty + get_qty
+        if total_qty < group_size:
+            return 0
+        free_unit_price = max(_to_int(conditions_json.get("free_item_price_cents"), fallback_unit_price), 0)
+        eligible_groups = total_qty // group_size
+        resolved_discount = eligible_groups * get_qty * free_unit_price
+    elif normalized_type == "FREE_ITEM":
+        free_qty = max(_to_int(conditions_json.get("free_qty"), 1), 1)
+        free_unit_price = max(_to_int(conditions_json.get("free_item_price_cents"), fallback_unit_price), 0)
+        resolved_discount = free_qty * free_unit_price
+    elif normalized_type == "BUNDLE_DISCOUNT":
+        bundle_size = max(_to_int(conditions_json.get("bundle_size"), 1), 1)
+        bundle_price_cents = max(_to_int(conditions_json.get("bundle_price_cents"), 0), 0)
+        if not item_unit_prices:
+            return 0
+        expanded_prices: list[int] = []
+        for idx, unit_price in enumerate(item_unit_prices):
+            qty = item_quantities[idx] if idx < len(item_quantities) else 1
+            expanded_prices.extend([unit_price] * qty)
+        if len(expanded_prices) < bundle_size:
+            return 0
+        expanded_prices.sort(reverse=True)
+        eligible_sets = len(expanded_prices) // bundle_size
+        for set_idx in range(eligible_sets):
+            slice_start = set_idx * bundle_size
+            slice_end = slice_start + bundle_size
+            group_total = sum(expanded_prices[slice_start:slice_end])
+            resolved_discount += max(group_total - bundle_price_cents, 0)
+    else:
+        resolved_discount = max(_to_int(discount_cents, 0), 0)
+
+    if max_discount_cents is not None:
+        resolved_discount = min(resolved_discount, max(_to_int(max_discount_cents, 0), 0))
+    return max(resolved_discount, 0)
 
 
 def _promotion_to_out(row: dict) -> PromotionOut:
@@ -533,58 +686,161 @@ def patch_promotion_status(
 @router.post("/promotions/validate", response_model=PromotionValidateOut)
 def validate_promotion(
     payload: PromotionValidateIn,
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    corr_id = _resolve_correlation_id(correlation_id)
     now = datetime.now(timezone.utc)
     normalized_code = str(payload.promotion_code or "").strip()
-    if not normalized_code:
-        return PromotionValidateOut(ok=True, valid=False, discount_cents=0, reason="promotion_code obrigatório")
-    promo = db.execute(
+    normalized_order_id = str(payload.order_id or "").strip()
+    promotion_type: str | None = None
+
+    existing_validation = db.execute(
         text(
             """
-            SELECT id, code, type, discount_pct, discount_cents, min_order_cents, max_discount_cents, max_uses, uses_count,
-                   is_active, valid_from, valid_until
-            FROM promotions
-            WHERE code = :code
+            SELECT details_json
+            FROM ops_action_audit
+            WHERE action = 'PR3_PROMOTION_VALIDATE'
+              AND order_id = :order_id
+              AND (
+                    (details_json::jsonb)->>'promotion_code' = :promotion_code
+                    OR (details_json::jsonb)->'after'->>'promotion_code' = :promotion_code
+              )
+            ORDER BY created_at DESC
+            LIMIT 1
             """
         ),
-        {"code": normalized_code},
+        {"order_id": normalized_order_id, "promotion_code": normalized_code},
     ).mappings().first()
-    if not promo:
-        return PromotionValidateOut(ok=True, valid=False, discount_cents=0, reason="promoção inexistente")
-    if not bool(promo.get("is_active")):
-        return PromotionValidateOut(ok=True, valid=False, promotion_id=str(promo.get("id")), promotion_code=normalized_code, discount_cents=0, reason="promoção inativa")
-    valid_from = promo.get("valid_from")
-    valid_until = promo.get("valid_until")
-    if valid_from and valid_from > now:
-        return PromotionValidateOut(ok=True, valid=False, promotion_id=str(promo.get("id")), promotion_code=normalized_code, discount_cents=0, reason="promoção ainda não vigente")
-    if valid_until and valid_until < now:
-        return PromotionValidateOut(ok=True, valid=False, promotion_id=str(promo.get("id")), promotion_code=normalized_code, discount_cents=0, reason="promoção expirada")
-    if promo.get("max_uses") is not None and int(promo.get("uses_count") or 0) >= int(promo.get("max_uses") or 0):
-        return PromotionValidateOut(ok=True, valid=False, promotion_id=str(promo.get("id")), promotion_code=normalized_code, discount_cents=0, reason="limite de uso atingido")
-    total = int(payload.total_amount_cents or 0)
-    min_order = int(promo.get("min_order_cents") or 0)
-    if total < min_order:
-        return PromotionValidateOut(ok=True, valid=False, promotion_id=str(promo.get("id")), promotion_code=normalized_code, discount_cents=0, reason="pedido abaixo do mínimo da promoção")
-    discount_cents = 0
-    promo_type = str(promo.get("type") or "")
-    if promo_type == "PERCENT_OFF":
-        pct = float(promo.get("discount_pct") or 0)
-        discount_cents = int(round((total * pct) / 100))
+    if existing_validation:
+        idempotent_response = _build_validate_out_from_audit(_json_load_dict(existing_validation.get("details_json"), default={}))
+        if idempotent_response is not None:
+            _record_pr3_audit(
+                db=db,
+                correlation_id=corr_id,
+                current_user=current_user,
+                action="PR3_PROMOTION_VALIDATE_IDEMPOTENT_HIT",
+                order_id=normalized_order_id,
+                payload={
+                    "before": None,
+                    "after": idempotent_response.model_dump(mode="json"),
+                    "promotion_code": normalized_code or None,
+                },
+            )
+            db.commit()
+            return idempotent_response
+
+    response: PromotionValidateOut
+    if not normalized_code:
+        response = PromotionValidateOut(ok=True, valid=False, idempotent=False, discount_cents=0, reason="promotion_code obrigatório")
     else:
-        discount_cents = int(promo.get("discount_cents") or 0)
-    max_discount = promo.get("max_discount_cents")
-    if max_discount is not None:
-        discount_cents = min(discount_cents, int(max_discount))
-    discount_cents = max(discount_cents, 0)
-    return PromotionValidateOut(
-        ok=True,
-        valid=True,
-        promotion_id=str(promo.get("id")),
-        promotion_code=normalized_code,
-        discount_cents=discount_cents,
-        reason=None,
+        promo = db.execute(
+            text(
+                """
+                SELECT id, code, type, discount_pct, discount_cents, min_order_cents, max_discount_cents, max_uses, uses_count,
+                       is_active, valid_from, valid_until, conditions_json
+                FROM promotions
+                WHERE code = :code
+                """
+            ),
+            {"code": normalized_code},
+        ).mappings().first()
+        if not promo:
+            response = PromotionValidateOut(ok=True, valid=False, idempotent=False, discount_cents=0, reason="promoção inexistente")
+        elif not bool(promo.get("is_active")):
+            promotion_type = str(promo.get("type") or "")
+            response = PromotionValidateOut(
+                ok=True,
+                valid=False,
+                idempotent=False,
+                promotion_id=str(promo.get("id")),
+                promotion_code=normalized_code,
+                discount_cents=0,
+                reason="promoção inativa",
+            )
+        else:
+            valid_from = promo.get("valid_from")
+            valid_until = promo.get("valid_until")
+            promotion_type = str(promo.get("type") or "")
+            if valid_from and valid_from > now:
+                response = PromotionValidateOut(
+                    ok=True,
+                    valid=False,
+                    idempotent=False,
+                    promotion_id=str(promo.get("id")),
+                    promotion_code=normalized_code,
+                    discount_cents=0,
+                    reason="promoção ainda não vigente",
+                )
+            elif valid_until and valid_until < now:
+                response = PromotionValidateOut(
+                    ok=True,
+                    valid=False,
+                    idempotent=False,
+                    promotion_id=str(promo.get("id")),
+                    promotion_code=normalized_code,
+                    discount_cents=0,
+                    reason="promoção expirada",
+                )
+            elif promo.get("max_uses") is not None and int(promo.get("uses_count") or 0) >= int(promo.get("max_uses") or 0):
+                response = PromotionValidateOut(
+                    ok=True,
+                    valid=False,
+                    idempotent=False,
+                    promotion_id=str(promo.get("id")),
+                    promotion_code=normalized_code,
+                    discount_cents=0,
+                    reason="limite de uso atingido",
+                )
+            else:
+                total = int(payload.total_amount_cents or 0)
+                min_order = int(promo.get("min_order_cents") or 0)
+                if total < min_order:
+                    response = PromotionValidateOut(
+                        ok=True,
+                        valid=False,
+                        idempotent=False,
+                        promotion_id=str(promo.get("id")),
+                        promotion_code=normalized_code,
+                        discount_cents=0,
+                        reason="pedido abaixo do mínimo da promoção",
+                    )
+                else:
+                    discount_cents = _compute_advanced_discount(
+                        promo_type=str(promo.get("type") or ""),
+                        total_amount_cents=total,
+                        discount_pct=(float(promo.get("discount_pct")) if promo.get("discount_pct") is not None else None),
+                        discount_cents=(int(promo.get("discount_cents")) if promo.get("discount_cents") is not None else None),
+                        max_discount_cents=(int(promo.get("max_discount_cents")) if promo.get("max_discount_cents") is not None else None),
+                        conditions_json=_json_load_dict(promo.get("conditions_json"), default={}),
+                        items=payload.items or [],
+                    )
+                    response = PromotionValidateOut(
+                        ok=True,
+                        valid=True,
+                        idempotent=False,
+                        promotion_id=str(promo.get("id")),
+                        promotion_code=normalized_code,
+                        discount_cents=discount_cents,
+                        reason=None,
+                    )
+
+    _record_pr3_audit(
+        db=db,
+        correlation_id=corr_id,
+        current_user=current_user,
+        action="PR3_PROMOTION_VALIDATE",
+        order_id=normalized_order_id,
+        payload={
+            "before": None,
+            "after": response.model_dump(mode="json"),
+            "promotion_code": normalized_code or None,
+            "promotion_type": promotion_type,
+        },
     )
+    db.commit()
+    return response
 
 
 @router.get("/products/{product_id}/fiscal-config", response_model=ProductFiscalConfigOut)
@@ -805,4 +1061,640 @@ def list_fiscal_auto_classification_log(
         offset=offset,
         items=items,
     )
+
+
+@router.get("/ops/products/pricing-fiscal/overview", response_model=PricingFiscalOverviewOut)
+def get_ops_pricing_fiscal_overview(
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    top_limit: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    dt_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to") or now
+    dt_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from") or (
+        dt_to - timedelta(hours=24)
+    )
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    window_seconds = max(int((dt_to - dt_from).total_seconds()), 1)
+    previous_to = dt_from
+    previous_from = dt_from - timedelta(seconds=window_seconds)
+
+    bundle_current_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action IN ('PR3_BUNDLE_CREATE', 'PR3_BUNDLE_ITEM_ADD')
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"from": dt_from, "to": dt_to},
+    ).mappings().first()
+    bundle_previous_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action IN ('PR3_BUNDLE_CREATE', 'PR3_BUNDLE_ITEM_ADD')
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"from": previous_from, "to": previous_to},
+    ).mappings().first()
+    bundle_current = int((bundle_current_row or {}).get("total") or 0)
+    bundle_previous = int((bundle_previous_row or {}).get("total") or 0)
+
+    promo_current_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action = 'PR3_PROMOTION_VALIDATE'
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"from": dt_from, "to": dt_to},
+    ).mappings().first()
+    promo_previous_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action = 'PR3_PROMOTION_VALIDATE'
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"from": previous_from, "to": previous_to},
+    ).mappings().first()
+    promo_current = int((promo_current_row or {}).get("total") or 0)
+    promo_previous = int((promo_previous_row or {}).get("total") or 0)
+
+    fiscal_current_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE classified_at >= :from
+              AND classified_at <= :to
+            """
+        ),
+        {"from": dt_from, "to": dt_to},
+    ).mappings().first()
+    fiscal_previous_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE classified_at >= :from
+              AND classified_at <= :to
+            """
+        ),
+        {"from": previous_from, "to": previous_to},
+    ).mappings().first()
+    fiscal_current = int((fiscal_current_row or {}).get("total") or 0)
+    fiscal_previous = int((fiscal_previous_row or {}).get("total") or 0)
+
+    default_current_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE source = 'DEFAULT'
+              AND classified_at >= :from
+              AND classified_at <= :to
+            """
+        ),
+        {"from": dt_from, "to": dt_to},
+    ).mappings().first()
+    default_previous_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE source = 'DEFAULT'
+              AND classified_at >= :from
+              AND classified_at <= :to
+            """
+        ),
+        {"from": previous_from, "to": previous_to},
+    ).mappings().first()
+    default_current = int((default_current_row or {}).get("total") or 0)
+    default_previous = int((default_previous_row or {}).get("total") or 0)
+
+    overall_current = bundle_current + promo_current + fiscal_current
+    overall_previous = bundle_previous + promo_previous + fiscal_previous
+    confidence_level, confidence_note = _resolve_confidence_and_note(
+        total_current=overall_current,
+        total_previous=overall_previous,
+    )
+
+    kpis = [
+        PricingFiscalOverviewKpiOut(
+            key="bundle_events",
+            label="Eventos de bundles",
+            current=bundle_current,
+            previous=bundle_previous,
+            delta_pct=_safe_delta_pct(bundle_current, bundle_previous),
+            trend=_resolve_trend(bundle_current, bundle_previous),
+        ),
+        PricingFiscalOverviewKpiOut(
+            key="promotion_validations",
+            label="Validações de promoção",
+            current=promo_current,
+            previous=promo_previous,
+            delta_pct=_safe_delta_pct(promo_current, promo_previous),
+            trend=_resolve_trend(promo_current, promo_previous),
+        ),
+        PricingFiscalOverviewKpiOut(
+            key="fiscal_classifications",
+            label="Classificações fiscais",
+            current=fiscal_current,
+            previous=fiscal_previous,
+            delta_pct=_safe_delta_pct(fiscal_current, fiscal_previous),
+            trend=_resolve_trend(fiscal_current, fiscal_previous),
+        ),
+        PricingFiscalOverviewKpiOut(
+            key="default_classifications",
+            label="Classificações em DEFAULT",
+            current=default_current,
+            previous=default_previous,
+            delta_pct=_safe_delta_pct(default_current, default_previous),
+            trend=_resolve_trend(default_current, default_previous),
+        ),
+    ]
+
+    promo_rows = db.execute(
+        text(
+            """
+            SELECT
+                CASE
+                    WHEN created_at >= :current_from AND created_at <= :current_to THEN 'current'
+                    ELSE 'previous'
+                END AS bucket,
+                COALESCE(
+                    (details_json::jsonb)->>'promotion_code',
+                    (details_json::jsonb)->'after'->>'promotion_code',
+                    '__none__'
+                ) AS promotion_code,
+                COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action = 'PR3_PROMOTION_VALIDATE'
+              AND created_at >= :previous_from
+              AND created_at <= :current_to
+            GROUP BY bucket, promotion_code
+            """
+        ),
+        {
+            "current_from": dt_from,
+            "current_to": dt_to,
+            "previous_from": previous_from,
+        },
+    ).mappings().all()
+    promo_counter_current: Counter[str] = Counter()
+    promo_counter_previous: Counter[str] = Counter()
+    for row in promo_rows:
+        code = str(row.get("promotion_code") or "__none__")
+        bucket = str(row.get("bucket") or "previous")
+        total = int(row.get("total") or 0)
+        if bucket == "current":
+            promo_counter_current[code] += total
+        else:
+            promo_counter_previous[code] += total
+
+    default_sku_rows = db.execute(
+        text(
+            """
+            SELECT
+                CASE
+                    WHEN classified_at >= :current_from AND classified_at <= :current_to THEN 'current'
+                    ELSE 'previous'
+                END AS bucket,
+                sku_id,
+                COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE source = 'DEFAULT'
+              AND classified_at >= :previous_from
+              AND classified_at <= :current_to
+            GROUP BY bucket, sku_id
+            """
+        ),
+        {
+            "current_from": dt_from,
+            "current_to": dt_to,
+            "previous_from": previous_from,
+        },
+    ).mappings().all()
+    default_sku_current: Counter[str] = Counter()
+    default_sku_previous: Counter[str] = Counter()
+    for row in default_sku_rows:
+        sku = str(row.get("sku_id") or "__unknown__")
+        bucket = str(row.get("bucket") or "previous")
+        total = int(row.get("total") or 0)
+        if bucket == "current":
+            default_sku_current[sku] += total
+        else:
+            default_sku_previous[sku] += total
+
+    source_rows = db.execute(
+        text(
+            """
+            SELECT
+                CASE
+                    WHEN classified_at >= :current_from AND classified_at <= :current_to THEN 'current'
+                    ELSE 'previous'
+                END AS bucket,
+                source,
+                COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE classified_at >= :previous_from
+              AND classified_at <= :current_to
+            GROUP BY bucket, source
+            """
+        ),
+        {
+            "current_from": dt_from,
+            "current_to": dt_to,
+            "previous_from": previous_from,
+        },
+    ).mappings().all()
+    source_current: Counter[str] = Counter()
+    source_previous: Counter[str] = Counter()
+    for row in source_rows:
+        source_key = str(row.get("source") or "__unknown__")
+        bucket = str(row.get("bucket") or "previous")
+        total = int(row.get("total") or 0)
+        if bucket == "current":
+            source_current[source_key] += total
+        else:
+            source_previous[source_key] += total
+
+    def build_top(counter_current: Counter[str], counter_previous: Counter[str], *, fallback_label: str) -> list[PricingFiscalOverviewTopItemOut]:
+        keys = sorted(counter_current.keys(), key=lambda key: (-counter_current[key], key))
+        result: list[PricingFiscalOverviewTopItemOut] = []
+        for key in keys[:top_limit]:
+            current_value = int(counter_current.get(key, 0))
+            previous_value = int(counter_previous.get(key, 0))
+            label = key if key not in {"__none__", "__unknown__"} else fallback_label
+            result.append(
+                PricingFiscalOverviewTopItemOut(
+                    key=key,
+                    label=label,
+                    current=current_value,
+                    previous=previous_value,
+                    delta_pct=_safe_delta_pct(current_value, previous_value),
+                    trend=_resolve_trend(current_value, previous_value),
+                )
+            )
+        return result
+
+    return PricingFiscalOverviewOut(
+        ok=True,
+        period_from=_to_iso_utc(dt_from),
+        period_to=_to_iso_utc(dt_to),
+        previous_from=_to_iso_utc(previous_from),
+        previous_to=_to_iso_utc(previous_to),
+        comparison=PricingFiscalOverviewKpiOut(
+            key="total_events",
+            label="Eventos totais Pr-3",
+            current=overall_current,
+            previous=overall_previous,
+            delta_pct=_safe_delta_pct(overall_current, overall_previous),
+            trend=_resolve_trend(overall_current, overall_previous),
+        ),
+        confidence_level=confidence_level,
+        confidence_note=confidence_note,
+        confidence_badge=_resolve_confidence_badge(confidence_level),
+        kpis=kpis,
+        tops_promotion_codes=build_top(
+            promo_counter_current,
+            promo_counter_previous,
+            fallback_label="Sem codigo",
+        ),
+        tops_default_skus=build_top(
+            default_sku_current,
+            default_sku_previous,
+            fallback_label="SKU desconhecido",
+        ),
+        tops_fiscal_source=build_top(
+            source_current,
+            source_previous,
+            fallback_label="Fonte desconhecida",
+        ),
+    )
+
+
+@router.get("/ops/products/pricing-fiscal/classification-sources", response_model=PricingFiscalSourceSummaryOut)
+def get_ops_pricing_fiscal_classification_sources(
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    dt_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to") or now
+    dt_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from") or (
+        dt_to - timedelta(hours=24)
+    )
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    window_seconds = max(int((dt_to - dt_from).total_seconds()), 1)
+    previous_to = dt_from
+    previous_from = dt_from - timedelta(seconds=window_seconds)
+
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                CASE
+                    WHEN classified_at >= :current_from AND classified_at <= :current_to THEN 'current'
+                    ELSE 'previous'
+                END AS bucket,
+                source,
+                COUNT(*) AS total
+            FROM fiscal_auto_classification_log
+            WHERE classified_at >= :previous_from
+              AND classified_at <= :current_to
+            GROUP BY bucket, source
+            """
+        ),
+        {
+            "current_from": dt_from,
+            "current_to": dt_to,
+            "previous_from": previous_from,
+        },
+    ).mappings().all()
+
+    current_counter: Counter[str] = Counter()
+    previous_counter: Counter[str] = Counter()
+    for row in rows:
+        bucket = str(row.get("bucket") or "previous")
+        source = str(row.get("source") or "UNKNOWN")
+        total = int(row.get("total") or 0)
+        if bucket == "current":
+            current_counter[source] += total
+        else:
+            previous_counter[source] += total
+
+    all_sources = sorted(set(current_counter.keys()) | set(previous_counter.keys()))
+    items = [
+        PricingFiscalSourceSummaryItemOut(
+            source=source,
+            current=int(current_counter.get(source, 0)),
+            previous=int(previous_counter.get(source, 0)),
+            delta_pct=_safe_delta_pct(int(current_counter.get(source, 0)), int(previous_counter.get(source, 0))),
+            trend=_resolve_trend(int(current_counter.get(source, 0)), int(previous_counter.get(source, 0))),
+        )
+        for source in all_sources
+    ]
+    items.sort(key=lambda row: (-row.current, row.source))
+
+    total_current = sum(current_counter.values())
+    total_previous = sum(previous_counter.values())
+    confidence_level, confidence_note = _resolve_confidence_and_note(
+        total_current=total_current,
+        total_previous=total_previous,
+    )
+
+    return PricingFiscalSourceSummaryOut(
+        ok=True,
+        period_from=_to_iso_utc(dt_from),
+        period_to=_to_iso_utc(dt_to),
+        previous_from=_to_iso_utc(previous_from),
+        previous_to=_to_iso_utc(previous_to),
+        total_current=int(total_current),
+        total_previous=int(total_previous),
+        confidence_level=confidence_level,
+        confidence_note=confidence_note,
+        confidence_badge=_resolve_confidence_badge(confidence_level),
+        items=items,
+    )
+
+
+@router.get("/ops/products/pricing-fiscal/default-alerts", response_model=PricingFiscalDefaultAlertsOut)
+def get_ops_pricing_fiscal_default_alerts(
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    now = datetime.now(timezone.utc)
+    dt_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to") or now
+    dt_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from") or (
+        dt_to - timedelta(hours=24)
+    )
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    window_seconds = max(int((dt_to - dt_from).total_seconds()), 1)
+    previous_to = dt_from
+    previous_from = dt_from - timedelta(seconds=window_seconds)
+
+    action_name = "PR3_FISCAL_CLASSIFICATION_DEFAULT_ALERT"
+    current_total_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action = :action
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"action": action_name, "from": dt_from, "to": dt_to},
+    ).mappings().first()
+    previous_total_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ops_action_audit
+            WHERE action = :action
+              AND created_at >= :from
+              AND created_at <= :to
+            """
+        ),
+        {"action": action_name, "from": previous_from, "to": previous_to},
+    ).mappings().first()
+    total_current = int((current_total_row or {}).get("total") or 0)
+    total_previous = int((previous_total_row or {}).get("total") or 0)
+
+    rows = db.execute(
+        text(
+            """
+            SELECT created_at, order_id, correlation_id, details_json
+            FROM ops_action_audit
+            WHERE action = :action
+              AND created_at >= :from
+              AND created_at <= :to
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {
+            "action": action_name,
+            "from": dt_from,
+            "to": dt_to,
+            "limit": int(limit),
+            "offset": int(offset),
+        },
+    ).mappings().all()
+    items = []
+    for row in rows:
+        details = _json_load_dict(row.get("details_json"), default={})
+        items.append(
+            PricingFiscalDefaultAlertItemOut(
+                created_at=_to_iso_utc(row.get("created_at")),
+                order_id=(str(row.get("order_id")) if row.get("order_id") is not None else None),
+                sku_id=(str(details.get("sku_id")) if details.get("sku_id") is not None else None),
+                source=(str(details.get("source")) if details.get("source") is not None else None),
+                message=(str(details.get("message")) if details.get("message") is not None else None),
+                correlation_id=str(row.get("correlation_id") or ""),
+            )
+        )
+
+    confidence_level, confidence_note = _resolve_confidence_and_note(
+        total_current=total_current,
+        total_previous=total_previous,
+    )
+    return PricingFiscalDefaultAlertsOut(
+        ok=True,
+        period_from=_to_iso_utc(dt_from),
+        period_to=_to_iso_utc(dt_to),
+        previous_from=_to_iso_utc(previous_from),
+        previous_to=_to_iso_utc(previous_to),
+        total_current=total_current,
+        total_previous=total_previous,
+        delta_pct=_safe_delta_pct(total_current, total_previous),
+        trend=_resolve_trend(total_current, total_previous),
+        confidence_level=confidence_level,
+        confidence_note=confidence_note,
+        confidence_badge=_resolve_confidence_badge(confidence_level),
+        limit=int(limit),
+        offset=int(offset),
+        items=items,
+    )
+
+
+@router.get("/ops/products/pricing-fiscal/view", response_class=HTMLResponse)
+def get_ops_pricing_fiscal_view() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ELLAN LAB OPS Pricing & Fiscal</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 24px; background:#F8FAFC; color:#0F172A; }
+      h1 { margin: 0 0 14px 0; font-size: 24px; }
+      .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 12px; }
+      input, button { padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; background:#fff; }
+      button { background:#0F766E; color:#fff; border:none; cursor:pointer; }
+      .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin: 16px 0; }
+      .card { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:12px; }
+      .label { color:#475569; font-size:12px; text-transform: uppercase; letter-spacing: .04em; }
+      .value { font-size:24px; font-weight:700; margin-top:6px; }
+      .muted { color:#64748B; font-size:12px; margin: 8px 0 14px; }
+      ul { margin: 0; padding-left: 18px; }
+      li { margin-bottom: 6px; font-size: 13px; }
+      pre { background:#0B1220; color:#E2E8F0; border-radius:12px; padding:12px; overflow:auto; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <h1>OPS Pricing & Fiscal (Pr-3)</h1>
+    <div class="row">
+      <input id="from" placeholder="period_from ISO-8601 opcional" size="30" />
+      <input id="to" placeholder="period_to ISO-8601 opcional" size="30" />
+      <input id="topLimit" placeholder="top_limit (1-20)" value="5" size="16" />
+      <button onclick="loadData()">Atualizar</button>
+    </div>
+    <div class="muted">Endpoint: /ops/products/pricing-fiscal/overview</div>
+
+    <div class="cards">
+      <div class="card"><div class="label">Eventos totais</div><div id="kpiTotal" class="value">-</div></div>
+      <div class="card"><div class="label">Delta total %</div><div id="kpiDelta" class="value">-</div></div>
+      <div class="card"><div class="label">Confidence</div><div id="kpiConfidence" class="value">-</div></div>
+      <div class="card"><div class="label">Default atual</div><div id="kpiDefault" class="value">-</div></div>
+    </div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="label">Top promotion codes</div>
+        <ul id="topPromotions"><li>-</li></ul>
+      </div>
+      <div class="card">
+        <div class="label">Top SKUs DEFAULT</div>
+        <ul id="topSkus"><li>-</li></ul>
+      </div>
+      <div class="card">
+        <div class="label">Top fiscal source</div>
+        <ul id="topSource"><li>-</li></ul>
+      </div>
+    </div>
+
+    <pre id="payload">Carregando...</pre>
+    <script>
+      function renderTopList(elementId, items) {
+        const el = document.getElementById(elementId);
+        const list = Array.isArray(items) ? items : [];
+        if (!list.length) {
+          el.innerHTML = '<li>Sem dados na janela.</li>';
+          return;
+        }
+        el.innerHTML = list
+          .map((item) => {
+            const trend = String(item?.trend || 'stable').toUpperCase();
+            const delta = Number(item?.delta_pct ?? 0).toFixed(2);
+            return `<li><strong>${item?.label ?? '-'}</strong> · atual ${item?.current ?? 0} | anterior ${item?.previous ?? 0} | ${delta}% (${trend})</li>`;
+          })
+          .join('');
+      }
+
+      async function loadData() {
+        const params = new URLSearchParams();
+        const periodFrom = document.getElementById('from').value.trim();
+        const periodTo = document.getElementById('to').value.trim();
+        const topLimit = document.getElementById('topLimit').value.trim();
+        if (periodFrom) params.set('period_from', periodFrom);
+        if (periodTo) params.set('period_to', periodTo);
+        if (topLimit) params.set('top_limit', topLimit);
+
+        const response = await fetch('/ops/products/pricing-fiscal/overview?' + params.toString());
+        const data = await response.json();
+        document.getElementById('payload').textContent = JSON.stringify(data, null, 2);
+
+        const comparison = data?.comparison || {};
+        document.getElementById('kpiTotal').textContent = String(comparison.current ?? '-');
+        document.getElementById('kpiDelta').textContent = data?.comparison ? `${comparison.delta_pct ?? 0}%` : '-';
+        document.getElementById('kpiConfidence').textContent = data?.confidence_badge?.label || data?.confidence_level || '-';
+
+        const defaultKpi = Array.isArray(data?.kpis) ? data.kpis.find((row) => row?.key === 'default_classifications') : null;
+        document.getElementById('kpiDefault').textContent = String(defaultKpi?.current ?? '-');
+
+        renderTopList('topPromotions', data?.tops_promotion_codes);
+        renderTopList('topSkus', data?.tops_default_skus);
+        renderTopList('topSource', data?.tops_fiscal_source);
+      }
+      loadData();
+    </script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html)
 

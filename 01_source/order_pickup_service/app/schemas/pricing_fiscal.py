@@ -144,6 +144,7 @@ class PromotionStatusOut(BaseModel):
 class PromotionValidateOut(BaseModel):
     ok: bool
     valid: bool
+    idempotent: bool = False
     promotion_id: str | None = None
     promotion_code: str | None = None
     discount_cents: int
@@ -192,4 +193,94 @@ class FiscalAutoClassificationLogListOut(BaseModel):
     limit: int
     offset: int
     items: list[FiscalAutoClassificationLogItemOut]
+
+
+class PricingFiscalBadgeOut(BaseModel):
+    key: str
+    label: str
+    color: str
+    icon: str | None = None
+
+
+class PricingFiscalOverviewKpiOut(BaseModel):
+    key: str
+    label: str
+    current: int
+    previous: int
+    delta_pct: float
+    trend: str
+
+
+class PricingFiscalOverviewTopItemOut(BaseModel):
+    key: str
+    label: str
+    current: int
+    previous: int
+    delta_pct: float
+    trend: str
+
+
+class PricingFiscalOverviewOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    previous_from: str
+    previous_to: str
+    comparison: PricingFiscalOverviewKpiOut
+    confidence_level: str
+    confidence_note: str
+    confidence_badge: PricingFiscalBadgeOut
+    kpis: list[PricingFiscalOverviewKpiOut]
+    tops_promotion_codes: list[PricingFiscalOverviewTopItemOut]
+    tops_default_skus: list[PricingFiscalOverviewTopItemOut]
+    tops_fiscal_source: list[PricingFiscalOverviewTopItemOut]
+
+
+class PricingFiscalSourceSummaryItemOut(BaseModel):
+    source: str
+    current: int
+    previous: int
+    delta_pct: float
+    trend: str
+
+
+class PricingFiscalSourceSummaryOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    previous_from: str
+    previous_to: str
+    total_current: int
+    total_previous: int
+    confidence_level: str
+    confidence_note: str
+    confidence_badge: PricingFiscalBadgeOut
+    items: list[PricingFiscalSourceSummaryItemOut]
+
+
+class PricingFiscalDefaultAlertItemOut(BaseModel):
+    created_at: str
+    order_id: str | None = None
+    sku_id: str | None = None
+    source: str | None = None
+    message: str | None = None
+    correlation_id: str
+
+
+class PricingFiscalDefaultAlertsOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    previous_from: str
+    previous_to: str
+    total_current: int
+    total_previous: int
+    delta_pct: float
+    trend: str
+    confidence_level: str
+    confidence_note: str
+    confidence_badge: PricingFiscalBadgeOut
+    limit: int
+    offset: int
+    items: list[PricingFiscalDefaultAlertItemOut]
 

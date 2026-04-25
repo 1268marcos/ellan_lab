@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
+from sqlalchemy import text
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 
@@ -14,10 +17,17 @@ from app.models.order import Order
 from app.models.pickup import Pickup
 from app.models.tenant_fiscal_config import TenantFiscalConfig
 from app.models.user import User
+from app.services.integration_outbox_service import enqueue_partner_order_paid_event_if_needed
+from app.services.ops_audit_service import record_ops_action_audit
 
 logger = logging.getLogger(__name__)
 
 CONTRACT_VERSION = 2
+_DEFAULT_NCM = "00000000"
+_DEFAULT_ICMS_CST = "90"
+_DEFAULT_PIS_CST = "99"
+_DEFAULT_COFINS_CST = "99"
+_DEFAULT_CFOP = "5102"
 
 
 def _enum_value_or_raw(value) -> str | None:
@@ -71,6 +81,232 @@ def _tenant_fiscal_public(row: TenantFiscalConfig) -> dict[str, Any]:
         "cert_a1_ref": row.cert_a1_ref,
         "is_active": row.is_active,
     }
+
+
+def _json_load_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _to_iso_utc(value: datetime | None) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).isoformat()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _resolve_fiscal_by_product(
+    db: Session,
+    *,
+    sku_id: str,
+) -> dict[str, Any] | None:
+    row = db.execute(
+        text(
+            """
+            SELECT sku_id, ncm_code, icms_cst, pis_cst, cofins_cst, cfop
+            FROM product_fiscal_config
+            WHERE sku_id = :sku_id
+              AND COALESCE(is_active, TRUE) = TRUE
+            """
+        ),
+        {"sku_id": sku_id},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
+def _resolve_fiscal_by_category(
+    db: Session,
+    *,
+    sku_id: str,
+) -> dict[str, Any] | None:
+    row = db.execute(
+        text(
+            """
+            SELECT p2.id AS sku_id, pfc.ncm_code, pfc.icms_cst, pfc.pis_cst, pfc.cofins_cst, pfc.cfop
+            FROM products p
+            JOIN products p2 ON p2.category_id = p.category_id
+            JOIN product_fiscal_config pfc ON pfc.sku_id = p2.id
+            WHERE p.id = :sku_id
+              AND p2.id <> :sku_id
+              AND COALESCE(pfc.is_active, TRUE) = TRUE
+              AND p.category_id IS NOT NULL
+            ORDER BY p2.updated_at DESC NULLS LAST, p2.id DESC
+            LIMIT 1
+            """
+        ),
+        {"sku_id": sku_id},
+    ).mappings().first()
+    return dict(row) if row else None
+
+
+def _resolve_fiscal_defaults() -> dict[str, Any]:
+    return {
+        "ncm_code": _DEFAULT_NCM,
+        "icms_cst": _DEFAULT_ICMS_CST,
+        "pis_cst": _DEFAULT_PIS_CST,
+        "cofins_cst": _DEFAULT_COFINS_CST,
+        "cfop": _DEFAULT_CFOP,
+    }
+
+
+def _fiscal_log_exists(db: Session, *, order_id: str, sku_id: str) -> bool:
+    row = db.execute(
+        text(
+            """
+            SELECT id
+            FROM fiscal_auto_classification_log
+            WHERE order_id = :order_id
+              AND sku_id = :sku_id
+            ORDER BY id DESC
+            LIMIT 1
+            """
+        ),
+        {"order_id": order_id, "sku_id": sku_id},
+    ).mappings().first()
+    return bool(row)
+
+
+def _insert_fiscal_auto_classification_log(
+    db: Session,
+    *,
+    order_id: str,
+    invoice_id: str | None,
+    sku_id: str,
+    source: str,
+    fiscal: dict[str, Any],
+) -> None:
+    if _fiscal_log_exists(db, order_id=order_id, sku_id=sku_id):
+        return
+    db.execute(
+        text(
+            """
+            INSERT INTO fiscal_auto_classification_log (
+                order_id, invoice_id, sku_id, ncm_applied, icms_cst_applied, pis_cst_applied,
+                cofins_cst_applied, cfop_applied, source, classified_at
+            ) VALUES (
+                :order_id, :invoice_id, :sku_id, :ncm_applied, :icms_cst_applied, :pis_cst_applied,
+                :cofins_cst_applied, :cfop_applied, :source, NOW()
+            )
+            """
+        ),
+        {
+            "order_id": order_id,
+            "invoice_id": invoice_id,
+            "sku_id": sku_id,
+            "ncm_applied": fiscal.get("ncm_code"),
+            "icms_cst_applied": fiscal.get("icms_cst"),
+            "pis_cst_applied": fiscal.get("pis_cst"),
+            "cofins_cst_applied": fiscal.get("cofins_cst"),
+            "cfop_applied": fiscal.get("cfop"),
+            "source": source,
+        },
+    )
+
+
+def _record_default_fiscal_alert(
+    db: Session,
+    *,
+    order_id: str,
+    sku_id: str,
+) -> None:
+    record_ops_action_audit(
+        db=db,
+        action="PR3_FISCAL_CLASSIFICATION_DEFAULT_ALERT",
+        result="ERROR",
+        correlation_id=f"corr-pr3-fiscal-{uuid4().hex}",
+        role="system",
+        order_id=order_id,
+        details={
+            "order_id": order_id,
+            "sku_id": sku_id,
+            "source": "DEFAULT",
+            "message": "Classificação fiscal caiu em DEFAULT; revisar configuração por SKU/categoria.",
+            "ts": _to_iso_utc(datetime.now(timezone.utc)),
+        },
+    )
+
+
+def _apply_auto_fiscal_classification(
+    db: Session,
+    *,
+    order: Order,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    source_counter: dict[str, int] = {}
+    for raw_item in items:
+        item = dict(raw_item or {})
+        sku_id = str(item.get("sku_id") or "").strip()
+        if not sku_id:
+            out.append(item)
+            continue
+
+        resolved = _resolve_fiscal_by_product(db, sku_id=sku_id)
+        source = "AUTO_PRODUCT_CONFIG"
+        if not resolved:
+            resolved = _resolve_fiscal_by_category(db, sku_id=sku_id)
+            source = "CATEGORY_FALLBACK"
+        if not resolved:
+            resolved = _resolve_fiscal_defaults()
+            source = "DEFAULT"
+
+        item["fiscal_classification"] = {
+            "source": source,
+            "ncm": resolved.get("ncm_code"),
+            "icms_cst": resolved.get("icms_cst"),
+            "pis_cst": resolved.get("pis_cst"),
+            "cofins_cst": resolved.get("cofins_cst"),
+            "cfop": resolved.get("cfop"),
+        }
+        source_counter[source] = int(source_counter.get(source, 0) or 0) + 1
+
+        _insert_fiscal_auto_classification_log(
+            db,
+            order_id=order.id,
+            invoice_id=None,
+            sku_id=sku_id,
+            source=source,
+            fiscal=resolved,
+        )
+        if source == "DEFAULT":
+            _record_default_fiscal_alert(db, order_id=order.id, sku_id=sku_id)
+
+        out.append(item)
+
+    if out:
+        event_payload = {
+            "order_id": order.id,
+            "sources": source_counter,
+            "items_count": len(out),
+            "event_origin": "fiscal_context_auto_classification",
+            "event_ts": _to_iso_utc(datetime.now(timezone.utc)),
+        }
+        outbox_row, idempotent = enqueue_partner_order_paid_event_if_needed(
+            db,
+            order_id=order.id,
+            payload=event_payload,
+        )
+        record_ops_action_audit(
+            db=db,
+            action="I1_ORDER_FISCAL_OUTBOX_ENQUEUE",
+            result="SUCCESS",
+            correlation_id=f"corr-i1-outbox-{uuid4().hex}",
+            role="system",
+            order_id=order.id,
+            details={
+                "order_id": order.id,
+                "idempotent": idempotent,
+                "event_type": "ORDER_PAID",
+                "partner_id": outbox_row.get("partner_id"),
+                "outbox_id": outbox_row.get("id"),
+                "sources": source_counter,
+                "ts": _to_iso_utc(datetime.now(timezone.utc)),
+            },
+        )
+
+    return out
 
 
 def resolve_effective_tenant_id(order: Order, locker: Locker | None) -> str | None:
@@ -188,6 +424,8 @@ def build_fiscal_context(db: Session, order_id: str) -> dict[str, Any]:
                 "metadata": {},
             }
         )
+    items = _apply_auto_fiscal_classification(db, order=order, items=items)
+    db.commit()
 
     order_out = {
         "id": order.id,

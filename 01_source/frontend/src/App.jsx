@@ -83,13 +83,17 @@ function TopNav() {
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false);
+  const [isMyAreaMenuOpen, setIsMyAreaMenuOpen] = useState(false);
   const [isMobileOpsOpen, setIsMobileOpsOpen] = useState(false);
+  const [isMobileMyAreaOpen, setIsMobileMyAreaOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [tenantOverride, setTenantOverride] = useState("");
   const menuRef = useRef(null);
   const buttonRef = useRef(null);
   const opsMenuRef = useRef(null);
   const opsButtonRef = useRef(null);
+  const myAreaMenuRef = useRef(null);
+  const myAreaButtonRef = useRef(null);
   const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const hasTenantOverride = Boolean(tenantOverride);
   const isOpsRoute = location.pathname.startsWith("/ops");
@@ -141,6 +145,23 @@ function TopNav() {
     return () => document.removeEventListener("mousedown", handleOpsClickOutside);
   }, [isOpsMenuOpen]);
 
+  useEffect(() => {
+    const handleMyAreaClickOutside = (event) => {
+      if (
+        isMyAreaMenuOpen &&
+        myAreaMenuRef.current &&
+        !myAreaMenuRef.current.contains(event.target) &&
+        myAreaButtonRef.current &&
+        !myAreaButtonRef.current.contains(event.target)
+      ) {
+        setIsMyAreaMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleMyAreaClickOutside);
+    return () => document.removeEventListener("mousedown", handleMyAreaClickOutside);
+  }, [isMyAreaMenuOpen]);
+
   // Prevenir scroll do body quando menu estiver aberto
   useEffect(() => {
     if (isMobileMenuOpen) {
@@ -180,7 +201,9 @@ function TopNav() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsOpsMenuOpen(false);
+    setIsMyAreaMenuOpen(false);
     setIsMobileOpsOpen(false);
+    setIsMobileMyAreaOpen(false);
   }, [location]);
 
   useEffect(() => {
@@ -232,6 +255,13 @@ function TopNav() {
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
 
+  const myAreaLinks = [
+    { to: "/meus-pedidos", label: "Meus Pedidos", aria: "Ver meus pedidos" },
+    { to: "/meus-creditos", label: "Meus Créditos", aria: "Ver meus créditos" },
+    { to: "/seguranca", label: "Segurança", aria: "Gerenciar segurança da conta" },
+    { to: "/conta/dados-fiscais", label: "Dados fiscais", aria: "Dados fiscais da conta" },
+  ];
+
   return (
     <>
       <nav 
@@ -256,24 +286,38 @@ function TopNav() {
           ))}
           
           {!loading && isAuthenticated && (
-            <Link className="nav-link" to="/meus-pedidos" aria-label="Ver meus pedidos">
-              Meus Pedidos
-            </Link>
-          )}
-          {!loading && isAuthenticated && (
-            <Link className="nav-link" to="/meus-creditos" aria-label="Ver meus créditos">
-              Meus Créditos
-            </Link>
-          )}
-          {!loading && isAuthenticated && (
-            <Link className="nav-link" to="/seguranca" aria-label="Gerenciar segurança da conta">
-              Segurança
-            </Link>
-          )}
-          {!loading && isAuthenticated && (
-            <Link className="nav-link" to="/conta/dados-fiscais" aria-label="Dados fiscais da conta">
-              Dados fiscais
-            </Link>
+            <div
+              className="nav-ops-dropdown"
+              role="group"
+              aria-label="Minha Área"
+              ref={myAreaMenuRef}
+            >
+              <button
+                ref={myAreaButtonRef}
+                type="button"
+                className="nav-link nav-ops-toggle"
+                onClick={() => setIsMyAreaMenuOpen((value) => !value)}
+                aria-haspopup="menu"
+                aria-expanded={isMyAreaMenuOpen}
+              >
+                Minha Área ({myAreaLinks.length}) {isMyAreaMenuOpen ? "▲" : "▼"}
+              </button>
+              {isMyAreaMenuOpen ? (
+                <div className="nav-ops-panel" role="menu" aria-label="Menu Minha Área">
+                  {myAreaLinks.map(link => (
+                    <Link
+                      key={link.to}
+                      className="nav-ops-item"
+                      to={link.to}
+                      aria-label={link.aria}
+                      onClick={() => setIsMyAreaMenuOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              ) : null}
+            </div>
           )}
           
           {opsEnabled && canAccessOps && opsLinks.length > 0 && (
@@ -477,43 +521,35 @@ function TopNav() {
                   </Link>
                 ))}
                 
-                {!loading && isAuthenticated && (
-                  <Link 
-                    className="mobile-nav-link" 
-                    to="/meus-pedidos" 
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Meus Pedidos
-                  </Link>
-                )}
-                {!loading && isAuthenticated && (
-                  <Link
-                    className="mobile-nav-link"
-                    to="/meus-creditos"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Meus Créditos
-                  </Link>
-                )}
-                {!loading && isAuthenticated && (
-                  <Link
-                    className="mobile-nav-link"
-                    to="/seguranca"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Segurança
-                  </Link>
-                )}
-                {!loading && isAuthenticated && (
-                  <Link
-                    className="mobile-nav-link"
-                    to="/conta/dados-fiscais"
-                    onClick={() => setIsMobileMenuOpen(false)}
-                  >
-                    Dados fiscais
-                  </Link>
-                )}
               </div>
+
+              {!loading && isAuthenticated && (
+                <div className="mobile-menu-section">
+                  <button
+                    type="button"
+                    className="mobile-ops-toggle"
+                    onClick={() => setIsMobileMyAreaOpen((value) => !value)}
+                    aria-expanded={isMobileMyAreaOpen}
+                  >
+                    Minha Área ({myAreaLinks.length}) {isMobileMyAreaOpen ? "▲" : "▼"}
+                  </button>
+                  {isMobileMyAreaOpen ? (
+                    <div className="mobile-ops-list">
+                      {myAreaLinks.map(link => (
+                        <Link
+                          key={link.to}
+                          className="mobile-nav-link"
+                          to={link.to}
+                          aria-label={link.aria}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          {link.label}
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
 
               {/* Links de operação */}
               {opsEnabled && canAccessOps && opsLinks.length > 0 && (

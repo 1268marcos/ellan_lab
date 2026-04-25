@@ -1862,6 +1862,48 @@ def _ensure_product_fiscal_config_v1(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_partner_order_events_outbox(conn, applied: list[str]) -> None:
+    name = "partner_order_events_outbox.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_order_events_outbox (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            order_id        VARCHAR(36) NOT NULL,
+            event_type      VARCHAR(50) NOT NULL,
+            payload_json    JSONB NOT NULL DEFAULT '{}'::jsonb,
+            api_version     VARCHAR(10) NOT NULL DEFAULT 'v1',
+            status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            attempt_count   INTEGER NOT NULL DEFAULT 0,
+            max_attempts    INTEGER NOT NULL DEFAULT 5,
+            next_retry_at   TIMESTAMPTZ,
+            last_error      TEXT,
+            delivered_at    TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_poeo_event_type CHECK (
+                event_type IN (
+                    'ORDER_CREATED','ORDER_PAID','ORDER_DISPENSED',
+                    'ORDER_PICKED_UP','ORDER_EXPIRED','ORDER_CANCELLED',
+                    'ORDER_REFUNDED','DELIVERY_STORED','DELIVERY_PICKED_UP'
+                )
+            ),
+            CONSTRAINT ck_poeo_status CHECK (status IN ('PENDING','DELIVERED','FAILED','DEAD_LETTER','SKIPPED'))
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_poeo_status_retry "
+        "ON partner_order_events_outbox(status, next_retry_at)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_poeo_partner_order "
+        "ON partner_order_events_outbox(partner_id, order_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3488,6 +3530,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_promotion_product_exclusions,
     _create_fiscal_auto_classification_log,
     _ensure_product_fiscal_config_v1,
+    _create_partner_order_events_outbox,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,
