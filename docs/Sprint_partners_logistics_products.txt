@@ -13,7 +13,7 @@
 ## Quadro-resumo de acompanhamento semanal
 
 - [~] P-1 · Partners · Partner Identity & Onboarding · Owner: Squad Partners (Líder: TBD) · Semana alvo: Semana 1-2
-- [ ] P-2 · Partners · Integration Health & Webhooks · Owner: Squad Partners + Platform Integrations · Semana alvo: Semana 3-4
+- [~] P-2 · Partners · Integration Health & Webhooks · Owner: Squad Partners + Platform Integrations · Semana alvo: Semana 3-4
 - [ ] P-3 · Partners · Financials & Service Areas · Owner: Squad Partners + Finance Ops · Semana alvo: Semana 5-6
 - [~] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
 - [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
@@ -206,10 +206,235 @@ ALTER TABLE locker_operators
 - [x] Sempre apresentar erros operacionais claros e acionáveis (evitar mensagens genéricas como apenas `Failed to fetch`).
 - [x] Sempre aplicar cores de tendência (`up/down/stable`) nos KPIs principais quando houver comparativo de janela atual vs anterior, com leitura direta para UX/CX.
 - [x] Manter consistência visual entre dashboards OPS (Partners, Logistics e próximos): mesmo padrão de badge, cor e semântica de tendência.
+- [x] Centralizar tokens visuais de tendência e severidade em util compartilhado e reutilizar em `OpsHealth`, `OpsAudit`, `OpsReconciliation`, `OpsPartners` e `OpsLogistics` para reduzir retrabalho e drift visual.
 
 #### Próximos sprints (continuidade imediata)
-- [~] Iniciar Sprint P-2 (Partners Integration Health & Webhooks): API keys, webhooks versionados e monitoramento de saúde.
+- [~] Consolidar Sprint P-2 (fechamento): hardening operacional dos workers, cobertura de testes automatizados e runbook de operação/replay.
 - [x] Preparar Sprint L-1 em paralelo técnico: tracking events/attempts/labels com stubs de integração por carrier.
+- [~] Iniciar Sprint L-2: Returns & Reverse Logistics (modelo de retorno, motivos, eventos de coleta/devolução, visão OPS).
+- [ ] Iniciar Sprint Pr-1: Product Catalog & Lifecycle (estado de ciclo de vida, governança de catálogo e trilha de auditoria OPS).
+- [ ] Planejar Sprint I-1 com blueprint técnico (wiring Orders ↔ Partners ↔ Fiscal com outbox + fulfillment tracking + fiscal auto-classification).
+
+#### Kickoff checklist objetivo — Semana 3-4 (L-2 + Pr-1)
+
+##### Sprint L-2 (Returns & Reverse Logistics) — entregáveis mínimos para iniciar hoje
+- [ ] Definir contrato mínimo de retorno: `return_id`, `order_id`, `partner_id`, `reason_code`, `status`, `created_at`, `updated_at`.
+- [ ] Criar migração idempotente para `logistics_returns` + índice por (`partner_id`, `status`, `created_at desc`).
+- [ ] Criar endpoint de criação e consulta de retorno:
+      - `POST /logistics/returns`
+      - `GET /logistics/returns/{return_id}`
+      - `GET /logistics/returns?partner_id=&status=&from=&to=`.
+- [ ] Adicionar trilha de eventos de retorno (`return_events`) com transições mínimas: `REQUESTED`, `PICKUP_SCHEDULED`, `IN_TRANSIT`, `RECEIVED`, `CLOSED`.
+- [ ] Publicar stub de webhook outbound para parceiro/logística quando houver mudança crítica (`RECEIVED`, `CLOSED`) com retry/backoff padrão.
+- [ ] Entregar visão OPS inicial (`/logistics/ops/returns`) com filtros, presets de período e persistência de filtros.
+- [ ] Critério de pronto da semana: fluxo E2E validado (create return -> transição -> visualização OPS) + log de auditoria operacional.
+
+##### Sprint Pr-1 (Product Catalog & Lifecycle) — entregáveis mínimos para iniciar hoje
+- [ ] Definir estados oficiais do lifecycle de produto: `DRAFT`, `ACTIVE`, `INACTIVE`, `DISCONTINUED`.
+- [ ] Criar migração idempotente para `product_status_history` com registro `from_status`, `to_status`, `changed_by`, `reason`, `changed_at`.
+- [ ] Implementar endpoints mínimos de lifecycle:
+      - `PATCH /products/{id}/status`
+      - `GET /products/{id}/status-history`.
+- [ ] Implementar endpoint de catálogo com filtro operacional: `GET /products?status=&category=&updated_from=&updated_to=&limit=&offset=`.
+- [ ] Adicionar auditoria before/after para mudanças de status e metadados críticos de catálogo.
+- [ ] Entregar visão OPS inicial (`/products/ops/catalog`) com cards por status + tendência simples (janela atual vs anterior), presets e persistência.
+- [ ] Critério de pronto da semana: fluxo E2E validado (mudança de status -> histórico -> dashboard OPS) + erro operacional claro no frontend.
+
+##### Definition of Ready (DoR) transversal — L-2 e Pr-1
+- [ ] Escopo quebrado em histórias de até 1 dia útil cada (backend, worker/stub, frontend OPS, validação).
+- [ ] Contratos API e payloads de eventos versionados (`v1`) documentados antes da implementação.
+- [ ] Checklist de observabilidade mínimo definido (contagem de erros, latência, fila pendente/retry/dead-letter quando aplicável).
+- [ ] Plano de rollback das migrações documentado (expand/backfill/contract).
+- [ ] Evidência operacional planejada no doc (comandos, cenário de sucesso, cenário de falha controlada).
+
+#### Sequência de implementação dia a dia (D1..D10) — execução solo com apoio do agente
+
+##### D1 — contratos e escopo fechado (L-2 + Pr-1)
+- [ ] Congelar contratos `v1` de payload/endpoint para `returns` e `product lifecycle`.
+- [ ] Definir enums oficiais (return status + product status) e regras de transição permitidas.
+- [ ] Registrar no doc "fora de escopo da Semana 3-4" para evitar desvio.
+- [ ] Critério D1 concluído: contratos versionados e escopo aprovados no documento.
+
+##### D2 — migrações base (L-2)
+- [ ] Implementar migrações idempotentes para `logistics_returns` e `return_events`.
+- [ ] Criar índices operacionais mínimos (partner/status/date e return_id/date).
+- [ ] Validar bootstrap da aplicação com banco limpo + banco já existente.
+- [ ] Critério D2 concluído: migrações executam sem erro e tabelas disponíveis.
+
+##### D3 — API mínima de returns (L-2)
+- [ ] Implementar `POST /logistics/returns`.
+- [ ] Implementar `GET /logistics/returns/{return_id}`.
+- [ ] Implementar `GET /logistics/returns` com filtros (`partner_id`, `status`, `from`, `to`, paginação).
+- [ ] Critério D3 concluído: fluxo create + list + detail funcionando via curl/Postman.
+
+##### D4 — eventos e auditoria de returns (L-2)
+- [ ] Implementar transições de `return_events` (`REQUESTED` -> ... -> `CLOSED`) com validação.
+- [ ] Gravar auditoria before/after para mudanças críticas.
+- [ ] Incluir mensagens de erro operacionais claras para transição inválida.
+- [ ] Critério D4 concluído: timeline de retorno rastreável ponta a ponta.
+
+##### D5 — stub de integração e evidência E2E (L-2)
+- [x] Publicar stub webhook outbound para mudanças críticas (`RECEIVED`, `CLOSED`).
+- [x] Garantir retry/backoff/dead-letter seguindo padrão já adotado no projeto.
+- [x] Executar 1 cenário de sucesso + 1 cenário de falha controlada e registrar evidência no doc.
+- [x] Critério D5 concluído: evidência operacional E2E documentada.
+
+##### D6 — migração e APIs de lifecycle (Pr-1)
+- [ ] Implementar migração idempotente `product_status_history`.
+- [ ] Implementar `PATCH /products/{id}/status` com regra de transição.
+- [ ] Implementar `GET /products/{id}/status-history`.
+- [ ] Critério D6 concluído: mudança de status com histórico consistente.
+
+##### D7 — catálogo operacional com filtros (Pr-1)
+- [ ] Implementar `GET /products` com filtros (`status`, `category`, `updated_from`, `updated_to`, `limit`, `offset`).
+- [ ] Otimizar consulta para uso OPS (índices básicos e ordenação determinística).
+- [ ] Padronizar payload para consumo direto no frontend OPS.
+- [ ] Critério D7 concluído: listagem operacional estável e paginada.
+
+##### D8 — dashboard OPS de returns (frontend)
+- [ ] Criar página OPS returns com cards básicos + tabela/lista de retornos.
+- [ ] Incluir presets de período e persistência de filtros (`localStorage`).
+- [ ] Aplicar padrão visual compartilhado (KPI trend + severity tokens + erro claro).
+- [ ] Critério D8 concluído: dashboard de returns utilizável em operação diária.
+
+##### D9 — dashboard OPS de catálogo (frontend)
+- [ ] Criar página OPS catalog com distribuição por status + histórico recente.
+- [ ] Aplicar tendência simples (janela atual vs anterior) nos KPIs principais.
+- [ ] Reutilizar utilitários compartilhados de visual/tokens sem duplicação local.
+- [ ] Critério D9 concluído: dashboard de catálogo com consistência visual OPS.
+
+##### D10 — hardening final e handoff operacional
+- [ ] Rodar validação final E2E (L-2 + Pr-1) com roteiro único de execução.
+- [ ] Atualizar runbook operacional (falhas comuns, replay, rollback, comandos úteis).
+- [ ] Revisar backlog residual e abrir sequência para Semana 5-6.
+- [ ] Critério D10 concluído: backlog da Semana 3-4 entregue e pronto para próximo ciclo.
+
+#### Checklist operacional de execução diária (D1..D10) — comandos e evidências esperadas
+
+##### D1 — contratos e escopo
+- [ ] Comandos de validação:
+      - `rg "logistics/returns|products/.*/status|product_status_history|return_events" docs/Sprint_partners_logistics_products.txt`
+      - `git diff -- docs/Sprint_partners_logistics_products.txt`
+- [ ] Evidência esperada:
+      - contratos `v1` e enums documentados no roadmap;
+      - seção "fora de escopo" explícita e sem ambiguidades.
+
+##### D2 — migrações L-2
+- [ ] Comandos de validação:
+      - `docker compose up -d --build order_pickup_service`
+      - `docker compose logs order_pickup_service --tail=120`
+      - `docker compose exec postgres psql -U postgres -d locker_central -c "\dt logistics_returns*"`
+      - `docker compose exec postgres psql -U postgres -d locker_central -c "\dt return_events*"`
+- [ ] Evidência esperada:
+      - serviço sobe sem erro de migration;
+      - tabelas e índices criados com sucesso.
+
+##### D3 — API mínima de returns
+- [ ] Comandos de validação:
+      - `curl -sS -X POST "http://localhost:8003/logistics/returns" -H "Content-Type: application/json" -d '{...}'`
+      - `curl -sS "http://localhost:8003/logistics/returns/<return_id>"`
+      - `curl -sS "http://localhost:8003/logistics/returns?partner_id=<id>&status=REQUESTED&limit=20&offset=0"`
+- [ ] Evidência esperada:
+      - retorno criado com `return_id`;
+      - endpoints de detail/list retornam payload coerente e filtrável.
+
+##### D4 — eventos + auditoria de returns
+- [ ] Comandos de validação:
+      - `curl -sS -X PATCH "http://localhost:8003/logistics/returns/<return_id>/status" -H "Content-Type: application/json" -d '{"to_status":"IN_TRANSIT"}'`
+      - `curl -sS "http://localhost:8003/logistics/returns/<return_id>/events"`
+      - `curl -sS "http://localhost:8003/partners/ops/audit?action=RETURNS_STATUS_CHANGE&limit=20"`
+- [ ] Evidência esperada:
+      - timeline completa de eventos no retorno;
+      - auditoria before/after disponível;
+      - transição inválida retorna erro claro (422/400 com mensagem acionável).
+
+##### D5 — stub outbound + E2E controlado (L-2)
+- [ ] Comandos de validação:
+      - `docker compose up -d --build partner_webhook_delivery_worker`
+      - `docker compose logs partner_webhook_delivery_worker --tail=150`
+      - `curl -sS -X POST "http://localhost:8003/logistics/returns/<return_id>/simulate-delivery"`
+      - `docker compose exec postgres psql -U postgres -d locker_central -c "select status,attempt_count,last_error from partner_webhook_deliveries order by created_at desc limit 10;"`
+- [ ] Evidência esperada:
+      - cenário sucesso: `DELIVERED`;
+      - cenário falha controlada: `retry/backoff` e eventualmente `DEAD_LETTER`;
+      - evidência registrada no documento.
+
+##### Evidência operacional E2E (L-2 D5 — falha controlada)
+- [x] Endpoint de simulação disponibilizado: `POST /logistics/returns/{return_id}/simulate-delivery`.
+- [x] Enfileiramento outbound também aplicado no `PATCH /logistics/returns/{return_id}/status` para `RECEIVED`/`CLOSED`.
+- [x] Worker ativo: `partner_webhook_delivery_worker`.
+- [x] Resultado observado no banco para cenário de falha controlada:
+  - `status=DEAD_LETTER`
+  - `attempt_count=3`
+  - `last_error=HTTP_ERROR_500`
+  - `next_retry_at` vazio no estado terminal.
+
+##### Evidência operacional E2E (L-2 D5 — sucesso controlado)
+- [x] Endpoints internos de teste adicionados no serviço:
+  - `POST /internal/mock/webhook-ok` (retorna 200)
+  - `POST /internal/mock/webhook-fail` (retorna 500)
+- [x] Cenário de sucesso confirmado no banco:
+  - `id=pwd_e2e_ok2`
+  - `status=DELIVERED`
+  - `attempt_count=1`
+  - `http_status=200`
+  - `delivered_at` preenchido.
+- [x] Cenário de falha controlada confirmado no banco:
+  - `id=pwd_e2e_fail2`
+  - `status=DEAD_LETTER`
+  - `attempt_count=3`
+  - `last_error=HTTP_ERROR_500`.
+
+##### D6 — migração + lifecycle Pr-1
+- [ ] Comandos de validação:
+      - `docker compose logs order_pickup_service --tail=120`
+      - `docker compose exec postgres psql -U postgres -d locker_central -c "\dt product_status_history*"`
+      - `curl -sS -X PATCH "http://localhost:8003/products/<id>/status" -H "Content-Type: application/json" -d '{"to_status":"ACTIVE"}'`
+      - `curl -sS "http://localhost:8003/products/<id>/status-history"`
+- [ ] Evidência esperada:
+      - tabela de histórico criada;
+      - mudança de status registrada com histórico consistente.
+
+##### D7 — catálogo filtrável Pr-1
+- [ ] Comandos de validação:
+      - `curl -sS "http://localhost:8003/products?status=ACTIVE&limit=20&offset=0"`
+      - `curl -sS "http://localhost:8003/products?category=<cat>&updated_from=<iso>&updated_to=<iso>"`
+- [ ] Evidência esperada:
+      - paginação estável;
+      - filtros aplicados corretamente;
+      - payload pronto para consumo OPS.
+
+##### D8 — OPS returns (frontend)
+- [ ] Comandos de validação:
+      - `npm run build` (em `01_source/frontend`)
+      - abrir `http://localhost:5173/ops/logistics/returns`
+- [ ] Evidência esperada:
+      - cards/lista aparecem;
+      - presets funcionam;
+      - filtros persistem em `localStorage`;
+      - erro de rede mostra mensagem operacional clara.
+
+##### D9 — OPS catalog (frontend)
+- [ ] Comandos de validação:
+      - `npm run build` (em `01_source/frontend`)
+      - abrir `http://localhost:5173/ops/products/catalog`
+- [ ] Evidência esperada:
+      - KPIs com tendência (janela atual vs anterior);
+      - semântica visual reaproveitando util compartilhado (`trend + severity`);
+      - sem duplicação de tokens locais.
+
+##### D10 — hardening + handoff
+- [ ] Comandos de validação:
+      - `docker compose ps`
+      - `docker compose logs --tail=200 order_pickup_service`
+      - `docker compose logs --tail=200 <worker_returns_webhook>`
+      - `npm run build` (frontend) e smoke manual das rotas OPS principais
+      - `git status --short`
+- [ ] Evidência esperada:
+      - serviços estáveis sem erro crítico recorrente;
+      - checklist D1..D10 marcado;
+      - runbook atualizado com comandos de replay/rollback;
+      - backlog residual separado para Semana 5-6.
 
 #### Melhorias preventivas recomendadas (para não travar avanço do sprint)
 - [ ] Adicionar ordenação e filtro por `partner_id` no endpoint `GET /partners/ops/audit/compare` quando o dashboard focar um parceiro específico.

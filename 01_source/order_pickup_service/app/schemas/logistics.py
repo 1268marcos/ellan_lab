@@ -147,3 +147,50 @@ class LogisticsOpsOverviewOut(BaseModel):
     by_event_code: list[dict]
     by_attempt_status: list[dict]
     by_label_carrier: list[dict]
+
+
+class LogisticsReturnCreateIn(BaseModel):
+    order_id: str = Field(..., max_length=36)
+    partner_id: str = Field(..., max_length=36)
+    reason_code: str = Field(..., max_length=40)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class LogisticsReturnStatusUpdateIn(BaseModel):
+    to_status: str = Field(..., max_length=30)
+    reason: str | None = Field(default=None, max_length=200)
+
+
+class LogisticsReturnOut(BaseModel):
+    id: str
+    order_id: str
+    partner_id: str
+    reason_code: str
+    status: str
+    notes: str | None = None
+    created_by: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class LogisticsReturnEventOut(BaseModel):
+    id: str
+    return_id: str
+    from_status: str | None = None
+    to_status: str
+    reason: str | None = None
+    changed_by: str | None = None
+    occurred_at: str
+    created_at: str
+
+
+class LogisticsReturnListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[LogisticsReturnOut]
+
+
+class LogisticsReturnEventListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[LogisticsReturnEventOut]

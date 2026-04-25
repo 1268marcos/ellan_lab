@@ -20,9 +20,13 @@ from app.models.logistics_tracking import (
     LogisticsCarrierAuthConfig,
     LogisticsCarrierStatusMap,
     LogisticsDeliveryAttempt,
+    LogisticsReturn,
+    LogisticsReturnEvent,
     LogisticsShipmentLabel,
     LogisticsTrackingEvent,
 )
+from app.models.partner_webhook_delivery import PartnerWebhookDelivery
+from app.models.partner_webhook_endpoint import PartnerWebhookEndpoint
 from app.models.user import User
 from app.schemas.logistics import (
     LogisticsCarrierAuthConfigIn,
@@ -33,6 +37,12 @@ from app.schemas.logistics import (
     LogisticsDeliveryAttemptOut,
     LogisticsLabelCreateIn,
     LogisticsOpsOverviewOut,
+    LogisticsReturnCreateIn,
+    LogisticsReturnEventListOut,
+    LogisticsReturnEventOut,
+    LogisticsReturnListOut,
+    LogisticsReturnOut,
+    LogisticsReturnStatusUpdateIn,
     LogisticsShipmentLabelOut,
     LogisticsTrackingEventListOut,
     LogisticsTrackingEventOut,
@@ -50,6 +60,14 @@ router = APIRouter(
 _ATTEMPT_STATUSES = {"SUCCESS", "FAILED", "RESCHEDULED", "RETURNED"}
 _LABEL_FORMATS = {"PDF", "ZPL", "PNG"}
 _HMAC_ALGORITHMS = {"HMAC_SHA256": "sha256"}
+_RETURN_STATUSES = {"REQUESTED", "PICKUP_SCHEDULED", "IN_TRANSIT", "RECEIVED", "CLOSED"}
+_RETURN_STATUS_TRANSITIONS = {
+    "REQUESTED": {"PICKUP_SCHEDULED", "CLOSED"},
+    "PICKUP_SCHEDULED": {"IN_TRANSIT", "CLOSED"},
+    "IN_TRANSIT": {"RECEIVED", "CLOSED"},
+    "RECEIVED": {"CLOSED"},
+    "CLOSED": set(),
+}
 
 
 def _to_iso_utc(value: datetime | None) -> str:
@@ -85,6 +103,17 @@ def _json_load_dict(value: str | None) -> dict:
     except Exception:
         pass
     return {}
+
+
+def _json_load_list(value: str | None, default: list[str] | None = None) -> list[str]:
+    expected_default = default if default is not None else []
+    try:
+        parsed = json.loads(str(value or "[]"))
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    except Exception:
+        pass
+    return expected_default
 
 
 def _resolve_correlation_id(header_value: str | None) -> str:
@@ -206,6 +235,92 @@ def _to_status_map_out(row: LogisticsCarrierStatusMap) -> LogisticsCarrierStatus
         created_at=_to_iso_utc(row.created_at),
         updated_at=_to_iso_utc(row.updated_at),
     )
+
+
+def _to_return_out(row: LogisticsReturn) -> LogisticsReturnOut:
+    return LogisticsReturnOut(
+        id=row.id,
+        order_id=row.order_id,
+        partner_id=row.partner_id,
+        reason_code=row.reason_code,
+        status=row.status,
+        notes=row.notes,
+        created_by=row.created_by,
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _to_return_event_out(row: LogisticsReturnEvent) -> LogisticsReturnEventOut:
+    return LogisticsReturnEventOut(
+        id=row.id,
+        return_id=row.return_id,
+        from_status=row.from_status,
+        to_status=row.to_status,
+        reason=row.reason,
+        changed_by=row.changed_by,
+        occurred_at=_to_iso_utc(row.occurred_at),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _enqueue_return_critical_webhooks(
+    *,
+    db: Session,
+    return_row: LogisticsReturn,
+    to_status: str,
+) -> int:
+    normalized_status = str(to_status or "").strip().upper()
+    if normalized_status not in {"RECEIVED", "CLOSED"}:
+        return 0
+    event_type = f"LOGISTICS_RETURN_{normalized_status}"
+    now = datetime.now(timezone.utc)
+    payload = {
+        "return_id": return_row.id,
+        "order_id": return_row.order_id,
+        "partner_id": return_row.partner_id,
+        "reason_code": return_row.reason_code,
+        "status": return_row.status,
+        "notes": return_row.notes,
+        "created_at": _to_iso_utc(return_row.created_at),
+        "updated_at": _to_iso_utc(return_row.updated_at),
+        "event_type": event_type,
+        "occurred_at": _to_iso_utc(now),
+    }
+    payload_json = json.dumps(payload)
+    payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
+
+    endpoints = (
+        db.query(PartnerWebhookEndpoint)
+        .filter(
+            PartnerWebhookEndpoint.partner_id == return_row.partner_id,
+            PartnerWebhookEndpoint.partner_type == "ECOMMERCE",
+            PartnerWebhookEndpoint.active.is_(True),
+        )
+        .order_by(PartnerWebhookEndpoint.created_at.desc(), PartnerWebhookEndpoint.id.desc())
+        .all()
+    )
+    enqueued = 0
+    for endpoint in endpoints:
+        events = {item.strip().upper() for item in _json_load_list(endpoint.events_json, ["*"]) if item}
+        if "*" not in events and event_type not in events:
+            continue
+        db.add(
+            PartnerWebhookDelivery(
+                id=str(uuid4()),
+                endpoint_id=endpoint.id,
+                event_id=str(uuid4()),
+                event_type=event_type,
+                payload_json=payload_json,
+                payload_hash=payload_hash,
+                status="PENDING",
+                attempt_count=0,
+                next_retry_at=now,
+                created_at=now,
+            )
+        )
+        enqueued += 1
+    return enqueued
 
 
 def _with_trend(current_counter: Counter[str], previous_counter: Counter[str]) -> list[dict]:
@@ -590,6 +705,230 @@ def get_logistics_delivery_label(delivery_id: str, label_id: str, db: Session = 
     if not row or row.delivery_id != delivery_id:
         raise HTTPException(status_code=404, detail={"type": "LABEL_NOT_FOUND", "message": "Label não encontrada para esta entrega."})
     return _to_label_out(row)
+
+
+@router.post("/returns", response_model=LogisticsReturnOut)
+def post_logistics_return(
+    payload: LogisticsReturnCreateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    order_id = payload.order_id.strip()
+    partner_id = payload.partner_id.strip()
+    reason_code = payload.reason_code.strip().upper()
+    if not order_id or not partner_id or not reason_code:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_RETURN_PAYLOAD", "message": "order_id, partner_id e reason_code são obrigatórios."},
+        )
+    now = datetime.now(timezone.utc)
+    row = LogisticsReturn(
+        id=str(uuid4()),
+        order_id=order_id,
+        partner_id=partner_id,
+        reason_code=reason_code,
+        status="REQUESTED",
+        notes=payload.notes.strip() if payload.notes else None,
+        created_by=str(current_user.id),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    db.add(
+        LogisticsReturnEvent(
+            id=str(uuid4()),
+            return_id=row.id,
+            from_status=None,
+            to_status="REQUESTED",
+            reason="return created",
+            changed_by=str(current_user.id),
+            occurred_at=now,
+            created_at=now,
+        )
+    )
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_RETURN_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"return_id": row.id, "order_id": order_id, "partner_id": partner_id, "reason_code": reason_code},
+    )
+    db.commit()
+    return _to_return_out(row)
+
+
+@router.get("/returns/{return_id}", response_model=LogisticsReturnOut)
+def get_logistics_return(return_id: str, db: Session = Depends(get_db)):
+    row = db.get(LogisticsReturn, return_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_NOT_FOUND", "message": "Return não encontrado."})
+    return _to_return_out(row)
+
+
+@router.get("/returns", response_model=LogisticsReturnListOut)
+def list_logistics_returns(
+    partner_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(LogisticsReturn)
+    normalized_partner = str(partner_id or "").strip()
+    normalized_status = str(status or "").strip().upper()
+    if normalized_partner:
+        query = query.filter(LogisticsReturn.partner_id == normalized_partner)
+    if normalized_status:
+        if normalized_status not in _RETURN_STATUSES:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_RETURN_STATUS", "allowed_statuses": sorted(_RETURN_STATUSES)})
+        query = query.filter(LogisticsReturn.status == normalized_status)
+    from_dt = _parse_iso_datetime_utc_optional(from_, field_name="from")
+    to_dt = _parse_iso_datetime_utc_optional(to, field_name="to")
+    if from_dt and to_dt and from_dt > to_dt:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."})
+    if from_dt:
+        query = query.filter(LogisticsReturn.created_at >= from_dt)
+    if to_dt:
+        query = query.filter(LogisticsReturn.created_at <= to_dt)
+    total = query.count()
+    rows = query.order_by(LogisticsReturn.created_at.desc(), LogisticsReturn.id.desc()).offset(offset).limit(limit).all()
+    return LogisticsReturnListOut(ok=True, total=total, items=[_to_return_out(row) for row in rows])
+
+
+@router.patch("/returns/{return_id}/status", response_model=LogisticsReturnOut)
+def patch_logistics_return_status(
+    return_id: str,
+    payload: LogisticsReturnStatusUpdateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    row = db.get(LogisticsReturn, return_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_NOT_FOUND", "message": "Return não encontrado."})
+    to_status = payload.to_status.strip().upper()
+    if to_status not in _RETURN_STATUSES:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_RETURN_STATUS", "allowed_statuses": sorted(_RETURN_STATUSES)})
+    from_status = str(row.status or "").strip().upper()
+    allowed_next = _RETURN_STATUS_TRANSITIONS.get(from_status, set())
+    if to_status != from_status and to_status not in allowed_next:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_RETURN_STATUS_TRANSITION",
+                "message": "Transição de status de return inválida.",
+                "from_status": from_status,
+                "to_status": to_status,
+                "allowed_next": sorted(allowed_next),
+            },
+        )
+    now = datetime.now(timezone.utc)
+    reason = payload.reason.strip() if payload.reason else None
+    row.status = to_status
+    row.updated_at = now
+    db.add(
+        LogisticsReturnEvent(
+            id=str(uuid4()),
+            return_id=row.id,
+            from_status=from_status,
+            to_status=to_status,
+            reason=reason,
+            changed_by=str(current_user.id),
+            occurred_at=now,
+            created_at=now,
+        )
+    )
+    enqueued_deliveries = 0
+    if to_status != from_status:
+        enqueued_deliveries = _enqueue_return_critical_webhooks(
+            db=db,
+            return_row=row,
+            to_status=to_status,
+        )
+
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_RETURN_STATUS_CHANGE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "return_id": row.id,
+            "from_status": from_status,
+            "to_status": to_status,
+            "reason": reason,
+            "webhook_deliveries_enqueued": enqueued_deliveries,
+        },
+    )
+    db.commit()
+    return _to_return_out(row)
+
+
+@router.get("/returns/{return_id}/events", response_model=LogisticsReturnEventListOut)
+def list_logistics_return_events(
+    return_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    row = db.get(LogisticsReturn, return_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_NOT_FOUND", "message": "Return não encontrado."})
+    items = (
+        db.query(LogisticsReturnEvent)
+        .filter(LogisticsReturnEvent.return_id == return_id)
+        .order_by(LogisticsReturnEvent.occurred_at.desc(), LogisticsReturnEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return LogisticsReturnEventListOut(ok=True, total=len(items), items=[_to_return_event_out(item) for item in items])
+
+
+@router.post("/returns/{return_id}/simulate-delivery")
+def post_logistics_return_simulate_delivery(
+    return_id: str,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    row = db.get(LogisticsReturn, return_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_NOT_FOUND", "message": "Return não encontrado."})
+    normalized_status = str(row.status or "").strip().upper()
+    if normalized_status not in {"RECEIVED", "CLOSED"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "RETURN_STATUS_NOT_CRITICAL",
+                "message": "Simulação de delivery exige status RECEIVED ou CLOSED.",
+                "current_status": normalized_status,
+            },
+        )
+    enqueued_deliveries = _enqueue_return_critical_webhooks(
+        db=db,
+        return_row=row,
+        to_status=normalized_status,
+    )
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_RETURN_WEBHOOK_SIMULATE_DELIVERY",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "return_id": row.id,
+            "status": normalized_status,
+            "webhook_deliveries_enqueued": enqueued_deliveries,
+        },
+    )
+    db.commit()
+    return {"ok": True, "return_id": row.id, "status": normalized_status, "enqueued_deliveries": enqueued_deliveries}
 
 
 @router.get("/ops/overview", response_model=LogisticsOpsOverviewOut)

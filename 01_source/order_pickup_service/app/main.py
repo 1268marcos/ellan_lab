@@ -17,7 +17,7 @@ from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
-from app.routers import dev_admin, dev_base_catalog, internal, kiosk, logistics, orders, partners, pickup
+from app.routers import dev_admin, dev_base_catalog, internal, kiosk, logistics, orders, partners, pickup, products
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
@@ -45,6 +45,7 @@ app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(partners.router)
 app.include_router(logistics.router)
+app.include_router(products.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
@@ -61,6 +62,30 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(internal_health_router, tags=["Internal"])
 
 app.include_router(payment_capabilities_router)
+
+
+@app.post("/internal/mock/webhook-ok")
+async def internal_mock_webhook_ok(request: Request):
+    # Endpoint de apoio para validação E2E local dos workers de webhook.
+    if str(settings.node_env).lower() not in {"dev", "development", "local", "test"}:
+        return JSONResponse(status_code=404, content={"ok": False, "message": "mock endpoint disabled"})
+    payload = await request.body()
+    return {
+        "ok": True,
+        "message": "mock webhook accepted",
+        "received_bytes": len(payload or b""),
+    }
+
+
+@app.post("/internal/mock/webhook-fail")
+async def internal_mock_webhook_fail():
+    # Endpoint de apoio para falha controlada (5xx) em E2E local.
+    if str(settings.node_env).lower() not in {"dev", "development", "local", "test"}:
+        return JSONResponse(status_code=404, content={"ok": False, "message": "mock endpoint disabled"})
+    return JSONResponse(
+        status_code=500,
+        content={"ok": False, "message": "mock webhook forced failure"},
+    )
 
 
 

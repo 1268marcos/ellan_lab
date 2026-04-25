@@ -1515,6 +1515,81 @@ def _create_logistics_carrier_status_map(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_logistics_returns(conn, applied: list[str]) -> None:
+    name = "logistics_returns.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_returns (
+            id              VARCHAR(36) PRIMARY KEY,
+            order_id        VARCHAR(36) NOT NULL,
+            partner_id      VARCHAR(36) NOT NULL,
+            reason_code     VARCHAR(40) NOT NULL,
+            status          VARCHAR(30) NOT NULL DEFAULT 'REQUESTED',
+            notes           TEXT,
+            created_by      VARCHAR(36),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lr_partner_status_created ON logistics_returns (partner_id, status, created_at DESC)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lr_order_created ON logistics_returns (order_id, created_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_return_events(conn, applied: list[str]) -> None:
+    name = "logistics_return_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_return_events (
+            id              VARCHAR(36) PRIMARY KEY,
+            return_id       VARCHAR(36) NOT NULL REFERENCES logistics_returns(id),
+            from_status     VARCHAR(30),
+            to_status       VARCHAR(30) NOT NULL,
+            reason          VARCHAR(200),
+            changed_by      VARCHAR(36),
+            occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lre_return_occurred ON logistics_return_events (return_id, occurred_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_products_status_v1(conn, applied: list[str]) -> None:
+    name = "products.status_v1"
+    if _migration_applied(conn, name):
+        return
+    inspector = inspect(conn)
+    if _has_table(inspector, "products"):
+        _ensure_column(conn, "products", "status", "VARCHAR(30) NOT NULL DEFAULT 'DRAFT'")
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_product_status_history(conn, applied: list[str]) -> None:
+    name = "product_status_history.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_status_history (
+            id              VARCHAR(36) PRIMARY KEY,
+            product_id      VARCHAR(255) NOT NULL,
+            from_status     VARCHAR(30),
+            to_status       VARCHAR(30) NOT NULL,
+            reason          TEXT,
+            changed_by      VARCHAR(36),
+            changed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_prsh_product ON product_status_history (product_id, changed_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3128,6 +3203,10 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_logistics_shipment_labels,
     _create_logistics_carrier_auth_config,
     _create_logistics_carrier_status_map,
+    _create_logistics_returns,
+    _create_logistics_return_events,
+    _migrate_products_status_v1,
+    _create_product_status_history,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,

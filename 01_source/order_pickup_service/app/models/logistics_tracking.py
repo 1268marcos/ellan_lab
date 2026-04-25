@@ -115,3 +115,44 @@ class LogisticsCarrierStatusMap(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+
+
+class LogisticsReturn(Base):
+    __tablename__ = "logistics_returns"
+
+    __table_args__ = (
+        Index("idx_lr_partner_status_created", "partner_id", "status", "created_at"),
+        Index("idx_lr_order_created", "order_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    order_id = Column(String(36), nullable=False, index=True)
+    partner_id = Column(String(36), nullable=False, index=True)
+    reason_code = Column(String(40), nullable=False)
+    status = Column(String(30), nullable=False, default="REQUESTED")
+    notes = Column(Text, nullable=True)
+    created_by = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class LogisticsReturnEvent(Base):
+    __tablename__ = "logistics_return_events"
+
+    __table_args__ = (
+        Index("idx_lre_return_occurred", "return_id", "occurred_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    return_id = Column(String(36), ForeignKey("logistics_returns.id"), nullable=False, index=True)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=False)
+    reason = Column(String(200), nullable=True)
+    changed_by = Column(String(36), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
