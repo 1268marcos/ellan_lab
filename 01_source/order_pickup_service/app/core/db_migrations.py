@@ -1699,6 +1699,169 @@ def _create_inventory_reservations(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_product_bundles(conn, applied: list[str]) -> None:
+    name = "product_bundles.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_bundles (
+            id              VARCHAR(36) PRIMARY KEY,
+            name            VARCHAR(128) NOT NULL,
+            code            VARCHAR(32) NOT NULL UNIQUE,
+            description     TEXT,
+            amount_cents    INTEGER NOT NULL,
+            currency        VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            bundle_type     VARCHAR(20) NOT NULL DEFAULT 'FIXED',
+            is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+            valid_from      TIMESTAMPTZ,
+            valid_until     TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_pb_bundle_type CHECK (bundle_type IN ('FIXED','CONFIGURABLE'))
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pb_active_window "
+        "ON product_bundles (is_active, valid_from, valid_until)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_product_bundle_items(conn, applied: list[str]) -> None:
+    name = "product_bundle_items.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_bundle_items (
+            id                  BIGSERIAL PRIMARY KEY,
+            bundle_id           VARCHAR(36) NOT NULL REFERENCES product_bundles(id) ON DELETE CASCADE,
+            product_id          VARCHAR(255) NOT NULL REFERENCES products(id),
+            quantity            INTEGER NOT NULL DEFAULT 1,
+            unit_price_cents    INTEGER,
+            sort_order          INTEGER NOT NULL DEFAULT 0,
+            CONSTRAINT ck_pbi_quantity_positive CHECK (quantity > 0)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pbi_bundle_sort "
+        "ON product_bundle_items (bundle_id, sort_order)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotions(conn, applied: list[str]) -> None:
+    name = "promotions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotions (
+            id                  VARCHAR(36) PRIMARY KEY,
+            code                VARCHAR(32) UNIQUE,
+            name                VARCHAR(128) NOT NULL,
+            type                VARCHAR(30) NOT NULL,
+            discount_pct        NUMERIC(5,2),
+            discount_cents      INTEGER,
+            min_order_cents     INTEGER NOT NULL DEFAULT 0,
+            max_discount_cents  INTEGER,
+            max_uses            INTEGER,
+            uses_count          INTEGER NOT NULL DEFAULT 0,
+            per_user_limit      INTEGER DEFAULT 1,
+            conditions_json     JSONB NOT NULL DEFAULT '{}'::jsonb,
+            is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+            valid_from          TIMESTAMPTZ NOT NULL,
+            valid_until         TIMESTAMPTZ,
+            created_by          VARCHAR(36),
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_promotions_type CHECK (
+                type IN ('PERCENT_OFF','FIXED_OFF','BUY_X_GET_Y','FREE_ITEM','BUNDLE_DISCOUNT')
+            )
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promotions_active_window "
+        "ON promotions (is_active, valid_from, valid_until)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotion_product_exclusions(conn, applied: list[str]) -> None:
+    name = "promotion_product_exclusions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_product_exclusions (
+            promotion_id    VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+            product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+            PRIMARY KEY (promotion_id, product_id)
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_fiscal_auto_classification_log(conn, applied: list[str]) -> None:
+    name = "fiscal_auto_classification_log.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS fiscal_auto_classification_log (
+            id                  BIGSERIAL PRIMARY KEY,
+            order_id            VARCHAR(36) NOT NULL,
+            invoice_id          VARCHAR(50),
+            sku_id              VARCHAR(255) NOT NULL,
+            ncm_applied         VARCHAR(10),
+            icms_cst_applied    VARCHAR(3),
+            pis_cst_applied     VARCHAR(2),
+            cofins_cst_applied  VARCHAR(2),
+            cfop_applied        VARCHAR(5),
+            source              VARCHAR(20) NOT NULL,
+            classified_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_facl_source CHECK (source IN ('AUTO_PRODUCT_CONFIG','CATEGORY_FALLBACK','MANUAL','DEFAULT'))
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_facl_order ON fiscal_auto_classification_log(order_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_facl_source_classified "
+        "ON fiscal_auto_classification_log(source, classified_at DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _ensure_product_fiscal_config_v1(conn, applied: list[str]) -> None:
+    name = "product_fiscal_config.ensure_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_fiscal_config (
+            sku_id              VARCHAR(255) PRIMARY KEY,
+            ncm_code            VARCHAR(10),
+            cest                VARCHAR(9),
+            icms_cst            VARCHAR(3),
+            pis_cst             VARCHAR(2),
+            cofins_cst          VARCHAR(2),
+            iva_category        VARCHAR(20),
+            is_active           BOOLEAN NOT NULL DEFAULT TRUE
+        )
+    """))
+    _ensure_column(conn, "product_fiscal_config", "unit_of_measure", "VARCHAR(6) NOT NULL DEFAULT 'UN'")
+    _ensure_column(conn, "product_fiscal_config", "origin_type", "CHAR(1) NOT NULL DEFAULT '0'")
+    _ensure_column(conn, "product_fiscal_config", "cfop", "VARCHAR(5)")
+    _ensure_column(conn, "product_fiscal_config", "tax_rate_pct", "NUMERIC(7,4)")
+    _ensure_column(conn, "product_fiscal_config", "is_service", "BOOLEAN NOT NULL DEFAULT FALSE")
+    _ensure_column(conn, "product_fiscal_config", "updated_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pfc_is_active ON product_fiscal_config(is_active)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3319,6 +3482,12 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_product_inventory,
     _create_inventory_movements,
     _create_inventory_reservations,
+    _create_product_bundles,
+    _create_product_bundle_items,
+    _create_promotions,
+    _create_promotion_product_exclusions,
+    _create_fiscal_auto_classification_log,
+    _ensure_product_fiscal_config_v1,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,

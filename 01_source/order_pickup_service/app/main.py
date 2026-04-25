@@ -19,7 +19,19 @@ from app.jobs.inventory_reserved_reconciliation import run_inventory_reserved_re
 from app.jobs.inventory_reservations_expiry import run_inventory_reservations_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
-from app.routers import dev_admin, dev_base_catalog, internal, inventory, kiosk, logistics, orders, partners, pickup, products
+from app.routers import (
+    dev_admin,
+    dev_base_catalog,
+    internal,
+    inventory,
+    kiosk,
+    logistics,
+    orders,
+    partners,
+    pickup,
+    pricing_fiscal,
+    products,
+)
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
@@ -48,6 +60,7 @@ app.include_router(pickup.router)
 app.include_router(partners.router)
 app.include_router(logistics.router)
 app.include_router(products.router)
+app.include_router(pricing_fiscal.router)
 app.include_router(inventory.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)

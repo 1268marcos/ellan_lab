@@ -1320,6 +1320,56 @@ Order cancelada/expirada:
 
 **Objetivo:** Bundles de produto, promoções/cupons e auto-classificação fiscal via `product_fiscal_config` no momento da emissão de nota — eliminando classificação manual por NF.
 
+#### Kickoff técnico Pr-3 (D1-D3 enxuto, backend first)
+
+**Ordem de implementação recomendada (sem ambiguidade):**
+1) **Backend de dados e regras fiscais (D1)**  
+2) **Backend de APIs operacionais (D2)**  
+3) **Rota OPS de validação ponta a ponta (D3)**  
+
+##### D1 — Modelo mínimo (pricing + fiscal) com trilha de auditoria
+- [ ] Criar migrações idempotentes para o núcleo do Pr-3:
+      - `product_bundles`
+      - `product_bundle_items`
+      - `promotions`
+      - `promotion_product_exclusions`
+      - `fiscal_auto_classification_log`
+- [ ] Evoluir `product_fiscal_config` com campos mínimos de classificação automática (`unit_of_measure`, `origin_type`, `cfop`, `tax_rate_pct`, `is_service`, `updated_at`).
+- [ ] Garantir constraints e índices mínimos para operação (unicidade de `code`, integridade referencial e índices por data/status para leitura OPS).
+- [ ] Registrar auditoria operacional de escrita para entidades críticas de Pr-3 (criação/edição de bundle, promoção e config fiscal), com `before/after` quando aplicável.
+
+##### D2 — Endpoints mínimos backend (v1) para começar operação
+- [ ] Implementar endpoints base de bundles:
+      - `GET/POST /products/bundles`
+      - `POST /products/bundles/{id}/items`
+- [ ] Implementar endpoints base de promoções:
+      - `GET/POST /promotions`
+      - `PATCH /promotions/{id}/status`
+      - `POST /promotions/validate` (stub idempotente para validação inicial de cupom/regra)
+- [ ] Implementar endpoints de configuração fiscal por produto:
+      - `GET /products/{id}/fiscal-config`
+      - `PUT /products/{id}/fiscal-config`
+- [ ] Implementar endpoint de leitura operacional de classificação:
+      - `GET /fiscal/auto-classification-log` (filtros: `order_id`, `sku_id`, `source`, período, paginação)
+- [ ] Padronizar respostas de erro operacional (mensagens claras, sem depender apenas de erro genérico de rede).
+- [~] **Observação importante (estado atual):** os endpoints D2 já estão contratados e publicados como **stub operacional** (sem persistência funcional completa), para habilitar estratégia **backend-first** com integração progressiva sem bloquear o fluxo do sprint.
+- [ ] Próximo passo direto do D2: implementar persistência real de `bundles`, `promotions` e `product_fiscal_config`, além da leitura real de `fiscal_auto_classification_log` com filtros operacionais, mantendo auditoria `before/after`.
+
+##### D3 — Rota OPS de validação (backend first, frontend leve)
+- [ ] Implementar rota OPS consolidada para validação rápida do Pr-3:
+      - `GET /ops/products/pricing-fiscal/overview`
+- [ ] Entregar no payload mínimo:
+      - KPIs: bundles ativos, promoções ativas, validações de promoção (janela), classificações fiscais por `source`
+      - top listas operacionais: promoções mais acionadas, SKUs sem config fiscal, ocorrências `DEFAULT`
+      - janela atual vs anterior com deltas percentuais e `confidence_badge`
+- [ ] Incluir filtros operacionais base (`from`, `to`, `source`, `promotion_code`, `limit`) com compatibilidade para presets e persistência no frontend OPS.
+- [ ] Disponibilizar rota de visualização de apoio (HTML simples) para inspeção imediata em navegador durante desenvolvimento.
+
+**Critério de pronto D1-D3 (mínimo para seguir para D4+):**
+- [ ] Migrações aplicam sem quebra e com idempotência.
+- [ ] Endpoints v1 respondem com autenticação OPS e payload consistente.
+- [ ] Rota OPS consolidada permite validar tendência e gargalos sem abrir JSON bruto.
+
 #### Novas tabelas
 
 ```sql

@@ -668,6 +668,13 @@ def init_db():
     # 🔥 PRODUCT CONFIG
     from app.models.product_locker_config import ProductLockerConfig, ProductCategory  # noqa: F401
     from app.models.product_status_history import ProductStatusHistory  # noqa: F401
+    from app.models.pricing_fiscal import (  # noqa: F401
+        FiscalAutoClassificationLog,
+        ProductBundle,
+        ProductBundleItem,
+        Promotion,
+        PromotionProductExclusion,
+    )
 
     # 🔥 CAPABILITY CATALOG (BLOCO 12)
     from app.models.capability import (  # noqa: F401

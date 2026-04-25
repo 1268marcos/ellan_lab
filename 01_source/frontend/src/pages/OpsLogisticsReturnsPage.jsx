@@ -386,7 +386,7 @@ export default function OpsLogisticsReturnsPage() {
             style={secondaryButtonStyle}
             disabled={loading || offset + limit >= total}
           >
-            Próxima pagina
+            Próxima página
           </button>
           <span style={mutedStyleSmall}>offset={offset} total={total}</span>
         </div>

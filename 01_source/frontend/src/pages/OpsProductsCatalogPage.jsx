@@ -400,7 +400,7 @@ export default function OpsProductsCatalogPage() {
             onClick={() => void loadCatalog({ offsetOverride: offset + limit })}
             disabled={loading || offset + limit >= pageTotal}
           >
-            Próxima pagina
+            Próxima página
           </button>
           <span style={mutedStyleSmall}>offset={offset} total={pageTotal}</span>
         </div>
