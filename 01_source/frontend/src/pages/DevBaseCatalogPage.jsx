@@ -412,7 +412,7 @@ export default function DevBaseCatalogPage() {
 
         {lastUpdatedAt ? (
           <div style={metaInfoStyle}>
-            Ultima atualizacao: {lastUpdatedAt}
+            Última atualização: {lastUpdatedAt}
           </div>
         ) : null}
 

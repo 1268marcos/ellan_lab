@@ -337,14 +337,14 @@ export default function OpsProductsInventoryHealthPage() {
           <div style={autoRefreshStatusWrapStyle}>
             {continuousAutoRefresh ? (
               <span style={autoRefreshActiveStyle}>
-                Auto-refresh ativo · proxima atualizacao em {nextRefreshInSec}s
+                Auto-refresh ativo · próxima atualização em {nextRefreshInSec}s
               </span>
             ) : (
               <span style={autoRefreshIdleStyle}>Auto-refresh continuo desativado.</span>
             )}
             {lastRefreshAt ? (
               <span style={lastRefreshMetaStyle}>
-                Ultima atualizacao {lastRefreshMode || "manual"}: {lastRefreshAt}
+                Última atualização {lastRefreshMode || "manual"}: {lastRefreshAt}
               </span>
             ) : null}
           </div>

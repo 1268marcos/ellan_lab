@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
@@ -53,6 +54,7 @@ const ACTION_OPTIONS = [
   "OPS_ORDERS_STATUS_AUDIT",
   "OPS_ORDERS_STATUS_AUDIT_RANGE",
   "OPS_ORDERS_STATUS_AUDIT_EXPORT",
+  "I1_OUTBOX_MANUAL_REPLAY_BATCH",
 ];
 
 const RESULT_OPTIONS = ["", "SUCCESS", "ERROR"];
@@ -60,6 +62,7 @@ const MAIN_LIMIT_OPTIONS = [20, 50, 100, 200];
 const STATUS_LIMIT_OPTIONS = [100, 200, 500, 1000, 2000];
 
 export default function OpsAuditPage() {
+  const location = useLocation();
   const { token } = useAuth();
   const now = new Date();
   const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
@@ -325,6 +328,22 @@ export default function OpsAuditPage() {
       // Ignore corrupted local storage payloads and keep defaults.
     }
   }, [token, storageKey]);
+
+  useEffect(() => {
+    if (!token) return;
+    const params = new URLSearchParams(location.search || "");
+    const actionParam = String(params.get("action") || "").trim();
+    const limitParam = Number(params.get("limit"));
+    const resultParam = String(params.get("result") || "").trim();
+    const orderIdParam = String(params.get("order_id") || "").trim();
+    const offsetParam = Number(params.get("offset"));
+
+    if (actionParam) setAction(actionParam);
+    if (Number.isFinite(limitParam) && limitParam > 0) setLimit(Math.min(Math.max(limitParam, 1), 200));
+    if (resultParam) setResult(resultParam.toUpperCase());
+    if (orderIdParam) setOrderId(orderIdParam);
+    if (Number.isFinite(offsetParam) && offsetParam >= 0) setOffset(Math.max(offsetParam, 0));
+  }, [token, location.search]);
 
   useEffect(() => {
     if (!token) return;

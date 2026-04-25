@@ -10,9 +10,12 @@ from app.core.auth_dep import require_user_roles
 from app.core.config import settings
 from app.core.db import get_db
 from app.jobs.integration_order_events_outbox import run_integration_order_events_outbox_once
+from app.services.ops_audit_service import record_ops_action_audit
 from app.schemas.integration_ops import (
+    OrderEventOutboxBatchReplayOut,
     OrderEventOutboxItemOut,
     OrderEventOutboxListOut,
+    OrderEventOutboxReplayOut,
     OrderFulfillmentTrackingCompareOut,
     OrderFulfillmentTrackingItemOut,
     OrderFulfillmentTrackingListOut,
@@ -35,6 +38,8 @@ def _to_iso_utc(value: datetime | None) -> str:
 
 
 def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) -> datetime | None:
+    if raw_value is not None and not isinstance(raw_value, str):
+        raw_value = getattr(raw_value, "default", raw_value)
     raw = str(raw_value or "").strip()
     if not raw:
         return None
@@ -140,6 +145,298 @@ def run_order_events_outbox_now(
         base_backoff_sec=int(settings.integration_order_events_outbox_base_backoff_sec),
     )
     return OrderEventOutboxRunOut(ok=True, **result)
+
+
+@router.post("/order-events-outbox/{outbox_id}/replay", response_model=OrderEventOutboxReplayOut)
+def replay_order_event_outbox_item(
+    outbox_id: str,
+    force: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text(
+            """
+            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+            FROM partner_order_events_outbox
+            WHERE id = :id
+            """
+        ),
+        {"id": outbox_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "OUTBOX_ITEM_NOT_FOUND", "message": "Item de outbox não encontrado."},
+        )
+
+    status = str(row.get("status") or "").upper()
+    replayed = False
+    reason: str | None = None
+    if status in {"DELIVERED"} and not force:
+        reason = "ITEM_ALREADY_DELIVERED_USE_FORCE"
+    elif status in {"PENDING", "FAILED", "DEAD_LETTER", "SKIPPED"} or force:
+        db.execute(
+            text(
+                """
+                UPDATE partner_order_events_outbox
+                SET status = 'PENDING',
+                    attempt_count = 0,
+                    next_retry_at = NOW(),
+                    last_error = NULL,
+                    updated_at = NOW()
+                WHERE id = :id
+                """
+            ),
+            {"id": outbox_id},
+        )
+        replayed = True
+        record_ops_action_audit(
+            db=db,
+            action="I1_OUTBOX_MANUAL_REPLAY",
+            result="SUCCESS",
+            correlation_id=f"corr-i1-replay-{outbox_id}",
+            role="ops_user",
+            order_id=str(row.get("order_id") or "") or None,
+            details={
+                "outbox_id": str(row.get("id") or ""),
+                "partner_id": str(row.get("partner_id") or ""),
+                "event_type": str(row.get("event_type") or ""),
+                "previous_status": status,
+                "force": bool(force),
+            },
+        )
+        db.commit()
+    else:
+        reason = "ITEM_STATUS_NOT_REPLAYABLE"
+
+    latest = db.execute(
+        text(
+            """
+            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+            FROM partner_order_events_outbox
+            WHERE id = :id
+            """
+        ),
+        {"id": outbox_id},
+    ).mappings().first()
+    item = OrderEventOutboxItemOut(
+        id=str(latest.get("id") or ""),
+        partner_id=str(latest.get("partner_id") or ""),
+        order_id=str(latest.get("order_id") or ""),
+        event_type=str(latest.get("event_type") or ""),
+        status=str(latest.get("status") or ""),
+        attempt_count=int(latest.get("attempt_count") or 0),
+        max_attempts=int(latest.get("max_attempts") or 0),
+        next_retry_at=(_to_iso_utc(latest.get("next_retry_at")) if latest.get("next_retry_at") else None),
+        delivered_at=(_to_iso_utc(latest.get("delivered_at")) if latest.get("delivered_at") else None),
+        created_at=_to_iso_utc(latest.get("created_at")),
+    )
+    return OrderEventOutboxReplayOut(ok=True, replayed=replayed, reason=reason, item=item)
+
+
+@router.post("/order-events-outbox/replay-batch", response_model=OrderEventOutboxBatchReplayOut)
+def replay_order_events_outbox_batch(
+    dry_run: bool = Query(default=True),
+    run_after_replay: bool = Query(default=False),
+    max_deliveries_after_replay: int | None = Query(default=None, ge=1, le=500),
+    partner_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    worker_run_limit_guard = 100
+    if run_after_replay and dry_run:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_RUN_AFTER_REPLAY",
+                "message": "run_after_replay=true exige dry_run=false.",
+            },
+        )
+    if run_after_replay and int(limit) > worker_run_limit_guard:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "RUN_AFTER_REPLAY_LIMIT_EXCEEDED",
+                "message": "Quando run_after_replay=true, limit deve ser <= 100.",
+                "max_limit": worker_run_limit_guard,
+            },
+        )
+    if max_deliveries_after_replay is not None and not run_after_replay:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_MAX_DELIVERIES_AFTER_REPLAY",
+                "message": "max_deliveries_after_replay exige run_after_replay=true.",
+            },
+        )
+    if max_deliveries_after_replay is not None and int(max_deliveries_after_replay) > worker_run_limit_guard:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "MAX_DELIVERIES_AFTER_REPLAY_LIMIT_EXCEEDED",
+                "message": "max_deliveries_after_replay deve ser <= 100.",
+                "max_limit": worker_run_limit_guard,
+            },
+        )
+    allowed_statuses = {"PENDING", "FAILED", "DEAD_LETTER", "SKIPPED"}
+    normalized_status = str(status or "").strip().upper()
+    if normalized_status and normalized_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_REPLAY_STATUS_FILTER",
+                "message": "status inválido para replay em lote.",
+                "allowed_statuses": sorted(allowed_statuses),
+            },
+        )
+    dt_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from")
+    dt_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to")
+    if dt_from and dt_to and dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    where_parts = ["status IN ('PENDING','FAILED','DEAD_LETTER','SKIPPED')"]
+    params: dict[str, object] = {"limit": int(limit)}
+    if str(partner_id or "").strip():
+        where_parts.append("partner_id = :partner_id")
+        params["partner_id"] = str(partner_id).strip()
+    if normalized_status:
+        where_parts.append("status = :status")
+        params["status"] = normalized_status
+    if str(event_type or "").strip():
+        where_parts.append("event_type = :event_type")
+        params["event_type"] = str(event_type).strip().upper()
+    if dt_from is not None:
+        where_parts.append("created_at >= :dt_from")
+        params["dt_from"] = dt_from
+    if dt_to is not None:
+        where_parts.append("created_at <= :dt_to")
+        params["dt_to"] = dt_to
+    where_sql = " AND ".join(where_parts)
+
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS total FROM partner_order_events_outbox WHERE {where_sql}"),
+        params,
+    ).mappings().first()
+    total_candidates = int((total_row or {}).get("total") or 0)
+    rows = db.execute(
+        text(
+            f"""
+            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+            FROM partner_order_events_outbox
+            WHERE {where_sql}
+            ORDER BY created_at ASC, id ASC
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+    selected_count = len(rows)
+    replayed_count = 0
+    skipped_count = 0
+    worker_run_payload: OrderEventOutboxRunOut | None = None
+
+    if not dry_run and rows:
+        ids = [str(row.get("id") or "") for row in rows if str(row.get("id") or "").strip()]
+        if ids:
+            db.execute(
+                text(
+                    """
+                    UPDATE partner_order_events_outbox
+                    SET status = 'PENDING',
+                        attempt_count = 0,
+                        next_retry_at = NOW(),
+                        last_error = NULL,
+                        updated_at = NOW()
+                    WHERE id = ANY(:ids)
+                    """
+                ),
+                {"ids": ids},
+            )
+            replayed_count = len(ids)
+        skipped_count = selected_count - replayed_count
+        record_ops_action_audit(
+            db=db,
+            action="I1_OUTBOX_MANUAL_REPLAY_BATCH",
+            result="SUCCESS",
+            correlation_id=f"corr-i1-replay-batch-{datetime.now(timezone.utc).timestamp()}",
+            role="ops_user",
+            details={
+                "dry_run": False,
+                "filters": {
+                    "partner_id": str(partner_id or "") or None,
+                    "status": normalized_status or None,
+                    "event_type": (str(event_type).strip().upper() if str(event_type or "").strip() else None),
+                    "period_from": _to_iso_utc(dt_from) if dt_from else None,
+                    "period_to": _to_iso_utc(dt_to) if dt_to else None,
+                },
+                "selected_count": selected_count,
+                "replayed_count": replayed_count,
+                "sample_ids": ids[:20],
+            },
+        )
+        db.commit()
+        if run_after_replay and replayed_count > 0:
+            worker_batch_size = int(max_deliveries_after_replay or min(int(limit), worker_run_limit_guard))
+            run_result = run_integration_order_events_outbox_once(
+                db,
+                batch_size=worker_batch_size,
+                max_attempts=int(settings.integration_order_events_outbox_max_attempts),
+                base_backoff_sec=int(settings.integration_order_events_outbox_base_backoff_sec),
+            )
+            worker_run_payload = OrderEventOutboxRunOut(ok=True, **run_result)
+    else:
+        skipped_count = selected_count
+
+    # recarrega os itens selecionados para refletir estado final (ou atual no dry_run)
+    ids_for_read = [str(row.get("id") or "") for row in rows if str(row.get("id") or "").strip()]
+    final_rows = []
+    if ids_for_read:
+        final_rows = db.execute(
+            text(
+                """
+                SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+                FROM partner_order_events_outbox
+                WHERE id = ANY(:ids)
+                ORDER BY created_at ASC, id ASC
+                """
+            ),
+            {"ids": ids_for_read},
+        ).mappings().all()
+    items = [
+        OrderEventOutboxItemOut(
+            id=str(row.get("id") or ""),
+            partner_id=str(row.get("partner_id") or ""),
+            order_id=str(row.get("order_id") or ""),
+            event_type=str(row.get("event_type") or ""),
+            status=str(row.get("status") or ""),
+            attempt_count=int(row.get("attempt_count") or 0),
+            max_attempts=int(row.get("max_attempts") or 0),
+            next_retry_at=(_to_iso_utc(row.get("next_retry_at")) if row.get("next_retry_at") else None),
+            delivered_at=(_to_iso_utc(row.get("delivered_at")) if row.get("delivered_at") else None),
+            created_at=_to_iso_utc(row.get("created_at")),
+        )
+        for row in final_rows
+    ]
+    return OrderEventOutboxBatchReplayOut(
+        ok=True,
+        dry_run=bool(dry_run),
+        run_after_replay=bool(run_after_replay),
+        max_deliveries_after_replay=(int(max_deliveries_after_replay) if max_deliveries_after_replay is not None else None),
+        total_candidates=total_candidates,
+        selected_count=selected_count,
+        replayed_count=replayed_count,
+        skipped_count=skipped_count,
+        limit=int(limit),
+        items=items,
+        worker_run=worker_run_payload,
+    )
 
 
 def _safe_delta_pct(current: int, previous: int) -> float:

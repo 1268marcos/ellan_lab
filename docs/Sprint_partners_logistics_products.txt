@@ -124,6 +124,68 @@
 - [x] **D5 (Fulfillment tracking E2E)** concluído com rastreabilidade OPS e comparação temporal.
 - [x] **Decisão operacional**: **GO** para avanço do próximo bloco (continuidade I-1 / evolução L-3), mantendo monitoramento dos alertas P0 em produção.
 
+#### Continuidade I-1 — Replay manual controlado + runbook de incidente
+
+- [x] Endpoint OPS de replay manual controlado publicado: `POST /ops/integration/order-events-outbox/{outbox_id}/replay`.
+- [x] Endpoint OPS de replay em lote com filtros e `dry_run` publicado: `POST /ops/integration/order-events-outbox/replay-batch`.
+- [x] Endpoint de replay em lote evoluído com execução imediata opcional: `run_after_replay=true`.
+- [x] Controle fino adicional em incidente de escala: `max_deliveries_after_replay` (cap separado do `limit`).
+- [x] Operação dedicada no frontend OPS publicada: `/ops/integration/outbox-replay` com formulário técnico, guard rails visíveis e bloco de evidência operacional.
+- [x] Atalhos cruzados NOC publicados no frontend OPS:
+  - atalho direto para `/ops/audit` com filtro de ação `I1_OUTBOX_MANUAL_REPLAY_BATCH`.
+  - atalho contextual no bloco de evidência com `result=SUCCESS|ERROR` conforme última execução.
+- [x] Critério de severidade operacional configurável para `skipped` publicado:
+  - modo `estrito`: `skipped` classifica como erro para investigação imediata.
+  - modo `tolerante`: `skipped` classifica como warning, mantendo foco em `failed/dead_letter`.
+  - preferência persistida em storage local da página OPS para continuidade do plantão.
+- [x] Regras de segurança do replay:
+  - Só permite replay direto para itens em `PENDING|FAILED|DEAD_LETTER|SKIPPED` (ou `DELIVERED` apenas com `force=true`).
+  - Reset operacional de tentativa no replay (`attempt_count=0`) + `status='PENDING'` + `next_retry_at=NOW()`.
+  - Auditoria obrigatória em `ops_action_audit` com ação `I1_OUTBOX_MANUAL_REPLAY`.
+  - Replay em lote só considera status elegíveis (`PENDING|FAILED|DEAD_LETTER|SKIPPED`) e aplica limite de lote.
+  - Modo `dry_run=true` retorna candidatos sem mutação; `dry_run=false` executa replay com reset de tentativa.
+  - Guard rail adicional: `run_after_replay=true` exige `dry_run=false` e `limit<=100`.
+  - Guard rail de cap dedicado: `max_deliveries_after_replay` só permitido com `run_after_replay=true` e limitado a `<=100`.
+  - Guard rail também reforçado no cliente OPS para reduzir erro humano em incidente de larga escala.
+- [x] Robustez adicional no tracking:
+  - Upsert de `order_fulfillment_tracking` ignora item órfão sem `orders.id` correspondente e audita `I1_FULFILLMENT_TRACKING_UPSERT_SKIPPED`, evitando derrubar o worker.
+
+##### Runbook operacional de incidente (I-1 Outbox)
+
+1. **Detectar incidente**
+   - Consultar `GET /ops/integration/order-events-outbox?status=FAILED` e `...status=DEAD_LETTER`.
+   - Verificar `last_error` e volume por parceiro/evento.
+
+2. **Classificar causa**
+   - `HTTP_ERROR_5xx`: parceiro indisponível/degradado.
+   - `Connection refused/timeout`: rota/host não alcançável (rede/DNS/serviço alvo).
+   - `PARTNER_WEBHOOK_ENDPOINT_NOT_FOUND`: endpoint ausente/inativo ou sem inscrição no evento.
+
+3. **Mitigar**
+   - Corrigir endpoint/segredo/event subscription em `partner_webhook_endpoints`.
+   - Se necessário, reduzir impacto por lote com `POST /ops/integration/order-events-outbox/run?batch_size=<n>`.
+
+4. **Replay controlado**
+   - Disparar `POST /ops/integration/order-events-outbox/{outbox_id}/replay`.
+   - Confirmar retorno `replayed=true`, item em `PENDING` e execução posterior do worker.
+
+5. **Validar pós-replay**
+   - Esperado: `PENDING -> DELIVERED` em sucesso.
+   - Em falha persistente: `PENDING -> FAILED` com novo `last_error` (sem perda de trilha).
+   - Repetir diagnóstico antes de novo replay para evitar loop cego.
+
+##### Evidência operacional real (25/04/2026)
+
+- Caso real validado:
+  - item em `DEAD_LETTER` (`attempt_count=2`) -> replay manual (`replayed=true`) -> item volta para `PENDING` com `attempt_count=0`.
+  - nova execução do worker atualizou para `FAILED` com erro de conectividade (`Connection refused`), confirmando replay controlado com trilha preservada.
+- Conclusão operacional: fluxo de replay está funcional e seguro; resolução definitiva depende da saúde/conectividade do endpoint parceiro.
+- Validação do replay em lote:
+  - `dry_run=true`: `selected_count=3`, `replayed_count=0`, itens permanecem `FAILED`.
+  - `dry_run=false`: `selected_count=3`, `replayed_count=3`, itens migrados para `PENDING` com `attempt_count=0`.
+  - `run_after_replay=true`: replay executado e worker disparado na mesma operação, com retorno de telemetria em `worker_run` (`scanned/delivered/failed/dead_letter/skipped`).
+  - `max_deliveries_after_replay=2` validado: replay de 4 itens com execução imediata do worker restrita a `scanned=2`, confirmando cap separado para proteção de throughput.
+
 > Nota operacional: essa validação deve ser iniciada imediatamente e executada em paralelo às novas entregas, sem bloquear o avanço do roadmap.
 
 ---
@@ -1770,11 +1832,11 @@ Para cada item:
   - Evidência operacional: retorno com item `ORDER_PAID` em `PENDING` para parceiro fiscal stub.
 
 - [~] **Bloco 2 — Worker stub de entrega + retry/backoff básico em andamento**
-  - Worker loop adicionado no serviço para processar `partner_order_events_outbox` periodicamente.
-  - Regra inicial de entrega: parceiros `*_stub` marcam `DELIVERED` (stub controlado para validação rápida).
-  - Falha controlada para demais parceiros com `FAILED` + `next_retry_at` (backoff exponencial básico) e transição para `DEAD_LETTER` ao atingir limite.
-  - Auditoria operacional do worker adicionada (`I1_OUTBOX_DELIVERY_STUB`, `I1_OUTBOX_RETRY_SCHEDULED`, `I1_OUTBOX_DEAD_LETTER`).
-  - Endpoint OPS/manual para disparo sob demanda: `POST /ops/integration/order-events-outbox/run`.
+- [x] **Bloco 2 — Worker real de entrega + retry/backoff/dead-letter concluído**
+  - Worker HTTP real publicado com assinatura HMAC, resolução de endpoint ativo por parceiro/evento e envio `POST`.
+  - Retry/backoff e dead-letter consolidados com trilha de auditoria operacional (`I1_OUTBOX_RETRY_SCHEDULED`, `I1_OUTBOX_DEAD_LETTER`, `I1_OUTBOX_DELIVERED`).
+  - Endpoint OPS/manual de execução sob demanda mantido: `POST /ops/integration/order-events-outbox/run`.
+  - Replay manual e replay em lote integrados ao fluxo de resposta de incidente com `dry_run`, `run_after_replay` e `max_deliveries_after_replay`.
 
 #### Triggers de population do outbox
 

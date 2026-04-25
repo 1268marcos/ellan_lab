@@ -45,6 +45,7 @@ const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboa
 const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
+const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -251,6 +252,7 @@ function TopNav() {
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
+    { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -846,6 +848,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductsInventoryHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/integration/outbox-replay"
+              element={
+                <OpsRoute>
+                  <OpsIntegrationOutboxReplayPage />
                 </OpsRoute>
               }
             />

@@ -63,3 +63,24 @@ class OrderFulfillmentTrackingCompareOut(BaseModel):
     delta_pct: float
     current_by_status: dict[str, int]
     previous_by_status: dict[str, int]
+
+
+class OrderEventOutboxReplayOut(BaseModel):
+    ok: bool
+    replayed: bool
+    reason: str | None = None
+    item: OrderEventOutboxItemOut
+
+
+class OrderEventOutboxBatchReplayOut(BaseModel):
+    ok: bool
+    dry_run: bool
+    run_after_replay: bool
+    max_deliveries_after_replay: int | None = None
+    total_candidates: int
+    selected_count: int
+    replayed_count: int
+    skipped_count: int
+    limit: int
+    items: list[OrderEventOutboxItemOut]
+    worker_run: OrderEventOutboxRunOut | None = None
