@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -300,8 +301,31 @@ def post_inventory_reserve(
 
     quantity = int(payload.quantity)
     now = datetime.now(timezone.utc)
-    inventory_before = _load_inventory_row(db=db, product_id=product_id, locker_id=locker_id, slot_size=slot_size)
-    available_before = int(inventory_before.get("quantity_available") or 0)
+    inventory_before_row = db.execute(
+        text(
+            """
+            SELECT
+                id, product_id, locker_id, slot_size, quantity_on_hand, quantity_reserved,
+                quantity_available, reorder_point, reorder_quantity, last_counted_at, updated_at
+            FROM product_inventory
+            WHERE product_id = :product_id AND locker_id = :locker_id AND slot_size = :slot_size
+            FOR UPDATE
+            """
+        ),
+        {"product_id": product_id, "locker_id": locker_id, "slot_size": slot_size},
+    ).mappings().first()
+    if not inventory_before_row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "INVENTORY_NOT_FOUND",
+                "message": "Inventário não encontrado para produto/locker/slot informado.",
+            },
+        )
+    inventory_before = dict(inventory_before_row)
+    available_before = int(inventory_before.get("quantity_on_hand") or 0) - int(
+        inventory_before.get("quantity_reserved") or 0
+    )
     if available_before < quantity:
         raise HTTPException(
             status_code=409,
@@ -313,17 +337,45 @@ def post_inventory_reserve(
             },
         )
 
-    db.execute(
-        text(
-            """
-            UPDATE product_inventory
-            SET quantity_reserved = quantity_reserved + :quantity,
-                updated_at = :updated_at
-            WHERE id = :id
-            """
-        ),
-        {"id": str(inventory_before.get("id")), "quantity": quantity, "updated_at": now},
-    )
+    try:
+        reserve_update = db.execute(
+            text(
+                """
+                UPDATE product_inventory
+                SET quantity_reserved = quantity_reserved + :quantity,
+                    updated_at = :updated_at
+                WHERE id = :id
+                  AND (quantity_on_hand - quantity_reserved) >= :quantity
+                """
+            ),
+            {
+                "id": str(inventory_before.get("id")),
+                "quantity": quantity,
+                "updated_at": now,
+            },
+        )
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "INSUFFICIENT_INVENTORY_CONCURRENT",
+                "message": "Reserva concorrente sem saldo disponível no momento da confirmação.",
+                "available": max(available_before, 0),
+                "requested": quantity,
+            },
+        )
+    if (reserve_update.rowcount or 0) != 1:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "INSUFFICIENT_INVENTORY_CONCURRENT",
+                "message": "Reserva concorrente sem saldo disponível no momento da confirmação.",
+                "available": max(available_before, 0),
+                "requested": quantity,
+            },
+        )
 
     reservation_id = str(uuid4())
     expires_at = now + timedelta(minutes=int(payload.expires_in_minutes))

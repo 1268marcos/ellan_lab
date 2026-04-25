@@ -10,6 +10,124 @@
 
 ---
 
+## Padrão obrigatório de entrega (todos os sprints)
+
+**Diretriz mandatória:** toda entrega deve ser feita em padrão profissional de produção, não em modo MVP.
+
+- [x] Aplicar arquitetura evolutiva segura (migrações idempotentes, compatibilidade, versionamento de contrato).
+- [x] Garantir resiliência operacional (idempotência, retry/backoff, dead-letter, timeouts e tratamento explícito de falhas).
+- [x] Garantir observabilidade/auditoria ponta a ponta (ações, erros, before/after quando aplicável, correlação operacional).
+- [x] Garantir segurança e governança (RBAC, validação forte de input, segregação de rotas internas/OPS).
+- [x] Validar com evidência técnica (smoke/E2E incluindo cenário de falha, e critério de go/no-go).
+- [x] Manter consistência UX/CX OPS (presets, persistência de filtros, mensagens operacionais claras e semântica visual unificada).
+
+### Validação retroativa dos sprints anteriores contra esta diretriz
+
+- [x] Executar revisão técnica retroativa dos sprints já entregues (P-1, P-2, L-1, L-2, Pr-1, Pr-2, Pr-3, I-1 parcial) usando este padrão como checklist obrigatório.
+- [x] Registrar evidências por sprint (atende / gap / risco / ação corretiva).
+- [~] Consolidar plano de hardening com prioridade operacional (P0/P1/P2) e responsáveis.
+
+#### Resultado da revisão retroativa (atende / gap / risco / ação corretiva)
+
+- **P-1 · Partners Identity & Onboarding** — atende: modelo base + auditoria operacional; gap: cobertura de testes de regressão e runbook formal; risco: regressão silenciosa em transições de status; ação corretiva: adicionar suíte de testes de transição e publicar runbook de incidentes de onboarding (**P1**).
+- **P-2 · Partner Integration Health & Webhooks** — atende: worker com retry/backoff, dead-letter, assinatura e monitoramento OPS; gap: hardening final de observabilidade (métricas de latência por endpoint e taxa de erro agregada); risco: degradação progressiva sem alerta antecipado; ação corretiva: expor métricas por parceiro/endpoint e alertas de SLO de entrega (**P0**).
+- **L-1 · Carrier Tracking & Event Model** — atende: ingestão de eventos, tentativas e labels com trilha OPS; gap: normalização completa de códigos de carrier e testes de contrato por mapeamento; risco: inconsistência de status entre carriers; ação corretiva: catálogo versionado de mapeamento + testes de contrato por carrier (**P1**).
+- **L-2 · Returns & Reverse Logistics** — atende: fluxo operacional e visão OPS inicial; gap: fechamento de ciclo com reconciliação automática e runbook de exceções de retorno; risco: acúmulo de itens em estado intermediário; ação corretiva: job de reconciliação de retornos + playbook de tratamento operacional (**P1**).
+- **Pr-1 · Product Catalog & Lifecycle** — atende: status lifecycle, histórico e filtros operacionais; gap: governança de integridade referencial de catálogo ampliado (fornecedor/variante/mídia); risco: drift de dados no catálogo em escala; ação corretiva: reforçar constraints/validações e adicionar checks periódicos de consistência (**P2**).
+- **Pr-2 · Inventory & Availability per Locker** — atende: reserva idempotente, expiração, reconciliação e dashboards OPS; gap: cobertura E2E de concorrência alta e cenários de falha intermitente; risco: divergência reservada vs ativa em picos; ação corretiva: testes de stress concorrente + alerta preditivo de divergência por locker/produto (**P0**).
+- **Pr-3 · Pricing, Bundles & Fiscal Auto-Classification** — atende: bundles/promoções/fiscal config, idempotência de validação e overview OPS; gap: suíte de regressão para regras avançadas e fallback fiscal por categoria/default; risco: classificação indevida sem bloqueio preventivo; ação corretiva: testes automatizados de regras fiscais/promocionais e guard-rails de validação antes de emissão (**P0**).
+- **I-1 (parcial) · Orders ↔ Partners ↔ Fiscal Wiring** — atende: outbox fiscal integrado, endpoint OPS e worker stub com retry/backoff básico; gap: entrega real para endpoints de parceiros + tracking de fulfillment completo; risco: falso senso de pronto por depender de stub; ação corretiva: implementar worker de entrega real com contrato versionado/HMAC/replay e fechar `order_fulfillment_tracking` ponta a ponta (**P0**).
+
+#### Plano consolidado de hardening (prioridade)
+
+- **P0 (imediato)**: P-2 observabilidade/SLO de webhook, Pr-2 testes de concorrência e alerta preditivo, Pr-3 regressão fiscal/promo, I-1 worker real + fulfillment tracking.
+- **P1 (curto prazo)**: P-1 runbook + regressão de transições, L-1 contratos de mapeamento carrier, L-2 reconciliação e playbook de exceções.
+- **P2 (médio prazo)**: Pr-1 governança ampliada do catálogo com checks de consistência contínuos.
+
+#### Sequência operacional D1..D5 — Hardening P0
+
+##### D1 — P-2 observabilidade/SLO de webhook (instrumentação + baseline)
+- [x] **Objetivo**: medir latência, taxa de erro e backlog por parceiro/endpoint com corte temporal operacional.
+- [x] **Entregáveis mínimos**: métricas consolidadas no OPS + alertas iniciais para degradação (erro/latência/backlog).
+- [x] **Critério de aceite**: endpoint/visão OPS exibe série temporal e ranking por parceiro; alertas disparam em limiares definidos.
+- [x] **Evidência obrigatória**: payload de resposta OPS com métricas preenchidas + print/log de alerta acionado em cenário controlado.
+- [x] **Evidência real D1 (25/04/2026)**:
+  - Endpoint publicado: `GET /partners/ops/webhooks/metrics` (com `daily`, `top_partners`, `top_endpoints`, `alerts`).
+  - Janela validada: `from=2026-04-18T20:45:40.555717+00:00` até `to=2026-04-25T20:45:40.555717+00:00`.
+  - Resultado operacional: `total_deliveries=7`, `total_delivered=2`, `total_dead_letter=5`, `error_rate_pct=71.43`, `backlog_pending_failed=0`.
+  - Alertas disparados na validação: `ALERTS_COUNT=4`, incluindo `WEBHOOK_ERROR_RATE_HIGH` (threshold `5.0`, valor `71.43`).
+
+##### D2 — Pr-2 concorrência de reservas (stress + consistência)
+- [x] **Objetivo**: validar integridade de `quantity_reserved` e reservas ativas sob concorrência alta e falha intermitente.
+- [x] **Entregáveis mínimos**: suíte de teste concorrente (reserva/release/consume/expire) e relatório de divergência pós-carga.
+- [x] **Critério de aceite**: sem divergência líquida após reconciliação automática; divergências transitórias viram alerta OPS rastreável.
+- [x] **Evidência obrigatória**: resultado do teste de stress + consulta OPS de reconciliação mostrando estado consistente.
+- [x] **Evidência real D2 (25/04/2026)**:
+  - Suíte criada: `stress/inventory_reservations_stress.py` (concorrência em `reserve`, transições `consume/release/expire`, injeção controlada de divergência e execução do job de reconciliação).
+  - Execução real: `workers=12`, `attempts=30`, `reserve_success=13`, `reserve_failure=17`, `consume_success=8`, `release_success=5`, `expired_by_job=0`.
+  - Evidência de reconciliação no alvo: antes da injeção `delta=0` (`reserved_stored=12` vs `reserved_active=12`), após injeção `delta=-3`, após reconciliação `delta=0`.
+  - Job de reconciliação durante o cenário: `auto_fixed=1`, `divergence_alerts=1`, `orphan_active_groups=0`.
+  - Validação OPS final (`POST /ops/inventory/reconciliation/run`): `ok=true`, `auto_fixed=0`, `divergence_alerts=0`, `orphan_active_groups=0`.
+  - Evidência persistida no runtime: `/tmp/evidence_inventory_d2.json` (container `order_pickup_service`).
+  - Achado técnico crítico: houve `IntegrityError` concorrente (`ck_pi_reserved_leq_hand`) no `reserve`, indicando condição de corrida no update de `quantity_reserved`; tratar hardening de atomicidade/locking como ação imediata de correção.
+  - **Hardening P0 executado (25/04/2026)**:
+    - `POST /inventory/reserve` atualizado com estratégia transacional de concorrência: leitura com `SELECT ... FOR UPDATE` + `UPDATE` atômico com guarda de disponibilidade (`quantity_on_hand - quantity_reserved >= :quantity`).
+    - Resultado pós-hardening no mesmo stress: `reserve_success=13`, `reserve_failure=17`, porém `failure_breakdown={(409, INSUFFICIENT_INVENTORY): 17}`.
+    - Evidência de melhoria: falhas de corrida deixaram de gerar `500/IntegrityError` e passaram para rejeição de negócio controlada (`409`) sob contenção.
+    - Evidência pós-hardening persistida: `/tmp/evidence_inventory_d2_after_hardening.json` (container `order_pickup_service`).
+
+##### D3 — Pr-3 regressão fiscal/promocional (regras críticas)
+- [x] **Objetivo**: blindar regras avançadas de promoção e auto-classificação fiscal contra regressão.
+- [x] **Entregáveis mínimos**: testes automatizados para `BUY_X_GET_Y`, `FREE_ITEM`, `BUNDLE_DISCOUNT`, fallback `CATEGORY_FALLBACK` e `DEFAULT`.
+- [x] **Critério de aceite**: cobertura dos cenários críticos com aprovação contínua em pipeline local; idempotência preservada na validação de promoção.
+- [x] **Evidência obrigatória**: execução da suíte com sucesso + amostra de casos por regra com resultado esperado.
+- [x] **Evidência real D3 (25/04/2026)**:
+  - Suíte adicionada: `tests/test_pr3_regression_rules.py`.
+  - Casos cobertos: cálculo de desconto para `BUY_X_GET_Y`, `FREE_ITEM`, `BUNDLE_DISCOUNT` (com cap), idempotência de `POST /promotions/validate`, e classificação fiscal com `CATEGORY_FALLBACK` + `DEFAULT` (incluindo alerta default).
+  - Execução validada no container: `pytest -q tests/test_pr3_regression_rules.py` com resultado `5 passed`.
+  - Observação de qualidade: warnings depreciação/pytest cache sem impacto funcional na suíte D3.
+
+##### D4 — I-1 worker real de entrega (sem stub) com contrato versionado
+- [x] **Objetivo**: substituir entrega stub por entrega real para endpoint de parceiro com segurança e rastreabilidade.
+- [x] **Entregáveis mínimos**: worker de entrega HTTP real com HMAC, retry/backoff, dead-letter, replay operacional e auditoria por tentativa.
+- [x] **Critério de aceite**: fluxo completo `PENDING -> DELIVERED` em sucesso e `PENDING/FAILED -> DEAD_LETTER` em falha controlada.
+- [x] **Evidência obrigatória**: E2E com endpoint mock 2xx e 5xx, incluindo histórico de tentativas e status final no outbox.
+- [x] **Evidência real D4 (25/04/2026)**:
+  - Worker I-1 atualizado em `app/jobs/integration_order_events_outbox.py` para entrega HTTP real por endpoint ativo (`partner_webhook_endpoints`) com filtro por evento, HMAC (`X-Ellan-Signature`) e headers de contrato (`X-Ellan-Event`, `X-Ellan-Event-Id`, `X-Ellan-Api-Version`).
+  - Política de retry/backoff passou a respeitar `retry_policy` por endpoint (`max_attempts`, `backoff_sec`) e transicionar para `DEAD_LETTER` ao atingir limite.
+  - Auditoria operacional por tentativa: `I1_OUTBOX_DELIVERED`, `I1_OUTBOX_RETRY_SCHEDULED`, `I1_OUTBOX_DEAD_LETTER` e `I1_OUTBOX_ENDPOINT_MISSING`.
+  - E2E cenário `2xx` (mock `/internal/mock/webhook-ok`): `scanned=1`, `delivered=1`, estado final `DELIVERED`, `attempt_count=1`.
+  - E2E cenário `5xx` (mock `/internal/mock/webhook-fail`): 1a execução `FAILED` com `next_retry_at`; 2a execução `DEAD_LETTER` com `attempt_count=2` e `last_error=HTTP_ERROR_500`.
+
+##### D5 — I-1 fulfillment tracking ponta a ponta + go/no-go P0
+- [x] **Objetivo**: fechar rastreabilidade Orders ↔ Partners ↔ Fiscal com visão operacional única de estado.
+- [x] **Entregáveis mínimos**: `order_fulfillment_tracking` populado por transição de pedido + endpoint OPS de inspeção e comparação temporal.
+- [x] **Critério de aceite**: pedidos com eventos de integração e estado de fulfillment coerentes entre domínios; checklist go/no-go P0 concluído.
+- [x] **Evidência obrigatória**: consulta OPS com casos reais de ponta a ponta + bloco final de decisão go/no-go registrado no documento.
+- [x] **Evidência real D5 (25/04/2026)**:
+  - Modelo + migração idempotente adicionados para `order_fulfillment_tracking` (incluindo índices e status operacionais).
+  - Wiring aplicado no fluxo I-1: enqueue de outbox e worker de entrega atualizam tracking via `upsert_order_fulfillment_tracking`.
+  - Endpoints OPS publicados:
+    - `GET /ops/integration/order-fulfillment-tracking`
+    - `GET /ops/integration/order-fulfillment-tracking/compare`
+  - E2E ponta a ponta com parceiro isolado `ptn_d5_80b6932f`:
+    - cenário sucesso: `ORDER_PAID` entregue -> tracking `ALLOCATED` com `last_outbox_status=DELIVERED`.
+    - cenário falha controlada: retry/backoff até `DEAD_LETTER` -> tracking `CANCELLED` com `last_outbox_status=DEAD_LETTER`.
+  - Evidência de comparação temporal OPS: `current_total=2`, `current_by_status={ALLOCATED:1, CANCELLED:1}`.
+
+#### Go/No-Go P0 — Fechamento D1..D5
+
+- [x] **D1 (Webhook observability/SLO)** concluído com métricas e alertas operacionais ativos.
+- [x] **D2 (Reserva concorrente + reconciliação)** concluído com hardening transacional (`FOR UPDATE` + update condicional) e falha controlada.
+- [x] **D3 (Regressão fiscal/promocional)** concluído com suíte automatizada crítica (`5 passed`).
+- [x] **D4 (Worker real I-1)** concluído com entrega HTTP real, retry/backoff e dead-letter validados em 2xx/5xx.
+- [x] **D5 (Fulfillment tracking E2E)** concluído com rastreabilidade OPS e comparação temporal.
+- [x] **Decisão operacional**: **GO** para avanço do próximo bloco (continuidade I-1 / evolução L-3), mantendo monitoramento dos alertas P0 em produção.
+
+> Nota operacional: essa validação deve ser iniciada imediatamente e executada em paralelo às novas entregas, sem bloquear o avanço do roadmap.
+
+---
+
 ## Quadro-resumo de acompanhamento semanal
 
 - [~] P-1 · Partners · Partner Identity & Onboarding · Owner: Squad Partners (Líder: TBD) · Semana alvo: Semana 1-2
@@ -21,7 +139,7 @@
 - [ ] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
 - [~] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
 - [ ] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
-- [ ] I-1 · Integration · Orders ↔ Partners ↔ Fiscal Wiring · Owner: Platform Integrations + Arquitetura · Semana alvo: Semana 7-8
+- [~] I-1 · Integration · Orders ↔ Partners ↔ Fiscal Wiring · Owner: Platform Integrations + Arquitetura · Semana alvo: Semana 7-8
 
 ---
 
@@ -1569,7 +1687,7 @@ Resultado: invoice.items_json e invoice.tax_breakdown_json sempre populados
 
 ## INTEGRATION SPRINT
 
-### [ ] Sprint I-1 · "Orders ↔ Partners ↔ Fiscal — Wiring" (2 semanas)
+### [~] Sprint I-1 · "Orders ↔ Partners ↔ Fiscal — Wiring" (2 semanas)
 
 **Objetivo:** Fechar os três fios soltos críticos: eventos de order para parceiros, fulfillment tracking e auto-classificação fiscal. Tudo como stubs rastreáveis e operacionalizáveis.
 
@@ -1641,6 +1759,22 @@ Para cada item:
     4. Falha → incrementa attempt_count, calcula next_retry_at (backoff exponencial)
     5. attempt_count >= max_attempts → status='DEAD_LETTER', alerta OPS
 ```
+
+#### Execução incremental I-1 (hoje)
+
+- [x] **Bloco 1 — Wiring Orders ↔ Fiscal ↔ Outbox concluído**
+  - Modelo + migração idempotente de `partner_order_events_outbox` aplicados.
+  - `enqueue_partner_order_paid_event_if_needed` integrado ao fluxo fiscal (ordem paga gera evento `ORDER_PAID` idempotente).
+  - Auditoria operacional adicionada (`I1_ORDER_FISCAL_OUTBOX_ENQUEUE`) com `order_id` e `partner_id`.
+  - Endpoint OPS de inspeção publicado: `GET /ops/integration/order-events-outbox` (filtros + paginação).
+  - Evidência operacional: retorno com item `ORDER_PAID` em `PENDING` para parceiro fiscal stub.
+
+- [~] **Bloco 2 — Worker stub de entrega + retry/backoff básico em andamento**
+  - Worker loop adicionado no serviço para processar `partner_order_events_outbox` periodicamente.
+  - Regra inicial de entrega: parceiros `*_stub` marcam `DELIVERED` (stub controlado para validação rápida).
+  - Falha controlada para demais parceiros com `FAILED` + `next_retry_at` (backoff exponencial básico) e transição para `DEAD_LETTER` ao atingir limite.
+  - Auditoria operacional do worker adicionada (`I1_OUTBOX_DELIVERY_STUB`, `I1_OUTBOX_RETRY_SCHEDULED`, `I1_OUTBOX_DEAD_LETTER`).
+  - Endpoint OPS/manual para disparo sob demanda: `POST /ops/integration/order-events-outbox/run`.
 
 #### Triggers de population do outbox
 

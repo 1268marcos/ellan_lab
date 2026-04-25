@@ -15,6 +15,7 @@ from app.core.version import get_version
 from app.health.health import router as health_router
 from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
+from app.jobs.integration_order_events_outbox import run_integration_order_events_outbox_once
 from app.jobs.inventory_reserved_reconciliation import run_inventory_reserved_reconciliation_once
 from app.jobs.inventory_reservations_expiry import run_inventory_reservations_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
@@ -128,6 +129,7 @@ lifecycle_events_task: asyncio.Task | None = None
 reconciliation_retry_task: asyncio.Task | None = None
 inventory_reservation_expiry_task: asyncio.Task | None = None
 inventory_reserved_reconciliation_task: asyncio.Task | None = None
+integration_order_events_outbox_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
@@ -180,6 +182,13 @@ async def startup():
             name="inventory_reserved_reconciliation_loop",
         )
 
+    global integration_order_events_outbox_task
+    if integration_order_events_outbox_task is None:
+        integration_order_events_outbox_task = asyncio.create_task(
+            integration_order_events_outbox_loop(),
+            name="integration_order_events_outbox_loop",
+        )
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -227,6 +236,15 @@ async def shutdown():
         except asyncio.CancelledError:
             pass
         inventory_reserved_reconciliation_task = None
+
+    global integration_order_events_outbox_task
+    if integration_order_events_outbox_task:
+        integration_order_events_outbox_task.cancel()
+        try:
+            await integration_order_events_outbox_task
+        except asyncio.CancelledError:
+            pass
+        integration_order_events_outbox_task = None
 
 
 async def expiry_loop():
@@ -296,6 +314,25 @@ async def inventory_reserved_reconciliation_loop():
             db.close()
 
         await asyncio.sleep(settings.inventory_reserved_reconciliation_poll_sec)
+
+
+async def integration_order_events_outbox_loop():
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(
+                run_integration_order_events_outbox_once,
+                db,
+                batch_size=settings.integration_order_events_outbox_batch_size,
+                max_attempts=settings.integration_order_events_outbox_max_attempts,
+                base_backoff_sec=settings.integration_order_events_outbox_base_backoff_sec,
+            )
+        except Exception:
+            logger.exception("integration order events outbox loop failed")
+        finally:
+            db.close()
+
+        await asyncio.sleep(settings.integration_order_events_outbox_poll_sec)
 
 
 @app.exception_handler(Exception)

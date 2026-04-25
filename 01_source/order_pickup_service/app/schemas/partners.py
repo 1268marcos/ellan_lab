@@ -355,3 +355,69 @@ class PartnerOpsDashboardOut(BaseModel):
     kpis: PartnerOpsKpisOut | None = None
     compare: PartnerOpsCompareOut | None = None
     changes_series: PartnerOpsChangesSeriesOut | None = None
+
+
+class PartnerWebhookOpsDailyOut(BaseModel):
+    day: str
+    total: int
+    delivered: int
+    failed: int
+    dead_letter: int
+    pending: int
+    error_rate_pct: float
+
+
+class PartnerWebhookOpsTopPartnerOut(BaseModel):
+    partner_id: str
+    total: int
+    failed: int
+    dead_letter: int
+    pending: int
+    error_rate_pct: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+
+
+class PartnerWebhookOpsTopEndpointOut(BaseModel):
+    endpoint_id: str
+    partner_id: str
+    endpoint_url: str
+    total: int
+    failed: int
+    dead_letter: int
+    pending: int
+    error_rate_pct: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+
+
+class PartnerWebhookOpsAlertOut(BaseModel):
+    code: str
+    severity: str
+    title: str
+    message: str
+    value: float
+    threshold: float
+    partner_id: str | None = None
+    endpoint_id: str | None = None
+    endpoint_url: str | None = None
+
+
+class PartnerWebhookOpsMetricsOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    timezone_ref: str
+    partner_id: str | None = None
+    total_deliveries: int
+    total_delivered: int
+    total_failed: int
+    total_dead_letter: int
+    backlog_pending_failed: int
+    error_rate_pct: float
+    avg_latency_ms: float
+    p95_latency_ms: float
+    daily: list[PartnerWebhookOpsDailyOut]
+    top_partners: list[PartnerWebhookOpsTopPartnerOut]
+    top_endpoints: list[PartnerWebhookOpsTopEndpointOut]
+    alerts: list[PartnerWebhookOpsAlertOut]

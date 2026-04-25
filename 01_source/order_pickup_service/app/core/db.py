@@ -676,6 +676,7 @@ def init_db():
         PromotionProductExclusion,
     )
     from app.models.partner_order_events_outbox import PartnerOrderEventOutbox  # noqa: F401
+    from app.models.order_fulfillment_tracking import OrderFulfillmentTracking  # noqa: F401
 
     # 🔥 CAPABILITY CATALOG (BLOCO 12)
     from app.models.capability import (  # noqa: F401

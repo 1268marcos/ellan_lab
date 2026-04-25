@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.order_fulfillment_tracking_service import upsert_order_fulfillment_tracking
 
 def enqueue_partner_order_paid_event_if_needed(
     db: Session,
@@ -30,6 +31,13 @@ def enqueue_partner_order_paid_event_if_needed(
         {"partner_id": partner_id, "order_id": order_id},
     ).mappings().first()
     if existing:
+        upsert_order_fulfillment_tracking(
+            db,
+            order_id=order_id,
+            partner_id=partner_id,
+            event_type="ORDER_PAID",
+            outbox_status=str(existing.get("status") or "PENDING"),
+        )
         return dict(existing), True
 
     row_id = str(uuid4())
@@ -62,6 +70,13 @@ def enqueue_partner_order_paid_event_if_needed(
         ),
         {"id": row_id},
     ).mappings().first()
+    upsert_order_fulfillment_tracking(
+        db,
+        order_id=order_id,
+        partner_id=partner_id,
+        event_type="ORDER_PAID",
+        outbox_status="PENDING",
+    )
     return dict(created or {}), False
 
 

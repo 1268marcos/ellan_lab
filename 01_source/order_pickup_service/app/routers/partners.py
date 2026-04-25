@@ -66,6 +66,11 @@ from app.schemas.partners import (
     PartnerWebhookDeliveryListOut,
     PartnerWebhookDeliveryOut,
     PartnerWebhookDeliveryTestIn,
+    PartnerWebhookOpsAlertOut,
+    PartnerWebhookOpsDailyOut,
+    PartnerWebhookOpsMetricsOut,
+    PartnerWebhookOpsTopEndpointOut,
+    PartnerWebhookOpsTopPartnerOut,
 )
 
 router = APIRouter(
@@ -801,6 +806,402 @@ def get_partner_health(
         for row in rows
     ]
     return PartnerIntegrationHealthListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/ops/webhooks/metrics", response_model=PartnerWebhookOpsMetricsOut)
+def get_partners_ops_webhook_metrics(
+    partner_id: str | None = Query(default=None),
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    top_n: int = Query(default=5, ge=1, le=20),
+    threshold_error_rate_pct: float = Query(default=5.0, ge=0, le=100),
+    threshold_p95_latency_ms: float = Query(default=4000.0, ge=0, le=600000),
+    threshold_backlog: int = Query(default=25, ge=0, le=100000),
+    threshold_endpoint_error_rate_pct: float = Query(default=10.0, ge=0, le=100),
+    threshold_endpoint_p95_latency_ms: float = Query(default=5000.0, ge=0, le=600000),
+    threshold_endpoint_backlog: int = Query(default=10, ge=0, le=100000),
+    threshold_dead_letter: int = Query(default=1, ge=0, le=100000),
+    include_alerts: bool = Query(default=True),
+    db: Session = Depends(get_db),
+):
+    dt_to = _parse_iso_datetime_utc_optional(to, field_name="to") or datetime.now(timezone.utc)
+    dt_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (dt_to - timedelta(days=7))
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
+        )
+
+    where_parts = [
+        "d.created_at >= :dt_from",
+        "d.created_at <= :dt_to",
+    ]
+    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to, "top_n": int(top_n)}
+    normalized_partner_id = str(partner_id or "").strip()
+    if normalized_partner_id:
+        where_parts.append("e.partner_id = :partner_id")
+        params["partner_id"] = normalized_partner_id
+    where_sql = " AND ".join(where_parts)
+
+    total_row = db.execute(
+        text(
+            f"""
+            SELECT
+                COUNT(*)::int AS total_deliveries,
+                COUNT(*) FILTER (WHERE d.status = 'DELIVERED')::int AS total_delivered,
+                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS total_failed,
+                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS total_dead_letter,
+                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS backlog_pending_failed,
+                COALESCE(
+                    ROUND(
+                        (
+                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
+                            / NULLIF(COUNT(*)::numeric, 0)
+                        ) * 100.0,
+                        2
+                    ),
+                    0
+                ) AS error_rate_pct,
+                COALESCE(
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS avg_latency_ms,
+                COALESCE(
+                    ROUND(
+                        percentile_cont(0.95) WITHIN GROUP (
+                            ORDER BY CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS p95_latency_ms
+            FROM partner_webhook_deliveries d
+            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
+            WHERE {where_sql}
+            """
+        ),
+        params,
+    ).mappings().first() or {}
+
+    daily_rows = db.execute(
+        text(
+            f"""
+            SELECT
+                DATE_TRUNC('day', d.created_at) AS day_ref,
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE d.status = 'DELIVERED')::int AS delivered,
+                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
+                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
+                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
+                COALESCE(
+                    ROUND(
+                        (
+                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
+                            / NULLIF(COUNT(*)::numeric, 0)
+                        ) * 100.0,
+                        2
+                    ),
+                    0
+                ) AS error_rate_pct
+            FROM partner_webhook_deliveries d
+            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
+            WHERE {where_sql}
+            GROUP BY DATE_TRUNC('day', d.created_at)
+            ORDER BY DATE_TRUNC('day', d.created_at) ASC
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    top_partner_rows = db.execute(
+        text(
+            f"""
+            SELECT
+                e.partner_id AS partner_id,
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
+                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
+                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
+                COALESCE(
+                    ROUND(
+                        (
+                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
+                            / NULLIF(COUNT(*)::numeric, 0)
+                        ) * 100.0,
+                        2
+                    ),
+                    0
+                ) AS error_rate_pct,
+                COALESCE(
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS avg_latency_ms,
+                COALESCE(
+                    ROUND(
+                        percentile_cont(0.95) WITHIN GROUP (
+                            ORDER BY CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS p95_latency_ms
+            FROM partner_webhook_deliveries d
+            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
+            WHERE {where_sql}
+            GROUP BY e.partner_id
+            ORDER BY total DESC, partner_id ASC
+            LIMIT :top_n
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    top_endpoint_rows = db.execute(
+        text(
+            f"""
+            SELECT
+                d.endpoint_id AS endpoint_id,
+                e.partner_id AS partner_id,
+                e.url AS endpoint_url,
+                COUNT(*)::int AS total,
+                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
+                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
+                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
+                COALESCE(
+                    ROUND(
+                        (
+                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
+                            / NULLIF(COUNT(*)::numeric, 0)
+                        ) * 100.0,
+                        2
+                    ),
+                    0
+                ) AS error_rate_pct,
+                COALESCE(
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS avg_latency_ms,
+                COALESCE(
+                    ROUND(
+                        percentile_cont(0.95) WITHIN GROUP (
+                            ORDER BY CASE
+                                WHEN d.delivered_at IS NOT NULL
+                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
+                                ELSE NULL
+                            END
+                        )::numeric,
+                        2
+                    ),
+                    0
+                ) AS p95_latency_ms
+            FROM partner_webhook_deliveries d
+            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
+            WHERE {where_sql}
+            GROUP BY d.endpoint_id, e.partner_id, e.url
+            ORDER BY total DESC, endpoint_id ASC
+            LIMIT :top_n
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    total_deliveries = int(total_row.get("total_deliveries") or 0)
+    total_delivered = int(total_row.get("total_delivered") or 0)
+    total_failed = int(total_row.get("total_failed") or 0)
+    total_dead_letter = int(total_row.get("total_dead_letter") or 0)
+    backlog_pending_failed = int(total_row.get("backlog_pending_failed") or 0)
+    error_rate_pct = float(total_row.get("error_rate_pct") or 0.0)
+    avg_latency_ms = float(total_row.get("avg_latency_ms") or 0.0)
+    p95_latency_ms = float(total_row.get("p95_latency_ms") or 0.0)
+
+    daily = [
+        PartnerWebhookOpsDailyOut(
+            day=_to_iso_utc(row.get("day_ref")),
+            total=int(row.get("total") or 0),
+            delivered=int(row.get("delivered") or 0),
+            failed=int(row.get("failed") or 0),
+            dead_letter=int(row.get("dead_letter") or 0),
+            pending=int(row.get("pending") or 0),
+            error_rate_pct=float(row.get("error_rate_pct") or 0.0),
+        )
+        for row in daily_rows
+    ]
+    top_partners = [
+        PartnerWebhookOpsTopPartnerOut(
+            partner_id=str(row.get("partner_id") or ""),
+            total=int(row.get("total") or 0),
+            failed=int(row.get("failed") or 0),
+            dead_letter=int(row.get("dead_letter") or 0),
+            pending=int(row.get("pending") or 0),
+            error_rate_pct=float(row.get("error_rate_pct") or 0.0),
+            avg_latency_ms=float(row.get("avg_latency_ms") or 0.0),
+            p95_latency_ms=float(row.get("p95_latency_ms") or 0.0),
+        )
+        for row in top_partner_rows
+    ]
+    top_endpoints = [
+        PartnerWebhookOpsTopEndpointOut(
+            endpoint_id=str(row.get("endpoint_id") or ""),
+            partner_id=str(row.get("partner_id") or ""),
+            endpoint_url=str(row.get("endpoint_url") or ""),
+            total=int(row.get("total") or 0),
+            failed=int(row.get("failed") or 0),
+            dead_letter=int(row.get("dead_letter") or 0),
+            pending=int(row.get("pending") or 0),
+            error_rate_pct=float(row.get("error_rate_pct") or 0.0),
+            avg_latency_ms=float(row.get("avg_latency_ms") or 0.0),
+            p95_latency_ms=float(row.get("p95_latency_ms") or 0.0),
+        )
+        for row in top_endpoint_rows
+    ]
+
+    alerts: list[PartnerWebhookOpsAlertOut] = []
+    if include_alerts:
+        if error_rate_pct >= threshold_error_rate_pct:
+            alerts.append(
+                PartnerWebhookOpsAlertOut(
+                    code="WEBHOOK_ERROR_RATE_HIGH",
+                    severity="HIGH",
+                    title="Taxa de erro global acima do limite",
+                    message="Taxa de erro de webhook acima do limiar operacional definido.",
+                    value=error_rate_pct,
+                    threshold=float(threshold_error_rate_pct),
+                )
+            )
+        if p95_latency_ms >= threshold_p95_latency_ms:
+            alerts.append(
+                PartnerWebhookOpsAlertOut(
+                    code="WEBHOOK_P95_LATENCY_HIGH",
+                    severity="MEDIUM",
+                    title="Latência P95 global acima do limite",
+                    message="Latência P95 de entrega de webhook acima do limiar operacional.",
+                    value=p95_latency_ms,
+                    threshold=float(threshold_p95_latency_ms),
+                )
+            )
+        if backlog_pending_failed >= threshold_backlog:
+            alerts.append(
+                PartnerWebhookOpsAlertOut(
+                    code="WEBHOOK_BACKLOG_HIGH",
+                    severity="HIGH",
+                    title="Backlog de webhook acima do limite",
+                    message="Volume de eventos pendentes/falhos acima do limiar operacional.",
+                    value=float(backlog_pending_failed),
+                    threshold=float(threshold_backlog),
+                )
+            )
+        if total_dead_letter >= threshold_dead_letter:
+            alerts.append(
+                PartnerWebhookOpsAlertOut(
+                    code="WEBHOOK_DEAD_LETTER_DETECTED",
+                    severity="HIGH",
+                    title="Dead-letter detectado",
+                    message="Existem eventos em dead-letter na janela consultada.",
+                    value=float(total_dead_letter),
+                    threshold=float(threshold_dead_letter),
+                )
+            )
+
+        for endpoint in top_endpoints:
+            if endpoint.error_rate_pct >= threshold_endpoint_error_rate_pct:
+                alerts.append(
+                    PartnerWebhookOpsAlertOut(
+                        code="WEBHOOK_ENDPOINT_ERROR_RATE_HIGH",
+                        severity="HIGH",
+                        title="Endpoint com taxa de erro elevada",
+                        message="Endpoint com taxa de erro acima do limiar por endpoint.",
+                        value=endpoint.error_rate_pct,
+                        threshold=float(threshold_endpoint_error_rate_pct),
+                        partner_id=endpoint.partner_id,
+                        endpoint_id=endpoint.endpoint_id,
+                        endpoint_url=endpoint.endpoint_url,
+                    )
+                )
+            if endpoint.p95_latency_ms >= threshold_endpoint_p95_latency_ms:
+                alerts.append(
+                    PartnerWebhookOpsAlertOut(
+                        code="WEBHOOK_ENDPOINT_P95_LATENCY_HIGH",
+                        severity="MEDIUM",
+                        title="Endpoint com latência P95 elevada",
+                        message="Endpoint com latência acima do limiar por endpoint.",
+                        value=endpoint.p95_latency_ms,
+                        threshold=float(threshold_endpoint_p95_latency_ms),
+                        partner_id=endpoint.partner_id,
+                        endpoint_id=endpoint.endpoint_id,
+                        endpoint_url=endpoint.endpoint_url,
+                    )
+                )
+            if endpoint.pending >= threshold_endpoint_backlog:
+                alerts.append(
+                    PartnerWebhookOpsAlertOut(
+                        code="WEBHOOK_ENDPOINT_BACKLOG_HIGH",
+                        severity="HIGH",
+                        title="Endpoint com backlog elevado",
+                        message="Endpoint com pendências/falhas acima do limiar por endpoint.",
+                        value=float(endpoint.pending),
+                        threshold=float(threshold_endpoint_backlog),
+                        partner_id=endpoint.partner_id,
+                        endpoint_id=endpoint.endpoint_id,
+                        endpoint_url=endpoint.endpoint_url,
+                    )
+                )
+
+    return PartnerWebhookOpsMetricsOut(
+        ok=True,
+        **{
+            "from": _to_iso_utc(dt_from),
+            "to": _to_iso_utc(dt_to),
+        },
+        timezone_ref="UTC",
+        partner_id=(normalized_partner_id or None),
+        total_deliveries=total_deliveries,
+        total_delivered=total_delivered,
+        total_failed=total_failed,
+        total_dead_letter=total_dead_letter,
+        backlog_pending_failed=backlog_pending_failed,
+        error_rate_pct=error_rate_pct,
+        avg_latency_ms=avg_latency_ms,
+        p95_latency_ms=p95_latency_ms,
+        daily=daily,
+        top_partners=top_partners,
+        top_endpoints=top_endpoints,
+        alerts=alerts,
+    )
 
 
 @router.get("/ops/audit", response_model=PartnerOpsAuditListOut)

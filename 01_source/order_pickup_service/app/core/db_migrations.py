@@ -1904,6 +1904,42 @@ def _create_partner_order_events_outbox(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_order_fulfillment_tracking(conn, applied: list[str]) -> None:
+    name = "order_fulfillment_tracking.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS order_fulfillment_tracking (
+            id                  VARCHAR(36) PRIMARY KEY,
+            order_id            VARCHAR(36) NOT NULL UNIQUE REFERENCES orders(id),
+            fulfillment_type    VARCHAR(30) NOT NULL DEFAULT 'ECOMMERCE_PARTNER',
+            partner_id          VARCHAR(36),
+            status              VARCHAR(30) NOT NULL DEFAULT 'PENDING',
+            last_event_type     VARCHAR(50),
+            last_outbox_status  VARCHAR(20),
+            allocated_at        TIMESTAMPTZ,
+            dispensed_at        TIMESTAMPTZ,
+            picked_up_at        TIMESTAMPTZ,
+            returned_at         TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_oft_status CHECK (
+                status IN ('PENDING','ALLOCATED','DISPENSED','PICKED_UP','RETURNED','CANCELLED')
+            )
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_oft_status_updated "
+        "ON order_fulfillment_tracking(status, updated_at)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_oft_partner_status "
+        "ON order_fulfillment_tracking(partner_id, status)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3531,6 +3567,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_fiscal_auto_classification_log,
     _ensure_product_fiscal_config_v1,
     _create_partner_order_events_outbox,
+    _create_order_fulfillment_tracking,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,

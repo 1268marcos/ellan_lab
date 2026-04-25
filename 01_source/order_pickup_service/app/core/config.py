@@ -101,6 +101,22 @@ class Settings(BaseSettings):
         default=60,
         alias="INVENTORY_RESERVATION_EXPIRY_POLL_SEC",
     )
+    integration_order_events_outbox_poll_sec: int = Field(
+        default=15,
+        alias="INTEGRATION_ORDER_EVENTS_OUTBOX_POLL_SEC",
+    )
+    integration_order_events_outbox_batch_size: int = Field(
+        default=50,
+        alias="INTEGRATION_ORDER_EVENTS_OUTBOX_BATCH_SIZE",
+    )
+    integration_order_events_outbox_max_attempts: int = Field(
+        default=5,
+        alias="INTEGRATION_ORDER_EVENTS_OUTBOX_MAX_ATTEMPTS",
+    )
+    integration_order_events_outbox_base_backoff_sec: int = Field(
+        default=30,
+        alias="INTEGRATION_ORDER_EVENTS_OUTBOX_BASE_BACKOFF_SEC",
+    )
     reconciliation_retry_batch_size: int = Field(
         default=25,
         alias="RECONCILIATION_RETRY_BATCH_SIZE",
@@ -678,6 +694,8 @@ lifecycle_events_poll_sec = settings.lifecycle_events_poll_sec
 inventory_reserved_reconciliation_poll_sec = settings.inventory_reserved_reconciliation_poll_sec
 inventory_reserved_reconciliation_batch_size = settings.inventory_reserved_reconciliation_batch_size
 inventory_reservation_expiry_poll_sec = settings.inventory_reservation_expiry_poll_sec
+integration_order_events_outbox_poll_sec = settings.integration_order_events_outbox_poll_sec
+integration_order_events_outbox_batch_size = settings.integration_order_events_outbox_batch_size
 
 expiry_batch_size = settings.expiry_batch_size
 expiry_max_retries = settings.expiry_max_retries

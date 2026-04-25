@@ -8,6 +8,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copiar código
 COPY app app  
+COPY stress stress
+COPY tests tests
 # COPY app ./app
 
 # 🔥 CRIAR USUÁRIO NÃO-ROOT COM UID FIXO

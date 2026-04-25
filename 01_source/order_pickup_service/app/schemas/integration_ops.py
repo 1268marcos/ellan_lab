@@ -22,3 +22,44 @@ class OrderEventOutboxListOut(BaseModel):
     limit: int
     offset: int
     items: list[OrderEventOutboxItemOut]
+
+
+class OrderEventOutboxRunOut(BaseModel):
+    ok: bool
+    scanned: int
+    delivered: int
+    failed: int
+    dead_letter: int
+    skipped: int
+
+
+class OrderFulfillmentTrackingItemOut(BaseModel):
+    id: str
+    order_id: str
+    fulfillment_type: str
+    partner_id: str | None = None
+    status: str
+    last_event_type: str | None = None
+    last_outbox_status: str | None = None
+    updated_at: str
+
+
+class OrderFulfillmentTrackingListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    items: list[OrderFulfillmentTrackingItemOut]
+
+
+class OrderFulfillmentTrackingCompareOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    previous_from: str
+    previous_to: str
+    current_total: int
+    previous_total: int
+    delta_pct: float
+    current_by_status: dict[str, int]
+    previous_by_status: dict[str, int]
