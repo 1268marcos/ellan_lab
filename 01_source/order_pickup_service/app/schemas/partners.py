@@ -117,3 +117,132 @@ class PartnerDeleteOut(BaseModel):
     ok: bool
     id: str
     message: str
+
+
+class PartnerOpsAuditItemOut(BaseModel):
+    id: str
+    action: str
+    result: str
+    correlation_id: str
+    user_id: str | None = None
+    role: str | None = None
+    partner_id: str | None = None
+    error_message: str | None = None
+    details: dict = Field(default_factory=dict)
+    created_at: str
+
+
+class PartnerOpsAuditListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    items: list[PartnerOpsAuditItemOut]
+
+
+class PartnerOpsActionsOut(BaseModel):
+    ok: bool
+    total: int
+    actions: list[str]
+
+
+class PartnerOpsKpiCountOut(BaseModel):
+    key: str
+    count: int
+
+
+class PartnerOpsKpiErrorDailyOut(BaseModel):
+    day: str
+    count: int
+
+
+class PartnerOpsKpiTopPartnerOut(BaseModel):
+    partner_id: str
+    count: int
+
+
+class PartnerOpsKpisOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    total_events: int
+    total_errors: int
+    error_rate_pct: float
+    counts_by_action: list[PartnerOpsKpiCountOut]
+    counts_by_result: list[PartnerOpsKpiCountOut]
+    errors_by_day: list[PartnerOpsKpiErrorDailyOut]
+    top_partners: list[PartnerOpsKpiTopPartnerOut]
+
+
+class PartnerOpsChangeDailyOut(BaseModel):
+    day: str
+    total: int
+    status: int
+    contact: int
+    sla: int
+    other: int
+
+
+class PartnerOpsChangeDistributionItemOut(BaseModel):
+    change_type: str
+    count: int
+    pct: float
+
+
+class PartnerOpsBadgeLegendItemOut(BaseModel):
+    key: str
+    label: str
+    color: str
+    icon: str
+
+
+class PartnerOpsChangesSeriesOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    total_changes: int
+    daily_series: list[PartnerOpsChangeDailyOut]
+    distribution: list[PartnerOpsChangeDistributionItemOut]
+    badges: list[PartnerOpsBadgeLegendItemOut]
+
+
+class PartnerOpsCompareCardOut(BaseModel):
+    change_type: str
+    label: str
+    current_count: int
+    previous_count: int
+    delta_count: int
+    delta_pct: float
+    trend: str
+    badge_bg_color: str
+    badge_text_color: str
+
+
+class PartnerOpsCompareOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    previous_from: str
+    previous_to: str
+    total_current: int
+    total_previous: int
+    total_delta_count: int
+    total_delta_pct: float
+    confidence_level: str
+    volume_note: str
+    confidence_badge: PartnerOpsBadgeLegendItemOut
+    data_quality_flags: list[str]
+    cards: list[PartnerOpsCompareCardOut]
+    badges: list[PartnerOpsBadgeLegendItemOut]
+
+
+class PartnerOpsDashboardOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    timezone_ref: str
+    partner_id: str | None = None
+    included_sections: list[str]
+    kpis: PartnerOpsKpisOut | None = None
+    compare: PartnerOpsCompareOut | None = None
+    changes_series: PartnerOpsChangesSeriesOut | None = None

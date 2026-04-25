@@ -184,6 +184,28 @@ ALTER TABLE locker_operators
 - [ ] Página OPS de Auditoria: timeline before/after com filtros por parceiro, ação, usuário e correlação.
 - [ ] Página OPS de Risco de negociação: dependências externas, prazo, owner e plano de fallback por stub.
 
+#### API OPS disponível para UX/CX incremental
+- [x] `GET /partners/ops/audit` com filtros por `partner_id`, `action`, `correlation_id`, `result`, `from`, `to`, `limit`, `offset`.
+- [x] `GET /partners/ops/audit/actions` para popular filtros de ações na UI de auditoria.
+- [x] Resposta inclui `details` com snapshot `before/after`, pronta para timeline OPS.
+- [x] `GET /partners/ops/audit/kpis` para cards de monitoramento (contagens por ação/result, erros por dia no período, top parceiros com mais mudanças).
+- [x] `GET /partners/ops/audit/changes-series` para dashboard completo (mudanças totais por dia + distribuição por tipo `status/contact/sla/other` + badges/legendas para UI).
+- [x] `GET /partners/ops/audit/compare` para comparativo de período (janela atual vs anterior) com tendência `%` por tipo e badges/legendas com cores orientadas a UX/CX.
+- [x] `GET /partners/ops/audit/compare` inclui `confidence_level` e `volume_note` para sinalizar risco de interpretação quando a base de eventos é pequena.
+- [x] `GET /partners/ops/audit/compare` inclui `confidence_badge` (label, cor, icon) + `data_quality_flags` para renderização direta no card do front.
+- [x] `GET /partners/ops/dashboard` consolidado com payload único (`kpis + compare + changes_series`) para reduzir round-trips da tela OPS.
+- [x] `GET /partners/ops/dashboard` suporta `include_sections` (ex.: `kpis,compare`) para carregamento parcial e otimização de latência.
+- [x] `GET /partners/ops/dashboard` suporta `partner_id` para alternar entre modo global e foco por parceiro no mesmo endpoint.
+- [x] `GET /partners/ops/dashboard/view` disponível para acompanhamento visual no navegador (UX/CX incremental da tela OPS).
+- [x] Frontend OPS disponível em `http://localhost:5173/ops/partners/dashboard` consumindo endpoint consolidado (`/api/op/partners/ops/dashboard`) com filtros visuais.
+
+#### Melhorias preventivas recomendadas (para não travar avanço do sprint)
+- [ ] Adicionar ordenação e filtro por `partner_id` no endpoint `GET /partners/ops/audit/compare` quando o dashboard focar um parceiro específico.
+- [ ] Incluir metadado de timezone de referência nos endpoints OPS para evitar desalinhamento em ambientes globais.
+- [ ] Adicionar testes automatizados de regressão para regras de confiança (`LOW/MEDIUM/HIGH`) e `data_quality_flags`.
+- [ ] Evoluir badges para paleta acessível WCAG AA no front (modo claro/escuro) mantendo os tokens de cor vindos da API.
+- [x] Criar endpoint consolidado de dashboard OPS (`/partners/ops/dashboard`) agregando `kpis + compare + changes-series` para reduzir round-trips.
+
 ---
 
 ### [ ] Sprint P-2 · "Partner Integration Health & Webhooks" (2 semanas)
