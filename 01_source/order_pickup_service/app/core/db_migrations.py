@@ -1174,6 +1174,118 @@ def _create_ecommerce_partners(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _migrate_partner_lifecycle_columns_v1(conn, applied: list[str]) -> None:
+    name = "partners.lifecycle_columns_v1"
+    if _migration_applied(conn, name):
+        return
+
+    inspector = inspect(conn)
+    if _has_table(inspector, "ecommerce_partners"):
+        _ensure_column(conn, "ecommerce_partners", "status", "VARCHAR(30) NOT NULL DEFAULT 'DRAFT'")
+        _ensure_column(conn, "ecommerce_partners", "legal_name", "VARCHAR(140)")
+        _ensure_column(conn, "ecommerce_partners", "tax_id", "VARCHAR(32)")
+        _ensure_column(conn, "ecommerce_partners", "tier", "VARCHAR(20) DEFAULT 'STANDARD'")
+        _ensure_column(conn, "ecommerce_partners", "support_email", "VARCHAR(128)")
+        _ensure_column(conn, "ecommerce_partners", "support_phone", "VARCHAR(32)")
+
+    if _has_table(inspector, "locker_operators"):
+        _ensure_column(conn, "locker_operators", "status", "VARCHAR(30) NOT NULL DEFAULT 'DRAFT'")
+        _ensure_column(conn, "locker_operators", "legal_name", "VARCHAR(140)")
+        _ensure_column(conn, "locker_operators", "tier", "VARCHAR(20) DEFAULT 'STANDARD'")
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_status_history(conn, applied: list[str]) -> None:
+    name = "partner_status_history.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_status_history (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL,
+            from_status     VARCHAR(30),
+            to_status       VARCHAR(30) NOT NULL,
+            reason          TEXT,
+            changed_by      VARCHAR(36),
+            changed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_psh_partner ON partner_status_history (partner_id, changed_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_contacts(conn, applied: list[str]) -> None:
+    name = "partner_contacts.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_contacts (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL,
+            contact_type    VARCHAR(20) NOT NULL,
+            name            VARCHAR(128) NOT NULL,
+            email           VARCHAR(128),
+            phone           VARCHAR(32),
+            is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pc_partner ON partner_contacts (partner_id, contact_type)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_partner_contacts_primary_unique_v1(conn, applied: list[str]) -> None:
+    name = "partner_contacts.primary_unique_by_type_v1"
+    if _migration_applied(conn, name):
+        return
+
+    # Garante unicidade de contato primário por parceiro/tipo de parceiro/tipo de contato.
+    # Mantém múltiplos contatos secundários (is_primary=false).
+    conn.execute(
+        text(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS ux_partner_contacts_primary_type
+            ON partner_contacts (partner_id, partner_type, contact_type)
+            WHERE is_primary = TRUE
+            """
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_sla_agreements(conn, applied: list[str]) -> None:
+    name = "partner_sla_agreements.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_sla_agreements (
+            id                  VARCHAR(36) PRIMARY KEY,
+            partner_id          VARCHAR(36) NOT NULL,
+            partner_type        VARCHAR(20) NOT NULL,
+            country             VARCHAR(2) NOT NULL DEFAULT 'BR',
+            product_category    VARCHAR(64),
+            sla_pickup_hours    INTEGER NOT NULL DEFAULT 72,
+            sla_return_hours    INTEGER NOT NULL DEFAULT 24,
+            penalty_pct         NUMERIC(5,2) DEFAULT 0,
+            valid_from          DATE NOT NULL,
+            valid_until         DATE,
+            is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_psa_partner_active ON partner_sla_agreements (partner_id, is_active)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -2764,6 +2876,11 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_rental_contracts,
     _create_logistics_partners,
     _create_ecommerce_partners,
+    _migrate_partner_lifecycle_columns_v1,
+    _create_partner_status_history,
+    _create_partner_contacts,
+    _migrate_partner_contacts_primary_unique_v1,
+    _create_partner_sla_agreements,
     _create_webhook_endpoints,
     _create_webhook_deliveries,
     _create_orders,

@@ -4,6 +4,56 @@
 
 ---
 
+## Legenda de status (preencher ao longo dos sprints)
+----------------------------------------------------
+  [ ] Não iniciado   [~] Em andamento   [x] Concluído   [!] Bloqueado / risco
+
+---
+
+## Quadro-resumo de acompanhamento semanal
+
+- [~] P-1 · Partners · Partner Identity & Onboarding · Owner: Squad Partners (Líder: TBD) · Semana alvo: Semana 1-2
+- [ ] P-2 · Partners · Integration Health & Webhooks · Owner: Squad Partners + Platform Integrations · Semana alvo: Semana 3-4
+- [ ] P-3 · Partners · Financials & Service Areas · Owner: Squad Partners + Finance Ops · Semana alvo: Semana 5-6
+- [ ] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
+- [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
+- [ ] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
+- [ ] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
+- [ ] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
+- [ ] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
+- [ ] I-1 · Integration · Orders ↔ Partners ↔ Fiscal Wiring · Owner: Platform Integrations + Arquitetura · Semana alvo: Semana 7-8
+
+---
+
+## Itens faltando no projeto ELLAN LAB para atender os sprints
+
+### Diretriz global de integração (ELLAN LAB Global)
+
+- [ ] Tratar integrações externas com partners/logistics/ecommerce (e outras necessárias por país/região) como contratos versionados e stubs obrigatórios desde o início.
+- [ ] Garantir que todo fluxo novo tenha stub operacional para integração futura (endpoint/worker/outbox/adapters), mesmo quando a integração final depender de negociação comercial.
+- [ ] Definir padrão global de integração: autenticação, assinatura, idempotência, retry/backoff, dead-letter, observabilidade, e versionamento de payload.
+- [ ] Parametrizar variações globais por país/região (fiscal, moeda, idioma, timezone, parceiros locais) sem hardcode por mercado.
+- [ ] Registrar dependências externas bloqueadas por negociação como risco rastreável no sprint (`[!]`) com plano de fallback em stub.
+
+---
+
+- [ ] Definir e aplicar plano de migração faseado (expand/backfill/contract) para Partners/Logistics/Products/Integration.
+- [ ] Criar tabelas de Partners P-1/P-2/P-3 ainda ausentes (`partner_status_history`, `partner_contacts`, `partner_sla_agreements`, `partner_api_keys`, `partner_settlement_*`, `partner_service_areas`, `partner_performance_metrics`).
+- [ ] Implementar runtime de webhooks de parceiros (worker dedicado, retry com backoff exponencial, dead-letter, assinatura HMAC, trilha de auditoria).
+- [ ] Implementar `partner_order_events_outbox` e `order_fulfillment_tracking` com wiring de `orders.status`.
+- [ ] Criar domínio de Logistics completo para tracking/attempts/labels/returns/manifests/capacidade com endpoints e workers.
+- [ ] Criar domínio de Inventory por locker (`product_inventory`, `inventory_reservations`, `inventory_movements`) com idempotência e expiração de reservas.
+- [ ] Integrar reservas de estoque ao ciclo de pedido (criação, pagamento, retirada, cancelamento e expiração).
+- [ ] Evoluir domínio de Products (media, barcodes, suppliers, variants, bundles e promotions) além do catálogo base.
+- [ ] Evoluir `product_fiscal_config` e implementar `fiscal_auto_classification_log` no pipeline de emissão.
+- [ ] Definir RBAC operacional por domínio (partners/logistics/inventory/settlements), além de perfis dev-admin.
+- [ ] Adicionar feature flags de rollout por tenant/parceiro/região para sprints críticos.
+- [ ] Adicionar observabilidade mínima por worker (métricas, fila pendente, taxa de erro, dead-letter, latência de webhook).
+- [ ] Expandir testes automatizados (unit, integração, contratos e cenários de retry/idempotência).
+- [ ] Publicar runbooks operacionais (retry manual, replay de dead-letter, rollback de migração, reconciliação).
+
+---
+
 ## Contexto & Diagnóstico
 
 | Domínio | Tabelas atuais | Gap crítico |
@@ -20,7 +70,7 @@
 
 ## DOMAIN 1 — PARTNERS
 
-### Sprint P-1 · "Partner Identity & Onboarding" (2 semanas)
+### [ ] Sprint P-1 · "Partner Identity & Onboarding" (2 semanas)
 
 **Objetivo:** Elevar `ecommerce_partners` e `locker_operators` para um modelo de onboarding rastreável com lifecycle de status e contatos estruturados.
 
@@ -108,9 +158,35 @@ ALTER TABLE locker_operators
 - `partner_status_history` registra toda transição com `changed_by`.
 - Deve haver exatamente 1 contato `is_primary=true` por `contact_type` por parceiro.
 
+#### Implementação de produção (fase atual do sprint)
+- [x] `PATCH /partners/ecommerce/{id}/status` implementado com validação de transição e trilha de auditoria.
+- [x] `GET /partners/ecommerce/{id}/status-history` implementado para rastreabilidade operacional.
+- [x] `GET/POST /partners/ecommerce/{id}/contacts` implementados para onboarding e operação de parceiros.
+- [x] `GET/POST /partners/ecommerce/{id}/sla-agreements` implementados para governança de SLA por parceiro.
+- [x] Migrações idempotentes criadas para `partner_status_history`, `partner_contacts` e `partner_sla_agreements`.
+- [x] Constraint de banco adicionada para garantir unicidade de contato primário por (`partner_id`, `partner_type`, `contact_type`).
+
+#### Próximas evoluções de produção (continuidade)
+- [x] Adicionar `PUT/PATCH/DELETE` para contatos e SLA agreements com auditoria before/after em `ops_action_audit`.
+- [ ] Adicionar paginação cursor-based e filtros avançados (status, vigência, país, categoria).
+- [ ] Adicionar trilha de auditoria para contatos e SLA (quem alterou, antes/depois).
+- [ ] Validar contratos globais por país/região (timezone, moeda, fiscal e regras locais).
+- [ ] Criar testes automatizados completos para fluxos de partners P-1 (unit + integração).
+
+#### Diretriz operacional de integração (produção global)
+- [x] Considerar o domínio Partners como produção desde já, com contratos e rastreabilidade ativos.
+- [x] Manter integrações com partners/logistics/ecommerce e demais integrações necessárias em stubs operacionais versionados, prontos para ativação após negociação.
+- [x] Tratar dependências externas em negociação como risco de sprint (`[!]`) sem bloquear evolução interna do domínio.
+
+#### Backlog UX/CX OPS (implementar no momento oportuno)
+- [ ] Página OPS de Partners: gestão de status/contatos/SLA com histórico e trilha de auditoria.
+- [ ] Página OPS de Integrações: visão de stubs ativos, integrações em negociação, readiness por parceiro/região.
+- [ ] Página OPS de Auditoria: timeline before/after com filtros por parceiro, ação, usuário e correlação.
+- [ ] Página OPS de Risco de negociação: dependências externas, prazo, owner e plano de fallback por stub.
+
 ---
 
-### Sprint P-2 · "Partner Integration Health & Webhooks" (2 semanas)
+### [ ] Sprint P-2 · "Partner Integration Health & Webhooks" (2 semanas)
 
 **Objetivo:** Gestão de API keys com rotação, endpoints de webhook versionados e monitoramento de saúde de integração — padrão Amazon Seller Central / MercadoLivre Partners API.
 
@@ -213,7 +289,7 @@ CREATE TABLE partner_rate_limits (
 
 ---
 
-### Sprint P-3 · "Partner Financials & Service Areas" (2 semanas)
+### [ ] Sprint P-3 · "Partner Financials & Service Areas" (2 semanas)
 
 **Objetivo:** Liquidação de revenue share periódica, cobertura geográfica por locker e métricas de desempenho — padrão UPS Partner Settlement / MercadoPago Marketplace Split.
 
@@ -306,7 +382,7 @@ CREATE TABLE partner_performance_metrics (
 
 ## DOMAIN 2 — LOGISTICS
 
-### Sprint L-1 · "Carrier Tracking & Event Model" (2 semanas)
+### [ ] Sprint L-1 · "Carrier Tracking & Event Model" (2 semanas)
 
 **Objetivo:** Modelo de eventos de rastreio multi-hop (padrão Correios/UPS), gestão de labels de envio e tentativas de entrega estruturadas.
 
@@ -399,7 +475,7 @@ ALTER TABLE inbound_deliveries
 
 ---
 
-### Sprint L-2 · "Returns & Reverse Logistics" (2 semanas)
+### [ ] Sprint L-2 · "Returns & Reverse Logistics" (2 semanas)
 
 **Objetivo:** Ciclo completo de devoluções — padrão Amazon Returns / MercadoLivre Devoluções com rastreio de perna reversa, catálogo de motivos e monitoramento de breach de SLA.
 
@@ -506,7 +582,7 @@ CREATE TABLE sla_breach_events (
 
 ---
 
-### Sprint L-3 · "Manifests, Capacity & Order Integration" (2 semanas)
+### [ ] Sprint L-3 · "Manifests, Capacity & Order Integration" (2 semanas)
 
 **Objetivo:** Manifesto de carga (drop-off batch), planejamento de capacidade por locker e stub de integração com orders.
 
@@ -610,7 +686,7 @@ Quando inbound_deliveries.status → 'PICKED_UP':
 
 ## DOMAIN 3 — PRODUCTS
 
-### Sprint Pr-1 · "Product Catalog & Lifecycle" (2 semanas)
+### [ ] Sprint Pr-1 · "Product Catalog & Lifecycle" (2 semanas)
 
 **Objetivo:** Catalog de produtos com lifecycle completo (DRAFT→ACTIVE→DISCONTINUED), media, barcodes e gestão de fornecedores — padrão Amazon Product Catalog.
 
@@ -724,7 +800,7 @@ ALTER TABLE products
 
 ---
 
-### Sprint Pr-2 · "Inventory & Availability per Locker" (2 semanas)
+### [ ] Sprint Pr-2 · "Inventory & Availability per Locker" (2 semanas)
 
 **Objetivo:** Controle de estoque em tempo real por locker — padrão Amazon FBA Inventory / MercadoLivre Envios stock management.
 
@@ -858,7 +934,7 @@ Order cancelada/expirada:
 
 ---
 
-### Sprint Pr-3 · "Pricing, Bundles & Fiscal Auto-Classification" (2 semanas)
+### [ ] Sprint Pr-3 · "Pricing, Bundles & Fiscal Auto-Classification" (2 semanas)
 
 **Objetivo:** Bundles de produto, promoções/cupons e auto-classificação fiscal via `product_fiscal_config` no momento da emissão de nota — eliminando classificação manual por NF.
 
@@ -984,7 +1060,7 @@ Resultado: invoice.items_json e invoice.tax_breakdown_json sempre populados
 
 ## INTEGRATION SPRINT
 
-### Sprint I-1 · "Orders ↔ Partners ↔ Fiscal — Wiring" (2 semanas)
+### [ ] Sprint I-1 · "Orders ↔ Partners ↔ Fiscal — Wiring" (2 semanas)
 
 **Objetivo:** Fechar os três fios soltos críticos: eventos de order para parceiros, fulfillment tracking e auto-classificação fiscal. Tudo como stubs rastreáveis e operacionalizáveis.
 
