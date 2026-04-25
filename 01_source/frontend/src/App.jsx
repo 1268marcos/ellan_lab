@@ -44,6 +44,7 @@ const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboard
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
 const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
+const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -226,6 +227,7 @@ function TopNav() {
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
+    { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -800,6 +802,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductsCatalogPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/inventory-health"
+              element={
+                <OpsRoute>
+                  <OpsProductsInventoryHealthPage />
                 </OpsRoute>
               }
             />

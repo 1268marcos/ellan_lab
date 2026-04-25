@@ -1590,6 +1590,115 @@ def _create_product_status_history(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_product_inventory(conn, applied: list[str]) -> None:
+    name = "product_inventory.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_inventory (
+            id                  VARCHAR(36) PRIMARY KEY,
+            product_id          VARCHAR(255) NOT NULL REFERENCES products(id),
+            locker_id           VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            slot_size           VARCHAR(8) NOT NULL,
+            quantity_on_hand    INTEGER NOT NULL DEFAULT 0,
+            quantity_reserved   INTEGER NOT NULL DEFAULT 0,
+            quantity_available  INTEGER GENERATED ALWAYS AS (quantity_on_hand - quantity_reserved) STORED,
+            reorder_point       INTEGER NOT NULL DEFAULT 0,
+            reorder_quantity    INTEGER NOT NULL DEFAULT 0,
+            last_counted_at     TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_pi_non_negative CHECK (quantity_on_hand >= 0 AND quantity_reserved >= 0),
+            CONSTRAINT ck_pi_reserved_leq_hand CHECK (quantity_reserved <= quantity_on_hand),
+            CONSTRAINT ux_pi_product_locker_size UNIQUE (product_id, locker_id, slot_size)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pi_locker_available "
+        "ON product_inventory (locker_id, quantity_available, updated_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pi_product_updated "
+        "ON product_inventory (product_id, updated_at DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_inventory_movements(conn, applied: list[str]) -> None:
+    name = "inventory_movements.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory_movements (
+            id              VARCHAR(36) PRIMARY KEY,
+            product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+            locker_id       VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            movement_type   VARCHAR(30) NOT NULL,
+            quantity_delta  INTEGER NOT NULL,
+            reference_id    VARCHAR(64),
+            reference_type  VARCHAR(30),
+            note            TEXT,
+            occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by      VARCHAR(36),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_im_movement_type CHECK (
+                movement_type IN (
+                    'RESTOCK','SALE','RESERVATION','RESERVATION_RELEASE',
+                    'ADJUSTMENT','RETURN','DAMAGE','EXPIRED','TRANSFER_IN','TRANSFER_OUT'
+                )
+            )
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_im_product_locker_occurred "
+        "ON inventory_movements (product_id, locker_id, occurred_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_im_locker_occurred "
+        "ON inventory_movements (locker_id, occurred_at DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_inventory_reservations(conn, applied: list[str]) -> None:
+    name = "inventory_reservations.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory_reservations (
+            id              VARCHAR(36) PRIMARY KEY,
+            order_id        VARCHAR(64) NOT NULL,
+            product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+            locker_id       VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            slot_size       VARCHAR(8) NOT NULL,
+            quantity        INTEGER NOT NULL DEFAULT 1,
+            expires_at      TIMESTAMPTZ NOT NULL,
+            status          VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            note            TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_ir_status CHECK (status IN ('ACTIVE','RELEASED','CONSUMED','EXPIRED')),
+            CONSTRAINT ck_ir_quantity_positive CHECK (quantity > 0)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_ir_order_status "
+        "ON inventory_reservations (order_id, status, updated_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_ir_expiry_active "
+        "ON inventory_reservations (expires_at) WHERE status = 'ACTIVE'"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_ir_product_locker_status "
+        "ON inventory_reservations (product_id, locker_id, slot_size, status)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3207,6 +3316,9 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_logistics_return_events,
     _migrate_products_status_v1,
     _create_product_status_history,
+    _create_product_inventory,
+    _create_inventory_movements,
+    _create_inventory_reservations,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,

@@ -3,10 +3,13 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
+import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 const SESSION_HISTORY_KEY = "ops_reconciliation_history_v1";
+const OPS_RECON_HEALTH_WINDOW_PREF_KEY = "ops_reconciliation:health_window_hours";
+const OPS_RECON_HEALTH_WINDOW_PRESETS = [6, 12, 24, 48, 72, 168];
 const MAX_HISTORY_ITEMS = 10;
 
 function extractErrorMessage(payload, fallback = "Não foi possível reconciliar o pedido.") {
@@ -39,6 +42,16 @@ export default function OpsReconciliationPage() {
   const [health, setHealth] = useState(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState("");
+  const {
+    windowValue: healthLookbackHours,
+    applyPreset: applyHealthWindowPreset,
+  } = useOpsWindowPreset({
+    storageKey: OPS_RECON_HEALTH_WINDOW_PREF_KEY,
+    defaultValue: 24,
+    minValue: 1,
+    maxValue: 168,
+    presetValues: OPS_RECON_HEALTH_WINDOW_PRESETS,
+  });
 
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -88,13 +101,16 @@ export default function OpsReconciliationPage() {
       setHealthError("");
     }
     try {
-      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-metrics?lookback_hours=24`, {
+      const response = await fetch(
+        `${ORDER_PICKUP_BASE}/dev-admin/ops-metrics?lookback_hours=${Math.max(Number(healthLookbackHours || 24), 1)}`,
+        {
         method: "GET",
         headers: {
           Accept: "application/json",
           ...authHeaders,
         },
-      });
+        }
+      );
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(extractErrorMessage(payload, "Não foi possível carregar saúde operacional."));
@@ -110,7 +126,7 @@ export default function OpsReconciliationPage() {
   useEffect(() => {
     void loadOpsHealth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, healthLookbackHours]);
 
   async function handleReconcile() {
     const normalizedOrderId = String(orderId || "").trim();
@@ -191,7 +207,7 @@ export default function OpsReconciliationPage() {
           </Link>
         </div>
         <div style={healthHeaderStyle}>
-          <h2 style={{ margin: 0 }}>Saúde Operacional (24h)</h2>
+          <h2 style={{ margin: 0 }}>Saúde Operacional ({healthLookbackHours}h)</h2>
           <button
             type="button"
             onClick={() => void loadOpsHealth()}
@@ -200,6 +216,19 @@ export default function OpsReconciliationPage() {
           >
             {healthLoading ? "Atualizando..." : "Atualizar"}
           </button>
+        </div>
+        <div style={healthPresetRowStyle}>
+          <span style={healthPresetLabelStyle}>Presets de janela</span>
+          {OPS_RECON_HEALTH_WINDOW_PRESETS.map((hours) => (
+            <button
+              key={hours}
+              type="button"
+              onClick={() => applyHealthWindowPreset(hours)}
+              style={healthPresetButtonStyle(healthLookbackHours === hours)}
+            >
+              {hours < 24 ? `${hours}h` : hours === 24 ? "24h" : hours === 168 ? "7d" : `${Math.floor(hours / 24)}d`}
+            </button>
+          ))}
         </div>
 
         {healthError ? (
@@ -438,6 +467,30 @@ const healthHeaderStyle = {
   gap: 10,
   flexWrap: "wrap",
 };
+
+const healthPresetRowStyle = {
+  marginTop: 8,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const healthPresetLabelStyle = {
+  color: "rgba(245,247,250,0.75)",
+  fontSize: 12,
+};
+
+const healthPresetButtonStyle = (active) => ({
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: active ? "1px solid rgba(59,130,246,0.9)" : "1px solid rgba(255,255,255,0.16)",
+  color: active ? "#dbeafe" : "#e2e8f0",
+  background: active ? "rgba(59,130,246,0.24)" : "transparent",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer",
+});
 
 const crossShortcutStyle = {
   display: "flex",

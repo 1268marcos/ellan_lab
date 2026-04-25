@@ -89,6 +89,18 @@ class Settings(BaseSettings):
         default=15,
         alias="RECONCILIATION_RETRY_POLL_SEC",
     )
+    inventory_reserved_reconciliation_poll_sec: int = Field(
+        default=120,
+        alias="INVENTORY_RESERVED_RECONCILIATION_POLL_SEC",
+    )
+    inventory_reserved_reconciliation_batch_size: int = Field(
+        default=100,
+        alias="INVENTORY_RESERVED_RECONCILIATION_BATCH_SIZE",
+    )
+    inventory_reservation_expiry_poll_sec: int = Field(
+        default=60,
+        alias="INVENTORY_RESERVATION_EXPIRY_POLL_SEC",
+    )
     reconciliation_retry_batch_size: int = Field(
         default=25,
         alias="RECONCILIATION_RETRY_BATCH_SIZE",
@@ -663,6 +675,9 @@ prepayment_timeout_seconds = settings.prepayment_timeout_seconds
 
 expiry_poll_sec = settings.expiry_poll_sec
 lifecycle_events_poll_sec = settings.lifecycle_events_poll_sec
+inventory_reserved_reconciliation_poll_sec = settings.inventory_reserved_reconciliation_poll_sec
+inventory_reserved_reconciliation_batch_size = settings.inventory_reserved_reconciliation_batch_size
+inventory_reservation_expiry_poll_sec = settings.inventory_reservation_expiry_poll_sec
 
 expiry_batch_size = settings.expiry_batch_size
 expiry_max_retries = settings.expiry_max_retries

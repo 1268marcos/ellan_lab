@@ -15,9 +15,11 @@ from app.core.version import get_version
 from app.health.health import router as health_router
 from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
+from app.jobs.inventory_reserved_reconciliation import run_inventory_reserved_reconciliation_once
+from app.jobs.inventory_reservations_expiry import run_inventory_reservations_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
-from app.routers import dev_admin, dev_base_catalog, internal, kiosk, logistics, orders, partners, pickup, products
+from app.routers import dev_admin, dev_base_catalog, internal, inventory, kiosk, logistics, orders, partners, pickup, products
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
@@ -46,6 +48,7 @@ app.include_router(pickup.router)
 app.include_router(partners.router)
 app.include_router(logistics.router)
 app.include_router(products.router)
+app.include_router(inventory.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
@@ -108,6 +111,8 @@ app.add_middleware(
 expiry_task: asyncio.Task | None = None
 lifecycle_events_task: asyncio.Task | None = None
 reconciliation_retry_task: asyncio.Task | None = None
+inventory_reservation_expiry_task: asyncio.Task | None = None
+inventory_reserved_reconciliation_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
@@ -146,6 +151,20 @@ async def startup():
             name="reconciliation_retry_loop",
         )
 
+    global inventory_reservation_expiry_task
+    if inventory_reservation_expiry_task is None:
+        inventory_reservation_expiry_task = asyncio.create_task(
+            inventory_reservations_expiry_loop(),
+            name="inventory_reservations_expiry_loop",
+        )
+
+    global inventory_reserved_reconciliation_task
+    if inventory_reserved_reconciliation_task is None:
+        inventory_reserved_reconciliation_task = asyncio.create_task(
+            inventory_reserved_reconciliation_loop(),
+            name="inventory_reserved_reconciliation_loop",
+        )
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -175,6 +194,24 @@ async def shutdown():
         except asyncio.CancelledError:
             pass
         reconciliation_retry_task = None
+
+    global inventory_reservation_expiry_task
+    if inventory_reservation_expiry_task:
+        inventory_reservation_expiry_task.cancel()
+        try:
+            await inventory_reservation_expiry_task
+        except asyncio.CancelledError:
+            pass
+        inventory_reservation_expiry_task = None
+
+    global inventory_reserved_reconciliation_task
+    if inventory_reserved_reconciliation_task:
+        inventory_reserved_reconciliation_task.cancel()
+        try:
+            await inventory_reserved_reconciliation_task
+        except asyncio.CancelledError:
+            pass
+        inventory_reserved_reconciliation_task = None
 
 
 async def expiry_loop():
@@ -218,6 +255,32 @@ async def reconciliation_retry_loop():
             db.close()
 
         await asyncio.sleep(settings.reconciliation_retry_poll_sec)
+
+
+async def inventory_reservations_expiry_loop():
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(run_inventory_reservations_expiry_once, db)
+        except Exception:
+            logger.exception("inventory reservations expiry loop failed")
+        finally:
+            db.close()
+
+        await asyncio.sleep(settings.inventory_reservation_expiry_poll_sec)
+
+
+async def inventory_reserved_reconciliation_loop():
+    while True:
+        db = SessionLocal()
+        try:
+            await asyncio.to_thread(run_inventory_reserved_reconciliation_once, db)
+        except Exception:
+            logger.exception("inventory reserved reconciliation loop failed")
+        finally:
+            db.close()
+
+        await asyncio.sleep(settings.inventory_reserved_reconciliation_poll_sec)
 
 
 @app.exception_handler(Exception)

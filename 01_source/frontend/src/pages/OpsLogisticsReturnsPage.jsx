@@ -1,10 +1,13 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
+import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const FILTERS_PREF_KEY = "ops_logistics_returns:last_filters";
 const AUTO_REFRESH_PREF_KEY = "ops_logistics_returns:auto_refresh_on_preset";
+const OPS_LOGISTICS_RETURNS_WINDOW_PREF_KEY = "ops_logistics_returns:window_hours";
+const OPS_LOGISTICS_RETURNS_WINDOW_PRESETS = [1, 6, 24, 24 * 7, 24 * 30];
 
 const STATUS_OPTIONS = ["", "REQUESTED", "PICKUP_SCHEDULED", "IN_TRANSIT", "RECEIVED", "CLOSED"];
 
@@ -113,6 +116,21 @@ export default function OpsLogisticsReturnsPage() {
   const { token } = useAuth();
   const now = new Date();
   const last = loadLastFilters(now);
+  const defaultWindowHoursByPreset = {
+    "1h": 1,
+    "6h": 6,
+    "24h": 24,
+    "7d": 24 * 7,
+    "30d": 24 * 30,
+  };
+  const defaultWindowHours = defaultWindowHoursByPreset[last.preset] || 24 * 7;
+  const { applyPreset: applyWindowHoursPreset } = useOpsWindowPreset({
+    storageKey: OPS_LOGISTICS_RETURNS_WINDOW_PREF_KEY,
+    defaultValue: defaultWindowHours,
+    minValue: 1,
+    maxValue: 24 * 30,
+    presetValues: OPS_LOGISTICS_RETURNS_WINDOW_PRESETS,
+  });
 
   const [from, setFrom] = useState(last.from);
   const [to, setTo] = useState(last.to);
@@ -152,11 +170,20 @@ export default function OpsLogisticsReturnsPage() {
   function applyPreset(presetId) {
     const referenceNow = new Date();
     let start = new Date(referenceNow.getTime() - 7 * 24 * 60 * 60 * 1000);
-    if (presetId === "1h") start = new Date(referenceNow.getTime() - 1 * 60 * 60 * 1000);
-    else if (presetId === "6h") start = new Date(referenceNow.getTime() - 6 * 60 * 60 * 1000);
-    else if (presetId === "24h") start = new Date(referenceNow.getTime() - 24 * 60 * 60 * 1000);
-    else if (presetId === "30d") start = new Date(referenceNow.getTime() - 30 * 24 * 60 * 60 * 1000);
-    else if (presetId === "month") start = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), 1, 0, 0, 0, 0);
+    if (presetId === "month") {
+      start = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), 1, 0, 0, 0, 0);
+    } else {
+      const hoursByPreset = {
+        "1h": 1,
+        "6h": 6,
+        "24h": 24,
+        "7d": 24 * 7,
+        "30d": 24 * 30,
+      };
+      const windowHours = hoursByPreset[presetId] || 24 * 7;
+      applyWindowHoursPreset(windowHours);
+      start = new Date(referenceNow.getTime() - windowHours * 60 * 60 * 1000);
+    }
     const nextFrom = toLocalInputValue(start);
     const nextTo = toLocalInputValue(referenceNow);
     setFrom(nextFrom);

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 
 const ORDER_PICKUP_BASE =
@@ -39,6 +39,7 @@ export default function DevBaseCatalogPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
 
   const [overview, setOverview] = useState(null);
   const [enums, setEnums] = useState([]);
@@ -124,9 +125,26 @@ export default function DevBaseCatalogPage() {
       if (!res.ok) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
+      setLastUpdatedAt(new Date().toLocaleString("pt-BR"));
       return data;
     } catch (e) {
-      setError(String(e?.message || e));
+      const raw = String(e?.message || e || "").trim();
+      if (!raw) {
+        setError("Falha inesperada ao executar operacao no Base Catalog.");
+      } else {
+        try {
+          const parsed = JSON.parse(raw);
+          if (typeof parsed?.message === "string" && parsed.message.trim()) {
+            setError(parsed.message.trim());
+          } else if (typeof parsed?.type === "string" && parsed.type.trim()) {
+            setError(`${parsed.type}: ${parsed.message || "erro operacional"}`);
+          } else {
+            setError(raw);
+          }
+        } catch (_) {
+          setError(raw);
+        }
+      }
       return null;
     } finally {
       setLoading(false);
@@ -316,6 +334,22 @@ export default function DevBaseCatalogPage() {
     }
   }
 
+  async function loadCurrentTabData() {
+    if (tab === "overview") return loadOverview();
+    if (tab === "countries") return loadCountries();
+    if (tab === "provinces") return loadProvinces();
+    if (tab === "locker_locations") return loadLockerLocations();
+    if (tab === "products") return loadProducts();
+    if (tab === "enums") return loadEnums();
+    if (tab === "tables") return loadTables();
+    return null;
+  }
+
+  useEffect(() => {
+    if (!canAccess) return;
+    void loadCurrentTabData();
+  }, [tab, canAccess]);
+
   if (!canAccess) {
     return (
       <div style={pageStyle}>
@@ -364,6 +398,9 @@ export default function DevBaseCatalogPage() {
         </div>
 
         <div style={toolbarStyle}>
+          <button style={buttonPrimaryStyle} disabled={loading} onClick={loadCurrentTabData}>
+            {loading ? "Carregando..." : "Atualizar aba atual"}
+          </button>
           <button style={buttonSecondaryStyle} disabled={loading} onClick={loadOverview}>Carregar overview</button>
           <button style={buttonSecondaryStyle} disabled={loading} onClick={loadEnums}>Carregar enums</button>
           <button style={buttonSecondaryStyle} disabled={loading} onClick={loadTables}>Carregar tables</button>
@@ -372,6 +409,12 @@ export default function DevBaseCatalogPage() {
           <button style={buttonSecondaryStyle} disabled={loading} onClick={loadLockerLocations}>Carregar locker locations</button>
           <button style={buttonSecondaryStyle} disabled={loading} onClick={loadProducts}>Carregar SKUs</button>
         </div>
+
+        {lastUpdatedAt ? (
+          <div style={metaInfoStyle}>
+            Ultima atualizacao: {lastUpdatedAt}
+          </div>
+        ) : null}
 
         {message ? <div style={okStyle}>{message}</div> : null}
         {error ? <pre style={errorStyle}>{error}</pre> : null}
@@ -621,6 +664,12 @@ const toolbarStyle = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
+};
+
+const metaInfoStyle = {
+  marginTop: 8,
+  fontSize: 12,
+  color: "#b8c4d1",
 };
 
 const gridStyle = {

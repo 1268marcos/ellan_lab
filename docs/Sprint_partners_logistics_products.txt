@@ -19,7 +19,7 @@
 - [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
 - [ ] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
 - [ ] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
-- [ ] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
+- [~] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
 - [ ] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
 - [ ] I-1 · Integration · Orders ↔ Partners ↔ Fiscal Wiring · Owner: Platform Integrations + Arquitetura · Semana alvo: Semana 7-8
 
@@ -307,34 +307,34 @@ ALTER TABLE locker_operators
 - [x] Rodar validação final E2E (L-2 + Pr-1) com roteiro único de execução.
 - [x] Atualizar runbook operacional (falhas comuns, replay, rollback, comandos úteis).
 - [x] Revisar backlog residual e abrir sequência para Semana 5-6.
-- [~] Critério D10 concluído: backlog da Semana 3-4 entregue e pronto para próximo ciclo (pendente apenas fechamento formal de checklist histórico D1-D3/D5 no quadro operacional).
+- [x] Critério D10 concluído: backlog da Semana 3-4 entregue e pronto para próximo ciclo.
 
 #### Checklist operacional de execução diária (D1..D10) — comandos e evidências esperadas
 
 ##### D1 — contratos e escopo
-- [ ] Comandos de validação:
+- [x] Comandos de validação:
       - `rg "logistics/returns|products/.*/status|product_status_history|return_events" docs/Sprint_partners_logistics_products.txt`
       - `git diff -- docs/Sprint_partners_logistics_products.txt`
-- [ ] Evidência esperada:
+- [x] Evidência esperada:
       - contratos `v1` e enums documentados no roadmap;
       - seção "fora de escopo" explícita e sem ambiguidades.
 
 ##### D2 — migrações L-2
-- [ ] Comandos de validação:
+- [x] Comandos de validação:
       - `docker compose up -d --build order_pickup_service`
       - `docker compose logs order_pickup_service --tail=120`
       - `docker compose exec postgres psql -U postgres -d locker_central -c "\dt logistics_returns*"`
       - `docker compose exec postgres psql -U postgres -d locker_central -c "\dt return_events*"`
-- [ ] Evidência esperada:
+- [x] Evidência esperada:
       - serviço sobe sem erro de migration;
       - tabelas e índices criados com sucesso.
 
 ##### D3 — API mínima de returns
-- [ ] Comandos de validação:
+- [x] Comandos de validação:
       - `curl -sS -X POST "http://localhost:8003/logistics/returns" -H "Content-Type: application/json" -d '{...}'`
       - `curl -sS "http://localhost:8003/logistics/returns/<return_id>"`
       - `curl -sS "http://localhost:8003/logistics/returns?partner_id=<id>&status=REQUESTED&limit=20&offset=0"`
-- [ ] Evidência esperada:
+- [x] Evidência esperada:
       - retorno criado com `return_id`;
       - endpoints de detail/list retornam payload coerente e filtrável.
 
@@ -349,12 +349,12 @@ ALTER TABLE locker_operators
       - transição inválida retorna erro claro (422/400 com mensagem acionável).
 
 ##### D5 — stub outbound + E2E controlado (L-2)
-- [ ] Comandos de validação:
+- [x] Comandos de validação:
       - `docker compose up -d --build partner_webhook_delivery_worker`
       - `docker compose logs partner_webhook_delivery_worker --tail=150`
       - `curl -sS -X POST "http://localhost:8003/logistics/returns/<return_id>/simulate-delivery"`
       - `docker compose exec postgres psql -U postgres -d locker_central -c "select status,attempt_count,last_error from partner_webhook_deliveries order by created_at desc limit 10;"`
-- [ ] Evidência esperada:
+- [x] Evidência esperada:
       - cenário sucesso: `DELIVERED`;
       - cenário falha controlada: `retry/backoff` e eventualmente `DEAD_LETTER`;
       - evidência registrada no documento.
@@ -1118,7 +1118,7 @@ ALTER TABLE products
 
 ---
 
-### [ ] Sprint Pr-2 · "Inventory & Availability per Locker" (2 semanas)
+### [~] Sprint Pr-2 · "Inventory & Availability per Locker" (2 semanas)
 
 **Objetivo:** Controle de estoque em tempo real por locker — padrão Amazon FBA Inventory / MercadoLivre Envios stock management.
 
@@ -1249,6 +1249,70 @@ Order cancelada/expirada:
 | `POST` | `/inventory/counts` | Inicia contagem cíclica |
 | `POST` | `/inventory/counts/{id}/submit` | Finaliza com variances |
 | `GET/POST` | `/inventory/alert-configs` | Configuração de alertas |
+
+#### Kickoff técnico Pr-2 (D1-D3 enxuto)
+
+##### D1 — Modelo mínimo de inventário por locker
+- [x] Criar migração idempotente para `product_inventory` (saldo atual por `product_id + locker_id + slot_size`).
+- [x] Criar migração idempotente para `inventory_movements` (ledger imutável com `movement_type` e `quantity_delta`).
+- [x] Definir constraints mínimas de segurança (`non_negative`, `reserved <= on_hand`) e índices operacionais.
+
+##### D2 — Endpoints mínimos de operação (v1)
+- [x] Implementar `GET /products/{id}/inventory` (visão por produto em lockers, com paginação).
+- [x] Implementar `GET /inventory/{locker_id}` (visão de inventário por locker, com paginação).
+- [x] Implementar `POST /inventory/{locker_id}/restock` (entrada manual + registro em `inventory_movements`).
+
+##### D3 — OPS view mínima para validação rápida
+- [x] Implementar rota operacional `GET /inventory/ops/view` para inspeção inicial em navegador.
+- [x] Exibir total e itens por locker (payload técnico completo para suporte).
+- [x] Registrar auditoria operacional de restock (`INVENTORY_RESTOCK`) para rastreabilidade.
+
+##### D4 — Reserva idempotente + release/consume (stub)
+- [x] Implementar `POST /inventory/reserve` com idempotência por (`order_id`, `product_id`, `locker_id`, `slot_size`) quando status `ACTIVE`.
+- [x] Implementar `POST /inventory/reservations/{id}/release` (stub de liberação de reserva com ajuste de `quantity_reserved`).
+- [x] Implementar `POST /inventory/reservations/{id}/consume` (stub de consumo de reserva com baixa em `quantity_on_hand`).
+- [x] Registrar trilha de movimentos (`RESERVATION`, `RESERVATION_RELEASE`, `SALE`) e auditoria operacional associada.
+- [x] Validação operacional D4: reserva idempotente confirmada (`idempotent=false` na 1ª chamada e `idempotent=true` na repetição), além de `release` e `consume` com atualização de status e saldo.
+
+##### D5 — Expiração automática de reservas ativas + job simples com auditoria
+- [x] Implementar job dedicado `run_inventory_reservations_expiry_once` para expirar reservas `ACTIVE` com `expires_at <= now`.
+- [x] Integrar loop assíncrono no serviço (`inventory_reservations_expiry_loop`) com polling configurável (`INVENTORY_RESERVATION_EXPIRY_POLL_SEC`).
+- [x] Ao expirar: atualizar `inventory_reservations.status = EXPIRED`, ajustar `product_inventory.quantity_reserved` com proteção `GREATEST(..., 0)`.
+- [x] Registrar movimento técnico em `inventory_movements` (`movement_type = EXPIRED`) e auditoria OPS (`INVENTORY_RESERVATION_EXPIRE`).
+- [x] Validação operacional D5: cenário controlado com reserva vencida confirmou `changed=1`, status final `EXPIRED`, ajuste de reservado e evento de auditoria `SUCCESS`.
+
+##### D6 — Reconciliação automática de `quantity_reserved` + alerta OPS
+- [x] Implementar job `run_inventory_reserved_reconciliation_once` para comparar `product_inventory.quantity_reserved` vs soma de reservas `ACTIVE` por (`product_id`,`locker_id`,`slot_size`).
+- [x] Aplicar autocorreção quando houver divergência (`quantity_reserved` passa a refletir a soma real de reservas ativas).
+- [x] Registrar alerta operacional em auditoria (`INVENTORY_RESERVED_DIVERGENCE_ALERT`, `result=ERROR`) e registrar correção (`INVENTORY_RESERVED_RECONCILE_AUTO_FIX`, `result=SUCCESS`).
+- [x] Tratar cenário órfão (reservas `ACTIVE` sem linha correspondente em `product_inventory`) com alerta dedicado (`INVENTORY_RESERVED_ORPHAN_ALERT`).
+- [x] Integrar loop automático no serviço (`inventory_reserved_reconciliation_loop`) com polling configurável (`INVENTORY_RESERVED_RECONCILIATION_POLL_SEC`).
+- [x] Expor rotas OPS para operação e diagnóstico rápido:
+      - `POST /ops/inventory/reconciliation/run` (execução on-demand)
+      - `GET /ops/inventory/reconciliation` (status recente, contadores e itens)
+- [x] Validação operacional D6: desvio forçado (`quantity_reserved=5` sem reservas ativas) resultou em `auto_fixed=1`, `divergence_alerts=1`, `quantity_reserved_after=0`, com registros de alerta e correção na `ops_action_audit`.
+
+##### D7 — OPS reservation health (ranking + tendência por janela)
+- [x] Implementar endpoint `GET /ops/inventory/reservation-health`.
+- [x] Suportar janela atual com `period_from` e `period_to` (ISO-8601), além de cálculo automático da janela anterior equivalente.
+- [x] Entregar KPIs agregados de saúde (`divergence_events`, `auto_fixes`, `orphan_alerts`) com comparação percentual atual vs anterior.
+- [x] Entregar ranking por (`product_id`,`locker_id`,`slot_size`) com:
+      - divergências atual/anterior;
+      - soma absoluta de delta atual/anterior;
+      - tendência (`up`/`down`/`stable`);
+      - contagem de auto-fixes e órfãos.
+- [x] Reaproveitar eventos de auditoria do D6 para leitura contínua sem criar novas tabelas.
+
+##### D8 — Padronização frontend OPS (presets + persistência + util compartilhado)
+- [x] Criar e aplicar página `OPS /ops/products/inventory-health` com presets, persistência e auto-refresh contínuo para NOC.
+- [x] Incluir indicador operacional de auto-refresh ativo + contador regressivo + timestamp de última atualização (automática/manual).
+- [x] Introduzir util compartilhado `useOpsWindowPreset` para centralizar presets temporais e persistência em `localStorage`.
+- [x] Refatorar páginas OPS para reduzir duplicação e prevenir refação futura:
+      - `ops/health`
+      - `ops/reconciliation` (bloco saúde)
+      - `ops/analytics/pickup`
+      - `ops/products/catalog`
+      - `ops/logistics/returns`
 
 ---
 

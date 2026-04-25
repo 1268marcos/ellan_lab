@@ -1,8 +1,11 @@
 // 01_source/frontend/src/pages/PickupHealthPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 
 const ORDER_LIFECYCLE_BASE =
   import.meta.env.VITE_ORDER_LIFECYCLE_BASE_URL || "http://localhost:8010";
+const PICKUP_HEALTH_TREND_WINDOW_PREF_KEY = "pickup_health:trend_days_window";
+const PICKUP_HEALTH_TREND_WINDOW_PRESETS = [1, 3, 7, 14, 30];
 
 const INTERNAL_TOKEN =
   import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -365,7 +368,17 @@ export default function PickupHealthPage() {
   const [entityType, setEntityType] = useState("locker");
   const [region, setRegion] = useState("SP");
   const [rankingLimit, setRankingLimit] = useState(20);
-  const [trendDaysWindow, setTrendDaysWindow] = useState(7);
+  const {
+    windowValue: trendDaysWindow,
+    setWindowValue: setTrendDaysWindow,
+    applyPreset: applyTrendWindowPreset,
+  } = useOpsWindowPreset({
+    storageKey: PICKUP_HEALTH_TREND_WINDOW_PREF_KEY,
+    defaultValue: 7,
+    minValue: 1,
+    maxValue: 90,
+    presetValues: PICKUP_HEALTH_TREND_WINDOW_PRESETS,
+  });
   const [includeAlerts, setIncludeAlerts] = useState(true);
 
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -630,6 +643,20 @@ export default function PickupHealthPage() {
             />
             Incluir alertas
           </label>
+        </div>
+
+        <div style={trendPresetRowStyle}>
+          <span style={trendPresetLabelStyle}>Presets janela (dias)</span>
+          {PICKUP_HEALTH_TREND_WINDOW_PRESETS.map((days) => (
+            <button
+              key={days}
+              type="button"
+              onClick={() => applyTrendWindowPreset(days)}
+              style={trendPresetButtonStyle(trendDaysWindow === days)}
+            >
+              {days}d
+            </button>
+          ))}
         </div>
       </section>
 
@@ -1072,6 +1099,30 @@ const checkboxLabelStyle = {
   fontSize: 14,
   paddingTop: 26,
 };
+
+const trendPresetRowStyle = {
+  marginTop: 10,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const trendPresetLabelStyle = {
+  color: "rgba(245,247,250,0.78)",
+  fontSize: 12,
+};
+
+const trendPresetButtonStyle = (active) => ({
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: active ? "1px solid rgba(59,130,246,0.92)" : "1px solid rgba(255,255,255,0.16)",
+  background: active ? "rgba(59,130,246,0.24)" : "transparent",
+  color: active ? "#dbeafe" : "#e2e8f0",
+  fontWeight: 700,
+  fontSize: 12,
+  cursor: "pointer",
+});
 
 const inputStyle = {
   padding: "10px 12px",

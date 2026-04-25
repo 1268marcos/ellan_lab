@@ -3,9 +3,12 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
+import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const OPS_HEALTH_WINDOW_PREF_KEY = "ops_health:window_hours";
+const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
 
 function extractErrorMessage(payload, fallback = "Não foi possível carregar métricas operacionais.") {
   if (!payload) return fallback;
@@ -31,7 +34,13 @@ export default function OpsHealthPage() {
   const [metrics, setMetrics] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [lookbackHours, setLookbackHours] = useState(24);
+  const { windowValue: lookbackHours, setWindowValue: setLookbackHours, applyPreset: applyWindowPreset } = useOpsWindowPreset({
+    storageKey: OPS_HEALTH_WINDOW_PREF_KEY,
+    defaultValue: 24,
+    minValue: 1,
+    maxValue: 168,
+    presetValues: OPS_HEALTH_WINDOW_PRESETS,
+  });
 
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -101,6 +110,20 @@ export default function OpsHealthPage() {
               {loading ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
+        </div>
+
+        <div style={presetRowStyle}>
+          <span style={presetLabelStyle}>Presets de janela</span>
+          {OPS_HEALTH_WINDOW_PRESETS.map((hours) => (
+            <button
+              key={hours}
+              type="button"
+              onClick={() => applyWindowPreset(hours)}
+              style={presetButtonStyle(lookbackHours === hours)}
+            >
+              {hours < 24 ? `${hours}h` : hours === 24 ? "24h" : hours === 168 ? "7d" : `${Math.floor(hours / 24)}d`}
+            </button>
+          ))}
         </div>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}
@@ -236,6 +259,30 @@ const buttonGhostStyle = {
   color: "#e2e8f0",
   fontWeight: 600,
 };
+
+const presetRowStyle = {
+  marginTop: 10,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 8,
+};
+
+const presetLabelStyle = {
+  color: "rgba(245,247,250,0.72)",
+  fontSize: 12,
+  marginRight: 2,
+};
+
+const presetButtonStyle = (active) => ({
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: active ? "1px solid rgba(29,78,216,0.95)" : "1px solid rgba(255,255,255,0.14)",
+  background: active ? "rgba(29,78,216,0.22)" : "#0b0f14",
+  color: active ? "#bfdbfe" : "#e2e8f0",
+  fontWeight: 700,
+  cursor: "pointer",
+});
 
 const kpiGridStyle = {
   marginTop: 14,
