@@ -17,7 +17,7 @@ from app.health.internal import router as internal_health_router
 from app.jobs.expiry import run_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
-from app.routers import dev_admin, dev_base_catalog, internal, kiosk, orders, partners, pickup
+from app.routers import dev_admin, dev_base_catalog, internal, kiosk, logistics, orders, partners, pickup
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
@@ -44,6 +44,7 @@ app.include_router(orders.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(partners.router)
+app.include_router(logistics.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)

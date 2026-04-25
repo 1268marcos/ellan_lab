@@ -41,6 +41,7 @@ const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
+const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -220,6 +221,7 @@ function TopNav() {
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas" },
     { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT" },
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners" },
+    { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -770,6 +772,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsPartnersDashboardPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/logistics/dashboard"
+              element={
+                <OpsRoute>
+                  <OpsLogisticsDashboardPage />
                 </OpsRoute>
               }
             />

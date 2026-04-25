@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -110,14 +112,24 @@ export default function OpsHealthPage() {
         {!error && !loading && metrics ? (
           <>
             <div style={kpiGridStyle}>
-              <KpiCard label="Ações OPS" value={metrics?.kpis?.total_ops_actions ?? 0} />
-              <KpiCard label="Taxa de erro" value={`${(Number(metrics?.kpis?.error_rate || 0) * 100).toFixed(1)}%`} />
-              <KpiCard label="Reconciliações" value={metrics?.kpis?.reconciliation_actions ?? 0} />
-              <KpiCard label="Pendências abertas" value={metrics?.kpis?.pending_open_count ?? 0} />
-              <KpiCard label="Retry pronto" value={metrics?.kpis?.pending_due_retry_count ?? 0} />
-              <KpiCard label="PROCESSING stale" value={metrics?.kpis?.pending_processing_stale_count ?? 0} />
-              <KpiCard label="FAILED_FINAL" value={metrics?.kpis?.pending_failed_final_count ?? 0} />
-              <KpiCard label="Idade média pendência (min)" value={metrics?.kpis?.avg_open_pending_age_min ?? 0} />
+              <OpsTrendKpiCard label="Ações OPS" value={metrics?.kpis?.total_ops_actions ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard
+                label="Taxa de erro"
+                value={`${(Number(metrics?.kpis?.error_rate || 0) * 100).toFixed(1)}%`}
+                baseStyle={kpiBoxStyle}
+                showTrend={false}
+              />
+              <OpsTrendKpiCard label="Reconciliações" value={metrics?.kpis?.reconciliation_actions ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard label="Pendências abertas" value={metrics?.kpis?.pending_open_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard label="Retry pronto" value={metrics?.kpis?.pending_due_retry_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard label="PROCESSING stale" value={metrics?.kpis?.pending_processing_stale_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard label="FAILED_FINAL" value={metrics?.kpis?.pending_failed_final_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard
+                label="Idade média pendência (min)"
+                value={metrics?.kpis?.avg_open_pending_age_min ?? 0}
+                baseStyle={kpiBoxStyle}
+                showTrend={false}
+              />
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(245,247,250,0.78)", fontSize: 13 }}>
@@ -127,10 +139,10 @@ export default function OpsHealthPage() {
 
             <div style={alertsWrapStyle}>
               {(metrics?.alerts || []).length === 0 ? (
-                <span style={alertBadgeStyle("OK")}>Sem alertas ativos</span>
+                <span style={getSeverityBadgeStyle("OK")}>Sem alertas ativos</span>
               ) : (
                 (metrics?.alerts || []).map((alert, index) => (
-                  <span key={`${alert.code}-${index}`} style={alertBadgeStyle(alert.severity)}>
+                  <span key={`${alert.code}-${index}`} style={getSeverityBadgeStyle(alert.severity)}>
                     {alert.code}: {alert.message}
                   </span>
                 ))
@@ -140,15 +152,6 @@ export default function OpsHealthPage() {
         ) : null}
       </section>
     </div>
-  );
-}
-
-function KpiCard({ label, value }) {
-  return (
-    <article style={kpiBoxStyle}>
-      <small>{label}</small>
-      <strong>{value}</strong>
-    </article>
   );
 }
 
@@ -266,39 +269,3 @@ const errorStyle = {
   overflow: "auto",
 };
 
-const alertBadgeStyle = (severity) => {
-  if (severity === "HIGH") {
-    return {
-      display: "inline-flex",
-      borderRadius: 999,
-      padding: "4px 10px",
-      fontSize: 12,
-      fontWeight: 700,
-      border: "1px solid rgba(179,38,30,0.65)",
-      background: "rgba(179,38,30,0.20)",
-      color: "#fecaca",
-    };
-  }
-  if (severity === "WARN") {
-    return {
-      display: "inline-flex",
-      borderRadius: 999,
-      padding: "4px 10px",
-      fontSize: 12,
-      fontWeight: 700,
-      border: "1px solid rgba(199,146,0,0.65)",
-      background: "rgba(199,146,0,0.18)",
-      color: "#fde68a",
-    };
-  }
-  return {
-    display: "inline-flex",
-    borderRadius: 999,
-    padding: "4px 10px",
-    fontSize: 12,
-    fontWeight: 700,
-    border: "1px solid rgba(31,122,63,0.65)",
-    background: "rgba(31,122,63,0.18)",
-    color: "#86efac",
-  };
-}

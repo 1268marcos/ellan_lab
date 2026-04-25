@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -205,22 +207,15 @@ export default function OpsReconciliationPage() {
         ) : health ? (
           <>
             <div style={kpiGridStyle}>
-              <div style={kpiBoxStyle}>
-                <small>Ações OPS</small>
-                <strong>{health?.kpis?.total_ops_actions ?? 0}</strong>
-              </div>
-              <div style={kpiBoxStyle}>
-                <small>Taxa de erro</small>
-                <strong>{((Number(health?.kpis?.error_rate || 0) * 100).toFixed(1))}%</strong>
-              </div>
-              <div style={kpiBoxStyle}>
-                <small>Pendências abertas</small>
-                <strong>{health?.kpis?.pending_open_count ?? 0}</strong>
-              </div>
-              <div style={kpiBoxStyle}>
-                <small>FAILED_FINAL</small>
-                <strong>{health?.kpis?.pending_failed_final_count ?? 0}</strong>
-              </div>
+              <OpsTrendKpiCard label="Ações OPS" value={health?.kpis?.total_ops_actions ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard
+                label="Taxa de erro"
+                value={`${(Number(health?.kpis?.error_rate || 0) * 100).toFixed(1)}%`}
+                baseStyle={kpiBoxStyle}
+                showTrend={false}
+              />
+              <OpsTrendKpiCard label="Pendências abertas" value={health?.kpis?.pending_open_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard label="FAILED_FINAL" value={health?.kpis?.pending_failed_final_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(245, 247, 250, 0.78)", fontSize: 13 }}>
@@ -230,10 +225,10 @@ export default function OpsReconciliationPage() {
 
             <div style={alertsWrapStyle}>
               {(health?.alerts || []).length === 0 ? (
-                <span style={alertBadgeStyle("OK")}>Sem alertas ativos</span>
+                <span style={getSeverityBadgeStyle("OK")}>Sem alertas ativos</span>
               ) : (
                 (health?.alerts || []).map((alert, index) => (
-                  <span key={`${alert.code}-${index}`} style={alertBadgeStyle(alert.severity)}>
+                  <span key={`${alert.code}-${index}`} style={getSeverityBadgeStyle(alert.severity)}>
                     {alert.code}: {alert.message}
                   </span>
                 ))
@@ -347,7 +342,7 @@ export default function OpsReconciliationPage() {
               <article key={item.key} style={historyItemStyle}>
                 <div style={historyTopRowStyle}>
                   <strong>{item.order_id}</strong>
-                  <span style={historyBadgeStyle(Boolean(item.ok))}>
+                  <span style={getSeverityBadgeStyle(item.ok ? "OK" : "ERROR")}>
                     {item.ok ? "OK" : "ERRO"}
                   </span>
                 </div>
@@ -588,57 +583,6 @@ const filterButtonStyle = (active, variant = "ALL") => {
     color: selected.color,
     fontWeight: 700,
     fontSize: 12,
-  };
-};
-
-const historyBadgeStyle = (ok) => ({
-  display: "inline-flex",
-  alignItems: "center",
-  borderRadius: 999,
-  padding: "3px 10px",
-  fontSize: 12,
-  fontWeight: 700,
-  background: ok ? "rgba(31,122,63,0.22)" : "rgba(179,38,30,0.22)",
-  border: ok
-    ? "1px solid rgba(31,122,63,0.45)"
-    : "1px solid rgba(179,38,30,0.45)",
-  color: ok ? "#86efac" : "#fecaca",
-});
-
-const alertBadgeStyle = (severity) => {
-  if (severity === "HIGH") {
-    return {
-      display: "inline-flex",
-      borderRadius: 999,
-      padding: "4px 10px",
-      fontSize: 12,
-      fontWeight: 700,
-      border: "1px solid rgba(179,38,30,0.65)",
-      background: "rgba(179,38,30,0.20)",
-      color: "#fecaca",
-    };
-  }
-  if (severity === "WARN") {
-    return {
-      display: "inline-flex",
-      borderRadius: 999,
-      padding: "4px 10px",
-      fontSize: 12,
-      fontWeight: 700,
-      border: "1px solid rgba(199,146,0,0.65)",
-      background: "rgba(199,146,0,0.18)",
-      color: "#fde68a",
-    };
-  }
-  return {
-    display: "inline-flex",
-    borderRadius: 999,
-    padding: "4px 10px",
-    fontSize: 12,
-    fontWeight: 700,
-    border: "1px solid rgba(31,122,63,0.65)",
-    background: "rgba(31,122,63,0.18)",
-    color: "#86efac",
   };
 };
 

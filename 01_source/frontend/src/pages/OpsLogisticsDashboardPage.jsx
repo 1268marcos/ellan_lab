@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
+import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import { getTrendBadgeStyle, getTrendToken } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
-const AUTO_REFRESH_PREF_KEY = "ops_partners_dashboard:auto_refresh_on_preset";
-const FILTERS_PREF_KEY = "ops_partners_dashboard:last_filters";
+const AUTO_REFRESH_PREF_KEY = "ops_logistics_dashboard:auto_refresh_on_preset";
+const FILTERS_PREF_KEY = "ops_logistics_dashboard:last_filters";
 
 function loadLastFilters() {
   try {
@@ -14,11 +15,8 @@ function loadLastFilters() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== "object") return null;
     return {
-      partnerId: typeof parsed.partnerId === "string" ? parsed.partnerId : "",
-      includeSections:
-        typeof parsed.includeSections === "string" && parsed.includeSections.trim()
-          ? parsed.includeSections
-          : "kpis,compare,changes_series",
+      carrierCode:
+        typeof parsed.carrierCode === "string" ? parsed.carrierCode : "",
       preset:
         typeof parsed.preset === "string" && parsed.preset.trim()
           ? parsed.preset
@@ -37,13 +35,12 @@ function loadLastFilters() {
   }
 }
 
-function persistLastFilters({ partnerId, includeSections, preset, from, to }) {
+function persistLastFilters({ carrierCode, preset, from, to }) {
   try {
     window.localStorage.setItem(
       FILTERS_PREF_KEY,
       JSON.stringify({
-        partnerId: String(partnerId || ""),
-        includeSections: String(includeSections || "kpis,compare,changes_series"),
+        carrierCode: String(carrierCode || ""),
         preset: String(preset || "7d"),
         from: from ? String(from) : null,
         to: to ? String(to) : null,
@@ -71,7 +68,7 @@ function toIsoOrNull(localDateTimeValue) {
   return parsed.toISOString();
 }
 
-function parseError(payload, fallback = "Não foi possível carregar dashboard OPS.") {
+function parseError(payload, fallback = "Nao foi possivel carregar dashboard OPS de Logistics.") {
   if (!payload) return fallback;
   if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail.trim();
   if (payload?.detail && typeof payload.detail === "object") {
@@ -88,15 +85,15 @@ function parseError(payload, fallback = "Não foi possível carregar dashboard O
 
 function normalizeNetworkError(err, endpoint) {
   const raw = String(err?.message || err || "").trim();
-  if (!raw) return "Falha de comunicação com a API OPS.";
+  if (!raw) return "Falha de comunicacao com a API OPS de Logistics.";
   const lower = raw.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
-    return `Falha de conexão com a API OPS (${endpoint}). Verifique se o backend está ativo e se o proxy /api/op está configurado no frontend.`;
+    return `Falha de conexao com a API OPS (${endpoint}). Verifique se o backend esta ativo e se o proxy /api/op esta configurado no frontend.`;
   }
   return raw;
 }
 
-export default function OpsPartnersDashboardPage() {
+export default function OpsLogisticsDashboardPage() {
   const { token } = useAuth();
   const now = new Date();
   const fromDefault = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -115,10 +112,7 @@ export default function OpsPartnersDashboardPage() {
     }
     return true;
   });
-  const [partnerId, setPartnerId] = useState(lastFilters?.partnerId || "");
-  const [includeSections, setIncludeSections] = useState(
-    lastFilters?.includeSections || "kpis,compare,changes_series"
-  );
+  const [carrierCode, setCarrierCode] = useState(lastFilters?.carrierCode || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [payload, setPayload] = useState(null);
@@ -141,37 +135,20 @@ export default function OpsPartnersDashboardPage() {
     } else if (presetId === "month") {
       start = new Date(referenceNow.getFullYear(), referenceNow.getMonth(), 1, 0, 0, 0, 0);
     }
-    setFrom(toLocalInputValue(start));
-    setTo(toLocalInputValue(referenceNow));
+    const nextFrom = toLocalInputValue(start);
+    const nextTo = toLocalInputValue(referenceNow);
+    setFrom(nextFrom);
+    setTo(nextTo);
     setSelectedPreset(presetId);
     persistLastFilters({
-      partnerId,
-      includeSections,
+      carrierCode,
       preset: presetId,
-      from: toLocalInputValue(start),
-      to: toLocalInputValue(referenceNow),
+      from: nextFrom,
+      to: nextTo,
     });
     if (autoRefreshOnPreset) {
-      // Auto refresh ao selecionar preset de período.
       setTimeout(() => {
-        void loadDashboard();
-      }, 0);
-    }
-  }
-
-  function applySectionsPreset(value) {
-    setIncludeSections(value);
-    persistLastFilters({
-      partnerId,
-      includeSections: value,
-      preset: selectedPreset,
-      from,
-      to,
-    });
-    if (autoRefreshOnPreset) {
-      // Auto refresh ao selecionar preset de seções.
-      setTimeout(() => {
-        void loadDashboard();
+        void loadDashboard(nextFrom, nextTo);
       }, 0);
     }
   }
@@ -185,29 +162,26 @@ export default function OpsPartnersDashboardPage() {
     }
   }
 
-  async function loadDashboard() {
+  async function loadDashboard(fromOverride = null, toOverride = null) {
     if (!token) return;
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams();
-      const fromIso = toIsoOrNull(from);
-      const toIso = toIsoOrNull(to);
+      const fromIso = toIsoOrNull(fromOverride || from);
+      const toIso = toIsoOrNull(toOverride || to);
       if (fromIso) params.set("from", fromIso);
       if (toIso) params.set("to", toIso);
-      if (String(partnerId || "").trim()) params.set("partner_id", String(partnerId).trim());
-      if (String(includeSections || "").trim()) {
-        params.set("include_sections", String(includeSections).trim());
-      }
+      if (String(carrierCode || "").trim()) params.set("carrier_code", String(carrierCode).trim());
+
       persistLastFilters({
-        partnerId,
-        includeSections,
+        carrierCode,
         preset: selectedPreset,
-        from,
-        to,
+        from: fromOverride || from,
+        to: toOverride || to,
       });
 
-      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard?${params.toString()}`;
+      const endpoint = `${ORDER_PICKUP_BASE}/logistics/ops/overview?${params.toString()}`;
       const response = await fetch(endpoint, {
         method: "GET",
         headers: { Accept: "application/json", ...authHeaders },
@@ -218,7 +192,7 @@ export default function OpsPartnersDashboardPage() {
       }
       setPayload(data || null);
     } catch (err) {
-      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard`;
+      const endpoint = `${ORDER_PICKUP_BASE}/logistics/ops/overview`;
       setError(normalizeNetworkError(err, endpoint));
       setPayload(null);
     } finally {
@@ -229,83 +203,50 @@ export default function OpsPartnersDashboardPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Partners Dashboard</h1>
+        <h1 style={{ marginTop: 0 }}>OPS - Logistics Dashboard</h1>
         <p style={mutedStyle}>
-          Visualização consolidada de KPI, comparativo e série temporal (global ou foco por parceiro).
+          Acompanhamento operacional de tracking events, delivery attempts e shipment labels.
         </p>
 
         <div style={filtersGridStyle}>
           <label style={labelStyle}>
             From
-              <input
-                type="datetime-local"
-                value={from}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setFrom(next);
-                  persistLastFilters({
-                    partnerId,
-                    includeSections,
-                    preset: selectedPreset,
-                    from: next,
-                    to,
-                  });
-                }}
-                style={inputStyle}
-              />
+            <input
+              type="datetime-local"
+              value={from}
+              onChange={(e) => {
+                const next = e.target.value;
+                setFrom(next);
+                persistLastFilters({ carrierCode, preset: selectedPreset, from: next, to });
+              }}
+              style={inputStyle}
+            />
           </label>
           <label style={labelStyle}>
             To
-              <input
-                type="datetime-local"
-                value={to}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setTo(next);
-                  persistLastFilters({
-                    partnerId,
-                    includeSections,
-                    preset: selectedPreset,
-                    from,
-                    to: next,
-                  });
-                }}
-                style={inputStyle}
-              />
+            <input
+              type="datetime-local"
+              value={to}
+              onChange={(e) => {
+                const next = e.target.value;
+                setTo(next);
+                persistLastFilters({ carrierCode, preset: selectedPreset, from, to: next });
+              }}
+              style={inputStyle}
+            />
           </label>
           <label style={labelStyle}>
-            Partner ID (opcional)
-              <input
-                value={partnerId}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setPartnerId(next);
-                  persistLastFilters({
-                    partnerId: next,
-                    includeSections,
-                    preset: selectedPreset,
-                  });
-                }}
-                placeholder="ex.: ptn_123"
-                style={inputStyle}
-              />
-          </label>
-          <label style={labelStyle}>
-            Include Sections
-              <input
-                value={includeSections}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setIncludeSections(next);
-                  persistLastFilters({
-                    partnerId,
-                    includeSections: next,
-                    preset: selectedPreset,
-                  });
-                }}
-                placeholder="kpis,compare,changes_series"
-                style={inputStyle}
-              />
+            Carrier code (opcional)
+            <input
+              value={carrierCode}
+              onChange={(e) => {
+                const next = e.target.value;
+                setCarrierCode(next);
+                persistLastFilters({ carrierCode: next, preset: selectedPreset, from, to });
+              }}
+              placeholder="ex.: UPS, CORREIOS, FEDEX"
+              style={inputStyle}
+            />
           </label>
         </div>
 
@@ -328,36 +269,13 @@ export default function OpsPartnersDashboardPage() {
               { id: "24h", label: "24h" },
               { id: "7d", label: "7d" },
               { id: "30d", label: "30d" },
-              { id: "month", label: "Mês Atual" },
+              { id: "month", label: "Mes Atual" },
             ].map((preset) => (
               <button
                 key={preset.id}
                 type="button"
                 onClick={() => applyPreset(preset.id)}
                 style={presetButtonStyle(selectedPreset === preset.id)}
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div style={presetSectionStyle}>
-          <span style={presetLabelStyle}>Presets include sections</span>
-          <div style={presetWrapStyle}>
-            {[
-              { id: "all", label: "Tudo", value: "kpis,compare,changes_series" },
-              { id: "fast", label: "Rápido", value: "kpis,compare" },
-              { id: "trend", label: "Tendência", value: "compare,changes_series" },
-              { id: "kpi", label: "Só KPI", value: "kpis" },
-              { id: "compare", label: "Só Compare", value: "compare" },
-              { id: "series", label: "Só Série", value: "changes_series" },
-            ].map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => applySectionsPreset(preset.value)}
-                style={presetButtonStyle(includeSections === preset.value)}
               >
                 {preset.label}
               </button>
@@ -377,37 +295,59 @@ export default function OpsPartnersDashboardPage() {
           <>
             <div style={kpiGridStyle}>
               <OpsTrendKpiCard
-                label="Total eventos"
-                value={payload?.kpis?.total_events ?? "-"}
-                previousValue={payload?.compare?.total_previous}
-                trend={resolveTrendByDelta(payload?.compare?.total_delta_count)}
+                label="Tracking events"
+                value={payload?.totals?.events ?? "-"}
+                previousValue={payload?.totals?.events_previous ?? 0}
+                trend={resolveKpiTrend(payload?.totals?.events, payload?.totals?.events_previous).trend}
+                deltaLabel={resolveKpiTrend(payload?.totals?.events, payload?.totals?.events_previous).deltaLabel}
                 baseStyle={kpiCardStyle}
               />
               <OpsTrendKpiCard
-                label="Erro %"
-                value={payload?.kpis ? `${payload.kpis.error_rate_pct}%` : "-"}
-                baseStyle={kpiCardStyle}
-                showTrend={false}
-              />
-              <OpsTrendKpiCard
-                label="Delta total %"
-                value={payload?.compare ? `${payload.compare.total_delta_pct}%` : "-"}
-                trend={resolveTrendByDelta(payload?.compare?.total_delta_count)}
-                deltaLabel={
-                  payload?.compare
-                    ? `${Number(payload.compare.total_delta_count) > 0 ? "+" : ""}${payload.compare.total_delta_count}`
-                    : null
-                }
+                label="Delivery attempts"
+                value={payload?.totals?.attempts ?? "-"}
+                previousValue={payload?.totals?.attempts_previous ?? 0}
+                trend={resolveKpiTrend(payload?.totals?.attempts, payload?.totals?.attempts_previous).trend}
+                deltaLabel={resolveKpiTrend(payload?.totals?.attempts, payload?.totals?.attempts_previous).deltaLabel}
                 baseStyle={kpiCardStyle}
               />
               <OpsTrendKpiCard
-                label="Confianca"
-                value={payload?.compare?.confidence_level ?? "-"}
+                label="Shipment labels"
+                value={payload?.totals?.labels ?? "-"}
+                previousValue={payload?.totals?.labels_previous ?? 0}
+                trend={resolveKpiTrend(payload?.totals?.labels, payload?.totals?.labels_previous).trend}
+                deltaLabel={resolveKpiTrend(payload?.totals?.labels, payload?.totals?.labels_previous).deltaLabel}
+                baseStyle={kpiCardStyle}
+              />
+              <OpsTrendKpiCard
+                label="Carrier filtro"
+                value={payload?.carrier_code || "GLOBAL"}
                 baseStyle={kpiCardStyle}
                 showTrend={false}
               />
             </div>
-            <pre style={jsonStyle}>{JSON.stringify(payload, null, 2)}</pre>
+
+            <div style={topsGridStyle}>
+              <TopListCard
+                title="Top event codes"
+                items={Array.isArray(payload?.by_event_code) ? payload.by_event_code : []}
+                emptyLabel="Sem eventos no periodo."
+              />
+              <TopListCard
+                title="Top attempt statuses"
+                items={Array.isArray(payload?.by_attempt_status) ? payload.by_attempt_status : []}
+                emptyLabel="Sem tentativas no periodo."
+              />
+              <TopListCard
+                title="Top carriers de label"
+                items={Array.isArray(payload?.by_label_carrier) ? payload.by_label_carrier : []}
+                emptyLabel="Sem labels no periodo."
+              />
+            </div>
+
+            <details style={detailsStyle}>
+              <summary style={summaryStyle}>Ver JSON tecnico (apoio)</summary>
+              <pre style={jsonStyle}>{JSON.stringify(payload, null, 2)}</pre>
+            </details>
           </>
         ) : (
           <p style={mutedStyle}>Clique em "Atualizar Dashboard" para carregar os dados.</p>
@@ -417,16 +357,77 @@ export default function OpsPartnersDashboardPage() {
   );
 }
 
+function resolveKpiTrend(value, previousValue) {
+  const current = Number(value ?? 0);
+  const previous = Number(previousValue ?? 0);
+  if (Number.isNaN(current) || Number.isNaN(previous)) {
+    return { trend: "stable", deltaLabel: "0" };
+  }
+  const delta = current - previous;
+  if (delta > 0) return { trend: "up", deltaLabel: `+${delta}` };
+  if (delta < 0) return { trend: "down", deltaLabel: String(delta) };
+  return { trend: "stable", deltaLabel: "0" };
+}
+
+function TopListCard({ title, items, emptyLabel }) {
+  return (
+    <article style={topCardStyle}>
+      <h3 style={topCardTitleStyle}>{title}</h3>
+      {!items.length ? (
+        <p style={topCardEmptyStyle}>{emptyLabel}</p>
+      ) : (
+        <ul style={topListStyle}>
+          {items.slice(0, 8).map((item, idx) => (
+            <li key={`${item?.key || "n/a"}-${idx}`} style={topListItemStyle}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <span style={topKeyStyle}>{item?.key || "-"}</span>
+                <div style={topSubRowStyle}>
+                  <TrendBadge trend={item?.trend} />
+                  <span style={topDeltaStyle}>
+                    Δ {Number(item?.delta ?? 0) > 0 ? `+${item?.delta}` : item?.delta ?? 0}
+                  </span>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <strong style={topCountStyle}>{item?.count ?? 0}</strong>
+                <div style={topPrevStyle}>prev: {item?.previous_count ?? 0}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+function TrendBadge({ trend }) {
+  const token = getTrendToken(trend);
+  return <span style={getTrendBadgeStyle(trend)}>{token.label}</span>;
+}
+
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "#E2E8F0", fontFamily: "system-ui, sans-serif" };
 const cardStyle = { background: "#111827", border: "1px solid #334155", borderRadius: 16, padding: 16 };
 const mutedStyle = { color: "#94A3B8", marginTop: 8 };
 const filtersGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 };
 const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };
 const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#0B1220", color: "#E2E8F0" };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#0F766E", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
+const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
 const errorStyle = { marginTop: 12, background: "rgba(220, 38, 38, 0.12)", color: "#FCA5A5", border: "1px solid rgba(220, 38, 38, 0.45)", borderRadius: 10, padding: 10 };
 const kpiGridStyle = { marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 };
 const kpiCardStyle = { background: "#0B1220", border: "1px solid #334155", borderRadius: 12, padding: 12 };
+const topsGridStyle = { marginTop: 14, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 };
+const topCardStyle = { background: "#0B1220", border: "1px solid #334155", borderRadius: 12, padding: 12 };
+const topCardTitleStyle = { margin: 0, marginBottom: 10, fontSize: 14, color: "#E2E8F0" };
+const topCardEmptyStyle = { margin: 0, color: "#94A3B8", fontSize: 12 };
+const topListStyle = { margin: 0, padding: 0, listStyle: "none", display: "grid", gap: 8 };
+const topListItemStyle = { display: "flex", alignItems: "center", justifyContent: "space-between", background: "#020617", border: "1px solid #1E293B", borderRadius: 8, padding: "8px 10px" };
+const topKeyStyle = { color: "#CBD5E1", fontSize: 12, fontWeight: 600 };
+const topCountStyle = { color: "#BFDBFE", fontSize: 13 };
+const topPrevStyle = { color: "#94A3B8", fontSize: 11, marginTop: 2 };
+const topSubRowStyle = { display: "flex", alignItems: "center", gap: 6 };
+const topDeltaStyle = { color: "#94A3B8", fontSize: 11 };
+const detailsStyle = { marginTop: 12 };
+const summaryStyle = { cursor: "pointer", color: "#94A3B8", fontSize: 12 };
 const jsonStyle = { marginTop: 14, background: "#020617", border: "1px solid #1E293B", borderRadius: 12, padding: 12, overflow: "auto", fontSize: 12, lineHeight: 1.4 };
 const presetSectionStyle = { marginTop: 12, background: "#0B1220", border: "1px solid #1E293B", borderRadius: 10, padding: 10 };
 const presetHeadRowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" };
@@ -436,9 +437,9 @@ const toggleLabelStyle = { color: "#CBD5E1", fontSize: 12, display: "flex", alig
 const presetButtonStyle = (active) => ({
   padding: "6px 10px",
   borderRadius: 999,
-  border: active ? "1px solid #0F766E" : "1px solid #334155",
-  background: active ? "rgba(15,118,110,0.22)" : "#0B1220",
-  color: active ? "#99F6E4" : "#CBD5E1",
+  border: active ? "1px solid #1D4ED8" : "1px solid #334155",
+  background: active ? "rgba(29,78,216,0.22)" : "#0B1220",
+  color: active ? "#BFDBFE" : "#CBD5E1",
   fontWeight: 700,
   cursor: "pointer",
 });

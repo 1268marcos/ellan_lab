@@ -603,6 +603,32 @@ services:
       - locker-network
 
   # =========================
+  # PARTNER INTEGRATION HEALTH WORKER (P-2)
+  # =========================
+  partner_integration_health_worker:
+    build:
+      context: ../01_source/order_pickup_service
+    container_name: partner_integration_health_worker
+    command: ["python", "-m", "app.workers.partner_integration_health_worker"]
+    restart: unless-stopped
+    env_file:
+      - ../01_source/order_pickup_service/.env
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - RUN_DB_MIGRATIONS_ON_STARTUP=true
+      - PARTNER_INTEGRATION_HEALTH_POLL_SEC=300
+      - PARTNER_INTEGRATION_HEALTH_TIMEOUT_SEC=8
+      - PARTNER_INTEGRATION_HEALTH_BATCH_SIZE=500
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+  # =========================
   # ORDER PICKUP NOTIFICATION DELIVERY WORKER
   # =========================
   notification_delivery_worker:

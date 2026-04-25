@@ -1,0 +1,741 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import secrets
+from collections import Counter
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.auth_dep import get_current_user, require_user_roles
+from app.core.db import get_db
+from app.models.logistics_tracking import (
+    LogisticsCarrierAuthConfig,
+    LogisticsCarrierStatusMap,
+    LogisticsDeliveryAttempt,
+    LogisticsShipmentLabel,
+    LogisticsTrackingEvent,
+)
+from app.models.user import User
+from app.schemas.logistics import (
+    LogisticsCarrierAuthConfigIn,
+    LogisticsCarrierAuthConfigOut,
+    LogisticsCarrierStatusMapIn,
+    LogisticsCarrierStatusMapOut,
+    LogisticsDeliveryAttemptListOut,
+    LogisticsDeliveryAttemptOut,
+    LogisticsLabelCreateIn,
+    LogisticsOpsOverviewOut,
+    LogisticsShipmentLabelOut,
+    LogisticsTrackingEventListOut,
+    LogisticsTrackingEventOut,
+    LogisticsWebhookEventIn,
+    LogisticsWebhookIngestOut,
+)
+from app.services.ops_audit_service import record_ops_action_audit
+
+router = APIRouter(
+    prefix="/logistics",
+    tags=["logistics"],
+    dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria"}))],
+)
+
+_ATTEMPT_STATUSES = {"SUCCESS", "FAILED", "RESCHEDULED", "RETURNED"}
+_LABEL_FORMATS = {"PDF", "ZPL", "PNG"}
+_HMAC_ALGORITHMS = {"HMAC_SHA256": "sha256"}
+
+
+def _to_iso_utc(value: datetime | None) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).isoformat()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) -> datetime | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    normalized = value.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATETIME", "message": f"{field_name} inválido. Use ISO-8601."},
+        ) from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _json_load_dict(value: str | None) -> dict:
+    try:
+        parsed = json.loads(str(value or "{}"))
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    return {}
+
+
+def _resolve_correlation_id(header_value: str | None) -> str:
+    value = str(header_value or "").strip()
+    return value or str(uuid4())
+
+
+def _audit_ops(
+    *,
+    db: Session,
+    action: str,
+    result: str,
+    correlation_id: str,
+    user_id: str | None,
+    error_message: str | None = None,
+    details: dict | None = None,
+) -> None:
+    try:
+        record_ops_action_audit(
+            db=db,
+            action=action,
+            result=result,
+            correlation_id=correlation_id,
+            user_id=user_id,
+            role="ops_user",
+            error_message=error_message,
+            details=details or {},
+        )
+    except Exception:
+        pass
+
+
+def _ensure_delivery_exists(db: Session, delivery_id: str) -> None:
+    row = db.execute(
+        text("SELECT id FROM inbound_deliveries WHERE id = :id"),
+        {"id": delivery_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "DELIVERY_NOT_FOUND",
+                "message": "Entrega não encontrada para o logistics tracking.",
+                "delivery_id": delivery_id,
+            },
+        )
+
+
+def _to_tracking_out(row: LogisticsTrackingEvent) -> LogisticsTrackingEventOut:
+    return LogisticsTrackingEventOut(
+        id=row.id,
+        delivery_id=row.delivery_id,
+        event_code=row.event_code,
+        event_label=row.event_label,
+        raw_status=row.raw_status,
+        location_city=row.location_city,
+        location_state=row.location_state,
+        location_country=row.location_country,
+        occurred_at=_to_iso_utc(row.occurred_at),
+        source=row.source,
+        source_ref=row.source_ref,
+        payload=_json_load_dict(row.payload_json),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_attempt_out(row: LogisticsDeliveryAttempt) -> LogisticsDeliveryAttemptOut:
+    return LogisticsDeliveryAttemptOut(
+        id=row.id,
+        delivery_id=row.delivery_id,
+        attempt_number=int(row.attempt_number or 0),
+        status=row.status,
+        attempted_at=_to_iso_utc(row.attempted_at),
+        failure_reason=row.failure_reason,
+        carrier_note=row.carrier_note,
+        carrier_agent=row.carrier_agent,
+        proof_url=row.proof_url,
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_label_out(row: LogisticsShipmentLabel) -> LogisticsShipmentLabelOut:
+    return LogisticsShipmentLabelOut(
+        id=row.id,
+        delivery_id=row.delivery_id,
+        carrier_code=row.carrier_code,
+        tracking_code=row.tracking_code,
+        label_format=row.label_format,
+        label_url=row.label_url,
+        label_payload=_json_load_dict(row.label_payload),
+        status=row.status,
+        created_at=_to_iso_utc(row.created_at),
+        expires_at=_to_iso_utc(row.expires_at) if row.expires_at else None,
+    )
+
+
+def _to_auth_out(row: LogisticsCarrierAuthConfig) -> LogisticsCarrierAuthConfigOut:
+    return LogisticsCarrierAuthConfigOut(
+        id=row.id,
+        carrier_code=row.carrier_code,
+        signature_header=row.signature_header,
+        algorithm=row.algorithm,
+        required=bool(row.required),
+        active=bool(row.active),
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _to_status_map_out(row: LogisticsCarrierStatusMap) -> LogisticsCarrierStatusMapOut:
+    return LogisticsCarrierStatusMapOut(
+        id=row.id,
+        carrier_code=row.carrier_code,
+        raw_status=row.raw_status,
+        normalized_event_code=row.normalized_event_code,
+        normalized_event_label=row.normalized_event_label,
+        normalized_outcome=row.normalized_outcome,
+        active=bool(row.active),
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _with_trend(current_counter: Counter[str], previous_counter: Counter[str]) -> list[dict]:
+    keys = sorted(set(current_counter.keys()) | set(previous_counter.keys()))
+    rows: list[dict] = []
+    for key in keys:
+        current_count = int(current_counter.get(key, 0))
+        previous_count = int(previous_counter.get(key, 0))
+        delta = current_count - previous_count
+        trend = "stable"
+        if delta > 0:
+            trend = "up"
+        elif delta < 0:
+            trend = "down"
+        rows.append(
+            {
+                "key": key,
+                "count": current_count,
+                "previous_count": previous_count,
+                "delta": delta,
+                "trend": trend,
+            }
+        )
+    rows.sort(key=lambda item: (-int(item["count"]), str(item["key"])))
+    return rows
+
+
+def _verify_carrier_hmac(
+    *,
+    db: Session,
+    carrier_code: str,
+    body_bytes: bytes,
+    provided_signature: str | None,
+) -> None:
+    cfg = (
+        db.query(LogisticsCarrierAuthConfig)
+        .filter(
+            LogisticsCarrierAuthConfig.carrier_code == carrier_code,
+            LogisticsCarrierAuthConfig.active.is_(True),
+        )
+        .order_by(LogisticsCarrierAuthConfig.updated_at.desc(), LogisticsCarrierAuthConfig.id.desc())
+        .first()
+    )
+    if not cfg:
+        return
+    if not cfg.required:
+        return
+    if not cfg.secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail={"type": "CARRIER_HMAC_NOT_CONFIGURED", "message": "Carrier exige HMAC, mas secret não está configurado."},
+        )
+    algorithm = str(cfg.algorithm or "").strip().upper()
+    digest_name = _HMAC_ALGORITHMS.get(algorithm)
+    if not digest_name:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "UNSUPPORTED_HMAC_ALGORITHM", "message": "Algoritmo HMAC não suportado."},
+        )
+    signature = str(provided_signature or "").strip()
+    if not signature:
+        raise HTTPException(
+            status_code=401,
+            detail={"type": "MISSING_CARRIER_SIGNATURE", "message": f"Header de assinatura '{cfg.signature_header}' não informado."},
+        )
+    expected = hmac.new(cfg.secret_key.encode("utf-8"), body_bytes, getattr(hashlib, digest_name)).hexdigest()
+    normalized_signature = signature.lower().replace("sha256=", "")
+    if not hmac.compare_digest(expected, normalized_signature):
+        raise HTTPException(
+            status_code=401,
+            detail={"type": "INVALID_CARRIER_SIGNATURE", "message": "Assinatura HMAC inválida para payload do carrier."},
+        )
+
+
+def _resolve_status_mapping(
+    *,
+    db: Session,
+    carrier_code: str,
+    raw_status: str | None,
+) -> LogisticsCarrierStatusMap | None:
+    status = str(raw_status or "").strip().upper()
+    if not status:
+        return None
+    return (
+        db.query(LogisticsCarrierStatusMap)
+        .filter(
+            LogisticsCarrierStatusMap.carrier_code == carrier_code,
+            LogisticsCarrierStatusMap.raw_status == status,
+            LogisticsCarrierStatusMap.active.is_(True),
+        )
+        .order_by(LogisticsCarrierStatusMap.updated_at.desc(), LogisticsCarrierStatusMap.id.desc())
+        .first()
+    )
+
+
+@router.post("/ops/carriers/auth-config", response_model=LogisticsCarrierAuthConfigOut)
+def upsert_logistics_carrier_auth_config(
+    payload: LogisticsCarrierAuthConfigIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    carrier_code = payload.carrier_code.strip().upper()
+    algorithm = payload.algorithm.strip().upper()
+    if algorithm not in _HMAC_ALGORITHMS:
+        raise HTTPException(status_code=422, detail={"type": "UNSUPPORTED_HMAC_ALGORITHM", "allowed": sorted(_HMAC_ALGORITHMS.keys())})
+
+    row = (
+        db.query(LogisticsCarrierAuthConfig)
+        .filter(LogisticsCarrierAuthConfig.carrier_code == carrier_code)
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if row is None:
+        row = LogisticsCarrierAuthConfig(
+            id=str(uuid4()),
+            carrier_code=carrier_code,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+
+    row.signature_header = payload.signature_header.strip() or "X-Carrier-Signature"
+    row.algorithm = algorithm
+    row.secret_key = payload.secret_key.strip() if payload.secret_key else row.secret_key
+    row.required = bool(payload.required)
+    row.active = bool(payload.active)
+    row.updated_at = now
+
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_CARRIER_AUTH_CONFIG_UPSERT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"carrier_code": carrier_code, "required": row.required, "active": row.active, "algorithm": row.algorithm},
+    )
+    db.commit()
+    return _to_auth_out(row)
+
+
+@router.post("/ops/carriers/status-map", response_model=LogisticsCarrierStatusMapOut)
+def upsert_logistics_carrier_status_map(
+    payload: LogisticsCarrierStatusMapIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    carrier_code = payload.carrier_code.strip().upper()
+    raw_status = payload.raw_status.strip().upper()
+    normalized_outcome = payload.normalized_outcome.strip().upper() if payload.normalized_outcome else None
+    if normalized_outcome and normalized_outcome not in _ATTEMPT_STATUSES:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_NORMALIZED_OUTCOME", "allowed_outcomes": sorted(_ATTEMPT_STATUSES)})
+
+    row = (
+        db.query(LogisticsCarrierStatusMap)
+        .filter(
+            LogisticsCarrierStatusMap.carrier_code == carrier_code,
+            LogisticsCarrierStatusMap.raw_status == raw_status,
+        )
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    if row is None:
+        row = LogisticsCarrierStatusMap(
+            id=str(uuid4()),
+            carrier_code=carrier_code,
+            raw_status=raw_status,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(row)
+
+    row.normalized_event_code = payload.normalized_event_code.strip().upper()
+    row.normalized_event_label = payload.normalized_event_label.strip()
+    row.normalized_outcome = normalized_outcome
+    row.active = bool(payload.active)
+    row.updated_at = now
+
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_CARRIER_STATUS_MAP_UPSERT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"carrier_code": carrier_code, "raw_status": raw_status, "event_code": row.normalized_event_code, "outcome": row.normalized_outcome},
+    )
+    db.commit()
+    return _to_status_map_out(row)
+
+
+@router.post("/webhook/{carrier_code}", response_model=LogisticsWebhookIngestOut)
+def post_logistics_carrier_webhook(
+    carrier_code: str,
+    payload: LogisticsWebhookEventIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    x_carrier_signature: str | None = Header(default=None, alias="X-Carrier-Signature"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    normalized_carrier = str(carrier_code or "").strip().upper()
+    if not normalized_carrier:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_CARRIER_CODE", "message": "carrier_code é obrigatório."})
+
+    _ensure_delivery_exists(db, payload.delivery_id)
+    payload_dict = payload.model_dump()
+    _verify_carrier_hmac(
+        db=db,
+        carrier_code=normalized_carrier,
+        body_bytes=json.dumps(payload_dict, separators=(",", ":"), ensure_ascii=False).encode("utf-8"),
+        provided_signature=x_carrier_signature,
+    )
+
+    mapping = _resolve_status_mapping(db=db, carrier_code=normalized_carrier, raw_status=payload.raw_status)
+    event_code = (mapping.normalized_event_code if mapping else (payload.event_code or "")).strip().upper()
+    event_label = (mapping.normalized_event_label if mapping else (payload.event_label or "")).strip()
+    if not event_code or not event_label:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "MISSING_NORMALIZED_EVENT", "message": "Não foi possível resolver event_code/event_label. Informe no payload ou configure status-map."},
+        )
+
+    occurred_at = _parse_iso_datetime_utc_optional(payload.occurred_at, field_name="occurred_at") or datetime.now(timezone.utc)
+    event_row = LogisticsTrackingEvent(
+        id=str(uuid4()),
+        delivery_id=payload.delivery_id.strip(),
+        event_code=event_code,
+        event_label=event_label,
+        raw_status=(payload.raw_status.strip() if payload.raw_status else None),
+        location_city=(payload.location_city.strip() if payload.location_city else None),
+        location_state=(payload.location_state.strip() if payload.location_state else None),
+        location_country=(payload.location_country.strip().upper() if payload.location_country else None),
+        occurred_at=occurred_at,
+        source=f"CARRIER_{normalized_carrier}",
+        source_ref=(payload.source_ref.strip() if payload.source_ref else None),
+        payload_json=json.dumps(payload.payload or {}),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(event_row)
+
+    attempt_out = None
+    if payload.attempt is not None or (mapping and mapping.normalized_outcome):
+        default_outcome = mapping.normalized_outcome if mapping else None
+        attempt_status = (
+            str(payload.attempt.status or "").strip().upper()
+            if payload.attempt is not None
+            else str(default_outcome or "").strip().upper()
+        )
+        if attempt_status and attempt_status not in _ATTEMPT_STATUSES:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_ATTEMPT_STATUS", "allowed_statuses": sorted(_ATTEMPT_STATUSES)})
+        if attempt_status:
+            next_attempt_number = payload.attempt.attempt_number if payload.attempt else None
+            if next_attempt_number is None:
+                current_max = (
+                    db.query(LogisticsDeliveryAttempt.attempt_number)
+                    .filter(LogisticsDeliveryAttempt.delivery_id == payload.delivery_id)
+                    .order_by(LogisticsDeliveryAttempt.attempt_number.desc())
+                    .first()
+                )
+                next_attempt_number = int(current_max[0]) + 1 if current_max else 1
+
+            attempt_row = LogisticsDeliveryAttempt(
+                id=str(uuid4()),
+                delivery_id=payload.delivery_id.strip(),
+                attempt_number=int(next_attempt_number),
+                status=attempt_status,
+                attempted_at=(
+                    _parse_iso_datetime_utc_optional(payload.attempt.attempted_at if payload.attempt else None, field_name="attempt.attempted_at")
+                    or occurred_at
+                ),
+                failure_reason=(payload.attempt.failure_reason.strip() if payload.attempt and payload.attempt.failure_reason else None),
+                carrier_note=(payload.attempt.carrier_note.strip() if payload.attempt and payload.attempt.carrier_note else None),
+                carrier_agent=(payload.attempt.carrier_agent.strip() if payload.attempt and payload.attempt.carrier_agent else None),
+                proof_url=(payload.attempt.proof_url.strip() if payload.attempt and payload.attempt.proof_url else None),
+                created_at=datetime.now(timezone.utc),
+            )
+            db.add(attempt_row)
+            attempt_out = attempt_row
+
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_CARRIER_WEBHOOK_INGEST",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "carrier_code": normalized_carrier,
+            "delivery_id": payload.delivery_id,
+            "event_code": event_row.event_code,
+            "raw_status": payload.raw_status,
+            "attempt_status": attempt_out.status if attempt_out else None,
+        },
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={"type": "LOGISTICS_EVENT_CONFLICT", "message": "Conflito ao registrar evento/tentativa."}) from exc
+
+    return LogisticsWebhookIngestOut(ok=True, carrier_code=normalized_carrier, event=_to_tracking_out(event_row), attempt=_to_attempt_out(attempt_out) if attempt_out else None)
+
+
+@router.get("/deliveries/{delivery_id}/tracking", response_model=LogisticsTrackingEventListOut)
+def get_logistics_delivery_tracking(delivery_id: str, limit: int = Query(default=200, ge=1, le=1000), db: Session = Depends(get_db)):
+    _ensure_delivery_exists(db, delivery_id)
+    rows = (
+        db.query(LogisticsTrackingEvent)
+        .filter(LogisticsTrackingEvent.delivery_id == delivery_id)
+        .order_by(LogisticsTrackingEvent.occurred_at.desc(), LogisticsTrackingEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return LogisticsTrackingEventListOut(ok=True, total=len(rows), items=[_to_tracking_out(row) for row in rows])
+
+
+@router.get("/deliveries/{delivery_id}/attempts", response_model=LogisticsDeliveryAttemptListOut)
+def get_logistics_delivery_attempts(delivery_id: str, limit: int = Query(default=200, ge=1, le=1000), db: Session = Depends(get_db)):
+    _ensure_delivery_exists(db, delivery_id)
+    rows = (
+        db.query(LogisticsDeliveryAttempt)
+        .filter(LogisticsDeliveryAttempt.delivery_id == delivery_id)
+        .order_by(LogisticsDeliveryAttempt.attempt_number.desc(), LogisticsDeliveryAttempt.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return LogisticsDeliveryAttemptListOut(ok=True, total=len(rows), items=[_to_attempt_out(row) for row in rows])
+
+
+@router.post("/deliveries/{delivery_id}/labels", response_model=LogisticsShipmentLabelOut)
+def post_logistics_delivery_label(
+    delivery_id: str,
+    payload: LogisticsLabelCreateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _ensure_delivery_exists(db, delivery_id)
+    carrier_code = str(payload.carrier_code or "").strip().upper()
+    if not carrier_code:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_CARRIER_CODE", "message": "carrier_code é obrigatório."})
+    label_format = str(payload.label_format or "PDF").strip().upper()
+    if label_format not in _LABEL_FORMATS:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_LABEL_FORMAT", "allowed_formats": sorted(_LABEL_FORMATS)})
+    tracking_code = (payload.tracking_code.strip() if payload.tracking_code else "") or f"{carrier_code}-{secrets.token_hex(8).upper()}"
+    row = LogisticsShipmentLabel(
+        id=str(uuid4()),
+        delivery_id=delivery_id,
+        carrier_code=carrier_code,
+        tracking_code=tracking_code,
+        label_format=label_format,
+        label_url=(payload.label_url.strip() if payload.label_url else None),
+        label_payload=json.dumps(payload.label_payload or {}),
+        status="GENERATED",
+        created_at=datetime.now(timezone.utc),
+        expires_at=_parse_iso_datetime_utc_optional(payload.expires_at, field_name="expires_at"),
+    )
+    db.add(row)
+    _audit_ops(
+        db=db,
+        action="LOGISTICS_LABEL_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"delivery_id": delivery_id, "carrier_code": carrier_code, "label_id": row.id, "tracking_code": tracking_code, "label_format": label_format},
+    )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail={"type": "TRACKING_CODE_CONFLICT", "message": "tracking_code já existe."}) from exc
+    return _to_label_out(row)
+
+
+@router.get("/deliveries/{delivery_id}/labels/{label_id}", response_model=LogisticsShipmentLabelOut)
+def get_logistics_delivery_label(delivery_id: str, label_id: str, db: Session = Depends(get_db)):
+    _ensure_delivery_exists(db, delivery_id)
+    row = db.get(LogisticsShipmentLabel, label_id)
+    if not row or row.delivery_id != delivery_id:
+        raise HTTPException(status_code=404, detail={"type": "LABEL_NOT_FOUND", "message": "Label não encontrada para esta entrega."})
+    return _to_label_out(row)
+
+
+@router.get("/ops/overview", response_model=LogisticsOpsOverviewOut)
+def get_logistics_ops_overview(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    carrier_code: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    now_utc = datetime.now(timezone.utc)
+    current_to = _parse_iso_datetime_utc_optional(to, field_name="to") or now_utc
+    current_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (current_to - timedelta(days=7))
+    window_to = current_to
+    window_from = current_from
+    if window_from > window_to:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."})
+    window_span = current_to - current_from
+    previous_to = current_from
+    previous_from = previous_to - window_span
+
+    rows_current = (
+        db.query(LogisticsTrackingEvent)
+        .filter(LogisticsTrackingEvent.created_at >= current_from, LogisticsTrackingEvent.created_at <= current_to)
+        .order_by(LogisticsTrackingEvent.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    rows_previous = (
+        db.query(LogisticsTrackingEvent)
+        .filter(LogisticsTrackingEvent.created_at >= previous_from, LogisticsTrackingEvent.created_at <= previous_to)
+        .order_by(LogisticsTrackingEvent.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    filtered_rows = [r for r in rows_current if not carrier_code or r.source == f"CARRIER_{carrier_code.strip().upper()}"]
+    filtered_rows_prev = [r for r in rows_previous if not carrier_code or r.source == f"CARRIER_{carrier_code.strip().upper()}"]
+    event_counter = Counter([str(r.event_code or "").strip().upper() for r in filtered_rows if r.event_code])
+    event_counter_prev = Counter([str(r.event_code or "").strip().upper() for r in filtered_rows_prev if r.event_code])
+
+    attempts_current = (
+        db.query(LogisticsDeliveryAttempt)
+        .filter(LogisticsDeliveryAttempt.created_at >= current_from, LogisticsDeliveryAttempt.created_at <= current_to)
+        .order_by(LogisticsDeliveryAttempt.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    attempts_previous = (
+        db.query(LogisticsDeliveryAttempt)
+        .filter(LogisticsDeliveryAttempt.created_at >= previous_from, LogisticsDeliveryAttempt.created_at <= previous_to)
+        .order_by(LogisticsDeliveryAttempt.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    attempt_counter = Counter([str(r.status or "").strip().upper() for r in attempts_current if r.status])
+    attempt_counter_prev = Counter([str(r.status or "").strip().upper() for r in attempts_previous if r.status])
+
+    labels_current = (
+        db.query(LogisticsShipmentLabel)
+        .filter(LogisticsShipmentLabel.created_at >= current_from, LogisticsShipmentLabel.created_at <= current_to)
+        .order_by(LogisticsShipmentLabel.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    labels_previous = (
+        db.query(LogisticsShipmentLabel)
+        .filter(LogisticsShipmentLabel.created_at >= previous_from, LogisticsShipmentLabel.created_at <= previous_to)
+        .order_by(LogisticsShipmentLabel.created_at.desc())
+        .limit(20000)
+        .all()
+    )
+    label_counter = Counter([str(r.carrier_code or "").strip().upper() for r in labels_current if r.carrier_code])
+    label_counter_prev = Counter([str(r.carrier_code or "").strip().upper() for r in labels_previous if r.carrier_code])
+
+    return LogisticsOpsOverviewOut(
+        ok=True,
+        **{"from": _to_iso_utc(window_from), "to": _to_iso_utc(window_to)},
+        carrier_code=(carrier_code.strip().upper() if carrier_code else None),
+        totals={
+            "events": len(filtered_rows),
+            "events_previous": len(filtered_rows_prev),
+            "attempts": len(attempts_current),
+            "attempts_previous": len(attempts_previous),
+            "labels": len(labels_current),
+            "labels_previous": len(labels_previous),
+        },
+        by_event_code=_with_trend(event_counter, event_counter_prev),
+        by_attempt_status=_with_trend(attempt_counter, attempt_counter_prev),
+        by_label_carrier=_with_trend(label_counter, label_counter_prev),
+    )
+
+
+@router.get("/ops/view", response_class=HTMLResponse)
+def get_logistics_ops_view() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ELLAN LAB Logistics OPS</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 24px; background:#F8FAFC; color:#0F172A; }
+      h1 { margin: 0 0 12px 0; font-size: 24px; }
+      .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 12px; }
+      input, button { padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; background:#fff; }
+      button { background:#1D4ED8; color:#fff; border:none; cursor:pointer; }
+      .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin: 16px 0; }
+      .card { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:12px; }
+      .label { color:#475569; font-size:12px; text-transform: uppercase; letter-spacing: .04em; }
+      .value { font-size:24px; font-weight:700; margin-top:6px; }
+      pre { background:#0B1220; color:#E2E8F0; border-radius:12px; padding:12px; overflow:auto; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <h1>OPS Logistics (L-1)</h1>
+    <div class="row">
+      <input id="from" placeholder="from ISO-8601 opcional" size="30" />
+      <input id="to" placeholder="to ISO-8601 opcional" size="30" />
+      <input id="carrierCode" placeholder="carrier_code opcional" size="20" />
+      <button onclick="loadData()">Atualizar</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="label">Tracking Events</div><div id="events" class="value">-</div></div>
+      <div class="card"><div class="label">Delivery Attempts</div><div id="attempts" class="value">-</div></div>
+      <div class="card"><div class="label">Shipment Labels</div><div id="labels" class="value">-</div></div>
+    </div>
+    <pre id="payload">Carregando...</pre>
+    <script>
+      async function loadData() {
+        const params = new URLSearchParams();
+        const from = document.getElementById('from').value.trim();
+        const to = document.getElementById('to').value.trim();
+        const carrier = document.getElementById('carrierCode').value.trim();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        if (carrier) params.set('carrier_code', carrier);
+        const resp = await fetch('/logistics/ops/overview?' + params.toString());
+        const data = await resp.json();
+        document.getElementById('payload').textContent = JSON.stringify(data, null, 2);
+        document.getElementById('events').textContent = data?.totals?.events ?? '-';
+        document.getElementById('attempts').textContent = data?.totals?.attempts ?? '-';
+        document.getElementById('labels').textContent = data?.totals?.labels ?? '-';
+      }
+      loadData();
+    </script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html)

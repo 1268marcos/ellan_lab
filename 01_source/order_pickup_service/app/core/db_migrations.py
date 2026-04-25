@@ -1395,6 +1395,126 @@ def _create_partner_integration_health(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_logistics_tracking_events(conn, applied: list[str]) -> None:
+    name = "logistics_tracking_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_tracking_events (
+            id              VARCHAR(36) PRIMARY KEY,
+            delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+            event_code      VARCHAR(40) NOT NULL,
+            event_label     VARCHAR(120) NOT NULL,
+            raw_status      VARCHAR(80),
+            location_city   VARCHAR(80),
+            location_state  VARCHAR(80),
+            location_country VARCHAR(2),
+            occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            source          VARCHAR(40) NOT NULL DEFAULT 'CARRIER_WEBHOOK',
+            source_ref      VARCHAR(128),
+            payload_json    TEXT NOT NULL DEFAULT '{}',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lte_delivery_time ON logistics_tracking_events (delivery_id, occurred_at DESC)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lte_source_ref ON logistics_tracking_events (source, source_ref)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_delivery_attempts(conn, applied: list[str]) -> None:
+    name = "logistics_delivery_attempts.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_delivery_attempts (
+            id              VARCHAR(36) PRIMARY KEY,
+            delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+            attempt_number  INTEGER NOT NULL,
+            status          VARCHAR(20) NOT NULL,
+            attempted_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            failure_reason  VARCHAR(160),
+            carrier_note    TEXT,
+            carrier_agent   VARCHAR(128),
+            proof_url       VARCHAR(500),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ux_lda_delivery_attempt UNIQUE (delivery_id, attempt_number)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lda_delivery_time ON logistics_delivery_attempts (delivery_id, attempted_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_shipment_labels(conn, applied: list[str]) -> None:
+    name = "logistics_shipment_labels.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_shipment_labels (
+            id              VARCHAR(36) PRIMARY KEY,
+            delivery_id     VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+            carrier_code    VARCHAR(20) NOT NULL,
+            tracking_code   VARCHAR(128) NOT NULL,
+            label_format    VARCHAR(10) NOT NULL DEFAULT 'PDF',
+            label_url       VARCHAR(500),
+            label_payload   TEXT NOT NULL DEFAULT '{}',
+            status          VARCHAR(20) NOT NULL DEFAULT 'GENERATED',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            expires_at      TIMESTAMPTZ,
+            CONSTRAINT ux_lsl_tracking_code UNIQUE (tracking_code)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lsl_delivery ON logistics_shipment_labels (delivery_id, created_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_carrier_auth_config(conn, applied: list[str]) -> None:
+    name = "logistics_carrier_auth_config.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_carrier_auth_config (
+            id                  VARCHAR(36) PRIMARY KEY,
+            carrier_code        VARCHAR(20) NOT NULL,
+            signature_header    VARCHAR(64) NOT NULL DEFAULT 'X-Carrier-Signature',
+            algorithm           VARCHAR(20) NOT NULL DEFAULT 'HMAC_SHA256',
+            secret_key          VARCHAR(256),
+            required            BOOLEAN NOT NULL DEFAULT FALSE,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ux_lcac_carrier_code UNIQUE (carrier_code)
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_carrier_status_map(conn, applied: list[str]) -> None:
+    name = "logistics_carrier_status_map.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_carrier_status_map (
+            id                      VARCHAR(36) PRIMARY KEY,
+            carrier_code            VARCHAR(20) NOT NULL,
+            raw_status              VARCHAR(80) NOT NULL,
+            normalized_event_code   VARCHAR(40) NOT NULL,
+            normalized_event_label  VARCHAR(120) NOT NULL,
+            normalized_outcome      VARCHAR(20),
+            active                  BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ux_lcsm_carrier_raw_status UNIQUE (carrier_code, raw_status)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lcsm_carrier ON logistics_carrier_status_map (carrier_code, active)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -3003,6 +3123,11 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_pickups,
     _create_pickup_tokens,
     _create_inbound_deliveries,
+    _create_logistics_tracking_events,
+    _create_logistics_delivery_attempts,
+    _create_logistics_shipment_labels,
+    _create_logistics_carrier_auth_config,
+    _create_logistics_carrier_status_map,
     _create_fiscal_documents,
     _create_notification_logs,
     _create_domain_event_outbox,

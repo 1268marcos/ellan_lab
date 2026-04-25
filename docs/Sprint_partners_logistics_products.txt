@@ -15,7 +15,7 @@
 - [~] P-1 · Partners · Partner Identity & Onboarding · Owner: Squad Partners (Líder: TBD) · Semana alvo: Semana 1-2
 - [ ] P-2 · Partners · Integration Health & Webhooks · Owner: Squad Partners + Platform Integrations · Semana alvo: Semana 3-4
 - [ ] P-3 · Partners · Financials & Service Areas · Owner: Squad Partners + Finance Ops · Semana alvo: Semana 5-6
-- [ ] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
+- [~] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
 - [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
 - [ ] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
 - [ ] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
@@ -204,10 +204,12 @@ ALTER TABLE locker_operators
 - [x] Sempre focar em entregar presets de operação (tempo e seções) quando houver filtros relevantes.
 - [x] Sempre entregar persistência de filtros em `localStorage` para retomada de contexto entre sessões.
 - [x] Sempre apresentar erros operacionais claros e acionáveis (evitar mensagens genéricas como apenas `Failed to fetch`).
+- [x] Sempre aplicar cores de tendência (`up/down/stable`) nos KPIs principais quando houver comparativo de janela atual vs anterior, com leitura direta para UX/CX.
+- [x] Manter consistência visual entre dashboards OPS (Partners, Logistics e próximos): mesmo padrão de badge, cor e semântica de tendência.
 
 #### Próximos sprints (continuidade imediata)
 - [~] Iniciar Sprint P-2 (Partners Integration Health & Webhooks): API keys, webhooks versionados e monitoramento de saúde.
-- [ ] Preparar Sprint L-1 em paralelo técnico: tracking events/attempts/labels com stubs de integração por carrier.
+- [x] Preparar Sprint L-1 em paralelo técnico: tracking events/attempts/labels com stubs de integração por carrier.
 
 #### Melhorias preventivas recomendadas (para não travar avanço do sprint)
 - [ ] Adicionar ordenação e filtro por `partner_id` no endpoint `GET /partners/ops/audit/compare` quando o dashboard focar um parceiro específico.
@@ -333,7 +335,7 @@ CREATE TABLE partner_rate_limits (
   - `GET /partners/{id}/webhooks/{wh_id}/deliveries`
   - `POST /partners/{id}/webhooks/{wh_id}/deliveries/{delivery_id}/retry`
   - `POST /partners/{id}/webhooks/{wh_id}/deliveries/test` (enfileiramento operacional de teste)
-- [ ] Job periódico de health checks automático (a cada 5 min) com alerta operacional.
+- [x] Job periódico de health checks automático (a cada 5 min) com alerta operacional.
 
 #### Evidência operacional E2E (falha controlada)
 - [x] Cenário validado com endpoint de teste retornando `HTTP 500` (`https://httpbin.org/status/500`).
@@ -441,7 +443,7 @@ CREATE TABLE partner_performance_metrics (
 
 ## DOMAIN 2 — LOGISTICS
 
-### [ ] Sprint L-1 · "Carrier Tracking & Event Model" (2 semanas)
+### [~] Sprint L-1 · "Carrier Tracking & Event Model" (2 semanas)
 
 **Objetivo:** Modelo de eventos de rastreio multi-hop (padrão Correios/UPS), gestão de labels de envio e tentativas de entrega estruturadas.
 
@@ -531,6 +533,20 @@ ALTER TABLE inbound_deliveries
 | `GET` | `/logistics/deliveries/{id}/attempts` | Tentativas de entrega |
 | `POST` | `/logistics/deliveries/{id}/labels` | Gera/registra label |
 | `GET` | `/logistics/deliveries/{id}/labels/{label_id}` | Download do label |
+| `POST` | `/logistics/ops/carriers/auth-config` | Configura HMAC por carrier (stub configurável) |
+| `POST` | `/logistics/ops/carriers/status-map` | Catálogo de mapeamento `raw_status -> event_code/event_label/outcome` |
+| `GET` | `/logistics/ops/overview` | KPI operacional de tracking/attempts/labels |
+| `GET` | `/logistics/ops/view` | Página OPS para acompanhamento no navegador |
+
+#### Implementação de produção (fase atual do sprint)
+- [x] Estrutura de dados criada em produção: `logistics_tracking_events`, `logistics_delivery_attempts`, `logistics_shipment_labels` (migrações idempotentes).
+- [x] Endpoints L-1 implementados em `/logistics` com contratos stub-ready por carrier.
+- [x] Ingestão de webhook por carrier com persistência de evento de tracking e tentativa opcional.
+- [x] Criação/consulta de labels com geração de `tracking_code` quando não informado.
+- [x] Auditoria OPS integrada (`LOGISTICS_CARRIER_WEBHOOK_INGEST`, `LOGISTICS_LABEL_CREATE`) para trilha operacional.
+- [x] Validação de assinatura HMAC por carrier com configuração stub-ready em tabela dedicada (`logistics_carrier_auth_config`).
+- [x] Padronização por catálogo de status (`logistics_carrier_status_map`) para resolver `event_code/event_label/outcome` a partir de `raw_status`.
+- [x] Rota OPS com página de acompanhamento (`/logistics/ops/view`) e API de overview (`/logistics/ops/overview`).
 
 ---
 

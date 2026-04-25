@@ -651,6 +651,13 @@ def init_db():
     from app.models.notification_log import NotificationLog  # noqa: F401
     from app.models.domain_event_outbox import DomainEventOutbox  # noqa: F401
     from app.models.fiscal_document import FiscalDocument  # noqa: F401
+    from app.models.logistics_tracking import (  # noqa: F401
+        LogisticsCarrierAuthConfig,
+        LogisticsCarrierStatusMap,
+        LogisticsDeliveryAttempt,
+        LogisticsShipmentLabel,
+        LogisticsTrackingEvent,
+    )
     from app.models.tenant_fiscal_config import TenantFiscalConfig  # noqa: F401
 
     # 🔥 LOCKERS (EXPLÍCITO — ESSENCIAL)

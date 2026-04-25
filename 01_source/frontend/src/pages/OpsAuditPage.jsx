@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -87,6 +89,16 @@ export default function OpsAuditPage() {
     const suffix = token ? token.slice(0, 16) : "anonymous";
     return `ops-audit-filters:v1:${suffix}`;
   }, [token]);
+  const auditKpis = useMemo(() => {
+    const successCount = items.filter((item) => String(item?.result || "").toUpperCase() === "SUCCESS").length;
+    const errorCount = items.filter((item) => String(item?.result || "").toUpperCase() === "ERROR").length;
+    return {
+      totalRows: total,
+      successRows: successCount,
+      errorRows: errorCount,
+      statusInconsistencies: statusAuditItems.length,
+    };
+  }, [items, total, statusAuditItems]);
 
   function applyRangePreset(presetId) {
     const referenceNow = new Date();
@@ -600,6 +612,19 @@ export default function OpsAuditPage() {
         </section>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}
+        {!error ? (
+          <div style={kpiGridStyle}>
+            <OpsTrendKpiCard label="Total auditoria" value={auditKpis.totalRows} baseStyle={kpiBoxStyle} showTrend={false} />
+            <OpsTrendKpiCard label="SUCCESS (página)" value={auditKpis.successRows} baseStyle={kpiBoxStyle} showTrend={false} />
+            <OpsTrendKpiCard label="ERROR (página)" value={auditKpis.errorRows} baseStyle={kpiBoxStyle} showTrend={false} />
+            <OpsTrendKpiCard
+              label="Inconsistências status"
+              value={auditKpis.statusInconsistencies}
+              baseStyle={kpiBoxStyle}
+              showTrend={false}
+            />
+          </div>
+        ) : null}
 
         {!error && items.length > 0 ? (
           <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
@@ -788,6 +813,22 @@ const errorStyle = {
   overflow: "auto",
 };
 
+const kpiGridStyle = {
+  marginTop: 14,
+  display: "grid",
+  gap: 10,
+  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+};
+
+const kpiBoxStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.03)",
+  padding: "10px 12px",
+  display: "grid",
+  gap: 4,
+};
+
 const rowStyle = {
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.12)",
@@ -812,14 +853,5 @@ const smallStyle = {
 
 const badgeStyle = (result) => {
   const ok = String(result || "").toUpperCase() === "SUCCESS";
-  return {
-    display: "inline-flex",
-    borderRadius: 999,
-    padding: "4px 10px",
-    fontSize: 12,
-    fontWeight: 700,
-    border: ok ? "1px solid rgba(31,122,63,0.65)" : "1px solid rgba(179,38,30,0.65)",
-    background: ok ? "rgba(31,122,63,0.18)" : "rgba(179,38,30,0.20)",
-    color: ok ? "#86efac" : "#fecaca",
-  };
+  return getSeverityBadgeStyle(ok ? "OK" : "ERROR");
 };
