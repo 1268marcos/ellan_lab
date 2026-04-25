@@ -119,6 +119,115 @@ class PartnerDeleteOut(BaseModel):
     message: str
 
 
+class PartnerApiKeyIn(BaseModel):
+    label: str | None = Field(default=None, max_length=64)
+    scopes: list[str] = Field(default_factory=list)
+    expires_at: str | None = Field(default=None, description="ISO-8601 UTC")
+
+
+class PartnerApiKeyOut(BaseModel):
+    id: str
+    partner_id: str
+    partner_type: str
+    key_prefix: str
+    label: str | None = None
+    scopes: list[str]
+    expires_at: str | None = None
+    last_used_at: str | None = None
+    revoked_at: str | None = None
+    created_at: str
+
+
+class PartnerApiKeyCreateOut(BaseModel):
+    ok: bool
+    message: str
+    api_key: str
+    item: PartnerApiKeyOut
+
+
+class PartnerApiKeyListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerApiKeyOut]
+
+
+class PartnerWebhookEndpointIn(BaseModel):
+    url: str = Field(..., max_length=500)
+    secret: str = Field(..., min_length=8, max_length=256)
+    events: list[str] = Field(default_factory=lambda: ["*"])
+    api_version: str = Field(default="v1", max_length=10)
+    active: bool = Field(default=True)
+
+
+class PartnerWebhookEndpointOut(BaseModel):
+    id: str
+    partner_id: str
+    partner_type: str
+    url: str
+    events: list[str]
+    api_version: str
+    active: bool
+    created_at: str
+    updated_at: str
+
+
+class PartnerWebhookEndpointListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerWebhookEndpointOut]
+
+
+class PartnerWebhookDeliveryTestIn(BaseModel):
+    event_type: str = Field(..., max_length=80)
+    payload: dict = Field(default_factory=dict)
+
+
+class PartnerWebhookDeliveryOut(BaseModel):
+    id: str
+    endpoint_id: str
+    event_id: str
+    event_type: str
+    http_status: int | None = None
+    attempt_count: int
+    status: str
+    last_error: str | None = None
+    next_retry_at: str | None = None
+    delivered_at: str | None = None
+    created_at: str
+
+
+class PartnerWebhookDeliveryListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerWebhookDeliveryOut]
+
+
+class PartnerIntegrationHealthIn(BaseModel):
+    endpoint_url: str | None = Field(default=None, max_length=500)
+    status: str = Field(..., description="UP|DOWN|DEGRADED|TIMEOUT")
+    latency_ms: int | None = Field(default=None, ge=0, le=600000)
+    http_status: int | None = Field(default=None, ge=100, le=599)
+    error_message: str | None = Field(default=None, max_length=500)
+
+
+class PartnerIntegrationHealthOut(BaseModel):
+    id: int
+    partner_id: str
+    partner_type: str
+    endpoint_url: str | None = None
+    checked_at: str
+    status: str
+    latency_ms: int | None = None
+    http_status: int | None = None
+    error_message: str | None = None
+
+
+class PartnerIntegrationHealthListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerIntegrationHealthOut]
+
+
 class PartnerOpsAuditItemOut(BaseModel):
     id: str
     action: str

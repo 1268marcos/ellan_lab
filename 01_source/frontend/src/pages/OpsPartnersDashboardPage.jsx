@@ -22,13 +22,21 @@ function loadLastFilters() {
         typeof parsed.preset === "string" && parsed.preset.trim()
           ? parsed.preset
           : "7d",
+      from:
+        typeof parsed.from === "string" && parsed.from.trim()
+          ? parsed.from
+          : null,
+      to:
+        typeof parsed.to === "string" && parsed.to.trim()
+          ? parsed.to
+          : null,
     };
   } catch (_) {
     return null;
   }
 }
 
-function persistLastFilters({ partnerId, includeSections, preset }) {
+function persistLastFilters({ partnerId, includeSections, preset, from, to }) {
   try {
     window.localStorage.setItem(
       FILTERS_PREF_KEY,
@@ -36,6 +44,8 @@ function persistLastFilters({ partnerId, includeSections, preset }) {
         partnerId: String(partnerId || ""),
         includeSections: String(includeSections || "kpis,compare,changes_series"),
         preset: String(preset || "7d"),
+        from: from ? String(from) : null,
+        to: to ? String(to) : null,
       })
     );
   } catch (_) {
@@ -75,14 +85,24 @@ function parseError(payload, fallback = "Não foi possível carregar dashboard O
   return fallback;
 }
 
+function normalizeNetworkError(err, endpoint) {
+  const raw = String(err?.message || err || "").trim();
+  if (!raw) return "Falha de comunicação com a API OPS.";
+  const lower = raw.toLowerCase();
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return `Falha de conexão com a API OPS (${endpoint}). Verifique se o backend está ativo e se o proxy /api/op está configurado no frontend.`;
+  }
+  return raw;
+}
+
 export default function OpsPartnersDashboardPage() {
   const { token } = useAuth();
   const now = new Date();
   const fromDefault = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const lastFilters = loadLastFilters();
 
-  const [from, setFrom] = useState(toLocalInputValue(fromDefault));
-  const [to, setTo] = useState(toLocalInputValue(now));
+  const [from, setFrom] = useState(lastFilters?.from || toLocalInputValue(fromDefault));
+  const [to, setTo] = useState(lastFilters?.to || toLocalInputValue(now));
   const [selectedPreset, setSelectedPreset] = useState(lastFilters?.preset || "7d");
   const [autoRefreshOnPreset, setAutoRefreshOnPreset] = useState(() => {
     try {
@@ -127,6 +147,8 @@ export default function OpsPartnersDashboardPage() {
       partnerId,
       includeSections,
       preset: presetId,
+      from: toLocalInputValue(start),
+      to: toLocalInputValue(referenceNow),
     });
     if (autoRefreshOnPreset) {
       // Auto refresh ao selecionar preset de período.
@@ -142,6 +164,8 @@ export default function OpsPartnersDashboardPage() {
       partnerId,
       includeSections: value,
       preset: selectedPreset,
+      from,
+      to,
     });
     if (autoRefreshOnPreset) {
       // Auto refresh ao selecionar preset de seções.
@@ -178,22 +202,23 @@ export default function OpsPartnersDashboardPage() {
         partnerId,
         includeSections,
         preset: selectedPreset,
+        from,
+        to,
       });
 
-      const response = await fetch(
-        `${ORDER_PICKUP_BASE}/partners/ops/dashboard?${params.toString()}`,
-        {
-          method: "GET",
-          headers: { Accept: "application/json", ...authHeaders },
-        }
-      );
+      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard?${params.toString()}`;
+      const response = await fetch(endpoint, {
+        method: "GET",
+        headers: { Accept: "application/json", ...authHeaders },
+      });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new Error(parseError(data));
       }
       setPayload(data || null);
     } catch (err) {
-      setError(String(err?.message || err));
+      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard`;
+      setError(normalizeNetworkError(err, endpoint));
       setPayload(null);
     } finally {
       setLoading(false);
@@ -211,11 +236,41 @@ export default function OpsPartnersDashboardPage() {
         <div style={filtersGridStyle}>
           <label style={labelStyle}>
             From
-            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
+              <input
+                type="datetime-local"
+                value={from}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setFrom(next);
+                  persistLastFilters({
+                    partnerId,
+                    includeSections,
+                    preset: selectedPreset,
+                    from: next,
+                    to,
+                  });
+                }}
+                style={inputStyle}
+              />
           </label>
           <label style={labelStyle}>
             To
-            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
+              <input
+                type="datetime-local"
+                value={to}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTo(next);
+                  persistLastFilters({
+                    partnerId,
+                    includeSections,
+                    preset: selectedPreset,
+                    from,
+                    to: next,
+                  });
+                }}
+                style={inputStyle}
+              />
           </label>
           <label style={labelStyle}>
             Partner ID (opcional)

@@ -575,6 +575,34 @@ services:
       - locker-network
 
   # =========================
+  # PARTNER WEBHOOK DELIVERY WORKER (P-2)
+  # =========================
+  partner_webhook_delivery_worker:
+    build:
+      context: ../01_source/order_pickup_service
+    container_name: partner_webhook_delivery_worker
+    command: ["python", "-m", "app.workers.partner_webhook_delivery_worker"]
+    restart: unless-stopped
+    env_file:
+      - ../01_source/order_pickup_service/.env
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - RUN_DB_MIGRATIONS_ON_STARTUP=true
+      - PARTNER_WEBHOOK_DELIVERY_POLL_SEC=5
+      - PARTNER_WEBHOOK_DELIVERY_BATCH_SIZE=50
+      - PARTNER_WEBHOOK_MAX_ATTEMPTS=5
+      - PARTNER_WEBHOOK_PROCESSING_STALE_TIMEOUT_SEC=180
+      - PARTNER_WEBHOOK_HTTP_TIMEOUT_SEC=8
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+  # =========================
   # ORDER PICKUP NOTIFICATION DELIVERY WORKER
   # =========================
   notification_delivery_worker:

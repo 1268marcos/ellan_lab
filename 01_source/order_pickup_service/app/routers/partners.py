@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+import hashlib
+import json
+import secrets
 from decimal import Decimal
 from collections import Counter
 from uuid import uuid4
@@ -13,9 +16,13 @@ from sqlalchemy.orm import Session
 from app.core.auth_dep import get_current_user, require_user_roles
 from app.core.db import get_db
 from app.models.ops_action_audit import OpsActionAudit
+from app.models.partner_api_key import PartnerApiKey
 from app.models.partner_contact import PartnerContact
+from app.models.partner_webhook_delivery import PartnerWebhookDelivery
+from app.models.partner_integration_health import PartnerIntegrationHealth
 from app.models.partner_sla_agreement import PartnerSlaAgreement
 from app.models.partner_status_history import PartnerStatusHistory
+from app.models.partner_webhook_endpoint import PartnerWebhookEndpoint
 from app.models.user import User
 from app.services.ops_audit_service import record_ops_action_audit
 from app.schemas.partners import (
@@ -23,7 +30,14 @@ from app.schemas.partners import (
     PartnerContactIn,
     PartnerContactListOut,
     PartnerContactOut,
+    PartnerApiKeyCreateOut,
+    PartnerApiKeyIn,
+    PartnerApiKeyListOut,
+    PartnerApiKeyOut,
     PartnerDeleteOut,
+    PartnerIntegrationHealthIn,
+    PartnerIntegrationHealthListOut,
+    PartnerIntegrationHealthOut,
     PartnerOpsActionsOut,
     PartnerOpsAuditItemOut,
     PartnerOpsAuditListOut,
@@ -46,6 +60,12 @@ from app.schemas.partners import (
     PartnerStatusHistoryListOut,
     PartnerStatusOut,
     PartnerStatusTransitionIn,
+    PartnerWebhookEndpointIn,
+    PartnerWebhookEndpointListOut,
+    PartnerWebhookEndpointOut,
+    PartnerWebhookDeliveryListOut,
+    PartnerWebhookDeliveryOut,
+    PartnerWebhookDeliveryTestIn,
 )
 
 router = APIRouter(
@@ -63,6 +83,7 @@ _PARTNER_STATUSES = {
 }
 
 _CONTACT_TYPES = {"COMMERCIAL", "TECHNICAL", "BILLING", "EMERGENCY"}
+_HEALTH_STATUSES = {"UP", "DOWN", "DEGRADED", "TIMEOUT"}
 
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "DRAFT": {"PENDING_REVIEW", "TERMINATED"},
@@ -132,6 +153,47 @@ def _parse_iso_datetime_utc(raw_value: str, *, field_name: str) -> datetime:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) -> datetime | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    return _parse_iso_datetime_utc(value, field_name=field_name)
+
+
+def _gen_api_key_plain() -> tuple[str, str]:
+    suffix = secrets.token_urlsafe(24).replace("-", "").replace("_", "")
+    plain = f"elln_pk_{suffix}"
+    return plain[:120], plain[:12]
+
+
+def _hash_secret(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _json_load_list(value: str | None, default: list[str] | None = None) -> list[str]:
+    if default is None:
+        default = []
+    try:
+        parsed = json.loads(str(value or "[]"))
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+        return default
+    except Exception:
+        return default
+
+
+def _json_load_dict(value: str | None, default: dict | None = None) -> dict:
+    if default is None:
+        default = {}
+    try:
+        parsed = json.loads(str(value or "{}"))
+        if isinstance(parsed, dict):
+            return parsed
+        return default
+    except Exception:
+        return default
 
 
 def _resolve_correlation_id(header_value: str | None) -> str:
@@ -298,6 +360,447 @@ def _parse_include_sections(raw_value: str | None) -> list[str]:
         seen.add(part)
         unique_parts.append(part)
     return unique_parts
+
+
+@router.post("/{partner_id}/api-keys", response_model=PartnerApiKeyCreateOut)
+def post_partner_api_key(
+    partner_id: str,
+    payload: PartnerApiKeyIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+
+    plain_key, key_prefix = _gen_api_key_plain()
+    row = PartnerApiKey(
+        id=str(uuid4()),
+        partner_id=partner_id,
+        partner_type="ECOMMERCE",
+        key_prefix=key_prefix,
+        key_hash=_hash_secret(plain_key),
+        label=(payload.label.strip() if payload.label else None),
+        scopes_json=json.dumps(payload.scopes or []),
+        expires_at=_parse_iso_datetime_utc_optional(payload.expires_at, field_name="expires_at"),
+        created_by=str(current_user.id),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    _audit_ops(
+        db=db,
+        action="PARTNER_API_KEY_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "after": {
+                "id": row.id,
+                "key_prefix": row.key_prefix,
+                "label": row.label,
+                "scopes": payload.scopes or [],
+                "expires_at": _to_iso_utc(row.expires_at) if row.expires_at else None,
+            },
+        },
+    )
+    db.commit()
+
+    item = PartnerApiKeyOut(
+        id=row.id,
+        partner_id=row.partner_id,
+        partner_type=row.partner_type,
+        key_prefix=row.key_prefix,
+        label=row.label,
+        scopes=_json_load_list(row.scopes_json),
+        expires_at=_to_iso_utc(row.expires_at) if row.expires_at else None,
+        last_used_at=_to_iso_utc(row.last_used_at) if row.last_used_at else None,
+        revoked_at=_to_iso_utc(row.revoked_at) if row.revoked_at else None,
+        created_at=_to_iso_utc(row.created_at),
+    )
+    return PartnerApiKeyCreateOut(
+        ok=True,
+        message="API key gerada. O valor plain é retornado somente uma vez.",
+        api_key=plain_key,
+        item=item,
+    )
+
+
+@router.get("/{partner_id}/api-keys", response_model=PartnerApiKeyListOut)
+def get_partner_api_keys(
+    partner_id: str,
+    include_revoked: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    query = db.query(PartnerApiKey).filter(
+        PartnerApiKey.partner_id == partner_id,
+        PartnerApiKey.partner_type == "ECOMMERCE",
+    )
+    if not include_revoked:
+        query = query.filter(PartnerApiKey.revoked_at.is_(None))
+    rows = (
+        query.order_by(PartnerApiKey.created_at.desc(), PartnerApiKey.id.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        PartnerApiKeyOut(
+            id=row.id,
+            partner_id=row.partner_id,
+            partner_type=row.partner_type,
+            key_prefix=row.key_prefix,
+            label=row.label,
+            scopes=_json_load_list(row.scopes_json),
+            expires_at=_to_iso_utc(row.expires_at) if row.expires_at else None,
+            last_used_at=_to_iso_utc(row.last_used_at) if row.last_used_at else None,
+            revoked_at=_to_iso_utc(row.revoked_at) if row.revoked_at else None,
+            created_at=_to_iso_utc(row.created_at),
+        )
+        for row in rows
+    ]
+    return PartnerApiKeyListOut(ok=True, total=len(items), items=items)
+
+
+@router.delete("/{partner_id}/api-keys/{key_id}", response_model=PartnerDeleteOut)
+def delete_partner_api_key(
+    partner_id: str,
+    key_id: str,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    row = db.get(PartnerApiKey, key_id)
+    if not row or row.partner_id != partner_id or row.partner_type != "ECOMMERCE":
+        raise HTTPException(status_code=404, detail={"type": "API_KEY_NOT_FOUND", "message": "API key não encontrada."})
+    row.revoked_at = datetime.now(timezone.utc)
+    _audit_ops(
+        db=db,
+        action="PARTNER_API_KEY_REVOKE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": partner_id, "key_id": key_id},
+    )
+    db.commit()
+    return PartnerDeleteOut(ok=True, id=key_id, message="API key revogada.")
+
+
+@router.post("/{partner_id}/webhooks", response_model=PartnerWebhookEndpointOut)
+def post_partner_webhook(
+    partner_id: str,
+    payload: PartnerWebhookEndpointIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    now = datetime.now(timezone.utc)
+    row = PartnerWebhookEndpoint(
+        id=str(uuid4()),
+        partner_id=partner_id,
+        partner_type="ECOMMERCE",
+        url=payload.url.strip(),
+        secret_hash=_hash_secret(payload.secret),
+        secret_key=payload.secret,
+        events_json=json.dumps(payload.events or ["*"]),
+        api_version=payload.api_version.strip() or "v1",
+        active=bool(payload.active),
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    _audit_ops(
+        db=db,
+        action="PARTNER_WEBHOOK_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": partner_id, "after": {"id": row.id, "url": row.url, "events": payload.events or ["*"], "api_version": row.api_version, "active": row.active}},
+    )
+    db.commit()
+    return PartnerWebhookEndpointOut(
+        id=row.id,
+        partner_id=row.partner_id,
+        partner_type=row.partner_type,
+        url=row.url,
+        events=_json_load_list(row.events_json, ["*"]),
+        api_version=row.api_version,
+        active=bool(row.active),
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+@router.get("/{partner_id}/webhooks", response_model=PartnerWebhookEndpointListOut)
+def get_partner_webhooks(
+    partner_id: str,
+    only_active: bool = Query(default=False),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    query = db.query(PartnerWebhookEndpoint).filter(
+        PartnerWebhookEndpoint.partner_id == partner_id,
+        PartnerWebhookEndpoint.partner_type == "ECOMMERCE",
+    )
+    if only_active:
+        query = query.filter(PartnerWebhookEndpoint.active.is_(True))
+    rows = (
+        query.order_by(PartnerWebhookEndpoint.created_at.desc(), PartnerWebhookEndpoint.id.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        PartnerWebhookEndpointOut(
+            id=row.id,
+            partner_id=row.partner_id,
+            partner_type=row.partner_type,
+            url=row.url,
+            events=_json_load_list(row.events_json, ["*"]),
+            api_version=row.api_version,
+            active=bool(row.active),
+            created_at=_to_iso_utc(row.created_at),
+            updated_at=_to_iso_utc(row.updated_at),
+        )
+        for row in rows
+    ]
+    return PartnerWebhookEndpointListOut(ok=True, total=len(items), items=items)
+
+
+@router.post("/{partner_id}/webhooks/{wh_id}/deliveries/test", response_model=PartnerWebhookDeliveryOut)
+def post_partner_webhook_delivery_test(
+    partner_id: str,
+    wh_id: str,
+    payload: PartnerWebhookDeliveryTestIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    endpoint = db.get(PartnerWebhookEndpoint, wh_id)
+    if not endpoint or endpoint.partner_id != partner_id or endpoint.partner_type != "ECOMMERCE":
+        raise HTTPException(status_code=404, detail={"type": "WEBHOOK_ENDPOINT_NOT_FOUND", "message": "Webhook endpoint não encontrado."})
+
+    payload_json = json.dumps(payload.payload or {})
+    delivery = PartnerWebhookDelivery(
+        id=str(uuid4()),
+        endpoint_id=endpoint.id,
+        event_id=str(uuid4()),
+        event_type=payload.event_type.strip(),
+        payload_json=payload_json,
+        payload_hash=_hash_secret(payload_json),
+        status="PENDING",
+        attempt_count=0,
+        next_retry_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(delivery)
+    _audit_ops(
+        db=db,
+        action="PARTNER_WEBHOOK_DELIVERY_ENQUEUE_TEST",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": partner_id, "webhook_id": wh_id, "delivery_id": delivery.id, "event_type": delivery.event_type},
+    )
+    db.commit()
+    return PartnerWebhookDeliveryOut(
+        id=delivery.id,
+        endpoint_id=delivery.endpoint_id,
+        event_id=delivery.event_id,
+        event_type=delivery.event_type,
+        http_status=delivery.http_status,
+        attempt_count=int(delivery.attempt_count or 0),
+        status=delivery.status,
+        last_error=delivery.last_error,
+        next_retry_at=_to_iso_utc(delivery.next_retry_at) if delivery.next_retry_at else None,
+        delivered_at=_to_iso_utc(delivery.delivered_at) if delivery.delivered_at else None,
+        created_at=_to_iso_utc(delivery.created_at),
+    )
+
+
+@router.get("/{partner_id}/webhooks/{wh_id}/deliveries", response_model=PartnerWebhookDeliveryListOut)
+def get_partner_webhook_deliveries(
+    partner_id: str,
+    wh_id: str,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    endpoint = db.get(PartnerWebhookEndpoint, wh_id)
+    if not endpoint or endpoint.partner_id != partner_id or endpoint.partner_type != "ECOMMERCE":
+        raise HTTPException(status_code=404, detail={"type": "WEBHOOK_ENDPOINT_NOT_FOUND", "message": "Webhook endpoint não encontrado."})
+
+    query = db.query(PartnerWebhookDelivery).filter(PartnerWebhookDelivery.endpoint_id == wh_id)
+    if status:
+        query = query.filter(PartnerWebhookDelivery.status == status.strip().upper())
+    rows = (
+        query.order_by(PartnerWebhookDelivery.created_at.desc(), PartnerWebhookDelivery.id.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        PartnerWebhookDeliveryOut(
+            id=row.id,
+            endpoint_id=row.endpoint_id,
+            event_id=row.event_id,
+            event_type=row.event_type,
+            http_status=row.http_status,
+            attempt_count=int(row.attempt_count or 0),
+            status=row.status,
+            last_error=row.last_error,
+            next_retry_at=_to_iso_utc(row.next_retry_at) if row.next_retry_at else None,
+            delivered_at=_to_iso_utc(row.delivered_at) if row.delivered_at else None,
+            created_at=_to_iso_utc(row.created_at),
+        )
+        for row in rows
+    ]
+    return PartnerWebhookDeliveryListOut(ok=True, total=len(items), items=items)
+
+
+@router.post("/{partner_id}/webhooks/{wh_id}/deliveries/{delivery_id}/retry", response_model=PartnerWebhookDeliveryOut)
+def post_partner_webhook_delivery_retry(
+    partner_id: str,
+    wh_id: str,
+    delivery_id: str,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    endpoint = db.get(PartnerWebhookEndpoint, wh_id)
+    if not endpoint or endpoint.partner_id != partner_id or endpoint.partner_type != "ECOMMERCE":
+        raise HTTPException(status_code=404, detail={"type": "WEBHOOK_ENDPOINT_NOT_FOUND", "message": "Webhook endpoint não encontrado."})
+    row = db.get(PartnerWebhookDelivery, delivery_id)
+    if not row or row.endpoint_id != wh_id:
+        raise HTTPException(status_code=404, detail={"type": "WEBHOOK_DELIVERY_NOT_FOUND", "message": "Webhook delivery não encontrado."})
+
+    row.status = "FAILED"
+    row.next_retry_at = datetime.now(timezone.utc)
+    row.processing_started_at = None
+    _audit_ops(
+        db=db,
+        action="PARTNER_WEBHOOK_DELIVERY_RETRY",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": partner_id, "webhook_id": wh_id, "delivery_id": delivery_id},
+    )
+    db.commit()
+    return PartnerWebhookDeliveryOut(
+        id=row.id,
+        endpoint_id=row.endpoint_id,
+        event_id=row.event_id,
+        event_type=row.event_type,
+        http_status=row.http_status,
+        attempt_count=int(row.attempt_count or 0),
+        status=row.status,
+        last_error=row.last_error,
+        next_retry_at=_to_iso_utc(row.next_retry_at) if row.next_retry_at else None,
+        delivered_at=_to_iso_utc(row.delivered_at) if row.delivered_at else None,
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+@router.post("/{partner_id}/health/checks", response_model=PartnerIntegrationHealthOut)
+def post_partner_health_check(
+    partner_id: str,
+    payload: PartnerIntegrationHealthIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    status = str(payload.status or "").strip().upper()
+    if status not in _HEALTH_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_HEALTH_STATUS",
+                "message": "Status de health inválido.",
+                "allowed_statuses": sorted(_HEALTH_STATUSES),
+            },
+        )
+    row = PartnerIntegrationHealth(
+        partner_id=partner_id,
+        partner_type="ECOMMERCE",
+        endpoint_url=(payload.endpoint_url.strip() if payload.endpoint_url else None),
+        checked_at=datetime.now(timezone.utc),
+        status=status,
+        latency_ms=payload.latency_ms,
+        http_status=payload.http_status,
+        error_message=(payload.error_message.strip() if payload.error_message else None),
+    )
+    db.add(row)
+    db.flush()
+    _audit_ops(
+        db=db,
+        action="PARTNER_HEALTH_CHECK_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": partner_id, "after": {"id": row.id, "status": row.status, "latency_ms": row.latency_ms, "http_status": row.http_status}},
+    )
+    db.commit()
+    return PartnerIntegrationHealthOut(
+        id=int(row.id),
+        partner_id=row.partner_id,
+        partner_type=row.partner_type,
+        endpoint_url=row.endpoint_url,
+        checked_at=_to_iso_utc(row.checked_at),
+        status=row.status,
+        latency_ms=row.latency_ms,
+        http_status=row.http_status,
+        error_message=row.error_message,
+    )
+
+
+@router.get("/{partner_id}/health", response_model=PartnerIntegrationHealthListOut)
+def get_partner_health(
+    partner_id: str,
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    query = db.query(PartnerIntegrationHealth).filter(
+        PartnerIntegrationHealth.partner_id == partner_id,
+        PartnerIntegrationHealth.partner_type == "ECOMMERCE",
+    )
+    if from_:
+        query = query.filter(PartnerIntegrationHealth.checked_at >= _parse_iso_datetime_utc(from_, field_name="from"))
+    if to:
+        query = query.filter(PartnerIntegrationHealth.checked_at <= _parse_iso_datetime_utc(to, field_name="to"))
+    rows = (
+        query.order_by(PartnerIntegrationHealth.checked_at.desc(), PartnerIntegrationHealth.id.desc())
+        .limit(limit)
+        .all()
+    )
+    items = [
+        PartnerIntegrationHealthOut(
+            id=int(row.id),
+            partner_id=row.partner_id,
+            partner_type=row.partner_type,
+            endpoint_url=row.endpoint_url,
+            checked_at=_to_iso_utc(row.checked_at),
+            status=row.status,
+            latency_ms=row.latency_ms,
+            http_status=row.http_status,
+            error_message=row.error_message,
+        )
+        for row in rows
+    ]
+    return PartnerIntegrationHealthListOut(ok=True, total=len(items), items=items)
 
 
 @router.get("/ops/audit", response_model=PartnerOpsAuditListOut)

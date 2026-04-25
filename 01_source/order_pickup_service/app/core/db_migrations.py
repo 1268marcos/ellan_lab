@@ -1286,6 +1286,115 @@ def _create_partner_sla_agreements(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_partner_api_keys(conn, applied: list[str]) -> None:
+    name = "partner_api_keys.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_api_keys (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL,
+            key_prefix      VARCHAR(16) NOT NULL,
+            key_hash        VARCHAR(128) NOT NULL,
+            label           VARCHAR(64),
+            scopes_json     TEXT NOT NULL DEFAULT '[]',
+            expires_at      TIMESTAMPTZ,
+            last_used_at    TIMESTAMPTZ,
+            revoked_at      TIMESTAMPTZ,
+            created_by      VARCHAR(36),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pak_partner ON partner_api_keys (partner_id, partner_type)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_webhook_endpoints(conn, applied: list[str]) -> None:
+    name = "partner_webhook_endpoints.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_webhook_endpoints (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL,
+            url             VARCHAR(500) NOT NULL,
+            secret_hash     VARCHAR(128) NOT NULL,
+            secret_key      VARCHAR(256),
+            events_json     TEXT NOT NULL DEFAULT '["*"]',
+            api_version     VARCHAR(10) NOT NULL DEFAULT 'v1',
+            retry_policy    TEXT NOT NULL DEFAULT '{}',
+            active          BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pwe_partner ON partner_webhook_endpoints (partner_id, partner_type)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_partner_webhook_endpoints_secret_key_v1(conn, applied: list[str]) -> None:
+    name = "partner_webhook_endpoints.secret_key_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "partner_webhook_endpoints", "secret_key", "VARCHAR(256)")
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_webhook_deliveries(conn, applied: list[str]) -> None:
+    name = "partner_webhook_deliveries.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_webhook_deliveries (
+            id                      VARCHAR(36) PRIMARY KEY,
+            endpoint_id             VARCHAR(36) NOT NULL REFERENCES partner_webhook_endpoints(id),
+            event_id                VARCHAR(36) NOT NULL,
+            event_type              VARCHAR(80) NOT NULL,
+            payload_json            TEXT NOT NULL DEFAULT '{}',
+            payload_hash            VARCHAR(64),
+            http_status             INTEGER,
+            attempt_count           INTEGER NOT NULL DEFAULT 0,
+            status                  VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            last_error              TEXT,
+            next_retry_at           TIMESTAMPTZ,
+            processing_started_at   TIMESTAMPTZ,
+            delivered_at            TIMESTAMPTZ,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pwd_status_retry ON partner_webhook_deliveries (status, next_retry_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pwd_endpoint ON partner_webhook_deliveries (endpoint_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_integration_health(conn, applied: list[str]) -> None:
+    name = "partner_integration_health.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_integration_health (
+            id              BIGSERIAL PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL,
+            endpoint_url    VARCHAR(500),
+            checked_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status          VARCHAR(20) NOT NULL,
+            latency_ms      INTEGER,
+            http_status     INTEGER,
+            error_message   VARCHAR(500)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_pih_partner_time ON partner_integration_health (partner_id, checked_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_webhook_endpoints(conn, applied: list[str]) -> None:
     name = "webhook_endpoints.create_table_v1"
     if _migration_applied(conn, name):
@@ -2881,6 +2990,11 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_partner_contacts,
     _migrate_partner_contacts_primary_unique_v1,
     _create_partner_sla_agreements,
+    _create_partner_api_keys,
+    _create_partner_webhook_endpoints,
+    _migrate_partner_webhook_endpoints_secret_key_v1,
+    _create_partner_webhook_deliveries,
+    _create_partner_integration_health,
     _create_webhook_endpoints,
     _create_webhook_deliveries,
     _create_orders,
