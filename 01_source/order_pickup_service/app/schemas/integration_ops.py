@@ -84,3 +84,21 @@ class OrderEventOutboxBatchReplayOut(BaseModel):
     limit: int
     items: list[OrderEventOutboxItemOut]
     worker_run: OrderEventOutboxRunOut | None = None
+
+
+class OrderPartnerLookupItemOut(BaseModel):
+    order_id: str
+    partner_id: str | None = None
+    partner_order_ref: str | None = None
+    status: str
+    slot: int | None = None
+    locker_id: str | None = None
+    created_at: str
+
+
+class OrderPartnerLookupListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    items: list[OrderPartnerLookupItemOut]

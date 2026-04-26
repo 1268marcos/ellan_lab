@@ -197,10 +197,10 @@
 
 - [~] P-1 · Partners · Partner Identity & Onboarding · Owner: Squad Partners (Líder: TBD) · Semana alvo: Semana 1-2
 - [~] P-2 · Partners · Integration Health & Webhooks · Owner: Squad Partners + Platform Integrations · Semana alvo: Semana 3-4
-- [ ] P-3 · Partners · Financials & Service Areas · Owner: Squad Partners + Finance Ops · Semana alvo: Semana 5-6
+- [~] P-3 · Partners · Financials & Service Areas · Owner: Squad Partners + Finance Ops · Semana alvo: Semana 5-6
 - [~] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
-- [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
-- [ ] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
+- [~] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
+- [~] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
 - [~] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
 - [~] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
 - [~] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
@@ -1825,7 +1825,7 @@ CREATE TABLE logistics_carrier_rates (
 
 ```
 inbound_deliveries.partner_order_ref
-    → GET /orders?partner_order_ref={ref}&partner_id={id}
+    → GET /orders/partner-lookup?partner_order_ref={ref}&partner_id={id}
     → Retorna order.id, status, slot, locker_id
 
 Quando inbound_deliveries.status → 'AT_LOCKER' (stored):
@@ -1836,6 +1836,56 @@ Quando inbound_deliveries.status → 'PICKED_UP':
     → Dispara domain_event_outbox: "DELIVERY_PICKED_UP"
     → Trigger para invoicing (se aplicável)
 ```
+
+###### Evidência técnica rápida — integração Orders (stub operacional)
+
+1) **GET /orders/partner-lookup?partner_order_ref={ref}&partner_id={id}**
+
+```bash
+curl -sS "http://localhost:8000/orders/partner-lookup?partner_order_ref=PO-7788&partner_id=partner_demo_001&limit=20&offset=0" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "items": [
+    {
+      "order_id": "order_7788",
+      "partner_id": "partner_demo_001",
+      "partner_order_ref": "PO-7788",
+      "status": "PAID_PENDING_PICKUP",
+      "slot": 12,
+      "locker_id": "locker_sp_001",
+      "created_at": "2026-04-26T11:59:20.000000+00:00"
+    }
+  ],
+  "total": 1,
+  "limit": 20,
+  "offset": 0
+}
+```
+
+> Nota: o endpoint dedicado usa colunas operacionais de `orders` (`ecommerce_partner_id` e `partner_order_ref`) para viabilizar lookup rápido no fluxo stub de L-3, mantendo `GET /orders` desacoplado para evolução futura.
+
+2) **UI OPS dedicada — `/ops/integration/orders-partner-lookup`**
+
+- Fluxo: informar `partner_id` (obrigatório), opcional `partner_order_ref`, executar `GET partner-lookup` e usar `Copiar evidência`.
+- Presets disponíveis na tela:
+  - verde: match esperado (partner/ref válido);
+  - âmbar: varredura por partner sem ref;
+  - vermelho: erro controlado (sem match / parceiro inválido).
+- URL direta para operação: `http://localhost:5173/ops/integration/orders-partner-lookup`
+
+###### Governança L-3 — integração Orders (partner-lookup)
+- [x] Endpoint dedicado implementado: `GET /orders/partner-lookup` (lookup por `partner_id` + `partner_order_ref`).
+- [x] `GET /orders` preservado sem acoplamento de filtro específico de parceiro.
+- [x] Contrato de resposta dedicado publicado (`order_id`, `status`, `slot`, `locker_id`, metadados de partner).
+- [x] Evidência técnica rápida documentada (curl + payload esperado).
+- [x] Rota OPS dedicada entregue: `/ops/integration/orders-partner-lookup` (consulta + presets + cópia de evidência).
+- [ ] Pendência de execução real autenticada (token OPS) em ambiente com `partner_order_ref` válido.
+- [ ] Pendência de anexar evidência de erro controlado real (ex.: `partner_id` inválido ou sem match).
+- [ ] Pendência de anexar captura real da UI OPS dedicada em execução autenticada.
 
 #### Endpoints
 

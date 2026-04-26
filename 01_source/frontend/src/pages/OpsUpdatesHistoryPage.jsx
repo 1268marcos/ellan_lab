@@ -47,6 +47,19 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 const UPDATES = [
   {
     date: "2026-04-26",
+    scope: "L-3 Orders Integration",
+    title: "Rota OPS dedicada para partner-lookup",
+    description:
+      "Nova tela operacional para lookup de pedidos por partner_id + partner_order_ref com presets, consulta técnica e cópia de evidência.",
+    routes: [
+      "GET /orders/partner-lookup",
+      "UI /ops/integration/orders-partner-lookup",
+    ],
+    directLink: "/ops/integration/orders-partner-lookup",
+    directLinkLabel: "Abrir OPS L-3 orders partner-lookup",
+  },
+  {
+    date: "2026-04-26",
     scope: "L-3 D1",
     title: "Fundação de dados/manifests",
     description:

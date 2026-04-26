@@ -52,6 +52,7 @@ const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPrici
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
+const OpsIntegrationOrdersPartnerLookupPage = lazy(() => import("./pages/OpsIntegrationOrdersPartnerLookupPage"));
 const OpsPartnersFinancialsServiceAreasPage = lazy(() => import("./pages/OpsPartnersFinancialsServiceAreasPage"));
 
 // Componente de loading otimizado
@@ -265,7 +266,8 @@ function TopNav() {
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)" },
-    { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas", isNew: true },
+    { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", isNew: true },
+    { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
@@ -913,6 +915,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsIntegrationOrdersFiscalPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/integration/orders-partner-lookup"
+              element={
+                <OpsRoute>
+                  <OpsIntegrationOrdersPartnerLookupPage />
                 </OpsRoute>
               }
             />

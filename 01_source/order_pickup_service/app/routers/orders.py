@@ -24,6 +24,8 @@ from app.schemas.integration_ops import (
     OrderEventOutboxListOut,
     OrderEventOutboxReplayOut,
     OrderFulfillmentTrackingItemOut,
+    OrderPartnerLookupItemOut,
+    OrderPartnerLookupListOut,
 )
 
 
@@ -251,6 +253,78 @@ def list_orders(
         has_next=has_next,
         has_prev=has_prev,
     )
+
+
+@router.get("/partner-lookup", response_model=OrderPartnerLookupListOut)
+def list_orders_partner_lookup(
+    partner_id: str,
+    partner_order_ref: str | None = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
+    _ = user
+    normalized_partner_id = str(partner_id or "").strip()
+    if not normalized_partner_id:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_PARTNER_ID", "message": "partner_id é obrigatório."})
+    normalized_partner_order_ref = str(partner_order_ref or "").strip()
+
+    params: dict[str, object] = {"partner_id": normalized_partner_id, "limit": int(limit), "offset": int(offset)}
+    where = "ecommerce_partner_id = :partner_id"
+    if normalized_partner_order_ref:
+        where += " AND partner_order_ref = :partner_order_ref"
+        params["partner_order_ref"] = normalized_partner_order_ref
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT id, ecommerce_partner_id, partner_order_ref
+            FROM orders
+            WHERE {where}
+            ORDER BY created_at DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+    total = int(
+        db.execute(text(f"SELECT COUNT(*) FROM orders WHERE {where}"), {k: v for k, v in params.items() if k not in {"limit", "offset"}}).scalar()
+        or 0
+    )
+    if not rows:
+        return OrderPartnerLookupListOut(ok=True, total=total, limit=limit, offset=offset, items=[])
+
+    order_ids = [str(row["id"]) for row in rows if row.get("id")]
+    orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
+    by_id = {str(order.id): order for order in orders}
+
+    items: list[OrderPartnerLookupItemOut] = []
+    for row in rows:
+        oid = str(row.get("id") or "")
+        order = by_id.get(oid)
+        if not order:
+            continue
+        allocation = (
+            db.query(Allocation)
+            .filter(Allocation.order_id == order.id)
+            .order_by(Allocation.created_at.desc(), Allocation.id.desc())
+            .first()
+        )
+        resolved_status = resolve_operational_status(order, allocation)
+        items.append(
+            OrderPartnerLookupItemOut(
+                order_id=oid,
+                partner_id=str(row.get("ecommerce_partner_id") or "") or None,
+                partner_order_ref=str(row.get("partner_order_ref") or "") or None,
+                status=resolved_status,
+                slot=allocation.slot if allocation else order.slot,
+                locker_id=(allocation.locker_id if allocation and allocation.locker_id else order.totem_id),
+                created_at=_to_iso_utc(order.created_at),
+            )
+        )
+
+    return OrderPartnerLookupListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
 
 
 def _to_iso_utc(value: datetime | None) -> str:
