@@ -29,7 +29,7 @@ from app.models.logistics_tracking import (
     ReturnRequest,
     SlaBreachEvent,
 )
-from app.models.logistics_manifest import LogisticsCapacityAllocation, LogisticsManifest, LogisticsManifestItem
+from app.models.logistics_manifest import LogisticsCapacityAllocation, LogisticsCarrierRate, LogisticsManifest, LogisticsManifestItem
 from app.models.partner_webhook_delivery import PartnerWebhookDelivery
 from app.models.partner_webhook_endpoint import PartnerWebhookEndpoint
 from app.models.user import User
@@ -37,6 +37,8 @@ from app.schemas.logistics import (
     LogisticsCapacityAllocationListOut,
     LogisticsCapacityAllocationOut,
     LogisticsCapacityAllocationUpsertIn,
+    LogisticsCarrierRateListOut,
+    LogisticsCarrierRateOut,
     LogisticsCarrierAuthConfigIn,
     LogisticsCarrierAuthConfigOut,
     LogisticsCarrierStatusMapIn,
@@ -351,6 +353,23 @@ def _to_capacity_out(row: LogisticsCapacityAllocation) -> LogisticsCapacityAlloc
         valid_until=row.valid_until.isoformat() if row.valid_until else None,
         priority=int(row.priority or 100),
         notes=row.notes,
+        is_active=bool(row.is_active),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_carrier_rate_out(row: LogisticsCarrierRate) -> LogisticsCarrierRateOut:
+    return LogisticsCarrierRateOut(
+        id=row.id,
+        carrier_code=row.carrier_code,
+        origin_zone=row.origin_zone,
+        destination_zone=row.destination_zone,
+        weight_tier_g=int(row.weight_tier_g or 0),
+        size_tier=row.size_tier,
+        amount_cents=int(row.amount_cents or 0),
+        currency=row.currency,
+        valid_from=row.valid_from.isoformat(),
+        valid_until=row.valid_until.isoformat() if row.valid_until else None,
         is_active=bool(row.is_active),
         created_at=_to_iso_utc(row.created_at),
     )
@@ -1462,6 +1481,63 @@ def list_logistics_capacity_allocations(
         .all()
     )
     return LogisticsCapacityAllocationListOut(ok=True, total=total, items=[_to_capacity_out(row) for row in rows])
+
+
+@router.get("/{partner_id}/carrier-rates", response_model=LogisticsCarrierRateListOut)
+def list_logistics_carrier_rates(
+    partner_id: str,
+    carrier_code: str | None = Query(default=None),
+    origin_zone: str | None = Query(default=None),
+    destination_zone: str | None = Query(default=None),
+    active_only: bool = Query(default=True),
+    valid_on: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    normalized_partner = str(partner_id or "").strip()
+    if not normalized_partner:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_PARTNER_ID", "message": "partner_id é obrigatório."})
+    _ensure_logistics_partner_exists(db, normalized_partner)
+
+    query = db.query(LogisticsCarrierRate)
+
+    normalized_carrier = str(carrier_code or "").strip().upper()
+    if normalized_carrier:
+        query = query.filter(LogisticsCarrierRate.carrier_code == normalized_carrier)
+
+    normalized_origin = str(origin_zone or "").strip().upper()
+    if normalized_origin:
+        query = query.filter(LogisticsCarrierRate.origin_zone == normalized_origin)
+
+    normalized_destination = str(destination_zone or "").strip().upper()
+    if normalized_destination:
+        query = query.filter(LogisticsCarrierRate.destination_zone == normalized_destination)
+
+    if active_only:
+        query = query.filter(LogisticsCarrierRate.is_active.is_(True))
+
+    valid_on_date = _parse_iso_date_optional(valid_on, field_name="valid_on")
+    if valid_on_date:
+        query = query.filter(LogisticsCarrierRate.valid_from <= valid_on_date)
+        query = query.filter((LogisticsCarrierRate.valid_until.is_(None)) | (LogisticsCarrierRate.valid_until >= valid_on_date))
+
+    total = query.count()
+    rows = (
+        query.order_by(
+            LogisticsCarrierRate.carrier_code.asc(),
+            LogisticsCarrierRate.origin_zone.asc(),
+            LogisticsCarrierRate.destination_zone.asc(),
+            LogisticsCarrierRate.weight_tier_g.asc(),
+            LogisticsCarrierRate.valid_from.desc(),
+            LogisticsCarrierRate.created_at.desc(),
+            LogisticsCarrierRate.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return LogisticsCarrierRateListOut(ok=True, total=total, items=[_to_carrier_rate_out(row) for row in rows])
 
 
 @router.post("/deliveries/{delivery_id}/return-request", response_model=ReturnRequestOut)

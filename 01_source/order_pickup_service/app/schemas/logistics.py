@@ -403,3 +403,24 @@ class LogisticsCapacityAllocationListOut(BaseModel):
     ok: bool
     total: int
     items: list[LogisticsCapacityAllocationOut]
+
+
+class LogisticsCarrierRateOut(BaseModel):
+    id: str
+    carrier_code: str
+    origin_zone: str
+    destination_zone: str
+    weight_tier_g: int
+    size_tier: str | None = None
+    amount_cents: int
+    currency: str
+    valid_from: str
+    valid_until: str | None = None
+    is_active: bool
+    created_at: str
+
+
+class LogisticsCarrierRateListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[LogisticsCarrierRateOut]

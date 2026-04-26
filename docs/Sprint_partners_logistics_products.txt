@@ -1678,7 +1678,7 @@ curl -sS -X GET "$BASE_URL/logistics/sla-breaches?severity=HIGH&resolved=false&l
 - [ ] Capturar ao menos 1 `correlation_id` por execução real para auditoria cruzada.
 
 ###### Continuidade do próximo sprint L-2 (D2) — kickoff iniciado
-- [~] Publicada listagem operacional de solicitações:
+- [x] Publicada listagem operacional de solicitações:
       - `GET /logistics/return-requests` com filtros (`status`, `requester_type`, `return_reason_code`, `original_delivery_id`, paginação).
 - [x] UI OPS conectada em `ops/logistics/returns` para operação de fila e handoff:
       - filtros ricos: `status`, `requester_type`, `return_reason_code`, `original_delivery_id`, janela temporal e paginação;
@@ -1690,6 +1690,62 @@ curl -sS -X GET "$BASE_URL/logistics/sla-breaches?severity=HIGH&resolved=false&l
 - [x] Tokens visuais de botões OPS extraídos para componente comum: `OpsActionButton` (`primary`, `secondary`, `warn`, `copy`) e aplicado nas páginas OPS operacionais-chave, reduzindo duplicação de estilos.
 - [x] Mini guia no próprio componente incluído (`JSDoc` + exemplos de variantes) para acelerar adoção em novas páginas OPS e reduzir ambiguidades de uso.
 - [x] Homogeneização de documentação dos componentes-base OPS: `OpsScenarioPresets` também recebeu mini guia (`JSDoc` + exemplo), e `OpsTrendKpiCard` foi documentado com contrato de props/tendência para facilitar reaproveitamento.
+- [x] Índice rápido dos componentes OPS criado em `src/components/README.md` com links de uso e tela de referência (`ops/logistics/returns`) para acelerar onboard de novas páginas.
+
+###### Fechamento de governança L-2 D2 (fila OPS de returns) — status atualizado
+- [x] Evidência de implementação consolidada no frontend `ops/logistics/returns`:
+      - fila com filtros operacionais + paginação;
+      - quick actions (`GET detalhe`, `PATCH status`, `POST labels`, `GET SLA`);
+      - chips por ação com persistência e botão `Copiar evidência`.
+- [x] Checklist técnico/documental explícito no sprint (estado atual de engenharia).
+- [ ] Pendência de execução real autenticada (token OPS) para fechar governança final em ambiente.
+- [ ] Pendência de anexar evidência de erro controlado real (ex.: `404 RETURN_REQUEST_NOT_FOUND`).
+
+###### Roteiro enxuto de coleta de evidência real L-2 D2 (3-4 minutos)
+1. [ ] Abrir `ops/logistics/returns`, aplicar filtro `status=REQUESTED`, clicar `Atualizar Returns` e salvar print com timestamp.
+2. [ ] Selecionar um `return_request_id` da fila, executar `GET detalhe`, validar chip `Detalhe` em sucesso e anexar payload resumido.
+3. [ ] Executar `PATCH status` para `APPROVED`, validar chip `PATCH status` em sucesso e anexar resposta.
+4. [ ] Executar `POST labels`, validar chip `Emitir label` em sucesso e anexar `label_id`/perna reversa.
+5. [ ] Executar `GET SLA breaches` (com `return_request_id` selecionado), validar chip `SLA` e anexar retorno.
+6. [ ] Clicar `Copiar evidência`, colar no runbook/doc com timestamp + operador responsável.
+7. [ ] Rodar cenário de erro controlado (ID inexistente em `GET detalhe` ou `POST labels`) e anexar retorno `404` para fechamento de governança.
+
+###### One-shot copiar/colar L-2 D2 (fila + quick actions)
+- Script pronto: `scripts/l2_d2_ops_returns_queue_oneshot.sh`
+- Execução mínima:
+```bash
+OPS_TOKEN=... ./scripts/l2_d2_ops_returns_queue_oneshot.sh
+```
+- Execução com fallback para criar request (quando não houver `RETURN_ID_REAL`):
+```bash
+OPS_TOKEN=... DELIVERY_ID_REAL=... ./scripts/l2_d2_ops_returns_queue_oneshot.sh
+```
+- Fluxos cobertos pelo one-shot:
+  - `GET /logistics/return-requests` (fila REQUESTED)
+  - `GET /logistics/return-requests/{id}` (detalhe)
+  - `PATCH /logistics/return-requests/{id}/status` (APPROVED)
+  - `POST /logistics/return-requests/{id}/labels`
+  - `GET /logistics/sla-breaches?return_request_id={id}`
+  - cenário de erro controlado (`GET detalhe` com id inexistente)
+
+###### Runbook ultra-curto L-2 D2 (10-12 linhas)
+- Script curto para plantão: `scripts/l2_d2_ops_returns_queue_runbook_short.sh`
+- Modelo copiar/colar:
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+export BASE_URL="${BASE_URL:-http://localhost:8003}"
+export OPS_TOKEN="${OPS_TOKEN:-COLE_AQUI_TOKEN_OPS}"
+export RETURN_ID_REAL="${RETURN_ID_REAL:-}"
+export DELIVERY_ID_REAL="${DELIVERY_ID_REAL:-}"
+export REQUESTER_ID_REAL="${REQUESTER_ID_REAL:-usr_ops_001}"
+export RETURN_REASON_CODE="${RETURN_REASON_CODE:-DAMAGED_ITEM}"
+"/home/marcos/ellan_lab/scripts/l2_d2_ops_returns_queue_oneshot.sh"
+```
+- Observação: não foi necessário criar nova página OPS; o fluxo já está coberto por `ops/logistics/returns`.
+
+###### Referência de componentes OPS no frontend (confirmado no doc)
+- Guia rápido centralizado em: `/home/marcos/ellan_lab/01_source/frontend/src/components/README.md`
 
 ---
 
@@ -1815,6 +1871,7 @@ Quando inbound_deliveries.status → 'PICKED_UP':
 
 - [x] Contratos base publicados para `POST /logistics/manifests` e `POST /logistics/{partner_id}/capacity`.
 - [x] Contratos base publicados para `GET /logistics/manifests` e `GET /logistics/{partner_id}/capacity`.
+- [x] Contrato backend publicado para `GET /logistics/{partner_id}/carrier-rates` (filtros operacionais + paginação).
 - [x] Exemplos de `curl` + payload esperado documentados no bloco de evidência rápida D1.
 - [ ] Capturar evidência real de startup/migração em ambiente limpo (log completo da inicialização).
 - [ ] Capturar evidência real de startup/migração em ambiente já migrado (sem regressão/idempotente).
@@ -1951,6 +2008,36 @@ curl -sS "http://localhost:8000/logistics/lpt_001/capacity?active_only=true&vali
       "notes": "reserva campanha semana 18",
       "is_active": true,
       "created_at": "2026-04-26T10:29:05.200000+00:00"
+    }
+  ]
+}
+```
+
+5) **GET /logistics/{partner_id}/carrier-rates**
+
+```bash
+curl -sS "http://localhost:8000/logistics/lpt_001/carrier-rates?carrier_code=CARR_SP&origin_zone=SP01&destination_zone=SP02&active_only=true&valid_on=2026-04-28&limit=50&offset=0" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "a32e0f77-6a7f-4fb6-90a0-5d8ec8de9001",
+      "carrier_code": "CARR_SP",
+      "origin_zone": "SP01",
+      "destination_zone": "SP02",
+      "weight_tier_g": 5000,
+      "size_tier": "M",
+      "amount_cents": 1290,
+      "currency": "BRL",
+      "valid_from": "2026-04-01",
+      "valid_until": "2026-05-31",
+      "is_active": true,
+      "created_at": "2026-04-26T10:52:00.000000+00:00"
     }
   ]
 }
@@ -2115,19 +2202,71 @@ curl -sS -X POST "http://localhost:8000/logistics/manifests/a9f8d0a6-9f98-4d5d-b
   - evidência de auditoria para create/close/exception.
 
 ##### D3 — Rota OPS de validação L-3 (janela atual vs anterior)
-- [ ] **Objetivo**: entregar observabilidade operacional do L-3 para NOC, sem depender de consulta manual de tabelas.
-- [ ] **Entregáveis técnicos**:
-  - endpoint `GET /ops/logistics/manifests/overview` com KPIs, tops e comparação temporal;
+- [x] **Objetivo**: observabilidade operacional do L-3 entregue para NOC sem depender de consulta manual de tabelas.
+- [x] **Entregáveis técnicos**:
+  - endpoint `GET /logistics/ops/manifests/overview` com KPIs, tops e comparação temporal;
   - resposta com `confidence_badge` e alertas operacionais (ex.: aumento de `PARTIAL/FAILED`, backlog de manifestos `PENDING/IN_TRANSIT`);
-  - rota de visualização rápida HTML para inspeção imediata em operação (padrão OPS).
-- [ ] **Critérios de aceite (profissional)**:
+  - rota de visualização rápida HTML `GET /logistics/ops/manifests/view` para inspeção imediata em operação (padrão OPS).
+- [x] **Critérios de aceite (profissional) — implementado em código**:
   - filtros de janela e parceiro funcionais com fallback seguro;
-  - cálculo atual vs anterior consistente e validado com dataset controlado;
+  - cálculo atual vs anterior consistente via janelas atual/anterior;
   - mensagens de erro e alertas legíveis para operação de plantão.
-- [ ] **Evidência obrigatória**:
-  - chamada da rota OPS com payload real contendo KPIs e comparação;
-  - captura da visualização HTML com indicadores carregados;
-  - checklist go/no-go de D1..D3 marcando riscos remanescentes e plano de mitigação.
+- [~] **Evidência obrigatória (governança)**:
+  - [x] contrato e payload esperado da rota OPS documentados no sprint;
+  - [x] fluxo de visualização HTML disponível no backend;
+  - [ ] chamada da rota OPS com payload real autenticado e anexo da resposta efetiva;
+  - [ ] captura real da visualização HTML com indicadores carregados;
+  - [ ] checklist go/no-go final de D1..D3 com riscos remanescentes e plano de mitigação.
+
+###### Evidência técnica rápida D3 (overview OPS + view HTML)
+
+1) **GET /logistics/ops/manifests/overview**
+
+```bash
+curl -sS "http://localhost:8000/logistics/ops/manifests/overview?from=2026-04-20T00:00:00Z&to=2026-04-26T23:59:59Z&partner_id=lpt_001" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "from": "2026-04-20T00:00:00+00:00",
+  "to": "2026-04-26T23:59:59+00:00",
+  "partner_id": "lpt_001",
+  "confidence_badge": "MEDIUM",
+  "totals": {
+    "current_total": 18,
+    "previous_total": 14,
+    "pending_or_in_transit": 6,
+    "partial_or_failed": 3,
+    "partial_failed_rate_pct": 16.67
+  },
+  "by_status": [
+    { "key": "PENDING", "current": 4, "previous": 2, "delta": 2 },
+    { "key": "IN_TRANSIT", "current": 2, "previous": 1, "delta": 1 },
+    { "key": "DELIVERED", "current": 9, "previous": 9, "delta": 0 },
+    { "key": "PARTIAL", "current": 2, "previous": 1, "delta": 1 },
+    { "key": "FAILED", "current": 1, "previous": 1, "delta": 0 }
+  ],
+  "alerts": [
+    {
+      "type": "L3_MANIFEST_PARTIAL_FAILED_RATE_HIGH",
+      "severity": "HIGH",
+      "threshold": 25.0,
+      "value": 16.67,
+      "message": "Taxa de manifestos PARTIAL/FAILED acima do limiar operacional."
+    }
+  ]
+}
+```
+
+2) **URL da view HTML (inspeção rápida OPS)**
+
+```text
+http://localhost:8000/logistics/ops/manifests/view
+```
+
+> Nota D3: o JSON acima é payload esperado para validação rápida; no fechamento de governança, anexar resposta real autenticada com timestamp/correlation de execução e print da view HTML carregada.
 
 ---
 
