@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsActionButton from "../components/OpsActionButton";
+import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const STORAGE_KEY = "ops_partners_financials_service_areas_actions_v1";
@@ -318,40 +320,38 @@ export default function OpsPartnersFinancialsServiceAreasPage() {
           </label>
         </div>
 
-        <div style={presetRowStyle}>
-          <button type="button" style={presetSuccessStyle} onClick={() => applyPreset("healthy")} disabled={Boolean(loading)}>
-            Preset verde: ciclo saudável
-          </button>
-          <button type="button" style={presetWarnStyle} onClick={() => applyPreset("approval")} disabled={Boolean(loading)}>
-            Preset âmbar: aprovação de batch
-          </button>
-          <button type="button" style={presetErrorStyle} onClick={() => applyPreset("risk")} disabled={Boolean(loading)}>
-            Preset vermelho: cobertura crítica
-          </button>
-        </div>
+        <OpsScenarioPresets
+          style={presetRowStyle}
+          disabled={Boolean(loading)}
+          items={[
+            { id: "healthy", tone: "success", label: "Preset verde: ciclo saudável", onClick: () => applyPreset("healthy") },
+            { id: "approval", tone: "warn", label: "Preset âmbar: aprovação de batch", onClick: () => applyPreset("approval") },
+            { id: "risk", tone: "error", label: "Preset vermelho: cobertura crítica", onClick: () => applyPreset("risk") },
+          ]}
+        />
 
         <div style={actionsStyle}>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleListSettlements()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleListSettlements()} disabled={Boolean(loading)}>
             {loading === "listSettlements" ? "Carregando..." : "GET settlements"}
-          </button>
-          <button type="button" style={buttonStyle} onClick={() => void handleGenerateSettlement()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleGenerateSettlement()} disabled={Boolean(loading)}>
             {loading === "generateSettlement" ? "Gerando..." : "POST settlements/generate"}
-          </button>
-          <button type="button" style={buttonWarnStyle} onClick={() => void handleApproveSettlement()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="warn" onClick={() => void handleApproveSettlement()} disabled={Boolean(loading)}>
             {loading === "approveSettlement" ? "Aprovando..." : "PATCH settlements/approve"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleListPerformance()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleListPerformance()} disabled={Boolean(loading)}>
             {loading === "listPerformance" ? "Carregando..." : "GET performance"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleListServiceAreas()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleListServiceAreas()} disabled={Boolean(loading)}>
             {loading === "listServiceAreas" ? "Carregando..." : "GET service-areas"}
-          </button>
-          <button type="button" style={buttonStyle} onClick={() => void handleCreateServiceArea()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleCreateServiceArea()} disabled={Boolean(loading)}>
             {loading === "createServiceArea" ? "Enviando..." : "POST service-areas"}
-          </button>
-          <button type="button" style={buttonCopyStyle} onClick={() => void handleCopyEvidence()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="copy" onClick={() => void handleCopyEvidence()} disabled={Boolean(loading)}>
             Copiar evidência
-          </button>
+          </OpsActionButton>
         </div>
         {copyStatus ? <div style={copyStatusStyle}>{copyStatus}</div> : null}
 
@@ -396,14 +396,7 @@ const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #4
 const textareaStyle = { minHeight: 100, padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#020617", color: "#E2E8F0", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
 const actionsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
 const presetRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const buttonSecondaryStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid #334155", background: "#0B1220", color: "#E2E8F0", fontWeight: 700, cursor: "pointer" };
-const buttonWarnStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer" };
-const buttonCopyStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.55)", background: "rgba(59,130,246,0.2)", color: "#93C5FD", fontWeight: 700, cursor: "pointer" };
 const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
-const presetSuccessStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(22,163,74,0.45)", background: "rgba(22,163,74,0.2)", color: "#86EFAC", fontWeight: 700, cursor: "pointer", fontSize: 12 };
-const presetWarnStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer", fontSize: 12 };
-const presetErrorStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(220,38,38,0.45)", background: "rgba(220,38,38,0.18)", color: "#FCA5A5", fontWeight: 700, cursor: "pointer", fontSize: 12 };
 const resultStyle = { marginTop: 12, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12, whiteSpace: "pre-wrap" };
 const chipsGridStyle = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", marginTop: 10 };
 const chipBaseStyle = { borderRadius: 10, border: "1px solid #334155", padding: "8px 10px", display: "grid", gap: 2 };

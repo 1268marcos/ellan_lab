@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsActionButton from "../components/OpsActionButton";
+import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const ACTION_STATUS_STORAGE_KEY = "ops_logistics_manifests:action_status_v1";
@@ -209,17 +211,15 @@ export default function OpsLogisticsManifestsPage() {
             <li>Se necessário, marque item com <b>POST exception</b>.</li>
             <li>Finalize com <b>POST close</b> e valide idempotência no replay.</li>
           </ol>
-          <div style={quickActionsStyle}>
-            <button type="button" style={buttonSecondaryStyle} onClick={() => applyQuickFlow("inspect")} disabled={Boolean(loadingAction)}>
-              Fluxo 1: Inspecionar
-            </button>
-            <button type="button" style={buttonSecondaryStyle} onClick={() => applyQuickFlow("exception")} disabled={Boolean(loadingAction)}>
-              Fluxo 2: Exception
-            </button>
-            <button type="button" style={buttonSecondaryStyle} onClick={() => applyQuickFlow("close")} disabled={Boolean(loadingAction)}>
-              Fluxo 3: Fechar
-            </button>
-          </div>
+          <OpsScenarioPresets
+            style={quickActionsStyle}
+            disabled={Boolean(loadingAction)}
+            items={[
+              { id: "inspect", tone: "success", label: "Preset verde: inspecionar", onClick: () => applyQuickFlow("inspect") },
+              { id: "close", tone: "warn", label: "Preset âmbar: fechamento parcial", onClick: () => applyQuickFlow("close") },
+              { id: "exception", tone: "error", label: "Preset vermelho: exception crítica", onClick: () => applyQuickFlow("exception") },
+            ]}
+          />
         </div>
 
         <div style={contextHelpStyle}>
@@ -299,15 +299,15 @@ export default function OpsLogisticsManifestsPage() {
         </label>
 
         <div style={actionsStyle}>
-          <button type="button" onClick={() => void handleListItems()} style={buttonStyle} disabled={Boolean(loadingAction)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleListItems()} disabled={Boolean(loadingAction)}>
             {loadingAction === "list-items" ? "Listando..." : "GET items"}
-          </button>
-          <button type="button" onClick={() => void handleCloseManifest()} style={buttonStyle} disabled={Boolean(loadingAction)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleCloseManifest()} disabled={Boolean(loadingAction)}>
             {loadingAction === "close-manifest" ? "Fechando..." : "POST close"}
-          </button>
-          <button type="button" onClick={() => void handleMarkException()} style={buttonStyle} disabled={Boolean(loadingAction)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleMarkException()} disabled={Boolean(loadingAction)}>
             {loadingAction === "mark-exception" ? "Marcando..." : "POST exception"}
-          </button>
+          </OpsActionButton>
         </div>
 
         <pre style={resultStyle}>{result || "Execute uma acao para visualizar resposta tecnica."}</pre>
@@ -380,7 +380,5 @@ const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #4
 const textareaStyle = { minHeight: 120, padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#0B1220", color: "#E2E8F0", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
 const presetRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 };
 const actionsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const buttonSecondaryStyle = { padding: "10px 12px", borderRadius: 10, border: "1px solid #334155", background: "#0B1220", color: "#E2E8F0", fontWeight: 600, cursor: "pointer" };
 const buttonGhostStyle = { padding: "6px 10px", borderRadius: 999, border: "1px solid #334155", background: "#0B1220", color: "#CBD5E1", fontWeight: 600, cursor: "pointer", fontSize: 12 };
 const resultStyle = { marginTop: 12, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12, whiteSpace: "pre-wrap" };

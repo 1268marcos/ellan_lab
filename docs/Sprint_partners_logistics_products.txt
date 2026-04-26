@@ -1680,7 +1680,16 @@ curl -sS -X GET "$BASE_URL/logistics/sla-breaches?severity=HIGH&resolved=false&l
 ###### Continuidade do próximo sprint L-2 (D2) — kickoff iniciado
 - [~] Publicada listagem operacional de solicitações:
       - `GET /logistics/return-requests` com filtros (`status`, `requester_type`, `return_reason_code`, `original_delivery_id`, paginação).
-- [ ] Próximo passo D2: conectar essa listagem na UI OPS de returns para operação de fila e handoff.
+- [x] UI OPS conectada em `ops/logistics/returns` para operação de fila e handoff:
+      - filtros ricos: `status`, `requester_type`, `return_reason_code`, `original_delivery_id`, janela temporal e paginação;
+      - chips visuais por ação (`fila`, `detalhe`, `patch status`, `emitir label`, `sla`) com persistência em `localStorage`;
+      - quick actions de plantão: `GET /return-requests/{id}`, `PATCH /return-requests/{id}/status`, `POST /return-requests/{id}/labels`, `GET /sla-breaches`;
+      - painel técnico com payloads de detalhe/SLA e botão `Copiar evidência` para handoff rápido.
+- [x] Padronização UX/CX transversal aplicada: presets coloridos (`verde/âmbar/vermelho`) revisados e alinhados entre páginas OPS críticas (`ops/logistics/returns`, `ops/logistics/manifests`, `ops/products/pricing-fiscal`, além das já existentes `ops/integration/orders-fiscal` e `ops/partners/financials-service-areas`).
+- [x] Componente reutilizável criado para consistência por design: `OpsScenarioPresets` em `frontend/src/components`, adotado nas páginas OPS com cenários `success/warn/error` para reduzir drift visual e facilitar manutenção.
+- [x] Tokens visuais de botões OPS extraídos para componente comum: `OpsActionButton` (`primary`, `secondary`, `warn`, `copy`) e aplicado nas páginas OPS operacionais-chave, reduzindo duplicação de estilos.
+- [x] Mini guia no próprio componente incluído (`JSDoc` + exemplos de variantes) para acelerar adoção em novas páginas OPS e reduzir ambiguidades de uso.
+- [x] Homogeneização de documentação dos componentes-base OPS: `OpsScenarioPresets` também recebeu mini guia (`JSDoc` + exemplo), e `OpsTrendKpiCard` foi documentado com contrato de props/tendência para facilitar reaproveitamento.
 
 ---
 

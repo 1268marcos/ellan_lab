@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsActionButton from "../components/OpsActionButton";
+import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const STORAGE_KEY = "ops_integration_orders_fiscal_actions_v1";
@@ -223,37 +225,35 @@ export default function OpsIntegrationOrdersFiscalPage() {
           </label>
         </div>
 
-        <div style={presetRowStyle}>
-          <button type="button" style={presetSuccessStyle} onClick={() => applyPreset("success")} disabled={Boolean(loading)}>
-            Preset verde: cenário sucesso
-          </button>
-          <button type="button" style={presetWarnStyle} onClick={() => applyPreset("retry")} disabled={Boolean(loading)}>
-            Preset âmbar: cenário retry
-          </button>
-          <button type="button" style={presetErrorStyle} onClick={() => applyPreset("default")} disabled={Boolean(loading)}>
-            Preset vermelho: diagnóstico fiscal
-          </button>
-        </div>
+        <OpsScenarioPresets
+          style={presetRowStyle}
+          disabled={Boolean(loading)}
+          items={[
+            { id: "success", tone: "success", label: "Preset verde: cenário sucesso", onClick: () => applyPreset("success") },
+            { id: "retry", tone: "warn", label: "Preset âmbar: cenário retry", onClick: () => applyPreset("retry") },
+            { id: "default", tone: "error", label: "Preset vermelho: diagnóstico fiscal", onClick: () => applyPreset("default") },
+          ]}
+        />
 
         <div style={actionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleGetFulfillment()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleGetFulfillment()} disabled={Boolean(loading)}>
             {loading === "fulfillment" ? "Carregando..." : "GET fulfillment"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleGetPartnerEvents()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleGetPartnerEvents()} disabled={Boolean(loading)}>
             {loading === "partnerEvents" ? "Carregando..." : "GET partner-events"}
-          </button>
-          <button type="button" style={buttonWarnStyle} onClick={() => void handleRetryPartnerEvent()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="warn" onClick={() => void handleRetryPartnerEvent()} disabled={Boolean(loading)}>
             {loading === "retryEvent" ? "Executando..." : "POST retry event"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleGetFiscalLogByOrder()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleGetFiscalLogByOrder()} disabled={Boolean(loading)}>
             {loading === "fiscalLogByOrder" ? "Carregando..." : "GET fiscal log by order"}
-          </button>
-          <button type="button" style={buttonStyle} onClick={() => void handleFiscalReprocess()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleFiscalReprocess()} disabled={Boolean(loading)}>
             {loading === "fiscalReprocess" ? "Reprocessando..." : "POST fiscal reprocess"}
-          </button>
-          <button type="button" style={buttonCopyStyle} onClick={() => void handleCopyEvidence()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="copy" onClick={() => void handleCopyEvidence()} disabled={Boolean(loading)}>
             Copiar evidência
-          </button>
+          </OpsActionButton>
         </div>
         {copyStatus ? <div style={copyStatusStyle}>{copyStatus}</div> : null}
 
@@ -278,14 +278,7 @@ const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #4
 const toggleLabelStyle = { color: "#CBD5E1", fontSize: 12, display: "flex", alignItems: "center", gap: 6, paddingTop: 24 };
 const actionsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
 const presetRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const buttonSecondaryStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid #334155", background: "#0B1220", color: "#E2E8F0", fontWeight: 700, cursor: "pointer" };
-const buttonWarnStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer" };
-const buttonCopyStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.55)", background: "rgba(59,130,246,0.2)", color: "#93C5FD", fontWeight: 700, cursor: "pointer" };
 const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
-const presetSuccessStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(22,163,74,0.45)", background: "rgba(22,163,74,0.2)", color: "#86EFAC", fontWeight: 700, cursor: "pointer", fontSize: 12 };
-const presetWarnStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer", fontSize: 12 };
-const presetErrorStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(220,38,38,0.45)", background: "rgba(220,38,38,0.18)", color: "#FCA5A5", fontWeight: 700, cursor: "pointer", fontSize: 12 };
 const resultStyle = { marginTop: 12, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12, whiteSpace: "pre-wrap" };
 const chipsGridStyle = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 10 };
 const chipBaseStyle = { borderRadius: 10, border: "1px solid #334155", padding: "8px 10px", display: "grid", gap: 2 };

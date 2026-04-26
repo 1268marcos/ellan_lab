@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsActionButton from "../components/OpsActionButton";
+import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const STORAGE_KEY = "ops_products_pricing_fiscal_actions_v1";
@@ -195,6 +197,42 @@ export default function OpsProductsPricingFiscalPage() {
 }`);
   }
 
+  function applyOpsPreset(kind) {
+    if (kind === "green") {
+      setProductId("sku_123");
+      setValidatePayload(`{
+  "order_id": "order_pr3_healthy_001",
+  "promotion_code": "PR3-PROMO-001",
+  "total_amount_cents": 12000,
+  "items": [
+    { "product_id": "sku_123", "quantity": 2, "unit_price_cents": 6000 }
+  ]
+}`);
+      return;
+    }
+    if (kind === "amber") {
+      applyPromotionPreset("BUY_X_GET_Y");
+      setValidatePayload(`{
+  "order_id": "order_pr3_attention_001",
+  "promotion_code": "PR3-BUYXGETY-001",
+  "total_amount_cents": 9000,
+  "items": [
+    { "product_id": "sku_123", "quantity": 2, "unit_price_cents": 4500 }
+  ]
+}`);
+      return;
+    }
+    setProductId("sku_problematic_001");
+    setValidatePayload(`{
+  "order_id": "order_pr3_error_001",
+  "promotion_code": "PROMO_INEXISTENTE",
+  "total_amount_cents": 1000,
+  "items": [
+    { "product_id": "sku_problematic_001", "quantity": 1, "unit_price_cents": 1000 }
+  ]
+}`);
+  }
+
   async function handleGetOverview() {
     const params = new URLSearchParams();
     const fromIso = toIsoOrNull(from);
@@ -303,19 +341,29 @@ export default function OpsProductsPricingFiscalPage() {
         <h1 style={{ marginTop: 0 }}>OPS - Products Pricing/Fiscal (Pr-3)</h1>
         <p style={mutedStyle}>Guia rápido: 1) consultar overview; 2) validar bundles/promotions; 3) confirmar fiscal config e log técnico.</p>
 
+        <OpsScenarioPresets
+          style={quickActionsStyle}
+          disabled={Boolean(loading)}
+          items={[
+            { id: "green", tone: "success", label: "Preset verde: validação saudável", onClick: () => applyOpsPreset("green") },
+            { id: "amber", tone: "warn", label: "Preset âmbar: revisão promocional", onClick: () => applyOpsPreset("amber") },
+            { id: "red", tone: "error", label: "Preset vermelho: diagnóstico de erro", onClick: () => applyOpsPreset("red") },
+          ]}
+        />
+
         <div style={quickActionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleGetOverview()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleGetOverview()} disabled={Boolean(loading)}>
             {loading === "overview" ? "Carregando..." : "GET overview"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleGetPromotions()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleGetPromotions()} disabled={Boolean(loading)}>
             {loading === "promotions" ? "Carregando..." : "GET promotions"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleGetBundles()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleGetBundles()} disabled={Boolean(loading)}>
             {loading === "bundles" ? "Carregando..." : "GET bundles"}
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void handleGetFiscalLog()} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => void handleGetFiscalLog()} disabled={Boolean(loading)}>
             {loading === "fiscalLog" ? "Carregando..." : "GET fiscal log"}
-          </button>
+          </OpsActionButton>
         </div>
 
         <div style={filtersStyle}>
@@ -352,9 +400,9 @@ export default function OpsProductsPricingFiscalPage() {
           <textarea value={bundlePayload} onChange={(e) => setBundlePayload(e.target.value)} style={textareaStyle} />
         </label>
         <div style={actionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleCreateBundle()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleCreateBundle()} disabled={Boolean(loading)}>
             {loading === "createBundle" ? "Enviando..." : "POST bundle"}
-          </button>
+          </OpsActionButton>
         </div>
 
         <label style={{ ...labelStyle, marginTop: 10 }}>
@@ -362,20 +410,20 @@ export default function OpsProductsPricingFiscalPage() {
           <textarea value={promotionPayload} onChange={(e) => setPromotionPayload(e.target.value)} style={textareaStyle} />
         </label>
         <div style={quickActionsStyle}>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => applyPromotionPreset("BUY_X_GET_Y")} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="secondary" onClick={() => applyPromotionPreset("BUY_X_GET_Y")} disabled={Boolean(loading)}>
             Preset BUY_X_GET_Y
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => applyPromotionPreset("FREE_ITEM")} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => applyPromotionPreset("FREE_ITEM")} disabled={Boolean(loading)}>
             Preset FREE_ITEM
-          </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => applyPromotionPreset("BUNDLE_DISCOUNT")} disabled={Boolean(loading)}>
+          </OpsActionButton>
+          <OpsActionButton type="button" variant="secondary" onClick={() => applyPromotionPreset("BUNDLE_DISCOUNT")} disabled={Boolean(loading)}>
             Preset BUNDLE_DISCOUNT
-          </button>
+          </OpsActionButton>
         </div>
         <div style={actionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleCreatePromotion()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleCreatePromotion()} disabled={Boolean(loading)}>
             {loading === "createPromotion" ? "Enviando..." : "POST promotion"}
-          </button>
+          </OpsActionButton>
         </div>
 
         <label style={{ ...labelStyle, marginTop: 10 }}>
@@ -383,9 +431,9 @@ export default function OpsProductsPricingFiscalPage() {
           <textarea value={validatePayload} onChange={(e) => setValidatePayload(e.target.value)} style={textareaStyle} />
         </label>
         <div style={actionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleValidatePromotion()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleValidatePromotion()} disabled={Boolean(loading)}>
             {loading === "validatePromotion" ? "Validando..." : "POST promotion validate"}
-          </button>
+          </OpsActionButton>
         </div>
         <div
           style={{
@@ -410,9 +458,9 @@ export default function OpsProductsPricingFiscalPage() {
           <textarea value={fiscalPayload} onChange={(e) => setFiscalPayload(e.target.value)} style={textareaStyle} />
         </label>
         <div style={actionsStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void handleUpsertFiscal()} disabled={Boolean(loading)}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void handleUpsertFiscal()} disabled={Boolean(loading)}>
             {loading === "upsertFiscal" ? "Enviando..." : "PUT fiscal config"}
-          </button>
+          </OpsActionButton>
         </div>
 
         <pre style={resultStyle}>{result || "Execute uma ação para visualizar resposta técnica."}</pre>
@@ -430,8 +478,6 @@ const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };
 const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#020617", color: "#E2E8F0" };
 const textareaStyle = { minHeight: 110, padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#020617", color: "#E2E8F0", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" };
 const actionsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const buttonSecondaryStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid #334155", background: "#0B1220", color: "#E2E8F0", fontWeight: 700, cursor: "pointer" };
 const resultStyle = { marginTop: 12, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12, whiteSpace: "pre-wrap" };
 const chipsGridStyle = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 10 };
 const chipBaseStyle = { borderRadius: 10, border: "1px solid #334155", padding: "8px 10px", display: "grid", gap: 2 };

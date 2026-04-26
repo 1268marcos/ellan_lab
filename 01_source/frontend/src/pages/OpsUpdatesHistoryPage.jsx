@@ -144,6 +144,23 @@ const UPDATES = [
   },
   {
     date: "2026-04-26",
+    scope: "L-2 D2",
+    title: "Fila OPS de return-requests com quick actions",
+    description:
+      "Evolução da UI de returns para operação de fila e handoff com filtros ricos, chips por ação, detalhe por ID, patch de status, emissão de label e evidência rápida.",
+    routes: [
+      "GET /logistics/return-requests",
+      "GET /logistics/return-requests/{id}",
+      "PATCH /logistics/return-requests/{id}/status",
+      "POST /logistics/return-requests/{id}/labels",
+      "GET /logistics/sla-breaches",
+      "UI /ops/logistics/returns",
+    ],
+    directLink: "/ops/logistics/returns",
+    directLinkLabel: "Abrir OPS L-2 returns queue",
+  },
+  {
+    date: "2026-04-26",
     scope: "P-3 Financials/Areas",
     title: "Operação de settlement e service-area por parceiro",
     description:

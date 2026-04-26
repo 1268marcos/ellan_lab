@@ -1,6 +1,10 @@
 import React from "react";
 import { getTrendToken } from "./opsVisualTokens";
 
+/**
+ * Resolve direção da tendência baseada no delta numérico.
+ * Retornos possíveis: `up`, `down`, `stable`.
+ */
 export function resolveTrendByDelta(delta) {
   const value = Number(delta ?? 0);
   if (Number.isNaN(value)) return "stable";
@@ -9,6 +13,18 @@ export function resolveTrendByDelta(delta) {
   return "stable";
 }
 
+/**
+ * Card KPI com realce de tendência para páginas OPS.
+ *
+ * Props principais:
+ * - `label`: rótulo do indicador
+ * - `value`: valor atual
+ * - `previousValue`: valor anterior (opcional)
+ * - `trend`: `up | down | stable` (opcional)
+ * - `deltaLabel`: texto auxiliar de variação (opcional)
+ * - `baseStyle`: estilo base do card
+ * - `showTrend`: habilita/desabilita destaque de tendência
+ */
 export default function OpsTrendKpiCard({
   label,
   value,
