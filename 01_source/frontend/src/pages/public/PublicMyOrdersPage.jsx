@@ -134,7 +134,7 @@ function OrderCard({ order }) {
 }
 
 // Componente de Filtro
-function OrdersFilter({ filter, onFilterChange, totalOrders }) {
+function OrdersFilter({ filter, onFilterChange, searchQuery, onSearchQueryChange, totalOrders, matchedOrders }) {
   return (
     <div style={filterContainerStyle}>
       <div style={filterLeftStyle}>
@@ -154,8 +154,15 @@ function OrdersFilter({ filter, onFilterChange, totalOrders }) {
           <option value="CANCELLED">Cancelados</option>
         </select>
       </div>
+      <input
+        value={searchQuery}
+        onChange={(e) => onSearchQueryChange(e.target.value)}
+        style={searchInputStyle}
+        placeholder="Buscar por pedido/ref parceiro"
+        aria-label="Buscar por order_id ou partner_order_ref"
+      />
       <div style={filterHintStyle}>
-        {totalOrders} {totalOrders === 1 ? "pedido" : "pedidos"} encontrado(s)
+        {matchedOrders} de {totalOrders} {totalOrders === 1 ? "pedido" : "pedidos"}
       </div>
     </div>
   );
@@ -201,6 +208,7 @@ export default function PublicMyOrdersPage() {
   const [error, setError] = useState("");
   const [pageLoading, setPageLoading] = useState(true);
   const [filter, setFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Carregar pedidos
   useEffect(() => {
@@ -246,28 +254,15 @@ export default function PublicMyOrdersPage() {
 
   // Filtrar pedidos
   const filteredItems = useMemo(() => {
-    if (filter === "all") return items;
-    return items.filter((item) => item.status === filter);
-  }, [items, filter]);
-
-  // Contagem por status
-  const statusCounts = useMemo(() => {
-    const counts = {
-      all: items.length,
-      PAYMENT_PENDING: 0,
-      PAID_PENDING_PICKUP: 0,
-      PICKED_UP: 0, // provalvemente bug - isso depende de sensor OU confirmação humana
-      // DISPENSED: 0, // máquina liberou - pickup.door_opened
-      EXPIRED: 0,
-      CANCELLED: 0,
-    };
-    items.forEach((item) => {
-      if (counts[item.status] !== undefined) {
-        counts[item.status]++;
-      }
+    const statusFiltered = filter === "all" ? items : items.filter((item) => item.status === filter);
+    const normalizedSearch = String(searchQuery || "").trim().toLowerCase();
+    if (!normalizedSearch) return statusFiltered;
+    return statusFiltered.filter((item) => {
+      const orderId = String(item?.id || item?.order_id || "").toLowerCase();
+      const partnerRef = String(item?.partner_order_ref || "").toLowerCase();
+      return orderId.includes(normalizedSearch) || partnerRef.includes(normalizedSearch);
     });
-    return counts;
-  }, [items]);
+  }, [items, filter, searchQuery]);
 
   return (
     <main style={pageStyle}>
@@ -323,7 +318,10 @@ export default function PublicMyOrdersPage() {
             <OrdersFilter
               filter={filter}
               onFilterChange={setFilter}
-              totalOrders={statusCounts[filter]}
+              searchQuery={searchQuery}
+              onSearchQueryChange={setSearchQuery}
+              totalOrders={items.length}
+              matchedOrders={filteredItems.length}
             />
 
             {/* Lista */}
@@ -600,6 +598,18 @@ const filterHintStyle = {
   fontSize: 13,
   color: "#718096",
   fontWeight: 500,
+};
+
+const searchInputStyle = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f7fafc",
+  color: "#1a202c",
+  fontSize: 14,
+  fontWeight: 600,
+  outline: "none",
+  minWidth: 220,
 };
 
 const emptyStateStyle = {

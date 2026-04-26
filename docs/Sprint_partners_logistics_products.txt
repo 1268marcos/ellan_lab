@@ -39,11 +39,11 @@
 - **Pr-1 · Product Catalog & Lifecycle** — atende: status lifecycle, histórico e filtros operacionais; gap: governança de integridade referencial de catálogo ampliado (fornecedor/variante/mídia); risco: drift de dados no catálogo em escala; ação corretiva: reforçar constraints/validações e adicionar checks periódicos de consistência (**P2**).
 - **Pr-2 · Inventory & Availability per Locker** — atende: reserva idempotente, expiração, reconciliação e dashboards OPS; gap: cobertura E2E de concorrência alta e cenários de falha intermitente; risco: divergência reservada vs ativa em picos; ação corretiva: testes de stress concorrente + alerta preditivo de divergência por locker/produto (**P0**).
 - **Pr-3 · Pricing, Bundles & Fiscal Auto-Classification** — atende: bundles/promoções/fiscal config, idempotência de validação e overview OPS; gap: suíte de regressão para regras avançadas e fallback fiscal por categoria/default; risco: classificação indevida sem bloqueio preventivo; ação corretiva: testes automatizados de regras fiscais/promocionais e guard-rails de validação antes de emissão (**P0**).
-- **I-1 (parcial) · Orders ↔ Partners ↔ Fiscal Wiring** — atende: outbox fiscal integrado, endpoint OPS e worker stub com retry/backoff básico; gap: entrega real para endpoints de parceiros + tracking de fulfillment completo; risco: falso senso de pronto por depender de stub; ação corretiva: implementar worker de entrega real com contrato versionado/HMAC/replay e fechar `order_fulfillment_tracking` ponta a ponta (**P0**).
+- **I-1 · Orders ↔ Partners ↔ Fiscal Wiring** — atende: outbox fiscal integrado, worker real com HMAC/retry/dead-letter, replay OPS e `order_fulfillment_tracking` ponta a ponta; gap: fechamento de evidência real autenticada em ambiente para governança final (UI + cenários de erro controlado); risco: lacuna de aceite operacional apesar de implementação pronta; ação corretiva: executar roteiro curto de evidência real e registrar go/no-go final por domínio (**P0**).
 
 #### Plano consolidado de hardening (prioridade)
 
-- **P0 (imediato)**: P-2 observabilidade/SLO de webhook, Pr-2 testes de concorrência e alerta preditivo, Pr-3 regressão fiscal/promo, I-1 worker real + fulfillment tracking.
+- **P0 (imediato)**: fechamento de evidência real autenticada pendente em P-3, L-2, L-3 e I-1 + go/no-go consolidado D1..D3 de L-3.
 - **P1 (curto prazo)**: P-1 runbook + regressão de transições, L-1 contratos de mapeamento carrier, L-2 reconciliação e playbook de exceções.
 - **P2 (médio prazo)**: Pr-1 governança ampliada do catálogo com checks de consistência contínuos.
 
@@ -222,8 +222,8 @@
 
 - [ ] Definir e aplicar plano de migração faseado (expand/backfill/contract) para Partners/Logistics/Products/Integration.
 - [ ] Criar tabelas de Partners P-1/P-2/P-3 ainda ausentes (`partner_status_history`, `partner_contacts`, `partner_sla_agreements`, `partner_api_keys`, `partner_settlement_*`, `partner_service_areas`, `partner_performance_metrics`).
-- [ ] Implementar runtime de webhooks de parceiros (worker dedicado, retry com backoff exponencial, dead-letter, assinatura HMAC, trilha de auditoria).
-- [ ] Implementar `partner_order_events_outbox` e `order_fulfillment_tracking` com wiring de `orders.status`.
+- [~] Implementar runtime de webhooks de parceiros (worker dedicado, retry com backoff exponencial, dead-letter, assinatura HMAC, trilha de auditoria).
+- [~] Implementar `partner_order_events_outbox` e `order_fulfillment_tracking` com wiring de `orders.status`.
 - [ ] Criar domínio de Logistics completo para tracking/attempts/labels/returns/manifests/capacidade com endpoints e workers.
 - [ ] Criar domínio de Inventory por locker (`product_inventory`, `inventory_reservations`, `inventory_movements`) com idempotência e expiração de reservas.
 - [ ] Integrar reservas de estoque ao ciclo de pedido (criação, pagamento, retirada, cancelamento e expiração).
@@ -1877,15 +1877,42 @@ curl -sS "http://localhost:8000/orders/partner-lookup?partner_order_ref=PO-7788&
   - vermelho: erro controlado (sem match / parceiro inválido).
 - URL direta para operação: `http://localhost:5173/ops/integration/orders-partner-lookup`
 
+3) **One-shot curto (sucesso + erro controlado)**
+
+```bash
+OPS_TOKEN=<TOKEN_OPS> \
+PARTNER_ID_REAL=partner_demo_001 \
+PARTNER_ORDER_REF_REAL=PO-7788 \
+./scripts/l3_orders_partner_lookup_oneshot.sh
+```
+
+- Script: `scripts/l3_orders_partner_lookup_oneshot.sh`
+- Cobre:
+  - sucesso com `GET /orders/partner-lookup?partner_id=...&partner_order_ref=...`;
+  - erro controlado com parceiro inválido/sem match (mantendo resposta operacional observável para anexo de evidência).
+
 ###### Governança L-3 — integração Orders (partner-lookup)
 - [x] Endpoint dedicado implementado: `GET /orders/partner-lookup` (lookup por `partner_id` + `partner_order_ref`).
 - [x] `GET /orders` preservado sem acoplamento de filtro específico de parceiro.
 - [x] Contrato de resposta dedicado publicado (`order_id`, `status`, `slot`, `locker_id`, metadados de partner).
 - [x] Evidência técnica rápida documentada (curl + payload esperado).
 - [x] Rota OPS dedicada entregue: `/ops/integration/orders-partner-lookup` (consulta + presets + cópia de evidência).
+- [x] One-shot curto publicado para coleta rápida de evidência (`scripts/l3_orders_partner_lookup_oneshot.sh`).
 - [ ] Pendência de execução real autenticada (token OPS) em ambiente com `partner_order_ref` válido.
 - [ ] Pendência de anexar evidência de erro controlado real (ex.: `partner_id` inválido ou sem match).
 - [ ] Pendência de anexar captura real da UI OPS dedicada em execução autenticada.
+
+###### Incremento enxuto — Minha Área (`/meus-pedidos`)
+
+- [x] Busca textual adicionada no front de `Meus Pedidos` por `order_id` **ou** `partner_order_ref`.
+- [x] Payload de `GET /public/orders/` enriquecido com `partner_order_ref` para suportar a busca sem acoplamento em OPS.
+- [ ] Pendência de execução real autenticada com evidência (1 busca com match + 1 busca sem match).
+
+Evidência técnica rápida (manual):
+
+1) Entrar com usuário final e abrir `http://localhost:5173/meus-pedidos`.
+2) No campo **Buscar por pedido/ref parceiro**, informar um `partner_order_ref` válido (ex.: `PO-7788`) e validar retorno filtrado.
+3) Informar termo sem match (ex.: `SEM_MATCH_999`) e validar empty-state de filtro.
 
 #### Endpoints
 
@@ -3411,6 +3438,40 @@ curl -sS -X POST "http://localhost:8000/fiscal/auto-classification/order_i1_001/
 ```
 
 > Nota operacional I-1: os payloads acima são modelo esperado para validação rápida. Em fechamento de governança, substituir por resposta real do ambiente com `correlation_id` e timestamp efetivo da execução.
+
+---
+
+## Próximo Sprint Seguro (execução imediata)
+
+**Objetivo da rodada:** reduzir risco de aceitação em produção fechando pendências de execução real autenticada, sem abrir novo escopo de código.
+
+### Prioridade P0 (na ordem)
+
+1. **L-3 D3 (manifests overview + view HTML)**
+   - [ ] Executar chamada autenticada real de `GET /logistics/ops/manifests/overview`.
+   - [ ] Capturar evidência real da view `GET /logistics/ops/manifests/view`.
+   - [ ] Registrar checklist go/no-go final D1..D3 com riscos remanescentes.
+
+2. **L-3 Orders Integration (`partner-lookup`)**
+   - [ ] Executar one-shot real `scripts/l3_orders_partner_lookup_oneshot.sh` com token OPS.
+   - [ ] Anexar evidência de sucesso (`partner_order_ref` válido) e erro controlado.
+   - [ ] Anexar captura da UI OPS `/ops/integration/orders-partner-lookup`.
+
+3. **L-2 D2 Returns Queue**
+   - [ ] Executar one-shot real `scripts/l2_d2_ops_returns_queue_oneshot.sh`.
+   - [ ] Anexar cenário de erro controlado real (`404 RETURN_REQUEST_NOT_FOUND` ou equivalente).
+
+4. **P-3 Financials/Service Areas**
+   - [ ] Executar evidência autenticada dos 5 fluxos e 1 erro controlado (`409` ou `404`).
+
+5. **I-1 Orders/Fiscal OPS**
+   - [ ] Anexar captura de execução real da UI `/ops/integration/orders-fiscal` (sucesso + erro controlado).
+
+### Critério de saída desta rodada
+
+- [ ] Todos os itens acima com evidência real anexada no documento (payload/captura + horário + operador).
+- [ ] Decisão consolidada **GO/NO-GO** registrada para avanço de novo escopo de implementação.
+- [ ] Sem regressão técnica após fechamento (build frontend + smoke backend + auditoria acessível).
 
 ---
 

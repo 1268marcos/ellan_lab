@@ -408,6 +408,7 @@ def _serialize_order_legacy_falha_conteudo(order: Order, fiscal: FiscalReadable 
     return {
         "id": order.id,
         "order_id": order.id,
+        "partner_order_ref": getattr(order, "partner_order_ref", None),
         "user_id": order.user_id,
         "channel": order.channel.value if order.channel else None,
         "region": order.region,
