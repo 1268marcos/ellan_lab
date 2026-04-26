@@ -13,14 +13,17 @@ from app.models.product_catalog_assets import ProductBarcode, ProductMedia
 from app.models.product_status_history import ProductStatusHistory
 from app.models.user import User
 from app.schemas.products import (
+    ProductAssetDeleteOut,
     ProductBarcodeCreateIn,
     ProductBarcodeListOut,
     ProductBarcodeOut,
+    ProductBarcodeUpdateIn,
     ProductListItemOut,
     ProductListOut,
     ProductMediaCreateIn,
     ProductMediaListOut,
     ProductMediaOut,
+    ProductMediaUpdateIn,
     ProductStatusHistoryItemOut,
     ProductStatusHistoryListOut,
     ProductStatusOut,
@@ -350,6 +353,50 @@ def list_product_media(
     return ProductMediaListOut(ok=True, total=len(rows), items=[_to_media_out(row) for row in rows])
 
 
+@router.patch("/{product_id}/media/{media_id}", response_model=ProductMediaOut)
+def patch_product_media(
+    product_id: str,
+    media_id: str,
+    payload: ProductMediaUpdateIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    row = (
+        db.query(ProductMedia)
+        .filter(ProductMedia.id == media_id, ProductMedia.product_id == product_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_MEDIA_NOT_FOUND", "message": "Mídia não encontrada para o produto."},
+        )
+    if payload.media_type is not None:
+        media_type = str(payload.media_type or "").strip().upper()
+        if media_type not in {"IMAGE", "VIDEO", "PDF", "3D"}:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_MEDIA_TYPE", "allowed_media_types": ["3D", "IMAGE", "PDF", "VIDEO"]})
+        row.media_type = media_type
+    if payload.url is not None:
+        row.url = str(payload.url).strip()
+    if payload.cdn_key is not None:
+        row.cdn_key = payload.cdn_key.strip() if payload.cdn_key else None
+    if payload.alt_text is not None:
+        row.alt_text = payload.alt_text.strip() if payload.alt_text else None
+    if payload.sort_order is not None:
+        row.sort_order = int(payload.sort_order)
+    if payload.is_primary is not None:
+        next_is_primary = bool(payload.is_primary)
+        if next_is_primary:
+            db.query(ProductMedia).filter(
+                ProductMedia.product_id == product_id,
+                ProductMedia.id != media_id,
+                ProductMedia.is_primary.is_(True),
+            ).update({"is_primary": False})
+        row.is_primary = next_is_primary
+    db.commit()
+    return _to_media_out(row)
+
+
 @router.post("/{product_id}/barcodes", response_model=ProductBarcodeOut)
 def post_product_barcode(
     product_id: str,
@@ -399,3 +446,99 @@ def list_product_barcodes(
         .all()
     )
     return ProductBarcodeListOut(ok=True, total=len(rows), items=[_to_barcode_out(row) for row in rows])
+
+
+@router.patch("/{product_id}/barcodes/{barcode_id}", response_model=ProductBarcodeOut)
+def patch_product_barcode(
+    product_id: str,
+    barcode_id: str,
+    payload: ProductBarcodeUpdateIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    row = (
+        db.query(ProductBarcode)
+        .filter(ProductBarcode.id == barcode_id, ProductBarcode.product_id == product_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_BARCODE_NOT_FOUND", "message": "Barcode não encontrado para o produto."},
+        )
+    if payload.barcode_type is not None:
+        barcode_type = str(payload.barcode_type or "").strip().upper()
+        if barcode_type not in {"EAN13", "EAN8", "GTIN14", "QR", "CODE128", "DATAMATRIX"}:
+            raise HTTPException(
+                status_code=422,
+                detail={"type": "INVALID_BARCODE_TYPE", "allowed_barcode_types": ["CODE128", "DATAMATRIX", "EAN13", "EAN8", "GTIN14", "QR"]},
+            )
+        row.barcode_type = barcode_type
+    if payload.barcode_value is not None:
+        barcode_value = str(payload.barcode_value or "").strip().upper()
+        conflict = (
+            db.query(ProductBarcode)
+            .filter(
+                ProductBarcode.barcode_value == barcode_value,
+                ProductBarcode.id != barcode_id,
+            )
+            .first()
+        )
+        if conflict:
+            raise HTTPException(status_code=409, detail={"type": "BARCODE_ALREADY_ASSIGNED", "message": "barcode_value já vinculado a outro produto."})
+        row.barcode_value = barcode_value
+    if payload.is_primary is not None:
+        next_is_primary = bool(payload.is_primary)
+        if next_is_primary:
+            db.query(ProductBarcode).filter(
+                ProductBarcode.product_id == product_id,
+                ProductBarcode.id != barcode_id,
+                ProductBarcode.is_primary.is_(True),
+            ).update({"is_primary": False})
+        row.is_primary = next_is_primary
+    db.commit()
+    return _to_barcode_out(row)
+
+
+@router.delete("/{product_id}/media/{media_id}", response_model=ProductAssetDeleteOut)
+def delete_product_media(
+    product_id: str,
+    media_id: str,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    row = (
+        db.query(ProductMedia)
+        .filter(ProductMedia.id == media_id, ProductMedia.product_id == product_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_MEDIA_NOT_FOUND", "message": "Mídia não encontrada para o produto."},
+        )
+    db.delete(row)
+    db.commit()
+    return ProductAssetDeleteOut(ok=True, product_id=product_id, deleted_id=media_id, deleted_type="MEDIA")
+
+
+@router.delete("/{product_id}/barcodes/{barcode_id}", response_model=ProductAssetDeleteOut)
+def delete_product_barcode(
+    product_id: str,
+    barcode_id: str,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    row = (
+        db.query(ProductBarcode)
+        .filter(ProductBarcode.id == barcode_id, ProductBarcode.product_id == product_id)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_BARCODE_NOT_FOUND", "message": "Barcode não encontrado para o produto."},
+        )
+    db.delete(row)
+    db.commit()
+    return ProductAssetDeleteOut(ok=True, product_id=product_id, deleted_id=barcode_id, deleted_type="BARCODE")

@@ -583,7 +583,8 @@ function TopNav() {
                           to={link.to} 
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
-                          {link.label}
+                          <span>{link.label}</span>
+                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
                         </Link>
                       ))}
                     </div>

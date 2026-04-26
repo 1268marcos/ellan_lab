@@ -59,6 +59,15 @@ class ProductMediaCreateIn(BaseModel):
     is_primary: bool = Field(default=False)
 
 
+class ProductMediaUpdateIn(BaseModel):
+    media_type: str | None = Field(default=None, max_length=10, description="IMAGE|VIDEO|PDF|3D")
+    url: str | None = Field(default=None, max_length=500)
+    cdn_key: str | None = Field(default=None, max_length=255)
+    alt_text: str | None = Field(default=None, max_length=255)
+    sort_order: int | None = Field(default=None, ge=0, le=9999)
+    is_primary: bool | None = Field(default=None)
+
+
 class ProductMediaOut(BaseModel):
     id: str
     product_id: str
@@ -83,6 +92,12 @@ class ProductBarcodeCreateIn(BaseModel):
     is_primary: bool = Field(default=False)
 
 
+class ProductBarcodeUpdateIn(BaseModel):
+    barcode_type: str | None = Field(default=None, max_length=20, description="EAN13|EAN8|GTIN14|QR|CODE128|DATAMATRIX")
+    barcode_value: str | None = Field(default=None, max_length=128)
+    is_primary: bool | None = Field(default=None)
+
+
 class ProductBarcodeOut(BaseModel):
     id: str
     product_id: str
@@ -96,3 +111,10 @@ class ProductBarcodeListOut(BaseModel):
     ok: bool
     total: int
     items: list[ProductBarcodeOut]
+
+
+class ProductAssetDeleteOut(BaseModel):
+    ok: bool
+    product_id: str
+    deleted_id: str
+    deleted_type: str
