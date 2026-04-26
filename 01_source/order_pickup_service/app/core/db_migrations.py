@@ -2042,6 +2042,116 @@ def _ensure_product_fiscal_config_v1(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _harden_pr3_foundation_v2(conn, applied: list[str]) -> None:
+    name = "pr3.foundation_hardening_v2"
+    if _migration_applied(conn, name):
+        return
+
+    # product_fiscal_config: índices operacionais para filtros recorrentes em leitura OPS
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pfc_updated_at ON product_fiscal_config(updated_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pfc_origin_cfop_active ON product_fiscal_config(origin_type, cfop, is_active)"
+    ))
+
+    # promotions: manter updated_at disponível para trilha de alteração.
+    _ensure_column(conn, "promotions", "updated_at", "TIMESTAMPTZ NOT NULL DEFAULT NOW()")
+    conn.execute(text(
+        "UPDATE promotions SET updated_at = COALESCE(updated_at, created_at, NOW())"
+    ))
+
+    # Constraints pragmáticas (NOT VALID para evitar falha em legado; novas linhas já respeitam)
+    conn.execute(text(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'ck_promotions_amounts_non_negative'
+            ) THEN
+                ALTER TABLE promotions
+                ADD CONSTRAINT ck_promotions_amounts_non_negative
+                CHECK (
+                    min_order_cents >= 0
+                    AND uses_count >= 0
+                    AND (max_uses IS NULL OR max_uses >= 0)
+                    AND (max_discount_cents IS NULL OR max_discount_cents >= 0)
+                ) NOT VALID;
+            END IF;
+        END$$
+        """
+    ))
+    conn.execute(text(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'ck_promotions_valid_window_v2'
+            ) THEN
+                ALTER TABLE promotions
+                ADD CONSTRAINT ck_promotions_valid_window_v2
+                CHECK (valid_until IS NULL OR valid_until >= valid_from) NOT VALID;
+            END IF;
+        END$$
+        """
+    ))
+    conn.execute(text(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'ck_pb_amount_non_negative_v2'
+            ) THEN
+                ALTER TABLE product_bundles
+                ADD CONSTRAINT ck_pb_amount_non_negative_v2
+                CHECK (amount_cents >= 0) NOT VALID;
+            END IF;
+        END$$
+        """
+    ))
+    conn.execute(text(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'ck_pb_valid_window_v2'
+            ) THEN
+                ALTER TABLE product_bundles
+                ADD CONSTRAINT ck_pb_valid_window_v2
+                CHECK (valid_until IS NULL OR valid_until >= valid_from) NOT VALID;
+            END IF;
+        END$$
+        """
+    ))
+    conn.execute(text(
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = 'ck_pfc_tax_rate_pct_range_v2'
+            ) THEN
+                ALTER TABLE product_fiscal_config
+                ADD CONSTRAINT ck_pfc_tax_rate_pct_range_v2
+                CHECK (tax_rate_pct IS NULL OR (tax_rate_pct >= 0 AND tax_rate_pct <= 100)) NOT VALID;
+            END IF;
+        END$$
+        """
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_partner_order_events_outbox(conn, applied: list[str]) -> None:
     name = "partner_order_events_outbox.create_table_v1"
     if _migration_applied(conn, name):
@@ -3752,6 +3862,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_promotion_product_exclusions,
     _create_fiscal_auto_classification_log,
     _ensure_product_fiscal_config_v1,
+    _harden_pr3_foundation_v2,
     _create_partner_order_events_outbox,
     _create_order_fulfillment_tracking,
     _create_fiscal_documents,

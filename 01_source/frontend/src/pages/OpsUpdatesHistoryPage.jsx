@@ -104,6 +104,27 @@ const UPDATES = [
     directLink: "/ops/products/assets",
     directLinkLabel: "Abrir OPS de assets de produtos",
   },
+  {
+    date: "2026-04-26",
+    scope: "Pr-3 D2/D3",
+    title: "Pricing/Fiscal operacional + painel OPS",
+    description:
+      "Fechamento backend-first de bundles/promotions/fiscal-config/log com operação dedicada no front para monitoramento e mutações rápidas.",
+    routes: [
+      "GET/POST /products/bundles",
+      "POST /products/bundles/{id}/items",
+      "GET/POST /promotions",
+      "PATCH /promotions/{id}/status",
+      "POST /promotions/validate",
+      "GET /products/{id}/fiscal-config",
+      "PUT /products/{id}/fiscal-config",
+      "GET /fiscal/auto-classification-log",
+      "GET /ops/products/pricing-fiscal/overview",
+      "UI /ops/products/pricing-fiscal",
+    ],
+    directLink: "/ops/products/pricing-fiscal",
+    directLinkLabel: "Abrir OPS de pricing/fiscal (Pr-3)",
+  },
 ];
 
 export default function OpsUpdatesHistoryPage() {

@@ -576,11 +576,11 @@ def create_promotion(
                 INSERT INTO promotions (
                     id, code, name, type, discount_pct, discount_cents, min_order_cents, max_discount_cents,
                     max_uses, uses_count, per_user_limit, conditions_json, is_active, valid_from, valid_until,
-                    created_by, created_at
+                    created_by, created_at, updated_at
                 ) VALUES (
                     :id, :code, :name, :type, :discount_pct, :discount_cents, :min_order_cents, :max_discount_cents,
                     :max_uses, 0, :per_user_limit, CAST(:conditions_json AS JSONB), TRUE, :valid_from, :valid_until,
-                    :created_by, NOW()
+                    :created_by, NOW(), NOW()
                 )
                 """
             ),
@@ -636,7 +636,7 @@ def patch_promotion_status(
     before_row = db.execute(
         text(
             """
-            SELECT id, is_active, valid_from, valid_until
+            SELECT id, is_active, valid_from, valid_until, updated_at
             FROM promotions
             WHERE id = :id
             """
@@ -653,14 +653,15 @@ def patch_promotion_status(
         text(
             """
             UPDATE promotions
-            SET is_active = :is_active
+            SET is_active = :is_active,
+                updated_at = NOW()
             WHERE id = :id
             """
         ),
         {"id": promotion_id, "is_active": bool(payload.is_active)},
     )
     after_row = db.execute(
-        text("SELECT id, is_active FROM promotions WHERE id = :id"),
+        text("SELECT id, is_active, updated_at FROM promotions WHERE id = :id"),
         {"id": promotion_id},
     ).mappings().first()
     _record_pr3_audit(

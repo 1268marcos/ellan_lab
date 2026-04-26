@@ -201,9 +201,9 @@
 - [~] L-1 · Logistics · Carrier Tracking & Event Model · Owner: Squad Logistics (Líder: TBD) · Semana alvo: Semana 1-2
 - [ ] L-2 · Logistics · Returns & Reverse Logistics · Owner: Squad Logistics + Ops · Semana alvo: Semana 3-4
 - [ ] L-3 · Logistics · Manifests, Capacity & Order Integration · Owner: Squad Logistics + Platform Integrations · Semana alvo: Semana 5-6
-- [ ] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
+- [~] Pr-1 · Products · Product Catalog & Lifecycle · Owner: Squad Products (Líder: TBD) · Semana alvo: Semana 1-2
 - [~] Pr-2 · Products · Inventory & Availability per Locker · Owner: Squad Products + Inventory Ops · Semana alvo: Semana 3-4
-- [ ] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
+- [~] Pr-3 · Products · Pricing, Bundles & Fiscal Auto-Classification · Owner: Squad Products + Fiscal Tech · Semana alvo: Semana 5-6
 - [~] I-1 · Integration · Orders ↔ Partners ↔ Fiscal Wiring · Owner: Platform Integrations + Arquitetura · Semana alvo: Semana 7-8
 
 ---
@@ -1625,7 +1625,11 @@ ALTER TABLE products
 | `POST` | `/products` | Cria em status DRAFT |
 | `PATCH` | `/products/{id}/status` | Transição validada (DRAFT→ACTIVE requer fiscal_config) |
 | `POST` | `/products/{id}/media` | Upload de imagem/PDF |
+| `PATCH` | `/products/{id}/media/{media_id}` | Edição parcial de mídia (tipo/url/ordem/primary) |
+| `DELETE` | `/products/{id}/media/{media_id}` | Remoção operacional de mídia |
 | `POST` | `/products/{id}/barcodes` | Registra barcode (unicidade global) |
+| `PATCH` | `/products/{id}/barcodes/{barcode_id}` | Edição parcial de barcode (tipo/valor/primary) |
+| `DELETE` | `/products/{id}/barcodes/{barcode_id}` | Remoção operacional de barcode |
 | `GET/POST` | `/products/{id}/variants` | CRUD de variantes |
 | `GET/POST` | `/suppliers` | Gestão de fornecedores |
 | `POST` | `/products/{id}/suppliers` | Vincula fornecedor |
@@ -1738,6 +1742,93 @@ curl -sS "http://localhost:8000/products/sku_123/barcodes?limit=100" \
 ```
 
 > Nota operacional Pr-1: os IDs/timestamps acima são exemplos de payload esperado; em ambiente real registrar resposta efetiva, correlation_id e evidência no bloco do sprint.
+
+###### Evidência técnica rápida Pr-1 (assets avançado: patch + delete + OPS editável)
+
+5) **PATCH /products/{id}/media/{media_id}**
+
+```bash
+curl -sS -X PATCH "http://localhost:8000/products/sku_123/media/pm_a9f8d0a6_001" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -d '{
+    "alt_text": "Foto frontal atualizada",
+    "sort_order": 1,
+    "is_primary": true
+  }'
+```
+
+```json
+{
+  "id": "pm_a9f8d0a6_001",
+  "product_id": "sku_123",
+  "media_type": "IMAGE",
+  "url": "https://cdn.exemplo/item-frente.jpg",
+  "cdn_key": "products/sku_123/front.jpg",
+  "alt_text": "Foto frontal atualizada",
+  "sort_order": 1,
+  "is_primary": true,
+  "created_at": "2026-04-26T11:35:10.100000+00:00"
+}
+```
+
+6) **PATCH /products/{id}/barcodes/{barcode_id}**
+
+```bash
+curl -sS -X PATCH "http://localhost:8000/products/sku_123/barcodes/pb_a9f8d0a6_001" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -d '{
+    "barcode_type": "EAN13",
+    "barcode_value": "7890000000002",
+    "is_primary": true
+  }'
+```
+
+```json
+{
+  "id": "pb_a9f8d0a6_001",
+  "product_id": "sku_123",
+  "barcode_type": "EAN13",
+  "barcode_value": "7890000000002",
+  "is_primary": true,
+  "created_at": "2026-04-26T11:36:05.200000+00:00"
+}
+```
+
+7) **DELETE /products/{id}/media/{media_id}**
+
+```bash
+curl -sS -X DELETE "http://localhost:8000/products/sku_123/media/pm_a9f8d0a6_002" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "deleted_id": "pm_a9f8d0a6_002",
+  "resource": "product_media"
+}
+```
+
+8) **DELETE /products/{id}/barcodes/{barcode_id}**
+
+```bash
+curl -sS -X DELETE "http://localhost:8000/products/sku_123/barcodes/pb_a9f8d0a6_002" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "deleted_id": "pb_a9f8d0a6_002",
+  "resource": "product_barcodes"
+}
+```
+
+- [x] OPS `ops/products/assets` atualizado com listagem operacional, ações por linha (`Editar`, `Salvar`, `Cancelar`, `Delete`) e uso real dos endpoints PATCH/DELETE.
+- [x] Mini feedback visual por item (chips de `Salvando...`, `Salvo com sucesso`, `Erro ao salvar`) para handoff de plantão.
+- [x] Persistência dos chips de feedback por item em `localStorage` para manter contexto após refresh durante operação.
 
 #### Critérios de aceite
 - Transição para `ACTIVE` requer: `product_fiscal_config` cadastrada + pelo menos 1 barcode primário.
@@ -1944,7 +2035,7 @@ Order cancelada/expirada:
 
 ---
 
-### [ ] Sprint Pr-3 · "Pricing, Bundles & Fiscal Auto-Classification" (2 semanas)
+### [~] Sprint Pr-3 · "Pricing, Bundles & Fiscal Auto-Classification" (2 semanas)
 
 **Objetivo:** Bundles de produto, promoções/cupons e auto-classificação fiscal via `product_fiscal_config` no momento da emissão de nota — eliminando classificação manual por NF.
 
@@ -1956,15 +2047,25 @@ Order cancelada/expirada:
 3) **Rota OPS de validação ponta a ponta (D3)**  
 
 ##### D1 — Modelo mínimo (pricing + fiscal) com trilha de auditoria
-- [ ] Criar migrações idempotentes para o núcleo do Pr-3:
+- [x] Criar migrações idempotentes para o núcleo do Pr-3:
       - `product_bundles`
       - `product_bundle_items`
       - `promotions`
       - `promotion_product_exclusions`
       - `fiscal_auto_classification_log`
-- [ ] Evoluir `product_fiscal_config` com campos mínimos de classificação automática (`unit_of_measure`, `origin_type`, `cfop`, `tax_rate_pct`, `is_service`, `updated_at`).
-- [ ] Garantir constraints e índices mínimos para operação (unicidade de `code`, integridade referencial e índices por data/status para leitura OPS).
-- [ ] Registrar auditoria operacional de escrita para entidades críticas de Pr-3 (criação/edição de bundle, promoção e config fiscal), com `before/after` quando aplicável.
+- [x] Evoluir `product_fiscal_config` com campos mínimos de classificação automática (`unit_of_measure`, `origin_type`, `cfop`, `tax_rate_pct`, `is_service`, `updated_at`).
+- [x] Garantir constraints e índices mínimos para operação (unicidade de `code`, integridade referencial e índices por data/status para leitura OPS).
+- [x] Registrar auditoria operacional de escrita para entidades críticas de Pr-3 (criação/edição de bundle, promoção e config fiscal), com `before/after` quando aplicável.
+
+###### Evidência técnica rápida Pr-3 D1 (backend hardening complementar)
+
+- [x] Migração incremental `pr3.foundation_hardening_v2` adicionada para reforço de base sem quebra de legado:
+      - índices operacionais em `product_fiscal_config` (`updated_at`, `origin_type/cfop/is_active`);
+      - coluna `updated_at` em `promotions` com backfill seguro;
+      - constraints de janela e não-negatividade em `promotions` e `product_bundles` (`NOT VALID` para rollout seguro);
+      - constraint de faixa de `tax_rate_pct` em `product_fiscal_config` (`0..100`, `NOT VALID`).
+- [x] Modelos SQLAlchemy de Pr-3 alinhados com checks de domínio (`pricing_fiscal.py`) para reduzir drift entre ORM e banco.
+- [x] Rota de status de promoção passou a atualizar `updated_at`, mantendo trilha consistente para operação/auditoria.
 
 ##### D2 — Endpoints mínimos backend (v1) para começar operação
 - [x] Implementar endpoints base de bundles:
@@ -1983,6 +2084,14 @@ Order cancelada/expirada:
 - [x] **Observação importante (histórico):** os endpoints D2 iniciaram como **stub operacional** e foram evoluídos para persistência funcional completa mantendo o fluxo **backend-first**.
 - [x] Próximo passo direto do D2 concluído: persistência real de `bundles`, `promotions` e `product_fiscal_config`, além da leitura real de `fiscal_auto_classification_log` com filtros operacionais e auditoria `before/after`.
 
+###### Evidência operacional D2 (execução em ambiente local)
+
+- [x] Probe real de disponibilidade executado em `localhost:8003`:
+      - `GET /ops/products/pricing-fiscal/overview` → `401` sem token (RBAC/guard ativo).
+      - `GET /promotions` → `401` sem token (RBAC/guard ativo).
+- [x] Interpretação operacional: endpoints publicados e protegidos por autenticação OPS, sem exposição indevida em ambiente local.
+- [ ] Pendência para fechamento total de governança D2: anexar execução autenticada (`200`) com token OPS real e payload de resposta para cada endpoint crítico.
+
 ##### D3 — Rota OPS de validação (backend first, frontend leve)
 - [x] Implementar rota OPS consolidada para validação rápida do Pr-3:
       - `GET /ops/products/pricing-fiscal/overview`
@@ -1993,6 +2102,7 @@ Order cancelada/expirada:
 - [x] Incluir filtros operacionais base (`from`, `to`, `source`, `promotion_code`, `limit`) com compatibilidade para presets e persistência no frontend OPS.
 - [x] Disponibilizar rota de visualização de apoio (HTML simples) para inspeção imediata em navegador durante desenvolvimento.
 - [x] Evidência operacional D3: `GET /ops/products/pricing-fiscal/overview` e `GET /ops/products/pricing-fiscal/view` implementados para monitoramento imediato em navegador.
+- [x] Frontend OPS dedicado publicado em `UI /ops/products/pricing-fiscal` com guia rápido, ações operacionais, chips por ação e persistência em `localStorage` para handoff de plantão.
 
 **Critério de pronto D1-D3 (mínimo para seguir para D4+):**
 - [x] Migrações aplicam sem quebra e com idempotência.

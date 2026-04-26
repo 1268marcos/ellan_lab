@@ -48,6 +48,7 @@ const OpsLogisticsManifestsOverviewPage = lazy(() => import("./pages/OpsLogistic
 const OpsUpdatesHistoryPage = lazy(() => import("./pages/OpsUpdatesHistoryPage"));
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
 const OpsProductsAssetsPage = lazy(() => import("./pages/OpsProductsAssetsPage"));
+const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPricingFiscalPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 
@@ -257,7 +258,8 @@ function TopNav() {
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
-    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", isNew: true },
+    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos" },
+    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3", isNew: true },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
@@ -875,6 +877,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductsAssetsPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/pricing-fiscal"
+              element={
+                <OpsRoute>
+                  <OpsProductsPricingFiscalPage />
                 </OpsRoute>
               }
             />
