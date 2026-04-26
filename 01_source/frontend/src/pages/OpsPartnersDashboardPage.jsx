@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
+import { getConfidenceBadgeStyle, getDataQualityFlagStyle } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -407,6 +408,16 @@ export default function OpsPartnersDashboardPage() {
                 showTrend={false}
               />
             </div>
+            <div style={badgesRowStyle}>
+              <span style={getConfidenceBadgeStyle(payload?.compare?.confidence_level)}>
+                Confidence: {payload?.compare?.confidence_level || "-"}
+              </span>
+              {(payload?.compare?.data_quality_flags || []).map((flag) => (
+                <span key={flag} style={getDataQualityFlagStyle(flag)}>
+                  {flag}
+                </span>
+              ))}
+            </div>
             <pre style={jsonStyle}>{JSON.stringify(payload, null, 2)}</pre>
           </>
         ) : (
@@ -427,6 +438,7 @@ const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", ba
 const errorStyle = { marginTop: 12, background: "rgba(220, 38, 38, 0.12)", color: "#FCA5A5", border: "1px solid rgba(220, 38, 38, 0.45)", borderRadius: 10, padding: 10 };
 const kpiGridStyle = { marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 };
 const kpiCardStyle = { background: "#0B1220", border: "1px solid #334155", borderRadius: 12, padding: 12 };
+const badgesRowStyle = { marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
 const jsonStyle = { marginTop: 14, background: "#020617", border: "1px solid #1E293B", borderRadius: 12, padding: 12, overflow: "auto", fontSize: 12, lineHeight: 1.4 };
 const presetSectionStyle = { marginTop: 12, background: "#0B1220", border: "1px solid #1E293B", borderRadius: 10, padding: 10 };
 const presetHeadRowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" };

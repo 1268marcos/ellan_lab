@@ -362,6 +362,7 @@ class PartnerOpsKpisOut(BaseModel):
     ok: bool
     from_: str = Field(..., alias="from")
     to: str
+    timezone_ref: str
     total_events: int
     total_errors: int
     error_rate_pct: float
@@ -397,6 +398,7 @@ class PartnerOpsChangesSeriesOut(BaseModel):
     ok: bool
     from_: str = Field(..., alias="from")
     to: str
+    timezone_ref: str
     total_changes: int
     daily_series: list[PartnerOpsChangeDailyOut]
     distribution: list[PartnerOpsChangeDistributionItemOut]
@@ -419,6 +421,7 @@ class PartnerOpsCompareOut(BaseModel):
     ok: bool
     from_: str = Field(..., alias="from")
     to: str
+    timezone_ref: str
     previous_from: str
     previous_to: str
     total_current: int

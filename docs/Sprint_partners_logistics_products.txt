@@ -26,7 +26,7 @@
 
 ### Validação retroativa dos sprints anteriores contra esta diretriz
 
-- [x] Executar revisão técnica retroativa dos sprints já entregues (P-1, P-2, L-1, L-2, Pr-1, Pr-2, Pr-3, I-1 parcial) usando este padrão como checklist obrigatório.
+- [x] Executar revisão técnica retroativa dos sprints já entregues (P-1, P-2, L-1, L-2, Pr-1, Pr-2, Pr-3, I-1) usando este padrão como checklist obrigatório.
 - [x] Registrar evidências por sprint (atende / gap / risco / ação corretiva).
 - [~] Consolidar plano de hardening com prioridade operacional (P0/P1/P2) e responsáveis.
 
@@ -376,6 +376,8 @@ ALTER TABLE locker_operators
 - [x] `GET /partners/ops/audit/compare` para comparativo de período (janela atual vs anterior) com tendência `%` por tipo e badges/legendas com cores orientadas a UX/CX.
 - [x] `GET /partners/ops/audit/compare` inclui `confidence_level` e `volume_note` para sinalizar risco de interpretação quando a base de eventos é pequena.
 - [x] `GET /partners/ops/audit/compare` inclui `confidence_badge` (label, cor, icon) + `data_quality_flags` para renderização direta no card do front.
+- [x] `GET /partners/ops/audit/compare` aceita `partner_id` com filtragem dedicada e `sort_order=asc|desc` para leitura determinística no foco por parceiro.
+- [x] Endpoints OPS de auditoria incluem `timezone_ref="UTC"` no payload (`/partners/ops/audit/kpis`, `/partners/ops/audit/compare`, `/partners/ops/audit/changes-series`) para evitar desalinhamento de interpretação em ambientes globais.
 - [x] `GET /partners/ops/dashboard` consolidado com payload único (`kpis + compare + changes_series`) para reduzir round-trips da tela OPS.
 - [x] `GET /partners/ops/dashboard` suporta `include_sections` (ex.: `kpis,compare`) para carregamento parcial e otimização de latência.
 - [x] `GET /partners/ops/dashboard` suporta `partner_id` para alternar entre modo global e foco por parceiro no mesmo endpoint.
@@ -396,7 +398,7 @@ ALTER TABLE locker_operators
 - [x] Preparar Sprint L-1 em paralelo técnico: tracking events/attempts/labels com stubs de integração por carrier.
 - [~] Iniciar Sprint L-2: Returns & Reverse Logistics (modelo de retorno, motivos, eventos de coleta/devolução, visão OPS).
 - [~] Iniciar Sprint Pr-1: Product Catalog & Lifecycle (estado de ciclo de vida, governança de catálogo e trilha de auditoria OPS).
-- [ ] Planejar Sprint I-1 com blueprint técnico (wiring Orders ↔ Partners ↔ Fiscal com outbox + fulfillment tracking + fiscal auto-classification).
+- [x] Planejar Sprint I-1 com blueprint técnico (wiring Orders ↔ Partners ↔ Fiscal com outbox + fulfillment tracking + fiscal auto-classification).
 
 #### Kickoff checklist objetivo — Semana 3-4 (L-2 + Pr-1)
 
@@ -638,10 +640,16 @@ ALTER TABLE locker_operators
 - [x] Sprint I-1 blueprint: wiring Orders ↔ Partners ↔ Fiscal com outbox, replay e trilha ponta a ponta.
 
 #### Melhorias preventivas recomendadas (para não travar avanço do sprint)
-- [ ] Adicionar ordenação e filtro por `partner_id` no endpoint `GET /partners/ops/audit/compare` quando o dashboard focar um parceiro específico.
-- [ ] Incluir metadado de timezone de referência nos endpoints OPS para evitar desalinhamento em ambientes globais.
-- [ ] Adicionar testes automatizados de regressão para regras de confiança (`LOW/MEDIUM/HIGH`) e `data_quality_flags`.
-- [ ] Evoluir badges para paleta acessível WCAG AA no front (modo claro/escuro) mantendo os tokens de cor vindos da API.
+- [x] Adicionar ordenação e filtro por `partner_id` no endpoint `GET /partners/ops/audit/compare` quando o dashboard focar um parceiro específico.
+- [x] Incluir metadado de timezone de referência nos endpoints OPS para evitar desalinhamento em ambientes globais.
+- [x] Adicionar testes automatizados de regressão para regras de confiança (`LOW/MEDIUM/HIGH`) e `data_quality_flags`.
+  - Arquivo adicionado: `tests/test_partners_ops_compare_confidence_regression.py`.
+  - Execução validada em ambiente local via `.venv`: `python -m pytest -q tests/test_partners_ops_compare_confidence_regression.py` com resultado `3 passed`.
+- [x] Evoluir badges para paleta acessível WCAG AA no front (modo claro/escuro) mantendo os tokens de cor vindos da API.
+  - Tokenização reforçada em `frontend/src/components/opsVisualTokens.js` para tendências/severidade com contraste elevado.
+  - Renderização explícita de `confidence_level` e `data_quality_flags` em badges acessíveis no `UI /ops/partners/dashboard`.
+  - Rodada transversal aplicada em página OPS com badge inline legado (`UI /ops/fiscal/providers`), migrando alertas para `getSeverityBadgeStyle`.
+  - Segunda passada transversal concluída em `UI /ops/updates`, removendo badge inline local e adotando token compartilhado.
 - [x] Criar endpoint consolidado de dashboard OPS (`/partners/ops/dashboard`) agregando `kpis + compare + changes-series` para reduzir round-trips.
 
 ---
@@ -1749,9 +1757,9 @@ export RETURN_REASON_CODE="${RETURN_REASON_CODE:-DAMAGED_ITEM}"
 
 ---
 
-### [ ] Sprint L-3 · "Manifests, Capacity & Order Integration" (2 semanas)
+### [~] Sprint L-3 · "Manifests, Capacity & Order Integration" (2 semanas)
 
-**Objetivo:** Manifesto de carga (drop-off batch), planejamento de capacidade por locker e stub de integração com orders.
+**Objetivo:** Manifesto de carga (drop-off batch), planejamento de capacidade por locker e integração progressiva com orders (incluindo lookup dedicado e operação OPS).
 
 #### Novas tabelas
 
@@ -3254,7 +3262,7 @@ Para cada item:
       - `GET /fiscal/auto-classification-log/{order_id}`
 - [x] Publicar reprocessamento de classificação fiscal por pedido:
       - `POST /fiscal/auto-classification/{order_id}/reprocess`
-- [x] Pendência de governança: bloco de evidência técnica rápida documentado abaixo para execução autenticada em ambiente.
+- [x] Governança técnica publicada: bloco de evidência técnica rápida documentado abaixo para execução autenticada em ambiente.
 
 ###### Evidência frontend OPS I-1 (operação dedicada por `order_id`)
 
@@ -3481,7 +3489,7 @@ curl -sS -X POST "http://localhost:8000/fiscal/auto-classification/order_i1_001/
 |---|---|---|---|---|
 | P-1 | Partners | 3 | 5 | — |
 | P-2 | Partners | 5 | 6 | — |
-| P-3 | Partners | 4 | 5 | Orders → Partner Webhook stub |
+| P-3 | Partners | 4 | 5 | Orders → Partner Webhook (com retry/dead-letter) |
 | L-1 | Logistics | 3 | 5 | Carrier Webhook ingestion |
 | L-2 | Logistics | 5 | 6 | — |
 | L-3 | Logistics | 4 | 7 | Orders ↔ inbound_deliveries |

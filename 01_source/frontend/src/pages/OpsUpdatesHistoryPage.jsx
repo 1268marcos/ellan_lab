@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
+import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const TIMELINE_TEMPLATE_JSON = `{
@@ -266,7 +267,7 @@ export default function OpsUpdatesHistoryPage() {
             <article key={`${entry.date}-${entry.scope}-${entry.title}`} style={entryStyle}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                 <strong>{entry.title}</strong>
-                <span style={badgeStyle}>{entry.scope}</span>
+                <span style={getSeverityBadgeStyle("WARN")}>{entry.scope}</span>
               </div>
               <small style={{ color: "#94A3B8" }}>{entry.date}</small>
               <p style={{ margin: "8px 0", color: "#CBD5E1" }}>{entry.description}</p>
@@ -348,7 +349,6 @@ const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
 const templateJsonStyle = { marginTop: 8, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 10, overflow: "auto", fontSize: 12 };
 const timelineStyle = { display: "grid", gap: 10 };
 const entryStyle = { border: "1px solid #334155", borderRadius: 12, padding: 12, background: "#0B1220" };
-const badgeStyle = { border: "1px solid #1D4ED8", borderRadius: 999, padding: "2px 8px", color: "#BFDBFE", fontSize: 11, fontWeight: 700 };
 const routesListStyle = { margin: 0, paddingLeft: 16, display: "grid", gap: 4 };
 const directLinkStyle = {
   display: "inline-flex",

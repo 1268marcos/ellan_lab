@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
 const BILLING_BASE =
   import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
@@ -503,12 +504,12 @@ function buildAlertBadge(item) {
   const status = String(item?.last_status || "").toUpperCase();
   const latency = Number(item?.last_latency_ms);
   if (status === "ERROR") {
-    return <span style={badgeDangerStyle}>ALERTA: ERROR</span>;
+    return <span style={getSeverityBadgeStyle("ERROR")}>ALERTA: ERROR</span>;
   }
   if (Number.isFinite(latency) && latency > LATENCY_ALERT_MS) {
-    return <span style={badgeWarnStyle}>ALERTA: LATÊNCIA {latency}ms</span>;
+    return <span style={getSeverityBadgeStyle("WARN")}>ALERTA: LATÊNCIA {latency}ms</span>;
   }
-  return <span style={badgeOkStyle}>OK</span>;
+  return <span style={getSeverityBadgeStyle("OK")}>OK</span>;
 }
 
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "#f5f7fa", fontFamily: "system-ui, sans-serif" };
@@ -558,10 +559,6 @@ const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 900 };
 const thStyle = { textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.14)", padding: "8px 10px", fontSize: 13 };
 const tdStyle = { borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "8px 10px", verticalAlign: "top" };
 const smallStyle = { color: "rgba(226,232,240,0.8)" };
-const badgeBaseStyle = { display: "inline-flex", borderRadius: 999, padding: "2px 8px", fontSize: 11, fontWeight: 800 };
-const badgeDangerStyle = { ...badgeBaseStyle, color: "#fecaca", border: "1px solid rgba(185,28,28,0.65)", background: "rgba(185,28,28,0.2)" };
-const badgeWarnStyle = { ...badgeBaseStyle, color: "#fde68a", border: "1px solid rgba(202,138,4,0.65)", background: "rgba(202,138,4,0.2)" };
-const badgeOkStyle = { ...badgeBaseStyle, color: "#86efac", border: "1px solid rgba(22,163,74,0.65)", background: "rgba(22,163,74,0.2)" };
 const crossShortcutStyle = { display: "flex", justifyContent: "flex-end", marginBottom: 10 };
 const crossShortcutLinkStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(96,165,250,0.55)", background: "rgba(96,165,250,0.15)", color: "#bfdbfe", textDecoration: "none", fontWeight: 700, fontSize: 13 };
 const chipsWrapStyle = { display: "flex", gap: 8, flexWrap: "wrap" };

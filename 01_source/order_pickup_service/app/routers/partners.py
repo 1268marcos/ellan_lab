@@ -340,6 +340,55 @@ def _extract_partner_id(details: dict) -> str | None:
     return value or None
 
 
+def _load_ops_audit_rows_for_compare(
+    db: Session,
+    *,
+    window_from: datetime,
+    window_to: datetime,
+    partner_id: str | None,
+    sort_order: str,
+    max_rows: int = 10000,
+) -> list[OpsActionAudit]:
+    normalized_partner = str(partner_id or "").strip()
+    ordering_desc = str(sort_order).lower() != "asc"
+    page_size = 1000
+    offset = 0
+    rows: list[OpsActionAudit] = []
+
+    while len(rows) < max_rows:
+        query = (
+            db.query(OpsActionAudit)
+            .filter(
+                OpsActionAudit.created_at >= window_from,
+                OpsActionAudit.created_at <= window_to,
+            )
+        )
+        if ordering_desc:
+            query = query.order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc())
+        else:
+            query = query.order_by(OpsActionAudit.created_at.asc(), OpsActionAudit.id.asc())
+
+        chunk = query.offset(offset).limit(page_size).all()
+        if not chunk:
+            break
+
+        if not normalized_partner:
+            rows.extend(chunk)
+        else:
+            for row in chunk:
+                details = row.details_json if isinstance(row.details_json, dict) else {}
+                if _extract_partner_id(details) == normalized_partner:
+                    rows.append(row)
+                    if len(rows) >= max_rows:
+                        break
+
+        offset += page_size
+        if len(chunk) < page_size:
+            break
+
+    return rows[:max_rows]
+
+
 def _parse_include_sections(raw_value: str | None) -> list[str]:
     allowed = {"kpis", "compare", "changes_series"}
     if raw_value is None or not str(raw_value).strip():
@@ -1903,6 +1952,7 @@ def get_partners_ops_audit_kpis(
             "from": _to_iso_utc(window_from),
             "to": _to_iso_utc(window_to),
         },
+        timezone_ref="UTC",
         total_events=total_events,
         total_errors=total_errors,
         error_rate_pct=error_rate_pct,
@@ -2006,6 +2056,7 @@ def get_partners_ops_changes_series(
     return PartnerOpsChangesSeriesOut(
         ok=True,
         **{"from": _to_iso_utc(window_from), "to": _to_iso_utc(window_to)},
+        timezone_ref="UTC",
         total_changes=total_changes,
         daily_series=daily_series,
         distribution=distribution,
@@ -2018,6 +2069,7 @@ def get_partners_ops_audit_compare(
     from_: str | None = Query(default=None, alias="from"),
     to: str | None = Query(default=None),
     partner_id: str | None = Query(default=None),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
     now_utc = datetime.now(timezone.utc)
@@ -2037,43 +2089,20 @@ def get_partners_ops_audit_compare(
     previous_to = current_from
     previous_from = previous_to - window_span
 
-    current_rows_raw = (
-        db.query(OpsActionAudit)
-        .filter(
-            OpsActionAudit.created_at >= current_from,
-            OpsActionAudit.created_at <= current_to,
-        )
-        .order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc())
-        .limit(10000)
-        .all()
+    current_rows = _load_ops_audit_rows_for_compare(
+        db,
+        window_from=current_from,
+        window_to=current_to,
+        partner_id=partner_id,
+        sort_order=sort_order,
     )
-    previous_rows_raw = (
-        db.query(OpsActionAudit)
-        .filter(
-            OpsActionAudit.created_at >= previous_from,
-            OpsActionAudit.created_at <= previous_to,
-        )
-        .order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc())
-        .limit(10000)
-        .all()
+    previous_rows = _load_ops_audit_rows_for_compare(
+        db,
+        window_from=previous_from,
+        window_to=previous_to,
+        partner_id=partner_id,
+        sort_order=sort_order,
     )
-    current_rows: list[OpsActionAudit] = []
-    for row in current_rows_raw:
-        if not partner_id:
-            current_rows.append(row)
-            continue
-        details = row.details_json if isinstance(row.details_json, dict) else {}
-        if _extract_partner_id(details) == str(partner_id).strip():
-            current_rows.append(row)
-
-    previous_rows: list[OpsActionAudit] = []
-    for row in previous_rows_raw:
-        if not partner_id:
-            previous_rows.append(row)
-            continue
-        details = row.details_json if isinstance(row.details_json, dict) else {}
-        if _extract_partner_id(details) == str(partner_id).strip():
-            previous_rows.append(row)
 
     current_counter = _collect_change_type_counter(current_rows)
     previous_counter = _collect_change_type_counter(previous_rows)
@@ -2152,6 +2181,7 @@ def get_partners_ops_audit_compare(
             "from": _to_iso_utc(current_from),
             "to": _to_iso_utc(current_to),
         },
+        timezone_ref="UTC",
         previous_from=_to_iso_utc(previous_from),
         previous_to=_to_iso_utc(previous_to),
         total_current=total_current,

@@ -4,7 +4,8 @@ const BADGE_BASE = {
   borderRadius: 999,
   padding: "4px 10px",
   fontSize: 12,
-  fontWeight: 700,
+  fontWeight: 800,
+  lineHeight: 1.2,
 };
 
 export function getTrendToken(trend) {
@@ -14,9 +15,9 @@ export function getTrendToken(trend) {
       key: "up",
       symbol: "▲",
       label: "UP",
-      valueColor: "#86EFAC",
-      accentBg: "rgba(22,163,74,0.2)",
-      accentBorder: "1px solid rgba(22,163,74,0.45)",
+      valueColor: "#DCFCE7",
+      accentBg: "#166534",
+      accentBorder: "1px solid #86EFAC",
     };
   }
   if (normalized === "down") {
@@ -24,18 +25,18 @@ export function getTrendToken(trend) {
       key: "down",
       symbol: "▼",
       label: "DOWN",
-      valueColor: "#FCA5A5",
-      accentBg: "rgba(220,38,38,0.2)",
-      accentBorder: "1px solid rgba(220,38,38,0.45)",
+      valueColor: "#FEE2E2",
+      accentBg: "#991B1B",
+      accentBorder: "1px solid #FCA5A5",
     };
   }
   return {
     key: "stable",
     symbol: "■",
     label: "STABLE",
-    valueColor: "#CBD5E1",
-    accentBg: "rgba(71,85,105,0.25)",
-    accentBorder: "1px solid rgba(100,116,139,0.45)",
+    valueColor: "#E2E8F0",
+    accentBg: "#334155",
+    accentBorder: "1px solid #94A3B8",
   };
 }
 
@@ -56,23 +57,47 @@ export function getSeverityBadgeStyle(severity) {
   if (normalized === "HIGH" || normalized === "ERROR") {
     return {
       ...BADGE_BASE,
-      border: "1px solid rgba(179,38,30,0.65)",
-      background: "rgba(179,38,30,0.20)",
-      color: "#fecaca",
+      border: "1px solid #FCA5A5",
+      background: "#991B1B",
+      color: "#FEE2E2",
     };
   }
   if (normalized === "WARN") {
     return {
       ...BADGE_BASE,
-      border: "1px solid rgba(199,146,0,0.65)",
-      background: "rgba(199,146,0,0.18)",
-      color: "#fde68a",
+      border: "1px solid #FDE68A",
+      background: "#92400E",
+      color: "#FEF3C7",
     };
   }
   return {
     ...BADGE_BASE,
-    border: "1px solid rgba(31,122,63,0.65)",
-    background: "rgba(31,122,63,0.18)",
-    color: "#86efac",
+    border: "1px solid #86EFAC",
+    background: "#166534",
+    color: "#DCFCE7",
+  };
+}
+
+export function getConfidenceBadgeStyle(confidenceLevel) {
+  const normalized = String(confidenceLevel || "MEDIUM").toUpperCase();
+  if (normalized === "LOW") {
+    return getSeverityBadgeStyle("ERROR");
+  }
+  if (normalized === "HIGH") {
+    return getSeverityBadgeStyle("OK");
+  }
+  return getSeverityBadgeStyle("WARN");
+}
+
+export function getDataQualityFlagStyle(flag) {
+  const normalized = String(flag || "").toUpperCase();
+  if (normalized.includes("NO_EVENTS")) return getSeverityBadgeStyle("ERROR");
+  if (normalized.includes("LOW_VOLUME")) return getSeverityBadgeStyle("WARN");
+  if (normalized.includes("MEDIUM_VOLUME")) return getSeverityBadgeStyle("WARN");
+  return {
+    ...BADGE_BASE,
+    border: "1px solid #93C5FD",
+    background: "#1E3A8A",
+    color: "#DBEAFE",
   };
 }
