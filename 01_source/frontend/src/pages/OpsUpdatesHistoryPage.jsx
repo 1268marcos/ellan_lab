@@ -125,6 +125,23 @@ const UPDATES = [
     directLink: "/ops/products/pricing-fiscal",
     directLinkLabel: "Abrir OPS de pricing/fiscal (Pr-3)",
   },
+  {
+    date: "2026-04-26",
+    scope: "I-1 Orders/Fiscal",
+    title: "Operação dedicada por order_id (I-1)",
+    description:
+      "Página OPS para consulta/retry do outbox por pedido e reprocessamento fiscal com foco em incidentes de integração.",
+    routes: [
+      "GET /orders/{id}/fulfillment",
+      "GET /orders/{id}/partner-events",
+      "POST /orders/{id}/partner-events/retry",
+      "GET /fiscal/auto-classification-log/{order_id}",
+      "POST /fiscal/auto-classification/{order_id}/reprocess",
+      "UI /ops/integration/orders-fiscal",
+    ],
+    directLink: "/ops/integration/orders-fiscal",
+    directLinkLabel: "Abrir OPS I-1 orders/fiscal",
+  },
 ];
 
 export default function OpsUpdatesHistoryPage() {

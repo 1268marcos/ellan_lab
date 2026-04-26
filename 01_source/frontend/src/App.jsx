@@ -51,6 +51,7 @@ const OpsProductsAssetsPage = lazy(() => import("./pages/OpsProductsAssetsPage")
 const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPricingFiscalPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
+const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -259,9 +260,10 @@ function TopNav() {
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
     { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos" },
-    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3", isNew: true },
+    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3" },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
+    { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)", isNew: true },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
@@ -901,6 +903,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsIntegrationOutboxReplayPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/integration/orders-fiscal"
+              element={
+                <OpsRoute>
+                  <OpsIntegrationOrdersFiscalPage />
                 </OpsRoute>
               }
             />

@@ -2416,6 +2416,150 @@ Para cada item:
 | `GET` | `/fiscal/auto-classification-log/{order_id}` | Log de classificação fiscal |
 | `POST` | `/fiscal/auto-classification/{order_id}/reprocess` | Reclassifica (ops) |
 
+#### Continuidade I-1 (próximo sprint em execução)
+
+- [x] Publicar consulta direta por pedido para fulfillment:
+      - `GET /orders/{id}/fulfillment`
+- [x] Publicar leitura de eventos do parceiro por pedido:
+      - `GET /orders/{id}/partner-events`
+- [x] Publicar retry operacional por pedido (com suporte a item específico opcional):
+      - `POST /orders/{id}/partner-events/retry`
+- [x] Publicar consulta de classificação fiscal por pedido:
+      - `GET /fiscal/auto-classification-log/{order_id}`
+- [x] Publicar reprocessamento de classificação fiscal por pedido:
+      - `POST /fiscal/auto-classification/{order_id}/reprocess`
+- [x] Pendência de governança: bloco de evidência técnica rápida documentado abaixo para execução autenticada em ambiente.
+
+###### Evidência técnica rápida I-1 (orders/fiscal wiring por `order_id`)
+
+1) **GET /orders/{id}/fulfillment**
+
+```bash
+curl -sS "http://localhost:8000/orders/order_i1_001/fulfillment" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "id": "oft_a9f8d0a6_001",
+  "order_id": "order_i1_001",
+  "fulfillment_type": "ECOMMERCE_PARTNER",
+  "partner_id": "ptn_001",
+  "status": "ALLOCATED",
+  "last_event_type": "ORDER_PAID",
+  "last_outbox_status": "PENDING",
+  "updated_at": "2026-04-26T12:25:40.100000+00:00"
+}
+```
+
+2) **GET /orders/{id}/partner-events**
+
+```bash
+curl -sS "http://localhost:8000/orders/order_i1_001/partner-events?limit=20" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "limit": 20,
+  "offset": 0,
+  "items": [
+    {
+      "id": "poeo_a9f8d0a6_001",
+      "partner_id": "ptn_001",
+      "order_id": "order_i1_001",
+      "event_type": "ORDER_PAID",
+      "status": "FAILED",
+      "attempt_count": 1,
+      "max_attempts": 5,
+      "next_retry_at": "2026-04-26T12:30:00.000000+00:00",
+      "delivered_at": null,
+      "created_at": "2026-04-26T12:25:40.100000+00:00"
+    }
+  ]
+}
+```
+
+3) **POST /orders/{id}/partner-events/retry**
+
+```bash
+curl -sS -X POST "http://localhost:8000/orders/order_i1_001/partner-events/retry?force=false" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "replayed": true,
+  "reason": null,
+  "item": {
+    "id": "poeo_a9f8d0a6_001",
+    "partner_id": "ptn_001",
+    "order_id": "order_i1_001",
+    "event_type": "ORDER_PAID",
+    "status": "PENDING",
+    "attempt_count": 0,
+    "max_attempts": 5,
+    "next_retry_at": "2026-04-26T12:31:10.200000+00:00",
+    "delivered_at": null,
+    "created_at": "2026-04-26T12:25:40.100000+00:00"
+  }
+}
+```
+
+4) **GET /fiscal/auto-classification-log/{order_id}**
+
+```bash
+curl -sS "http://localhost:8000/fiscal/auto-classification-log/order_i1_001?limit=50" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "limit": 50,
+  "offset": 0,
+  "items": [
+    {
+      "id": 101,
+      "order_id": "order_i1_001",
+      "invoice_id": null,
+      "sku_id": "sku_123",
+      "ncm_applied": "22030000",
+      "icms_cst_applied": "00",
+      "pis_cst_applied": "01",
+      "cofins_cst_applied": "01",
+      "cfop_applied": "5102",
+      "source": "AUTO_PRODUCT_CONFIG",
+      "classified_at": "2026-04-26T12:25:39.900000+00:00"
+    }
+  ]
+}
+```
+
+5) **POST /fiscal/auto-classification/{order_id}/reprocess**
+
+```bash
+curl -sS -X POST "http://localhost:8000/fiscal/auto-classification/order_i1_001/reprocess" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "order_id": "order_i1_001",
+  "rebuilt": true,
+  "total_items": 1,
+  "total_log_rows": 1,
+  "sources": ["AUTO_PRODUCT_CONFIG"]
+}
+```
+
+> Nota operacional I-1: os payloads acima são modelo esperado para validação rápida. Em fechamento de governança, substituir por resposta real do ambiente com `correlation_id` e timestamp efetivo da execução.
+
 ---
 
 ## Resumo executivo

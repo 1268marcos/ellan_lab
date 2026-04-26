@@ -17,6 +17,7 @@ from app.models.user import User
 from app.schemas.pricing_fiscal import (
     FiscalAutoClassificationLogItemOut,
     FiscalAutoClassificationLogListOut,
+    FiscalAutoClassificationReprocessOut,
     PricingFiscalBadgeOut,
     PricingFiscalDefaultAlertItemOut,
     PricingFiscalDefaultAlertsOut,
@@ -41,6 +42,7 @@ from app.schemas.pricing_fiscal import (
     PromotionValidateIn,
     PromotionValidateOut,
 )
+from app.services.fiscal_context_service import build_fiscal_context
 from app.services.ops_audit_service import record_ops_action_audit
 
 router = APIRouter(
@@ -1061,6 +1063,104 @@ def list_fiscal_auto_classification_log(
         limit=limit,
         offset=offset,
         items=items,
+    )
+
+
+@router.get("/fiscal/auto-classification-log/{order_id}", response_model=FiscalAutoClassificationLogListOut)
+def list_fiscal_auto_classification_log_by_order(
+    order_id: str,
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    normalized_order_id = str(order_id or "").strip()
+    if not normalized_order_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_ORDER_ID", "message": "order_id obrigatório."},
+        )
+    total_row = db.execute(
+        text("SELECT COUNT(*) AS total FROM fiscal_auto_classification_log WHERE order_id = :order_id"),
+        {"order_id": normalized_order_id},
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+    rows = db.execute(
+        text(
+            """
+            SELECT id, order_id, invoice_id, sku_id, ncm_applied, icms_cst_applied, pis_cst_applied,
+                   cofins_cst_applied, cfop_applied, source, classified_at
+            FROM fiscal_auto_classification_log
+            WHERE order_id = :order_id
+            ORDER BY classified_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"order_id": normalized_order_id, "limit": int(limit), "offset": int(offset)},
+    ).mappings().all()
+    items = [
+        FiscalAutoClassificationLogItemOut(
+            id=int(row.get("id") or 0),
+            order_id=str(row.get("order_id") or ""),
+            invoice_id=(str(row.get("invoice_id")) if row.get("invoice_id") is not None else None),
+            sku_id=str(row.get("sku_id") or ""),
+            ncm_applied=(str(row.get("ncm_applied")) if row.get("ncm_applied") is not None else None),
+            icms_cst_applied=(str(row.get("icms_cst_applied")) if row.get("icms_cst_applied") is not None else None),
+            pis_cst_applied=(str(row.get("pis_cst_applied")) if row.get("pis_cst_applied") is not None else None),
+            cofins_cst_applied=(str(row.get("cofins_cst_applied")) if row.get("cofins_cst_applied") is not None else None),
+            cfop_applied=(str(row.get("cfop_applied")) if row.get("cfop_applied") is not None else None),
+            source=str(row.get("source") or ""),
+            classified_at=_to_iso_utc(row.get("classified_at")),
+        )
+        for row in rows
+    ]
+    return FiscalAutoClassificationLogListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+
+
+@router.post("/fiscal/auto-classification/{order_id}/reprocess", response_model=FiscalAutoClassificationReprocessOut)
+def reprocess_fiscal_auto_classification(
+    order_id: str,
+    db: Session = Depends(get_db),
+):
+    normalized_order_id = str(order_id or "").strip()
+    if not normalized_order_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_ORDER_ID", "message": "order_id obrigatório."},
+        )
+    order_exists = db.execute(
+        text("SELECT id FROM orders WHERE id = :order_id"),
+        {"order_id": normalized_order_id},
+    ).mappings().first()
+    if not order_exists:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "ORDER_NOT_FOUND", "message": "Pedido não encontrado.", "order_id": normalized_order_id},
+        )
+    # Reprocessa de forma determinística removendo logs anteriores desse pedido.
+    db.execute(
+        text("DELETE FROM fiscal_auto_classification_log WHERE order_id = :order_id"),
+        {"order_id": normalized_order_id},
+    )
+    db.commit()
+    ctx = build_fiscal_context(db, normalized_order_id)
+    rows = db.execute(
+        text(
+            """
+            SELECT source
+            FROM fiscal_auto_classification_log
+            WHERE order_id = :order_id
+            """
+        ),
+        {"order_id": normalized_order_id},
+    ).mappings().all()
+    sources = sorted({str(row.get("source") or "") for row in rows if str(row.get("source") or "").strip()})
+    return FiscalAutoClassificationReprocessOut(
+        ok=True,
+        order_id=normalized_order_id,
+        rebuilt=True,
+        total_items=len(list(ctx.get("items") or [])),
+        total_log_rows=len(rows),
+        sources=sources,
     )
 
 

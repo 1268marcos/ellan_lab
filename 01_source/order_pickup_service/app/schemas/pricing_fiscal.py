@@ -195,6 +195,15 @@ class FiscalAutoClassificationLogListOut(BaseModel):
     items: list[FiscalAutoClassificationLogItemOut]
 
 
+class FiscalAutoClassificationReprocessOut(BaseModel):
+    ok: bool
+    order_id: str
+    rebuilt: bool
+    total_items: int
+    total_log_rows: int
+    sources: list[str]
+
+
 class PricingFiscalBadgeOut(BaseModel):
     key: str
     label: str

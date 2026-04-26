@@ -3,7 +3,11 @@
 # Aqui faz pedido ONLINE
 # 13/04/2026 - inclusão da função def resolve_operational_status()
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from datetime import timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
@@ -14,10 +18,13 @@ from app.models.pickup import Pickup
 from app.schemas.orders import CreateOrderIn, OrderListItemOut, OrderListOut, OrderOut
 from app.services.order_creation_service import create_order_core
 
-from datetime import datetime
-from datetime import timezone
-
 from app.services import backend_client
+from app.schemas.integration_ops import (
+    OrderEventOutboxItemOut,
+    OrderEventOutboxListOut,
+    OrderEventOutboxReplayOut,
+    OrderFulfillmentTrackingItemOut,
+)
 
 
 router = APIRouter(prefix="/orders", tags=["orders"])
@@ -244,4 +251,180 @@ def list_orders(
         has_next=has_next,
         has_prev=has_prev,
     )
+
+
+def _to_iso_utc(value: datetime | None) -> str:
+    if value is None:
+        return datetime.now(timezone.utc).isoformat()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat()
+
+
+@router.get("/{order_id}/fulfillment", response_model=OrderFulfillmentTrackingItemOut)
+def get_order_fulfillment(
+    order_id: str,
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
+    _ = user
+    row = db.execute(
+        text(
+            """
+            SELECT id, order_id, fulfillment_type, partner_id, status, last_event_type, last_outbox_status, updated_at
+            FROM order_fulfillment_tracking
+            WHERE order_id = :order_id
+            """
+        ),
+        {"order_id": str(order_id).strip()},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "ORDER_FULFILLMENT_NOT_FOUND", "message": "Fulfillment tracking não encontrado para o pedido."},
+        )
+    return OrderFulfillmentTrackingItemOut(
+        id=str(row.get("id") or ""),
+        order_id=str(row.get("order_id") or ""),
+        fulfillment_type=str(row.get("fulfillment_type") or ""),
+        partner_id=(str(row.get("partner_id")) if row.get("partner_id") is not None else None),
+        status=str(row.get("status") or ""),
+        last_event_type=(str(row.get("last_event_type")) if row.get("last_event_type") is not None else None),
+        last_outbox_status=(str(row.get("last_outbox_status")) if row.get("last_outbox_status") is not None else None),
+        updated_at=_to_iso_utc(row.get("updated_at")),
+    )
+
+
+@router.get("/{order_id}/partner-events", response_model=OrderEventOutboxListOut)
+def get_order_partner_events(
+    order_id: str,
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
+    _ = user
+    normalized_order_id = str(order_id).strip()
+    total_row = db.execute(
+        text("SELECT COUNT(*) AS total FROM partner_order_events_outbox WHERE order_id = :order_id"),
+        {"order_id": normalized_order_id},
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+    rows = db.execute(
+        text(
+            """
+            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+            FROM partner_order_events_outbox
+            WHERE order_id = :order_id
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"order_id": normalized_order_id, "limit": int(limit), "offset": int(offset)},
+    ).mappings().all()
+    items = [
+        OrderEventOutboxItemOut(
+            id=str(row.get("id") or ""),
+            partner_id=str(row.get("partner_id") or ""),
+            order_id=str(row.get("order_id") or ""),
+            event_type=str(row.get("event_type") or ""),
+            status=str(row.get("status") or ""),
+            attempt_count=int(row.get("attempt_count") or 0),
+            max_attempts=int(row.get("max_attempts") or 0),
+            next_retry_at=(_to_iso_utc(row.get("next_retry_at")) if row.get("next_retry_at") else None),
+            delivered_at=(_to_iso_utc(row.get("delivered_at")) if row.get("delivered_at") else None),
+            created_at=_to_iso_utc(row.get("created_at")),
+        )
+        for row in rows
+    ]
+    return OrderEventOutboxListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+
+
+@router.post("/{order_id}/partner-events/retry", response_model=OrderEventOutboxReplayOut)
+def retry_order_partner_event(
+    order_id: str,
+    outbox_id: str | None = Query(default=None),
+    force: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    user=Depends(get_current_user_or_dev),
+):
+    _ = user
+    normalized_order_id = str(order_id).strip()
+    normalized_outbox_id = str(outbox_id or "").strip()
+    if normalized_outbox_id:
+        row = db.execute(
+            text(
+                """
+                SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+                FROM partner_order_events_outbox
+                WHERE id = :id AND order_id = :order_id
+                """
+            ),
+            {"id": normalized_outbox_id, "order_id": normalized_order_id},
+        ).mappings().first()
+    else:
+        row = db.execute(
+            text(
+                """
+                SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+                FROM partner_order_events_outbox
+                WHERE order_id = :order_id
+                  AND status IN ('FAILED','DEAD_LETTER','SKIPPED')
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """
+            ),
+            {"order_id": normalized_order_id},
+        ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "OUTBOX_ITEM_NOT_FOUND", "message": "Nenhum evento elegível encontrado para retry neste pedido."},
+        )
+    previous_status = str(row.get("status") or "").upper()
+    replayed = False
+    reason: str | None = None
+    row_id = str(row.get("id") or "")
+    if previous_status == "DELIVERED" and not force:
+        reason = "ITEM_ALREADY_DELIVERED_USE_FORCE"
+    else:
+        db.execute(
+            text(
+                """
+                UPDATE partner_order_events_outbox
+                SET status = 'PENDING',
+                    attempt_count = 0,
+                    next_retry_at = NOW(),
+                    last_error = NULL,
+                    updated_at = NOW()
+                WHERE id = :id
+                """
+            ),
+            {"id": row_id},
+        )
+        db.commit()
+        replayed = True
+    latest = db.execute(
+        text(
+            """
+            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
+            FROM partner_order_events_outbox
+            WHERE id = :id
+            """
+        ),
+        {"id": row_id},
+    ).mappings().first()
+    item = OrderEventOutboxItemOut(
+        id=str(latest.get("id") or ""),
+        partner_id=str(latest.get("partner_id") or ""),
+        order_id=str(latest.get("order_id") or ""),
+        event_type=str(latest.get("event_type") or ""),
+        status=str(latest.get("status") or ""),
+        attempt_count=int(latest.get("attempt_count") or 0),
+        max_attempts=int(latest.get("max_attempts") or 0),
+        next_retry_at=(_to_iso_utc(latest.get("next_retry_at")) if latest.get("next_retry_at") else None),
+        delivered_at=(_to_iso_utc(latest.get("delivered_at")) if latest.get("delivered_at") else None),
+        created_at=_to_iso_utc(latest.get("created_at")),
+    )
+    return OrderEventOutboxReplayOut(ok=True, replayed=replayed, reason=reason, item=item)
 
