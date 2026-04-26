@@ -660,6 +660,12 @@ def init_db():
         LogisticsShipmentLabel,
         LogisticsTrackingEvent,
     )
+    from app.models.logistics_manifest import (  # noqa: F401
+        LogisticsCapacityAllocation,
+        LogisticsCarrierRate,
+        LogisticsManifest,
+        LogisticsManifestItem,
+    )
     from app.models.tenant_fiscal_config import TenantFiscalConfig  # noqa: F401
 
     # 🔥 LOCKERS (EXPLÍCITO — ESSENCIAL)

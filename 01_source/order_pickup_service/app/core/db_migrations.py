@@ -1559,6 +1559,129 @@ def _create_logistics_return_events(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_logistics_manifests(conn, applied: list[str]) -> None:
+    name = "logistics_manifests.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_manifests (
+            id                      VARCHAR(36) PRIMARY KEY,
+            logistics_partner_id    VARCHAR(36) NOT NULL REFERENCES logistics_partners(id),
+            locker_id               VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            manifest_date           DATE NOT NULL,
+            carrier_route_code      VARCHAR(64),
+            carrier_vehicle_id      VARCHAR(64),
+            expected_parcel_count   INTEGER NOT NULL DEFAULT 0,
+            actual_parcel_count     INTEGER NOT NULL DEFAULT 0,
+            status                  VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                                    CHECK (status IN ('PENDING','IN_TRANSIT','DELIVERED','PARTIAL','FAILED','CANCELLED')),
+            dispatched_at           TIMESTAMPTZ,
+            delivered_at            TIMESTAMPTZ,
+            carrier_note            TEXT,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lm_partner_date "
+        "ON logistics_manifests (logistics_partner_id, manifest_date DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lm_locker_status "
+        "ON logistics_manifests (locker_id, status, manifest_date DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_manifest_items(conn, applied: list[str]) -> None:
+    name = "logistics_manifest_items.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_manifest_items (
+            id              BIGSERIAL PRIMARY KEY,
+            manifest_id     VARCHAR(36) NOT NULL REFERENCES logistics_manifests(id),
+            delivery_id     VARCHAR(36) REFERENCES inbound_deliveries(id),
+            tracking_code   VARCHAR(128) NOT NULL,
+            sequence_number INTEGER,
+            status          VARCHAR(20) NOT NULL DEFAULT 'EXPECTED'
+                            CHECK (status IN ('EXPECTED','STORED','EXCEPTION','MISSING')),
+            exception_note  TEXT,
+            processed_at    TIMESTAMPTZ
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_lmi_manifest ON logistics_manifest_items (manifest_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_capacity_allocations(conn, applied: list[str]) -> None:
+    name = "logistics_capacity_allocations.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_capacity_allocations (
+            id                      VARCHAR(36) PRIMARY KEY,
+            logistics_partner_id    VARCHAR(36) NOT NULL REFERENCES logistics_partners(id),
+            locker_id               VARCHAR(64) NOT NULL REFERENCES lockers(id),
+            slot_size               VARCHAR(8) NOT NULL
+                                    CHECK (slot_size IN ('S','M','L','XL')),
+            reserved_slots          INTEGER NOT NULL CHECK (reserved_slots >= 0),
+            valid_from              DATE NOT NULL,
+            valid_until             DATE,
+            priority                INTEGER NOT NULL DEFAULT 100,
+            notes                   TEXT,
+            is_active               BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_lca_date_range CHECK (valid_until IS NULL OR valid_until >= valid_from)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lca_partner_locker_slot "
+        "ON logistics_capacity_allocations (logistics_partner_id, locker_id, slot_size)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lca_active_window "
+        "ON logistics_capacity_allocations (is_active, valid_from, valid_until)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_logistics_carrier_rates(conn, applied: list[str]) -> None:
+    name = "logistics_carrier_rates.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS logistics_carrier_rates (
+            id                  VARCHAR(36) PRIMARY KEY,
+            carrier_code        VARCHAR(20) NOT NULL,
+            origin_zone         VARCHAR(10) NOT NULL,
+            destination_zone    VARCHAR(10) NOT NULL,
+            weight_tier_g       INTEGER NOT NULL CHECK (weight_tier_g > 0),
+            size_tier           VARCHAR(8),
+            amount_cents        INTEGER NOT NULL CHECK (amount_cents >= 0),
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            valid_from          DATE NOT NULL,
+            valid_until         DATE,
+            is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_lcr_date_range CHECK (valid_until IS NULL OR valid_until >= valid_from)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lcr_lookup "
+        "ON logistics_carrier_rates (carrier_code, origin_zone, destination_zone, is_active)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_lcr_validity "
+        "ON logistics_carrier_rates (valid_from, valid_until)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _migrate_products_status_v1(conn, applied: list[str]) -> None:
     name = "products.status_v1"
     if _migration_applied(conn, name):
@@ -3555,6 +3678,10 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_logistics_carrier_status_map,
     _create_logistics_returns,
     _create_logistics_return_events,
+    _create_logistics_manifests,
+    _create_logistics_manifest_items,
+    _create_logistics_capacity_allocations,
+    _create_logistics_carrier_rates,
     _migrate_products_status_v1,
     _create_product_status_history,
     _create_product_inventory,

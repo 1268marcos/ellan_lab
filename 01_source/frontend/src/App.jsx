@@ -43,6 +43,7 @@ const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
 const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
+const OpsLogisticsManifestsPage = lazy(() => import("./pages/OpsLogisticsManifestsPage"));
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
@@ -249,6 +250,7 @@ function TopNav() {
     { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT" },
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners" },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
+    { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
@@ -824,6 +826,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLogisticsDashboardPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/logistics/manifests"
+              element={
+                <OpsRoute>
+                  <OpsLogisticsManifestsPage />
                 </OpsRoute>
               }
             />

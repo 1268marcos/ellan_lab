@@ -5,7 +5,7 @@ import hmac
 import json
 import secrets
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -25,10 +25,14 @@ from app.models.logistics_tracking import (
     LogisticsShipmentLabel,
     LogisticsTrackingEvent,
 )
+from app.models.logistics_manifest import LogisticsCapacityAllocation, LogisticsManifest, LogisticsManifestItem
 from app.models.partner_webhook_delivery import PartnerWebhookDelivery
 from app.models.partner_webhook_endpoint import PartnerWebhookEndpoint
 from app.models.user import User
 from app.schemas.logistics import (
+    LogisticsCapacityAllocationListOut,
+    LogisticsCapacityAllocationOut,
+    LogisticsCapacityAllocationUpsertIn,
     LogisticsCarrierAuthConfigIn,
     LogisticsCarrierAuthConfigOut,
     LogisticsCarrierStatusMapIn,
@@ -36,6 +40,14 @@ from app.schemas.logistics import (
     LogisticsDeliveryAttemptListOut,
     LogisticsDeliveryAttemptOut,
     LogisticsLabelCreateIn,
+    LogisticsManifestCloseIn,
+    LogisticsManifestCreateIn,
+    LogisticsManifestItemExceptionIn,
+    LogisticsManifestItemListOut,
+    LogisticsManifestItemOut,
+    LogisticsManifestOpsOverviewOut,
+    LogisticsManifestListOut,
+    LogisticsManifestOut,
     LogisticsOpsOverviewOut,
     LogisticsReturnCreateIn,
     LogisticsReturnEventListOut,
@@ -93,6 +105,35 @@ def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _parse_iso_date_required(raw_value: str, *, field_name: str) -> date:
+    value = str(raw_value or "").strip()
+    if not value:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE", "message": f"{field_name} é obrigatório no formato YYYY-MM-DD."},
+        )
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE", "message": f"{field_name} inválido. Use YYYY-MM-DD."},
+        ) from exc
+
+
+def _parse_iso_date_optional(raw_value: str | None, *, field_name: str) -> date | None:
+    value = str(raw_value or "").strip()
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE", "message": f"{field_name} inválido. Use YYYY-MM-DD."},
+        ) from exc
 
 
 def _json_load_dict(value: str | None) -> dict:
@@ -262,6 +303,137 @@ def _to_return_event_out(row: LogisticsReturnEvent) -> LogisticsReturnEventOut:
         occurred_at=_to_iso_utc(row.occurred_at),
         created_at=_to_iso_utc(row.created_at),
     )
+
+
+def _to_manifest_out(row: LogisticsManifest) -> LogisticsManifestOut:
+    return LogisticsManifestOut(
+        id=row.id,
+        logistics_partner_id=row.logistics_partner_id,
+        locker_id=row.locker_id,
+        manifest_date=row.manifest_date.isoformat(),
+        carrier_route_code=row.carrier_route_code,
+        carrier_vehicle_id=row.carrier_vehicle_id,
+        expected_parcel_count=int(row.expected_parcel_count or 0),
+        actual_parcel_count=int(row.actual_parcel_count or 0),
+        status=row.status,
+        dispatched_at=_to_iso_utc(row.dispatched_at) if row.dispatched_at else None,
+        delivered_at=_to_iso_utc(row.delivered_at) if row.delivered_at else None,
+        carrier_note=row.carrier_note,
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _to_capacity_out(row: LogisticsCapacityAllocation) -> LogisticsCapacityAllocationOut:
+    return LogisticsCapacityAllocationOut(
+        id=row.id,
+        logistics_partner_id=row.logistics_partner_id,
+        locker_id=row.locker_id,
+        slot_size=row.slot_size,
+        reserved_slots=int(row.reserved_slots or 0),
+        valid_from=row.valid_from.isoformat(),
+        valid_until=row.valid_until.isoformat() if row.valid_until else None,
+        priority=int(row.priority or 100),
+        notes=row.notes,
+        is_active=bool(row.is_active),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_manifest_item_out(row: LogisticsManifestItem) -> LogisticsManifestItemOut:
+    return LogisticsManifestItemOut(
+        id=int(row.id),
+        manifest_id=row.manifest_id,
+        delivery_id=row.delivery_id,
+        tracking_code=row.tracking_code,
+        sequence_number=row.sequence_number,
+        status=row.status,
+        exception_note=row.exception_note,
+        processed_at=_to_iso_utc(row.processed_at) if row.processed_at else None,
+    )
+
+
+def _ensure_logistics_partner_exists(db: Session, partner_id: str) -> None:
+    row = db.execute(
+        text("SELECT id FROM logistics_partners WHERE id = :id"),
+        {"id": partner_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "LOGISTICS_PARTNER_NOT_FOUND",
+                "message": "Logistics partner não encontrado.",
+                "partner_id": partner_id,
+            },
+        )
+
+
+def _ensure_locker_exists(db: Session, locker_id: str) -> None:
+    row = db.execute(
+        text("SELECT id FROM lockers WHERE id = :id"),
+        {"id": locker_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "LOCKER_NOT_FOUND",
+                "message": "Locker não encontrado para capacidade/manifests.",
+                "locker_id": locker_id,
+            },
+        )
+
+
+def _ensure_manifest_exists(db: Session, manifest_id: str) -> LogisticsManifest:
+    row = db.get(LogisticsManifest, manifest_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "MANIFEST_NOT_FOUND",
+                "message": "Manifesto não encontrado.",
+                "manifest_id": manifest_id,
+            },
+        )
+    return row
+
+
+def _ensure_manifest_item_exists(
+    db: Session,
+    *,
+    manifest_id: str,
+    item_id: int,
+) -> LogisticsManifestItem:
+    row = (
+        db.query(LogisticsManifestItem)
+        .filter(
+            LogisticsManifestItem.id == int(item_id),
+            LogisticsManifestItem.manifest_id == manifest_id,
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "MANIFEST_ITEM_NOT_FOUND",
+                "message": "Item do manifesto não encontrado.",
+                "manifest_id": manifest_id,
+                "item_id": item_id,
+            },
+        )
+    return row
+
+
+def _resolve_manifest_close_status(*, expected_parcel_count: int, actual_parcel_count: int) -> str:
+    expected = int(expected_parcel_count or 0)
+    actual = int(actual_parcel_count or 0)
+    if actual <= 0:
+        return "FAILED"
+    if expected > 0 and actual < expected:
+        return "PARTIAL"
+    return "DELIVERED"
 
 
 def _enqueue_return_critical_webhooks(
@@ -707,6 +879,480 @@ def get_logistics_delivery_label(delivery_id: str, label_id: str, db: Session = 
     return _to_label_out(row)
 
 
+@router.post("/manifests", response_model=LogisticsManifestOut)
+def post_logistics_manifest(
+    payload: LogisticsManifestCreateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    partner_id = payload.logistics_partner_id.strip()
+    locker_id = payload.locker_id.strip()
+    if not partner_id or not locker_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_MANIFEST_PAYLOAD", "message": "logistics_partner_id e locker_id são obrigatórios."},
+        )
+    _ensure_logistics_partner_exists(db, partner_id)
+    _ensure_locker_exists(db, locker_id)
+
+    manifest_date = _parse_iso_date_required(payload.manifest_date, field_name="manifest_date")
+    now = datetime.now(timezone.utc)
+    row = LogisticsManifest(
+        id=str(uuid4()),
+        logistics_partner_id=partner_id,
+        locker_id=locker_id,
+        manifest_date=manifest_date,
+        carrier_route_code=payload.carrier_route_code.strip() if payload.carrier_route_code else None,
+        carrier_vehicle_id=payload.carrier_vehicle_id.strip() if payload.carrier_vehicle_id else None,
+        expected_parcel_count=int(payload.expected_parcel_count),
+        actual_parcel_count=0,
+        status="PENDING",
+        carrier_note=payload.carrier_note.strip() if payload.carrier_note else None,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    after = {
+        "id": row.id,
+        "logistics_partner_id": row.logistics_partner_id,
+        "locker_id": row.locker_id,
+        "manifest_date": row.manifest_date.isoformat(),
+        "status": row.status,
+        "expected_parcel_count": row.expected_parcel_count,
+        "actual_parcel_count": row.actual_parcel_count,
+    }
+    _audit_ops(
+        db=db,
+        action="L3_MANIFEST_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"before": None, "after": after},
+    )
+    db.commit()
+    return _to_manifest_out(row)
+
+
+@router.post("/{partner_id}/capacity", response_model=LogisticsCapacityAllocationOut)
+def post_logistics_capacity_allocation(
+    partner_id: str,
+    payload: LogisticsCapacityAllocationUpsertIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    normalized_partner_id = str(partner_id or "").strip()
+    if not normalized_partner_id:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_PARTNER_ID", "message": "partner_id é obrigatório."})
+    _ensure_logistics_partner_exists(db, normalized_partner_id)
+
+    slot_size = str(payload.slot_size or "").strip().upper()
+    if slot_size not in {"S", "M", "L", "XL"}:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_SLOT_SIZE", "allowed_slot_sizes": ["L", "M", "S", "XL"]})
+    locker_id = str(payload.locker_id).strip()
+    _ensure_locker_exists(db, locker_id)
+    valid_from = _parse_iso_date_required(payload.valid_from, field_name="valid_from")
+    valid_until = _parse_iso_date_optional(payload.valid_until, field_name="valid_until")
+    if valid_until is not None and valid_until < valid_from:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "valid_until deve ser >= valid_from."},
+        )
+
+    row = (
+        db.query(LogisticsCapacityAllocation)
+        .filter(
+            LogisticsCapacityAllocation.logistics_partner_id == normalized_partner_id,
+            LogisticsCapacityAllocation.locker_id == locker_id,
+            LogisticsCapacityAllocation.slot_size == slot_size,
+            LogisticsCapacityAllocation.valid_from == valid_from,
+        )
+        .order_by(LogisticsCapacityAllocation.created_at.desc(), LogisticsCapacityAllocation.id.desc())
+        .first()
+    )
+
+    before = None
+    if row is None:
+        row = LogisticsCapacityAllocation(
+            id=str(uuid4()),
+            logistics_partner_id=normalized_partner_id,
+            locker_id=locker_id,
+            slot_size=slot_size,
+            reserved_slots=int(payload.reserved_slots),
+            valid_from=valid_from,
+            valid_until=valid_until,
+            priority=int(payload.priority),
+            notes=payload.notes.strip() if payload.notes else None,
+            is_active=bool(payload.is_active),
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(row)
+        action = "L3_CAPACITY_CREATE"
+    else:
+        before = {
+            "id": row.id,
+            "logistics_partner_id": row.logistics_partner_id,
+            "locker_id": row.locker_id,
+            "slot_size": row.slot_size,
+            "reserved_slots": int(row.reserved_slots or 0),
+            "valid_from": row.valid_from.isoformat(),
+            "valid_until": row.valid_until.isoformat() if row.valid_until else None,
+            "priority": int(row.priority or 100),
+            "notes": row.notes,
+            "is_active": bool(row.is_active),
+        }
+        row.reserved_slots = int(payload.reserved_slots)
+        row.valid_until = valid_until
+        row.priority = int(payload.priority)
+        row.notes = payload.notes.strip() if payload.notes else None
+        row.is_active = bool(payload.is_active)
+        action = "L3_CAPACITY_UPDATE"
+
+    after = {
+        "id": row.id,
+        "logistics_partner_id": row.logistics_partner_id,
+        "locker_id": row.locker_id,
+        "slot_size": row.slot_size,
+        "reserved_slots": int(row.reserved_slots or 0),
+        "valid_from": row.valid_from.isoformat(),
+        "valid_until": row.valid_until.isoformat() if row.valid_until else None,
+        "priority": int(row.priority or 100),
+        "notes": row.notes,
+        "is_active": bool(row.is_active),
+    }
+    _audit_ops(
+        db=db,
+        action=action,
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"partner_id": normalized_partner_id, "before": before, "after": after},
+    )
+    db.commit()
+    return _to_capacity_out(row)
+
+
+@router.get("/manifests", response_model=LogisticsManifestListOut)
+def list_logistics_manifests(
+    logistics_partner_id: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    manifest_date_from: str | None = Query(default=None),
+    manifest_date_to: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(LogisticsManifest)
+    normalized_partner = str(logistics_partner_id or "").strip()
+    normalized_locker = str(locker_id or "").strip()
+    normalized_status = str(status or "").strip().upper()
+    allowed_statuses = {"PENDING", "IN_TRANSIT", "DELIVERED", "PARTIAL", "FAILED", "CANCELLED"}
+
+    if normalized_partner:
+        query = query.filter(LogisticsManifest.logistics_partner_id == normalized_partner)
+    if normalized_locker:
+        query = query.filter(LogisticsManifest.locker_id == normalized_locker)
+    if normalized_status:
+        if normalized_status not in allowed_statuses:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_MANIFEST_STATUS", "allowed_statuses": sorted(allowed_statuses)})
+        query = query.filter(LogisticsManifest.status == normalized_status)
+
+    from_date = _parse_iso_date_optional(manifest_date_from, field_name="manifest_date_from")
+    to_date = _parse_iso_date_optional(manifest_date_to, field_name="manifest_date_to")
+    if from_date and to_date and from_date > to_date:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "manifest_date_from deve ser <= manifest_date_to."})
+    if from_date:
+        query = query.filter(LogisticsManifest.manifest_date >= from_date)
+    if to_date:
+        query = query.filter(LogisticsManifest.manifest_date <= to_date)
+
+    total = query.count()
+    rows = (
+        query.order_by(LogisticsManifest.manifest_date.desc(), LogisticsManifest.created_at.desc(), LogisticsManifest.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return LogisticsManifestListOut(ok=True, total=total, items=[_to_manifest_out(row) for row in rows])
+
+
+@router.get("/manifests/{manifest_id}/items", response_model=LogisticsManifestItemListOut)
+def list_logistics_manifest_items(
+    manifest_id: str,
+    status: str | None = Query(default=None),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    manifest = _ensure_manifest_exists(db, manifest_id)
+    query = db.query(LogisticsManifestItem).filter(LogisticsManifestItem.manifest_id == manifest.id)
+    normalized_status = str(status or "").strip().upper()
+    allowed_statuses = {"EXPECTED", "STORED", "EXCEPTION", "MISSING"}
+    if normalized_status:
+        if normalized_status not in allowed_statuses:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_MANIFEST_ITEM_STATUS", "allowed_statuses": sorted(allowed_statuses)})
+        query = query.filter(LogisticsManifestItem.status == normalized_status)
+    total = query.count()
+    rows = (
+        query.order_by(LogisticsManifestItem.sequence_number.asc(), LogisticsManifestItem.id.asc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return LogisticsManifestItemListOut(ok=True, total=total, items=[_to_manifest_item_out(row) for row in rows])
+
+
+@router.post("/manifests/{manifest_id}/close", response_model=LogisticsManifestOut)
+def close_logistics_manifest(
+    manifest_id: str,
+    payload: LogisticsManifestCloseIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    manifest = _ensure_manifest_exists(db, manifest_id)
+    if manifest.status == "CANCELLED":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "MANIFEST_CANCELLED_NOT_CLOSABLE",
+                "message": "Manifesto cancelado não pode ser fechado.",
+                "manifest_id": manifest_id,
+            },
+        )
+
+    before = {
+        "id": manifest.id,
+        "status": manifest.status,
+        "expected_parcel_count": int(manifest.expected_parcel_count or 0),
+        "actual_parcel_count": int(manifest.actual_parcel_count or 0),
+        "delivered_at": _to_iso_utc(manifest.delivered_at) if manifest.delivered_at else None,
+        "carrier_note": manifest.carrier_note,
+    }
+
+    if manifest.status in {"DELIVERED", "PARTIAL", "FAILED"}:
+        after = {
+            "id": manifest.id,
+            "status": manifest.status,
+            "expected_parcel_count": int(manifest.expected_parcel_count or 0),
+            "actual_parcel_count": int(manifest.actual_parcel_count or 0),
+            "delivered_at": _to_iso_utc(manifest.delivered_at) if manifest.delivered_at else None,
+            "carrier_note": manifest.carrier_note,
+        }
+        _audit_ops(
+            db=db,
+            action="L3_MANIFEST_CLOSE",
+            result="SUCCESS",
+            correlation_id=corr_id,
+            user_id=str(current_user.id),
+            details={
+                "manifest_id": manifest.id,
+                "idempotent": True,
+                "before": before,
+                "after": after,
+            },
+        )
+        db.commit()
+        return _to_manifest_out(manifest)
+
+    now = datetime.now(timezone.utc)
+    stored_count = (
+        db.query(LogisticsManifestItem)
+        .filter(
+            LogisticsManifestItem.manifest_id == manifest.id,
+            LogisticsManifestItem.status == "STORED",
+        )
+        .count()
+    )
+    processed_count = (
+        db.query(LogisticsManifestItem)
+        .filter(
+            LogisticsManifestItem.manifest_id == manifest.id,
+            LogisticsManifestItem.status.in_(["STORED", "EXCEPTION", "MISSING"]),
+        )
+        .count()
+    )
+    actual_count = int(payload.actual_parcel_count) if payload.actual_parcel_count is not None else int(processed_count)
+    resolved_status = _resolve_manifest_close_status(
+        expected_parcel_count=int(manifest.expected_parcel_count or 0),
+        actual_parcel_count=actual_count,
+    )
+
+    manifest.actual_parcel_count = actual_count
+    manifest.status = resolved_status
+    manifest.delivered_at = now
+    manifest.updated_at = now
+    if payload.carrier_note is not None:
+        manifest.carrier_note = payload.carrier_note.strip() or None
+
+    after = {
+        "id": manifest.id,
+        "status": manifest.status,
+        "expected_parcel_count": int(manifest.expected_parcel_count or 0),
+        "actual_parcel_count": int(manifest.actual_parcel_count or 0),
+        "delivered_at": _to_iso_utc(manifest.delivered_at) if manifest.delivered_at else None,
+        "carrier_note": manifest.carrier_note,
+    }
+    _audit_ops(
+        db=db,
+        action="L3_MANIFEST_CLOSE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "manifest_id": manifest.id,
+            "idempotent": False,
+            "before": before,
+            "after": after,
+            "reconciliation": {
+                "expected_parcel_count": int(manifest.expected_parcel_count or 0),
+                "actual_parcel_count": actual_count,
+                "stored_count": int(stored_count),
+                "processed_count": int(processed_count),
+                "resolved_status": resolved_status,
+            },
+        },
+    )
+    db.commit()
+    return _to_manifest_out(manifest)
+
+
+@router.post("/manifests/{manifest_id}/items/{item_id}/exception", response_model=LogisticsManifestItemOut)
+def mark_logistics_manifest_item_exception(
+    manifest_id: str,
+    item_id: int,
+    payload: LogisticsManifestItemExceptionIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _ensure_manifest_exists(db, manifest_id)
+    item = _ensure_manifest_item_exists(db, manifest_id=manifest_id, item_id=item_id)
+
+    reason = payload.reason.strip()
+    before = {
+        "id": int(item.id),
+        "manifest_id": item.manifest_id,
+        "status": item.status,
+        "exception_note": item.exception_note,
+        "processed_at": _to_iso_utc(item.processed_at) if item.processed_at else None,
+    }
+
+    if str(item.status or "").strip().upper() == "EXCEPTION":
+        after = {
+            "id": int(item.id),
+            "manifest_id": item.manifest_id,
+            "status": item.status,
+            "exception_note": item.exception_note,
+            "processed_at": _to_iso_utc(item.processed_at) if item.processed_at else None,
+        }
+        _audit_ops(
+            db=db,
+            action="L3_MANIFEST_ITEM_EXCEPTION",
+            result="SUCCESS",
+            correlation_id=corr_id,
+            user_id=str(current_user.id),
+            details={
+                "manifest_id": manifest_id,
+                "item_id": int(item.id),
+                "idempotent": True,
+                "requested_reason": reason,
+                "before": before,
+                "after": after,
+            },
+        )
+        db.commit()
+        return _to_manifest_item_out(item)
+
+    now = datetime.now(timezone.utc)
+    item.status = "EXCEPTION"
+    item.exception_note = reason
+    item.processed_at = now
+
+    after = {
+        "id": int(item.id),
+        "manifest_id": item.manifest_id,
+        "status": item.status,
+        "exception_note": item.exception_note,
+        "processed_at": _to_iso_utc(item.processed_at) if item.processed_at else None,
+    }
+    _audit_ops(
+        db=db,
+        action="L3_MANIFEST_ITEM_EXCEPTION",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "manifest_id": manifest_id,
+            "item_id": int(item.id),
+            "idempotent": False,
+            "before": before,
+            "after": after,
+        },
+    )
+    db.commit()
+    return _to_manifest_item_out(item)
+
+
+@router.get("/{partner_id}/capacity", response_model=LogisticsCapacityAllocationListOut)
+def list_logistics_capacity_allocations(
+    partner_id: str,
+    locker_id: str | None = Query(default=None),
+    slot_size: str | None = Query(default=None),
+    active_only: bool = Query(default=True),
+    valid_on: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    normalized_partner = str(partner_id or "").strip()
+    if not normalized_partner:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_PARTNER_ID", "message": "partner_id é obrigatório."})
+    _ensure_logistics_partner_exists(db, normalized_partner)
+
+    query = db.query(LogisticsCapacityAllocation).filter(LogisticsCapacityAllocation.logistics_partner_id == normalized_partner)
+    normalized_locker = str(locker_id or "").strip()
+    if normalized_locker:
+        query = query.filter(LogisticsCapacityAllocation.locker_id == normalized_locker)
+
+    normalized_slot_size = str(slot_size or "").strip().upper()
+    if normalized_slot_size:
+        if normalized_slot_size not in {"S", "M", "L", "XL"}:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_SLOT_SIZE", "allowed_slot_sizes": ["L", "M", "S", "XL"]})
+        query = query.filter(LogisticsCapacityAllocation.slot_size == normalized_slot_size)
+
+    if active_only:
+        query = query.filter(LogisticsCapacityAllocation.is_active.is_(True))
+
+    valid_on_date = _parse_iso_date_optional(valid_on, field_name="valid_on")
+    if valid_on_date:
+        query = query.filter(LogisticsCapacityAllocation.valid_from <= valid_on_date)
+        query = query.filter(
+            (LogisticsCapacityAllocation.valid_until.is_(None))
+            | (LogisticsCapacityAllocation.valid_until >= valid_on_date)
+        )
+
+    total = query.count()
+    rows = (
+        query.order_by(
+            LogisticsCapacityAllocation.priority.asc(),
+            LogisticsCapacityAllocation.valid_from.desc(),
+            LogisticsCapacityAllocation.created_at.desc(),
+            LogisticsCapacityAllocation.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return LogisticsCapacityAllocationListOut(ok=True, total=total, items=[_to_capacity_out(row) for row in rows])
+
+
 @router.post("/returns", response_model=LogisticsReturnOut)
 def post_logistics_return(
     payload: LogisticsReturnCreateIn,
@@ -1037,6 +1683,93 @@ def get_logistics_ops_overview(
         by_event_code=_with_trend(event_counter, event_counter_prev),
         by_attempt_status=_with_trend(attempt_counter, attempt_counter_prev),
         by_label_carrier=_with_trend(label_counter, label_counter_prev),
+    )
+
+
+@router.get("/ops/manifests/overview", response_model=LogisticsManifestOpsOverviewOut)
+def get_logistics_manifests_ops_overview(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    partner_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    now_utc = datetime.now(timezone.utc)
+    current_to = _parse_iso_datetime_utc_optional(to, field_name="to") or now_utc
+    current_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (current_to - timedelta(days=7))
+    if current_from > current_to:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."})
+
+    window_span = current_to - current_from
+    previous_to = current_from
+    previous_from = previous_to - window_span
+
+    normalized_partner = str(partner_id or "").strip()
+
+    query_current = db.query(LogisticsManifest).filter(
+        LogisticsManifest.created_at >= current_from,
+        LogisticsManifest.created_at <= current_to,
+    )
+    query_previous = db.query(LogisticsManifest).filter(
+        LogisticsManifest.created_at >= previous_from,
+        LogisticsManifest.created_at <= previous_to,
+    )
+    if normalized_partner:
+        query_current = query_current.filter(LogisticsManifest.logistics_partner_id == normalized_partner)
+        query_previous = query_previous.filter(LogisticsManifest.logistics_partner_id == normalized_partner)
+
+    current_rows = query_current.order_by(LogisticsManifest.created_at.desc()).limit(20000).all()
+    previous_rows = query_previous.order_by(LogisticsManifest.created_at.desc()).limit(20000).all()
+
+    current_status_counter = Counter([str(row.status or "").strip().upper() for row in current_rows if row.status])
+    previous_status_counter = Counter([str(row.status or "").strip().upper() for row in previous_rows if row.status])
+
+    pending_like = int(current_status_counter.get("PENDING", 0) + current_status_counter.get("IN_TRANSIT", 0))
+    partial_or_failed = int(current_status_counter.get("PARTIAL", 0) + current_status_counter.get("FAILED", 0))
+    total_current = len(current_rows)
+    partial_failed_rate = (partial_or_failed / total_current * 100.0) if total_current > 0 else 0.0
+
+    alerts: list[dict] = []
+    if pending_like >= 20:
+        alerts.append(
+            {
+                "type": "L3_MANIFEST_BACKLOG_HIGH",
+                "severity": "HIGH",
+                "threshold": 20,
+                "value": pending_like,
+                "message": "Backlog de manifestos em PENDING/IN_TRANSIT acima do limiar operacional.",
+            }
+        )
+    if partial_failed_rate >= 25.0:
+        alerts.append(
+            {
+                "type": "L3_MANIFEST_PARTIAL_FAILED_RATE_HIGH",
+                "severity": "HIGH",
+                "threshold": 25.0,
+                "value": round(partial_failed_rate, 2),
+                "message": "Taxa de manifestos PARTIAL/FAILED acima do limiar operacional.",
+            }
+        )
+
+    confidence_badge = "HIGH"
+    if alerts:
+        confidence_badge = "LOW"
+    elif pending_like >= 8 or partial_failed_rate >= 10.0:
+        confidence_badge = "MEDIUM"
+
+    return LogisticsManifestOpsOverviewOut(
+        ok=True,
+        **{"from": _to_iso_utc(current_from), "to": _to_iso_utc(current_to)},
+        partner_id=normalized_partner or None,
+        confidence_badge=confidence_badge,
+        totals={
+            "current_total": total_current,
+            "previous_total": len(previous_rows),
+            "pending_or_in_transit": pending_like,
+            "partial_or_failed": partial_or_failed,
+            "partial_failed_rate_pct": round(partial_failed_rate, 2),
+        },
+        by_status=_with_trend(current_status_counter, previous_status_counter),
+        alerts=alerts,
     )
 
 

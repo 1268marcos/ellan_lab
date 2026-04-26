@@ -1180,6 +1180,342 @@ Quando inbound_deliveries.status → 'PICKED_UP':
 | `POST` | `/logistics/{partner_id}/capacity` | Cria/atualiza reserva por slot_size |
 | `GET` | `/logistics/{partner_id}/carrier-rates` | Tabela de fretes |
 
+#### Kickoff técnico L-3 (backend-first) — D1..D3
+
+##### D1 — Fundação de dados + contratos mínimos de manifesto/capacidade
+- [~] **Objetivo**: subir base transacional de L-3 com migração idempotente, modelos e contratos estáveis para integração incremental.
+- [~] **Entregáveis técnicos**:
+  - migrações idempotentes para `logistics_manifests`, `logistics_manifest_items`, `logistics_capacity_allocations`, `logistics_carrier_rates`;
+  - models SQLAlchemy + registro em bootstrap de DB;
+  - schemas Pydantic iniciais para create/list/status de manifestos e capacidade;
+  - auditoria OPS padrão (`before/after`) para criação/alteração crítica de manifesto e capacidade.
+- [~] **Critérios de aceite (profissional)**:
+  - startup sem erro com migração aplicada em ambiente limpo e ambiente já migrado;
+  - constraints e índices principais válidos (status enum/check, índices de busca operacional);
+  - endpoints respondendo com contratos consistentes e mensagens de erro operacionais claras.
+- [~] **Evidência obrigatória**:
+  - saída de inicialização/migração com sucesso;
+  - `GET` técnico de verificação de tabelas com registros esperados;
+  - chamadas API com payload/resposta para `POST /logistics/manifests` e `POST /logistics/{partner_id}/capacity`.
+
+###### Checklist de evidências D1 (status de execução)
+
+- [x] Contratos base publicados para `POST /logistics/manifests` e `POST /logistics/{partner_id}/capacity`.
+- [x] Contratos base publicados para `GET /logistics/manifests` e `GET /logistics/{partner_id}/capacity`.
+- [x] Exemplos de `curl` + payload esperado documentados no bloco de evidência rápida D1.
+- [ ] Capturar evidência real de startup/migração em ambiente limpo (log completo da inicialização).
+- [ ] Capturar evidência real de startup/migração em ambiente já migrado (sem regressão/idempotente).
+- [ ] Executar `GET` técnico de verificação das tabelas L-3 e anexar retorno real.
+- [ ] Validar chamadas reais dos 4 endpoints com `X-Correlation-Id` e anexar resposta efetiva.
+
+###### Evidência técnica rápida D1 (2 POST + 2 GET)
+
+1) **POST /logistics/manifests**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/manifests" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d1-manifest-create-001" \
+  -d '{
+    "logistics_partner_id": "lpt_001",
+    "locker_id": "locker_sp_001",
+    "manifest_date": "2026-04-26",
+    "carrier_route_code": "R-SP-CENTRO-01",
+    "carrier_vehicle_id": "VAN-77",
+    "expected_parcel_count": 24,
+    "carrier_note": "janela da manhã"
+  }'
+```
+
+```json
+{
+  "id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+  "logistics_partner_id": "lpt_001",
+  "locker_id": "locker_sp_001",
+  "manifest_date": "2026-04-26",
+  "carrier_route_code": "R-SP-CENTRO-01",
+  "carrier_vehicle_id": "VAN-77",
+  "expected_parcel_count": 24,
+  "actual_parcel_count": 0,
+  "status": "PENDING",
+  "dispatched_at": null,
+  "delivered_at": null,
+  "carrier_note": "janela da manhã",
+  "created_at": "2026-04-26T10:28:30.100000+00:00",
+  "updated_at": "2026-04-26T10:28:30.100000+00:00"
+}
+```
+
+2) **POST /logistics/{partner_id}/capacity**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/lpt_001/capacity" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d1-capacity-upsert-001" \
+  -d '{
+    "locker_id": "locker_sp_001",
+    "slot_size": "M",
+    "reserved_slots": 40,
+    "valid_from": "2026-04-26",
+    "valid_until": "2026-05-10",
+    "priority": 80,
+    "notes": "reserva campanha semana 18",
+    "is_active": true
+  }'
+```
+
+```json
+{
+  "id": "5db1b77f-2a8f-4efe-8a18-630ea2af1001",
+  "logistics_partner_id": "lpt_001",
+  "locker_id": "locker_sp_001",
+  "slot_size": "M",
+  "reserved_slots": 40,
+  "valid_from": "2026-04-26",
+  "valid_until": "2026-05-10",
+  "priority": 80,
+  "notes": "reserva campanha semana 18",
+  "is_active": true,
+  "created_at": "2026-04-26T10:29:05.200000+00:00"
+}
+```
+
+3) **GET /logistics/manifests (list)**
+
+```bash
+curl -sS "http://localhost:8000/logistics/manifests?logistics_partner_id=lpt_001&status=PENDING&manifest_date_from=2026-04-20&manifest_date_to=2026-04-30&limit=20&offset=0" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+      "logistics_partner_id": "lpt_001",
+      "locker_id": "locker_sp_001",
+      "manifest_date": "2026-04-26",
+      "carrier_route_code": "R-SP-CENTRO-01",
+      "carrier_vehicle_id": "VAN-77",
+      "expected_parcel_count": 24,
+      "actual_parcel_count": 0,
+      "status": "PENDING",
+      "dispatched_at": null,
+      "delivered_at": null,
+      "carrier_note": "janela da manhã",
+      "created_at": "2026-04-26T10:28:30.100000+00:00",
+      "updated_at": "2026-04-26T10:28:30.100000+00:00"
+    }
+  ]
+}
+```
+
+4) **GET /logistics/{partner_id}/capacity (list/filtro ativo)**
+
+```bash
+curl -sS "http://localhost:8000/logistics/lpt_001/capacity?active_only=true&valid_on=2026-04-28&limit=50&offset=0" \
+  -H "Authorization: Bearer <TOKEN_OPS>"
+```
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "5db1b77f-2a8f-4efe-8a18-630ea2af1001",
+      "logistics_partner_id": "lpt_001",
+      "locker_id": "locker_sp_001",
+      "slot_size": "M",
+      "reserved_slots": 40,
+      "valid_from": "2026-04-26",
+      "valid_until": "2026-05-10",
+      "priority": 80,
+      "notes": "reserva campanha semana 18",
+      "is_active": true,
+      "created_at": "2026-04-26T10:29:05.200000+00:00"
+    }
+  ]
+}
+```
+
+> Nota operacional D1: os IDs/timestamps acima são exemplos de payload esperado; na validação real, registrar resposta efetiva do ambiente e correlation IDs usados no plantão.
+
+##### D2 — Fluxo funcional de manifesto + reconciliação expected vs actual
+- [~] **Objetivo**: operacionalizar ciclo do manifesto (criação, itens, fechamento) com cálculo de divergência e rastreabilidade.
+- [~] **Entregáveis técnicos**:
+  - implementação funcional de `POST /logistics/manifests`, `GET /logistics/manifests/{id}/items`, `POST /logistics/manifests/{id}/close`, `POST /logistics/manifests/{id}/items/{item_id}/exception`;
+  - regra de fechamento com classificação (`DELIVERED`, `PARTIAL`, `FAILED`) por comparação `expected_parcel_count` vs itens processados;
+  - auditoria operacional com ações específicas de L-3 (`L3_MANIFEST_CREATE`, `L3_MANIFEST_CLOSE`, `L3_MANIFEST_ITEM_EXCEPTION`).
+
+###### Kickoff de execução D2 (iniciado)
+
+- [~] Abrir implementação de `GET /logistics/manifests/{id}/items` usando `logistics_manifest_items`.
+- [~] Definir contrato de `POST /logistics/manifests/{id}/close` com idempotência de fechamento.
+- [x] Definir contrato e implementar `POST /logistics/manifests/{id}/items/{item_id}/exception` com trilha de auditoria e idempotência.
+- [x] Implementar regra de cálculo `expected_parcel_count` vs processados (`DELIVERED|PARTIAL|FAILED`).
+- [ ] Publicar evidência de smoke funcional D2 (cenário sucesso + cenário parcial).
+
+###### Checklist de governança D2 (documentado vs execução real)
+
+- [x] **Documentado**: evidência técnica de `POST /logistics/manifests/{id}/items/{item_id}/exception` (sucesso + idempotente).
+- [x] **Documentado**: evidência técnica de `POST /logistics/manifests/{id}/close` (sucesso + idempotente).
+- [x] **Documentado**: contratos e payloads esperados para `GET /logistics/manifests/{id}/items`.
+- [x] **Documentado**: ações de auditoria D2 (`L3_MANIFEST_CREATE`, `L3_MANIFEST_CLOSE`, `L3_MANIFEST_ITEM_EXCEPTION`).
+- [ ] **Pendente execução real**: rodar cenário de sucesso D2 em ambiente com dados reais e anexar resposta efetiva.
+- [ ] **Pendente execução real**: rodar cenário idempotente D2 em ambiente e anexar evidência de não-mutação.
+- [ ] **Pendente execução real**: anexar recorte de `ops_action_audit` comprovando `before/after` por ação crítica.
+- [ ] **Pendente execução real**: registrar decisão go/no-go de D2 com riscos remanescentes explícitos.
+
+###### Evidência técnica rápida D2 (item exception idempotente)
+
+1) **POST /logistics/manifests/{id}/items/{item_id}/exception**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/manifests/a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001/items/101/exception" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d2-manifest-item-exception-001" \
+  -d '{
+    "reason": "etiqueta ilegivel no recebimento"
+  }'
+```
+
+```json
+{
+  "id": 101,
+  "manifest_id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+  "delivery_id": "del_7788",
+  "tracking_code": "TRK-7788-XYZ",
+  "sequence_number": 7,
+  "status": "EXCEPTION",
+  "exception_note": "etiqueta ilegivel no recebimento",
+  "processed_at": "2026-04-26T10:41:12.400000+00:00"
+}
+```
+
+2) **POST idempotente (mesmo item já em EXCEPTION)**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/manifests/a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001/items/101/exception" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d2-manifest-item-exception-002" \
+  -d '{
+    "reason": "reenvio operacional para garantir idempotencia"
+  }'
+```
+
+```json
+{
+  "id": 101,
+  "manifest_id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+  "delivery_id": "del_7788",
+  "tracking_code": "TRK-7788-XYZ",
+  "sequence_number": 7,
+  "status": "EXCEPTION",
+  "exception_note": "etiqueta ilegivel no recebimento",
+  "processed_at": "2026-04-26T10:41:12.400000+00:00"
+}
+```
+
+> Nota operacional D2: no replay idempotente, o endpoint mantém o estado já consolidado do item e registra auditoria com `idempotent=true`, sem mutar `processed_at`.
+
+###### Evidência técnica rápida D2 (`/close` sucesso + idempotente)
+
+1) **POST /logistics/manifests/{id}/close (sucesso)**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/manifests/a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001/close" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d2-manifest-close-001" \
+  -d '{
+    "actual_parcel_count": 22,
+    "carrier_note": "fechamento turno manha"
+  }'
+```
+
+```json
+{
+  "id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+  "logistics_partner_id": "lpt_001",
+  "locker_id": "locker_sp_001",
+  "manifest_date": "2026-04-26",
+  "carrier_route_code": "R-SP-CENTRO-01",
+  "carrier_vehicle_id": "VAN-77",
+  "expected_parcel_count": 24,
+  "actual_parcel_count": 22,
+  "status": "PARTIAL",
+  "dispatched_at": null,
+  "delivered_at": "2026-04-26T10:48:20.100000+00:00",
+  "carrier_note": "fechamento turno manha",
+  "created_at": "2026-04-26T10:28:30.100000+00:00",
+  "updated_at": "2026-04-26T10:48:20.100000+00:00"
+}
+```
+
+2) **POST /logistics/manifests/{id}/close (idempotente)**
+
+```bash
+curl -sS -X POST "http://localhost:8000/logistics/manifests/a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001/close" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_OPS>" \
+  -H "X-Correlation-Id: d2-manifest-close-002" \
+  -d '{
+    "actual_parcel_count": 24,
+    "carrier_note": "tentativa de reprocessamento"
+  }'
+```
+
+```json
+{
+  "id": "a9f8d0a6-9f98-4d5d-bf49-8d3f4adbc001",
+  "logistics_partner_id": "lpt_001",
+  "locker_id": "locker_sp_001",
+  "manifest_date": "2026-04-26",
+  "carrier_route_code": "R-SP-CENTRO-01",
+  "carrier_vehicle_id": "VAN-77",
+  "expected_parcel_count": 24,
+  "actual_parcel_count": 22,
+  "status": "PARTIAL",
+  "dispatched_at": null,
+  "delivered_at": "2026-04-26T10:48:20.100000+00:00",
+  "carrier_note": "fechamento turno manha",
+  "created_at": "2026-04-26T10:28:30.100000+00:00",
+  "updated_at": "2026-04-26T10:48:20.100000+00:00"
+}
+```
+
+> Nota operacional D2 (`/close`): quando o manifesto já está em `DELIVERED|PARTIAL|FAILED`, o endpoint retorna estado consolidado sem recalcular, com auditoria `L3_MANIFEST_CLOSE` marcada como `idempotent=true`.
+- [ ] **Critérios de aceite (profissional)**:
+  - fechamento idempotente (evita dupla transição com resultado inconsistente);
+  - trilha de auditoria completa por ação crítica (incluindo `before/after` no fechamento);
+  - cenário de exceção não quebra lote e mantém consistência do manifesto.
+- [ ] **Evidência obrigatória**:
+  - smoke funcional com cenário sucesso e cenário parcial;
+  - consulta do manifesto final com contagem esperada/real e status coerente;
+  - evidência de auditoria para create/close/exception.
+
+##### D3 — Rota OPS de validação L-3 (janela atual vs anterior)
+- [ ] **Objetivo**: entregar observabilidade operacional do L-3 para NOC, sem depender de consulta manual de tabelas.
+- [ ] **Entregáveis técnicos**:
+  - endpoint `GET /ops/logistics/manifests/overview` com KPIs, tops e comparação temporal;
+  - resposta com `confidence_badge` e alertas operacionais (ex.: aumento de `PARTIAL/FAILED`, backlog de manifestos `PENDING/IN_TRANSIT`);
+  - rota de visualização rápida HTML para inspeção imediata em operação (padrão OPS).
+- [ ] **Critérios de aceite (profissional)**:
+  - filtros de janela e parceiro funcionais com fallback seguro;
+  - cálculo atual vs anterior consistente e validado com dataset controlado;
+  - mensagens de erro e alertas legíveis para operação de plantão.
+- [ ] **Evidência obrigatória**:
+  - chamada da rota OPS com payload real contendo KPIs e comparação;
+  - captura da visualização HTML com indicadores carregados;
+  - checklist go/no-go de D1..D3 marcando riscos remanescentes e plano de mitigação.
+
 ---
 
 ## DOMAIN 3 — PRODUCTS
