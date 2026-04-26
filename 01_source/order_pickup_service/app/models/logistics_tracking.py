@@ -7,6 +7,32 @@ from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integ
 from app.core.db import Base
 
 
+class InboundDelivery(Base):
+    """
+    Modelo mínimo para registrar `inbound_deliveries` no metadata do SQLAlchemy.
+
+    Necessário para resolver ForeignKey("inbound_deliveries.id") usada pelas
+    entidades de returns/logistics sem depender de import circular de outros módulos.
+    """
+
+    __tablename__ = "inbound_deliveries"
+
+    id = Column(String(36), primary_key=True)
+
+
+class LogisticsPartner(Base):
+    """
+    Modelo mínimo para registrar `logistics_partners` no metadata do SQLAlchemy.
+
+    Necessário para resolver ForeignKey("logistics_partners.id") usada em
+    `return_legs` e `sla_breach_events` durante flush/commit.
+    """
+
+    __tablename__ = "logistics_partners"
+
+    id = Column(String(36), primary_key=True)
+
+
 class LogisticsTrackingEvent(Base):
     __tablename__ = "logistics_tracking_events"
 

@@ -10,14 +10,14 @@ set -euo pipefail
 #   OPS_TOKEN=... ./scripts/l3_orders_partner_lookup_oneshot.sh
 #
 # Variáveis opcionais:
-#   BASE_URL (default: http://localhost:8000)
+#   BASE_URL (default: http://localhost:8003)
 #   PARTNER_ID_REAL (default: partner_demo_001)
 #   PARTNER_ORDER_REF_REAL (default: PO-7788)
 #   LIMIT (default: 20)
 #   OFFSET (default: 0)
 #   INVALID_PARTNER_ID (default: partner_invalido_404)
 
-BASE_URL="${BASE_URL:-http://localhost:8000}"
+BASE_URL="${BASE_URL:-http://localhost:8003}"
 OPS_TOKEN="${OPS_TOKEN:-}"
 PARTNER_ID_REAL="${PARTNER_ID_REAL:-partner_demo_001}"
 PARTNER_ORDER_REF_REAL="${PARTNER_ORDER_REF_REAL:-PO-7788}"
