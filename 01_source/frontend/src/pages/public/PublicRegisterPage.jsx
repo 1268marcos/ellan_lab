@@ -215,7 +215,6 @@ export default function PublicRegisterPage() {
                   onClick={() => setShowPassword(!showPassword)}
                   style={togglePasswordStyle}
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  tabIndex={-1}
                 >
                   {showPassword ? "🙈" : "👁️"}
                 </button>
@@ -401,7 +400,10 @@ const heroSectionStyle = {
 };
 
 const backLinkStyle = {
-  display: "inline-block",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 44,
   color: "rgba(255,255,255,0.9)",
   textDecoration: "none",
   fontSize: 14,
@@ -491,7 +493,9 @@ const togglePasswordStyle = {
   border: "none",
   cursor: "pointer",
   fontSize: 18,
-  padding: 4,
+  width: 44,
+  height: 44,
+  padding: 0,
   opacity: 0.6,
   transition: "opacity 0.2s",
 };
@@ -529,9 +533,14 @@ const checkboxStyle = {
   color: "#6b7280",
   cursor: "pointer",
   lineHeight: 1.4,
+  minHeight: 44,
 };
 
 const linkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  minHeight: 32,
+  padding: "2px 4px",
   color: "#667eea",
   textDecoration: "underline",
   fontWeight: 600,
@@ -621,7 +630,7 @@ const dividerStyle = {
   display: "flex",
   alignItems: "center",
   gap: 12,
-  color: "#9ca3af",
+  color: "#475569",
   fontSize: 14,
   margin: "8px 0",
 };
@@ -640,6 +649,11 @@ const footerTextStyle = {
 };
 
 const footerLinkStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 44,
+  padding: "8px 10px",
   color: "#667eea",
   textDecoration: "none",
   fontWeight: 700,

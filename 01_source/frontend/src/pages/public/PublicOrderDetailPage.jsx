@@ -103,6 +103,8 @@ export default function PublicOrderDetailPage() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [forceBusy, setForceBusy] = useState(false);
   const [showFiscalLegend, setShowFiscalLegend] = useState(false);
+  const [copyMessage, setCopyMessage] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -164,6 +166,10 @@ export default function PublicOrderDetailPage() {
   const pickupMessage = useMemo(() => {
     return getPickupMessage(order, pickup);
   }, [order, pickup]);
+  const orderStatusBadge = useMemo(
+    () => getOrderStatusVisual(String(order?.status || "")),
+    [order?.status]
+  );
 
   const receiptCode = useMemo(() => normalize(order?.receipt_code), [order?.receipt_code]);
   const hasOrderForInvoiceActions = Boolean(order?.id);
@@ -268,6 +274,24 @@ export default function PublicOrderDetailPage() {
   const pickedUpAtValue = useMemo(() => {
     return getPickedUpAt(order, pickup);
   }, [order, pickup]);
+  const pickupTimeline = useMemo(() => {
+    const paid = Boolean(order?.paid_at);
+    const released = String(order?.status || "").toUpperCase() === "PAID_PENDING_PICKUP";
+    const picked = pickupRedeemedEffective;
+    return [
+      { key: "created", label: "Pedido criado", done: Boolean(order?.created_at) },
+      { key: "paid", label: "Pago", done: paid },
+      { key: "released", label: "Liberado", done: released || picked },
+      { key: "picked", label: "Retirado", done: picked },
+    ];
+  }, [order?.created_at, order?.paid_at, order?.status, pickupRedeemedEffective]);
+
+  useEffect(() => {
+    const syncViewport = () => setIsMobile(window.innerWidth <= 640);
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
 
   function copyReceiptLink() {
     if (!receiptDeepLink) return;
@@ -283,6 +307,54 @@ export default function PublicOrderDetailPage() {
     } catch {
       setResendMessage("Não foi possível copiar o invoice_id.");
     }
+  }
+
+  async function copyText(value, successLabel) {
+    if (!value) return;
+    try {
+      await navigator.clipboard?.writeText(String(value));
+      setCopyMessage(`${successLabel} copiado.`);
+    } catch {
+      setCopyMessage(`Não foi possível copiar ${successLabel.toLowerCase()}.`);
+    }
+  }
+
+  async function copySupportPayload() {
+    const payload = buildSupportPayload({
+      order,
+      pickup,
+      pickedUpAtValue,
+      receiptDeepLink,
+      receiptPrintUrl,
+      receiptJsonUrl,
+      fiscalStateCode: fiscalState?.code,
+    });
+    await copyText(JSON.stringify(payload, null, 2), "Payload de suporte");
+  }
+
+  function downloadSupportPayload() {
+    const payload = buildSupportPayload({
+      order,
+      pickup,
+      pickedUpAtValue,
+      receiptDeepLink,
+      receiptPrintUrl,
+      receiptJsonUrl,
+      fiscalStateCode: fiscalState?.code,
+    });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json;charset=utf-8",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const safeOrderId = String(order?.id || orderId || "pedido").replace(/[^a-zA-Z0-9_-]/g, "_");
+    a.href = url;
+    a.download = `payload-suporte-${safeOrderId}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    setCopyMessage("Arquivo de payload suporte baixado.");
   }
 
   async function handleResendInvoiceEmail() {
@@ -393,12 +465,58 @@ export default function PublicOrderDetailPage() {
 
         {!loading && !pageLoading && !error && order ? (
           <>
-            <section style={cardStyle}>
+            <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
               <div style={sectionHeaderStyle}>
                 <h2 style={sectionTitleStyle}>Pedido</h2>
                 <p style={sectionMetaStyle}>
-                  Realizado em {formatDateTime(order.created_at)} - ID {order.id}
+                  Realizado em {formatDateTime(order.created_at)} • ID {order.id}
                 </p>
+              </div>
+              <div style={quickStatsGridStyle}>
+                <div style={quickStatCardStyle}>
+                  <span style={quickStatLabelStyle}>Status</span>
+                  <span
+                    style={{
+                      ...statusBadgeStyle,
+                      background: orderStatusBadge.background,
+                      color: orderStatusBadge.color,
+                    }}
+                  >
+                    {order?.status || "-"}
+                  </span>
+                </div>
+                <div style={quickStatCardStyle}>
+                  <span style={quickStatLabelStyle}>Total</span>
+                  <strong>{formatMoneyCents(order.amount_cents, order.currency || "BRL")}</strong>
+                </div>
+                <div style={quickStatCardStyle}>
+                  <span style={quickStatLabelStyle}>Retirada</span>
+                  <strong>
+                    {pickupRedeemedEffective
+                      ? "Concluída"
+                      : formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
+                  </strong>
+                </div>
+              </div>
+              <div style={timelineWrapStyle}>
+                <h3 style={timelineTitleStyle}>Timeline da retirada</h3>
+                <div style={timelineRowStyle}>
+                  {pickupTimeline.map((step) => (
+                    <div key={step.key} style={timelineStepStyle}>
+                      <span
+                        style={{
+                          ...timelineDotStyle,
+                          background: step.done ? "#16a34a" : "#cbd5e1",
+                          color: step.done ? "#ffffff" : "#475569",
+                        }}
+                        aria-label={step.done ? `${step.label} concluído` : `${step.label} pendente`}
+                      >
+                        {step.done ? "✓" : "•"}
+                      </span>
+                      <span style={timelineLabelStyle}>{step.label}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {order.credit_application?.applied ? (
@@ -501,7 +619,7 @@ export default function PublicOrderDetailPage() {
             </section>
 
             {hasOrderForInvoiceActions ? (
-              <section style={cardStyle}>
+              <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
                 <div style={sectionHeaderStyle}>
                   <h2 style={sectionTitleStyle}>Invoice / comprovante fiscal</h2>
                   <p style={sectionMetaStyle}>
@@ -649,6 +767,20 @@ export default function PublicOrderDetailPage() {
                       Copiar invoice_id
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void copySupportPayload()}
+                    style={actionButtonStyle}
+                  >
+                    Copiar tudo (suporte)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadSupportPayload}
+                    style={actionButtonStyle}
+                  >
+                    Baixar payload suporte (.json)
+                  </button>
                 </div>
 
                 <div style={invoiceHintStyle}>
@@ -726,7 +858,7 @@ export default function PublicOrderDetailPage() {
               </section>
             ) : null}
 
-            <section style={cardStyle}>
+            <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
               <div style={sectionHeaderStyle}>
                 <h2 style={sectionTitleStyle}>
                   {pickupRedeemedEffective ? "Retirada concluída" : "Retirada"}
@@ -770,6 +902,35 @@ export default function PublicOrderDetailPage() {
                       }
                     />
                   </div>
+                  <div style={actionsRowStyle}>
+                    <button
+                      type="button"
+                      onClick={() => void copyText(order?.id, "ID do pedido")}
+                      style={actionButtonStyle}
+                    >
+                      Copiar ID do pedido
+                    </button>
+                    {canShowPickupCredentials && (order?.manual_code || pickup?.manual_code_masked) ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void copyText(order?.manual_code || pickup?.manual_code_masked, "Código manual")
+                        }
+                        style={actionButtonStyle}
+                      >
+                        Copiar código manual
+                      </button>
+                    ) : null}
+                    {canShowPickupCredentials && (order?.qr_payload || pickup?.qr_value) ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyText(order?.qr_payload || pickup?.qr_value, "QR payload")}
+                        style={actionButtonStyle}
+                      >
+                        Copiar QR payload
+                      </button>
+                    ) : null}
+                  </div>
 
                   {canShowPickupCredentials ? (
                     <div style={{ marginTop: 16 }}>
@@ -793,11 +954,29 @@ export default function PublicOrderDetailPage() {
                 </div>
               )}
             </section>
+            {copyMessage ? <p style={invoiceResendMsgStyle}>{copyMessage}</p> : null}
           </>
         ) : null}
       </div>
     </main>
   );
+}
+
+function getOrderStatusVisual(status) {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "PICKED_UP" || normalized === "DISPENSED") {
+    return { background: "#dcfce7", color: "#166534" };
+  }
+  if (normalized === "PAID_PENDING_PICKUP") {
+    return { background: "#dbeafe", color: "#1e3a8a" };
+  }
+  if (normalized === "PAYMENT_PENDING") {
+    return { background: "#fef3c7", color: "#92400e" };
+  }
+  if (normalized === "EXPIRED" || normalized === "EXPIRED_CREDIT_50") {
+    return { background: "#fee2e2", color: "#991b1b" };
+  }
+  return { background: "#e5e7eb", color: "#374151" };
 }
 
 function Field({ label, value }) {
@@ -968,6 +1147,57 @@ function getFiscalStateVisual(code) {
   };
 }
 
+function buildSupportPayload({
+  order,
+  pickup,
+  pickedUpAtValue,
+  receiptDeepLink,
+  receiptPrintUrl,
+  receiptJsonUrl,
+  fiscalStateCode,
+}) {
+  const appVersion = String(
+    import.meta.env.VITE_APP_VERSION ||
+    import.meta.env.VITE_RELEASE_VERSION ||
+    import.meta.env.VITE_GIT_SHA ||
+    ""
+  ).trim();
+  const buildId = String(
+    import.meta.env.VITE_BUILD_ID ||
+    import.meta.env.VITE_RELEASE_ID ||
+    ""
+  ).trim();
+
+  return {
+    app_version: appVersion || null,
+    build_id: buildId || null,
+    order_id: order?.id || null,
+    order_status: order?.status || null,
+    payment_status: order?.payment_status || null,
+    receipt_code: order?.receipt_code || null,
+    invoice_id: order?.invoice_id || null,
+    locker: {
+      display_name: getLockerDisplayName(order),
+      locker_id: getLockerTechnicalId(order),
+      address: getLockerFullAddress(order),
+      slot: order?.slot || null,
+    },
+    timestamps: {
+      created_at: order?.created_at || null,
+      paid_at: order?.paid_at || null,
+      expires_at: order?.expires_at || pickup?.expires_at || null,
+      picked_up_at: pickedUpAtValue === "-" ? null : pickedUpAtValue,
+    },
+    pickup: pickup || null,
+    links: {
+      receipt_deep_link: receiptDeepLink || null,
+      receipt_print_url: receiptPrintUrl || null,
+      receipt_json_url: receiptJsonUrl || null,
+    },
+    fiscal_state: fiscalStateCode || null,
+  };
+}
+
 const creditAppliedBannerStyle = {
   marginBottom: 16,
   padding: "12px 14px",
@@ -1046,13 +1276,13 @@ const infoTitleStyle = {
 
 const infoTextStyle = {
   margin: 0,
-  color: "#666",
+  color: "#475569",
   lineHeight: 1.5,
 };
 
 const mutedStyle = {
   margin: 0,
-  color: "#666",
+  color: "#475569",
 };
 
 const sectionHeaderStyle = {
@@ -1067,7 +1297,7 @@ const sectionTitleStyle = {
 const sectionMetaStyle = {
   marginTop: 6,
   marginBottom: 0,
-  color: "#666",
+  color: "#475569",
   fontSize: 14,
 };
 
@@ -1087,7 +1317,7 @@ const fieldStyle = {
 const fieldLabelStyle = {
   display: "block",
   fontSize: 12,
-  color: "#666",
+  color: "#475569",
   marginBottom: 6,
 };
 
@@ -1098,7 +1328,7 @@ const fieldValueStyle = {
 const labelStyle = {
   display: "block",
   fontSize: 12,
-  color: "#666",
+  color: "#475569",
   marginBottom: 6,
 };
 
@@ -1226,4 +1456,80 @@ const invoiceSourceBadgeStyle = {
   color: "#0c4a6e",
   fontSize: 13,
   fontWeight: 700,
+};
+
+const quickStatsGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  marginBottom: 14,
+};
+
+const quickStatCardStyle = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  padding: "10px 12px",
+  background: "rgba(255,255,255,0.7)",
+  display: "grid",
+  gap: 4,
+};
+
+const quickStatLabelStyle = {
+  fontSize: 12,
+  color: "#475569",
+  fontWeight: 600,
+};
+
+const statusBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  width: "fit-content",
+  borderRadius: 999,
+  padding: "4px 10px",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const timelineWrapStyle = {
+  marginBottom: 16,
+  border: "1px solid #e5e7eb",
+  borderRadius: 10,
+  padding: "10px 12px",
+  background: "rgba(255,255,255,0.7)",
+};
+
+const timelineTitleStyle = {
+  margin: "0 0 8px",
+  fontSize: 14,
+  color: "#334155",
+};
+
+const timelineRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+  gap: 8,
+};
+
+const timelineStepStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const timelineDotStyle = {
+  width: 22,
+  height: 22,
+  borderRadius: 999,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 12,
+  fontWeight: 700,
+  flexShrink: 0,
+};
+
+const timelineLabelStyle = {
+  fontSize: 12,
+  color: "#334155",
+  fontWeight: 600,
 };

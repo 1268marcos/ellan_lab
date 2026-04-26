@@ -105,7 +105,6 @@ export default function PublicForgotPasswordPage() {
                   onClick={() => setShowPassword((prev) => !prev)}
                   style={togglePasswordStyle}
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  tabIndex={-1}
                 >
                   {showPassword ? "🙈" : "👁️"}
                 </button>

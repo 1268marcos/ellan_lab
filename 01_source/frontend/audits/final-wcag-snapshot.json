@@ -1,0 +1,70 @@
+{
+  "generatedAt": "2026-04-26T21:55:40.735Z",
+  "avgLighthouseAccessibility": 100,
+  "lighthouse": [
+    {
+      "route": "/",
+      "score": 100,
+      "failedCount": 0,
+      "failed": []
+    },
+    {
+      "route": "/login",
+      "score": 100,
+      "failedCount": 0,
+      "failed": []
+    },
+    {
+      "route": "/cadastro",
+      "score": 100,
+      "failedCount": 0,
+      "failed": []
+    },
+    {
+      "route": "/comprar",
+      "score": 100,
+      "failedCount": 0,
+      "failed": []
+    },
+    {
+      "route": "/checkout",
+      "score": 100,
+      "failedCount": 0,
+      "failed": []
+    }
+  ],
+  "axe": [
+    {
+      "route": "/",
+      "violationCount": 0,
+      "violations": []
+    },
+    {
+      "route": "/login",
+      "violationCount": 0,
+      "violations": []
+    },
+    {
+      "route": "/cadastro",
+      "violationCount": 0,
+      "violations": []
+    },
+    {
+      "route": "/comprar",
+      "violationCount": 0,
+      "violations": []
+    },
+    {
+      "route": "/checkout",
+      "violationCount": 0,
+      "violations": []
+    }
+  ],
+  "impactTotals": {
+    "critical": 0,
+    "serious": 0,
+    "moderate": 0,
+    "minor": 0,
+    "unknown": 0
+  }
+}

@@ -46,6 +46,17 @@ export default function PickupCodeVirtualKeyboard({
     };
   }, []);
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen, internal, codeLength]);
+
 
 
   function showToast(message) {
@@ -127,12 +138,31 @@ export default function PickupCodeVirtualKeyboard({
 
 
   return (
-    <div style={overlay}>
-      <div style={container}>
+    <div
+      style={overlay}
+      onClick={handleClose}
+      role="button"
+      tabIndex={0}
+      aria-label="Fechar teclado de codigo de retirada"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleClose();
+        }
+      }}
+    >
+      <div
+        style={container}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pickup-code-keyboard-title"
+        aria-describedby="pickup-code-keyboard-description"
+      >
         <div style={header}>
           <div style={headerTextBlock}>
-            <div style={title}>🔐 Código de Retirada</div>
-            <div style={subtitle}>
+            <div id="pickup-code-keyboard-title" style={title}>🔐 Código de Retirada</div>
+            <div id="pickup-code-keyboard-description" style={subtitle}>
               Digite os {codeLength} dígitos do código manual para liberar a retirada.
             </div>
           </div>
@@ -149,6 +179,7 @@ export default function PickupCodeVirtualKeyboard({
             style={displayInput}
             placeholder={"•".repeat(codeLength)}
             inputMode="none"
+            aria-label="Codigo de retirada digitado"
           />
 
           <div style={counterRow}>
@@ -173,7 +204,7 @@ export default function PickupCodeVirtualKeyboard({
 
 
         {toastMessage ? (
-        <div style={toastStyle}>
+        <div style={toastStyle} role="status" aria-live="polite">
             {toastMessage}
         </div>
         ) : null}

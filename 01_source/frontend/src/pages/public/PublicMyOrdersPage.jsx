@@ -8,24 +8,45 @@
 // Responsivo - Mobile-first, grid adaptativo
 // Funcional - Filtro por status com contagem em tempo real
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchMyOrders } from "../../services/publicApi";
 
+const STATUS_CONFIG = {
+  PAYMENT_PENDING: { bg: "#fef3c7", color: "#92400e", label: "Pagamento Pendente", accent: "#f59e0b" },
+  PAID_PENDING_PICKUP: { bg: "#dbeafe", color: "#1e40af", label: "Aguardando Retirada", accent: "#3b82f6" },
+  PICKED_UP: { bg: "#d1fae5", color: "#065f46", label: "Retirado", accent: "#10b981" },
+  EXPIRED: { bg: "#fee2e2", color: "#991b1b", label: "Expirado", accent: "#ef4444" },
+  CANCELLED: { bg: "#f3f4f6", color: "#374151", label: "Cancelado", accent: "#9ca3af" },
+  DISPENSED: { bg: "#ede9fe", color: "#4c1d95", label: "Máquina Liberou", accent: "#8b5cf6" },
+};
+
+const ORDERS_PREFS_STORAGE_KEY = "ellan_public_my_orders_prefs_v1";
+
+const DEFAULT_ORDERS_PREFS = {
+  filter: "all",
+  sortBy: "recent",
+  searchQuery: "",
+  page: 1,
+};
+
+function readStoredOrdersPrefs() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ORDERS_PREFS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
 // Componente de Badge de Status
 function OrderStatusBadge({ status }) {
-  const statusConfig = {
-    PAYMENT_PENDING: { bg: "#fef3c7", color: "#92400e", label: "Pagamento Pendente" },
-    PAID_PENDING_PICKUP: { bg: "#dbeafe", color: "#1e40af", label: "Aguardando Retirada" },
-    PICKED_UP: { bg: "#d1fae5", color: "#065f46", label: "Retirado" }, // sem evidência por: sensor OU comprovação humana
-    EXPIRED: { bg: "#fee2e2", color: "#991b1b", label: "Expirado" },
-    CANCELLED: { bg: "#f3f4f6", color: "#374151", label: "Cancelado" },
-    DISPENSED: { bg: "rgba(95,61,196,0.22)", color: "rgba(95,61,196,0.45)", label: "Máquina Liberou" },
-    // DISPENSED: { bg: "#d1fae5", color: "#065f46", label: "Retirado" },  // só quando for possível ter evidência
-  };
-
-  const config = statusConfig[status] || { bg: "#f3f4f6", color: "#374151", label: status };
+  const config = STATUS_CONFIG[status] || { bg: "#f3f4f6", color: "#374151", label: status, accent: "#cbd5e1" };
 
   return (
     <span
@@ -47,6 +68,7 @@ function OrderStatusBadge({ status }) {
 
 // Componente de Card de Pedido
 function OrderCard({ order }) {
+  const statusVisual = STATUS_CONFIG[order?.status] || { accent: "#cbd5e1" };
   const formatDateTime = (value) => {
     if (!value) return "—";
     const date = new Date(value);
@@ -67,13 +89,29 @@ function OrderCard({ order }) {
     }).format(numeric / 100);
   };
 
+  const formatShortDate = (value) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(date);
+  };
+
   return (
     <Link
       to={`/meus-pedidos/${order.id}`}
       style={orderCardLinkStyle}
       aria-label={`Ver detalhes do pedido ${order.id}`}
     >
-      <article style={orderCardStyle}>
+      <article
+        style={{
+          ...orderCardStyle,
+          borderLeft: `5px solid ${statusVisual.accent}`,
+          boxShadow: "0 8px 20px rgba(15, 23, 42, 0.06)",
+        }}
+      >
         {/* Header do Card */}
         <div style={cardHeaderStyle}>
           <div style={orderIdContainerStyle}>
@@ -101,6 +139,14 @@ function OrderCard({ order }) {
             <div style={infoItemStyle}>
               <span style={infoLabelStyle}>Gaveta</span>
               <span style={infoValueStyle}>{order.slot ?? "—"}</span>
+            </div>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Ref parceiro</span>
+              <span style={infoValueStyle}>{order.partner_order_ref || "—"}</span>
+            </div>
+            <div style={infoItemStyle}>
+              <span style={infoLabelStyle}>Expira em</span>
+              <span style={infoValueStyle}>{formatShortDate(order.expires_at)}</span>
             </div>
           </div>
 
@@ -134,7 +180,28 @@ function OrderCard({ order }) {
 }
 
 // Componente de Filtro
-function OrdersFilter({ filter, onFilterChange, searchQuery, onSearchQueryChange, totalOrders, matchedOrders }) {
+function OrdersFilter({
+  filter,
+  onFilterChange,
+  sortBy,
+  onSortByChange,
+  searchQuery,
+  onSearchQueryChange,
+  onResetPreferences,
+  totalOrders,
+  matchedOrders,
+  statusCounts,
+}) {
+  const statusOptions = [
+    { key: "all", label: "Todos" },
+    { key: "PAYMENT_PENDING", label: "Pagamento pendente" },
+    { key: "PAID_PENDING_PICKUP", label: "Aguardando retirada" },
+    { key: "PICKED_UP", label: "Retirados" },
+    { key: "DISPENSED", label: "Liberados na máquina" },
+    { key: "EXPIRED", label: "Expirados" },
+    { key: "CANCELLED", label: "Cancelados" },
+  ];
+
   return (
     <div style={filterContainerStyle}>
       <div style={filterLeftStyle}>
@@ -154,15 +221,68 @@ function OrdersFilter({ filter, onFilterChange, searchQuery, onSearchQueryChange
           <option value="CANCELLED">Cancelados</option>
         </select>
       </div>
-      <input
-        value={searchQuery}
-        onChange={(e) => onSearchQueryChange(e.target.value)}
-        style={searchInputStyle}
-        placeholder="Buscar por pedido/ref parceiro"
-        aria-label="Buscar por order_id ou partner_order_ref"
-      />
-      <div style={filterHintStyle}>
-        {matchedOrders} de {totalOrders} {totalOrders === 1 ? "pedido" : "pedidos"}
+      <div style={filterLeftStyle}>
+        <span style={filterIconStyle}>↕️</span>
+        <select
+          value={sortBy}
+          onChange={(e) => onSortByChange(e.target.value)}
+          style={filterSelectStyle}
+          aria-label="Ordenar pedidos"
+        >
+          <option value="recent">Mais recente</option>
+          <option value="oldest">Mais antigo</option>
+          <option value="amount_desc">Maior valor</option>
+          <option value="amount_asc">Menor valor</option>
+          <option value="status">Status (A-Z)</option>
+        </select>
+      </div>
+      <div style={searchWrapStyle}>
+        <input
+          value={searchQuery}
+          onChange={(e) => onSearchQueryChange(e.target.value)}
+          style={searchInputStyle}
+          placeholder="Buscar por pedido/ref parceiro"
+          aria-label="Buscar por order_id ou partner_order_ref"
+        />
+        {searchQuery ? (
+          <button
+            type="button"
+            onClick={() => onSearchQueryChange("")}
+            style={clearSearchButtonStyle}
+            aria-label="Limpar busca"
+          >
+            Limpar
+          </button>
+        ) : null}
+      </div>
+      <div style={filterHintRowStyle}>
+        <div style={filterHintStyle}>
+          {matchedOrders} de {totalOrders} {totalOrders === 1 ? "pedido" : "pedidos"}
+        </div>
+        <button
+          type="button"
+          onClick={onResetPreferences}
+          style={resetPrefsButtonStyle}
+          aria-label="Resetar preferências de filtro, ordenação, busca e página"
+        >
+          Resetar preferências
+        </button>
+      </div>
+      <div style={chipsWrapStyle} role="tablist" aria-label="Atalhos de status">
+        {statusOptions.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => onFilterChange(option.key)}
+            style={{
+              ...statusChipStyle,
+              ...(filter === option.key ? statusChipActiveStyle : {}),
+            }}
+            aria-pressed={filter === option.key}
+          >
+            {option.label} ({statusCounts[option.key] ?? 0})
+          </button>
+        ))}
       </div>
     </div>
   );
@@ -204,11 +324,27 @@ function OrderSkeleton() {
 // Página Principal
 export default function PublicMyOrdersPage() {
   const { token, loading: authLoading, isAuthenticated } = useAuth();
+  const storedPrefs = readStoredOrdersPrefs();
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
   const [pageLoading, setPageLoading] = useState(true);
-  const [filter, setFilter] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState(() =>
+    typeof storedPrefs?.filter === "string" ? storedPrefs.filter : DEFAULT_ORDERS_PREFS.filter
+  );
+  const [sortBy, setSortBy] = useState(() =>
+    typeof storedPrefs?.sortBy === "string" ? storedPrefs.sortBy : DEFAULT_ORDERS_PREFS.sortBy
+  );
+  const [searchQuery, setSearchQuery] = useState(() =>
+    typeof storedPrefs?.searchQuery === "string"
+      ? storedPrefs.searchQuery
+      : DEFAULT_ORDERS_PREFS.searchQuery
+  );
+  const [page, setPage] = useState(() =>
+    Number.isInteger(storedPrefs?.page) && storedPrefs.page > 0
+      ? storedPrefs.page
+      : DEFAULT_ORDERS_PREFS.page
+  );
+  const pageSize = 6;
 
   // Carregar pedidos
   useEffect(() => {
@@ -264,6 +400,81 @@ export default function PublicMyOrdersPage() {
     });
   }, [items, filter, searchQuery]);
 
+  const sortedItems = useMemo(() => {
+    const list = [...filteredItems];
+    const getAmount = (item) => Number(item?.amount_cents || 0);
+    const getCreatedAt = (item) => {
+      const t = new Date(item?.created_at || 0).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    };
+    if (sortBy === "oldest") {
+      return list.sort((a, b) => getCreatedAt(a) - getCreatedAt(b));
+    }
+    if (sortBy === "amount_desc") {
+      return list.sort((a, b) => getAmount(b) - getAmount(a));
+    }
+    if (sortBy === "amount_asc") {
+      return list.sort((a, b) => getAmount(a) - getAmount(b));
+    }
+    if (sortBy === "status") {
+      return list.sort((a, b) => String(a?.status || "").localeCompare(String(b?.status || "")));
+    }
+    return list.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
+  }, [filteredItems, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedItems.length / pageSize));
+  const pagedItems = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return sortedItems.slice(start, start + pageSize);
+  }, [sortedItems, page]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filter, searchQuery, sortBy]);
+
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const payload = {
+      filter,
+      sortBy,
+      searchQuery,
+      page,
+    };
+    try {
+      window.localStorage.setItem(ORDERS_PREFS_STORAGE_KEY, JSON.stringify(payload));
+    } catch {
+      // ignora falhas de persistência (storage bloqueado/quota)
+    }
+  }, [filter, sortBy, searchQuery, page]);
+
+  const handleResetPreferences = useCallback(() => {
+    setFilter(DEFAULT_ORDERS_PREFS.filter);
+    setSortBy(DEFAULT_ORDERS_PREFS.sortBy);
+    setSearchQuery(DEFAULT_ORDERS_PREFS.searchQuery);
+    setPage(DEFAULT_ORDERS_PREFS.page);
+  }, []);
+
+  const statusCounts = useMemo(() => {
+    const counts = {
+      all: items.length,
+      PAYMENT_PENDING: 0,
+      PAID_PENDING_PICKUP: 0,
+      PICKED_UP: 0,
+      DISPENSED: 0,
+      EXPIRED: 0,
+      CANCELLED: 0,
+    };
+    for (const item of items) {
+      const status = String(item?.status || "").toUpperCase();
+      if (counts[status] != null) counts[status] += 1;
+    }
+    return counts;
+  }, [items]);
+
   return (
     <main style={pageStyle}>
       <div style={containerStyle}>
@@ -279,6 +490,26 @@ export default function PublicMyOrdersPage() {
             ✨ Novo Pedido
           </Link>
         </header>
+        {!authLoading && !pageLoading && !error && items.length > 0 ? (
+          <section style={summaryBarStyle} aria-label="Resumo dos pedidos">
+            <div style={summaryMetricStyle}>
+              <span style={summaryMetricLabelStyle}>Total</span>
+              <strong style={summaryMetricValueStyle}>{statusCounts.all}</strong>
+            </div>
+            <div style={summaryMetricStyle}>
+              <span style={summaryMetricLabelStyle}>Aguardando retirada</span>
+              <strong style={summaryMetricValueStyle}>{statusCounts.PAID_PENDING_PICKUP}</strong>
+            </div>
+            <div style={summaryMetricStyle}>
+              <span style={summaryMetricLabelStyle}>Pagamento pendente</span>
+              <strong style={summaryMetricValueStyle}>{statusCounts.PAYMENT_PENDING}</strong>
+            </div>
+            <div style={summaryMetricStyle}>
+              <span style={summaryMetricLabelStyle}>Expirados</span>
+              <strong style={summaryMetricValueStyle}>{statusCounts.EXPIRED}</strong>
+            </div>
+          </section>
+        ) : null}
 
         {/* Estado de Carregamento */}
         {authLoading || pageLoading ? (
@@ -318,14 +549,18 @@ export default function PublicMyOrdersPage() {
             <OrdersFilter
               filter={filter}
               onFilterChange={setFilter}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
               searchQuery={searchQuery}
               onSearchQueryChange={setSearchQuery}
+              onResetPreferences={handleResetPreferences}
               totalOrders={items.length}
-              matchedOrders={filteredItems.length}
+              matchedOrders={sortedItems.length}
+              statusCounts={statusCounts}
             />
 
             {/* Lista */}
-            {filteredItems.length === 0 ? (
+            {sortedItems.length === 0 ? (
               <div style={noResultsStyle}>
                 <span style={noResultsIconStyle}>🔍</span>
                 <p>Nenhum pedido encontrado com este filtro.</p>
@@ -338,9 +573,30 @@ export default function PublicMyOrdersPage() {
               </div>
             ) : (
               <div style={listWrapperStyle}>
-                {filteredItems.map((item) => (
+                {pagedItems.map((item) => (
                   <OrderCard key={item.id} order={item} />
                 ))}
+                <div style={paginationWrapStyle}>
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+                    style={paginationButtonStyle}
+                    disabled={page <= 1}
+                  >
+                    ← Anterior
+                  </button>
+                  <span style={paginationInfoStyle}>
+                    Página {page} de {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setPage((prev) => Math.min(totalPages, prev + 1))}
+                    style={paginationButtonStyle}
+                    disabled={page >= totalPages}
+                  >
+                    Próxima →
+                  </button>
+                </div>
               </div>
             )}
           </>
@@ -442,9 +698,9 @@ const orderCardLinkStyle = {
 const orderCardStyle = {
   padding: 20,
   borderRadius: 16,
-  border: "1px solid #e2e8f0",
+  border: "1px solid #dbe3ef",
   background: "white",
-  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
+  boxShadow: "0 4px 10px rgba(0, 0, 0, 0.05)",
   transition: "all 0.2s",
 };
 
@@ -571,6 +827,13 @@ const filterContainerStyle = {
   flexWrap: "wrap",
 };
 
+const searchWrapStyle = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
 const filterLeftStyle = {
   display: "flex",
   alignItems: "center",
@@ -594,10 +857,30 @@ const filterSelectStyle = {
   minWidth: 200,
 };
 
+const filterHintRowStyle = {
+  width: "100%",
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
 const filterHintStyle = {
   fontSize: 13,
   color: "#718096",
   fontWeight: 500,
+};
+
+const resetPrefsButtonStyle = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#334155",
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: "pointer",
 };
 
 const searchInputStyle = {
@@ -610,6 +893,98 @@ const searchInputStyle = {
   fontWeight: 600,
   outline: "none",
   minWidth: 220,
+};
+
+const clearSearchButtonStyle = {
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#334155",
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: "pointer",
+};
+
+const chipsWrapStyle = {
+  width: "100%",
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+  marginTop: 6,
+};
+
+const statusChipStyle = {
+  padding: "8px 10px",
+  borderRadius: 999,
+  border: "1px solid #cbd5e1",
+  background: "#f8fafc",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+};
+
+const statusChipActiveStyle = {
+  border: "1px solid #4f46e5",
+  background: "#e0e7ff",
+  color: "#312e81",
+};
+
+const summaryBarStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 10,
+  marginBottom: 16,
+};
+
+const summaryMetricStyle = {
+  border: "1px solid #e2e8f0",
+  background: "white",
+  borderRadius: 12,
+  padding: "10px 12px",
+  display: "grid",
+  gap: 4,
+};
+
+const summaryMetricLabelStyle = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 600,
+};
+
+const summaryMetricValueStyle = {
+  fontSize: 20,
+  lineHeight: 1,
+  color: "#0f172a",
+};
+
+const paginationWrapStyle = {
+  marginTop: 10,
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  borderTop: "1px solid #e2e8f0",
+  paddingTop: 10,
+};
+
+const paginationButtonStyle = {
+  padding: "9px 12px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+  color: "#0f172a",
+  fontWeight: 600,
+  fontSize: 13,
+  cursor: "pointer",
+};
+
+const paginationInfoStyle = {
+  fontSize: 13,
+  color: "#475569",
+  fontWeight: 600,
 };
 
 const emptyStateStyle = {

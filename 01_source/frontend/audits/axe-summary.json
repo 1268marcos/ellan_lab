@@ -1,0 +1,195 @@
+[
+  {
+    "route": "/",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/login",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/cadastro",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/comprar",
+    "violationCount": 1,
+    "violations": [
+      {
+        "id": "color-contrast",
+        "impact": "serious",
+        "help": "Elements must meet minimum color contrast ratio thresholds",
+        "nodes": [
+          {
+            "target": [
+              "article:nth-child(1) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(2) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(3) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(4) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(5) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(6) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(7) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(8) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(9) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(10) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(11) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(12) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(13) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(14) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(15) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(16) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(17) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(18) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(19) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(20) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(21) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(22) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(23) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(24) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(25) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(26) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(27) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(28) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(29) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(30) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(31) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          },
+          {
+            "target": [
+              "article:nth-child(32) > div > div:nth-child(1) > div:nth-child(2) > div:nth-child(2)"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "route": "/checkout",
+    "violationCount": 0,
+    "violations": []
+  }
+]

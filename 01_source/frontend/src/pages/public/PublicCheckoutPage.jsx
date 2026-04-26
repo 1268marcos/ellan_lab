@@ -730,6 +730,7 @@ export default function PublicCheckoutPage() {
     return (
       <main style={pageStyle}>
         <div style={containerStyle}>
+          <h1 className="sr-only">Checkout</h1>
           <CheckoutSteps currentStep={0} />
           <section style={errorCardStyle}>
             <div style={errorIconStyle}>⚠️</div>

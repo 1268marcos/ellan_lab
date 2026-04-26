@@ -619,9 +619,33 @@ export default function OpsLogisticsReturnsPage() {
               <tbody>
                 {items.map((row) => {
                   const rowStatus = String(row?.status || "").toUpperCase();
+                  const rowId = String(row?.id || "");
+                  const isSelected = rowId && rowId === selectedReturnId;
                   return (
-                    <tr key={row.id} onClick={() => setSelectedReturnId(String(row?.id || ""))} style={{ cursor: "pointer" }}>
-                      <td style={tdStyle}>{row.id}</td>
+                    <tr
+                      key={row.id}
+                      style={{
+                        background: isSelected ? "rgba(59,130,246,0.15)" : "transparent",
+                      }}
+                    >
+                      <td style={tdStyle}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedReturnId(rowId)}
+                          style={{
+                            border: "1px solid rgba(148,163,184,0.55)",
+                            borderRadius: 8,
+                            background: isSelected ? "rgba(59,130,246,0.35)" : "rgba(148,163,184,0.12)",
+                            color: "#E2E8F0",
+                            padding: "4px 8px",
+                            cursor: "pointer",
+                            fontWeight: 600,
+                          }}
+                          aria-label={`Selecionar return ${rowId}`}
+                        >
+                          {row.id}
+                        </button>
+                      </td>
                       <td style={tdStyle}>{row.original_delivery_id}</td>
                       <td style={tdStyle}>{row.requester_type}</td>
                       <td style={tdStyle}>{row.return_reason_code}</td>
@@ -642,7 +666,7 @@ export default function OpsLogisticsReturnsPage() {
             <strong style={{ color: "#BFDBFE" }}>Guia rápido D2</strong>
             <ul style={{ margin: "8px 0 0 16px", color: "#CBD5E1", fontSize: 12, display: "grid", gap: 4 }}>
               <li>Use filtros para montar fila por status, requester e reason.</li>
-              <li>Clique na linha para selecionar `return_request_id` automaticamente.</li>
+              <li>Use o botao no Return ID para selecionar `return_request_id` automaticamente.</li>
               <li>Aplique `PATCH status` e depois `Emitir label` para avançar fluxo.</li>
               <li>Valide SLA com filtro pelo retorno selecionado.</li>
             </ul>

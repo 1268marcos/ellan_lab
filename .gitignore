@@ -164,6 +164,20 @@ MANIFEST
 .ruff_cache/
 
 
+
+# ==============================================================
+# [14] TESTES LIGHTHOUSE - RELATÓRIOS E ARTEFATOS
+#
+# não altere a posição aqui
+# 
+# ==============================================================
+
+# Ignora qualquer arquivo ou pasta com "lighthouse" dentro do frontend
+01_source/frontend/**/*lighthouse*
+01_source/frontend/**/*lighthouse*/
+
+
+
 # ==============================================================
 # [7] TESTES — APENAS RESULTADOS, NUNCA O CÓDIGO
 # O código de teste (07_tests/) DEVE estar no repositório.

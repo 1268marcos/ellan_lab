@@ -65,15 +65,35 @@ const EmailReceiptModal = ({
     return () => clearTimeout(timer);
   }, [isSuccess]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        handleClose();
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
     <>
       <div style={modalOverlayStyle} onClick={handleClose}>
-        <div style={modalCardStyle} onClick={(e) => e.stopPropagation()}>
+        <div
+          style={modalCardStyle}
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="email-receipt-modal-title"
+          aria-describedby="email-receipt-modal-description"
+        >
           <div style={modalHeaderStyle}>
-            <h3 style={modalTitleStyle}>Receber comprovante fiscal</h3>
-            <button onClick={handleClose} style={printModalCloseButtonStyle}>
+            <h3 id="email-receipt-modal-title" style={modalTitleStyle}>Receber comprovante fiscal</h3>
+            <button type="button" onClick={handleClose} style={printModalCloseButtonStyle}>
               Fechar
             </button>
           </div>
@@ -91,16 +111,17 @@ const EmailReceiptModal = ({
               )}
             </div>
 
-            <p style={descriptionStyle}>
+            <p id="email-receipt-modal-description" style={descriptionStyle}>
               Digite seu email para receber o código do comprovante fiscal. 
               Você poderá consultar e imprimir o comprovante posteriormente.
             </p>
 
             <form onSubmit={handleSubmit}>
-              <label style={labelStyle}>
+              <label htmlFor="email-receipt-input" style={labelStyle}>
                 Email *
                 <div style={emailInputWrapperStyle}>
                   <input
+                    id="email-receipt-input"
                     type="email"
                     value={email}
                     onChange={(e) => handleEmailChange(e.target.value)}
@@ -120,9 +141,9 @@ const EmailReceiptModal = ({
                 </div>
               </label>
 
-              {emailError && <div style={errorTextStyle}>{emailError}</div>}
-              {errorMessage && <div style={serverErrorTextStyle}>{errorMessage}</div>}
-              {successMessage && <div style={serverSuccessTextStyle}>{successMessage}</div>}
+              {emailError && <div style={errorTextStyle} role="alert">{emailError}</div>}
+              {errorMessage && <div style={serverErrorTextStyle} role="alert">{errorMessage}</div>}
+              {successMessage && <div style={serverSuccessTextStyle} role="status" aria-live="polite">{successMessage}</div>}
 
               <div style={buttonGroupStyle}>
                 {!isSuccess && (

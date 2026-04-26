@@ -1,0 +1,27 @@
+[
+  {
+    "route": "/",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/login",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/cadastro",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/comprar",
+    "violationCount": 0,
+    "violations": []
+  },
+  {
+    "route": "/checkout",
+    "violationCount": 0,
+    "violations": []
+  }
+]

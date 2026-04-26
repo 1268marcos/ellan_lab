@@ -506,17 +506,17 @@ export default function DevBaseCatalogPage() {
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Countries</h2>
           <div style={gridStyle}>
-            <input placeholder="Filtro (code/nome/continente)" style={inputStyle} value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} />
+            <input aria-label="Filtro de countries por code, nome ou continente" placeholder="Filtro (code/nome/continente)" style={inputStyle} value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} />
             <button style={buttonSecondaryStyle} onClick={loadCountries} disabled={loading}>Buscar</button>
           </div>
           <div style={gridStyle}>
-            <input placeholder="code (BR, PT...)" style={inputStyle} value={countryForm.code} onChange={(e) => setCountryForm((s) => ({ ...s, code: e.target.value }))} />
-            <input placeholder="name" style={inputStyle} value={countryForm.name} onChange={(e) => setCountryForm((s) => ({ ...s, name: e.target.value }))} />
-            <input placeholder="continent" style={inputStyle} value={countryForm.continent} onChange={(e) => setCountryForm((s) => ({ ...s, continent: e.target.value }))} />
-            <input placeholder="default_currency" style={inputStyle} value={countryForm.default_currency} onChange={(e) => setCountryForm((s) => ({ ...s, default_currency: e.target.value }))} />
-            <input placeholder="default_timezone" style={inputStyle} value={countryForm.default_timezone} onChange={(e) => setCountryForm((s) => ({ ...s, default_timezone: e.target.value }))} />
-            <input placeholder="address_format" style={inputStyle} value={countryForm.address_format} onChange={(e) => setCountryForm((s) => ({ ...s, address_format: e.target.value }))} />
-            <label style={checkStyle}><input type="checkbox" checked={countryForm.is_active} onChange={(e) => setCountryForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
+            <input aria-label="Código do country" placeholder="code (BR, PT...)" style={inputStyle} value={countryForm.code} onChange={(e) => setCountryForm((s) => ({ ...s, code: e.target.value }))} />
+            <input aria-label="Nome do country" placeholder="name" style={inputStyle} value={countryForm.name} onChange={(e) => setCountryForm((s) => ({ ...s, name: e.target.value }))} />
+            <input aria-label="Continente do country" placeholder="continent" style={inputStyle} value={countryForm.continent} onChange={(e) => setCountryForm((s) => ({ ...s, continent: e.target.value }))} />
+            <input aria-label="Moeda padrão do country" placeholder="default_currency" style={inputStyle} value={countryForm.default_currency} onChange={(e) => setCountryForm((s) => ({ ...s, default_currency: e.target.value }))} />
+            <input aria-label="Fuso horário padrão do country" placeholder="default_timezone" style={inputStyle} value={countryForm.default_timezone} onChange={(e) => setCountryForm((s) => ({ ...s, default_timezone: e.target.value }))} />
+            <input aria-label="Formato de endereço do country" placeholder="address_format" style={inputStyle} value={countryForm.address_format} onChange={(e) => setCountryForm((s) => ({ ...s, address_format: e.target.value }))} />
+            <label style={checkStyle}><input aria-label="Country ativo" type="checkbox" checked={countryForm.is_active} onChange={(e) => setCountryForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
             <button style={buttonPrimaryStyle} onClick={saveCountry} disabled={loading}>Salvar country</button>
           </div>
           <div style={tableWrapperStyle}>
@@ -538,18 +538,18 @@ export default function DevBaseCatalogPage() {
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Provinces</h2>
           <div style={gridStyle}>
-            <input placeholder="Filtro (code/nome/region)" style={inputStyle} value={provinceFilter} onChange={(e) => setProvinceFilter(e.target.value)} />
-            <input placeholder="country_code (opcional)" style={inputStyle} value={provinceCountryFilter} onChange={(e) => setProvinceCountryFilter(e.target.value)} />
+            <input aria-label="Filtro de provinces por code, nome ou region" placeholder="Filtro (code/nome/region)" style={inputStyle} value={provinceFilter} onChange={(e) => setProvinceFilter(e.target.value)} />
+            <input aria-label="Filtro de provinces por country_code" placeholder="country_code (opcional)" style={inputStyle} value={provinceCountryFilter} onChange={(e) => setProvinceCountryFilter(e.target.value)} />
             <button style={buttonSecondaryStyle} onClick={loadProvinces} disabled={loading}>Buscar</button>
           </div>
           <div style={gridStyle}>
-            <input placeholder="code (BR-SP, PT-11...)" style={inputStyle} value={provinceForm.code} onChange={(e) => setProvinceForm((s) => ({ ...s, code: e.target.value }))} />
-            <input placeholder="name" style={inputStyle} value={provinceForm.name} onChange={(e) => setProvinceForm((s) => ({ ...s, name: e.target.value }))} />
-            <input placeholder="country_code" style={inputStyle} value={provinceForm.country_code} onChange={(e) => setProvinceForm((s) => ({ ...s, country_code: e.target.value }))} />
-            <input placeholder="province_code_original" style={inputStyle} value={provinceForm.province_code_original} onChange={(e) => setProvinceForm((s) => ({ ...s, province_code_original: e.target.value }))} />
-            <input placeholder="region (legado/compat)" style={inputStyle} value={provinceForm.region} onChange={(e) => setProvinceForm((s) => ({ ...s, region: e.target.value }))} />
-            <input placeholder="timezone" style={inputStyle} value={provinceForm.timezone} onChange={(e) => setProvinceForm((s) => ({ ...s, timezone: e.target.value }))} />
-            <label style={checkStyle}><input type="checkbox" checked={provinceForm.is_active} onChange={(e) => setProvinceForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
+            <input aria-label="Código da province" placeholder="code (BR-SP, PT-11...)" style={inputStyle} value={provinceForm.code} onChange={(e) => setProvinceForm((s) => ({ ...s, code: e.target.value }))} />
+            <input aria-label="Nome da province" placeholder="name" style={inputStyle} value={provinceForm.name} onChange={(e) => setProvinceForm((s) => ({ ...s, name: e.target.value }))} />
+            <input aria-label="Country code da province" placeholder="country_code" style={inputStyle} value={provinceForm.country_code} onChange={(e) => setProvinceForm((s) => ({ ...s, country_code: e.target.value }))} />
+            <input aria-label="Código original da province" placeholder="province_code_original" style={inputStyle} value={provinceForm.province_code_original} onChange={(e) => setProvinceForm((s) => ({ ...s, province_code_original: e.target.value }))} />
+            <input aria-label="Region da province" placeholder="region (legado/compat)" style={inputStyle} value={provinceForm.region} onChange={(e) => setProvinceForm((s) => ({ ...s, region: e.target.value }))} />
+            <input aria-label="Timezone da province" placeholder="timezone" style={inputStyle} value={provinceForm.timezone} onChange={(e) => setProvinceForm((s) => ({ ...s, timezone: e.target.value }))} />
+            <label style={checkStyle}><input aria-label="Province ativa" type="checkbox" checked={provinceForm.is_active} onChange={(e) => setProvinceForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
             <button style={buttonPrimaryStyle} onClick={saveProvince} disabled={loading}>Salvar province</button>
           </div>
           <div style={tableWrapperStyle}>
@@ -571,24 +571,24 @@ export default function DevBaseCatalogPage() {
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Capability Locker Location (PostGIS-safe)</h2>
           <div style={gridStyle}>
-            <input placeholder="Filtro (locker/cidade/bairro)" style={inputStyle} value={lockerLocationFilter} onChange={(e) => setLockerLocationFilter(e.target.value)} />
-            <input placeholder="country_code (ex: BR, PT)" style={inputStyle} value={lockerLocationCountryFilter} onChange={(e) => setLockerLocationCountryFilter(e.target.value)} />
-            <input placeholder="province_code (ex: BR-SP, PT-11)" style={inputStyle} value={lockerLocationProvinceFilter} onChange={(e) => setLockerLocationProvinceFilter(e.target.value)} />
+            <input aria-label="Filtro de locker locations por locker, cidade ou bairro" placeholder="Filtro (locker/cidade/bairro)" style={inputStyle} value={lockerLocationFilter} onChange={(e) => setLockerLocationFilter(e.target.value)} />
+            <input aria-label="Filtro de locker locations por country code" placeholder="country_code (ex: BR, PT)" style={inputStyle} value={lockerLocationCountryFilter} onChange={(e) => setLockerLocationCountryFilter(e.target.value)} />
+            <input aria-label="Filtro de locker locations por province code" placeholder="province_code (ex: BR-SP, PT-11)" style={inputStyle} value={lockerLocationProvinceFilter} onChange={(e) => setLockerLocationProvinceFilter(e.target.value)} />
             <button style={buttonSecondaryStyle} onClick={loadLockerLocations} disabled={loading}>Buscar</button>
           </div>
           <div style={gridStyle}>
-            <input placeholder="external_id (locker_id)" style={inputStyle} value={lockerLocationForm.external_id} onChange={(e) => setLockerLocationForm((s) => ({ ...s, external_id: e.target.value }))} />
-            <input placeholder="province_code" style={inputStyle} value={lockerLocationForm.province_code} onChange={(e) => setLockerLocationForm((s) => ({ ...s, province_code: e.target.value }))} />
-            <input placeholder="city_name" style={inputStyle} value={lockerLocationForm.city_name} onChange={(e) => setLockerLocationForm((s) => ({ ...s, city_name: e.target.value }))} />
-            <input placeholder="district" style={inputStyle} value={lockerLocationForm.district} onChange={(e) => setLockerLocationForm((s) => ({ ...s, district: e.target.value }))} />
-            <input placeholder="postal_code" style={inputStyle} value={lockerLocationForm.postal_code} onChange={(e) => setLockerLocationForm((s) => ({ ...s, postal_code: e.target.value }))} />
-            <input placeholder="latitude (-90..90)" style={inputStyle} value={lockerLocationForm.latitude} onChange={(e) => setLockerLocationForm((s) => ({ ...s, latitude: e.target.value }))} />
-            <input placeholder="longitude (-180..180)" style={inputStyle} value={lockerLocationForm.longitude} onChange={(e) => setLockerLocationForm((s) => ({ ...s, longitude: e.target.value }))} />
-            <input placeholder="timezone" style={inputStyle} value={lockerLocationForm.timezone} onChange={(e) => setLockerLocationForm((s) => ({ ...s, timezone: e.target.value }))} />
-            <input placeholder="address_street" style={inputStyle} value={lockerLocationForm.address_street} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_street: e.target.value }))} />
-            <input placeholder="address_number" style={inputStyle} value={lockerLocationForm.address_number} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_number: e.target.value }))} />
-            <input placeholder="address_complement" style={inputStyle} value={lockerLocationForm.address_complement} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_complement: e.target.value }))} />
-            <label style={checkStyle}><input type="checkbox" checked={lockerLocationForm.is_active} onChange={(e) => setLockerLocationForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
+            <input aria-label="External ID do locker location" placeholder="external_id (locker_id)" style={inputStyle} value={lockerLocationForm.external_id} onChange={(e) => setLockerLocationForm((s) => ({ ...s, external_id: e.target.value }))} />
+            <input aria-label="Province code do locker location" placeholder="province_code" style={inputStyle} value={lockerLocationForm.province_code} onChange={(e) => setLockerLocationForm((s) => ({ ...s, province_code: e.target.value }))} />
+            <input aria-label="Cidade do locker location" placeholder="city_name" style={inputStyle} value={lockerLocationForm.city_name} onChange={(e) => setLockerLocationForm((s) => ({ ...s, city_name: e.target.value }))} />
+            <input aria-label="Bairro do locker location" placeholder="district" style={inputStyle} value={lockerLocationForm.district} onChange={(e) => setLockerLocationForm((s) => ({ ...s, district: e.target.value }))} />
+            <input aria-label="CEP do locker location" placeholder="postal_code" style={inputStyle} value={lockerLocationForm.postal_code} onChange={(e) => setLockerLocationForm((s) => ({ ...s, postal_code: e.target.value }))} />
+            <input aria-label="Latitude do locker location" placeholder="latitude (-90..90)" style={inputStyle} value={lockerLocationForm.latitude} onChange={(e) => setLockerLocationForm((s) => ({ ...s, latitude: e.target.value }))} />
+            <input aria-label="Longitude do locker location" placeholder="longitude (-180..180)" style={inputStyle} value={lockerLocationForm.longitude} onChange={(e) => setLockerLocationForm((s) => ({ ...s, longitude: e.target.value }))} />
+            <input aria-label="Timezone do locker location" placeholder="timezone" style={inputStyle} value={lockerLocationForm.timezone} onChange={(e) => setLockerLocationForm((s) => ({ ...s, timezone: e.target.value }))} />
+            <input aria-label="Rua do locker location" placeholder="address_street" style={inputStyle} value={lockerLocationForm.address_street} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_street: e.target.value }))} />
+            <input aria-label="Número do endereço do locker location" placeholder="address_number" style={inputStyle} value={lockerLocationForm.address_number} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_number: e.target.value }))} />
+            <input aria-label="Complemento do endereço do locker location" placeholder="address_complement" style={inputStyle} value={lockerLocationForm.address_complement} onChange={(e) => setLockerLocationForm((s) => ({ ...s, address_complement: e.target.value }))} />
+            <label style={checkStyle}><input aria-label="Locker location ativo" type="checkbox" checked={lockerLocationForm.is_active} onChange={(e) => setLockerLocationForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
             <button style={buttonPrimaryStyle} onClick={saveLockerLocation} disabled={loading}>Salvar locker location</button>
           </div>
           <div style={tableWrapperStyle}>
@@ -624,16 +624,16 @@ export default function DevBaseCatalogPage() {
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Products / SKUs</h2>
           <div style={gridStyle}>
-            <input placeholder="Filtro (sku/nome/descrição)" style={inputStyle} value={productFilter} onChange={(e) => setProductFilter(e.target.value)} />
+            <input aria-label="Filtro de produtos por SKU, nome ou descricao" placeholder="Filtro (sku/nome/descrição)" style={inputStyle} value={productFilter} onChange={(e) => setProductFilter(e.target.value)} />
             <button style={buttonSecondaryStyle} onClick={loadProducts} disabled={loading}>Buscar</button>
           </div>
           <div style={gridStyle}>
-            <input placeholder="sku id" style={inputStyle} value={productForm.id} onChange={(e) => setProductForm((s) => ({ ...s, id: e.target.value }))} />
-            <input placeholder="name" style={inputStyle} value={productForm.name} onChange={(e) => setProductForm((s) => ({ ...s, name: e.target.value }))} />
-            <input placeholder="amount_cents" style={inputStyle} type="number" value={productForm.amount_cents} onChange={(e) => setProductForm((s) => ({ ...s, amount_cents: Number(e.target.value || 0) }))} />
-            <input placeholder="currency" style={inputStyle} value={productForm.currency} onChange={(e) => setProductForm((s) => ({ ...s, currency: e.target.value }))} />
-            <input placeholder="description" style={inputStyle} value={productForm.description} onChange={(e) => setProductForm((s) => ({ ...s, description: e.target.value }))} />
-            <label style={checkStyle}><input type="checkbox" checked={productForm.is_active} onChange={(e) => setProductForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
+            <input aria-label="ID do produto" placeholder="sku id" style={inputStyle} value={productForm.id} onChange={(e) => setProductForm((s) => ({ ...s, id: e.target.value }))} />
+            <input aria-label="Nome do produto" placeholder="name" style={inputStyle} value={productForm.name} onChange={(e) => setProductForm((s) => ({ ...s, name: e.target.value }))} />
+            <input aria-label="Preco em centavos do produto" placeholder="amount_cents" style={inputStyle} type="number" value={productForm.amount_cents} onChange={(e) => setProductForm((s) => ({ ...s, amount_cents: Number(e.target.value || 0) }))} />
+            <input aria-label="Moeda do produto" placeholder="currency" style={inputStyle} value={productForm.currency} onChange={(e) => setProductForm((s) => ({ ...s, currency: e.target.value }))} />
+            <input aria-label="Descricao do produto" placeholder="description" style={inputStyle} value={productForm.description} onChange={(e) => setProductForm((s) => ({ ...s, description: e.target.value }))} />
+            <label style={checkStyle}><input aria-label="Produto ativo" type="checkbox" checked={productForm.is_active} onChange={(e) => setProductForm((s) => ({ ...s, is_active: e.target.checked }))} />ativo</label>
             <button style={buttonPrimaryStyle} onClick={saveProduct} disabled={loading}>Salvar SKU</button>
           </div>
           <div style={tableWrapperStyle}>

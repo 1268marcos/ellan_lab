@@ -124,6 +124,25 @@ body {
   outline-offset: 2px;
 }
 
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 3000;
+  background: #111827;
+  color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 12px;
+  top: 12px;
+}
+
 /* ============================================
    LAYOUT
    ============================================ */
@@ -314,13 +333,13 @@ body {
 }
 
 .btn--primary {
-  background: var(--color-primary);
+  background: #4f46e5;
   color: white;
 }
 
 .btn--primary:hover,
 .btn--primary:focus {
-  background: var(--color-primary-dark);
+  background: #4338ca;
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
@@ -662,6 +681,11 @@ body {
   animation: fadeIn 0.3s ease;
 }
 
+.mobile-menu-overlay:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: -3px;
+}
+
 .mobile-menu {
   position: fixed;
   top: 0;
@@ -741,6 +765,14 @@ body {
 
 .mobile-nav-link:hover {
   color: #667eea;
+}
+
+.mobile-nav-link:focus-visible,
+.mobile-ops-toggle:focus-visible,
+.mobile-logout-button:focus-visible,
+.hamburger-menu:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
 }
 
 .mobile-nav-link--primary {

@@ -183,6 +183,19 @@ function TopNav() {
     };
   }, [isMobileMenuOpen]);
 
+  useEffect(() => {
+    if (!isMobileMenuOpen) return;
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setIsMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isMobileMenuOpen]);
+
   const handleLogout = () => {
     logout();
     navigate("/login", { replace: true });
@@ -282,6 +295,9 @@ function TopNav() {
 
   return (
     <>
+      <a href="#main-content" className="skip-link">
+        Pular para o conteudo principal
+      </a>
       <nav 
         className="top-nav" 
         style={{ background: getNavBackground() }}
@@ -290,7 +306,7 @@ function TopNav() {
       >
         {/* Logo ou marca */}
         <div className="nav-brand">
-          <Link to="/" className="nav-brand-link" aria-label="Página inicial">
+          <Link to="/" className="nav-brand-link">
             ELLAN Lab
           </Link>
         </div>
@@ -298,7 +314,7 @@ function TopNav() {
         {/* Menu Desktop - visível apenas em telas grandes */}
         <div className="nav-desktop">
           {publicLinks.map(link => (
-            <Link key={link.to} className="nav-link" to={link.to} aria-label={link.aria}>
+            <Link key={link.to} className="nav-link" to={link.to}>
               {link.label}
             </Link>
           ))}
@@ -327,7 +343,6 @@ function TopNav() {
                       key={link.to}
                       className="nav-ops-item"
                       to={link.to}
-                      aria-label={link.aria}
                       onClick={() => setIsMyAreaMenuOpen(false)}
                     >
                       {link.label}
@@ -364,7 +379,6 @@ function TopNav() {
                         key={link.to}
                         className="nav-ops-item"
                         to={link.to}
-                        aria-label={link.aria}
                         onClick={() => setIsOpsMenuOpen(false)}
                       >
                         <span>{link.label}</span>
@@ -391,7 +405,7 @@ function TopNav() {
               <div
                 className="user-avatar"
                 title={fullName}
-                aria-label={`Conta de ${fullName}`}
+                aria-label={fullName ? `Conta de ${fullName}` : "Conta"}
                 role="img"
               >
                 {initials}
@@ -399,7 +413,7 @@ function TopNav() {
               <button 
                 onClick={handleLogout} 
                 className="nav-button nav-button--logout"
-                aria-label="Sair da conta"
+                aria-label="Sair"
               >
                 Sair
               </button>
@@ -419,11 +433,13 @@ function TopNav() {
           
           <button
             ref={buttonRef}
+            type="button"
             className={`hamburger-menu ${isMobileMenuOpen ? 'active' : ''}`}
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             aria-label={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
             aria-expanded={isMobileMenuOpen}
             aria-controls="mobile-menu"
+            aria-haspopup="dialog"
           >
             <span className="hamburger-line"></span>
             <span className="hamburger-line"></span>
@@ -497,16 +513,31 @@ function TopNav() {
 
       {/* Overlay do menu mobile */}
       {isMobileMenuOpen && (
-        <div className="mobile-menu-overlay" onClick={() => setIsMobileMenuOpen(false)}>
+        <div
+          className="mobile-menu-overlay"
+          onClick={() => setIsMobileMenuOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setIsMobileMenuOpen(false);
+            }
+          }}
+          role="button"
+          tabIndex={0}
+          aria-label="Fechar menu de navegacao movel"
+        >
           <div 
             ref={menuRef}
             className="mobile-menu"
             id="mobile-menu"
             role="dialog"
+            aria-modal="true"
+            aria-labelledby="mobile-menu-title"
             aria-label="Menu de navegação móvel"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mobile-menu-header">
+              <h2 id="mobile-menu-title" className="sr-only">Menu de navegacao</h2>
               {!loading && isAuthenticated && (
                 <div className="mobile-user-details">
                   <div className="user-avatar-large">{initials}</div>
@@ -559,7 +590,6 @@ function TopNav() {
                           key={link.to}
                           className="mobile-nav-link"
                           to={link.to}
-                          aria-label={link.aria}
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <span>{link.label}</span>
@@ -656,7 +686,7 @@ function AppContent() {
   return (
     <div className="app-container">
       <TopNav />
-      <main id="main-content" role="main">
+      <div id="main-content">
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<PublicLandingPage />} />
@@ -966,7 +996,7 @@ function AppContent() {
             />
           </Routes>
         </Suspense>
-      </main>
+      </div>
       {/* <footer className="app-footer" role="contentinfo">
         <p>&copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.</p>
       </footer> */}

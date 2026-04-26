@@ -658,6 +658,17 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   }, []);
 
   useEffect(() => {
+    if (!printModalOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        closePrintSimulation();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [printModalOpen]);
+
+  useEffect(() => {
     fetchLockersOnce();
   }, [region, mode]);
 
@@ -1783,10 +1794,28 @@ export default function RegionPage({ region, mode = "kiosk" }) {
 
       {/* Modal de Simulação de Impressão */}
       {printModalOpen && (
-        <div style={printModalOverlayStyle}>
-          <div style={printModalCardStyle}>
+        <div
+          style={printModalOverlayStyle}
+          onClick={closePrintSimulation}
+          role="button"
+          tabIndex={0}
+          aria-label="Fechar simulacao de impressao"
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              closePrintSimulation();
+            }
+          }}
+        >
+          <div
+            style={printModalCardStyle}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="print-modal-title"
+          >
             <div style={printModalHeaderStyle}>
-              <div style={printModalTitleStyle}>Simulação de impressão</div>
+              <div id="print-modal-title" style={printModalTitleStyle}>Simulação de impressão</div>
               <button type="button" onClick={closePrintSimulation} style={printModalCloseButtonStyle}>Fechar</button>
             </div>
 

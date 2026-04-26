@@ -24,6 +24,16 @@ const SORT_LABELS = {
   [SORT_TYPES.PRICE_DESC]: "💰 Maior Preço",
 };
 
+function formatCatalogSnapshot(iso) {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
 function formatMoney(cents, currency, locale = undefined) {
   const value = Number(cents);
   if (!Number.isFinite(value)) return "-";
@@ -209,6 +219,8 @@ export default function PublicCatalogPage() {
   const [expandedCards, setExpandedCards] = useState(new Set());
   const [sortType, setSortType] = useState(SORT_TYPES.SLOT);
   const [searchTerm, setSearchTerm] = useState("");
+  /** Quando o runtime não manda updated_at, ainda exibimos o horário do último GET do catálogo. */
+  const [catalogFetchedAt, setCatalogFetchedAt] = useState(null);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
@@ -291,11 +303,13 @@ export default function PublicCatalogPage() {
       if (!lockerId) {
         setItems([]);
         setExpandedCards(new Set());
+        setCatalogFetchedAt(null);
         return;
       }
 
       setLoadingCatalog(true);
       setError("");
+      setCatalogFetchedAt(null);
 
       try {
         const headers = { "X-Locker-Id": lockerId };
@@ -361,9 +375,11 @@ export default function PublicCatalogPage() {
 
         setItems(normalized);
         setExpandedCards(new Set());
+        setCatalogFetchedAt(new Date());
       } catch (e) {
         setError(String(e?.message || e));
         setItems([]);
+        setCatalogFetchedAt(null);
       } finally {
         setLoadingCatalog(false);
       }
@@ -403,6 +419,32 @@ export default function PublicCatalogPage() {
         return itemsCopy;
     }
   }, [filteredBySearch, sortType]);
+
+  /** Gavetas com estado operacional AVAILABLE (compra liberada). */
+  const availableForPurchaseCount = useMemo(
+    () => filteredBySearch.filter((i) => i.is_operationally_available).length,
+    [filteredBySearch]
+  );
+
+  /** Maior updated_at conhecido entre catálogo e estados do locker (referência de frescor). */
+  const catalogStateSnapshotAt = useMemo(() => {
+    let maxMs = null;
+    for (const row of items) {
+      if (!row?.updated_at) continue;
+      const ms = new Date(row.updated_at).getTime();
+      if (Number.isNaN(ms)) continue;
+      if (maxMs == null || ms > maxMs) maxMs = ms;
+    }
+    return maxMs != null ? new Date(maxMs) : null;
+  }, [items]);
+
+  const displaySnapshotAt = catalogStateSnapshotAt || catalogFetchedAt;
+
+  const catalogSnapshotLabel = displaySnapshotAt
+    ? formatCatalogSnapshot(displaySnapshotAt.toISOString())
+    : null;
+
+  const showCatalogMetrics = !loadingCatalog && !loadingLockers && Boolean(lockerId);
 
   const clearSearch = useCallback(() => {
     setSearchTerm("");
@@ -622,7 +664,7 @@ export default function PublicCatalogPage() {
                   transform: "translateY(-50%)",
                   fontSize: "var(--font-size-lg)",
                   pointerEvents: "none",
-                  color: "#9ca3af",
+                  color: "#64748b",
                 }}
               >
                 🔍
@@ -675,7 +717,7 @@ export default function PublicCatalogPage() {
                 style={{
                   marginTop: "var(--spacing-2)",
                   fontSize: "var(--font-size-xs)",
-                  color: "#e0e7ff",
+                  color: "#f8fafc",
                   textAlign: "right",
                 }}
               >
@@ -774,19 +816,61 @@ export default function PublicCatalogPage() {
                   }}
                 >
                   Produtos disponíveis
-                  {sortedItems.length > 0 ? (
+                  {showCatalogMetrics ? (
                     <span
                       style={{
                         fontSize: "var(--font-size-base)",
                         fontWeight: 500,
-                        color: "#e0e7ff",
+                        color: "#f8fafc",
                         marginLeft: "var(--spacing-2)",
                       }}
                     >
-                      ({sortedItems.length})
+                      ({availableForPurchaseCount})
                     </span>
                   ) : null}
                 </h2>
+                {showCatalogMetrics ? (
+                  <p
+                    style={{
+                      margin: "var(--spacing-2) 0 0 0",
+                      fontSize: "var(--font-size-sm)",
+                      fontWeight: 500,
+                      color: "rgba(248, 250, 252, 0.92)",
+                      maxWidth: 560,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    {catalogSnapshotLabel && displaySnapshotAt ? (
+                      catalogStateSnapshotAt ? (
+                        <>
+                          Última leitura dos estados das gavetas:{" "}
+                          <time dateTime={displaySnapshotAt.toISOString()}>
+                            {catalogSnapshotLabel}
+                          </time>
+                          .
+                        </>
+                      ) : (
+                        <>
+                          Catálogo carregado em{" "}
+                          <time dateTime={displaySnapshotAt.toISOString()}>
+                            {catalogSnapshotLabel}
+                          </time>{" "}
+                          (sem horário por gaveta no servidor).
+                        </>
+                      )
+                    ) : (
+                      <>Horário da última leitura dos estados indisponível.</>
+                    )}
+                    {sortedItems.length > 0 ? (
+                      <>
+                        {" "}
+                        Listando {sortedItems.length}{" "}
+                        {sortedItems.length === 1 ? "posição" : "posições"} do catálogo
+                        {debouncedSearchTerm.trim() ? " (filtro da busca)" : ""}.
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
               </div>
 
               <div
@@ -840,8 +924,7 @@ export default function PublicCatalogPage() {
                 gap: "var(--spacing-3)",
                 gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
               }}
-              role="list"
-              aria-label="Lista de produtos disponíveis"
+              aria-label="Lista completa do catálogo por gaveta, incluindo indisponíveis para compra"
             >
               {sortedItems.length === 0 ? (
                 <article
@@ -911,7 +994,6 @@ export default function PublicCatalogPage() {
                             ? "2px solid #667eea"
                             : "none",
                       }}
-                      role="listitem"
                     >
                       <div
                         style={{
@@ -972,7 +1054,7 @@ export default function PublicCatalogPage() {
                                   ? "var(--font-size-xl)"
                                   : "var(--font-size-lg)",
                                 fontWeight: isPriceHighlighted ? 900 : 800,
-                                color: isPriceHighlighted ? "#f59e0b" : "var(--color-primary)",
+                                color: isPriceHighlighted ? "#92400e" : "#1e3a8a",
                               }}
                             >
                               {formatMoney(item.amount_cents, item.currency)}

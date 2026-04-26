@@ -27,23 +27,6 @@ const QUICK_ADDITIONS = [
   { label: "@uol.com.br", value: "@uol.com.br", tooltip: "Adiciona @uol.com.br" },
 ];
 
-// Nova função para lidar com os atalhos (adicionar junto com as outras)
-const handleQuickAdd = (addition) => {
-  let newValue = inputValue;
-  
-  // Evita duplicar '@' se o input já terminar com ele
-  if (inputValue.endsWith('@') && addition.startsWith('@')) {
-    newValue = inputValue.slice(0, -1) + addition;
-  } 
-  else {
-    newValue = inputValue + addition;
-  }
-  
-  const cleanedValue = cleanEmailInput(newValue);
-  setInputValue(cleanedValue);
-  onChange(cleanedValue);
-};
-
 const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
   const [inputValue, setInputValue] = useState(value);
 
@@ -106,6 +89,20 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
     onChange(newValue);
   };
 
+  const handleQuickAdd = (addition) => {
+    let newValue = inputValue;
+
+    if (inputValue.endsWith("@") && addition.startsWith("@")) {
+      newValue = inputValue.slice(0, -1) + addition;
+    } else {
+      newValue = inputValue + addition;
+    }
+
+    const cleanedValue = cleanEmailInput(newValue);
+    setInputValue(cleanedValue);
+    onChange(cleanedValue);
+  };
+
   // Layout do teclado
   const keyboardRows = [
     ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
@@ -129,25 +126,61 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
     }
   }
 
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        onClose?.();
+      }
+    };
+    document.addEventListener("keydown", handleEscape);
+    return () => document.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
+  const handleOverlayClose = () => {
+    onClose?.();
+  };
+
   return (
-    <div style={keyboardOverlay}>
-      <div style={keyboardContainer}>
+    <div
+      style={keyboardOverlay}
+      onClick={handleOverlayClose}
+      role="button"
+      tabIndex={0}
+      aria-label="Fechar teclado virtual"
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          handleOverlayClose();
+        }
+      }}
+    >
+      <div
+        style={keyboardContainer}
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="virtual-keyboard-title"
+        aria-describedby="virtual-keyboard-hint"
+      >
         {/* Header */}
         <div style={keyboardHeader}>
           <div>
-            <span style={keyboardTitle}>Teclado Virtual</span>
-            <span style={keyboardHint}> (espaço não permitido)</span>
+            <span id="virtual-keyboard-title" style={keyboardTitle}>Teclado Virtual</span>
+            <span id="virtual-keyboard-hint" style={keyboardHint}> (espaço não permitido)</span>
           </div>
-          <button onClick={onClose} style={closeButton}>
+          <button type="button" onClick={onClose} style={closeButton}>
             Concluir ✓
           </button>
         </div>
 
         {/* Input Preview */}
         <div style={inputContainer}>
+          <label htmlFor="virtual-keyboard-input" className="sr-only">Email</label>
           <input
+            id="virtual-keyboard-input"
             type="text"
             value={inputValue}
             onChange={handleInputChange}
@@ -163,6 +196,7 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
             {QUICK_ADDITIONS.map((item, idx) => (
               <button
                 key={idx}
+                type="button"
                 onClick={() => handleQuickAdd(item.value)}
                 style={quickAddButton}
                 title={item.tooltip}
@@ -181,6 +215,7 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
               {filteredDomains.slice(0, 6).map((domain, idx) => (
                 <button
                   key={idx}
+                  type="button"
                   onClick={() => handleDomainSelect(domain.domain)}
                   style={suggestionButton}
                 >
@@ -211,6 +246,7 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
                 return (
                   <button
                     key={key}
+                    type="button"
                     onClick={() => handleKeyPress(key)}
                     style={buttonStyle}
                   >
@@ -226,7 +262,7 @@ const VirtualKeyboard = ({ value, onChange, onClose, isOpen }) => {
         <div style={keyboardFooter}>
           <div style={footerButtonsRow}>
             <span style={footerText}>💡 Dica: Use os botões rápidos acima para agilizar</span>
-            <button onClick={onClose} style={footerCloseButton}>
+            <button type="button" onClick={onClose} style={footerCloseButton}>
               Concluir ✓
             </button>
           </div>
