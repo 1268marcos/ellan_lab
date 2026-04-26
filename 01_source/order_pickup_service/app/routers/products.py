@@ -9,11 +9,18 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
 from app.core.db import get_db
+from app.models.product_catalog_assets import ProductBarcode, ProductMedia
 from app.models.product_status_history import ProductStatusHistory
 from app.models.user import User
 from app.schemas.products import (
+    ProductBarcodeCreateIn,
+    ProductBarcodeListOut,
+    ProductBarcodeOut,
     ProductListItemOut,
     ProductListOut,
+    ProductMediaCreateIn,
+    ProductMediaListOut,
+    ProductMediaOut,
     ProductStatusHistoryItemOut,
     ProductStatusHistoryListOut,
     ProductStatusOut,
@@ -75,6 +82,35 @@ def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) 
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed.astimezone(timezone.utc)
+
+
+def _ensure_product_exists(db: Session, product_id: str) -> None:
+    _load_product_status(db, product_id=product_id)
+
+
+def _to_media_out(row: ProductMedia) -> ProductMediaOut:
+    return ProductMediaOut(
+        id=row.id,
+        product_id=row.product_id,
+        media_type=row.media_type,
+        url=row.url,
+        cdn_key=row.cdn_key,
+        alt_text=row.alt_text,
+        sort_order=int(row.sort_order or 0),
+        is_primary=bool(row.is_primary),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_barcode_out(row: ProductBarcode) -> ProductBarcodeOut:
+    return ProductBarcodeOut(
+        id=row.id,
+        product_id=row.product_id,
+        barcode_type=row.barcode_type,
+        barcode_value=row.barcode_value,
+        is_primary=bool(row.is_primary),
+        created_at=_to_iso_utc(row.created_at),
+    )
 
 
 @router.get("", response_model=ProductListOut)
@@ -267,3 +303,99 @@ def get_product_status_history(
         for row in rows
     ]
     return ProductStatusHistoryListOut(ok=True, total=len(items), items=items)
+
+
+@router.post("/{product_id}/media", response_model=ProductMediaOut)
+def post_product_media(
+    product_id: str,
+    payload: ProductMediaCreateIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    media_type = str(payload.media_type or "").strip().upper()
+    if media_type not in {"IMAGE", "VIDEO", "PDF", "3D"}:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_MEDIA_TYPE", "allowed_media_types": ["3D", "IMAGE", "PDF", "VIDEO"]})
+    if payload.is_primary:
+        db.query(ProductMedia).filter(ProductMedia.product_id == product_id, ProductMedia.is_primary.is_(True)).update({"is_primary": False})
+    row = ProductMedia(
+        id=str(uuid4()),
+        product_id=product_id,
+        media_type=media_type,
+        url=str(payload.url).strip(),
+        cdn_key=(payload.cdn_key.strip() if payload.cdn_key else None),
+        alt_text=(payload.alt_text.strip() if payload.alt_text else None),
+        sort_order=int(payload.sort_order),
+        is_primary=bool(payload.is_primary),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    return _to_media_out(row)
+
+
+@router.get("/{product_id}/media", response_model=ProductMediaListOut)
+def list_product_media(
+    product_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    rows = (
+        db.query(ProductMedia)
+        .filter(ProductMedia.product_id == product_id)
+        .order_by(ProductMedia.is_primary.desc(), ProductMedia.sort_order.asc(), ProductMedia.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return ProductMediaListOut(ok=True, total=len(rows), items=[_to_media_out(row) for row in rows])
+
+
+@router.post("/{product_id}/barcodes", response_model=ProductBarcodeOut)
+def post_product_barcode(
+    product_id: str,
+    payload: ProductBarcodeCreateIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    barcode_type = str(payload.barcode_type or "").strip().upper()
+    if barcode_type not in {"EAN13", "EAN8", "GTIN14", "QR", "CODE128", "DATAMATRIX"}:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_BARCODE_TYPE", "allowed_barcode_types": ["CODE128", "DATAMATRIX", "EAN13", "EAN8", "GTIN14", "QR"]},
+        )
+    barcode_value = str(payload.barcode_value or "").strip().upper()
+    existing = db.query(ProductBarcode).filter(ProductBarcode.barcode_value == barcode_value).first()
+    if existing and existing.product_id != product_id:
+        raise HTTPException(status_code=409, detail={"type": "BARCODE_ALREADY_ASSIGNED", "message": "barcode_value já vinculado a outro produto."})
+    if existing and existing.product_id == product_id:
+        return _to_barcode_out(existing)
+    if payload.is_primary:
+        db.query(ProductBarcode).filter(ProductBarcode.product_id == product_id, ProductBarcode.is_primary.is_(True)).update({"is_primary": False})
+    row = ProductBarcode(
+        id=str(uuid4()),
+        product_id=product_id,
+        barcode_type=barcode_type,
+        barcode_value=barcode_value,
+        is_primary=bool(payload.is_primary),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(row)
+    db.commit()
+    return _to_barcode_out(row)
+
+
+@router.get("/{product_id}/barcodes", response_model=ProductBarcodeListOut)
+def list_product_barcodes(
+    product_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _ensure_product_exists(db, product_id)
+    rows = (
+        db.query(ProductBarcode)
+        .filter(ProductBarcode.product_id == product_id)
+        .order_by(ProductBarcode.is_primary.desc(), ProductBarcode.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return ProductBarcodeListOut(ok=True, total=len(rows), items=[_to_barcode_out(row) for row in rows])

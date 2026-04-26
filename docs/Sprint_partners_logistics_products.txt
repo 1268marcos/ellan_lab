@@ -20,6 +20,9 @@
 - [x] Garantir segurança e governança (RBAC, validação forte de input, segregação de rotas internas/OPS).
 - [x] Validar com evidência técnica (smoke/E2E incluindo cenário de falha, e critério de go/no-go).
 - [x] Manter consistência UX/CX OPS (presets, persistência de filtros, mensagens operacionais claras e semântica visual unificada).
+- [x] Para toda nova rota em OPS, incluir badge visual `NEW` no menu e registrar a inclusão na página histórica de atualizações OPS com breve descrição de valor operacional.
+- [x] Para toda nova rota em OPS, registrar também link direto navegável na página `ops/updates` (timeline), mantendo rastreabilidade funcional sem depender de busca manual.
+- [x] Manter mini-template JSON público em `ops/updates` para novas entradas da timeline, com campos obrigatórios: `scope`, `description`, `routes`, `directLink`.
 
 ### Validação retroativa dos sprints anteriores contra esta diretriz
 

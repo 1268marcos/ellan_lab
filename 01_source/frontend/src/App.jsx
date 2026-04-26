@@ -44,7 +44,10 @@ const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboard
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
 const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
 const OpsLogisticsManifestsPage = lazy(() => import("./pages/OpsLogisticsManifestsPage"));
+const OpsLogisticsManifestsOverviewPage = lazy(() => import("./pages/OpsLogisticsManifestsOverviewPage"));
+const OpsUpdatesHistoryPage = lazy(() => import("./pages/OpsUpdatesHistoryPage"));
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
+const OpsProductsAssetsPage = lazy(() => import("./pages/OpsProductsAssetsPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 
@@ -251,10 +254,13 @@ function TopNav() {
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners" },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2" },
+    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
+    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", isNew: true },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
+    { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
   ] : [];
@@ -353,7 +359,8 @@ function TopNav() {
                         aria-label={link.aria}
                         onClick={() => setIsOpsMenuOpen(false)}
                       >
-                        {link.label}
+                        <span>{link.label}</span>
+                        {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
                       </Link>
                     ))}
                   </div>
@@ -547,7 +554,8 @@ function TopNav() {
                           aria-label={link.aria}
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
-                          {link.label}
+                          <span>{link.label}</span>
+                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
                         </Link>
                       ))}
                     </div>
@@ -838,6 +846,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/logistics/manifests-overview"
+              element={
+                <OpsRoute>
+                  <OpsLogisticsManifestsOverviewPage />
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/logistics/returns"
               element={
                 <OpsRoute>
@@ -854,6 +870,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/products/assets"
+              element={
+                <OpsRoute>
+                  <OpsProductsAssetsPage />
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/products/inventory-health"
               element={
                 <OpsRoute>
@@ -866,6 +890,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsIntegrationOutboxReplayPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/updates"
+              element={
+                <OpsRoute>
+                  <OpsUpdatesHistoryPage />
                 </OpsRoute>
               }
             />

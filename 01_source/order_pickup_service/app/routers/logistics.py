@@ -1773,6 +1773,69 @@ def get_logistics_manifests_ops_overview(
     )
 
 
+@router.get("/ops/manifests/view", response_class=HTMLResponse)
+def get_logistics_manifests_ops_view() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>ELLAN LAB Logistics Manifests OPS</title>
+    <style>
+      body { font-family: Inter, Arial, sans-serif; margin: 24px; background:#F8FAFC; color:#0F172A; }
+      h1 { margin: 0 0 12px 0; font-size: 24px; }
+      .row { display:flex; gap:10px; flex-wrap:wrap; margin-bottom: 12px; }
+      input, button { padding:8px 10px; border:1px solid #CBD5E1; border-radius:8px; background:#fff; }
+      button { background:#1D4ED8; color:#fff; border:none; cursor:pointer; }
+      .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px; margin: 16px 0; }
+      .card { background:#fff; border:1px solid #E2E8F0; border-radius:12px; padding:12px; }
+      .label { color:#475569; font-size:12px; text-transform: uppercase; letter-spacing: .04em; }
+      .value { font-size:24px; font-weight:700; margin-top:6px; }
+      .badge { font-size: 20px; font-weight: 800; }
+      pre { background:#0B1220; color:#E2E8F0; border-radius:12px; padding:12px; overflow:auto; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <h1>OPS Logistics Manifests (L-3)</h1>
+    <div class="row">
+      <input id="from" placeholder="from ISO-8601 opcional" size="30" />
+      <input id="to" placeholder="to ISO-8601 opcional" size="30" />
+      <input id="partnerId" placeholder="partner_id opcional" size="20" />
+      <button onclick="loadData()">Atualizar</button>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="label">Current Total</div><div id="currentTotal" class="value">-</div></div>
+      <div class="card"><div class="label">Backlog Pending/In Transit</div><div id="pendingLike" class="value">-</div></div>
+      <div class="card"><div class="label">Partial/Failed %</div><div id="partialFailedRate" class="value">-</div></div>
+      <div class="card"><div class="label">Confidence</div><div id="confidenceBadge" class="badge">-</div></div>
+    </div>
+    <pre id="payload">Carregando...</pre>
+    <script>
+      async function loadData() {
+        const params = new URLSearchParams();
+        const from = document.getElementById('from').value.trim();
+        const to = document.getElementById('to').value.trim();
+        const partnerId = document.getElementById('partnerId').value.trim();
+        if (from) params.set('from', from);
+        if (to) params.set('to', to);
+        if (partnerId) params.set('partner_id', partnerId);
+        const resp = await fetch('/logistics/ops/manifests/overview?' + params.toString());
+        const data = await resp.json();
+        document.getElementById('payload').textContent = JSON.stringify(data, null, 2);
+        document.getElementById('currentTotal').textContent = data?.totals?.current_total ?? '-';
+        document.getElementById('pendingLike').textContent = data?.totals?.pending_or_in_transit ?? '-';
+        document.getElementById('partialFailedRate').textContent = `${data?.totals?.partial_failed_rate_pct ?? '-'}%`;
+        document.getElementById('confidenceBadge').textContent = data?.confidence_badge ?? '-';
+      }
+      loadData();
+    </script>
+  </body>
+</html>
+"""
+    return HTMLResponse(content=html)
+
+
 @router.get("/ops/view", response_class=HTMLResponse)
 def get_logistics_ops_view() -> HTMLResponse:
     html = """

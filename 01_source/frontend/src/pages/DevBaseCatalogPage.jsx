@@ -4,6 +4,44 @@ import { useAuth } from "../context/AuthContext";
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
+const TAB_METADATA = {
+  overview: {
+    label: "Overview",
+    goal: "Entender rapidamente escopo e saúde do catálogo base.",
+    usage: "Use no início da sessão para validar volumes e tabelas gerenciadas.",
+  },
+  countries: {
+    label: "Countries",
+    goal: "Cadastrar/ajustar países base para domínio de geografia.",
+    usage: "Comece por aqui antes de cadastrar provinces.",
+  },
+  provinces: {
+    label: "Provinces",
+    goal: "Cadastrar estados/províncias por país.",
+    usage: "Exige `country_code` consistente com Countries.",
+  },
+  locker_locations: {
+    label: "Locker Locations",
+    goal: "Mapear localização operacional dos lockers.",
+    usage: "Informe latitude/longitude em conjunto para evitar erro de validação.",
+  },
+  products: {
+    label: "SKUs",
+    goal: "Cadastrar produtos base com preço e status ativo.",
+    usage: "Use SKU estável e moeda em padrão ISO (ex.: BRL, EUR).",
+  },
+  enums: {
+    label: "Enums",
+    goal: "Inspecionar enums disponíveis no schema público.",
+    usage: "Útil para validar contratos e valores aceitos por backend.",
+  },
+  tables: {
+    label: "Tables",
+    goal: "Inspecionar tabelas públicas e cardinalidade estimada.",
+    usage: "Ative colunas para entender rapidamente estrutura técnica.",
+  },
+};
+
 function isDevBypassEnabled() {
   return String(import.meta.env.VITE_DEV_BYPASS_AUTH || "").toLowerCase() === "true";
 }
@@ -48,6 +86,7 @@ export default function DevBaseCatalogPage() {
   const [provinces, setProvinces] = useState([]);
   const [products, setProducts] = useState([]);
   const [lockerLocations, setLockerLocations] = useState([]);
+  const [tablesIncludeColumns, setTablesIncludeColumns] = useState(false);
 
   const [countryFilter, setCountryFilter] = useState("");
   const [provinceFilter, setProvinceFilter] = useState("");
@@ -162,7 +201,9 @@ export default function DevBaseCatalogPage() {
   }
 
   async function loadTables() {
-    const data = await runRequest(`${ORDER_PICKUP_BASE}/dev-admin/base/tables`);
+    const data = await runRequest(
+      `${ORDER_PICKUP_BASE}/dev-admin/base/tables?include_columns=${tablesIncludeColumns ? "true" : "false"}`
+    );
     if (data) setTables(Array.isArray(data.items) ? data.items : []);
   }
 
@@ -345,6 +386,12 @@ export default function DevBaseCatalogPage() {
     return null;
   }
 
+  function focusTab(nextTab) {
+    setTab(nextTab);
+    setMessage("");
+    setError("");
+  }
+
   useEffect(() => {
     if (!canAccess) return;
     void loadCurrentTabData();
@@ -377,6 +424,26 @@ export default function DevBaseCatalogPage() {
           do schema público. Esta tela é exclusivamente para ambiente de desenvolvimento controlado com VITE_DEV_BYPASS_AUTH=true. Veja 02_docker/.env
         </div>
 
+        <div style={playbookStyle}>
+          <h3 style={{ margin: 0 }}>Guia rápido de uso</h3>
+          <ol style={playbookListStyle}>
+            <li>Abra <b>Overview</b> e valide o escopo carregado.</li>
+            <li>Siga o fluxo: <b>Countries → Provinces → Locker Locations</b>.</li>
+            <li>Use <b>Tables/Enums</b> para confirmar contrato e estrutura antes de salvar dados.</li>
+          </ol>
+          <div style={quickActionsStyle}>
+            <button style={buttonSecondaryStyle} onClick={() => { focusTab("overview"); void loadOverview(); }} disabled={loading}>
+              Kickoff: Overview
+            </button>
+            <button style={buttonSecondaryStyle} onClick={() => { focusTab("countries"); void loadCountries(); }} disabled={loading}>
+              Fluxo 1: Countries
+            </button>
+            <button style={buttonSecondaryStyle} onClick={() => { focusTab("tables"); void loadTables(); }} disabled={loading}>
+              Diagnóstico: Tables
+            </button>
+          </div>
+        </div>
+
         <div style={tabRowStyle}>
           {[
             ["overview", "Overview"],
@@ -396,6 +463,14 @@ export default function DevBaseCatalogPage() {
             </button>
           ))}
         </div>
+
+        {TAB_METADATA[tab] ? (
+          <div style={tabHelpStyle}>
+            <div><b>Aba atual:</b> {TAB_METADATA[tab].label}</div>
+            <div><b>Objetivo:</b> {TAB_METADATA[tab].goal}</div>
+            <div><b>Como usar:</b> {TAB_METADATA[tab].usage}</div>
+          </div>
+        ) : null}
 
         <div style={toolbarStyle}>
           <button style={buttonPrimaryStyle} disabled={loading} onClick={loadCurrentTabData}>
@@ -598,14 +673,32 @@ export default function DevBaseCatalogPage() {
       {tab === "tables" ? (
         <section style={cardStyle}>
           <h2 style={{ marginTop: 0 }}>Public Tables</h2>
+          <div style={gridStyle}>
+            <label style={checkStyle}>
+              <input
+                type="checkbox"
+                checked={tablesIncludeColumns}
+                onChange={(e) => setTablesIncludeColumns(e.target.checked)}
+              />
+              incluir colunas (diagnóstico estrutural)
+            </label>
+            <button style={buttonSecondaryStyle} onClick={loadTables} disabled={loading}>
+              Recarregar tables
+            </button>
+          </div>
           <div style={tableWrapperStyle}>
             <table style={tableStyle}>
-              <thead><tr><th style={thStyle}>Table</th><th style={thStyle}>Estimated Rows</th></tr></thead>
+              <thead><tr><th style={thStyle}>Table</th><th style={thStyle}>Estimated Rows</th><th style={thStyle}>Columns</th></tr></thead>
               <tbody>
                 {tables.map((item) => (
                   <tr key={item.table_name}>
                     <td style={tdStyle}>{item.table_name}</td>
                     <td style={tdStyle}>{item.estimated_rows}</td>
+                    <td style={tdStyle}>
+                      {Array.isArray(item.columns) && item.columns.length
+                        ? `${item.columns.length} colunas`
+                        : "-"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -644,6 +737,29 @@ const warningStyle = {
   fontSize: 14,
 };
 
+const playbookStyle = {
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 12,
+  background: "rgba(29,78,216,0.12)",
+  border: "1px solid rgba(29,78,216,0.35)",
+  display: "grid",
+  gap: 8,
+};
+
+const playbookListStyle = {
+  margin: 0,
+  paddingLeft: 18,
+  display: "grid",
+  gap: 4,
+};
+
+const quickActionsStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
 const summaryStyle = {
   marginTop: 12,
   padding: 10,
@@ -657,6 +773,17 @@ const tabRowStyle = {
   display: "flex",
   gap: 8,
   flexWrap: "wrap",
+};
+
+const tabHelpStyle = {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.05)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  display: "grid",
+  gap: 4,
+  fontSize: 13,
 };
 
 const toolbarStyle = {

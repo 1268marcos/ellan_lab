@@ -1713,6 +1713,63 @@ def _create_product_status_history(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_product_media(conn, applied: list[str]) -> None:
+    name = "product_media.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_media (
+            id              VARCHAR(36) PRIMARY KEY,
+            product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+            media_type      VARCHAR(10) NOT NULL CHECK (media_type IN ('IMAGE','VIDEO','PDF','3D')),
+            url             VARCHAR(500) NOT NULL,
+            cdn_key         VARCHAR(255),
+            alt_text        VARCHAR(255),
+            sort_order      INTEGER NOT NULL DEFAULT 0,
+            is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pm_product_sort "
+        "ON product_media (product_id, sort_order, created_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pm_primary "
+        "ON product_media (product_id, is_primary)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_product_barcodes(conn, applied: list[str]) -> None:
+    name = "product_barcodes.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_barcodes (
+            id              VARCHAR(36) PRIMARY KEY,
+            product_id      VARCHAR(255) NOT NULL REFERENCES products(id),
+            barcode_type    VARCHAR(20) NOT NULL
+                            CHECK (barcode_type IN ('EAN13','EAN8','GTIN14','QR','CODE128','DATAMATRIX')),
+            barcode_value   VARCHAR(128) NOT NULL,
+            is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ux_product_barcodes_value UNIQUE (barcode_value)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pb_product_type "
+        "ON product_barcodes (product_id, barcode_type, created_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_pb_primary "
+        "ON product_barcodes (product_id, is_primary)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_product_inventory(conn, applied: list[str]) -> None:
     name = "product_inventory.create_table_v1"
     if _migration_applied(conn, name):
@@ -3684,6 +3741,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_logistics_carrier_rates,
     _migrate_products_status_v1,
     _create_product_status_history,
+    _create_product_media,
+    _create_product_barcodes,
     _create_product_inventory,
     _create_inventory_movements,
     _create_inventory_reservations,
