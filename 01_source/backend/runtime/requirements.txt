@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-requests
-pydantic
-SQLAlchemy==2.0.29
-psycopg2-binary==2.9.9
-redis
-paho-mqtt
-
