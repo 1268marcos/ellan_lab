@@ -886,8 +886,8 @@ def get_partner_settlements(
                 notes, created_at, updated_at
             FROM partner_settlement_batches
             WHERE partner_id = :partner_id
-              AND (:from_period_start::date IS NULL OR period_start >= :from_period_start::date)
-              AND (:to_period_end::date IS NULL OR period_end <= :to_period_end::date)
+              AND (CAST(:from_period_start AS date) IS NULL OR period_start >= CAST(:from_period_start AS date))
+              AND (CAST(:to_period_end AS date) IS NULL OR period_end <= CAST(:to_period_end AS date))
               AND (:status_filter IS NULL OR status = :status_filter)
             ORDER BY period_end DESC, created_at DESC
             LIMIT :limit
@@ -974,8 +974,8 @@ def post_partner_settlement_generate(
                 COALESCE(SUM(amount_cents), 0)::bigint AS gross_revenue_cents
             FROM orders
             WHERE ecommerce_partner_id = :partner_id
-              AND created_at >= :period_start::date
-              AND created_at < (:period_end::date + INTERVAL '1 day')
+              AND created_at >= CAST(:period_start AS date)
+              AND created_at < (CAST(:period_end AS date) + INTERVAL '1 day')
             """
         ),
         {"partner_id": partner_id, "period_start": period_start, "period_end": period_end},

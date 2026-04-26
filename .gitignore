@@ -1,7 +1,25 @@
 # ==============================================================
 # ELLAN LAB — .gitignore
-# Última revisão: Março 2026
+# Última revisão: Abril 2026
 # ==============================================================
+
+
+# ==============================================================
+# [0] ARQUIVOS TXT E MD NÃO ESSENCIAIS
+# ==============================================================
+*.txt
+logs/*.md
+temp/*.md
+backup/*.md
+drafts/*.md
+anotacoes/*.md
+privado/*.md
+notas_pessoais/*.md
+!README.md
+!CONTRIBUTING.md
+!CHANGELOG.md
+!docs/**/*.md
+!01_source/**/*.md
 
 
 # ==============================================================
