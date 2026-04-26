@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 
 from app.core.db import Base
 
@@ -156,3 +156,116 @@ class LogisticsReturnEvent(Base):
     changed_by = Column(String(36), nullable=True)
     occurred_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class ReturnRequest(Base):
+    __tablename__ = "return_requests"
+
+    __table_args__ = (
+        Index("idx_rr_status_requested", "status", "requested_at"),
+        Index("idx_rr_delivery_created", "original_delivery_id", "created_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    original_delivery_id = Column(String(36), ForeignKey("inbound_deliveries.id"), nullable=False, index=True)
+    locker_id = Column(String(64), ForeignKey("lockers.id"), nullable=True, index=True)
+    requester_type = Column(String(20), nullable=False)
+    requester_id = Column(String(36), nullable=True)
+    return_reason_code = Column(String(30), nullable=False, index=True)
+    return_reason_detail = Column(Text, nullable=True)
+    photo_url = Column(String(500), nullable=True)
+    status = Column(String(30), nullable=False, default="REQUESTED")
+    requested_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    approved_at = Column(DateTime(timezone=True), nullable=True)
+    approved_by = Column(String(36), nullable=True)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    close_reason = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ReturnLeg(Base):
+    __tablename__ = "return_legs"
+
+    __table_args__ = (
+        Index("idx_rl_return_status", "return_request_id", "status"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    return_request_id = Column(String(36), ForeignKey("return_requests.id"), nullable=False, index=True)
+    logistics_partner_id = Column(String(36), ForeignKey("logistics_partners.id"), nullable=True)
+    tracking_code = Column(String(128), nullable=True)
+    label_id = Column(String(36), ForeignKey("logistics_shipment_labels.id"), nullable=True)
+    from_locker_id = Column(String(64), ForeignKey("lockers.id"), nullable=True)
+    to_hub_address_json = Column(Text, nullable=True, default="{}")
+    status = Column(String(20), nullable=False, default="PENDING")
+    shipped_at = Column(DateTime(timezone=True), nullable=True)
+    received_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+
+class ReturnTrackingEvent(Base):
+    __tablename__ = "return_tracking_events"
+
+    __table_args__ = (
+        Index("idx_rte_leg_time", "return_leg_id", "occurred_at"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    return_leg_id = Column(String(36), ForeignKey("return_legs.id"), nullable=False, index=True)
+    event_code = Column(String(30), nullable=False)
+    description = Column(String(255), nullable=True)
+    location_name = Column(String(128), nullable=True)
+    occurred_at = Column(DateTime(timezone=True), nullable=False)
+    source = Column(String(20), nullable=False, default="CARRIER_WEBHOOK")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class ReturnReasonCatalog(Base):
+    __tablename__ = "return_reasons_catalog"
+
+    __table_args__ = (
+        UniqueConstraint("code", name="ux_rrc_code"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    code = Column(String(30), nullable=False)
+    label_pt = Column(String(128), nullable=False)
+    label_en = Column(String(128), nullable=True)
+    category = Column(String(30), nullable=True)
+    requires_photo = Column(Boolean, nullable=False, default=False)
+    requires_detail = Column(Boolean, nullable=False, default=False)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class SlaBreachEvent(Base):
+    __tablename__ = "sla_breach_events"
+
+    __table_args__ = (
+        Index("idx_sbe_detected", "detected_at"),
+        Index("idx_sbe_type_severity", "breach_type", "severity"),
+    )
+
+    id = Column(String(36), primary_key=True)
+    delivery_id = Column(String(36), ForeignKey("inbound_deliveries.id"), nullable=True)
+    return_request_id = Column(String(36), ForeignKey("return_requests.id"), nullable=True)
+    logistics_partner_id = Column(String(36), ForeignKey("logistics_partners.id"), nullable=True)
+    breach_type = Column(String(40), nullable=False)
+    severity = Column(String(10), nullable=False)
+    expected_at = Column(DateTime(timezone=True), nullable=False)
+    detected_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    notified_at = Column(DateTime(timezone=True), nullable=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+    notes = Column(Text, nullable=True)

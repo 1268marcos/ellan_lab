@@ -24,6 +24,10 @@ from app.models.logistics_tracking import (
     LogisticsReturnEvent,
     LogisticsShipmentLabel,
     LogisticsTrackingEvent,
+    ReturnLeg,
+    ReturnReasonCatalog,
+    ReturnRequest,
+    SlaBreachEvent,
 )
 from app.models.logistics_manifest import LogisticsCapacityAllocation, LogisticsManifest, LogisticsManifestItem
 from app.models.partner_webhook_delivery import PartnerWebhookDelivery
@@ -60,6 +64,16 @@ from app.schemas.logistics import (
     LogisticsTrackingEventOut,
     LogisticsWebhookEventIn,
     LogisticsWebhookIngestOut,
+    ReturnReasonIn,
+    ReturnReasonListOut,
+    ReturnReasonOut,
+    ReturnRequestCreateIn,
+    ReturnRequestListOut,
+    ReturnRequestOut,
+    ReturnRequestStatusPatchIn,
+    ReturnLegOut,
+    SlaBreachEventListOut,
+    SlaBreachEventOut,
 )
 from app.services.ops_audit_service import record_ops_action_audit
 
@@ -80,6 +94,8 @@ _RETURN_STATUS_TRANSITIONS = {
     "RECEIVED": {"CLOSED"},
     "CLOSED": set(),
 }
+_RETURN_REQUESTER_TYPES = {"RECIPIENT", "SENDER", "SYSTEM", "OPS"}
+_RETURN_REQUEST_STATUSES = {"REQUESTED", "APPROVED", "REJECTED", "LABEL_ISSUED", "IN_TRANSIT", "RECEIVED", "CLOSED", "DISPUTED"}
 
 
 def _to_iso_utc(value: datetime | None) -> str:
@@ -351,6 +367,101 @@ def _to_manifest_item_out(row: LogisticsManifestItem) -> LogisticsManifestItemOu
         exception_note=row.exception_note,
         processed_at=_to_iso_utc(row.processed_at) if row.processed_at else None,
     )
+
+
+def _to_return_leg_out(row: ReturnLeg) -> ReturnLegOut:
+    return ReturnLegOut(
+        id=row.id,
+        return_request_id=row.return_request_id,
+        logistics_partner_id=row.logistics_partner_id,
+        tracking_code=row.tracking_code,
+        label_id=row.label_id,
+        from_locker_id=row.from_locker_id,
+        to_hub_address=_json_load_dict(row.to_hub_address_json),
+        status=row.status,
+        shipped_at=_to_iso_utc(row.shipped_at) if row.shipped_at else None,
+        received_at=_to_iso_utc(row.received_at) if row.received_at else None,
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _to_return_request_out(db: Session, row: ReturnRequest) -> ReturnRequestOut:
+    legs = (
+        db.query(ReturnLeg)
+        .filter(ReturnLeg.return_request_id == row.id)
+        .order_by(ReturnLeg.created_at.desc(), ReturnLeg.id.desc())
+        .all()
+    )
+    return ReturnRequestOut(
+        id=row.id,
+        original_delivery_id=row.original_delivery_id,
+        locker_id=row.locker_id,
+        requester_type=row.requester_type,
+        requester_id=row.requester_id,
+        return_reason_code=row.return_reason_code,
+        return_reason_detail=row.return_reason_detail,
+        photo_url=row.photo_url,
+        status=row.status,
+        requested_at=_to_iso_utc(row.requested_at),
+        approved_at=_to_iso_utc(row.approved_at) if row.approved_at else None,
+        approved_by=row.approved_by,
+        closed_at=_to_iso_utc(row.closed_at) if row.closed_at else None,
+        close_reason=row.close_reason,
+        created_at=_to_iso_utc(row.created_at),
+        updated_at=_to_iso_utc(row.updated_at),
+        legs=[_to_return_leg_out(item) for item in legs],
+    )
+
+
+def _to_return_reason_out(row: ReturnReasonCatalog) -> ReturnReasonOut:
+    return ReturnReasonOut(
+        id=row.id,
+        code=row.code,
+        label_pt=row.label_pt,
+        label_en=row.label_en,
+        category=row.category,
+        requires_photo=bool(row.requires_photo),
+        requires_detail=bool(row.requires_detail),
+        is_active=bool(row.is_active),
+        created_at=_to_iso_utc(row.created_at),
+    )
+
+
+def _to_sla_breach_out(row: SlaBreachEvent) -> SlaBreachEventOut:
+    return SlaBreachEventOut(
+        id=row.id,
+        delivery_id=row.delivery_id,
+        return_request_id=row.return_request_id,
+        logistics_partner_id=row.logistics_partner_id,
+        breach_type=row.breach_type,
+        severity=row.severity,
+        expected_at=_to_iso_utc(row.expected_at),
+        detected_at=_to_iso_utc(row.detected_at),
+        notified_at=_to_iso_utc(row.notified_at) if row.notified_at else None,
+        resolved_at=_to_iso_utc(row.resolved_at) if row.resolved_at else None,
+        notes=row.notes,
+    )
+
+
+def _ensure_return_reason_exists(db: Session, code: str) -> None:
+    row = (
+        db.query(ReturnReasonCatalog)
+        .filter(
+            ReturnReasonCatalog.code == str(code or "").strip().upper(),
+            ReturnReasonCatalog.is_active.is_(True),
+        )
+        .first()
+    )
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "RETURN_REASON_NOT_FOUND",
+                "message": "Motivo de devolução não encontrado/ativo.",
+                "return_reason_code": str(code or "").strip().upper(),
+            },
+        )
 
 
 def _ensure_logistics_partner_exists(db: Session, partner_id: str) -> None:
@@ -1351,6 +1462,308 @@ def list_logistics_capacity_allocations(
         .all()
     )
     return LogisticsCapacityAllocationListOut(ok=True, total=total, items=[_to_capacity_out(row) for row in rows])
+
+
+@router.post("/deliveries/{delivery_id}/return-request", response_model=ReturnRequestOut)
+def post_delivery_return_request(
+    delivery_id: str,
+    payload: ReturnRequestCreateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _ensure_delivery_exists(db, delivery_id)
+    requester_type = str(payload.requester_type or "").strip().upper()
+    if requester_type not in _RETURN_REQUESTER_TYPES:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_REQUESTER_TYPE", "allowed_requester_types": sorted(_RETURN_REQUESTER_TYPES)})
+    reason_code = str(payload.return_reason_code or "").strip().upper()
+    _ensure_return_reason_exists(db, reason_code)
+
+    delivery_ref = db.execute(
+        text("SELECT locker_id FROM inbound_deliveries WHERE id = :id"),
+        {"id": delivery_id},
+    ).mappings().first() or {}
+    locker_id = str(delivery_ref.get("locker_id") or "").strip() or None
+
+    now = datetime.now(timezone.utc)
+    row = ReturnRequest(
+        id=str(uuid4()),
+        original_delivery_id=delivery_id,
+        locker_id=locker_id,
+        requester_type=requester_type,
+        requester_id=(payload.requester_id.strip() if payload.requester_id else None),
+        return_reason_code=reason_code,
+        return_reason_detail=(payload.return_reason_detail.strip() if payload.return_reason_detail else None),
+        photo_url=(payload.photo_url.strip() if payload.photo_url else None),
+        status="REQUESTED",
+        requested_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(row)
+    _audit_ops(
+        db=db,
+        action="L2_RETURN_REQUEST_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "before": None,
+            "after": {
+                "id": row.id,
+                "original_delivery_id": row.original_delivery_id,
+                "requester_type": row.requester_type,
+                "return_reason_code": row.return_reason_code,
+                "status": row.status,
+            },
+        },
+    )
+    db.commit()
+    return _to_return_request_out(db, row)
+
+
+@router.get("/return-requests/{return_request_id}", response_model=ReturnRequestOut)
+def get_return_request(return_request_id: str, db: Session = Depends(get_db)):
+    row = db.get(ReturnRequest, return_request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_REQUEST_NOT_FOUND", "message": "Solicitação de devolução não encontrada."})
+    return _to_return_request_out(db, row)
+
+
+@router.get("/return-requests", response_model=ReturnRequestListOut)
+def list_return_requests(
+    status: str | None = Query(default=None),
+    requester_type: str | None = Query(default=None),
+    return_reason_code: str | None = Query(default=None),
+    original_delivery_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    query = db.query(ReturnRequest)
+    normalized_status = str(status or "").strip().upper()
+    if normalized_status:
+        if normalized_status not in _RETURN_REQUEST_STATUSES:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_RETURN_REQUEST_STATUS", "allowed_statuses": sorted(_RETURN_REQUEST_STATUSES)})
+        query = query.filter(ReturnRequest.status == normalized_status)
+
+    normalized_requester_type = str(requester_type or "").strip().upper()
+    if normalized_requester_type:
+        if normalized_requester_type not in _RETURN_REQUESTER_TYPES:
+            raise HTTPException(status_code=422, detail={"type": "INVALID_REQUESTER_TYPE", "allowed_requester_types": sorted(_RETURN_REQUESTER_TYPES)})
+        query = query.filter(ReturnRequest.requester_type == normalized_requester_type)
+
+    normalized_reason_code = str(return_reason_code or "").strip().upper()
+    if normalized_reason_code:
+        query = query.filter(ReturnRequest.return_reason_code == normalized_reason_code)
+
+    normalized_delivery_id = str(original_delivery_id or "").strip()
+    if normalized_delivery_id:
+        query = query.filter(ReturnRequest.original_delivery_id == normalized_delivery_id)
+
+    total = query.count()
+    rows = (
+        query.order_by(ReturnRequest.requested_at.desc(), ReturnRequest.created_at.desc(), ReturnRequest.id.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return ReturnRequestListOut(ok=True, total=total, items=[_to_return_request_out(db, row) for row in rows])
+
+
+@router.patch("/return-requests/{return_request_id}/status", response_model=ReturnRequestOut)
+def patch_return_request_status(
+    return_request_id: str,
+    payload: ReturnRequestStatusPatchIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    row = db.get(ReturnRequest, return_request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_REQUEST_NOT_FOUND", "message": "Solicitação de devolução não encontrada."})
+
+    next_status = str(payload.status or "").strip().upper()
+    if next_status not in _RETURN_REQUEST_STATUSES:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_RETURN_REQUEST_STATUS", "allowed_statuses": sorted(_RETURN_REQUEST_STATUSES)})
+    before = {
+        "id": row.id,
+        "status": row.status,
+        "approved_at": _to_iso_utc(row.approved_at) if row.approved_at else None,
+        "closed_at": _to_iso_utc(row.closed_at) if row.closed_at else None,
+        "close_reason": row.close_reason,
+    }
+    now = datetime.now(timezone.utc)
+    row.status = next_status
+    row.updated_at = now
+    if next_status == "APPROVED" and row.approved_at is None:
+        row.approved_at = now
+        row.approved_by = str(current_user.id)
+    if next_status == "CLOSED":
+        row.closed_at = now
+        row.close_reason = (payload.close_reason.strip() if payload.close_reason else row.close_reason)
+
+    _audit_ops(
+        db=db,
+        action="L2_RETURN_REQUEST_STATUS_PATCH",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "before": before,
+            "after": {
+                "id": row.id,
+                "status": row.status,
+                "approved_at": _to_iso_utc(row.approved_at) if row.approved_at else None,
+                "closed_at": _to_iso_utc(row.closed_at) if row.closed_at else None,
+                "close_reason": row.close_reason,
+            },
+        },
+    )
+    db.commit()
+    return _to_return_request_out(db, row)
+
+
+@router.post("/return-requests/{return_request_id}/labels", response_model=ReturnLegOut)
+def post_return_request_label(
+    return_request_id: str,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    row = db.get(ReturnRequest, return_request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail={"type": "RETURN_REQUEST_NOT_FOUND", "message": "Solicitação de devolução não encontrada."})
+
+    existing_leg = (
+        db.query(ReturnLeg)
+        .filter(ReturnLeg.return_request_id == return_request_id)
+        .order_by(ReturnLeg.created_at.desc(), ReturnLeg.id.desc())
+        .first()
+    )
+    if existing_leg:
+        return _to_return_leg_out(existing_leg)
+
+    now = datetime.now(timezone.utc)
+    leg = ReturnLeg(
+        id=str(uuid4()),
+        return_request_id=return_request_id,
+        logistics_partner_id=None,
+        tracking_code=f"RET-{secrets.token_hex(6).upper()}",
+        label_id=None,
+        from_locker_id=row.locker_id,
+        to_hub_address_json=json.dumps({}),
+        status="PENDING",
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(leg)
+    row.status = "LABEL_ISSUED"
+    row.updated_at = now
+    _audit_ops(
+        db=db,
+        action="L2_RETURN_LABEL_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"return_request_id": return_request_id, "return_leg_id": leg.id, "tracking_code": leg.tracking_code},
+    )
+    db.commit()
+    return _to_return_leg_out(leg)
+
+
+@router.get("/sla-breaches", response_model=SlaBreachEventListOut)
+def list_sla_breaches(
+    logistics_partner_id: str | None = Query(default=None),
+    breach_type: str | None = Query(default=None),
+    severity: str | None = Query(default=None),
+    resolved: bool | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    query = db.query(SlaBreachEvent)
+    if logistics_partner_id:
+        query = query.filter(SlaBreachEvent.logistics_partner_id == str(logistics_partner_id).strip())
+    if breach_type:
+        query = query.filter(SlaBreachEvent.breach_type == str(breach_type).strip().upper())
+    if severity:
+        query = query.filter(SlaBreachEvent.severity == str(severity).strip().upper())
+    if resolved is True:
+        query = query.filter(SlaBreachEvent.resolved_at.is_not(None))
+    elif resolved is False:
+        query = query.filter(SlaBreachEvent.resolved_at.is_(None))
+    rows = (
+        query.order_by(SlaBreachEvent.detected_at.desc(), SlaBreachEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return SlaBreachEventListOut(ok=True, total=len(rows), items=[_to_sla_breach_out(row) for row in rows])
+
+
+@router.get("/return-reasons", response_model=ReturnReasonListOut)
+def list_return_reasons(
+    only_active: bool = Query(default=True),
+    limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    query = db.query(ReturnReasonCatalog)
+    if only_active:
+        query = query.filter(ReturnReasonCatalog.is_active.is_(True))
+    rows = (
+        query.order_by(ReturnReasonCatalog.created_at.desc(), ReturnReasonCatalog.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return ReturnReasonListOut(ok=True, total=len(rows), items=[_to_return_reason_out(row) for row in rows])
+
+
+@router.post("/return-reasons", response_model=ReturnReasonOut)
+def post_return_reason(
+    payload: ReturnReasonIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    code = str(payload.code or "").strip().upper()
+    if not code:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_RETURN_REASON_CODE", "message": "code é obrigatório."})
+
+    row = (
+        db.query(ReturnReasonCatalog)
+        .filter(ReturnReasonCatalog.code == code)
+        .first()
+    )
+    now = datetime.now(timezone.utc)
+    before = None
+    if row is None:
+        row = ReturnReasonCatalog(
+            id=str(uuid4()),
+            code=code,
+            created_at=now,
+        )
+        db.add(row)
+    else:
+        before = _to_return_reason_out(row).model_dump()
+    row.label_pt = payload.label_pt.strip()
+    row.label_en = payload.label_en.strip() if payload.label_en else None
+    row.category = payload.category.strip().upper() if payload.category else None
+    row.requires_photo = bool(payload.requires_photo)
+    row.requires_detail = bool(payload.requires_detail)
+    row.is_active = bool(payload.is_active)
+    _audit_ops(
+        db=db,
+        action="L2_RETURN_REASON_UPSERT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={"before": before, "after": _to_return_reason_out(row).model_dump()},
+    )
+    db.commit()
+    return _to_return_reason_out(row)
 
 
 @router.post("/returns", response_model=LogisticsReturnOut)

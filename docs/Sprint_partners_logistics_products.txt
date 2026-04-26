@@ -879,7 +879,314 @@ CREATE TABLE partner_performance_metrics (
   - `GET /partners/{id}/performance`
   - `GET/POST /partners/{id}/service-areas`
 - [x] Auditoria OPS (`before/after`) aplicada em `generate`, `approve` e `service-area create`.
-- [ ] Próximo passo sugerido: adicionar UI OPS dedicada (`/ops/partners/financials-service-areas`) + bloco de evidência técnica rápida (curl/resposta esperada).
+- [x] UI OPS dedicada publicada: `UI /ops/partners/financials-service-areas` (guia rápido, ações rápidas, chips por ação, presets, botão "Copiar evidência", persistência em `localStorage`).
+- [x] Governança de navegação aplicada:
+  - rota adicionada no menu OPS com badge `NEW` apenas no item mais recente;
+  - rota anterior removida de `NEW`;
+  - registro adicionado na timeline `ops/updates` com link direto.
+
+###### Evidência técnica rápida P-3 (settlements + performance + service-areas)
+
+> Base URL de referência local: `http://localhost:8003`  
+> Header obrigatório: `Authorization: Bearer <OPS_TOKEN>`
+
+1) **GET /partners/{id}/settlements** (consulta operacional de batches)
+
+```bash
+curl -X GET "http://localhost:8003/partners/partner_demo_001/settlements?status=DRAFT&limit=50" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Accept: application/json"
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "4e8b5a8d-5b30-4d89-b71f-8f9f4c2d1d4a",
+      "partner_id": "partner_demo_001",
+      "partner_type": "ECOMMERCE",
+      "period_start": "2026-04-01",
+      "period_end": "2026-04-15",
+      "currency": "BRL",
+      "total_orders": 42,
+      "gross_revenue_cents": 325000,
+      "revenue_share_pct": 0.15,
+      "revenue_share_cents": 48750,
+      "fees_cents": 2500,
+      "net_amount_cents": 273750,
+      "status": "DRAFT",
+      "settled_at": null,
+      "settlement_ref": null,
+      "notes": "Primeira quinzena",
+      "created_at": "2026-04-26T12:45:00+00:00",
+      "updated_at": "2026-04-26T12:45:00+00:00"
+    }
+  ]
+}
+```
+
+2) **POST /partners/{id}/settlements/generate** (geração de batch para período)
+
+```bash
+curl -X POST "http://localhost:8003/partners/partner_demo_001/settlements/generate" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "period_start": "2026-04-01",
+    "period_end": "2026-04-15",
+    "revenue_share_pct": 0.15,
+    "fees_cents": 2500,
+    "currency": "BRL",
+    "notes": "Primeira quinzena"
+  }'
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "4e8b5a8d-5b30-4d89-b71f-8f9f4c2d1d4a",
+  "partner_id": "partner_demo_001",
+  "partner_type": "ECOMMERCE",
+  "period_start": "2026-04-01",
+  "period_end": "2026-04-15",
+  "currency": "BRL",
+  "total_orders": 42,
+  "gross_revenue_cents": 325000,
+  "revenue_share_pct": 0.15,
+  "revenue_share_cents": 48750,
+  "fees_cents": 2500,
+  "net_amount_cents": 273750,
+  "status": "DRAFT",
+  "settled_at": null,
+  "settlement_ref": null,
+  "notes": "Primeira quinzena",
+  "created_at": "2026-04-26T12:45:00+00:00",
+  "updated_at": "2026-04-26T12:45:00+00:00"
+}
+```
+
+3) **PATCH /partners/{id}/settlements/{batch_id}/approve** (aprovação operacional, idempotente para `APPROVED/PAID`)
+
+```bash
+curl -X PATCH "http://localhost:8003/partners/partner_demo_001/settlements/4e8b5a8d-5b30-4d89-b71f-8f9f4c2d1d4a/approve" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "settlement_ref": "PIX-APR-2026-0001",
+    "notes": "Aprovado por operacao"
+  }'
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "4e8b5a8d-5b30-4d89-b71f-8f9f4c2d1d4a",
+  "partner_id": "partner_demo_001",
+  "partner_type": "ECOMMERCE",
+  "period_start": "2026-04-01",
+  "period_end": "2026-04-15",
+  "currency": "BRL",
+  "total_orders": 42,
+  "gross_revenue_cents": 325000,
+  "revenue_share_pct": 0.15,
+  "revenue_share_cents": 48750,
+  "fees_cents": 2500,
+  "net_amount_cents": 273750,
+  "status": "APPROVED",
+  "settled_at": "2026-04-26T12:50:00+00:00",
+  "settlement_ref": "PIX-APR-2026-0001",
+  "notes": "Aprovado por operacao",
+  "created_at": "2026-04-26T12:45:00+00:00",
+  "updated_at": "2026-04-26T12:50:00+00:00"
+}
+```
+
+4) **GET /partners/{id}/performance** (últimos meses para acompanhamento)
+
+```bash
+curl -X GET "http://localhost:8003/partners/partner_demo_001/performance?limit=6" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Accept: application/json"
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "c19c8f4d-4f2c-4e83-b39d-8cc2e5d74e9b",
+      "partner_id": "partner_demo_001",
+      "period_month": "2026-04",
+      "total_orders": 42,
+      "on_time_pickup_pct": 97.4,
+      "return_rate_pct": 1.8,
+      "avg_pickup_hours": 8.5,
+      "sla_compliance_pct": 98.1,
+      "webhook_success_rate": 99.2,
+      "generated_at": "2026-04-26T12:40:00+00:00"
+    }
+  ]
+}
+```
+
+5) **GET/POST /partners/{id}/service-areas** (cobertura por locker)
+
+```bash
+curl -X POST "http://localhost:8003/partners/partner_demo_001/service-areas" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "locker_id": "locker_sp_001",
+    "priority": 50,
+    "exclusive": false,
+    "valid_from": "2026-04-01",
+    "valid_until": "2026-06-30",
+    "is_active": true
+  }'
+```
+
+Resposta esperada do POST (200):
+
+```json
+{
+  "id": "8ec8a87a-56fa-4f4f-8b2f-7f882ac4ef9c",
+  "partner_id": "partner_demo_001",
+  "partner_type": "ECOMMERCE",
+  "locker_id": "locker_sp_001",
+  "priority": 50,
+  "exclusive": false,
+  "valid_from": "2026-04-01",
+  "valid_until": "2026-06-30",
+  "is_active": true,
+  "created_at": "2026-04-26T12:52:00+00:00"
+}
+```
+
+```bash
+curl -X GET "http://localhost:8003/partners/partner_demo_001/service-areas?only_active=true&limit=200" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Accept: application/json"
+```
+
+Resposta esperada do GET (200):
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "8ec8a87a-56fa-4f4f-8b2f-7f882ac4ef9c",
+      "partner_id": "partner_demo_001",
+      "partner_type": "ECOMMERCE",
+      "locker_id": "locker_sp_001",
+      "priority": 50,
+      "exclusive": false,
+      "valid_from": "2026-04-01",
+      "valid_until": "2026-06-30",
+      "is_active": true,
+      "created_at": "2026-04-26T12:52:00+00:00"
+    }
+  ]
+}
+```
+
+###### Checklist de governança P-3 (documentação vs execução real)
+- [x] Contratos, migrações, endpoints e UI OPS registrados no roadmap.
+- [x] Bloco de evidência técnica rápida (curl + resposta esperada) documentado neste item.
+- [ ] Pendência final de fechamento em ambiente: anexar execução autenticada real (token OPS) com `200` para os 5 fluxos e 1 cenário de erro controlado (`409 SETTLEMENT_ALREADY_EXISTS` ou `404 SETTLEMENT_NOT_FOUND`).
+
+###### Roteiro de validação manual P-3 (checklist de 5 minutos)
+
+**Objetivo:** gerar evidência real rápida de financials/service-areas para fechamento de sprint com baixo atrito operacional.
+
+**Pré-requisitos (30s)**
+- [ ] Estar autenticado com perfil OPS (`admin_operacao` ou `auditoria`).
+- [ ] Abrir `UI /ops/partners/financials-service-areas`.
+- [ ] Confirmar `partner_id` com pedidos no período (ex.: `partner_demo_001`).
+
+**Passo 1 — Cenário verde (ciclo saudável) [~1 min]**
+- [ ] Clicar no preset **verde** `Preset verde: ciclo saudável`.
+- [ ] Executar: `GET settlements` + `POST settlements/generate`.
+- [ ] Evidência esperada: chips verdes (`success`), batch em `DRAFT` e valores de receita calculados.
+
+**Passo 2 — Cenário âmbar (aprovação controlada) [~1 min]**
+- [ ] Clicar no preset **âmbar** `Preset âmbar: aprovação de batch`.
+- [ ] Executar: `PATCH settlements/approve` (com `batch_id` válido).
+- [ ] Evidência esperada: status `APPROVED`, `settled_at` preenchido e `settlement_ref` persistido.
+
+**Passo 3 — Cenário vermelho (cobertura crítica) [~1 min]**
+- [ ] Clicar no preset **vermelho** `Preset vermelho: cobertura crítica`.
+- [ ] Executar: `GET service-areas` + `POST service-areas`.
+- [ ] Evidência esperada: leitura de cobertura atual e criação/ajuste de área com prioridade mais alta para locker crítico.
+
+**Passo 4 — Desempenho e consistência [~45s]**
+- [ ] Executar: `GET performance`.
+- [ ] Evidência esperada: retorno de até 6 meses com `total_orders`, `sla_compliance_pct` e `webhook_success_rate`.
+
+**Passo 5 — Registro de evidência [~45s]**
+- [ ] Clicar em `Copiar evidência` e colar o snapshot no documento de sprint.
+- [ ] Capturar print com chips coloridos + painel técnico da última ação.
+- [ ] Anexar `partner_id`, `batch_id` (se houver), horário e operador.
+
+**Novas possibilidades para o time (variações rápidas de execução)**
+- [ ] **Trilha A (Finance Ops):** focar em `generate -> approve -> settlements` para validar fechamento de período.
+- [ ] **Trilha B (Logistics/Capacity):** focar em `service-areas` com alteração de `priority` e `exclusive`.
+- [ ] **Trilha C (Monitoring):** focar em `performance` + `settlements` para detectar queda de SLA com impacto financeiro.
+- [ ] **Trilha D (Handoff noturno):** executar apenas preset vermelho + `Copiar evidência` para passagem de plantão em <2 minutos.
+- [ ] **Trilha E (Erro controlado):** provocar e registrar um dos cenários:
+      - `409 SETTLEMENT_ALREADY_EXISTS` ao repetir `generate` no mesmo período;
+      - `404 SETTLEMENT_NOT_FOUND` ao aprovar `batch_id` inexistente.
+
+**Critério GO/NO-GO P-3 (execução manual)**
+- [ ] **GO**: ao menos 1 fluxo verde + 1 âmbar + 1 vermelho com evidência anexada (print + texto copiado).
+- [ ] **NO-GO**: erro não controlado em geração/aprovação ou inconsistência de resposta entre chips e payload técnico.
+
+> Nota UX/CX: manter os presets coloridos como linguagem padrão de plantão reduz carga cognitiva e acelera decisão por trilha (financeiro, cobertura ou monitoramento).
+
+###### Roteiro curto P-3 (2 minutos) — handoff para runbook operacional
+
+**Objetivo:** gerar um snapshot mínimo e confiável de plantão para troca rápida de turno.
+
+**Passo único guiado (<= 2 min)**
+- [ ] Abrir `UI /ops/partners/financials-service-areas` e informar `partner_id`.
+- [ ] Executar em sequência curta:
+      1. `GET settlements`
+      2. `GET performance`
+      3. `GET service-areas`
+- [ ] (Opcional 20s) Executar `PATCH settlements/approve` apenas se houver `batch_id` pendente no handoff.
+- [ ] Clicar `Copiar evidência` e colar no runbook.
+- [ ] Capturar print da tela com chips e último payload técnico.
+
+**Template de handoff (colar no runbook)**
+```txt
+P-3 HANDOFF SNAPSHOT
+timestamp:
+operator:
+partner_id:
+batch_id:
+status_summary:
+- settlements:
+- performance:
+- service_areas:
+decision: GO | NO-GO
+next_action_owner:
+```
+
+**Possibilidades rápidas para o time (modo plantão)**
+- [ ] **Modo Financeiro:** priorizar `settlements` + `approve` para fechamento de caixa.
+- [ ] **Modo Cobertura:** priorizar `service-areas` para ajuste de locker crítico.
+- [ ] **Modo Monitoramento:** priorizar `performance` para sinalizar queda de SLA.
+- [ ] **Modo Incidente:** registrar erro controlado (`409`/`404`) + evidência copiada para troubleshooting.
 
 ---
 
@@ -992,7 +1299,7 @@ ALTER TABLE inbound_deliveries
 
 ---
 
-### [ ] Sprint L-2 · "Returns & Reverse Logistics" (2 semanas)
+### [~] Sprint L-2 · "Returns & Reverse Logistics" (2 semanas)
 
 **Objetivo:** Ciclo completo de devoluções — padrão Amazon Returns / MercadoLivre Devoluções com rastreio de perna reversa, catálogo de motivos e monitoramento de breach de SLA.
 
@@ -1091,11 +1398,289 @@ CREATE TABLE sla_breach_events (
 | Método | Path | Notas |
 |---|---|---|
 | `POST` | `/logistics/deliveries/{id}/return-request` | Cria solicitação |
+| `GET` | `/logistics/return-requests` | Lista solicitações (filtros operacionais) |
 | `GET` | `/logistics/return-requests/{id}` | Detalhe com perna reversa |
 | `PATCH` | `/logistics/return-requests/{id}/status` | Aprovação/rejeição (ops) |
 | `POST` | `/logistics/return-requests/{id}/labels` | Emite label reversa |
 | `GET` | `/logistics/sla-breaches` | Filtro: partner, type, severity, resolved |
 | `GET/POST` | `/logistics/return-reasons` | CRUD do catálogo |
+
+#### Implementação atual (D1 backend-first)
+- [x] Migrações idempotentes adicionadas para núcleo L-2:
+  - `return_requests`
+  - `return_legs`
+  - `return_tracking_events`
+  - `return_reasons_catalog`
+  - `sla_breach_events`
+- [x] Modelos SQLAlchemy adicionados em `logistics_tracking.py` para as 5 entidades L-2.
+- [x] Contratos Pydantic L-2 adicionados em `schemas/logistics.py` (requests/responses de requests, legs, reasons e SLA breaches).
+- [x] Endpoints mínimos L-2 publicados em `routers/logistics.py`:
+  - `POST /logistics/deliveries/{id}/return-request`
+  - `GET /logistics/return-requests` (lista com filtros)
+  - `GET /logistics/return-requests/{id}`
+  - `PATCH /logistics/return-requests/{id}/status`
+  - `POST /logistics/return-requests/{id}/labels`
+  - `GET /logistics/sla-breaches`
+  - `GET/POST /logistics/return-reasons`
+- [x] Auditoria OPS (`before/after`) aplicada nas escritas críticas de L-2.
+- [x] Script one-shot de execução rápida publicado: `scripts/l2_d1_ops_validation_oneshot.sh`.
+
+###### Evidência técnica rápida L-2 D1 (curl + resposta esperada)
+
+> Base URL de referência local: `http://localhost:8003`  
+> Header obrigatório: `Authorization: Bearer <OPS_TOKEN>`
+
+1) **POST /logistics/return-reasons** (catálogo de motivos)
+
+```bash
+curl -X POST "http://localhost:8003/logistics/return-reasons" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "code": "DAMAGED_ITEM",
+    "label_pt": "Produto avariado",
+    "label_en": "Damaged item",
+    "category": "PRODUCT",
+    "requires_photo": true,
+    "requires_detail": true,
+    "is_active": true
+  }'
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "c2d56e8a-1c31-4f35-a3c2-8ef1f6b2d7b1",
+  "code": "DAMAGED_ITEM",
+  "label_pt": "Produto avariado",
+  "label_en": "Damaged item",
+  "category": "PRODUCT",
+  "requires_photo": true,
+  "requires_detail": true,
+  "is_active": true,
+  "created_at": "2026-04-26T13:20:00+00:00"
+}
+```
+
+2) **POST /logistics/deliveries/{id}/return-request** (abertura de solicitação)
+
+```bash
+curl -X POST "http://localhost:8003/logistics/deliveries/dlv_001/return-request" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "requester_type": "RECIPIENT",
+    "requester_id": "usr_001",
+    "return_reason_code": "DAMAGED_ITEM",
+    "return_reason_detail": "Caixa com avaria lateral",
+    "photo_url": "https://cdn.example.com/returns/dlv_001.jpg"
+  }'
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "rr_001",
+  "original_delivery_id": "dlv_001",
+  "locker_id": "locker_sp_001",
+  "requester_type": "RECIPIENT",
+  "requester_id": "usr_001",
+  "return_reason_code": "DAMAGED_ITEM",
+  "return_reason_detail": "Caixa com avaria lateral",
+  "photo_url": "https://cdn.example.com/returns/dlv_001.jpg",
+  "status": "REQUESTED",
+  "requested_at": "2026-04-26T13:21:00+00:00",
+  "approved_at": null,
+  "approved_by": null,
+  "closed_at": null,
+  "close_reason": null,
+  "created_at": "2026-04-26T13:21:00+00:00",
+  "updated_at": "2026-04-26T13:21:00+00:00",
+  "legs": []
+}
+```
+
+3) **PATCH /logistics/return-requests/{id}/status** (aprovação operacional)
+
+```bash
+curl -X PATCH "http://localhost:8003/logistics/return-requests/rr_001/status" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "status": "APPROVED"
+  }'
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "rr_001",
+  "original_delivery_id": "dlv_001",
+  "locker_id": "locker_sp_001",
+  "requester_type": "RECIPIENT",
+  "requester_id": "usr_001",
+  "return_reason_code": "DAMAGED_ITEM",
+  "return_reason_detail": "Caixa com avaria lateral",
+  "photo_url": "https://cdn.example.com/returns/dlv_001.jpg",
+  "status": "APPROVED",
+  "requested_at": "2026-04-26T13:21:00+00:00",
+  "approved_at": "2026-04-26T13:22:00+00:00",
+  "approved_by": "ops_user_001",
+  "closed_at": null,
+  "close_reason": null,
+  "created_at": "2026-04-26T13:21:00+00:00",
+  "updated_at": "2026-04-26T13:22:00+00:00",
+  "legs": []
+}
+```
+
+4) **POST /logistics/return-requests/{id}/labels** (emissão de label/perna reversa)
+
+```bash
+curl -X POST "http://localhost:8003/logistics/return-requests/rr_001/labels" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Accept: application/json"
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "id": "rl_001",
+  "return_request_id": "rr_001",
+  "logistics_partner_id": null,
+  "tracking_code": "RET-7A1D4E8B9C01",
+  "label_id": null,
+  "from_locker_id": "locker_sp_001",
+  "to_hub_address": {},
+  "status": "PENDING",
+  "shipped_at": null,
+  "received_at": null,
+  "created_at": "2026-04-26T13:23:00+00:00",
+  "updated_at": "2026-04-26T13:23:00+00:00"
+}
+```
+
+5) **GET /logistics/sla-breaches** (monitoramento de violações SLA)
+
+```bash
+curl -X GET "http://localhost:8003/logistics/sla-breaches?severity=HIGH&resolved=false&limit=50" \
+  -H "Authorization: Bearer <OPS_TOKEN>" \
+  -H "Accept: application/json"
+```
+
+Resposta esperada (200):
+
+```json
+{
+  "ok": true,
+  "total": 1,
+  "items": [
+    {
+      "id": "sbe_001",
+      "delivery_id": "dlv_001",
+      "return_request_id": "rr_001",
+      "logistics_partner_id": "lp_001",
+      "breach_type": "RETURN_TIMEOUT",
+      "severity": "HIGH",
+      "expected_at": "2026-04-26T12:00:00+00:00",
+      "detected_at": "2026-04-26T13:24:00+00:00",
+      "notified_at": null,
+      "resolved_at": null,
+      "notes": "Return sem confirmação de recebimento."
+    }
+  ]
+}
+```
+
+###### Checklist de governança L-2 D1 (documentação vs execução real)
+- [x] Escopo D1 atualizado no roadmap com status de implementação backend-first.
+- [x] Bloco de evidência técnica rápida L-2 D1 documentado (curl + resposta esperada).
+- [x] Validação técnica local executada: `py_compile` dos arquivos alterados sem erros.
+- [ ] Execução autenticada real pendente em ambiente com token OPS (`200`) para os 5 fluxos acima.
+- [ ] Registro de cenário de erro controlado pendente (`404 RETURN_REQUEST_NOT_FOUND` ou `422 INVALID_REQUESTER_TYPE`).
+- [ ] Teste automatizado de regressão pendente: ambiente atual sem `pytest` instalado (`Command 'pytest' not found`).
+
+###### Roteiro curto L-2 D1 (2-3 minutos) — execução real para colher `200`
+
+**Objetivo:** fechar pendências do checklist L-2 D1 rapidamente com evidência real reutilizável no handoff.
+
+**Pré-requisitos (20-30s)**
+- [ ] Ter `OPS_TOKEN` válido.
+- [ ] Definir IDs de execução: `DELIVERY_ID_REAL`, `RETURN_ID_REAL` (será retornado), `LOCKER_ID_REAL`.
+- [ ] Ambiente backend ativo em `http://localhost:8003`.
+
+**Preset operacional sugerido (copiar e ajustar)**
+```bash
+export BASE_URL="http://localhost:8003"
+export OPS_TOKEN="<OPS_TOKEN>"
+export DELIVERY_ID_REAL="dlv_001"
+export REQUESTER_ID_REAL="usr_ops_001"
+export RETURN_REASON_CODE="DAMAGED_ITEM"
+```
+
+**One-shot copiar/colar (script único)**
+```bash
+OPS_TOKEN="<OPS_TOKEN>" \
+DELIVERY_ID_REAL="dlv_001" \
+./scripts/l2_d1_ops_validation_oneshot.sh
+```
+
+**Sequência rápida (2-3 min)**
+1. [ ] **Criar/validar motivo** (`200` esperado)
+```bash
+curl -sS -X POST "$BASE_URL/logistics/return-reasons" \
+  -H "Authorization: Bearer $OPS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"code":"DAMAGED_ITEM","label_pt":"Produto avariado","category":"PRODUCT","requires_photo":true,"requires_detail":true,"is_active":true}'
+```
+
+2. [ ] **Abrir return request** (`200` esperado) e guardar `RETURN_ID_REAL`
+```bash
+curl -sS -X POST "$BASE_URL/logistics/deliveries/$DELIVERY_ID_REAL/return-request" \
+  -H "Authorization: Bearer $OPS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"requester_type\":\"RECIPIENT\",\"requester_id\":\"$REQUESTER_ID_REAL\",\"return_reason_code\":\"$RETURN_REASON_CODE\",\"return_reason_detail\":\"Avaria em embalagem\"}"
+```
+
+3. [ ] **Aprovar request** (`200` esperado)
+```bash
+curl -sS -X PATCH "$BASE_URL/logistics/return-requests/<RETURN_ID_REAL>/status" \
+  -H "Authorization: Bearer $OPS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"APPROVED"}'
+```
+
+4. [ ] **Emitir label/perna reversa** (`200` esperado)
+```bash
+curl -sS -X POST "$BASE_URL/logistics/return-requests/<RETURN_ID_REAL>/labels" \
+  -H "Authorization: Bearer $OPS_TOKEN"
+```
+
+5. [ ] **Consultar SLA breaches** (`200` esperado)
+```bash
+curl -sS -X GET "$BASE_URL/logistics/sla-breaches?severity=HIGH&resolved=false&limit=50" \
+  -H "Authorization: Bearer $OPS_TOKEN"
+```
+
+**Presets para auxiliar o time (escolher trilha por contexto)**
+- [ ] **Preset Verde (fluxo saudável):** `REQUESTED -> APPROVED -> LABEL_ISSUED` sem erro, focando 5 chamadas em sequência.
+- [ ] **Preset Âmbar (qualidade de dados):** repetir etapa 1 e conferir consistência do motivo (`code`/`is_active`) antes de abrir request.
+- [ ] **Preset Vermelho (erro controlado):** executar uma chamada intencional com `return_request_id` inexistente para capturar `404 RETURN_REQUEST_NOT_FOUND`.
+
+**Detalhes importantes para operação (evita retrabalho)**
+- [ ] Sempre salvar o `id` retornado no passo 2; ele é chave para passos 3 e 4.
+- [ ] Se o motivo já existir, a API pode atuar como upsert; registrar isso como comportamento esperado.
+- [ ] Anexar no fechamento: payload da etapa 2 (request criada), payload da etapa 4 (label criada), e print com timestamp.
+- [ ] Capturar ao menos 1 `correlation_id` por execução real para auditoria cruzada.
+
+###### Continuidade do próximo sprint L-2 (D2) — kickoff iniciado
+- [~] Publicada listagem operacional de solicitações:
+      - `GET /logistics/return-requests` com filtros (`status`, `requester_type`, `return_reason_code`, `original_delivery_id`, paginação).
+- [ ] Próximo passo D2: conectar essa listagem na UI OPS de returns para operação de fila e handoff.
 
 ---
 

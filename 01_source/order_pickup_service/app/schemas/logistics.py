@@ -207,6 +207,108 @@ class LogisticsReturnEventListOut(BaseModel):
     items: list[LogisticsReturnEventOut]
 
 
+class ReturnRequestCreateIn(BaseModel):
+    requester_type: str = Field(..., description="RECIPIENT|SENDER|SYSTEM|OPS")
+    requester_id: str | None = Field(default=None, max_length=36)
+    return_reason_code: str = Field(..., max_length=30)
+    return_reason_detail: str | None = Field(default=None, max_length=4000)
+    photo_url: str | None = Field(default=None, max_length=500)
+
+
+class ReturnRequestStatusPatchIn(BaseModel):
+    status: str = Field(..., description="REQUESTED|APPROVED|REJECTED|LABEL_ISSUED|IN_TRANSIT|RECEIVED|CLOSED|DISPUTED")
+    close_reason: str | None = Field(default=None, max_length=255)
+
+
+class ReturnReasonIn(BaseModel):
+    code: str = Field(..., max_length=30)
+    label_pt: str = Field(..., max_length=128)
+    label_en: str | None = Field(default=None, max_length=128)
+    category: str | None = Field(default=None, max_length=30)
+    requires_photo: bool = Field(default=False)
+    requires_detail: bool = Field(default=False)
+    is_active: bool = Field(default=True)
+
+
+class ReturnReasonOut(BaseModel):
+    id: str
+    code: str
+    label_pt: str
+    label_en: str | None = None
+    category: str | None = None
+    requires_photo: bool
+    requires_detail: bool
+    is_active: bool
+    created_at: str
+
+
+class ReturnReasonListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[ReturnReasonOut]
+
+
+class ReturnLegOut(BaseModel):
+    id: str
+    return_request_id: str
+    logistics_partner_id: str | None = None
+    tracking_code: str | None = None
+    label_id: str | None = None
+    from_locker_id: str | None = None
+    to_hub_address: dict
+    status: str
+    shipped_at: str | None = None
+    received_at: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class ReturnRequestOut(BaseModel):
+    id: str
+    original_delivery_id: str
+    locker_id: str | None = None
+    requester_type: str
+    requester_id: str | None = None
+    return_reason_code: str
+    return_reason_detail: str | None = None
+    photo_url: str | None = None
+    status: str
+    requested_at: str
+    approved_at: str | None = None
+    approved_by: str | None = None
+    closed_at: str | None = None
+    close_reason: str | None = None
+    created_at: str
+    updated_at: str
+    legs: list[ReturnLegOut] = Field(default_factory=list)
+
+
+class ReturnRequestListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[ReturnRequestOut]
+
+
+class SlaBreachEventOut(BaseModel):
+    id: str
+    delivery_id: str | None = None
+    return_request_id: str | None = None
+    logistics_partner_id: str | None = None
+    breach_type: str
+    severity: str
+    expected_at: str
+    detected_at: str
+    notified_at: str | None = None
+    resolved_at: str | None = None
+    notes: str | None = None
+
+
+class SlaBreachEventListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[SlaBreachEventOut]
+
+
 class LogisticsManifestCreateIn(BaseModel):
     logistics_partner_id: str = Field(..., max_length=36)
     locker_id: str = Field(..., max_length=64)

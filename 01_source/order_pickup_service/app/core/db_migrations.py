@@ -1665,6 +1665,139 @@ def _create_logistics_return_events(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_return_requests(conn, applied: list[str]) -> None:
+    name = "return_requests.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS return_requests (
+            id                      VARCHAR(36) PRIMARY KEY,
+            original_delivery_id    VARCHAR(36) NOT NULL REFERENCES inbound_deliveries(id),
+            locker_id               VARCHAR(64) REFERENCES lockers(id),
+            requester_type          VARCHAR(20) NOT NULL
+                                    CHECK (requester_type IN ('RECIPIENT','SENDER','SYSTEM','OPS')),
+            requester_id            VARCHAR(36),
+            return_reason_code      VARCHAR(30) NOT NULL,
+            return_reason_detail    TEXT,
+            photo_url               VARCHAR(500),
+            status                  VARCHAR(30) NOT NULL DEFAULT 'REQUESTED'
+                                    CHECK (status IN (
+                                        'REQUESTED','APPROVED','REJECTED',
+                                        'LABEL_ISSUED','IN_TRANSIT','RECEIVED','CLOSED','DISPUTED'
+                                    )),
+            requested_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            approved_at             TIMESTAMPTZ,
+            approved_by             VARCHAR(36),
+            closed_at               TIMESTAMPTZ,
+            close_reason            VARCHAR(255),
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_rr_status_requested ON return_requests (status, requested_at DESC)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_rr_delivery_created ON return_requests (original_delivery_id, created_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_return_legs(conn, applied: list[str]) -> None:
+    name = "return_legs.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS return_legs (
+            id                      VARCHAR(36) PRIMARY KEY,
+            return_request_id       VARCHAR(36) NOT NULL REFERENCES return_requests(id),
+            logistics_partner_id    VARCHAR(36) REFERENCES logistics_partners(id),
+            tracking_code           VARCHAR(128),
+            label_id                VARCHAR(36) REFERENCES logistics_shipment_labels(id),
+            from_locker_id          VARCHAR(64) REFERENCES lockers(id),
+            to_hub_address_json     TEXT NOT NULL DEFAULT '{}',
+            status                  VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+                                    CHECK (status IN ('PENDING','IN_TRANSIT','RECEIVED','LOST','CANCELLED')),
+            shipped_at              TIMESTAMPTZ,
+            received_at             TIMESTAMPTZ,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_rl_return_status ON return_legs (return_request_id, status)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_return_tracking_events(conn, applied: list[str]) -> None:
+    name = "return_tracking_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS return_tracking_events (
+            id                  VARCHAR(36) PRIMARY KEY,
+            return_leg_id       VARCHAR(36) NOT NULL REFERENCES return_legs(id),
+            event_code          VARCHAR(30) NOT NULL,
+            description         VARCHAR(255),
+            location_name       VARCHAR(128),
+            occurred_at         TIMESTAMPTZ NOT NULL,
+            source              VARCHAR(20) NOT NULL DEFAULT 'CARRIER_WEBHOOK',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_rte_leg_time ON return_tracking_events (return_leg_id, occurred_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_return_reasons_catalog(conn, applied: list[str]) -> None:
+    name = "return_reasons_catalog.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS return_reasons_catalog (
+            id                  VARCHAR(36) PRIMARY KEY,
+            code                VARCHAR(30) NOT NULL UNIQUE,
+            label_pt            VARCHAR(128) NOT NULL,
+            label_en            VARCHAR(128),
+            category            VARCHAR(30),
+            requires_photo      BOOLEAN NOT NULL DEFAULT FALSE,
+            requires_detail     BOOLEAN NOT NULL DEFAULT FALSE,
+            is_active           BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_sla_breach_events(conn, applied: list[str]) -> None:
+    name = "sla_breach_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS sla_breach_events (
+            id                      VARCHAR(36) PRIMARY KEY,
+            delivery_id             VARCHAR(36) REFERENCES inbound_deliveries(id),
+            return_request_id       VARCHAR(36) REFERENCES return_requests(id),
+            logistics_partner_id    VARCHAR(36) REFERENCES logistics_partners(id),
+            breach_type             VARCHAR(40) NOT NULL
+                                    CHECK (breach_type IN (
+                                        'PICKUP_TIMEOUT','RETURN_TIMEOUT',
+                                        'NOTIFICATION_FAILURE','DELIVERY_ATTEMPT_EXCEEDED',
+                                        'RETURN_TRANSIT_TIMEOUT'
+                                    )),
+            severity                VARCHAR(10) NOT NULL CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')),
+            expected_at             TIMESTAMPTZ NOT NULL,
+            detected_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            notified_at             TIMESTAMPTZ,
+            resolved_at             TIMESTAMPTZ,
+            notes                   TEXT
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sbe_detected ON sla_breach_events (detected_at DESC)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sbe_type_severity ON sla_breach_events (breach_type, severity)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_logistics_manifests(conn, applied: list[str]) -> None:
     name = "logistics_manifests.create_table_v1"
     if _migration_applied(conn, name):
@@ -3955,6 +4088,11 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_logistics_carrier_status_map,
     _create_logistics_returns,
     _create_logistics_return_events,
+    _create_return_requests,
+    _create_return_legs,
+    _create_return_tracking_events,
+    _create_return_reasons_catalog,
+    _create_sla_breach_events,
     _create_logistics_manifests,
     _create_logistics_manifest_items,
     _create_logistics_capacity_allocations,
