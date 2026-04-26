@@ -228,6 +228,94 @@ class PartnerIntegrationHealthListOut(BaseModel):
     items: list[PartnerIntegrationHealthOut]
 
 
+class PartnerSettlementGenerateIn(BaseModel):
+    period_start: str = Field(..., description="Data YYYY-MM-DD")
+    period_end: str = Field(..., description="Data YYYY-MM-DD")
+    revenue_share_pct: float = Field(..., ge=0, le=1)
+    fees_cents: int = Field(default=0, ge=0)
+    currency: str = Field(default="BRL", min_length=3, max_length=8)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class PartnerSettlementApproveIn(BaseModel):
+    settlement_ref: str | None = Field(default=None, max_length=128)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+class PartnerSettlementOut(BaseModel):
+    id: str
+    partner_id: str
+    partner_type: str
+    period_start: str
+    period_end: str
+    currency: str
+    total_orders: int
+    gross_revenue_cents: int
+    revenue_share_pct: float
+    revenue_share_cents: int
+    fees_cents: int
+    net_amount_cents: int
+    status: str
+    settled_at: str | None = None
+    settlement_ref: str | None = None
+    notes: str | None = None
+    created_at: str
+    updated_at: str
+
+
+class PartnerSettlementListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerSettlementOut]
+
+
+class PartnerPerformanceOut(BaseModel):
+    id: str
+    partner_id: str
+    period_month: str
+    total_orders: int
+    on_time_pickup_pct: float | None = None
+    return_rate_pct: float | None = None
+    avg_pickup_hours: float | None = None
+    sla_compliance_pct: float | None = None
+    webhook_success_rate: float | None = None
+    generated_at: str
+
+
+class PartnerPerformanceListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerPerformanceOut]
+
+
+class PartnerServiceAreaIn(BaseModel):
+    locker_id: str = Field(..., max_length=36)
+    priority: int = Field(default=100, ge=0, le=9999)
+    exclusive: bool = Field(default=False)
+    valid_from: str = Field(..., description="Data YYYY-MM-DD")
+    valid_until: str | None = Field(default=None, description="Data YYYY-MM-DD")
+    is_active: bool = Field(default=True)
+
+
+class PartnerServiceAreaOut(BaseModel):
+    id: str
+    partner_id: str
+    partner_type: str
+    locker_id: str
+    priority: int
+    exclusive: bool
+    valid_from: str
+    valid_until: str | None = None
+    is_active: bool
+    created_at: str
+
+
+class PartnerServiceAreaListOut(BaseModel):
+    ok: bool
+    total: int
+    items: list[PartnerServiceAreaOut]
+
+
 class PartnerOpsAuditItemOut(BaseModel):
     id: str
     action: str

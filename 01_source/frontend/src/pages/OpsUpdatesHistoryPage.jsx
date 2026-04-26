@@ -142,6 +142,23 @@ const UPDATES = [
     directLink: "/ops/integration/orders-fiscal",
     directLinkLabel: "Abrir OPS I-1 orders/fiscal",
   },
+  {
+    date: "2026-04-26",
+    scope: "P-3 Financials/Areas",
+    title: "Operação de settlement e service-area por parceiro",
+    description:
+      "Página OPS dedicada para geração/aprovação de settlements, leitura de performance e gestão de cobertura por locker em service-areas.",
+    routes: [
+      "GET /partners/{id}/settlements",
+      "POST /partners/{id}/settlements/generate",
+      "PATCH /partners/{id}/settlements/{batch_id}/approve",
+      "GET /partners/{id}/performance",
+      "GET/POST /partners/{id}/service-areas",
+      "UI /ops/partners/financials-service-areas",
+    ],
+    directLink: "/ops/partners/financials-service-areas",
+    directLinkLabel: "Abrir OPS P-3 financials/service-areas",
+  },
 ];
 
 export default function OpsUpdatesHistoryPage() {

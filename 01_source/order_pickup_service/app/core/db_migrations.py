@@ -1395,6 +1395,112 @@ def _create_partner_integration_health(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_partner_settlement_batches(conn, applied: list[str]) -> None:
+    name = "partner_settlement_batches.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_settlement_batches (
+            id                  VARCHAR(36) PRIMARY KEY,
+            partner_id          VARCHAR(36) NOT NULL,
+            partner_type        VARCHAR(20) NOT NULL DEFAULT 'ECOMMERCE',
+            period_start        DATE NOT NULL,
+            period_end          DATE NOT NULL,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            total_orders        INTEGER NOT NULL DEFAULT 0,
+            gross_revenue_cents BIGINT NOT NULL DEFAULT 0,
+            revenue_share_pct   NUMERIC(6,4) NOT NULL,
+            revenue_share_cents BIGINT NOT NULL DEFAULT 0,
+            fees_cents          BIGINT NOT NULL DEFAULT 0,
+            net_amount_cents    BIGINT NOT NULL DEFAULT 0,
+            status              VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+            settled_at          TIMESTAMPTZ,
+            settlement_ref      VARCHAR(128),
+            notes               TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_psb_status
+                CHECK (status IN ('DRAFT','APPROVED','PAID','DISPUTED','CANCELLED'))
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_psb_partner_period ON partner_settlement_batches (partner_id, period_start, period_end)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_settlement_items(conn, applied: list[str]) -> None:
+    name = "partner_settlement_items.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_settlement_items (
+            id              BIGSERIAL PRIMARY KEY,
+            batch_id        VARCHAR(36) NOT NULL REFERENCES partner_settlement_batches(id),
+            order_id        VARCHAR(36) NOT NULL,
+            order_date      TIMESTAMPTZ NOT NULL,
+            gross_cents     BIGINT NOT NULL,
+            share_pct       NUMERIC(6,4) NOT NULL,
+            share_cents     BIGINT NOT NULL,
+            currency        VARCHAR(8) NOT NULL DEFAULT 'BRL'
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_psi_batch ON partner_settlement_items (batch_id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_service_areas(conn, applied: list[str]) -> None:
+    name = "partner_service_areas.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_service_areas (
+            id              VARCHAR(36) PRIMARY KEY,
+            partner_id      VARCHAR(36) NOT NULL,
+            partner_type    VARCHAR(20) NOT NULL DEFAULT 'ECOMMERCE',
+            locker_id       VARCHAR(36) NOT NULL REFERENCES lockers(id),
+            priority        INTEGER NOT NULL DEFAULT 100,
+            exclusive       BOOLEAN NOT NULL DEFAULT FALSE,
+            valid_from      DATE NOT NULL,
+            valid_until     DATE,
+            is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(
+        text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_psa_partner_locker_active "
+            "ON partner_service_areas (partner_id, locker_id) WHERE is_active IS TRUE"
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_psa_partner_priority ON partner_service_areas (partner_id, priority, created_at DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_partner_performance_metrics(conn, applied: list[str]) -> None:
+    name = "partner_performance_metrics.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS partner_performance_metrics (
+            id                      VARCHAR(36) PRIMARY KEY,
+            partner_id              VARCHAR(36) NOT NULL,
+            period_month            CHAR(7) NOT NULL,
+            total_orders            INTEGER NOT NULL DEFAULT 0,
+            on_time_pickup_pct      NUMERIC(5,2),
+            return_rate_pct         NUMERIC(5,2),
+            avg_pickup_hours        NUMERIC(6,2),
+            sla_compliance_pct      NUMERIC(5,2),
+            webhook_success_rate    NUMERIC(5,2),
+            generated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS idx_ppm_partner_month ON partner_performance_metrics (partner_id, period_month DESC)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_logistics_tracking_events(conn, applied: list[str]) -> None:
     name = "logistics_tracking_events.create_table_v1"
     if _migration_applied(conn, name):
@@ -3830,6 +3936,10 @@ _POSTGRES_MIGRATION_STEPS = [
     _migrate_partner_webhook_endpoints_secret_key_v1,
     _create_partner_webhook_deliveries,
     _create_partner_integration_health,
+    _create_partner_settlement_batches,
+    _create_partner_settlement_items,
+    _create_partner_service_areas,
+    _create_partner_performance_metrics,
     _create_webhook_endpoints,
     _create_webhook_deliveries,
     _create_orders,

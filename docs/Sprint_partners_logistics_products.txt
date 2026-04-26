@@ -776,7 +776,7 @@ CREATE TABLE partner_rate_limits (
 
 ---
 
-### [ ] Sprint P-3 · "Partner Financials & Service Areas" (2 semanas)
+### [~] Sprint P-3 · "Partner Financials & Service Areas" (2 semanas)
 
 **Objetivo:** Liquidação de revenue share periódica, cobertura geográfica por locker e métricas de desempenho — padrão UPS Partner Settlement / MercadoPago Marketplace Split.
 
@@ -864,6 +864,22 @@ CREATE TABLE partner_performance_metrics (
 | `PATCH` | `/partners/{id}/settlements/{batch_id}/approve` | Aprova para pagamento |
 | `GET` | `/partners/{id}/performance` | Métricas dos últimos 6 meses |
 | `GET/POST` | `/partners/{id}/service-areas` | Cobertura por locker |
+
+#### Implementação atual (backend v1)
+- [x] Migrações idempotentes adicionadas para:
+  - `partner_settlement_batches`
+  - `partner_settlement_items`
+  - `partner_service_areas`
+  - `partner_performance_metrics`
+- [x] Modelos SQLAlchemy base adicionados para settlement, service areas e performance.
+- [x] Endpoints P-3 v1 implementados em `app/routers/partners.py`:
+  - `GET /partners/{id}/settlements`
+  - `POST /partners/{id}/settlements/generate`
+  - `PATCH /partners/{id}/settlements/{batch_id}/approve`
+  - `GET /partners/{id}/performance`
+  - `GET/POST /partners/{id}/service-areas`
+- [x] Auditoria OPS (`before/after`) aplicada em `generate`, `approve` e `service-area create`.
+- [ ] Próximo passo sugerido: adicionar UI OPS dedicada (`/ops/partners/financials-service-areas`) + bloco de evidência técnica rápida (curl/resposta esperada).
 
 ---
 
@@ -2429,6 +2445,59 @@ Para cada item:
 - [x] Publicar reprocessamento de classificação fiscal por pedido:
       - `POST /fiscal/auto-classification/{order_id}/reprocess`
 - [x] Pendência de governança: bloco de evidência técnica rápida documentado abaixo para execução autenticada em ambiente.
+
+###### Evidência frontend OPS I-1 (operação dedicada por `order_id`)
+
+- [x] Página operacional dedicada publicada: `UI /ops/integration/orders-fiscal`.
+- [x] Fluxos integrados na mesma tela para operação de plantão:
+      - `GET /orders/{id}/fulfillment`
+      - `GET /orders/{id}/partner-events`
+      - `POST /orders/{id}/partner-events/retry`
+      - `GET /fiscal/auto-classification-log/{order_id}`
+      - `POST /fiscal/auto-classification/{order_id}/reprocess`
+- [x] UX/CX no padrão OPS:
+      - guia rápido orientado por `order_id`;
+      - ações rápidas para diagnóstico e correção;
+      - chips de status por ação (`idle/running/success/error`) para handoff.
+- [x] Persistência operacional:
+      - estado dos chips salvo em `localStorage` para manter contexto após refresh.
+- [x] Governança de navegação:
+      - rota registrada no menu OPS com badge `NEW` apenas para a entrada mais recente;
+      - registro com link direto incluído na timeline `ops/updates`.
+- [ ] Pendência final de fechamento em ambiente: anexar captura de execução real da UI (token OPS) com cenário de sucesso + cenário de erro controlado.
+
+###### Roteiro de validação manual I-1 (checklist de 5 minutos)
+
+**Objetivo:** gerar evidência real de operação com baixo atrito para anexar no fechamento de sprint.
+
+**Pré-requisitos (30s)**
+- [ ] Estar autenticado com perfil OPS (`admin_operacao` ou `auditoria`).
+- [ ] Abrir `UI /ops/integration/orders-fiscal`.
+- [ ] Confirmar `order_id` de teste conhecido no ambiente.
+
+**Passo 1 — Cenário verde (sucesso) [~1 min]**
+- [ ] Clicar no preset **verde** `Preset verde: cenário sucesso`.
+- [ ] Executar: `GET fulfillment` + `GET partner-events`.
+- [ ] Evidência esperada: chips verdes (`success`) e payload sem erro.
+
+**Passo 2 — Cenário âmbar (replay/retry) [~1 min]**
+- [ ] Clicar no preset **âmbar** `Preset âmbar: cenário retry`.
+- [ ] Executar: `POST retry event`.
+- [ ] Evidência esperada: item migrando para `PENDING` ou resposta controlada (`ITEM_ALREADY_DELIVERED_USE_FORCE` quando aplicável).
+
+**Passo 3 — Cenário vermelho (diagnóstico fiscal) [~1.5 min]**
+- [ ] Clicar no preset **vermelho** `Preset vermelho: diagnóstico fiscal`.
+- [ ] Executar: `GET fiscal log by order` + `POST fiscal reprocess`.
+- [ ] Evidência esperada: retorno com `sources` e atualização dos logs fiscais do pedido.
+
+**Passo 4 — Registro de evidência [~1 min]**
+- [ ] Capturar print da tela com chips coloridos + bloco de resposta técnica.
+- [ ] Anexar `order_id`, horário e operador no bloco de evidência do sprint.
+- [ ] Classificar resultado:
+      - **GO**: sucesso em ao menos 1 fluxo verde + 1 fluxo âmbar + 1 fluxo vermelho.
+      - **NO-GO**: erro não controlado em qualquer etapa crítica.
+
+> Nota UX/CX: os presets coloridos seguem semântica operacional de plantão — **verde (fluxo saudável)**, **âmbar (ação corretiva/retry)**, **vermelho (diagnóstico de risco fiscal)** — para reduzir carga cognitiva e acelerar handoff.
 
 ###### Evidência técnica rápida I-1 (orders/fiscal wiring por `order_id`)
 

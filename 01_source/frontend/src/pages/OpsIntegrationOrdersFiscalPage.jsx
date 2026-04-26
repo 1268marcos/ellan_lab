@@ -52,6 +52,7 @@ export default function OpsIntegrationOrdersFiscalPage() {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState("");
   const [actionStatus, setActionStatus] = useState(defaultActionStatus);
+  const [copyStatus, setCopyStatus] = useState("");
 
   useEffect(() => {
     try {
@@ -105,6 +106,63 @@ export default function OpsIntegrationOrdersFiscalPage() {
 
   function getNormalizedOrderId() {
     return String(orderId || "").trim();
+  }
+
+  function applyPreset(preset) {
+    if (preset === "success") {
+      setOrderId("order_i1_001");
+      setOutboxId("");
+      setForceRetry(false);
+      return;
+    }
+    if (preset === "retry") {
+      setOrderId("order_i1_001");
+      setOutboxId("");
+      setForceRetry(true);
+      return;
+    }
+    setOrderId("order_i1_default_fallback");
+    setOutboxId("");
+    setForceRetry(false);
+  }
+
+  function buildEvidenceSummary() {
+    const normalizedOrderId = getNormalizedOrderId() || "(não informado)";
+    const ts = new Date().toISOString();
+    const executed = ACTIONS.filter((item) => actionStatus[item.key]?.status && actionStatus[item.key]?.status !== "idle");
+    const lines = [
+      `I-1 OPS Evidence Snapshot`,
+      `timestamp: ${ts}`,
+      `order_id: ${normalizedOrderId}`,
+      `outbox_id: ${String(outboxId || "").trim() || "-"}`,
+      `force_retry: ${String(Boolean(forceRetry))}`,
+      `actions_executed: ${executed.length}`,
+      "",
+      "status_by_chip:",
+      ...(executed.length
+        ? executed.map((item) => {
+            const state = actionStatus[item.key] || {};
+            return `- ${item.label}: status=${state.status || "unknown"}; note=${state.note || "-"}; updated_at=${state.updatedAt || "-"}`;
+          })
+        : ["- nenhuma ação executada ainda"]),
+    ];
+    const payloadSnippet = String(result || "").trim();
+    if (payloadSnippet) {
+      const normalizedSnippet = payloadSnippet.replace(/\s+/g, " ").slice(0, 500);
+      lines.push("", "payload_snippet_500:", normalizedSnippet);
+    }
+    return lines.join("\n");
+  }
+
+  async function handleCopyEvidence() {
+    const summary = buildEvidenceSummary();
+    try {
+      await navigator.clipboard.writeText(summary);
+      setCopyStatus("Resumo de evidência copiado para a área de transferência.");
+      window.setTimeout(() => setCopyStatus(""), 2200);
+    } catch (_) {
+      setCopyStatus("Falha ao copiar automaticamente. Copie manualmente do painel técnico.");
+    }
   }
 
   async function handleGetFulfillment() {
@@ -165,6 +223,18 @@ export default function OpsIntegrationOrdersFiscalPage() {
           </label>
         </div>
 
+        <div style={presetRowStyle}>
+          <button type="button" style={presetSuccessStyle} onClick={() => applyPreset("success")} disabled={Boolean(loading)}>
+            Preset verde: cenário sucesso
+          </button>
+          <button type="button" style={presetWarnStyle} onClick={() => applyPreset("retry")} disabled={Boolean(loading)}>
+            Preset âmbar: cenário retry
+          </button>
+          <button type="button" style={presetErrorStyle} onClick={() => applyPreset("default")} disabled={Boolean(loading)}>
+            Preset vermelho: diagnóstico fiscal
+          </button>
+        </div>
+
         <div style={actionsStyle}>
           <button type="button" style={buttonStyle} onClick={() => void handleGetFulfillment()} disabled={Boolean(loading)}>
             {loading === "fulfillment" ? "Carregando..." : "GET fulfillment"}
@@ -181,7 +251,11 @@ export default function OpsIntegrationOrdersFiscalPage() {
           <button type="button" style={buttonStyle} onClick={() => void handleFiscalReprocess()} disabled={Boolean(loading)}>
             {loading === "fiscalReprocess" ? "Reprocessando..." : "POST fiscal reprocess"}
           </button>
+          <button type="button" style={buttonCopyStyle} onClick={() => void handleCopyEvidence()} disabled={Boolean(loading)}>
+            Copiar evidência
+          </button>
         </div>
+        {copyStatus ? <div style={copyStatusStyle}>{copyStatus}</div> : null}
 
         <div style={chipsGridStyle}>
           {ACTIONS.map((item) => (
@@ -203,9 +277,15 @@ const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };
 const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#020617", color: "#E2E8F0" };
 const toggleLabelStyle = { color: "#CBD5E1", fontSize: 12, display: "flex", alignItems: "center", gap: 6, paddingTop: 24 };
 const actionsStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 };
+const presetRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8 };
 const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
 const buttonSecondaryStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid #334155", background: "#0B1220", color: "#E2E8F0", fontWeight: 700, cursor: "pointer" };
 const buttonWarnStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer" };
+const buttonCopyStyle = { padding: "10px 14px", borderRadius: 10, border: "1px solid rgba(59,130,246,0.55)", background: "rgba(59,130,246,0.2)", color: "#93C5FD", fontWeight: 700, cursor: "pointer" };
+const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
+const presetSuccessStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(22,163,74,0.45)", background: "rgba(22,163,74,0.2)", color: "#86EFAC", fontWeight: 700, cursor: "pointer", fontSize: 12 };
+const presetWarnStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(217,119,6,0.45)", background: "rgba(217,119,6,0.2)", color: "#FDE68A", fontWeight: 700, cursor: "pointer", fontSize: 12 };
+const presetErrorStyle = { padding: "8px 12px", borderRadius: 999, border: "1px solid rgba(220,38,38,0.45)", background: "rgba(220,38,38,0.18)", color: "#FCA5A5", fontWeight: 700, cursor: "pointer", fontSize: 12 };
 const resultStyle = { marginTop: 12, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12, whiteSpace: "pre-wrap" };
 const chipsGridStyle = { display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", marginTop: 10 };
 const chipBaseStyle = { borderRadius: 10, border: "1px solid #334155", padding: "8px 10px", display: "grid", gap: 2 };

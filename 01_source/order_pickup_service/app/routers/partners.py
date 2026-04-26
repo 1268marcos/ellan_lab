@@ -38,6 +38,8 @@ from app.schemas.partners import (
     PartnerIntegrationHealthIn,
     PartnerIntegrationHealthListOut,
     PartnerIntegrationHealthOut,
+    PartnerPerformanceListOut,
+    PartnerPerformanceOut,
     PartnerOpsActionsOut,
     PartnerOpsAuditItemOut,
     PartnerOpsAuditListOut,
@@ -56,6 +58,13 @@ from app.schemas.partners import (
     PartnerSlaAgreementIn,
     PartnerSlaAgreementListOut,
     PartnerSlaAgreementOut,
+    PartnerSettlementApproveIn,
+    PartnerSettlementGenerateIn,
+    PartnerSettlementListOut,
+    PartnerSettlementOut,
+    PartnerServiceAreaIn,
+    PartnerServiceAreaListOut,
+    PartnerServiceAreaOut,
     PartnerStatusHistoryItemOut,
     PartnerStatusHistoryListOut,
     PartnerStatusOut,
@@ -806,6 +815,516 @@ def get_partner_health(
         for row in rows
     ]
     return PartnerIntegrationHealthListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/{partner_id}/settlements", response_model=PartnerSettlementListOut)
+def get_partner_settlements(
+    partner_id: str,
+    from_period_start: str | None = Query(default=None),
+    to_period_end: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    query = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, partner_type, period_start, period_end, currency,
+                total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                notes, created_at, updated_at
+            FROM partner_settlement_batches
+            WHERE partner_id = :partner_id
+              AND (:from_period_start::date IS NULL OR period_start >= :from_period_start::date)
+              AND (:to_period_end::date IS NULL OR period_end <= :to_period_end::date)
+              AND (:status_filter IS NULL OR status = :status_filter)
+            ORDER BY period_end DESC, created_at DESC
+            LIMIT :limit
+            """
+        ),
+        {
+            "partner_id": partner_id,
+            "from_period_start": (str(from_period_start).strip() if from_period_start else None),
+            "to_period_end": (str(to_period_end).strip() if to_period_end else None),
+            "status_filter": (str(status).strip().upper() if status else None),
+            "limit": int(limit),
+        },
+    ).mappings().all()
+    items = [
+        PartnerSettlementOut(
+            id=str(row["id"]),
+            partner_id=str(row["partner_id"]),
+            partner_type=str(row["partner_type"]),
+            period_start=row["period_start"].isoformat(),
+            period_end=row["period_end"].isoformat(),
+            currency=str(row["currency"] or "BRL"),
+            total_orders=int(row["total_orders"] or 0),
+            gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+            revenue_share_pct=float(row["revenue_share_pct"] or 0),
+            revenue_share_cents=int(row["revenue_share_cents"] or 0),
+            fees_cents=int(row["fees_cents"] or 0),
+            net_amount_cents=int(row["net_amount_cents"] or 0),
+            status=str(row["status"]),
+            settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+            settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+            notes=str(row["notes"]) if row["notes"] else None,
+            created_at=_to_iso_utc(row["created_at"]),
+            updated_at=_to_iso_utc(row["updated_at"]),
+        )
+        for row in query
+    ]
+    return PartnerSettlementListOut(ok=True, total=len(items), items=items)
+
+
+@router.post("/{partner_id}/settlements/generate", response_model=PartnerSettlementOut)
+def post_partner_settlement_generate(
+    partner_id: str,
+    payload: PartnerSettlementGenerateIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    period_start = _parse_iso_date(payload.period_start, field_name="period_start")
+    period_end = _parse_iso_date(payload.period_end, field_name="period_end")
+    if period_end < period_start:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "period_end deve ser >= period_start."})
+
+    existing = db.execute(
+        text(
+            """
+            SELECT id FROM partner_settlement_batches
+            WHERE partner_id = :partner_id
+              AND period_start = :period_start
+              AND period_end = :period_end
+              AND status IN ('DRAFT', 'APPROVED', 'PAID')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id, "period_start": period_start, "period_end": period_end},
+    ).mappings().first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "SETTLEMENT_ALREADY_EXISTS",
+                "message": "Já existe batch de liquidação para esse período.",
+                "batch_id": str(existing["id"]),
+            },
+        )
+
+    summary = db.execute(
+        text(
+            """
+            SELECT
+                COUNT(*)::int AS total_orders,
+                COALESCE(SUM(amount_cents), 0)::bigint AS gross_revenue_cents
+            FROM orders
+            WHERE ecommerce_partner_id = :partner_id
+              AND created_at >= :period_start::date
+              AND created_at < (:period_end::date + INTERVAL '1 day')
+            """
+        ),
+        {"partner_id": partner_id, "period_start": period_start, "period_end": period_end},
+    ).mappings().first() or {}
+    total_orders = int(summary.get("total_orders") or 0)
+    gross_revenue_cents = int(summary.get("gross_revenue_cents") or 0)
+    share_pct = float(payload.revenue_share_pct)
+    revenue_share_cents = int(round(gross_revenue_cents * share_pct))
+    fees_cents = int(payload.fees_cents)
+    net_amount_cents = int(gross_revenue_cents - revenue_share_cents - fees_cents)
+
+    batch_id = str(uuid4())
+    db.execute(
+        text(
+            """
+            INSERT INTO partner_settlement_batches (
+                id, partner_id, partner_type, period_start, period_end, currency,
+                total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                fees_cents, net_amount_cents, status, notes, created_at, updated_at
+            ) VALUES (
+                :id, :partner_id, 'ECOMMERCE', :period_start, :period_end, :currency,
+                :total_orders, :gross_revenue_cents, :revenue_share_pct, :revenue_share_cents,
+                :fees_cents, :net_amount_cents, 'DRAFT', :notes, NOW(), NOW()
+            )
+            """
+        ),
+        {
+            "id": batch_id,
+            "partner_id": partner_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "currency": payload.currency.strip().upper() or "BRL",
+            "total_orders": total_orders,
+            "gross_revenue_cents": gross_revenue_cents,
+            "revenue_share_pct": Decimal(str(payload.revenue_share_pct)),
+            "revenue_share_cents": revenue_share_cents,
+            "fees_cents": fees_cents,
+            "net_amount_cents": net_amount_cents,
+            "notes": (payload.notes.strip() if payload.notes else None),
+        },
+    )
+    _audit_ops(
+        db=db,
+        action="PARTNER_SETTLEMENT_GENERATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "after": {
+                "id": batch_id,
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "total_orders": total_orders,
+                "gross_revenue_cents": gross_revenue_cents,
+                "revenue_share_pct": share_pct,
+                "revenue_share_cents": revenue_share_cents,
+                "fees_cents": fees_cents,
+                "net_amount_cents": net_amount_cents,
+            },
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, partner_type, period_start, period_end, currency,
+                total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                notes, created_at, updated_at
+            FROM partner_settlement_batches
+            WHERE id = :id
+            """
+        ),
+        {"id": batch_id},
+    ).mappings().first()
+    return PartnerSettlementOut(
+        id=str(row["id"]),
+        partner_id=str(row["partner_id"]),
+        partner_type=str(row["partner_type"]),
+        period_start=row["period_start"].isoformat(),
+        period_end=row["period_end"].isoformat(),
+        currency=str(row["currency"] or "BRL"),
+        total_orders=int(row["total_orders"] or 0),
+        gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+        revenue_share_pct=float(row["revenue_share_pct"] or 0),
+        revenue_share_cents=int(row["revenue_share_cents"] or 0),
+        fees_cents=int(row["fees_cents"] or 0),
+        net_amount_cents=int(row["net_amount_cents"] or 0),
+        status=str(row["status"]),
+        settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+        settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+        notes=str(row["notes"]) if row["notes"] else None,
+        created_at=_to_iso_utc(row["created_at"]),
+        updated_at=_to_iso_utc(row["updated_at"]),
+    )
+
+
+@router.patch("/{partner_id}/settlements/{batch_id}/approve", response_model=PartnerSettlementOut)
+def patch_partner_settlement_approve(
+    partner_id: str,
+    batch_id: str,
+    payload: PartnerSettlementApproveIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    before = db.execute(
+        text(
+            """
+            SELECT id, partner_id, status, settlement_ref, notes, updated_at
+            FROM partner_settlement_batches
+            WHERE id = :batch_id AND partner_id = :partner_id
+            """
+        ),
+        {"batch_id": batch_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not before:
+        raise HTTPException(status_code=404, detail={"type": "SETTLEMENT_NOT_FOUND", "message": "Batch de liquidação não encontrado."})
+
+    if str(before["status"]) in {"APPROVED", "PAID"}:
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    id, partner_id, partner_type, period_start, period_end, currency,
+                    total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                    fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                    notes, created_at, updated_at
+                FROM partner_settlement_batches
+                WHERE id = :batch_id
+                """
+            ),
+            {"batch_id": batch_id},
+        ).mappings().first()
+        return PartnerSettlementOut(
+            id=str(row["id"]),
+            partner_id=str(row["partner_id"]),
+            partner_type=str(row["partner_type"]),
+            period_start=row["period_start"].isoformat(),
+            period_end=row["period_end"].isoformat(),
+            currency=str(row["currency"] or "BRL"),
+            total_orders=int(row["total_orders"] or 0),
+            gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+            revenue_share_pct=float(row["revenue_share_pct"] or 0),
+            revenue_share_cents=int(row["revenue_share_cents"] or 0),
+            fees_cents=int(row["fees_cents"] or 0),
+            net_amount_cents=int(row["net_amount_cents"] or 0),
+            status=str(row["status"]),
+            settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+            settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+            notes=str(row["notes"]) if row["notes"] else None,
+            created_at=_to_iso_utc(row["created_at"]),
+            updated_at=_to_iso_utc(row["updated_at"]),
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE partner_settlement_batches
+            SET status = 'APPROVED',
+                settled_at = NOW(),
+                settlement_ref = COALESCE(:settlement_ref, settlement_ref),
+                notes = COALESCE(:notes, notes),
+                updated_at = NOW()
+            WHERE id = :batch_id
+              AND partner_id = :partner_id
+            """
+        ),
+        {
+            "batch_id": batch_id,
+            "partner_id": partner_id,
+            "settlement_ref": (payload.settlement_ref.strip() if payload.settlement_ref else None),
+            "notes": (payload.notes.strip() if payload.notes else None),
+        },
+    )
+    _audit_ops(
+        db=db,
+        action="PARTNER_SETTLEMENT_APPROVE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "before": {
+                "id": str(before["id"]),
+                "status": str(before["status"]),
+                "settlement_ref": (str(before["settlement_ref"]) if before["settlement_ref"] else None),
+            },
+            "after": {
+                "id": batch_id,
+                "status": "APPROVED",
+                "settlement_ref": (payload.settlement_ref.strip() if payload.settlement_ref else None),
+            },
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, partner_type, period_start, period_end, currency,
+                total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                notes, created_at, updated_at
+            FROM partner_settlement_batches
+            WHERE id = :batch_id
+            """
+        ),
+        {"batch_id": batch_id},
+    ).mappings().first()
+    return PartnerSettlementOut(
+        id=str(row["id"]),
+        partner_id=str(row["partner_id"]),
+        partner_type=str(row["partner_type"]),
+        period_start=row["period_start"].isoformat(),
+        period_end=row["period_end"].isoformat(),
+        currency=str(row["currency"] or "BRL"),
+        total_orders=int(row["total_orders"] or 0),
+        gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+        revenue_share_pct=float(row["revenue_share_pct"] or 0),
+        revenue_share_cents=int(row["revenue_share_cents"] or 0),
+        fees_cents=int(row["fees_cents"] or 0),
+        net_amount_cents=int(row["net_amount_cents"] or 0),
+        status=str(row["status"]),
+        settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+        settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+        notes=str(row["notes"]) if row["notes"] else None,
+        created_at=_to_iso_utc(row["created_at"]),
+        updated_at=_to_iso_utc(row["updated_at"]),
+    )
+
+
+@router.get("/{partner_id}/performance", response_model=PartnerPerformanceListOut)
+def get_partner_performance(
+    partner_id: str,
+    limit: int = Query(default=6, ge=1, le=24),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    rows = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, period_month, total_orders,
+                on_time_pickup_pct, return_rate_pct, avg_pickup_hours,
+                sla_compliance_pct, webhook_success_rate, generated_at
+            FROM partner_performance_metrics
+            WHERE partner_id = :partner_id
+            ORDER BY period_month DESC, generated_at DESC
+            LIMIT :limit
+            """
+        ),
+        {"partner_id": partner_id, "limit": int(limit)},
+    ).mappings().all()
+    items = [
+        PartnerPerformanceOut(
+            id=str(row["id"]),
+            partner_id=str(row["partner_id"]),
+            period_month=str(row["period_month"]),
+            total_orders=int(row["total_orders"] or 0),
+            on_time_pickup_pct=(float(row["on_time_pickup_pct"]) if row["on_time_pickup_pct"] is not None else None),
+            return_rate_pct=(float(row["return_rate_pct"]) if row["return_rate_pct"] is not None else None),
+            avg_pickup_hours=(float(row["avg_pickup_hours"]) if row["avg_pickup_hours"] is not None else None),
+            sla_compliance_pct=(float(row["sla_compliance_pct"]) if row["sla_compliance_pct"] is not None else None),
+            webhook_success_rate=(float(row["webhook_success_rate"]) if row["webhook_success_rate"] is not None else None),
+            generated_at=_to_iso_utc(row["generated_at"]),
+        )
+        for row in rows
+    ]
+    return PartnerPerformanceListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/{partner_id}/service-areas", response_model=PartnerServiceAreaListOut)
+def get_partner_service_areas(
+    partner_id: str,
+    only_active: bool = Query(default=True),
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    rows = db.execute(
+        text(
+            """
+            SELECT id, partner_id, partner_type, locker_id, priority, exclusive,
+                   valid_from, valid_until, is_active, created_at
+            FROM partner_service_areas
+            WHERE partner_id = :partner_id
+              AND (:only_active IS FALSE OR is_active IS TRUE)
+            ORDER BY priority ASC, created_at DESC
+            LIMIT :limit
+            """
+        ),
+        {"partner_id": partner_id, "only_active": bool(only_active), "limit": int(limit)},
+    ).mappings().all()
+    items = [
+        PartnerServiceAreaOut(
+            id=str(row["id"]),
+            partner_id=str(row["partner_id"]),
+            partner_type=str(row["partner_type"]),
+            locker_id=str(row["locker_id"]),
+            priority=int(row["priority"] or 0),
+            exclusive=bool(row["exclusive"]),
+            valid_from=row["valid_from"].isoformat(),
+            valid_until=(row["valid_until"].isoformat() if row["valid_until"] else None),
+            is_active=bool(row["is_active"]),
+            created_at=_to_iso_utc(row["created_at"]),
+        )
+        for row in rows
+    ]
+    return PartnerServiceAreaListOut(ok=True, total=len(items), items=items)
+
+
+@router.post("/{partner_id}/service-areas", response_model=PartnerServiceAreaOut)
+def post_partner_service_area(
+    partner_id: str,
+    payload: PartnerServiceAreaIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    valid_from = _parse_iso_date(payload.valid_from, field_name="valid_from")
+    valid_until = _parse_iso_date(payload.valid_until, field_name="valid_until") if payload.valid_until else None
+    if valid_until and valid_until < valid_from:
+        raise HTTPException(status_code=422, detail={"type": "INVALID_DATE_RANGE", "message": "valid_until deve ser >= valid_from."})
+
+    area_id = str(uuid4())
+    db.execute(
+        text(
+            """
+            INSERT INTO partner_service_areas (
+                id, partner_id, partner_type, locker_id, priority, exclusive,
+                valid_from, valid_until, is_active, created_at
+            ) VALUES (
+                :id, :partner_id, 'ECOMMERCE', :locker_id, :priority, :exclusive,
+                :valid_from, :valid_until, :is_active, NOW()
+            )
+            """
+        ),
+        {
+            "id": area_id,
+            "partner_id": partner_id,
+            "locker_id": payload.locker_id.strip(),
+            "priority": int(payload.priority),
+            "exclusive": bool(payload.exclusive),
+            "valid_from": valid_from,
+            "valid_until": valid_until,
+            "is_active": bool(payload.is_active),
+        },
+    )
+    _audit_ops(
+        db=db,
+        action="PARTNER_SERVICE_AREA_CREATE",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "after": {
+                "id": area_id,
+                "locker_id": payload.locker_id.strip(),
+                "priority": int(payload.priority),
+                "exclusive": bool(payload.exclusive),
+                "valid_from": valid_from.isoformat(),
+                "valid_until": (valid_until.isoformat() if valid_until else None),
+                "is_active": bool(payload.is_active),
+            },
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT id, partner_id, partner_type, locker_id, priority, exclusive,
+                   valid_from, valid_until, is_active, created_at
+            FROM partner_service_areas
+            WHERE id = :id
+            """
+        ),
+        {"id": area_id},
+    ).mappings().first()
+    return PartnerServiceAreaOut(
+        id=str(row["id"]),
+        partner_id=str(row["partner_id"]),
+        partner_type=str(row["partner_type"]),
+        locker_id=str(row["locker_id"]),
+        priority=int(row["priority"] or 0),
+        exclusive=bool(row["exclusive"]),
+        valid_from=row["valid_from"].isoformat(),
+        valid_until=(row["valid_until"].isoformat() if row["valid_until"] else None),
+        is_active=bool(row["is_active"]),
+        created_at=_to_iso_utc(row["created_at"]),
+    )
 
 
 @router.get("/ops/webhooks/metrics", response_model=PartnerWebhookOpsMetricsOut)
