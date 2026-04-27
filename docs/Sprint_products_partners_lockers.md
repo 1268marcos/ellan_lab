@@ -46,7 +46,7 @@ Implementar um fluxo ponta a ponta para produtos de parceiros em lockers, cobrin
   - [x] Sprint 11 - refinamentos de leitura executiva (`min_severity`, `severity_counts`, DoD tecnico, SQL de limpeza de batches legados de teste)
 - **Itens ativos Sprint 12 (kickoff)**:
   - [~] Percorrer **`## 10) Checklist de implantacao`**: marcar `[x]` com evidencia (comando, log, print, link) ou `[!]` com owner.
-  - [~] Priorizar itens ja parcialmente verdadeiros em lab (seeds, parceiros, settlement) antes de carga/WCAG.
+  - [x] Priorizar itens ja parcialmente verdadeiros em lab (seeds, parceiros, settlement) antes de carga/WCAG — **dia 0** executado (ver registro `Sprint 12: registro dia 0`).
   - [ ] Pagina OPS minima (`top-divergences` + `compare`) — opcional neste sprint se sobrar capacidade.
 
 ---
@@ -590,13 +590,21 @@ python scripts/sprint0_seed_products_partners_lockers.py
 - [x] Artefato de limpeza de dados de demo: `02_docker/cleanup_settlement_reconciliation_legacy_test_batches.sql`.
 
 ### 27/04/2026 - Kickoff Sprint 12 — Implantacao (checklist **secao 10**)
-- [~] **Contexto**: pedido de "iniciar sprint 10" costuma alinhar ao **capitulo 10** deste ficheiro (`## 10) Checklist de implantacao`), nao ao sprint API **Sprint 10** ja entregue (`top-divergences`, ver registro acima).
-- [~] **Objetivo**: transformar o checklist de implantacao em estado rastreavel (evidencias por linha) e identificar buracos reais antes de go-live.
-- [~] **Primeira rodada sugerida (hoje)**:
+- [x] **Contexto**: pedido de "iniciar sprint 10" costuma alinhar ao **capitulo 10** deste ficheiro (`## 10) Checklist de implantacao`), nao ao sprint API **Sprint 10** ja entregue (`top-divergences`, ver registro acima).
+- [x] **Objetivo**: transformar o checklist de implantacao em estado rastreavel (evidencias por linha) e identificar buracos reais antes de go-live.
+- [x] **Primeira rodada sugerida (hoje)**:
   - confirmar seeds/slots/parceiros em ambiente alvo (marcar linhas 1-2 do checklist com comando ou SELECT);
   - confirmar settlement auditavel (linha 9) com base no que ja existe em OPS;
   - deixar explicito o que falta para carga (linha 5), WCAG (6-7), mensagens (8), dashboard (10).
 - [ ] Entrega opcional: pagina OPS minima adiada do Sprint 11, se couber no mesmo ciclo.
+
+### 27/04/2026 - Sprint 12: registro **dia 0** (inicio formal + evidencias lab)
+- [x] Sprint 12 **iniciado** no repo: checklist §10 passa a ser a fonte de verdade ate novo sprint; kickoff acima marcado como concluido.
+- [x] Evidencias em **Postgres** `locker_central` (host local `127.0.0.1:5435`, user `admin`) — *ajustar host se o teu ambiente for outro*:
+  - `SELECT COUNT(*) FROM locker_slot_configs` → **40**; `SELECT COUNT(*) FROM locker_slots` → **350** (checklist linha 1).
+  - `SELECT COUNT(*) FROM partner_service_areas WHERE is_active IS TRUE` → **7** (checklist linha 2).
+  - `SELECT COUNT(*) FROM partner_settlement_batches` → **8**; `SELECT COUNT(*) FROM ops_action_audit WHERE action LIKE 'PARTNER_SETTLEMENT%'` → **11** (checklist linha 9 — geracao + trilha OPS).
+- [ ] Pendencias para proximas rodadas (checklist §10): SKU+fiscal; teste de carga em alocacao; inventario sem oversell; ciclo pickup; outbox com monitoracao (tabela com **22** linhas em `partner_order_events_outbox` — falta evidencia de alertas/runbook); WCAG AA; teclado/screen reader; mensagens de erro padronizadas; dashboard operacional.
 
 ### Quando avisar para reiniciar containers
 - [x] Regra aplicada: sempre avisar explicitamente quando houver mudanca de imagem, `docker-compose.yml`, `.env` de servico ou dependencia que exija restart.
@@ -919,16 +927,19 @@ python scripts/sprint0_seed_products_partners_lockers.py
 
 ## 10) Checklist de implantacao
 
-> **Sprint 12:** marcar cada linha abaixo com evidencia; kickoff em `### 27/04/2026 - Kickoff Sprint 12`.
+> **Sprint 12:** marcar cada linha abaixo com evidencia; kickoff em `### 27/04/2026 - Kickoff Sprint 12`; dia 0 em `### 27/04/2026 - Sprint 12: registro dia 0`.
 
-- [ ] Seeds de `locker_slot_configs` e `locker_slots` executados e validados.
-- [ ] Parceiros ativos com cobertura em `partner_service_areas`.
+- [x] Seeds de `locker_slot_configs` e `locker_slots` executados e validados.
+  - Evidencia dia 0: **40** configs, **350** slots (ver registro Sprint 12 dia 0).
+- [x] Parceiros ativos com cobertura em `partner_service_areas`.
+  - Evidencia dia 0: **7** linhas `is_active=true` em `partner_service_areas`.
 - [ ] Cadastro e aprovacao de SKU funcionando com fiscal minimo.
 - [ ] Alocacao concorrente validada com teste de carga.
 - [ ] Reserva/expiracao de inventario validada sem oversell.
 - [ ] Pickup libera slot e fecha ciclo corretamente.
 - [ ] Outbox com retry/dead-letter monitorado.
-- [ ] Settlement mensal gerado e auditavel.
+- [x] Settlement mensal gerado e auditavel.
+  - Evidencia dia 0: **8** batches em `partner_settlement_batches`; **11** linhas de auditoria `PARTNER_SETTLEMENT%` em `ops_action_audit` + endpoints OPS de reconciliacao (sprints anteriores).
 - [ ] Contraste e componentes criticos validados em WCAG AA.
 - [ ] Fluxos principais testados com teclado e leitor de tela.
 - [ ] Mensagens de erro padronizadas com causa e acao recomendada.
