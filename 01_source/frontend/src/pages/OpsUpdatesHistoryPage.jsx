@@ -48,6 +48,61 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 const UPDATES = [
   {
     date: "2026-04-27",
+    scope: "OPS Sprint - US-AUDIT-FINAL-VALIDATION",
+    title: "Fechamento operacional auditável em 1 clique",
+    description:
+      "A página ops/audit ganhou seção de validação final com snapshot operacional estruturado (resultado, notas, resumo 24h, top causas e sinais da timeline) com cópia em markdown/texto simples para fechamento do sprint.",
+    routes: [
+      "UI /ops/audit",
+      "UI seção: US-AUDIT-FINAL-VALIDATION",
+      "UI ação: Copiar validação final (markdown/texto simples)",
+    ],
+    directLink: "/ops/audit",
+    directLinkLabel: "Abrir validação final do sprint",
+  },
+  {
+    date: "2026-04-27",
+    scope: "OPS Sprint - Daily Operacional",
+    title: "Botão de daily Slack/Teams em 1 clique",
+    description:
+      "Ops audit e ops health passaram a ter botão de cópia de daily operacional para Slack/Teams, gerando resumo curto com hoje, bloqueios e decisão.",
+    routes: [
+      "UI /ops/audit (Copiar daily Slack/Teams)",
+      "UI /ops/health (Copiar daily Slack/Teams)",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir OPS Health (daily 1 clique)",
+  },
+  {
+    date: "2026-04-27",
+    scope: "OPS Sprint - US-AUDIT-003/005",
+    title: "Copia executiva para Slack/Teams no ops/audit",
+    description:
+      "A seção de evidências do ops/audit ganhou formato curto para comunicação executiva (Slack/Teams), disponível por linha e em lote, mantendo redaction e limites de segurança já existentes.",
+    routes: [
+      "UI /ops/audit",
+      "UI ação: Copiar Slack/Teams",
+      "UI ação: Copiar Slack/Teams (lote)",
+    ],
+    directLink: "/ops/audit",
+    directLinkLabel: "Abrir evidências com formato Slack/Teams",
+  },
+  {
+    date: "2026-04-27",
+    scope: "OPS Sprint - US-AUDIT-005",
+    title: "Timeline investigativa com marcadores de anomalia",
+    description:
+      "A página ops/audit recebeu timeline investigativa com stream temporal, marcadores de anomalia (ERROR_EVENT, ERROR_SPIKE, SEVERITY_CRITICAL) e atalhos de entidade para investigação rápida por locker, correlation_id, reconciliação e visão de saúde.",
+    routes: [
+      "UI /ops/audit",
+      "UI seção: Timeline investigativa (US-AUDIT-005)",
+      "UI atalho: Locker/Correlation/Reconciliação/Ops Health",
+    ],
+    directLink: "/ops/audit",
+    directLinkLabel: "Abrir timeline investigativa (US-AUDIT-005)",
+  },
+  {
+    date: "2026-04-27",
     scope: "OPS Sprint - US-OPS-002",
     title: "Matriz SLA/canal por severidade + evidência auditável",
     description:

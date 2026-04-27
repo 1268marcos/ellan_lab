@@ -9,6 +9,8 @@ const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 const OPS_HEALTH_WINDOW_PREF_KEY = "ops_health:window_hours";
 const OPS_HEALTH_PERSONA_PREF_KEY = "ops_health:persona";
+const OPS_HEALTH_COLLAPSE_PREF_KEY = "ops_health:collapse_state:v1";
+const OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY = "ops_health:line_chart_grid_mode:v1";
 const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
 const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.2-sprint2";
 const OPS_HEALTH_PERSONAS = [
@@ -159,6 +161,43 @@ function resolveSeverityFromRate(errorRate) {
   if (rate >= 0.2) return "HIGH";
   if (rate >= 0.05) return "MEDIUM";
   return "LOW";
+}
+
+function severityEmoji(severity) {
+  const normalized = String(severity || "").toUpperCase();
+  if (normalized === "CRITICAL") return "🔴";
+  if (normalized === "HIGH" || normalized === "ERROR") return "🟠";
+  if (normalized === "MEDIUM" || normalized === "WARN") return "🟡";
+  return "🟢";
+}
+
+function getSeveritySurfaceStyle(severity) {
+  const badge = getSeverityBadgeStyle(severity);
+  return {
+    border: badge.border,
+    background: `${badge.background}CC`,
+  };
+}
+
+function loadCollapsedStatePreference() {
+  try {
+    const raw = window.localStorage.getItem(OPS_HEALTH_COLLAPSE_PREF_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadLineChartGridModePreference() {
+  try {
+    const raw = window.localStorage.getItem(OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY);
+    if (raw === "simple" || raw === "full") return raw;
+  } catch {
+    // no-op
+  }
+  return "full";
 }
 
 function appendWindowParamsToPath(path, metrics, lookbackHours) {
@@ -405,15 +444,32 @@ function OpsSparkline({ values, stroke = "#93C5FD" }) {
   );
 }
 
-function OpsLineChart({ title, points, valueKey, stroke = "#93C5FD", formatter = (v) => String(v) }) {
+function OpsLineChart({ title, points, valueKey, stroke = "#93C5FD", formatter = (v) => String(v), showDetailedGrid = true }) {
   const width = 460;
   const height = 160;
   const padding = 20;
+  const chartLeft = 44;
+  const chartRight = width - 16;
+  const chartTop = 14;
+  const chartBottom = height - 28;
+  const chartWidth = chartRight - chartLeft;
+  const chartHeight = chartBottom - chartTop;
   const values = (Array.isArray(points) ? points : []).map((point) => Number(point?.[valueKey] || 0));
   const labels = (Array.isArray(points) ? points : []).map((point) => String(point?.bucket_start || ""));
-  const path = buildSparklinePath(values, width, height, padding);
   const noData = values.length === 0;
   const allZero = values.length > 0 && values.every((value) => value === 0);
+  const minValue = values.length > 0 ? Math.min(...values) : 0;
+  const maxValue = values.length > 0 ? Math.max(...values) : 0;
+  const range = maxValue - minValue || 1;
+  const path = values
+    .map((value, index) => {
+      const x = chartLeft + (index * chartWidth) / Math.max(values.length - 1, 1);
+      const y = chartBottom - ((value - minValue) / range) * chartHeight;
+      return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(" ");
+  const yTicks = [maxValue, minValue + range / 2, minValue];
+  const xTickIndexes = [0, Math.floor(Math.max(labels.length - 1, 0) / 2), Math.max(labels.length - 1, 0)];
   const latest = values.length ? values[values.length - 1] : 0;
   const first = values.length ? values[0] : 0;
   const delta = latest - first;
@@ -429,8 +485,40 @@ function OpsLineChart({ title, points, valueKey, stroke = "#93C5FD", formatter =
         preserveAspectRatio="none"
       >
         <rect x="0" y="0" width={width} height={height} rx="10" fill="rgba(30,41,59,0.40)" />
+        {!noData && showDetailedGrid ? (
+          <>
+            {yTicks.map((tickValue, idx) => {
+              const y = chartBottom - ((tickValue - minValue) / range) * chartHeight;
+              return (
+                <g key={`y-tick-${idx}`}>
+                  <line x1={chartLeft} y1={y} x2={chartRight} y2={y} stroke="rgba(148,163,184,0.20)" strokeDasharray="3 3" />
+                  <text x={chartLeft - 6} y={y + 4} textAnchor="end" fill="rgba(203,213,225,0.95)" fontSize="10">
+                    {formatter(tickValue)}
+                  </text>
+                </g>
+              );
+            })}
+            {xTickIndexes
+              .filter((idx, pos, arr) => arr.indexOf(idx) === pos)
+              .map((idx) => {
+                const x = chartLeft + (idx * chartWidth) / Math.max(values.length - 1, 1);
+                const raw = labels[idx] ? new Date(labels[idx]) : null;
+                const label = raw && !Number.isNaN(raw.getTime())
+                  ? raw.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
+                  : "-";
+                return (
+                  <g key={`x-tick-${idx}`}>
+                    <line x1={x} y1={chartTop} x2={x} y2={chartBottom} stroke="rgba(148,163,184,0.15)" />
+                    <text x={x} y={height - 8} textAnchor="middle" fill="rgba(203,213,225,0.95)" fontSize="10">
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+          </>
+        ) : null}
         {path ? <path d={path} fill="none" stroke={stroke} strokeWidth="2.4" strokeLinecap="round" /> : null}
-        {(noData || allZero) ? <line x1={padding} y1={height / 2} x2={width - padding} y2={height / 2} stroke="rgba(148,163,184,0.55)" strokeDasharray="6 4" /> : null}
+        {(noData || allZero) ? <line x1={chartLeft} y1={height / 2} x2={chartRight} y2={height / 2} stroke="rgba(148,163,184,0.55)" strokeDasharray="6 4" /> : null}
         {(noData || allZero) ? (
           <text x={width / 2} y={height / 2 - 8} textAnchor="middle" fill="rgba(191,219,254,0.96)" fontSize="12" fontWeight="700">
             Sem variação relevante em 24h
@@ -481,6 +569,28 @@ export default function OpsHealthPage() {
   const [lockerDataStatus, setLockerDataStatus] = useState("idle");
   const [us001ClosureCopied, setUs001ClosureCopied] = useState(false);
   const [errorInvestigationStatus, setErrorInvestigationStatus] = useState("");
+  const [dailySlackStatus, setDailySlackStatus] = useState("");
+  const [topErrorsOpen, setTopErrorsOpen] = useState(() => {
+    const prefs = loadCollapsedStatePreference();
+    return Boolean(prefs.topErrorsOpen);
+  });
+  const [topErrorsCategoryFilter, setTopErrorsCategoryFilter] = useState("");
+  const [topErrorsLimit, setTopErrorsLimit] = useState(5);
+  const [classificationOpen, setClassificationOpen] = useState(() => {
+    const prefs = loadCollapsedStatePreference();
+    return Boolean(prefs.classificationOpen);
+  });
+  const [classificationCategoryFilter, setClassificationCategoryFilter] = useState("");
+  const [classificationLimit, setClassificationLimit] = useState(6);
+  const [alertsOpen, setAlertsOpen] = useState(() => {
+    const prefs = loadCollapsedStatePreference();
+    return Boolean(prefs.alertsOpen);
+  });
+  const [alertsSeverityFilter, setAlertsSeverityFilter] = useState("");
+  const [alertsCodeFilter, setAlertsCodeFilter] = useState("");
+  const [alertsLimit, setAlertsLimit] = useState(20);
+  const [lineChartGridMode, setLineChartGridMode] = useState(() => loadLineChartGridModePreference());
+  const [showAdminConfig, setShowAdminConfig] = useState(false);
   const [personaView, setPersonaView] = useState(() => {
     try {
       const stored = window.localStorage.getItem(OPS_HEALTH_PERSONA_PREF_KEY);
@@ -1194,6 +1304,27 @@ export default function OpsHealthPage() {
     }
   }, [personaView]);
 
+  useEffect(() => {
+    try {
+      const payload = {
+        topErrorsOpen,
+        classificationOpen,
+        alertsOpen,
+      };
+      window.localStorage.setItem(OPS_HEALTH_COLLAPSE_PREF_KEY, JSON.stringify(payload));
+    } catch {
+      // no-op
+    }
+  }, [topErrorsOpen, classificationOpen, alertsOpen]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY, lineChartGridMode);
+    } catch {
+      // no-op
+    }
+  }, [lineChartGridMode]);
+
   const previousKpis = metrics?.comparison?.kpis || {};
   const currentErrorRate = Number(metrics?.kpis?.error_rate || 0);
   const previousErrorRate = Number(previousKpis?.error_rate || 0);
@@ -1210,6 +1341,11 @@ export default function OpsHealthPage() {
     duration: currentLatencySamples > 0,
   };
   const redCoverageOk = redCoverage.rate && redCoverage.errors && redCoverage.duration;
+  const collectorHealth = totalActions === 0
+    ? { label: "Sem dados do coletor na janela", tone: "warn" }
+    : currentLatencySamples === 0
+      ? { label: "Dados parciais: sem amostra de latência", tone: "warn" }
+      : { label: "Coletor ativo (dados recebidos)", tone: "ok" };
   const trendPoints = Array.isArray(metrics?.trends?.points) ? metrics.trends.points : [];
   const trendPoints24h = Array.isArray(metrics24h?.trends?.points) ? metrics24h.trends.points : [];
   const predictiveSnapshots = Array.isArray(metrics?.predictive_snapshots) ? metrics.predictive_snapshots : [];
@@ -1230,6 +1366,32 @@ export default function OpsHealthPage() {
   const latencySeries = trendPoints.map((point) => Number(point?.latency_p95_ms || 0));
   const topInvestigatedCauses = Array.isArray(errorInvestigationReport?.top_causes) ? errorInvestigationReport.top_causes : [];
   const investigatedCategories = Array.isArray(errorInvestigationReport?.categories) ? errorInvestigationReport.categories : [];
+  const topErrors = Array.isArray(metrics?.top_errors) ? metrics.top_errors : [];
+  const filteredTopErrors = topErrors
+    .filter((item) =>
+      topErrorsCategoryFilter
+        ? String(item?.category || "OUTROS").toUpperCase().includes(topErrorsCategoryFilter.toUpperCase())
+        : true
+    )
+    .slice(0, Math.max(Number(topErrorsLimit || 5), 1));
+  const classificationCategories = Array.isArray(metrics?.error_classification?.categories) ? metrics.error_classification.categories : [];
+  const filteredClassificationCategories = classificationCategories
+    .filter((item) =>
+      classificationCategoryFilter
+        ? String(item?.category || "OUTROS").toUpperCase().includes(classificationCategoryFilter.toUpperCase())
+        : true
+    )
+    .slice(0, Math.max(Number(classificationLimit || 6), 1));
+  const filteredActiveAlerts = activeAlerts
+    .filter((item) => (alertsSeverityFilter ? String(item?.severity || "").toUpperCase() === alertsSeverityFilter : true))
+    .filter((item) =>
+      alertsCodeFilter
+        ? String(item?.code || "")
+            .toUpperCase()
+            .includes(alertsCodeFilter.toUpperCase())
+        : true
+    )
+    .slice(0, Math.max(Number(alertsLimit || 20), 1));
   const [openRunbookCode, setOpenRunbookCode] = useState(null);
   const [copiedRunbookCode, setCopiedRunbookCode] = useState(null);
   const [copiedPlainRunbookCode, setCopiedPlainRunbookCode] = useState(null);
@@ -1246,6 +1408,43 @@ export default function OpsHealthPage() {
     const numeric = Number(value || 0);
     const signal = numeric >= 0 ? "+" : "";
     return `${signal}${numeric.toFixed(digits)}`;
+  }
+
+  async function copyOpsHealthDailySlack() {
+    try {
+      const nowIso = new Date().toISOString();
+      const dominantSeverity = resolveSeverityFromRate(currentErrorRate);
+      const dominantEmoji = severityEmoji(dominantSeverity);
+      const topCauses = topInvestigatedCauses
+        .slice(0, 3)
+        .map((item) => `${String(item?.category || "OUTROS").toUpperCase()}:${Number(item?.count || 0)}`)
+        .join(" | ") || "-";
+      const predictiveRate = Number(metrics?.predictive_monitoring?.false_positive_rate || 0);
+      const text = [
+        `${dominantEmoji} *OPS Daily (Health) | ${nowIso}*`,
+        `Hoje: erro=${(currentErrorRate * 100).toFixed(1)}% (${errorActions}/${totalActions}) | severidade=${dominantSeverity} ${dominantEmoji} | alertas_ativos=${activeAlerts.length}`,
+        `Bloqueios: ${error ? `falha_coleta=${error}` : "sem bloqueios técnicos de coleta"}`,
+        `Decisão: manter foco em mitigação de severidade ${dominantSeverity} e seguir triagem das top causas`,
+        `Sinais: top_causas=${topCauses} | preditivo_fp_7d=${(predictiveRate * 100).toFixed(1)}% | coletor=${collectorHealth.label}`,
+      ].join("\n");
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setDailySlackStatus("Daily Slack/Teams (ops/health) copiado.");
+      window.setTimeout(() => setDailySlackStatus(""), 2500);
+    } catch (err) {
+      setDailySlackStatus(`Falha ao copiar daily: ${String(err?.message || err)}`);
+    }
   }
 
   const kpiCardMap = {
@@ -1495,6 +1694,11 @@ export default function OpsHealthPage() {
     reconciliacao: "Reconciliação",
     disponibilidade: "Disponibilidade",
   };
+  const domainMicroTitles = {
+    confiabilidade: "Saúde - erros, risco e qualidade de execução",
+    reconciliacao: "Recuperação - tratamento de pendências e exceções",
+    disponibilidade: "Tráfego - volume e capacidade operacional",
+  };
 
   const domainHintByPersona = {
     ops: {
@@ -1523,6 +1727,7 @@ export default function OpsHealthPage() {
       return {
         domain,
         label: domainLabels[domain] || domain,
+        microTitle: domainMicroTitles[domain] || "",
         hint: domainHintByPersona[personaView]?.[domain] || "",
         cards,
       };
@@ -1626,8 +1831,12 @@ export default function OpsHealthPage() {
             <button type="button" onClick={() => void loadMetrics()} style={buttonGhostStyle} disabled={loading}>
               {loading ? "Atualizando..." : "Atualizar"}
             </button>
+            <button type="button" onClick={() => void copyOpsHealthDailySlack()} style={buttonGhostStyle}>
+              Copiar daily Slack/Teams
+            </button>
           </div>
         </div>
+        {dailySlackStatus ? <small style={predictiveReviewStatusStyle}>{dailySlackStatus}</small> : null}
 
         <div style={presetRowStyle}>
           <span style={presetLabelStyle}>Presets de janela</span>
@@ -1643,7 +1852,19 @@ export default function OpsHealthPage() {
           ))}
         </div>
 
-        <section style={predictiveTuningSectionStyle}>
+        <div style={collectorHealthWrapStyle}>
+          <span style={collectorHealthBadgeStyle(collectorHealth.tone)}>{collectorHealth.label}</span>
+          {currentErrorRate >= 0.2 ? (
+            <div style={criticalBannerStyle}>
+              <strong>Alerta crítico no topo:</strong> taxa de erro em {(currentErrorRate * 100).toFixed(1)}% na janela atual (
+              {errorActions}/{totalActions}).
+            </div>
+          ) : null}
+        </div>
+
+        <details style={adminConfigDetailsStyle} open={showAdminConfig} onToggle={(event) => setShowAdminConfig(event.currentTarget.open)}>
+          <summary style={adminConfigSummaryStyle}>Configurações avançadas (Admin) - calibração preditiva</summary>
+          <section style={predictiveTuningSectionStyle}>
           <h3 style={{ margin: 0, fontSize: 14 }}>Rotina semanal - calibração preditiva</h3>
           <div style={predictiveProfileRowStyle}>
             <label style={labelStyle}>
@@ -1764,7 +1985,8 @@ export default function OpsHealthPage() {
               Recomendação automática (7d): {metrics.predictive_monitoring.recommendation || "KEEP"}
             </small>
           ) : null}
-        </section>
+          </section>
+        </details>
 
         {error ? <pre style={errorStyle}>{error}</pre> : null}
 
@@ -1779,6 +2001,7 @@ export default function OpsHealthPage() {
                 <section key={`kpi-domain-${group.domain}`} style={kpiDomainSectionStyle}>
                   <div style={kpiDomainHeaderStyle}>
                     <h3 style={kpiDomainTitleStyle}>{group.label}</h3>
+                    {group.microTitle ? <small style={kpiDomainMicroTitleStyle}>{group.microTitle}</small> : null}
                     {group.hint ? <small style={kpiDomainHintStyle}>{group.hint}</small> : null}
                   </div>
                   <div style={kpiGridStyle}>
@@ -1890,7 +2113,26 @@ export default function OpsHealthPage() {
 
             {(isOpsPersona || isDevPersona) ? (
             <section style={trendSectionStyle}>
-              <h3 style={{ margin: 0, fontSize: 15 }}>Linha temporal fixa de 24h</h3>
+              <div style={lineChartHeaderStyle}>
+                <h3 style={{ margin: 0, fontSize: 15 }}>Linha temporal fixa de 24h</h3>
+                <div style={lineChartToggleRowStyle}>
+                  <small style={lineChartToggleLabelStyle}>Grade:</small>
+                  <button
+                    type="button"
+                    onClick={() => setLineChartGridMode("simple")}
+                    style={lineChartToggleButtonStyle(lineChartGridMode === "simple")}
+                  >
+                    Simplificada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLineChartGridMode("full")}
+                    style={lineChartToggleButtonStyle(lineChartGridMode === "full")}
+                  >
+                    Completa
+                  </button>
+                </div>
+              </div>
               <div style={lineChartGridStyle}>
                 <OpsLineChart
                   title="Erro (%)"
@@ -1898,6 +2140,7 @@ export default function OpsHealthPage() {
                   valueKey="error_rate"
                   stroke="#FCA5A5"
                   formatter={(v) => `${(Number(v || 0) * 100).toFixed(1)}%`}
+                  showDetailedGrid={lineChartGridMode === "full"}
                 />
                 <OpsLineChart
                   title="Volume (ações)"
@@ -1905,6 +2148,7 @@ export default function OpsHealthPage() {
                   valueKey="total_ops_actions"
                   stroke="#93C5FD"
                   formatter={(v) => `${Number(v || 0).toFixed(0)}`}
+                  showDetailedGrid={lineChartGridMode === "full"}
                 />
                 <OpsLineChart
                   title="Latência p95 (ms)"
@@ -1912,6 +2156,7 @@ export default function OpsHealthPage() {
                   valueKey="latency_p95_ms"
                   stroke="#FDE68A"
                   formatter={(v) => `${Number(v || 0).toFixed(0)}ms`}
+                  showDetailedGrid={lineChartGridMode === "full"}
                 />
               </div>
             </section>
@@ -1940,23 +2185,65 @@ export default function OpsHealthPage() {
             {(isOpsPersona || isDevPersona) ? (
             <section style={trendSectionStyle}>
               <h3 style={{ margin: 0, fontSize: 15 }}>Top 5 erros da janela</h3>
-              {(metrics?.top_errors || []).length === 0 ? (
-                <small style={predictiveReviewHintStyle}>Sem erros classificados na janela selecionada.</small>
+              {topErrors.length === 0 ? (
+                <small style={predictiveReviewHintStyle}>
+                  {currentErrorRate >= 0.05
+                    ? "Sem erros classificados na janela, apesar de taxa de erro relevante. Verifique endpoint de investigação e fallback por mensagens brutas."
+                    : "Sem erros classificados na janela selecionada."}
+                </small>
               ) : (
-                <div style={topErrorsListStyle}>
-                  {(metrics?.top_errors || []).map((item, idx) => (
-                    <article key={`top-error-${idx}`} style={topErrorItemStyle}>
-                      <strong style={topErrorRankStyle}>#{idx + 1}</strong>
-                      <div style={{ display: "grid", gap: 2 }}>
-                        <small style={topErrorMessageStyle}>{item?.message || "Erro não classificado"}</small>
-                        <small style={topErrorMetaStyle}>
-                          {Number(item?.count || 0)} ocorrências ({Number(item?.percentage || 0).toFixed(1)}% dos erros){" "}
-                          {item?.category ? `· ${String(item.category).toUpperCase()}` : ""}
-                        </small>
-                      </div>
-                    </article>
-                  ))}
-                </div>
+                <details open={topErrorsOpen} onToggle={(event) => setTopErrorsOpen(event.currentTarget.open)} style={healthCollapsibleStyle}>
+                  <summary style={healthCollapsibleSummaryStyle}>
+                    Lista de erros · exibindo {filteredTopErrors.length}/{topErrors.length}
+                  </summary>
+                  <div style={healthLocalFilterRowStyle}>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Categoria
+                      <input
+                        type="text"
+                        value={topErrorsCategoryFilter}
+                        onChange={(event) => setTopErrorsCategoryFilter(event.target.value)}
+                        placeholder="timeout, integracao..."
+                        style={healthLocalFilterInputStyle}
+                      />
+                    </label>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Limite
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={topErrorsLimit}
+                        onChange={(event) => setTopErrorsLimit(Number(event.target.value || 5))}
+                        style={healthLocalFilterNumberStyle}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTopErrorsCategoryFilter("");
+                        setTopErrorsLimit(5);
+                      }}
+                      style={healthLocalFilterButtonStyle}
+                    >
+                      Limpar seção
+                    </button>
+                  </div>
+                  <div style={topErrorsListStyle}>
+                    {filteredTopErrors.map((item, idx) => (
+                      <article key={`top-error-${idx}`} style={topErrorItemStyle}>
+                        <strong style={topErrorRankStyle}>#{idx + 1}</strong>
+                        <div style={{ display: "grid", gap: 2 }}>
+                          <small style={topErrorMessageStyle}>{item?.message || "Erro não classificado"}</small>
+                          <small style={topErrorMetaStyle}>
+                            {Number(item?.count || 0)} ocorrências ({Number(item?.percentage || 0).toFixed(1)}% dos erros){" "}
+                            {item?.category ? `· ${String(item.category).toUpperCase()}` : ""}
+                          </small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </details>
               )}
             </section>
             ) : null}
@@ -2014,17 +2301,59 @@ export default function OpsHealthPage() {
             {(isOpsPersona || isDevPersona) ? (
             <section style={trendSectionStyle}>
               <h3 style={{ margin: 0, fontSize: 15 }}>Classificação assistida por tipo</h3>
-              {Array.isArray(metrics?.error_classification?.categories) && metrics.error_classification.categories.length > 0 ? (
-                <div style={errorCategoryGridStyle}>
-                  {metrics.error_classification.categories.map((item, idx) => (
-                    <article key={`error-category-${idx}`} style={errorCategoryItemStyle}>
-                      <strong style={errorCategoryNameStyle}>{String(item?.category || "OUTROS").toUpperCase()}</strong>
-                      <small style={errorCategoryMetaStyle}>
-                        {Number(item?.count || 0)} itens · {Number(item?.percentage || 0).toFixed(1)}%
-                      </small>
-                    </article>
-                  ))}
-                </div>
+              {classificationCategories.length > 0 ? (
+                <details
+                  open={classificationOpen}
+                  onToggle={(event) => setClassificationOpen(event.currentTarget.open)}
+                  style={healthCollapsibleStyle}
+                >
+                  <summary style={healthCollapsibleSummaryStyle}>
+                    Categorias classificadas · exibindo {filteredClassificationCategories.length}/{classificationCategories.length}
+                  </summary>
+                  <div style={healthLocalFilterRowStyle}>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Categoria
+                      <input
+                        type="text"
+                        value={classificationCategoryFilter}
+                        onChange={(event) => setClassificationCategoryFilter(event.target.value)}
+                        placeholder="timeout, validacao..."
+                        style={healthLocalFilterInputStyle}
+                      />
+                    </label>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Limite
+                      <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={classificationLimit}
+                        onChange={(event) => setClassificationLimit(Number(event.target.value || 6))}
+                        style={healthLocalFilterNumberStyle}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClassificationCategoryFilter("");
+                        setClassificationLimit(6);
+                      }}
+                      style={healthLocalFilterButtonStyle}
+                    >
+                      Limpar seção
+                    </button>
+                  </div>
+                  <div style={errorCategoryGridStyle}>
+                    {filteredClassificationCategories.map((item, idx) => (
+                      <article key={`error-category-${idx}`} style={errorCategoryItemStyle}>
+                        <strong style={errorCategoryNameStyle}>{String(item?.category || "OUTROS").toUpperCase()}</strong>
+                        <small style={errorCategoryMetaStyle}>
+                          {Number(item?.count || 0)} itens · {Number(item?.percentage || 0).toFixed(1)}%
+                        </small>
+                      </article>
+                    ))}
+                  </div>
+                </details>
               ) : (
                 <small style={predictiveReviewHintStyle}>Sem erros na janela para classificação assistida.</small>
               )}
@@ -2083,10 +2412,12 @@ export default function OpsHealthPage() {
               )}
               <div style={severityMatrixGridStyle}>
                 {OPS_SEVERITY_SLA_MATRIX.map((row) => (
-                  <article key={row.severityKey} style={severityMatrixItemStyle}>
+                  <article key={row.severityKey} style={severityMatrixItemStyle(row.severityKey)}>
                     <div style={severityMatrixHeaderStyle}>
                       <span style={getSeverityBadgeStyle(row.severityKey)}>{row.severityLabel}</span>
-                      <small style={severityMatrixCountStyle}>Ativos: {Number(alertCountBySeverity[row.severityKey] || 0)}</small>
+                      <small style={severityMatrixCountStyle(row.severityKey)}>
+                        Ativos: {Number(alertCountBySeverity[row.severityKey] || 0)}
+                      </small>
                     </div>
                     <small style={severityMatrixMetaStyle}>SLA: {row.responseSla}</small>
                     <small style={severityMatrixMetaStyle}>Canal: {row.channel}</small>
@@ -2146,7 +2477,59 @@ export default function OpsHealthPage() {
               {activeAlerts.length === 0 ? (
                 <span style={getSeverityBadgeStyle("OK")}>Sem alertas ativos</span>
               ) : (
-                activeAlerts.map((alert, index) => (
+                <details open={alertsOpen} onToggle={(event) => setAlertsOpen(event.currentTarget.open)} style={healthCollapsibleStyle}>
+                  <summary style={healthCollapsibleSummaryStyle}>
+                    Alertas ativos · exibindo {filteredActiveAlerts.length}/{activeAlerts.length}
+                  </summary>
+                  <div style={healthLocalFilterRowStyle}>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Severidade
+                      <select
+                        value={alertsSeverityFilter}
+                        onChange={(event) => setAlertsSeverityFilter(event.target.value)}
+                        style={healthLocalFilterInputStyle}
+                      >
+                        <option value="">Todas</option>
+                        <option value="CRITICAL">CRITICAL</option>
+                        <option value="HIGH">HIGH</option>
+                        <option value="MEDIUM">MEDIUM</option>
+                        <option value="LOW">LOW</option>
+                      </select>
+                    </label>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Código
+                      <input
+                        type="text"
+                        value={alertsCodeFilter}
+                        onChange={(event) => setAlertsCodeFilter(event.target.value)}
+                        placeholder="OPS_, PENDING..."
+                        style={healthLocalFilterInputStyle}
+                      />
+                    </label>
+                    <label style={healthLocalFilterFieldStyle}>
+                      Limite
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={alertsLimit}
+                        onChange={(event) => setAlertsLimit(Number(event.target.value || 20))}
+                        style={healthLocalFilterNumberStyle}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAlertsSeverityFilter("");
+                        setAlertsCodeFilter("");
+                        setAlertsLimit(20);
+                      }}
+                      style={healthLocalFilterButtonStyle}
+                    >
+                      Limpar seção
+                    </button>
+                  </div>
+                {filteredActiveAlerts.map((alert, index) => (
                   <article key={`${alert.code}-${index}`} style={alertCardStyle}>
                     {(() => {
                       const alertCode = String(alert.code || "");
@@ -2226,7 +2609,8 @@ export default function OpsHealthPage() {
                       );
                     })()}
                   </article>
-                ))
+                ))}
+                </details>
               )}
             </div>
           </>
@@ -2348,6 +2732,54 @@ const buttonGhostStyle = {
   fontWeight: 600,
 };
 
+const healthCollapsibleStyle = {
+  marginTop: 8,
+  borderRadius: 10,
+  border: "1px dashed rgba(148,163,184,0.35)",
+  background: "rgba(2,6,23,0.24)",
+  padding: 8,
+};
+
+const healthCollapsibleSummaryStyle = {
+  cursor: "pointer",
+  color: "#bfdbfe",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+const healthLocalFilterRowStyle = {
+  marginTop: 10,
+  marginBottom: 8,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  alignItems: "end",
+};
+
+const healthLocalFilterFieldStyle = {
+  ...labelStyle,
+  color: "#cbd5e1",
+};
+
+const healthLocalFilterInputStyle = {
+  ...inputStyle,
+  width: "100%",
+  border: "1px solid rgba(148,163,184,0.5)",
+};
+
+const healthLocalFilterNumberStyle = {
+  ...healthLocalFilterInputStyle,
+};
+
+const healthLocalFilterButtonStyle = {
+  ...buttonGhostStyle,
+  height: 36,
+  fontSize: 12,
+  border: "1px solid rgba(248,113,113,0.55)",
+  color: "#fecaca",
+  background: "rgba(127,29,29,0.2)",
+};
+
 const presetRowStyle = {
   marginTop: 10,
   display: "flex",
@@ -2360,6 +2792,55 @@ const presetLabelStyle = {
   color: "rgba(245,247,250,0.72)",
   fontSize: 12,
   marginRight: 2,
+};
+
+const collectorHealthWrapStyle = {
+  marginTop: 10,
+  display: "grid",
+  gap: 8,
+};
+
+const collectorHealthBadgeStyle = (tone) => ({
+  display: "inline-flex",
+  width: "fit-content",
+  padding: "6px 10px",
+  borderRadius: 999,
+  border:
+    tone === "ok"
+      ? "1px solid rgba(74,222,128,0.55)"
+      : "1px solid rgba(251,191,36,0.55)",
+  background:
+    tone === "ok"
+      ? "rgba(22,101,52,0.22)"
+      : "rgba(120,53,15,0.26)",
+  color: tone === "ok" ? "#bbf7d0" : "#fde68a",
+  fontSize: 12,
+  fontWeight: 700,
+});
+
+const criticalBannerStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,0.72)",
+  background: "linear-gradient(180deg, rgba(127,29,29,0.58) 0%, rgba(127,29,29,0.3) 100%)",
+  color: "#fecaca",
+  padding: "10px 12px",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const adminConfigDetailsStyle = {
+  marginTop: 8,
+  borderRadius: 12,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background: "rgba(15,23,42,0.28)",
+  padding: 8,
+};
+
+const adminConfigSummaryStyle = {
+  cursor: "pointer",
+  color: "#bfdbfe",
+  fontSize: 13,
+  fontWeight: 700,
 };
 
 const presetButtonStyle = (active) => ({
@@ -2468,6 +2949,13 @@ const kpiDomainTitleStyle = {
   textTransform: "uppercase",
 };
 
+const kpiDomainMicroTitleStyle = {
+  color: "rgba(226,232,240,0.95)",
+  fontSize: 11,
+  fontWeight: 700,
+  textTransform: "none",
+};
+
 const kpiDomainHintStyle = {
   color: "rgba(203,213,225,0.9)",
   fontSize: 11,
@@ -2516,13 +3004,16 @@ const severityMatrixGridStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
 };
 
-const severityMatrixItemStyle = {
-  borderRadius: 10,
-  border: "1px solid rgba(148,163,184,0.35)",
-  background: "rgba(15,23,42,0.35)",
-  padding: 10,
-  display: "grid",
-  gap: 4,
+const severityMatrixItemStyle = (severity) => {
+  const surface = getSeveritySurfaceStyle(severity);
+  return {
+    borderRadius: 10,
+    border: surface.border,
+    background: surface.background,
+    padding: 10,
+    display: "grid",
+    gap: 4,
+  };
 };
 
 const topLockerCardStyle = {
@@ -2541,10 +3032,21 @@ const severityMatrixHeaderStyle = {
   gap: 8,
 };
 
-const severityMatrixCountStyle = {
-  color: "#cbd5e1",
-  fontSize: 11,
-  fontWeight: 700,
+const severityMatrixCountStyle = (severity) => {
+  const token = getSeverityBadgeStyle(severity);
+  return {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "4px 10px",
+    borderRadius: 999,
+    border: token.border,
+    background: "rgba(2,6,23,0.45)",
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: 800,
+    minWidth: 90,
+  };
 };
 
 const severityMatrixMetaStyle = {
@@ -2608,6 +3110,38 @@ const lineChartGridStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   gap: 10,
 };
+
+const lineChartHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const lineChartToggleRowStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const lineChartToggleLabelStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const lineChartToggleButtonStyle = (active) => ({
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: active ? "1px solid rgba(147,197,253,0.95)" : "1px solid rgba(148,163,184,0.45)",
+  background: active ? "rgba(30,64,175,0.45)" : "rgba(15,23,42,0.34)",
+  color: active ? "#dbeafe" : "#cbd5e1",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+});
 
 const lineChartCardStyle = {
   borderRadius: 10,

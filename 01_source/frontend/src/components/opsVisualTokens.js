@@ -57,25 +57,25 @@ export function getSeverityBadgeStyle(severity) {
   if (normalized === "CRITICAL") {
     return {
       ...BADGE_BASE,
-      border: "1px solid #FCA5A5",
+      border: "1px solid #FECACA",
       background: "#7F1D1D",
-      color: "#FEE2E2",
+      color: "#FFFFFF",
     };
   }
   if (normalized === "HIGH" || normalized === "ERROR") {
     return {
       ...BADGE_BASE,
-      border: "1px solid #FCA5A5",
-      background: "#991B1B",
-      color: "#FEE2E2",
+      border: "1px solid #FDBA74",
+      background: "#9A3412",
+      color: "#FFFFFF",
     };
   }
   if (normalized === "MEDIUM" || normalized === "WARN") {
     return {
       ...BADGE_BASE,
-      border: "1px solid #FDE68A",
-      background: "#92400E",
-      color: "#FEF3C7",
+      border: "1px solid #FCD34D",
+      background: "#78350F",
+      color: "#FFFFFF",
     };
   }
   if (normalized === "LOW") {
@@ -83,14 +83,14 @@ export function getSeverityBadgeStyle(severity) {
       ...BADGE_BASE,
       border: "1px solid #93C5FD",
       background: "#1E3A8A",
-      color: "#DBEAFE",
+      color: "#FFFFFF",
     };
   }
   return {
     ...BADGE_BASE,
     border: "1px solid #86EFAC",
-    background: "#166534",
-    color: "#DCFCE7",
+    background: "#14532D",
+    color: "#FFFFFF",
   };
 }
 
