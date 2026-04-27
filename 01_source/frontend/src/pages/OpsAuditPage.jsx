@@ -337,12 +337,26 @@ export default function OpsAuditPage() {
     const resultParam = String(params.get("result") || "").trim();
     const orderIdParam = String(params.get("order_id") || "").trim();
     const offsetParam = Number(params.get("offset"));
+    const fromParam = String(params.get("from") || "").trim();
+    const toParam = String(params.get("to") || "").trim();
 
     if (actionParam) setAction(actionParam);
     if (Number.isFinite(limitParam) && limitParam > 0) setLimit(Math.min(Math.max(limitParam, 1), 200));
     if (resultParam) setResult(resultParam.toUpperCase());
     if (orderIdParam) setOrderId(orderIdParam);
     if (Number.isFinite(offsetParam) && offsetParam >= 0) setOffset(Math.max(offsetParam, 0));
+    if (fromParam) {
+      const parsedFrom = new Date(fromParam);
+      if (!Number.isNaN(parsedFrom.getTime())) {
+        setAuditFrom(toDateTimeLocalInputValue(parsedFrom));
+      }
+    }
+    if (toParam) {
+      const parsedTo = new Date(toParam);
+      if (!Number.isNaN(parsedTo.getTime())) {
+        setAuditTo(toDateTimeLocalInputValue(parsedTo));
+      }
+    }
   }, [token, location.search]);
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
@@ -31,7 +32,27 @@ function extractErrorMessage(payload, fallback = "Não foi possível reconciliar
   return fallback;
 }
 
+function getCriticalityCardStyle(baseStyle, criticality) {
+  if (criticality === "critical") {
+    return {
+      ...baseStyle,
+      border: "1px solid rgba(248,113,113,0.9)",
+      background: "linear-gradient(180deg, rgba(127,29,29,0.48) 0%, rgba(127,29,29,0.22) 100%)",
+      boxShadow: "0 0 0 1px rgba(248,113,113,0.18), 0 10px 24px rgba(127,29,29,0.28)",
+    };
+  }
+  if (criticality === "high") {
+    return {
+      ...baseStyle,
+      border: "1px solid rgba(250,204,21,0.72)",
+      background: "linear-gradient(180deg, rgba(120,53,15,0.36) 0%, rgba(120,53,15,0.16) 100%)",
+    };
+  }
+  return baseStyle;
+}
+
 export default function OpsReconciliationPage() {
+  const location = useLocation();
   const { token } = useAuth();
   const [orderId, setOrderId] = useState("");
   const [running, setRunning] = useState(false);
@@ -44,6 +65,7 @@ export default function OpsReconciliationPage() {
   const [healthError, setHealthError] = useState("");
   const {
     windowValue: healthLookbackHours,
+    setWindowValue: setHealthLookbackHours,
     applyPreset: applyHealthWindowPreset,
   } = useOpsWindowPreset({
     storageKey: OPS_RECON_HEALTH_WINDOW_PREF_KEY,
@@ -127,6 +149,15 @@ export default function OpsReconciliationPage() {
     void loadOpsHealth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, healthLookbackHours]);
+
+  useEffect(() => {
+    if (!token) return;
+    const params = new URLSearchParams(location.search || "");
+    const lookbackParam = Number(params.get("lookback_hours"));
+    if (Number.isFinite(lookbackParam) && lookbackParam > 0) {
+      setHealthLookbackHours(Math.min(Math.max(Math.round(lookbackParam), 1), 168));
+    }
+  }, [token, location.search, setHealthLookbackHours]);
 
   async function handleReconcile() {
     const normalizedOrderId = String(orderId || "").trim();
@@ -240,11 +271,34 @@ export default function OpsReconciliationPage() {
               <OpsTrendKpiCard
                 label="Taxa de erro"
                 value={`${(Number(health?.kpis?.error_rate || 0) * 100).toFixed(1)}%`}
-                baseStyle={kpiBoxStyle}
+                baseStyle={getCriticalityCardStyle(
+                  kpiBoxStyle,
+                  Number(health?.kpis?.error_rate || 0) >= 0.2
+                    ? "critical"
+                    : Number(health?.kpis?.error_rate || 0) >= 0.05
+                      ? "high"
+                      : "normal"
+                )}
                 showTrend={false}
               />
-              <OpsTrendKpiCard label="Pendências abertas" value={health?.kpis?.pending_open_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
-              <OpsTrendKpiCard label="FAILED_FINAL" value={health?.kpis?.pending_failed_final_count ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+              <OpsTrendKpiCard
+                label="Pendências abertas"
+                value={health?.kpis?.pending_open_count ?? 0}
+                baseStyle={getCriticalityCardStyle(
+                  kpiBoxStyle,
+                  Number(health?.kpis?.pending_open_count || 0) >= 10 ? "high" : "normal"
+                )}
+                showTrend={false}
+              />
+              <OpsTrendKpiCard
+                label="FAILED_FINAL"
+                value={health?.kpis?.pending_failed_final_count ?? 0}
+                baseStyle={getCriticalityCardStyle(
+                  kpiBoxStyle,
+                  Number(health?.kpis?.pending_failed_final_count || 0) > 0 ? "critical" : "normal"
+                )}
+                showTrend={false}
+              />
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(245, 247, 250, 0.78)", fontSize: 13 }}>

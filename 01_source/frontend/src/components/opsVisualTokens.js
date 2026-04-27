@@ -54,6 +54,14 @@ export function getTrendBadgeStyle(trend) {
 
 export function getSeverityBadgeStyle(severity) {
   const normalized = String(severity || "OK").toUpperCase();
+  if (normalized === "CRITICAL") {
+    return {
+      ...BADGE_BASE,
+      border: "1px solid #FCA5A5",
+      background: "#7F1D1D",
+      color: "#FEE2E2",
+    };
+  }
   if (normalized === "HIGH" || normalized === "ERROR") {
     return {
       ...BADGE_BASE,
@@ -62,12 +70,20 @@ export function getSeverityBadgeStyle(severity) {
       color: "#FEE2E2",
     };
   }
-  if (normalized === "WARN") {
+  if (normalized === "MEDIUM" || normalized === "WARN") {
     return {
       ...BADGE_BASE,
       border: "1px solid #FDE68A",
       background: "#92400E",
       color: "#FEF3C7",
+    };
+  }
+  if (normalized === "LOW") {
+    return {
+      ...BADGE_BASE,
+      border: "1px solid #93C5FD",
+      background: "#1E3A8A",
+      color: "#DBEAFE",
     };
   }
   return {

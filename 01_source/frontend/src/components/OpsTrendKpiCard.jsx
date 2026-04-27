@@ -1,4 +1,5 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import { getTrendToken } from "./opsVisualTokens";
 
 /**
@@ -31,6 +32,9 @@ export default function OpsTrendKpiCard({
   previousValue = null,
   trend = null,
   deltaLabel = null,
+  auxiliaryLabel = null,
+  linkTo = null,
+  linkTitle = "Abrir drill-down",
   baseStyle = {},
   showTrend = true,
 }) {
@@ -39,18 +43,18 @@ export default function OpsTrendKpiCard({
     showTrend && (normalizedTrend === "up" || normalizedTrend === "down" || normalizedTrend === "stable");
   const trendStyle = getTrendToken(normalizedTrend);
 
-  return (
-    <article
-      style={{
-        ...baseStyle,
-        ...(hasTrend
-          ? {
-              background: trendStyle.accentBg,
-              border: trendStyle.accentBorder,
-            }
-          : {}),
-      }}
-    >
+  const resolvedCardStyle = {
+    ...baseStyle,
+    ...(hasTrend
+      ? {
+          background: trendStyle.accentBg,
+          border: trendStyle.accentBorder,
+        }
+      : {}),
+  };
+
+  const content = (
+    <>
       <small style={{ display: "block", color: "#94A3B8", textTransform: "uppercase", fontSize: 11 }}>{label}</small>
       <strong
         style={{
@@ -72,12 +76,69 @@ export default function OpsTrendKpiCard({
             fontSize: 11,
             color: "#94A3B8",
             gap: 8,
+            flexWrap: "wrap",
           }}
         >
-          <span>{previousValue !== null && previousValue !== undefined ? `prev: ${previousValue}` : "prev: -"}</span>
-          <span>{`${trendStyle.symbol} ${deltaLabel || "-"}`}</span>
+          <span
+            style={{
+              color: "#94A3B8",
+              fontWeight: 600,
+            }}
+          >
+            {previousValue !== null && previousValue !== undefined
+              ? `janela anterior: ${previousValue}`
+              : "janela anterior: -"}
+          </span>
+          <span
+            style={{
+              color: hasTrend ? trendStyle.valueColor : "#E2E8F0",
+              fontWeight: 800,
+              fontSize: 12,
+              letterSpacing: 0.2,
+              padding: "2px 8px",
+              borderRadius: 999,
+              border: hasTrend ? trendStyle.accentBorder : "1px solid rgba(148,163,184,0.45)",
+              background: hasTrend ? "rgba(15,23,42,0.45)" : "rgba(15,23,42,0.35)",
+            }}
+          >
+            {`${trendStyle.symbol} ${deltaLabel || "-"}`}
+          </span>
         </div>
       ) : null}
-    </article>
+      {auxiliaryLabel ? (
+        <small
+          style={{
+            marginTop: 2,
+            fontSize: 11,
+            color: "#CBD5E1",
+            fontWeight: 600,
+            display: "block",
+          }}
+        >
+          {auxiliaryLabel}
+        </small>
+      ) : null}
+    </>
   );
+
+  if (linkTo) {
+    return (
+      <Link
+        to={linkTo}
+        title={linkTitle}
+        style={{
+          ...resolvedCardStyle,
+          display: "block",
+          textDecoration: "none",
+          color: "inherit",
+          cursor: "pointer",
+          boxShadow: "0 0 0 1px rgba(59,130,246,0.22) inset",
+        }}
+      >
+        {content}
+      </Link>
+    );
+  }
+
+  return <article style={resolvedCardStyle}>{content}</article>;
 }

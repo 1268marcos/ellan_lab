@@ -108,6 +108,12 @@ class DevOpsMetricAlertOut(BaseModel):
     message: str
     value: float | int
     threshold: float | int
+    impact: str | None = None
+    investigate_hint: str | None = None
+    mitigation_hint: str | None = None
+    investigate_url: str | None = None
+    confidence_level: str | None = None
+    data_quality_flag: str | None = None
 
 
 class DevOpsMetricsWindowOut(BaseModel):
@@ -122,11 +128,76 @@ class DevOpsMetricsKpisOut(BaseModel):
     error_actions: int
     error_rate: float
     reconciliation_actions: int
+    latency_p50_ms: float = 0.0
+    latency_p95_ms: float = 0.0
+    latency_samples: int = 0
     pending_open_count: int
+    pending_age_0_1h: int = 0
+    pending_age_1_4h: int = 0
+    pending_age_4_24h: int = 0
+    pending_age_24h_plus: int = 0
     pending_due_retry_count: int
     pending_processing_stale_count: int
     pending_failed_final_count: int
     avg_open_pending_age_min: float
+    reconciliation_auto_rate: float = 0.0
+    avg_reconciliation_time_min: float = 0.0
+    reconciliation_total_completed: int = 0
+    reconciliation_done_count: int = 0
+    reconciliation_failed_final_count_window: int = 0
+    unresolved_exceptions_count: int = 0
+
+
+class DevOpsMetricsActionKpisOut(BaseModel):
+    total_ops_actions: int
+    success_actions: int
+    error_actions: int
+    error_rate: float
+    reconciliation_actions: int
+    latency_p50_ms: float = 0.0
+    latency_p95_ms: float = 0.0
+    latency_samples: int = 0
+
+
+class DevOpsMetricsComparisonWindowOut(BaseModel):
+    lookback_hours: int
+    from_: str = Field(..., alias="from")
+    to: str
+
+
+class DevOpsMetricsComparisonOut(BaseModel):
+    window: DevOpsMetricsComparisonWindowOut
+    kpis: DevOpsMetricsActionKpisOut
+
+
+class DevOpsMetricsTrendPointOut(BaseModel):
+    from_: str = Field(..., alias="from")
+    to: str
+    total_ops_actions: int
+    error_rate: float
+    latency_p95_ms: float
+
+
+class DevOpsMetricsTrendsOut(BaseModel):
+    bucket_minutes: int
+    points: list[DevOpsMetricsTrendPointOut]
+
+
+class DevOpsPredictiveMonitoringOut(BaseModel):
+    window_days: int
+    emitted_alerts: int
+    confirmed_alerts: int
+    false_positive_alerts: int
+    false_positive_rate: float
+    recommendation: str = "KEEP"
+
+
+class DevOpsPredictiveThresholdsOut(BaseModel):
+    predictive_min_volume: int
+    predictive_error_min_rate: float
+    predictive_error_accel_factor: float
+    predictive_latency_min_ms: float
+    predictive_latency_accel_factor: float
 
 
 class DevOpsMetricsOut(BaseModel):
@@ -134,6 +205,10 @@ class DevOpsMetricsOut(BaseModel):
     window: DevOpsMetricsWindowOut
     kpis: DevOpsMetricsKpisOut
     alerts: list[DevOpsMetricAlertOut]
+    comparison: DevOpsMetricsComparisonOut | None = None
+    trends: DevOpsMetricsTrendsOut | None = None
+    predictive_monitoring: DevOpsPredictiveMonitoringOut | None = None
+    predictive_thresholds: DevOpsPredictiveThresholdsOut | None = None
 
 
 class DevOrderStatusAuditItemOut(BaseModel):
