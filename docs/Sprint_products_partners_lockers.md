@@ -3,7 +3,7 @@
 Documento de acompanhamento para evolucao do fluxo de catalogo, elegibilidade e alocacao em lockers com base no schema `02_docker/complete_schema_20260427_c.sql`.
 
 Data de criacao: 27/04/2026  
-Status geral: [~] Em andamento (Sprint 11 — filtro executivo em top divergencias)
+Status geral: [x] Sprint 11 encerrado (governanca executiva em top divergencias). Proximo foco sugerido: checklist da secao 10 (implantacao) e gates WCAG conforme roadmap.
 
 ---
 
@@ -29,10 +29,10 @@ Implementar um fluxo ponta a ponta para produtos de parceiros em lockers, cobrin
 
 ## Status do sprint atual
 
-- **Sprint atual**: Sprint 11 - Governanca executiva de reconciliacao (filtros e painel-ready)
-- **Status**: [~] Em andamento
+- **Sprint atual**: **Encerrado** — Sprint 11 concluido em 27/04/2026.
+- **Status**: [x] Concluido
 - **Data de inicio**: 27/04/2026
-- **Itens ativos no kickoff**:
+- **Itens do kickoff (fechamento)**:
   - [x] US-PPL-001 - Fundacao de lockers e slots (Sprint 0 fechado)
   - [x] US-PPL-002 - Vinculo parceiro e area de atendimento (Sprint 0 fechado)
   - [x] US-PPL-003 - Catalogo de produto com validacao de elegibilidade
@@ -42,7 +42,7 @@ Implementar um fluxo ponta a ponta para produtos de parceiros em lockers, cobrin
   - [x] US-PPL-007 - Entrega de eventos para parceiro (outbox)
   - [x] US-PPL-008 - Settlement mensal de parceiros (Sprints 6-10 + hardening: geracao, itens, approve/pay, reconciliacao OPS)
   - [x] Hardening operacional - reconciliacao e comite (Sprints 7-10 entregues)
-  - [~] Sprint 11 - refinamentos de leitura executiva (ex.: `min_severity` em top divergencias; backlog opcional ver secao registro)
+  - [x] Sprint 11 - refinamentos de leitura executiva (`min_severity`, `severity_counts`, DoD tecnico, SQL de limpeza de batches legados de teste)
 
 ---
 
@@ -554,6 +554,7 @@ python scripts/sprint0_seed_products_partners_lockers.py
 - [x] Validacao sugerida apos rebuild do servico:
   - `curl -sS "http://localhost:8003/partners/ops/settlements/reconciliation/top-divergences?top_n=5" -H "Authorization: Bearer ${OPS_TOKEN}"`
 - [x] Seed SQL controlado (2 HIGH, 2 MEDIUM, 1 LOW): `02_docker/seed_settlement_reconciliation_severity_matrix.sql` (parceiros `OP-ELLAN-001` / `OP-PHARMA-001`, `order_id` ficticios `d0ffee01-...`).
+- [x] Limpeza SQL de batches de teste **legados** (nao remove `c0ffee01-*`): `02_docker/cleanup_settlement_reconciliation_legacy_test_batches.sql`.
 
 ### 27/04/2026 - Sprint 11 (kickoff): filtro `min_severity` em top divergencias
 - [x] Objetivo: painel OPS / comite focar primeiro em risco financeiro (HIGH) ou cortar ruido LOW sem mudar o ranking por `impact_score` dentro do filtro.
@@ -575,9 +576,13 @@ python scripts/sprint0_seed_products_partners_lockers.py
 - [x] Arquivos alterados: `partners.py`, `schemas/partners.py`.
 - [x] Reinicio de container necessario nesta rodada? **Sim**.
 
-- [x] Backlog opcional Sprint 11 (restante):
-  - pagina OPS minima consumindo `top-divergences` + `compare` (frontend);
-  - script SQL de limpeza de batches de teste legados (IDs conhecidos) para demo limpa.
+- [x] Backlog opcional Sprint 11:
+  - [x] Script SQL de limpeza de batches de teste **legados** (fora da matriz `c0ffee01-*`): `02_docker/cleanup_settlement_reconciliation_legacy_test_batches.sql`
+  - [ ] Pagina OPS minima consumindo `top-divergences` + `compare` (frontend) — **adiada** para ciclo futuro.
+
+### 27/04/2026 - Fechamento formal Sprint 11
+- [x] Trilha de reconciliacao executiva entregue e validada em ambiente de lab; sprint marcado como concluido no cabecalho deste documento.
+- [x] Artefato de limpeza de dados de demo: `02_docker/cleanup_settlement_reconciliation_legacy_test_batches.sql`.
 
 ### Quando avisar para reiniciar containers
 - [x] Regra aplicada: sempre avisar explicitamente quando houver mudanca de imagem, `docker-compose.yml`, `.env` de servico ou dependencia que exija restart.
