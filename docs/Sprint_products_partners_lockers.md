@@ -3,7 +3,7 @@
 Documento de acompanhamento para evolucao do fluxo de catalogo, elegibilidade e alocacao em lockers com base no schema `02_docker/complete_schema_20260427_c.sql`.
 
 Data de criacao: 27/04/2026  
-Status geral: [x] Sprint 11 encerrado (governanca executiva em top divergencias). Proximo foco sugerido: checklist da secao 10 (implantacao) e gates WCAG conforme roadmap.
+Status geral: [~] Em andamento — **Sprint 12** (checklist de implantacao, **capitulo 10** deste doc). *Nota: o sprint **numerado 10** da API (`top-divergences`) ja consta como concluido no registro abaixo; nao e reaberto.*
 
 ---
 
@@ -29,10 +29,11 @@ Implementar um fluxo ponta a ponta para produtos de parceiros em lockers, cobrin
 
 ## Status do sprint atual
 
-- **Sprint atual**: **Encerrado** — Sprint 11 concluido em 27/04/2026.
-- **Status**: [x] Concluido
-- **Data de inicio**: 27/04/2026
-- **Itens do kickoff (fechamento)**:
+- **Sprint atual**: **Sprint 12** — Checklist de implantacao (**`## 10) Checklist de implantacao`** abaixo) + preparacao de gates WCAG/ops conforme evidencia.
+- **Status**: [~] Em andamento
+- **Data de inicio Sprint 12**: 27/04/2026
+- **Sprint anterior**: [x] Sprint 11 encerrado (reconciliacao executiva OPS).
+- **Itens de produto (historico — concluidos)**:
   - [x] US-PPL-001 - Fundacao de lockers e slots (Sprint 0 fechado)
   - [x] US-PPL-002 - Vinculo parceiro e area de atendimento (Sprint 0 fechado)
   - [x] US-PPL-003 - Catalogo de produto com validacao de elegibilidade
@@ -40,9 +41,13 @@ Implementar um fluxo ponta a ponta para produtos de parceiros em lockers, cobrin
   - [x] US-PPL-005 - Inventario, reserva e expiracao
   - [x] US-PPL-006 - Pickup e liberacao do slot
   - [x] US-PPL-007 - Entrega de eventos para parceiro (outbox)
-  - [x] US-PPL-008 - Settlement mensal de parceiros (Sprints 6-10 + hardening: geracao, itens, approve/pay, reconciliacao OPS)
+  - [x] US-PPL-008 - Settlement mensal de parceiros (Sprints 6-10 API + hardening: geracao, itens, approve/pay, reconciliacao OPS)
   - [x] Hardening operacional - reconciliacao e comite (Sprints 7-10 entregues)
   - [x] Sprint 11 - refinamentos de leitura executiva (`min_severity`, `severity_counts`, DoD tecnico, SQL de limpeza de batches legados de teste)
+- **Itens ativos Sprint 12 (kickoff)**:
+  - [~] Percorrer **`## 10) Checklist de implantacao`**: marcar `[x]` com evidencia (comando, log, print, link) ou `[!]` com owner.
+  - [~] Priorizar itens ja parcialmente verdadeiros em lab (seeds, parceiros, settlement) antes de carga/WCAG.
+  - [ ] Pagina OPS minima (`top-divergences` + `compare`) — opcional neste sprint se sobrar capacidade.
 
 ---
 
@@ -584,6 +589,15 @@ python scripts/sprint0_seed_products_partners_lockers.py
 - [x] Trilha de reconciliacao executiva entregue e validada em ambiente de lab; sprint marcado como concluido no cabecalho deste documento.
 - [x] Artefato de limpeza de dados de demo: `02_docker/cleanup_settlement_reconciliation_legacy_test_batches.sql`.
 
+### 27/04/2026 - Kickoff Sprint 12 — Implantacao (checklist **secao 10**)
+- [~] **Contexto**: pedido de "iniciar sprint 10" costuma alinhar ao **capitulo 10** deste ficheiro (`## 10) Checklist de implantacao`), nao ao sprint API **Sprint 10** ja entregue (`top-divergences`, ver registro acima).
+- [~] **Objetivo**: transformar o checklist de implantacao em estado rastreavel (evidencias por linha) e identificar buracos reais antes de go-live.
+- [~] **Primeira rodada sugerida (hoje)**:
+  - confirmar seeds/slots/parceiros em ambiente alvo (marcar linhas 1-2 do checklist com comando ou SELECT);
+  - confirmar settlement auditavel (linha 9) com base no que ja existe em OPS;
+  - deixar explicito o que falta para carga (linha 5), WCAG (6-7), mensagens (8), dashboard (10).
+- [ ] Entrega opcional: pagina OPS minima adiada do Sprint 11, se couber no mesmo ciclo.
+
 ### Quando avisar para reiniciar containers
 - [x] Regra aplicada: sempre avisar explicitamente quando houver mudanca de imagem, `docker-compose.yml`, `.env` de servico ou dependencia que exija restart.
 - [x] Nesta rodada: como voce reiniciou os containers, refiz as validacoes HTTP ponta a ponta antes de seguir.
@@ -904,6 +918,8 @@ python scripts/sprint0_seed_products_partners_lockers.py
 ---
 
 ## 10) Checklist de implantacao
+
+> **Sprint 12:** marcar cada linha abaixo com evidencia; kickoff em `### 27/04/2026 - Kickoff Sprint 12`.
 
 - [ ] Seeds de `locker_slot_configs` e `locker_slots` executados e validados.
 - [ ] Parceiros ativos com cobertura em `partner_service_areas`.
