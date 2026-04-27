@@ -36,6 +36,7 @@ const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage")
 const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
 const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
 const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
+const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
@@ -279,11 +280,12 @@ function TopNav() {
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)" },
-    { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", isNew: true },
+    { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref" },
     { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
-    { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" }
+    { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" },
+    { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health", isNew: true }
   ] : [];
 
   const myAreaLinks = [
@@ -985,6 +987,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsAuthorizationPolicyPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/auth/policy/versioning"
+              element={
+                <OpsRoute>
+                  <OpsVersioningPolicyPage />
                 </OpsRoute>
               }
             />

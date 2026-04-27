@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import csv
 import io
+import json
 
 from typing import Any
 
@@ -29,12 +30,15 @@ from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup
 from app.models.user import User
 from app.schemas.dev_admin import (
+    DevOpsErrorInvestigationReportOut,
     DevOrderStatusAuditItemOut,
     DevOrderStatusAuditListOut,
     DevOrderStatusAuditPagedOut,
     DevOpsAuditItemOut,
     DevOpsAuditListOut,
     DevOpsMetricsOut,
+    DevOpsPredictiveSnapshotIn,
+    DevOpsPredictiveSnapshotOut,
     DevReconcileOrderIn,
     DevReconciliationPendingItemOut,
     DevReconciliationPendingListOut,
@@ -68,7 +72,7 @@ from app.services.order_reconciliation_service import (
 from app.services.reconciliation_pending_service import list_reconciliation_pending
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
 from app.services.ops_audit_service import list_ops_action_audit, record_ops_action_audit
-from app.services.ops_metrics_service import build_ops_metrics
+from app.services.ops_metrics_service import build_ops_metrics, build_ops_error_investigation_report
 
 from app.routers.internal import _ensure_allocation
 
@@ -223,6 +227,21 @@ def _assert_order_reconciliation_allowed(db: Session, *, order: Order) -> None:
 def _resolve_correlation_id(header_value: str | None) -> str:
     value = str(header_value or "").strip()
     return value or str(uuid4())
+
+
+def _coerce_audit_details(details_raw: Any) -> dict[str, Any]:
+    if isinstance(details_raw, dict):
+        return details_raw
+    if isinstance(details_raw, str):
+        raw = details_raw.strip()
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
 
 
 def _parse_iso_datetime_utc(raw_value: str, *, field_name: str) -> datetime:
@@ -551,7 +570,7 @@ def dev_ops_audit_list(
             role=row.role,
             order_id=row.order_id,
             error_message=row.error_message,
-            details=row.details_json if isinstance(row.details_json, dict) else {},
+            details=_coerce_audit_details(row.details_json),
             created_at=to_iso_utc(row.created_at),
         )
         for row in rows
@@ -638,6 +657,201 @@ def dev_ops_metrics(
             "ok": True,
             **metrics,
         }
+    )
+
+
+@router.post("/ops-metrics/predictive-snapshots", response_model=DevOpsPredictiveSnapshotOut)
+def dev_ops_metrics_predictive_snapshot_create(
+    payload: DevOpsPredictiveSnapshotIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    thresholds = {
+        "predictive_min_volume": int(payload.predictive_min_volume or 5),
+        "predictive_error_min_rate": float(payload.predictive_error_min_rate or 0.05),
+        "predictive_error_accel_factor": float(payload.predictive_error_accel_factor or 1.5),
+        "predictive_latency_min_ms": float(payload.predictive_latency_min_ms or 100.0),
+        "predictive_latency_accel_factor": float(payload.predictive_latency_accel_factor or 1.4),
+    }
+    metrics = build_ops_metrics(
+        db=db,
+        lookback_hours=168,
+        predictive_min_volume=thresholds["predictive_min_volume"],
+        predictive_error_min_rate=thresholds["predictive_error_min_rate"],
+        predictive_error_accel_factor=thresholds["predictive_error_accel_factor"],
+        predictive_latency_min_ms=thresholds["predictive_latency_min_ms"],
+        predictive_latency_accel_factor=thresholds["predictive_latency_accel_factor"],
+    )
+    monitoring = metrics.get("predictive_monitoring") if isinstance(metrics, dict) else {}
+    details = {
+        "environment": str(payload.environment or "hml").lower(),
+        "decision": str(payload.decision or "KEEP").upper(),
+        "rationale": payload.rationale,
+        "thresholds": thresholds,
+        "monitoring": {
+            "emitted_alerts": int((monitoring or {}).get("emitted_alerts") or 0),
+            "confirmed_alerts": int((monitoring or {}).get("confirmed_alerts") or 0),
+            "false_positive_alerts": int((monitoring or {}).get("false_positive_alerts") or 0),
+            "false_positive_rate": float((monitoring or {}).get("false_positive_rate") or 0.0),
+        },
+        "window": metrics.get("window") if isinstance(metrics, dict) else {},
+    }
+    row = record_ops_action_audit(
+        db=db,
+        action="OPS_PREDICTIVE_WEEKLY_SNAPSHOT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details=details,
+    )
+    db.commit()
+    return DevOpsPredictiveSnapshotOut.model_validate(
+        {
+            "id": row.id,
+            "created_at": to_iso_utc(row.created_at),
+            "environment": details["environment"],
+            "decision": details["decision"],
+            "rationale": details.get("rationale"),
+            "false_positive_rate": details["monitoring"]["false_positive_rate"],
+            "emitted_alerts": details["monitoring"]["emitted_alerts"],
+            "confirmed_alerts": details["monitoring"]["confirmed_alerts"],
+            "false_positive_alerts": details["monitoring"]["false_positive_alerts"],
+            "thresholds": thresholds,
+        }
+    )
+
+
+@router.get("/ops-metrics/error-investigation", response_model=DevOpsErrorInvestigationReportOut)
+def dev_ops_metrics_error_investigation(
+    lookback_hours: int = Query(default=settings.ops_metrics_lookback_hours, ge=1, le=24 * 30),
+    top_causes_limit: int = Query(default=3, ge=1, le=10),
+    evidence_per_cause_limit: int = Query(default=3, ge=1, le=10),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    report = build_ops_error_investigation_report(
+        db=db,
+        lookback_hours=lookback_hours,
+        top_causes_limit=top_causes_limit,
+        evidence_per_cause_limit=evidence_per_cause_limit,
+    )
+    _safe_record_ops_audit(
+        action="OPS_ERROR_INVESTIGATION_REPORT_VIEW",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "lookback_hours": lookback_hours,
+            "top_causes_limit": top_causes_limit,
+            "evidence_per_cause_limit": evidence_per_cause_limit,
+            "total_error_actions": int(report.get("total_error_actions") or 0),
+        },
+    )
+    return DevOpsErrorInvestigationReportOut.model_validate({"ok": True, **report})
+
+
+@router.get("/ops-metrics/error-investigation/export.csv")
+def dev_ops_metrics_error_investigation_export_csv(
+    lookback_hours: int = Query(default=settings.ops_metrics_lookback_hours, ge=1, le=24 * 30),
+    top_causes_limit: int = Query(default=3, ge=1, le=10),
+    evidence_per_cause_limit: int = Query(default=3, ge=1, le=10),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    report = build_ops_error_investigation_report(
+        db=db,
+        lookback_hours=lookback_hours,
+        top_causes_limit=top_causes_limit,
+        evidence_per_cause_limit=evidence_per_cause_limit,
+    )
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "window_from",
+            "window_to",
+            "total_error_actions",
+            "category",
+            "cause_message",
+            "cause_count",
+            "cause_percentage",
+            "evidence_audit_id",
+            "evidence_created_at",
+            "evidence_correlation_id",
+            "evidence_action",
+        ]
+    )
+    categories = report.get("categories") if isinstance(report, dict) else []
+    top_causes = report.get("top_causes") if isinstance(report, dict) else []
+    window = report.get("window") if isinstance(report, dict) else {}
+    window_from = str(window.get("from") or "")
+    window_to = str(window.get("to") or "")
+    total_error_actions = int(report.get("total_error_actions") or 0)
+
+    if not top_causes and categories:
+        for category_row in categories:
+            writer.writerow(
+                [
+                    window_from,
+                    window_to,
+                    total_error_actions,
+                    category_row.get("category"),
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+    else:
+        for cause in top_causes:
+            evidence_rows = cause.get("evidence") or [{}]
+            for evidence in evidence_rows:
+                writer.writerow(
+                    [
+                        window_from,
+                        window_to,
+                        total_error_actions,
+                        cause.get("category"),
+                        cause.get("message"),
+                        cause.get("count"),
+                        cause.get("percentage"),
+                        evidence.get("audit_id") if isinstance(evidence, dict) else "",
+                        evidence.get("created_at") if isinstance(evidence, dict) else "",
+                        evidence.get("correlation_id") if isinstance(evidence, dict) else "",
+                        evidence.get("action") if isinstance(evidence, dict) else "",
+                    ]
+                )
+
+    output.seek(0)
+    _safe_record_ops_audit(
+        action="OPS_ERROR_INVESTIGATION_REPORT_EXPORT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "lookback_hours": lookback_hours,
+            "top_causes_limit": top_causes_limit,
+            "evidence_per_cause_limit": evidence_per_cause_limit,
+            "total_error_actions": total_error_actions,
+        },
+    )
+    filename = f"ops_error_investigation_{lookback_hours}h.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

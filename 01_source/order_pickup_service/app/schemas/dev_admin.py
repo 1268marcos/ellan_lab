@@ -200,6 +200,74 @@ class DevOpsPredictiveThresholdsOut(BaseModel):
     predictive_latency_accel_factor: float
 
 
+class DevOpsTopErrorOut(BaseModel):
+    message: str
+    count: int
+    percentage: float
+    category: str | None = None
+
+
+class DevOpsErrorCategoryOut(BaseModel):
+    category: str
+    count: int
+    percentage: float
+
+
+class DevOpsErrorClassificationOut(BaseModel):
+    total_error_actions: int
+    categorized_actions: int
+    categories: list[DevOpsErrorCategoryOut] = Field(default_factory=list)
+
+
+class DevOpsErrorEvidenceOut(BaseModel):
+    audit_id: str
+    created_at: str | None = None
+    correlation_id: str
+    action: str
+    message: str
+    category: str
+
+
+class DevOpsTopCauseOut(BaseModel):
+    message: str
+    category: str
+    count: int
+    percentage: float
+    evidence: list[DevOpsErrorEvidenceOut] = Field(default_factory=list)
+
+
+class DevOpsErrorInvestigationReportOut(BaseModel):
+    ok: bool
+    window: DevOpsMetricsWindowOut
+    total_error_actions: int
+    categories: list[DevOpsErrorCategoryOut] = Field(default_factory=list)
+    top_causes: list[DevOpsTopCauseOut] = Field(default_factory=list)
+
+
+class DevOpsPredictiveSnapshotIn(BaseModel):
+    environment: str = "hml"
+    decision: str = "KEEP"
+    rationale: str | None = None
+    predictive_min_volume: int | None = None
+    predictive_error_min_rate: float | None = None
+    predictive_error_accel_factor: float | None = None
+    predictive_latency_min_ms: float | None = None
+    predictive_latency_accel_factor: float | None = None
+
+
+class DevOpsPredictiveSnapshotOut(BaseModel):
+    id: str
+    created_at: str | None = None
+    environment: str
+    decision: str
+    rationale: str | None = None
+    false_positive_rate: float = 0.0
+    emitted_alerts: int = 0
+    confirmed_alerts: int = 0
+    false_positive_alerts: int = 0
+    thresholds: DevOpsPredictiveThresholdsOut | None = None
+
+
 class DevOpsMetricsOut(BaseModel):
     ok: bool
     window: DevOpsMetricsWindowOut
@@ -209,6 +277,9 @@ class DevOpsMetricsOut(BaseModel):
     trends: DevOpsMetricsTrendsOut | None = None
     predictive_monitoring: DevOpsPredictiveMonitoringOut | None = None
     predictive_thresholds: DevOpsPredictiveThresholdsOut | None = None
+    top_errors: list[DevOpsTopErrorOut] = Field(default_factory=list)
+    error_classification: DevOpsErrorClassificationOut | None = None
+    predictive_snapshots: list[DevOpsPredictiveSnapshotOut] = Field(default_factory=list)
 
 
 class DevOrderStatusAuditItemOut(BaseModel):

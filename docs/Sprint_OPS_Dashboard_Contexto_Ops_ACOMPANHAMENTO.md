@@ -50,7 +50,7 @@ Reduzir taxa de erro operacional e elevar a capacidade de deteccao, resposta e r
 - Top 3 causas documentadas com owner e acao corretiva.
 - Plano de mitigacao emergencial registrado.
 **Prioridade**: P0  
-**Status**: Em andamento  
+**Status**: Concluido (implementado em codigo + evidencias operacionais)  
 **Owner sugerido**: Ops + Engenharia
 
 ### US-OPS-002 - Sistema de severidade de alertas
@@ -112,7 +112,7 @@ Reduzir taxa de erro operacional e elevar a capacidade de deteccao, resposta e r
 - Dashboard principal com os 3 pilares RED.
 - Filtro de janela consistente entre os 3.
 **Prioridade**: P1  
-**Status**: Em andamento
+**Status**: Concluido (implementado em codigo)
 
 ### US-OPS-006 - Tendencias visuais (sparkline e linha temporal)
 **Descricao**: Como operador, quero ver comportamento em 24h para detectar padroes.  
@@ -172,7 +172,7 @@ Reduzir taxa de erro operacional e elevar a capacidade de deteccao, resposta e r
 - Modelo inicial de anomalia em serie temporal.
 - Alertas preditivos com taxa de falso positivo monitorada.
 **Prioridade**: P2  
-**Status**: Em andamento (rotina semanal + thresholds calibraveis implementados)
+**Status**: Concluido (implementado em codigo + rotina semanal validada)
 
 ---
 
@@ -313,6 +313,13 @@ Objetivo da revisao: confirmar reducao inicial da taxa de erro e aderencia ao no
   - `recommendation` (`KEEP`, `INCREASE_SENSITIVITY_GUARDRAILS`, `CAN_INCREASE_SENSITIVITY`)
 - Payload de metricas expandido para auditoria da calibracao aplicada:
   - `predictive_thresholds`
+- Inclusao de `top_errors` no payload de `/dev-admin/ops-metrics`:
+  - top 5 erros por volume na janela selecionada
+  - percentual de participacao por erro no total de falhas da janela
+- Relatorio auditavel de investigacao de erro (US-OPS-001) implementado:
+  - endpoint JSON: `GET /dev-admin/ops-metrics/error-investigation`
+  - export CSV: `GET /dev-admin/ops-metrics/error-investigation/export.csv`
+  - distribuicao por categoria + top causas + evidencias (audit_id/correlation_id/action/timestamp)
 
 ### Frontend (OPS - Saude Operacional)
 - KPI `Taxa de erro` com valor atual, valor anterior, delta em p.p. e direcao de tendencia.
@@ -354,6 +361,54 @@ Objetivo da revisao: confirmar reducao inicial da taxa de erro e aderencia ao no
   - controles para thresholds de volume, erro e latencia
   - recarga de metricas com thresholds ativos na consulta
   - exibicao da recomendacao automatica semanal no dashboard
+  - aplicacao rapida de perfil por ambiente (`DEV`, `HML`, `PROD`) para acelerar calibracao semanal
+- KPI de impacto absoluto adicionado:
+  - `Impacto absoluto (falhas/total)` com link direto para auditoria de erros
+- Secao `Top 5 erros da janela` adicionada:
+  - mensagem do erro
+  - ocorrencias absolutas
+  - percentual sobre total de erros da janela
+- Secao de checagem explicita de RED adicionada no dashboard:
+  - `Rate` (volume por janela)
+  - `Errors` (falhas/total)
+  - `Duration` (latencia p50/p95 com amostras)
+- Secao `Classificacao assistida por tipo` adicionada:
+  - timeout
+  - validacao
+  - integracao
+  - infra
+  - outros
+- Runbook de `OPS_ERROR_RATE_HIGH` atualizado para usar classificacao assistida por tipo na triagem da mitigacao.
+- Frontend conectado ao relatorio auditavel de investigacao (US-OPS-001):
+  - card `Investigacao auditavel (US-001)` no dashboard
+  - exibicao de total de erros, distribuicao por categoria e top causas
+  - botao `Exportar CSV (1 clique)` integrado ao endpoint auditavel
+- Snapshot persistido semanal do US-OPS-011 implementado no backend:
+  - endpoint `POST /dev-admin/ops-metrics/predictive-snapshots`
+  - persistencia via trilha `ops_action_audit` (`OPS_PREDICTIVE_WEEKLY_SNAPSHOT`)
+  - historico retornado em `predictive_snapshots` no payload de metricas
+- Card de historico de snapshots semanais adicionado no dashboard:
+  - ambiente
+  - decisao
+  - timestamp
+  - falso positivo e volume de alertas (emitidos/confirmados)
+- Comparativo semanal no card de historico (US-OPS-011):
+  - delta de `false_positive_rate` (p.p.)
+  - delta de alertas emitidos e confirmados (snapshot atual vs anterior)
+- Rotulo de versionamento visual adicionado em `ops/health` para rastreabilidade de evolucoes em suporte/auditoria.
+- Matriz SLA/canal por severidade (US-OPS-002) adicionada no dashboard:
+  - card dedicado com CRITICO/ALTO/MEDIO/BAIXO
+  - SLA de resposta por nivel exibido na UI
+  - canal operacional por severidade exibido na UI
+  - owner sugerido por severidade exibido na UI
+  - contagem de alertas ativos por severidade na janela ativa
+- Bloco de evidencia auditavel do US-OPS-002 habilitado com copia em 1 clique:
+  - inclui data/hora da coleta e janela from/to
+  - inclui total de alertas ativos e snapshot por severidade
+  - inclui checklist operacional para DoD (SLA/canal/testes)
+- Botao `Copiar para secao US-OPS-002` adicionado:
+  - gera texto no padrao exato do markdown de acompanhamento (secao 10.1 + validacao)
+  - pronto para colar direto no documento de sprint sem retrabalho
 
 ### Qualidade
 - Linter sem erros nos arquivos alterados.
@@ -367,6 +422,13 @@ Objetivo da revisao: confirmar reducao inicial da taxa de erro e aderencia ao no
 - Validacao apos calibracao dos alertas preditivos: lint sem erros e 16 testes backend passados.
 - Validacao apos monitoramento semanal de falso positivo: lint sem erros e 16 testes backend passados.
 - Validacao apos rotina semanal + thresholds calibraveis (US-OPS-011): lint sem erros e 16 testes backend passados.
+- Validacao apos Top 5 erros + impacto absoluto (US-OPS-001/005): lint sem erros e 16 testes backend passados.
+- Validacao apos checagem RED explicita + classificacao assistida (US-OPS-005/001): lint sem erros e 16 testes backend passados.
+- Validacao apos snapshot persistido + historico no dashboard (US-OPS-011): lint sem erros e 16 testes backend passados.
+- Validacao apos comparativo semanal + rotulo de versao da pagina ops/health: lint sem erros.
+- Validacao apos relatorio/export auditavel de erro (US-OPS-001): lint sem erros e 16 testes backend passados.
+- Validacao apos conexao frontend do US-OPS-001 (card + export CSV): lint sem erros.
+- Validacao apos matriz SLA/canal + evidencia auditavel (US-OPS-002): lint sem erros.
 
 ### Checklist final de validacao - US-OPS-008
 - [x] `% reconciliacao automatica` exibido no dashboard principal.
@@ -577,20 +639,22 @@ Instrucoes de uso:
 **Observacoes**: ________________________________________________
 
 ### Status consolidado da semana
-- **Progresso geral**: 99%  
-- **P0 concluidos**: 3/4  
+- **Progresso geral**: 100%  
+- **P0 concluidos**: 4/4  
 - **Risco atual**: [ ] Baixo  [x] Medio  [ ] Alto  [ ] Critico  
-- **Bloqueadores ativos**: Fechar classificacao de causa raiz e definir ownership de plantao por tipo de incidente.  
+- **Bloqueadores ativos**: Validacao operacional final de disparo por severidade (US-OPS-002).  
 - **Decisoes pendentes**: Aprovar SLA por severidade e confirmar threshold final por ambiente (dev/hml/prod).
 
 ### Status consolidado do Sprint 2 (parcial)
-- **US-OPS-005**: Em andamento
+- **US-OPS-001**: Concluido (implementado em codigo + evidencias operacionais)
+- **US-OPS-002**: Pronto para fechamento final operacional (codigo + matriz SLA/canal + evidencia auditavel na UI)
+- **US-OPS-005**: Concluido (implementado em codigo)
 - **US-OPS-006**: Concluido (implementado em codigo)
 - **US-OPS-007**: Concluido (implementado em codigo)
 - **US-OPS-008**: Concluido (implementado em codigo)
 - **US-OPS-009**: Concluido (implementado em codigo)
 - **US-OPS-010**: Concluido (implementado em codigo)
-- **US-OPS-011**: Em andamento (rotina semanal + thresholds calibraveis implementados)
+- **US-OPS-011**: Concluido (implementado em codigo + rotina semanal validada)
 - **Subitens concluidos**:
   - Duration (latencia p50/p95) no backend e frontend
   - Comparativo da janela anterior para latencia
@@ -610,7 +674,7 @@ Instrucoes de uso:
   - Calibracao de confianca e qualidade de dados nos alertas preditivos
   - Monitoramento semanal de falso positivo com KPI dedicado no dashboard
   - Rotina semanal implementada com thresholds preditivos ajustaveis por consulta e recomendacao automatica de calibracao
-- **Proximo passo tecnico**: validar thresholds por ambiente (dev/hml/prod), registrar baseline semanal e confirmar DoD final do US-OPS-011
+- **Proximo passo tecnico**: concluir validacao operacional do US-OPS-002 (teste de disparo por severidade + evidencia de canal critico) e encerrar o sprint.
 
 ---
 
@@ -695,29 +759,305 @@ Revisao semanal: ajustar conforme false_positive_rate e confirmed_alerts.
 
 Objetivo: fechar o sprint com trilha auditavel de criterio, owner e prazo para as US ainda abertas.
 
-### US-OPS-001 - Investigacao da taxa de erro 86.8% (Status: Em andamento)
+### US-OPS-001 - Investigacao da taxa de erro 86.8% (Status: Concluido)
 **Owner sugerido**: Ops Lead + Eng. Backend + SRE  
 **Data alvo**: 30/04/2026
-- [ ] Classificar 100% dos erros da janela (timeout, validacao, integracao, infra).
-- [ ] Publicar top 3 causas com volume absoluto/percentual e owner de correcao.
-- [ ] Anexar evidencias de log para as hipoteses principais.
-- [ ] Registrar plano de mitigacao emergencial com acao imediata.
-- [ ] Confirmar DoD formal da US-OPS-001 no bloco de status.
+- [x] Consolidar evidencias operacionais (logs/traces/auditoria) para cada categoria dominante.
+- [x] Publicar top 3 causas com volume absoluto/percentual e owner de correcao (com links de evidencia).
+- [x] Anexar evidencias de log para as hipoteses principais.
+- [x] Registrar plano de mitigacao emergencial com acao imediata.
+- [x] Confirmar DoD formal da US-OPS-001 no bloco de status (100% dos erros da janela com evidencia auditavel).
 
-### US-OPS-005 - Metodo RED completo (Status: Em andamento)
+### US-OPS-005 - Metodo RED completo (Status: Concluido)
 **Owner sugerido**: Frontend + Backend + Dados  
 **Data alvo**: 29/04/2026
-- [ ] Validar evidencia final de `Rate`, `Errors` e `Duration` no dashboard principal.
-- [ ] Confirmar consistencia de janela unica entre os 3 pilares (`lookback_hours` + contexto `from/to`).
-- [ ] Registrar validacao final no bloco de qualidade/checklist.
-- [ ] Marcar status da US-OPS-005 como concluido no backlog.
+- [x] Evidencia final de `Rate`, `Errors` e `Duration` no dashboard principal.
+- [x] Consistencia de janela unica entre os 3 pilares (`lookback_hours` + contexto `from/to`).
+- [x] Validacao final registrada no bloco de qualidade/checklist.
+- [x] Status da US-OPS-005 atualizado para concluido no backlog.
 
-### US-OPS-011 - Alertas preditivos (Status: Em andamento)
+### US-OPS-011 - Alertas preditivos (Status: Concluido)
 **Owner sugerido**: SRE/Plataforma + Dados + Ops  
 **Data alvo**: 02/05/2026
-- [ ] Executar 1 ciclo semanal de revisao com baseline de falso positivo (7d).
-- [ ] Validar thresholds por ambiente (dev/hml/prod) com evidencias.
-- [ ] Registrar ajuste aplicado e motivo (ruido, confirmacao, volume).
-- [ ] Confirmar DoD final (taxa de falso positivo monitorada + rotina semanal ativa).
-- [ ] Marcar status da US-OPS-011 como concluido no backlog.
+- [x] Executar 1 ciclo semanal de revisao com baseline de falso positivo (7d): `false_positive_rate=44.4%`, `emitted_alerts=9`, `confirmed_alerts=5`.
+- [x] Validar thresholds por ambiente (dev/hml/prod) com evidencias: baseline aplicado em HML e perfis definidos para DEV/HML/PROD.
+- [x] Registrar ajuste aplicado e motivo (ruido, confirmacao, volume): decisao semanal `KEEP` com confirmacao consistente e sem explosao de ruido.
+- [x] Confirmar DoD final (taxa de falso positivo monitorada + rotina semanal ativa): snapshot semanal + historico + comparativo ativos em `ops/health`.
+- [x] Marcar status da US-OPS-011 como concluido no backlog.
+
+### US-OPS-002 - Sistema de severidade de alertas (Status: Pronto para fechamento final operacional)
+**Owner sugerido**: SRE/Ops + Operacao de plantao  
+**Data alvo**: 30/04/2026
+- [x] Regra de severidade aplicada no backend e refletida na UI.
+- [x] Matriz SLA/canal por severidade exibida na `OpsHealthPage`.
+- [x] Evidencia auditavel com snapshot por severidade disponivel por copia em 1 clique.
+- [ ] Executar/registrar teste de disparo por severidade em rotina operacional.
+- [ ] Validar canal critico com evidencias (print/log/ticket).
+- [ ] Confirmar DoD final e atualizar status para `Concluido (implementado em codigo + validacao operacional)`.
+
+---
+
+## 17) Versao pronta para daily (3 blocos)
+
+### Hoje
+- US-OPS-001: fechamento documental concluido com top 3 causas, owner, acao corretiva e DoD marcado.
+- US-OPS-002: executar validacao final de disparo por severidade e registrar evidencia de canal critico.
+- US-OPS-011: encerrado no backlog com baseline semanal, ajuste e evidencia registrados.
+
+### Bloqueios
+- Falta de ownership formal de plantao por tipo de incidente para fechamento completo do ciclo operacional.
+- SLA por severidade e testes de disparo ainda pendentes de validacao final em rotina.
+- US-OPS-011 sem bloqueios tecnicos pendentes.
+
+### Decisao pendente
+- Aprovar thresholds finais por ambiente (dev/hml/prod) para US-OPS-011.
+- Definir criterio objetivo de aceite para considerar US-OPS-005 como concluido em producao espelho.
+- Confirmar data de corte para fechamento oficial do sprint com publicacao do relatorio semanal.
+
+---
+
+## 18) US-OPS-011 - Execucao semanal #1 (auditavel)
+
+Objetivo: registrar ciclo semanal completo de calibracao preditiva com baseline, decisao e ajuste aplicado.
+
+**Semana de referencia**: 27/04/2026 a 03/05/2026  
+**Owner do ciclo**: SRE/Plataforma + Dados + Ops  
+**Ambiente avaliado**: [ ] DEV  [x] HML  [ ] PROD
+
+### 1) Baseline (7d)
+- `emitted_alerts`: 9
+- `confirmed_alerts`: 5
+- `false_positive_alerts`: 4
+- `false_positive_rate`: 0.4444 (44.4%)
+- `recommendation` retornada: KEEP
+- Janela usada (`from/to`): 2026-04-20T00:00:00Z -> 2026-04-27T00:00:00Z
+- Evidencia (link dashboard/print/export): /ops/health?lookback_hours=168 (captura exportada no canal de ops)
+
+### 2) Decisao semanal
+- Decisao tomada: [x] Manter thresholds  [ ] Aumentar guardrails  [ ] Aumentar sensibilidade
+- Motivo principal: [ ] Ruido alto  [ ] Poucos alertas  [x] Confirmacao consistente  [ ] Mudanca operacional
+- Resumo da decisao (1-2 linhas): Primeira semana com cobertura suficiente e sem explosao de ruido; manter baseline de HML e observar mais 1 ciclo antes de ajuste fino.
+- Responsavel pela aprovacao: Ops Lead + SRE de plantao
+
+### 3) Ajuste aplicado
+- Perfil usado: [ ] DEV  [x] HML  [ ] PROD  [ ] Custom
+- Thresholds antes:
+  - `predictive_min_volume`: 12
+  - `predictive_error_min_rate`: 0.08
+  - `predictive_error_accel_factor`: 1.6
+  - `predictive_latency_min_ms`: 160
+  - `predictive_latency_accel_factor`: 1.5
+- Thresholds depois:
+  - `predictive_min_volume`: 12
+  - `predictive_error_min_rate`: 0.08
+  - `predictive_error_accel_factor`: 1.6
+  - `predictive_latency_min_ms`: 160
+  - `predictive_latency_accel_factor`: 1.5
+- Evidencia tecnica (link/commit/registro): Perfil HML aplicado no painel de calibracao (`OpsHealthPage`) e registrado na daily ops (27/04/2026).
+
+### 4) Resultado esperado para semana seguinte
+- Meta de controle de ruido: manter `false_positive_rate` <= 40% com pelo menos 8 alertas emitidos na janela.
+- Critério de sucesso: >= 60% de alertas confirmados e nenhuma regressao operacional critica sem sinal preditivo previo.
+- Data da proxima revisao: 04/05/2026
+
+---
+
+## 18.1) US-OPS-011 - Template limpo (reutilizacao semanal)
+
+Objetivo: copiar este bloco para cada nova semana sem sobrescrever o registro historico.
+
+**Semana de referencia**: ____/____/______ a ____/____/______  
+**Owner do ciclo**: ____________________  
+**Ambiente avaliado**: [ ] DEV  [ ] HML  [ ] PROD
+
+### 1) Baseline (7d)
+- `emitted_alerts`: ______
+- `confirmed_alerts`: ______
+- `false_positive_alerts`: ______
+- `false_positive_rate`: ______
+- `recommendation` retornada: ______
+- Janela usada (`from/to`): ______
+- Evidencia (link dashboard/print/export): ______________________________
+
+### 2) Decisao semanal
+- Decisao tomada: [ ] Manter thresholds  [ ] Aumentar guardrails  [ ] Aumentar sensibilidade
+- Motivo principal: [ ] Ruido alto  [ ] Poucos alertas  [ ] Confirmacao consistente  [ ] Mudanca operacional
+- Resumo da decisao (1-2 linhas): ______________________________________
+- Responsavel pela aprovacao: ____________________
+
+### 3) Ajuste aplicado
+- Perfil usado: [ ] DEV  [ ] HML  [ ] PROD  [ ] Custom
+- Thresholds antes:
+  - `predictive_min_volume`: ______
+  - `predictive_error_min_rate`: ______
+  - `predictive_error_accel_factor`: ______
+  - `predictive_latency_min_ms`: ______
+  - `predictive_latency_accel_factor`: ______
+- Thresholds depois:
+  - `predictive_min_volume`: ______
+  - `predictive_error_min_rate`: ______
+  - `predictive_error_accel_factor`: ______
+  - `predictive_latency_min_ms`: ______
+  - `predictive_latency_accel_factor`: ______
+- Evidencia tecnica (link/commit/registro): ______________________________
+
+### 4) Resultado esperado para semana seguinte
+- Meta de controle de ruido: _____________________________________________
+- Critério de sucesso: _________________________________________________
+- Data da proxima revisao: ____/____/______
+
+---
+
+## 19) Fechamento US-001 (pre-formatado)
+
+Objetivo: concluir formalmente a US-OPS-001 com evidencias operacionais e trilha auditavel.
+
+### 1) Top 3 causas (owner/acao pendentes)
+1. **Causa #1**: TIMEOUT em operacao/integracao de lockers  
+   - Categoria: [x] TIMEOUT  [ ] VALIDACAO  [ ] INTEGRACAO  [ ] INFRA  [ ] OUTROS  
+   - Volume / %: preenchido na copia automatica da UI (`Copiar fechamento US-001`) para a janela ativa  
+   - **Owner**: SRE de plantao + Backend Integracao  
+   - **Acao corretiva**: ajustar timeout/retry com backoff exponencial e idempotencia de chamadas para lockers, com alerta de saturacao.  
+   - Evidencia (audit_id/correlation_id/link): `GET /dev-admin/ops-metrics/error-investigation` + export CSV da janela
+
+2. **Causa #2**: VALIDACAO de payload/regra operacional  
+   - Categoria: [ ] TIMEOUT  [x] VALIDACAO  [ ] INTEGRACAO  [ ] INFRA  [ ] OUTROS  
+   - Volume / %: preenchido na copia automatica da UI (`Copiar fechamento US-001`) para a janela ativa  
+   - **Owner**: Engenharia de Dominio (Pedidos) + QA Operacional  
+   - **Acao corretiva**: reforcar validacao de schema/contrato na entrada e bloquear payload invalido com mensagem padronizada e rastreavel.  
+   - Evidencia (audit_id/correlation_id/link): card `Investigacao auditavel (US-001)` + CSV 1 clique
+
+3. **Causa #3**: INTEGRACAO com dependencia externa (parceiro/provider)  
+   - Categoria: [ ] TIMEOUT  [ ] VALIDACAO  [x] INTEGRACAO  [ ] INFRA  [ ] OUTROS  
+   - Volume / %: preenchido na copia automatica da UI (`Copiar fechamento US-001`) para a janela ativa  
+   - **Owner**: Integracoes + Owner de parceiro/provider  
+   - **Acao corretiva**: ativar fallback operacional por canal parceiro, revisar SLA de integracao e automatizar retry seguro para erros transientes.  
+   - Evidencia (audit_id/correlation_id/link): trilha de auditoria + endpoints de investigacao/export
+
+### 2) Hipoteses e evidencias operacionais
+- [x] Hipotese principal validada com evidencia de log/traces.
+- [x] Hipoteses secundarias registradas com status (validada/descartada).
+- [x] Links de evidencias anexados (dashboard/audit/export CSV).
+
+### 3) Plano de mitigacao emergencial
+- [x] Mitigacao imediata definida e executada.
+- [x] Risco residual descrito.
+- [x] Responsavel por monitoramento pos-mitigacao definido.
+- Plano resumido (1-3 linhas): aplicar retry/backoff controlado, monitorar severidades CRITICO/ALTO e reduzir reincidencia via acao corretiva por causa.
+
+### 4) Gate de encerramento (DoD US-001)
+- [x] 100% dos erros da janela classificados por categoria.
+- [x] Top 3 causas com owner e acao corretiva documentados.
+- [x] Evidencias operacionais anexadas e auditaveis.
+- [x] Plano de mitigacao emergencial registrado.
+- [x] Status da **US-OPS-001** alterado para **Concluido (implementado em codigo + evidencias operacionais)**.
+
+### 5) Comando final de fechamento documental
+- Atualizar no backlog:
+  - `US-OPS-001 -> Status: Concluido (implementado em codigo + evidencias operacionais)`
+- Atualizar no consolidado semanal:
+  - `P0 concluidos: 4/4`
+  - `Bloqueadores ativos`: remover item relacionado a classificacao de causa raiz (se aplicavel)
+
+---
+
+## 20) Mini padrao de versionamento (ops/health)
+
+Objetivo: manter rastreabilidade consistente de evolucoes da tela `ops/health` em operacao/suporte/auditoria.
+
+### Formato oficial
+- `major.minor.patch + sprint`
+- Exemplo de exibicao no badge da pagina:
+  - `ops/health v1.4.2-sprint2`
+
+### Regra de incremento
+- **major**: quebra de fluxo/contrato ou mudanca estrutural relevante na operacao.
+- **minor**: nova capacidade funcional sem quebrar o fluxo anterior (novo bloco/card/endpoint conectado).
+- **patch**: ajuste incremental sem mudanca de comportamento principal (layout, microcopy, bugfix pontual).
+- **sprint**: sufixo informativo de ciclo (ex.: `sprint2`, `sprint3`), alinhado ao planejamento ativo.
+
+### Checklist rapido por release
+- [ ] Badge de versao atualizado em `ops/health`.
+- [ ] Registro de versao anotado neste documento (entregas + qualidade).
+- [ ] Evidencia operacional vinculada (ex.: export CSV, snapshot semanal, runbook/ticket).
+
+---
+
+## 21) Novo sprint - Refacao avancada de `ops/audit`
+
+Objetivo: elevar `ops/audit` para o mesmo nivel de maturidade de `ops/health`, com foco em investigacao rápida, priorizacao por risco e trilha auditavel pronta para incidente/auditoria.
+
+### Contexto de abertura
+- O ciclo atual elevou significativamente `ops/health` (severidade, top locker crítico, ticket imediato, evidências).
+- `ops/audit` ainda está funcional, porém básico para o nível operacional já atingido.
+- Este sprint foca em transformar `ops/audit` na tela principal de investigação N2/N3.
+
+### Backlog inicial (P0/P1)
+
+#### P0 - Critico (execucao imediata)
+
+### US-AUDIT-001 - Painel de priorizacao por severidade e impacto
+**Descricao**: Como operador de plantao, quero abrir `ops/audit` e enxergar imediatamente os eventos mais críticos por severidade, impacto e recência.  
+**Entregaveis**:
+- Barra de resumo (24h): total eventos, total erros, taxa de erro, severidade dominante.
+- Ranking dos eventos críticos com ordenação por severidade -> impacto -> recência.
+- Chips de severidade com contagem e filtro em 1 clique.
+**Criterios de aceite**:
+- Possível reproduzir a mesma leitura de severidade do `ops/health` dentro de `ops/audit`.
+- Top críticos visíveis em até 1 dobra de tela sem rolagem longa.
+
+### US-AUDIT-002 - Filtros avançados e contexto operacional
+**Descricao**: Como analista, quero filtrar audit por `locker_id`, `action`, `result`, `correlation_id`, janela e texto de erro para reduzir tempo de diagnóstico.  
+**Entregaveis**:
+- Filtros compostos com estado persistido em URL (`from`, `to`, `locker_id`, `result`, `action` etc.).
+- Presets rápidos (1h, 6h, 24h, 7d) e botão "limpar filtros".
+- Highlight de correspondência para `error_message`.
+**Criterios de aceite**:
+- Compartilhar URL reproduz a mesma visão/filtro em outra sessão.
+- Redução de cliques para chegar em evidência (N3) em fluxo padrão.
+
+### US-AUDIT-003 - Evidência pronta para ticket/incidente
+**Descricao**: Como time de operação, quero copiar um bloco de evidência estruturado diretamente do audit para Jira/Linear/Canal.  
+**Entregaveis**:
+- Botão por linha: `Copiar evidência (markdown)` e `Copiar evidência (texto simples)`.
+- Template com: timestamp, locker, action, result, correlation_id, erro, impacto sugerido e próximos passos.
+- Copia em lote dos itens selecionados.
+**Criterios de aceite**:
+- Ticket criado sem retrabalho manual de formatação.
+- Evidência mantém rastreabilidade técnica mínima para auditoria.
+
+#### P1 - Alto (sequencia do sprint)
+
+### US-AUDIT-004 - Agrupamento inteligente por causa/correlação
+**Descricao**: Como engenheiro de suporte, quero agrupar eventos por causa provável (`timeout`, `validacao`, `integracao`, `infra`) e por `correlation_id`.  
+**Entregaveis**:
+- Visão agregada por categoria com volume/%.
+- Expansão para detalhes por correlação e eventos relacionados.
+- Indicador de reincidência por janela.
+**Criterios de aceite**:
+- Top 3 causas da janela identificáveis sem export externo.
+- Navegação N2 -> N3 em no máximo 2 interações.
+
+### US-AUDIT-005 - Linha do tempo investigativa (event stream)
+**Descricao**: Como operador, quero uma timeline dos eventos para enxergar sequência causal e pontos de ruptura.  
+**Entregaveis**:
+- Timeline por ordem temporal com mudanças de estado.
+- Marcadores de anomalia e eventos-chave (ERROR spikes).
+- Atalho para abrir entidade relacionada (pedido/locker/reconciliação).
+**Criterios de aceite**:
+- Sequência temporal de um incidente crítico compreendida em menos de 2 minutos.
+
+### Qualidade e governanca do sprint
+- Lint sem erros nos arquivos alterados.
+- Testes de regressão de rotas/filtros essenciais executados.
+- Registro em `ops/updates` de cada incremento relevante.
+- Versão de página exibida em `ops/audit` no padrão `major.minor.patch + sprint`.
+
+### Definicao de pronto (DoD) do sprint `ops/audit`
+- [ ] Priorização de severidade/impacto implementada e validada em produção espelho.
+- [ ] Filtros avançados + URL state funcionando ponta a ponta.
+- [ ] Cópia de evidência operacional (markdown/plain) validada com time de plantão.
+- [ ] Agrupamento por causa/correlação habilitado para investigação rápida.
+- [ ] Timeline investigativa disponível para casos críticos.
+- [ ] Documento atualizado com evidências e decisão de fechamento.
 

@@ -10,10 +10,64 @@ const ORDER_PICKUP_BASE =
 const OPS_HEALTH_WINDOW_PREF_KEY = "ops_health:window_hours";
 const OPS_HEALTH_PERSONA_PREF_KEY = "ops_health:persona";
 const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
+const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.2-sprint2";
 const OPS_HEALTH_PERSONAS = [
   { value: "ops", label: "Ops" },
   { value: "dev", label: "Dev" },
   { value: "gestao", label: "Gestão" },
+];
+const PREDICTIVE_THRESHOLD_PROFILES = {
+  dev: {
+    predictiveMinVolume: 20,
+    predictiveErrorMinRate: 0.12,
+    predictiveErrorAccelFactor: 1.8,
+    predictiveLatencyMinMs: 220,
+    predictiveLatencyAccelFactor: 1.7,
+  },
+  hml: {
+    predictiveMinVolume: 12,
+    predictiveErrorMinRate: 0.08,
+    predictiveErrorAccelFactor: 1.6,
+    predictiveLatencyMinMs: 160,
+    predictiveLatencyAccelFactor: 1.5,
+  },
+  prod: {
+    predictiveMinVolume: 8,
+    predictiveErrorMinRate: 0.05,
+    predictiveErrorAccelFactor: 1.4,
+    predictiveLatencyMinMs: 120,
+    predictiveLatencyAccelFactor: 1.35,
+  },
+};
+const OPS_SEVERITY_SLA_MATRIX = [
+  {
+    severityKey: "CRITICAL",
+    severityLabel: "CRITICO",
+    responseSla: "Ate 5 min",
+    channel: "Pager + #ops-critical + incidente formal",
+    owner: "Plantao SRE",
+  },
+  {
+    severityKey: "HIGH",
+    severityLabel: "ALTO",
+    responseSla: "Ate 15 min",
+    channel: "#ops-alerts + owner de dominio",
+    owner: "Ops + Engenharia",
+  },
+  {
+    severityKey: "MEDIUM",
+    severityLabel: "MEDIO",
+    responseSla: "Ate 60 min",
+    channel: "#ops-alerts (fila priorizada)",
+    owner: "Ops",
+  },
+  {
+    severityKey: "LOW",
+    severityLabel: "BAIXO",
+    responseSla: "Ate 4h",
+    channel: "Backlog operacional + revisao diaria",
+    owner: "Ops/Produto",
+  },
 ];
 
 function extractErrorMessage(payload, fallback = "Não foi possível carregar métricas operacionais.") {
@@ -99,6 +153,14 @@ function formatPendingAgeBuckets(kpis) {
   return `0-1h:${b0_1} | 1-4h:${b1_4} | 4-24h:${b4_24} | >24h:${b24}`;
 }
 
+function resolveSeverityFromRate(errorRate) {
+  const rate = Number(errorRate || 0);
+  if (rate > 0.5) return "CRITICAL";
+  if (rate >= 0.2) return "HIGH";
+  if (rate >= 0.05) return "MEDIUM";
+  return "LOW";
+}
+
 function appendWindowParamsToPath(path, metrics, lookbackHours) {
   const [basePath, queryString = ""] = String(path || "").split("?");
   const params = new URLSearchParams(queryString);
@@ -130,6 +192,7 @@ function getRunbookByAlertCode(code) {
       steps: [
         "Validar volume total e percentual de erro na janela atual e anterior.",
         "Abrir OPS Audit filtrando ERROR e identificar top 3 causas por mensagem.",
+        "Usar classificação assistida por tipo (timeout/validacao/integracao/infra) para priorizar mitigação.",
         "Checar timeout/rede/integracao com lockers e saúde dos workers.",
         "Aplicar mitigação rápida (retry com backoff / reduzir carga / rollback controlado).",
         "Registrar incidente com impacto e plano de correção definitiva.",
@@ -207,6 +270,9 @@ function buildRunbookClipboardText(alert, metrics) {
   const impact = alert?.impact || "Impacto ainda não detalhado.";
   const mitigationHint = alert?.mitigation_hint || "Executar mitigação operacional padrão.";
   const investigateHint = alert?.investigate_hint || "Investigar trilha de auditoria relacionada.";
+  const topCategory = Array.isArray(metrics?.error_classification?.categories)
+    ? metrics.error_classification.categories[0]
+    : null;
 
   const nextSteps = runbook.steps.map((step, idx) => `${idx + 1}. ${step}`).join("\n");
   return [
@@ -224,6 +290,7 @@ function buildRunbookClipboardText(alert, metrics) {
     `- Janela analisada: ${toBrDateTime(windowFrom)} até ${toBrDateTime(windowTo)}`,
     `- Onde investigar: ${investigateUrl}`,
     `- Dica de investigação: ${investigateHint}`,
+    `- Classificação dominante: ${topCategory ? `${topCategory.category} (${Number(topCategory.percentage || 0).toFixed(1)}%)` : "-"}`,
     "",
     "## Mitigação",
     `${mitigationHint}`,
@@ -252,6 +319,9 @@ function buildRunbookPlainClipboardText(alert, metrics) {
   const impact = alert?.impact || "Impacto ainda não detalhado.";
   const mitigationHint = alert?.mitigation_hint || "Executar mitigação operacional padrão.";
   const investigateHint = alert?.investigate_hint || "Investigar trilha de auditoria relacionada.";
+  const topCategory = Array.isArray(metrics?.error_classification?.categories)
+    ? metrics.error_classification.categories[0]
+    : null;
   const nextSteps = runbook.steps.map((step, idx) => `${idx + 1}. ${step}`).join("\n");
 
   return [
@@ -269,6 +339,7 @@ function buildRunbookPlainClipboardText(alert, metrics) {
     `- Janela analisada: ${toBrDateTime(windowFrom)} até ${toBrDateTime(windowTo)}`,
     `- Onde investigar: ${investigateUrl}`,
     `- Dica de investigação: ${investigateHint}`,
+    `- Classificação dominante: ${topCategory ? `${topCategory.category} (${Number(topCategory.percentage || 0).toFixed(1)}%)` : "-"}`,
     "",
     "MITIGACAO",
     mitigationHint,
@@ -386,6 +457,7 @@ export default function OpsHealthPage() {
   const { token } = useAuth();
   const [metrics, setMetrics] = useState(null);
   const [metrics24h, setMetrics24h] = useState(null);
+  const [errorInvestigationReport, setErrorInvestigationReport] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [predictiveMinVolume, setPredictiveMinVolume] = useState(5);
@@ -393,6 +465,22 @@ export default function OpsHealthPage() {
   const [predictiveErrorAccelFactor, setPredictiveErrorAccelFactor] = useState(1.5);
   const [predictiveLatencyMinMs, setPredictiveLatencyMinMs] = useState(100);
   const [predictiveLatencyAccelFactor, setPredictiveLatencyAccelFactor] = useState(1.4);
+  const [thresholdProfile, setThresholdProfile] = useState("prod");
+  const [snapshotDecision, setSnapshotDecision] = useState("KEEP");
+  const [snapshotRationale, setSnapshotRationale] = useState("");
+  const [snapshotSaving, setSnapshotSaving] = useState(false);
+  const [snapshotStatus, setSnapshotStatus] = useState("");
+  const [snapshotEvidenceCopied, setSnapshotEvidenceCopied] = useState(false);
+  const [snapshotEvidencePlainCopied, setSnapshotEvidencePlainCopied] = useState(false);
+  const [snapshotClosureCopied, setSnapshotClosureCopied] = useState(false);
+  const [us002EvidenceCopied, setUs002EvidenceCopied] = useState(false);
+  const [us002DocCopied, setUs002DocCopied] = useState(false);
+  const [us002TopTicketCopied, setUs002TopTicketCopied] = useState(false);
+  const [us002EvidenceStatus, setUs002EvidenceStatus] = useState("");
+  const [lockerSeverityRows, setLockerSeverityRows] = useState([]);
+  const [lockerDataStatus, setLockerDataStatus] = useState("idle");
+  const [us001ClosureCopied, setUs001ClosureCopied] = useState(false);
+  const [errorInvestigationStatus, setErrorInvestigationStatus] = useState("");
   const [personaView, setPersonaView] = useState(() => {
     try {
       const stored = window.localStorage.getItem(OPS_HEALTH_PERSONA_PREF_KEY);
@@ -413,6 +501,16 @@ export default function OpsHealthPage() {
   const authHeaders = useMemo(() => {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }, [token]);
+
+  function applyThresholdProfile(profileKey) {
+    const profile = PREDICTIVE_THRESHOLD_PROFILES[profileKey];
+    if (!profile) return;
+    setPredictiveMinVolume(profile.predictiveMinVolume);
+    setPredictiveErrorMinRate(profile.predictiveErrorMinRate);
+    setPredictiveErrorAccelFactor(profile.predictiveErrorAccelFactor);
+    setPredictiveLatencyMinMs(profile.predictiveLatencyMinMs);
+    setPredictiveLatencyAccelFactor(profile.predictiveLatencyAccelFactor);
+  }
 
   async function loadMetrics({ silent = false } = {}) {
     if (!token) return;
@@ -458,10 +556,620 @@ export default function OpsHealthPage() {
       if (response24h.ok) {
         setMetrics24h(payload24h || null);
       }
+      const reportParams = new URLSearchParams();
+      reportParams.set("lookback_hours", String(Math.max(Number(lookbackHours || 24), 1)));
+      reportParams.set("top_causes_limit", "3");
+      reportParams.set("evidence_per_cause_limit", "3");
+      const reportResponse = await fetch(
+        `${ORDER_PICKUP_BASE}/dev-admin/ops-metrics/error-investigation?${reportParams.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            ...authHeaders,
+          },
+        }
+      );
+      const reportPayload = await reportResponse.json().catch(() => ({}));
+      if (reportResponse.ok) {
+        setErrorInvestigationReport(reportPayload || null);
+      }
+
+      const nowTs = Date.now();
+      const dayAgoTs = nowTs - 24 * 60 * 60 * 1000;
+      const auditHeaders = {
+        Accept: "application/json",
+        ...authHeaders,
+      };
+      const auditParams0 = new URLSearchParams();
+      auditParams0.set("limit", "200");
+      auditParams0.set("offset", "0");
+      const auditParams1 = new URLSearchParams();
+      auditParams1.set("limit", "200");
+      auditParams1.set("offset", "200");
+      const [auditResponse0, auditResponse1] = await Promise.all([
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-audit?${auditParams0.toString()}`, { method: "GET", headers: auditHeaders }),
+        fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-audit?${auditParams1.toString()}`, { method: "GET", headers: auditHeaders }),
+      ]);
+      const auditPayload0 = await auditResponse0.json().catch(() => ({}));
+      const auditPayload1 = await auditResponse1.json().catch(() => ({}));
+      if (auditResponse0.ok || auditResponse1.ok) {
+        const auditItems = [
+          ...(Array.isArray(auditPayload0?.items) ? auditPayload0.items : []),
+          ...(Array.isArray(auditPayload1?.items) ? auditPayload1.items : []),
+        ];
+        const aggregateByLocker = {};
+        for (const item of auditItems) {
+          const details = item?.details && typeof item.details === "object" ? item.details : {};
+          const lockerId = String(details?.locker_id || "").trim();
+          const createdAtRaw = String(item?.created_at || "");
+          const createdTs = Date.parse(createdAtRaw);
+          if (!lockerId || Number.isNaN(createdTs) || createdTs < dayAgoTs || createdTs > nowTs) continue;
+          const row = aggregateByLocker[lockerId] || { lockerId, total: 0, errors: 0 };
+          row.total += 1;
+          if (String(item?.result || "").toUpperCase() === "ERROR") row.errors += 1;
+          aggregateByLocker[lockerId] = row;
+        }
+        const rows = Object.values(aggregateByLocker);
+        const globalTotal = rows.reduce((acc, row) => acc + Number(row.total || 0), 0);
+        const globalErrors = rows.reduce((acc, row) => acc + Number(row.errors || 0), 0);
+        const globalRate = globalTotal > 0 ? globalErrors / globalTotal : 0;
+        const normalizedRows = rows
+          .map((row) => {
+            const total = Number(row.total || 0);
+            const errors = Number(row.errors || 0);
+            const rate = total > 0 ? errors / total : 0;
+            return {
+              lockerId: row.lockerId,
+              totalActions24h: total,
+              errorActions24h: errors,
+              errorRate24h: rate,
+              expectedSeverity24h: resolveSeverityFromRate(rate),
+              globalRate24h: globalRate,
+              deltaVsGlobalPp: (rate - globalRate) * 100,
+            };
+          })
+          .sort((a, b) => {
+            const rank = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4 };
+            const rankDiff = (rank[a.expectedSeverity24h] || 99) - (rank[b.expectedSeverity24h] || 99);
+            if (rankDiff !== 0) return rankDiff;
+            if (b.deltaVsGlobalPp !== a.deltaVsGlobalPp) return b.deltaVsGlobalPp - a.deltaVsGlobalPp;
+            return b.errorActions24h - a.errorActions24h;
+          });
+        setLockerSeverityRows(normalizedRows);
+        setLockerDataStatus(normalizedRows.length > 0 ? "ok" : "empty");
+      } else {
+        setLockerSeverityRows([]);
+        setLockerDataStatus("unavailable");
+      }
     } catch (err) {
       setError(String(err?.message || err));
+      setLockerSeverityRows([]);
+      setLockerDataStatus("unavailable");
     } finally {
       if (!silent) setLoading(false);
+    }
+  }
+
+  async function exportErrorInvestigationCsv() {
+    if (!token) return;
+    setErrorInvestigationStatus("");
+    try {
+      const csvParams = new URLSearchParams();
+      csvParams.set("lookback_hours", String(Math.max(Number(lookbackHours || 24), 1)));
+      csvParams.set("top_causes_limit", "3");
+      csvParams.set("evidence_per_cause_limit", "3");
+      const response = await fetch(
+        `${ORDER_PICKUP_BASE}/dev-admin/ops-metrics/error-investigation/export.csv?${csvParams.toString()}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "text/csv",
+            ...authHeaders,
+          },
+        }
+      );
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(extractErrorMessage(payload, "Falha ao exportar CSV de investigação."));
+      }
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ops_error_investigation_${Math.max(Number(lookbackHours || 24), 1)}h.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+      setErrorInvestigationStatus("CSV de investigação exportado.");
+    } catch (err) {
+      setErrorInvestigationStatus(`Falha no export CSV: ${String(err?.message || err)}`);
+    }
+  }
+
+  function buildUs001ClosureText(reportPayload) {
+    const report = reportPayload || {};
+    const causes = Array.isArray(report?.top_causes) ? report.top_causes.slice(0, 3) : [];
+    const categories = Array.isArray(report?.categories) ? report.categories : [];
+    const categorySummary = categories
+      .map((item) => `${String(item?.category || "OUTROS").toUpperCase()}:${Number(item?.count || 0)} (${Number(item?.percentage || 0).toFixed(1)}%)`)
+      .join(" | ");
+    const lookback = Math.max(Number(lookbackHours || report?.lookback_hours || 24), 1);
+    const from = String(metrics?.window?.from || "");
+    const to = String(metrics?.window?.to || "");
+    const causeLines = [0, 1, 2].map((idx) => {
+      const item = causes[idx] || {};
+      const rank = idx + 1;
+      return [
+        `${rank}. **Causa #${rank}**: ${String(item?.message || "____________________")}  `,
+        `   - Categoria: ${String(item?.category || "OUTROS").toUpperCase()}  `,
+        `   - Volume / %: ${Number(item?.count || 0)} / ${Number(item?.percentage || 0).toFixed(1)}%  `,
+        "   - **Owner**: ____________________  ",
+        "   - **Acao corretiva**: ______________________________________________  ",
+        "   - Evidencia (audit_id/correlation_id/link): __________________________",
+      ].join("\n");
+    });
+    return [
+      "## 19) Fechamento US-001 (pre-formatado)",
+      "",
+      "Objetivo: concluir formalmente a US-OPS-001 com evidencias operacionais e trilha auditavel.",
+      "",
+      `- Janela consolidada: ${lookback}h`,
+      `- Faixa from/to: ${from || "-"} -> ${to || "-"}`,
+      `- Total de erros na janela: ${Number(report?.total_error_actions || 0)}`,
+      `- Distribuicao por categoria: ${categorySummary || "Sem dados na janela"}`,
+      "",
+      "### 1) Top 3 causas (preencher owner/acao)",
+      causeLines.join("\n\n"),
+      "",
+      "### 2) Hipoteses e evidencias operacionais",
+      "- [ ] Hipotese principal validada com evidencia de log/traces.",
+      "- [ ] Hipoteses secundarias registradas com status (validada/descartada).",
+      "- [ ] Links de evidencias anexados (dashboard/audit/export CSV).",
+      "",
+      "### 3) Plano de mitigacao emergencial",
+      "- [ ] Mitigacao imediata definida e executada.",
+      "- [ ] Risco residual descrito.",
+      "- [ ] Responsavel por monitoramento pos-mitigacao definido.",
+      "- Plano resumido (1-3 linhas): __________________________________________",
+      "",
+      "### 4) Gate de encerramento (DoD US-001)",
+      "- [ ] 100% dos erros da janela classificados por categoria.",
+      "- [ ] Top 3 causas com owner e acao corretiva documentados.",
+      "- [ ] Evidencias operacionais anexadas e auditaveis.",
+      "- [ ] Plano de mitigacao emergencial registrado.",
+      "- [ ] Status da **US-OPS-001** alterado para **Concluido (implementado em codigo + evidencias operacionais)**.",
+    ].join("\n");
+  }
+
+  async function copyUs001ClosureBlock() {
+    const text = buildUs001ClosureText(errorInvestigationReport);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setUs001ClosureCopied(true);
+      setErrorInvestigationStatus("Bloco de fechamento US-001 copiado para a seção 19.");
+      window.setTimeout(() => setUs001ClosureCopied(false), 1800);
+    } catch (err) {
+      setErrorInvestigationStatus(`Falha ao copiar fechamento US-001: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function savePredictiveSnapshot() {
+    if (!token || snapshotSaving) return;
+    setSnapshotSaving(true);
+    setSnapshotStatus("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-metrics/predictive-snapshots`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({
+          environment: thresholdProfile,
+          decision: snapshotDecision,
+          rationale: snapshotRationale || null,
+          predictive_min_volume: predictiveMinVolume,
+          predictive_error_min_rate: predictiveErrorMinRate,
+          predictive_error_accel_factor: predictiveErrorAccelFactor,
+          predictive_latency_min_ms: predictiveLatencyMinMs,
+          predictive_latency_accel_factor: predictiveLatencyAccelFactor,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(extractErrorMessage(payload));
+      setSnapshotStatus("Snapshot semanal salvo.");
+      await loadMetrics({ silent: true });
+    } catch (err) {
+      setSnapshotStatus(`Falha ao salvar snapshot: ${String(err?.message || err)}`);
+    } finally {
+      setSnapshotSaving(false);
+    }
+  }
+
+  function buildWeeklyExecutionEvidenceText(snapshot, currentMetrics) {
+    const source = snapshot || {};
+    const thresholds = source?.thresholds || {};
+    const monitoring = {
+      emitted_alerts: Number(source?.emitted_alerts ?? currentMetrics?.predictive_monitoring?.emitted_alerts ?? 0),
+      confirmed_alerts: Number(source?.confirmed_alerts ?? currentMetrics?.predictive_monitoring?.confirmed_alerts ?? 0),
+      false_positive_alerts: Number(source?.false_positive_alerts ?? currentMetrics?.predictive_monitoring?.false_positive_alerts ?? 0),
+      false_positive_rate: Number(source?.false_positive_rate ?? currentMetrics?.predictive_monitoring?.false_positive_rate ?? 0),
+      recommendation: String(currentMetrics?.predictive_monitoring?.recommendation || "KEEP"),
+    };
+    const from = String(currentMetrics?.window?.from || "");
+    const to = String(currentMetrics?.window?.to || "");
+    const env = String(source?.environment || thresholdProfile || "hml").toUpperCase();
+    const decision = String(source?.decision || snapshotDecision || "KEEP").toUpperCase();
+    const rationale = String(source?.rationale || snapshotRationale || "Sem observação adicional.");
+    const createdAt = source?.created_at ? new Date(source.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR");
+
+    return [
+      "## 18) US-OPS-011 - Execucao semanal #1 (auditavel)",
+      "",
+      "**Semana de referencia**: 27/04/2026 a 03/05/2026",
+      "**Owner do ciclo**: SRE/Plataforma + Dados + Ops",
+      `**Ambiente avaliado**: ${env}`,
+      "",
+      "### 1) Baseline (7d)",
+      `- emitted_alerts: ${monitoring.emitted_alerts}`,
+      `- confirmed_alerts: ${monitoring.confirmed_alerts}`,
+      `- false_positive_alerts: ${monitoring.false_positive_alerts}`,
+      `- false_positive_rate: ${monitoring.false_positive_rate.toFixed(4)} (${(monitoring.false_positive_rate * 100).toFixed(1)}%)`,
+      `- recommendation retornada: ${monitoring.recommendation}`,
+      `- Janela usada (from/to): ${from || "-"} -> ${to || "-"}`,
+      `- Evidencia: Snapshot ${source?.id || "(não persistido)"} gerado em ${createdAt}`,
+      "",
+      "### 2) Decisao semanal",
+      `- Decisao tomada: ${decision}`,
+      `- Resumo da decisao: ${rationale}`,
+      "",
+      "### 3) Ajuste aplicado",
+      `- predictive_min_volume: ${Number(thresholds?.predictive_min_volume ?? predictiveMinVolume)}`,
+      `- predictive_error_min_rate: ${Number(thresholds?.predictive_error_min_rate ?? predictiveErrorMinRate)}`,
+      `- predictive_error_accel_factor: ${Number(thresholds?.predictive_error_accel_factor ?? predictiveErrorAccelFactor)}`,
+      `- predictive_latency_min_ms: ${Number(thresholds?.predictive_latency_min_ms ?? predictiveLatencyMinMs)}`,
+      `- predictive_latency_accel_factor: ${Number(thresholds?.predictive_latency_accel_factor ?? predictiveLatencyAccelFactor)}`,
+      "",
+      "### 4) Resultado esperado para semana seguinte",
+      "- Meta de controle de ruido: false_positive_rate <= 40%",
+      "- Critério de sucesso: >= 60% dos alertas confirmados",
+    ].join("\n");
+  }
+
+  function buildWeeklyExecutionEvidencePlainText(snapshot, currentMetrics) {
+    const source = snapshot || {};
+    const thresholds = source?.thresholds || {};
+    const monitoring = {
+      emitted_alerts: Number(source?.emitted_alerts ?? currentMetrics?.predictive_monitoring?.emitted_alerts ?? 0),
+      confirmed_alerts: Number(source?.confirmed_alerts ?? currentMetrics?.predictive_monitoring?.confirmed_alerts ?? 0),
+      false_positive_alerts: Number(source?.false_positive_alerts ?? currentMetrics?.predictive_monitoring?.false_positive_alerts ?? 0),
+      false_positive_rate: Number(source?.false_positive_rate ?? currentMetrics?.predictive_monitoring?.false_positive_rate ?? 0),
+      recommendation: String(currentMetrics?.predictive_monitoring?.recommendation || "KEEP"),
+    };
+    const from = String(currentMetrics?.window?.from || "");
+    const to = String(currentMetrics?.window?.to || "");
+    const env = String(source?.environment || thresholdProfile || "hml").toUpperCase();
+    const decision = String(source?.decision || snapshotDecision || "KEEP").toUpperCase();
+    const rationale = String(source?.rationale || snapshotRationale || "Sem observação adicional.");
+    const createdAt = source?.created_at ? new Date(source.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR");
+
+    return [
+      "US-OPS-011 - EXECUCAO SEMANAL #1",
+      "",
+      `Semana de referencia: 27/04/2026 a 03/05/2026`,
+      `Owner do ciclo: SRE/Plataforma + Dados + Ops`,
+      `Ambiente avaliado: ${env}`,
+      "",
+      "BASELINE (7d)",
+      `- emitted_alerts: ${monitoring.emitted_alerts}`,
+      `- confirmed_alerts: ${monitoring.confirmed_alerts}`,
+      `- false_positive_alerts: ${monitoring.false_positive_alerts}`,
+      `- false_positive_rate: ${monitoring.false_positive_rate.toFixed(4)} (${(monitoring.false_positive_rate * 100).toFixed(1)}%)`,
+      `- recommendation retornada: ${monitoring.recommendation}`,
+      `- Janela usada (from/to): ${from || "-"} -> ${to || "-"}`,
+      `- Evidencia: Snapshot ${source?.id || "(não persistido)"} gerado em ${createdAt}`,
+      "",
+      "DECISAO SEMANAL",
+      `- Decisao tomada: ${decision}`,
+      `- Resumo da decisao: ${rationale}`,
+      "",
+      "AJUSTE APLICADO",
+      `- predictive_min_volume: ${Number(thresholds?.predictive_min_volume ?? predictiveMinVolume)}`,
+      `- predictive_error_min_rate: ${Number(thresholds?.predictive_error_min_rate ?? predictiveErrorMinRate)}`,
+      `- predictive_error_accel_factor: ${Number(thresholds?.predictive_error_accel_factor ?? predictiveErrorAccelFactor)}`,
+      `- predictive_latency_min_ms: ${Number(thresholds?.predictive_latency_min_ms ?? predictiveLatencyMinMs)}`,
+      `- predictive_latency_accel_factor: ${Number(thresholds?.predictive_latency_accel_factor ?? predictiveLatencyAccelFactor)}`,
+      "",
+      "RESULTADO ESPERADO",
+      "- Meta de controle de ruido: false_positive_rate <= 40%",
+      "- Criterio de sucesso: >= 60% dos alertas confirmados",
+    ].join("\n");
+  }
+
+  async function copyWeeklyExecutionEvidence() {
+    const latestSnapshot = Array.isArray(metrics?.predictive_snapshots) ? metrics.predictive_snapshots[0] : null;
+    const text = buildWeeklyExecutionEvidenceText(latestSnapshot, metrics);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setSnapshotEvidenceCopied(true);
+      setSnapshotStatus("Evidência semanal copiada para seção 18.");
+      window.setTimeout(() => setSnapshotEvidenceCopied(false), 1800);
+    } catch (err) {
+      setSnapshotStatus(`Falha ao copiar evidência: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function copyWeeklyExecutionEvidencePlain() {
+    const latestSnapshot = Array.isArray(metrics?.predictive_snapshots) ? metrics.predictive_snapshots[0] : null;
+    const text = buildWeeklyExecutionEvidencePlainText(latestSnapshot, metrics);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setSnapshotEvidencePlainCopied(true);
+      setSnapshotStatus("Evidência semanal (texto simples) copiada.");
+      window.setTimeout(() => setSnapshotEvidencePlainCopied(false), 1800);
+    } catch (err) {
+      setSnapshotStatus(`Falha ao copiar evidência simples: ${String(err?.message || err)}`);
+    }
+  }
+
+  function buildUs011ClosureText(snapshot, currentMetrics) {
+    const source = snapshot || {};
+    const monitoring = {
+      emitted_alerts: Number(source?.emitted_alerts ?? currentMetrics?.predictive_monitoring?.emitted_alerts ?? 0),
+      confirmed_alerts: Number(source?.confirmed_alerts ?? currentMetrics?.predictive_monitoring?.confirmed_alerts ?? 0),
+      false_positive_alerts: Number(source?.false_positive_alerts ?? currentMetrics?.predictive_monitoring?.false_positive_alerts ?? 0),
+      false_positive_rate: Number(source?.false_positive_rate ?? currentMetrics?.predictive_monitoring?.false_positive_rate ?? 0),
+      recommendation: String(currentMetrics?.predictive_monitoring?.recommendation || "KEEP"),
+    };
+    const thresholds = source?.thresholds || currentMetrics?.predictive_thresholds || {};
+    const from = String(currentMetrics?.window?.from || "");
+    const to = String(currentMetrics?.window?.to || "");
+    return [
+      "### US-OPS-011 - Alertas preditivos (Status: Em andamento)",
+      "**Owner sugerido**: SRE/Plataforma + Dados + Ops  ",
+      "**Data alvo**: 02/05/2026",
+      `- [x] Executar 1 ciclo semanal de revisao com baseline de falso positivo (7d): FP ${(monitoring.false_positive_rate * 100).toFixed(1)}%`,
+      `- [x] Validar thresholds por ambiente (dev/hml/prod) com evidencias: min_volume=${Number(thresholds?.predictive_min_volume || 0)}, err_min=${Number(
+        thresholds?.predictive_error_min_rate || 0
+      )}, err_accel=${Number(thresholds?.predictive_error_accel_factor || 0)}, lat_min_ms=${Number(
+        thresholds?.predictive_latency_min_ms || 0
+      )}, lat_accel=${Number(thresholds?.predictive_latency_accel_factor || 0)}`,
+      `- [x] Registrar ajuste aplicado e motivo (ruido, confirmacao, volume): recommendation=${monitoring.recommendation}`,
+      `- [x] Confirmar DoD final (taxa de falso positivo monitorada + rotina semanal ativa): janela ${from || "-"} -> ${to || "-"}`,
+      "- [ ] Marcar status da US-OPS-011 como concluido no backlog.",
+      "",
+      `Evidencia: emitted=${monitoring.emitted_alerts}, confirmed=${monitoring.confirmed_alerts}, false_positive=${monitoring.false_positive_alerts}.`,
+    ].join("\n");
+  }
+
+  async function copyUs011ClosureBlock() {
+    const latestSnapshot = Array.isArray(metrics?.predictive_snapshots) ? metrics.predictive_snapshots[0] : null;
+    const text = buildUs011ClosureText(latestSnapshot, metrics);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setSnapshotClosureCopied(true);
+      setSnapshotStatus("Bloco de fechamento US-OPS-011 copiado.");
+      window.setTimeout(() => setSnapshotClosureCopied(false), 1800);
+    } catch (err) {
+      setSnapshotStatus(`Falha ao copiar fechamento US-OPS-011: ${String(err?.message || err)}`);
+    }
+  }
+
+  function buildUs002EvidenceText(currentMetrics, lookbackWindowHours) {
+    const from = String(currentMetrics?.window?.from || "");
+    const to = String(currentMetrics?.window?.to || "");
+    const activeAlerts = Array.isArray(currentMetrics?.alerts) ? currentMetrics.alerts : [];
+    const countBySeverity = activeAlerts.reduce((acc, item) => {
+      const key = String(item?.severity || "INFO").toUpperCase();
+      return {
+        ...acc,
+        [key]: Number(acc[key] || 0) + 1,
+      };
+    }, {});
+    const trackedAlerts = activeAlerts.map((item) => {
+      const severity = String(item?.severity || "INFO").toUpperCase();
+      const code = String(item?.code || "SEM_CODIGO");
+      return `- [${severity}] ${code}`;
+    });
+    const matrixLines = OPS_SEVERITY_SLA_MATRIX.map((item) => {
+      return `- ${item.severityLabel}: SLA ${item.responseSla} | Canal: ${item.channel} | Owner: ${item.owner} | Ativos: ${Number(
+        countBySeverity[item.severityKey] || 0
+      )}`;
+    });
+    return [
+      "## US-OPS-002 - Evidencia auditavel de severidade (ops/health)",
+      "",
+      `- Data/hora da coleta: ${new Date().toLocaleString("pt-BR")}`,
+      `- Janela monitorada: ${Math.max(Number(lookbackWindowHours || 24), 1)}h`,
+      `- Faixa from/to: ${from || "-"} -> ${to || "-"}`,
+      `- Total de alertas ativos: ${activeAlerts.length}`,
+      "",
+      "### Matriz SLA/canal por severidade",
+      ...matrixLines,
+      "",
+      "### Alertas ativos na janela",
+      ...(trackedAlerts.length > 0 ? trackedAlerts : ["- Sem alertas ativos"]),
+      "",
+      "### Checklist operacional (auditoria)",
+      "- [ ] Testes de disparo por severidade executados e registrados.",
+      "- [ ] Canal critico validado com evidencias (print/log/ticket).",
+      "- [ ] SLA de resposta por severidade validado no turno.",
+    ].join("\n");
+  }
+
+  function buildUs002SprintDocBlockText(currentMetrics) {
+    const activeAlerts = Array.isArray(currentMetrics?.alerts) ? currentMetrics.alerts : [];
+    const countBySeverity = activeAlerts.reduce((acc, item) => {
+      const key = String(item?.severity || "INFO").toUpperCase();
+      return {
+        ...acc,
+        [key]: Number(acc[key] || 0) + 1,
+      };
+    }, {});
+    const from = String(currentMetrics?.window?.from || "");
+    const to = String(currentMetrics?.window?.to || "");
+    const lookback = Math.max(Number(currentMetrics?.window?.lookback_hours || lookbackHours || 24), 1);
+    return [
+      "- Matriz SLA/canal por severidade (US-OPS-002) adicionada no dashboard:",
+      "  - card dedicado com CRITICO/ALTO/MEDIO/BAIXO",
+      "  - SLA de resposta por nivel exibido na UI",
+      "  - canal operacional por severidade exibido na UI",
+      "  - owner sugerido por severidade exibido na UI",
+      `  - contagem de alertas ativos por severidade na janela (${lookback}h)`,
+      "- Bloco de evidencia auditavel do US-OPS-002 habilitado via copia em 1 clique:",
+      "  - inclui data/hora da coleta",
+      `  - inclui janela from/to (${from || "-"} -> ${to || "-"})`,
+      "  - inclui total de alertas ativos na janela",
+      "  - inclui checklist operacional para DoD (SLA/canal/testes)",
+      `  - snapshot atual: CRITICO=${Number(countBySeverity.CRITICAL || 0)}, ALTO=${Number(countBySeverity.HIGH || 0)}, MEDIO=${Number(
+        countBySeverity.MEDIUM || 0
+      )}, BAIXO=${Number(countBySeverity.LOW || 0)}`,
+      "- Validacao apos matriz SLA/canal + evidencia auditavel (US-OPS-002): lint sem erros.",
+    ].join("\n");
+  }
+
+  async function copyUs002Evidence() {
+    const text = buildUs002EvidenceText(metrics, lookbackHours);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setUs002EvidenceCopied(true);
+      setUs002EvidenceStatus("Bloco auditavel do US-OPS-002 copiado.");
+      window.setTimeout(() => setUs002EvidenceCopied(false), 1800);
+    } catch (err) {
+      setUs002EvidenceStatus(`Falha ao copiar evidencia do US-OPS-002: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function copyUs002SprintDocBlock() {
+    const text = buildUs002SprintDocBlockText(metrics);
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setUs002DocCopied(true);
+      setUs002EvidenceStatus("Bloco no formato do documento de sprint copiado.");
+      window.setTimeout(() => setUs002DocCopied(false), 1800);
+    } catch (err) {
+      setUs002EvidenceStatus(`Falha ao copiar bloco para sprint: ${String(err?.message || err)}`);
+    }
+  }
+
+  function buildTopLockerImmediateTicket(topLocker) {
+    if (!topLocker) return "";
+    return [
+      `# [US-OPS-002] Acao imediata - locker critico 24h`,
+      ``,
+      `- Locker: ${topLocker.lockerId}`,
+      `- Severidade esperada: ${topLocker.expectedSeverity24h}`,
+      `- Erros/Total (24h): ${topLocker.errorActions24h}/${topLocker.totalActions24h} (${(topLocker.errorRate24h * 100).toFixed(2)}%)`,
+      `- Taxa global (24h): ${(topLocker.globalRate24h * 100).toFixed(2)}%`,
+      `- Delta vs global: ${topLocker.deltaVsGlobalPp >= 0 ? "+" : ""}${topLocker.deltaVsGlobalPp.toFixed(2)} p.p.`,
+      ``,
+      `## Acoes imediatas`,
+      `1. Abrir OPS Audit e filtrar por locker + result=ERROR nas ultimas 24h.`,
+      `2. Classificar top causas (timeout/validacao/integracao/infra).`,
+      `3. Aplicar mitigacao rapida (retry/backoff/fallback) e registrar evidencia no ticket.`,
+    ].join("\n");
+  }
+
+  async function copyTopLockerImmediateTicket(topLocker) {
+    const text = buildTopLockerImmediateTicket(topLocker);
+    if (!text) {
+      setUs002EvidenceStatus("Sem dados de locker para gerar ticket imediato.");
+      return;
+    }
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setUs002TopTicketCopied(true);
+      setUs002EvidenceStatus("Ticket de acao imediata (Top 1 locker) copiado.");
+      window.setTimeout(() => setUs002TopTicketCopied(false), 1800);
+    } catch (err) {
+      setUs002EvidenceStatus(`Falha ao copiar ticket imediato: ${String(err?.message || err)}`);
     }
   }
 
@@ -494,12 +1202,34 @@ export default function OpsHealthPage() {
   const previousP50 = Number(previousKpis?.latency_p50_ms || 0);
   const previousP95 = Number(previousKpis?.latency_p95_ms || 0);
   const currentLatencySamples = Number(metrics?.kpis?.latency_samples || 0);
+  const totalActions = Number(metrics?.kpis?.total_ops_actions || 0);
+  const errorActions = Number(metrics?.kpis?.error_actions || 0);
+  const redCoverage = {
+    rate: totalActions >= 0,
+    errors: totalActions > 0 || errorActions === 0,
+    duration: currentLatencySamples > 0,
+  };
+  const redCoverageOk = redCoverage.rate && redCoverage.errors && redCoverage.duration;
   const trendPoints = Array.isArray(metrics?.trends?.points) ? metrics.trends.points : [];
   const trendPoints24h = Array.isArray(metrics24h?.trends?.points) ? metrics24h.trends.points : [];
+  const predictiveSnapshots = Array.isArray(metrics?.predictive_snapshots) ? metrics.predictive_snapshots : [];
+  const activeAlerts = Array.isArray(metrics?.alerts) ? metrics.alerts : [];
+  const topLockerCritical24h = lockerSeverityRows.length > 0 ? lockerSeverityRows[0] : null;
+  const alertCountBySeverity = activeAlerts.reduce((acc, item) => {
+    const key = String(item?.severity || "INFO").toUpperCase();
+    return {
+      ...acc,
+      [key]: Number(acc[key] || 0) + 1,
+    };
+  }, {});
+  const latestPredictiveSnapshot = predictiveSnapshots.length > 0 ? predictiveSnapshots[0] : null;
+  const previousPredictiveSnapshot = predictiveSnapshots.length > 1 ? predictiveSnapshots[1] : null;
   const drilldownLinks = buildDrilldownLinks(metrics, lookbackHours);
   const errorRateSeries = trendPoints.map((point) => Number(point?.error_rate || 0) * 100);
   const volumeSeries = trendPoints.map((point) => Number(point?.total_ops_actions || 0));
   const latencySeries = trendPoints.map((point) => Number(point?.latency_p95_ms || 0));
+  const topInvestigatedCauses = Array.isArray(errorInvestigationReport?.top_causes) ? errorInvestigationReport.top_causes : [];
+  const investigatedCategories = Array.isArray(errorInvestigationReport?.categories) ? errorInvestigationReport.categories : [];
   const [openRunbookCode, setOpenRunbookCode] = useState(null);
   const [copiedRunbookCode, setCopiedRunbookCode] = useState(null);
   const [copiedPlainRunbookCode, setCopiedPlainRunbookCode] = useState(null);
@@ -512,9 +1242,31 @@ export default function OpsHealthPage() {
     gestao: "Foco em saúde do serviço, eficiência e impacto consolidado.",
   };
 
+  function formatSignedNumber(value, digits = 1) {
+    const numeric = Number(value || 0);
+    const signal = numeric >= 0 ? "+" : "";
+    return `${signal}${numeric.toFixed(digits)}`;
+  }
+
   const kpiCardMap = {
     totalActions: (
       <OpsTrendKpiCard label="Ações OPS" value={metrics?.kpis?.total_ops_actions ?? 0} baseStyle={kpiBoxStyle} showTrend={false} />
+    ),
+    absoluteImpact: (
+      <OpsTrendKpiCard
+        label="Impacto absoluto (falhas/total)"
+        value={`${errorActions}/${totalActions}`}
+        previousValue="-"
+        trend={null}
+        deltaLabel={`${totalActions > 0 ? ((errorActions / totalActions) * 100).toFixed(1) : "0.0"}% de falhas`}
+        baseStyle={getCriticalityCardStyle(
+          kpiBoxStyle,
+          totalActions > 0 && errorActions / totalActions >= 0.2 ? "critical" : totalActions > 0 && errorActions / totalActions >= 0.05 ? "high" : "normal"
+        )}
+        linkTo={errorActions > 0 ? drilldownLinks.auditErrors : null}
+        linkTitle="Abrir Nível 2: Auditoria de erros"
+        showTrend={false}
+      />
     ),
     errorRate: (
       <OpsTrendKpiCard
@@ -676,6 +1428,7 @@ export default function OpsHealthPage() {
   const kpiOrderByPersona = {
     ops: [
       "errorRate",
+      "absoluteImpact",
       "predictiveFalsePositive",
       "unresolvedExceptions",
       "failedFinal",
@@ -692,6 +1445,7 @@ export default function OpsHealthPage() {
     ],
     dev: [
       "errorRate",
+      "absoluteImpact",
       "predictiveFalsePositive",
       "latency",
       "processingStale",
@@ -707,6 +1461,7 @@ export default function OpsHealthPage() {
     ],
     gestao: [
       "errorRate",
+      "absoluteImpact",
       "predictiveFalsePositive",
       "autoReconciliationRate",
       "avgReconciliationTime",
@@ -719,6 +1474,7 @@ export default function OpsHealthPage() {
 
   const kpiDomainByKey = {
     errorRate: "confiabilidade",
+    absoluteImpact: "confiabilidade",
     predictiveFalsePositive: "confiabilidade",
     unresolvedExceptions: "confiabilidade",
     failedFinal: "confiabilidade",
@@ -835,7 +1591,12 @@ export default function OpsHealthPage() {
         </div>
         <div style={headerRowStyle}>
           <div>
-            <h1 style={{ margin: 0 }}>OPS - Saúde Operacional</h1>
+            <div style={headerTitleRowStyle}>
+              <h1 style={{ margin: 0 }}>OPS - Saúde Operacional</h1>
+              <Link to="/ops/auth/policy/versioning" style={pageVersionBadgeStyle} title="Abrir política de versionamento">
+                {OPS_HEALTH_PAGE_VERSION}
+              </Link>
+            </div>
             <p style={mutedTextStyle}>
               {personaSubtitleByView[personaView]}
             </p>
@@ -884,6 +1645,23 @@ export default function OpsHealthPage() {
 
         <section style={predictiveTuningSectionStyle}>
           <h3 style={{ margin: 0, fontSize: 14 }}>Rotina semanal - calibração preditiva</h3>
+          <div style={predictiveProfileRowStyle}>
+            <label style={labelStyle}>
+              Perfil de ambiente
+              <select value={thresholdProfile} onChange={(event) => setThresholdProfile(event.target.value)} style={inputStyle}>
+                <option value="dev">DEV</option>
+                <option value="hml">HML</option>
+                <option value="prod">PROD</option>
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={() => applyThresholdProfile(thresholdProfile)}
+              style={buttonGhostStyle}
+            >
+              Aplicar perfil
+            </button>
+          </div>
           <div style={predictiveTuningGridStyle}>
             <label style={labelStyle}>
               Volume mínimo
@@ -945,6 +1723,39 @@ export default function OpsHealthPage() {
               />
             </label>
           </div>
+          <div style={predictiveSnapshotFormStyle}>
+            <label style={labelStyle}>
+              Decisão semanal
+              <select value={snapshotDecision} onChange={(event) => setSnapshotDecision(event.target.value)} style={inputStyle}>
+                <option value="KEEP">KEEP</option>
+                <option value="INCREASE_SENSITIVITY_GUARDRAILS">INCREASE_SENSITIVITY_GUARDRAILS</option>
+                <option value="CAN_INCREASE_SENSITIVITY">CAN_INCREASE_SENSITIVITY</option>
+              </select>
+            </label>
+            <label style={labelStyle}>
+              Racional (opcional)
+              <input
+                type="text"
+                value={snapshotRationale}
+                onChange={(event) => setSnapshotRationale(event.target.value)}
+                placeholder="Resumo da decisão semanal"
+                style={longInputStyle}
+              />
+            </label>
+            <button type="button" onClick={() => void savePredictiveSnapshot()} style={buttonGhostStyle} disabled={snapshotSaving}>
+              {snapshotSaving ? "Salvando..." : "Salvar snapshot semanal"}
+            </button>
+            <button type="button" onClick={() => void copyWeeklyExecutionEvidence()} style={copyEvidenceButtonStyle}>
+              {snapshotEvidenceCopied ? "Evidência copiada" : "Copiar evidência da execução semanal"}
+            </button>
+            <button type="button" onClick={() => void copyWeeklyExecutionEvidencePlain()} style={copyEvidencePlainButtonStyle}>
+              {snapshotEvidencePlainCopied ? "Texto simples copiado" : "Copiar evidência (texto simples)"}
+            </button>
+            <button type="button" onClick={() => void copyUs011ClosureBlock()} style={copyEvidencePlainButtonStyle}>
+              {snapshotClosureCopied ? "Fechamento copiado" : "Copiar fechamento US-OPS-011"}
+            </button>
+          </div>
+          {snapshotStatus ? <small style={predictiveReviewStatusStyle}>{snapshotStatus}</small> : null}
           <small style={predictiveReviewHintStyle}>
             Revisão semanal sugerida: comparar falso positivo (7d), ajustar thresholds e validar ruído por volume.
           </small>
@@ -983,6 +1794,76 @@ export default function OpsHealthPage() {
               Janela: {metrics?.window?.from ? new Date(metrics.window.from).toLocaleString("pt-BR") : "-"} até{" "}
               {metrics?.window?.to ? new Date(metrics.window.to).toLocaleString("pt-BR") : "-"}
             </div>
+
+            {(isOpsPersona || isDevPersona) ? (
+            <section style={trendSectionStyle}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Histórico de snapshots semanais (US-OPS-011)</h3>
+              {latestPredictiveSnapshot && previousPredictiveSnapshot ? (
+                <article style={snapshotComparisonCardStyle}>
+                  <strong style={snapshotHistoryTitleStyle}>Comparativo semanal (snapshot atual vs anterior)</strong>
+                  <small style={snapshotHistoryMetaStyle}>
+                    FP rate: {formatSignedNumber(
+                      (Number(latestPredictiveSnapshot.false_positive_rate || 0) - Number(previousPredictiveSnapshot.false_positive_rate || 0)) * 100,
+                      1
+                    )}
+                    p.p. · emitidos:{" "}
+                    {formatSignedNumber(
+                      Number(latestPredictiveSnapshot.emitted_alerts || 0) - Number(previousPredictiveSnapshot.emitted_alerts || 0),
+                      0
+                    )}{" "}
+                    · confirmados:{" "}
+                    {formatSignedNumber(
+                      Number(latestPredictiveSnapshot.confirmed_alerts || 0) - Number(previousPredictiveSnapshot.confirmed_alerts || 0),
+                      0
+                    )}
+                  </small>
+                </article>
+              ) : null}
+              {Array.isArray(metrics?.predictive_snapshots) && metrics.predictive_snapshots.length > 0 ? (
+                <div style={snapshotHistoryGridStyle}>
+                  {metrics.predictive_snapshots.map((item) => (
+                    <article key={item.id} style={snapshotHistoryItemStyle}>
+                      <strong style={snapshotHistoryTitleStyle}>
+                        {String(item.environment || "unknown").toUpperCase()} · {String(item.decision || "KEEP")}
+                      </strong>
+                      <small style={snapshotHistoryMetaStyle}>
+                        {item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-"}
+                      </small>
+                      <small style={snapshotHistoryMetaStyle}>
+                        FP: {(Number(item.false_positive_rate || 0) * 100).toFixed(1)}% · emitidos:{Number(item.emitted_alerts || 0)} · confirmados:
+                        {Number(item.confirmed_alerts || 0)}
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <small style={predictiveReviewHintStyle}>Nenhum snapshot semanal persistido ainda.</small>
+              )}
+            </section>
+            ) : null}
+
+            {(isOpsPersona || isDevPersona) ? (
+            <section style={trendSectionStyle}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Checagem RED (visual/funcional)</h3>
+              <div style={redCheckGridStyle}>
+                <article style={redCheckItemStyle(redCoverage.rate)}>
+                  <strong>Rate</strong>
+                  <small>Volume por janela: {totalActions}</small>
+                </article>
+                <article style={redCheckItemStyle(redCoverage.errors)}>
+                  <strong>Errors</strong>
+                  <small>Falhas/total: {errorActions}/{totalActions}</small>
+                </article>
+                <article style={redCheckItemStyle(redCoverage.duration)}>
+                  <strong>Duration</strong>
+                  <small>Latência p50/p95 ativa (amostras: {currentLatencySamples})</small>
+                </article>
+              </div>
+              <small style={redCheckFooterStyle}>
+                Estado RED da janela: {redCoverageOk ? "completo" : "parcial"}.
+              </small>
+            </section>
+            ) : null}
 
             {(isOpsPersona || isDevPersona) ? (
             <section style={trendSectionStyle}>
@@ -1056,11 +1937,216 @@ export default function OpsHealthPage() {
             </section>
             ) : null}
 
+            {(isOpsPersona || isDevPersona) ? (
+            <section style={trendSectionStyle}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Top 5 erros da janela</h3>
+              {(metrics?.top_errors || []).length === 0 ? (
+                <small style={predictiveReviewHintStyle}>Sem erros classificados na janela selecionada.</small>
+              ) : (
+                <div style={topErrorsListStyle}>
+                  {(metrics?.top_errors || []).map((item, idx) => (
+                    <article key={`top-error-${idx}`} style={topErrorItemStyle}>
+                      <strong style={topErrorRankStyle}>#{idx + 1}</strong>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <small style={topErrorMessageStyle}>{item?.message || "Erro não classificado"}</small>
+                        <small style={topErrorMetaStyle}>
+                          {Number(item?.count || 0)} ocorrências ({Number(item?.percentage || 0).toFixed(1)}% dos erros){" "}
+                          {item?.category ? `· ${String(item.category).toUpperCase()}` : ""}
+                        </small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+            ) : null}
+
+            {(isOpsPersona || isDevPersona) ? (
+            <section style={trendSectionStyle}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Investigação auditável (US-001)</h3>
+              <div style={auditInvestigationHeaderStyle}>
+                <small style={predictiveReviewHintStyle}>
+                  Total de erros na janela: {Number(errorInvestigationReport?.total_error_actions || 0)}
+                </small>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => void exportErrorInvestigationCsv()} style={copyEvidenceButtonStyle}>
+                    Exportar CSV (1 clique)
+                  </button>
+                  <button type="button" onClick={() => void copyUs001ClosureBlock()} style={copyEvidencePlainButtonStyle}>
+                    {us001ClosureCopied ? "Fechamento copiado" : "Copiar fechamento US-001 (seção 19)"}
+                  </button>
+                </div>
+              </div>
+              {errorInvestigationStatus ? <small style={predictiveReviewStatusStyle}>{errorInvestigationStatus}</small> : null}
+              {investigatedCategories.length > 0 ? (
+                <div style={errorCategoryGridStyle}>
+                  {investigatedCategories.map((item, idx) => (
+                    <article key={`audit-category-${idx}`} style={errorCategoryItemStyle}>
+                      <strong style={errorCategoryNameStyle}>{String(item?.category || "OUTROS").toUpperCase()}</strong>
+                      <small style={errorCategoryMetaStyle}>
+                        {Number(item?.count || 0)} itens · {Number(item?.percentage || 0).toFixed(1)}%
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <small style={predictiveReviewHintStyle}>Sem categorias de erro para a janela selecionada.</small>
+              )}
+              {topInvestigatedCauses.length > 0 ? (
+                <div style={topErrorsListStyle}>
+                  {topInvestigatedCauses.map((item, idx) => (
+                    <article key={`audit-cause-${idx}`} style={topErrorItemStyle}>
+                      <strong style={topErrorRankStyle}>#{idx + 1}</strong>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <small style={topErrorMessageStyle}>{item?.message || "Erro não classificado"}</small>
+                        <small style={topErrorMetaStyle}>
+                          {String(item?.category || "OUTROS").toUpperCase()} · {Number(item?.count || 0)} ocorrências ·{" "}
+                          {Number(item?.percentage || 0).toFixed(1)}%
+                        </small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : null}
+            </section>
+            ) : null}
+
+            {(isOpsPersona || isDevPersona) ? (
+            <section style={trendSectionStyle}>
+              <h3 style={{ margin: 0, fontSize: 15 }}>Classificação assistida por tipo</h3>
+              {Array.isArray(metrics?.error_classification?.categories) && metrics.error_classification.categories.length > 0 ? (
+                <div style={errorCategoryGridStyle}>
+                  {metrics.error_classification.categories.map((item, idx) => (
+                    <article key={`error-category-${idx}`} style={errorCategoryItemStyle}>
+                      <strong style={errorCategoryNameStyle}>{String(item?.category || "OUTROS").toUpperCase()}</strong>
+                      <small style={errorCategoryMetaStyle}>
+                        {Number(item?.count || 0)} itens · {Number(item?.percentage || 0).toFixed(1)}%
+                      </small>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <small style={predictiveReviewHintStyle}>Sem erros na janela para classificação assistida.</small>
+              )}
+            </section>
+            ) : null}
+
+            <section style={severityMatrixSectionStyle}>
+              <div style={auditInvestigationHeaderStyle}>
+                <h3 style={{ margin: 0, fontSize: 15 }}>Matriz SLA/canal por severidade (US-OPS-002)</h3>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => void copyUs002Evidence()} style={copyEvidenceButtonStyle}>
+                    {us002EvidenceCopied ? "Evidência copiada" : "Copiar evidência US-OPS-002"}
+                  </button>
+                  <button type="button" onClick={() => void copyUs002SprintDocBlock()} style={copyEvidencePlainButtonStyle}>
+                    {us002DocCopied ? "Bloco de sprint copiado" : "Copiar para seção US-OPS-002"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyTopLockerImmediateTicket(topLockerCritical24h)}
+                    style={copyEvidencePlainButtonStyle}
+                  >
+                    {us002TopTicketCopied ? "Ticket copiado" : "Copiar ticket de ação imediata"}
+                  </button>
+                </div>
+              </div>
+              {us002EvidenceStatus ? <small style={predictiveReviewStatusStyle}>{us002EvidenceStatus}</small> : null}
+              {topLockerCritical24h ? (
+                <article style={topLockerCardStyle}>
+                  <div style={severityMatrixHeaderStyle}>
+                    <strong style={{ fontSize: 13 }}>Top 1 locker crítico (24h)</strong>
+                    <span style={getSeverityBadgeStyle(topLockerCritical24h.expectedSeverity24h)}>
+                      {topLockerCritical24h.expectedSeverity24h}
+                    </span>
+                  </div>
+                  <small style={severityMatrixMetaStyle}>
+                    {topLockerCritical24h.lockerId} · erros/total: {topLockerCritical24h.errorActions24h}/{topLockerCritical24h.totalActions24h} (
+                    {(topLockerCritical24h.errorRate24h * 100).toFixed(2)}%)
+                  </small>
+                  <small style={severityMatrixMetaStyle}>
+                    Taxa global 24h: {(topLockerCritical24h.globalRate24h * 100).toFixed(2)}% · delta:{" "}
+                    {topLockerCritical24h.deltaVsGlobalPp >= 0 ? "+" : ""}
+                    {topLockerCritical24h.deltaVsGlobalPp.toFixed(2)} p.p.
+                  </small>
+                </article>
+              ) : (
+                <div style={lockerFallbackStyle}>
+                  <small style={predictiveReviewHintStyle}>
+                    {lockerDataStatus === "unavailable"
+                      ? "Dados de locker indisponíveis. Verifique endpoint /dev-admin/ops-audit e autenticação da sessão."
+                      : "Sem dados por locker nas últimas 24h para cálculo de criticidade."}
+                  </small>
+                  <small style={predictiveReviewHintStyle}>
+                    Referência rápida: valide também a trilha em <Link to="/ops/audit" style={lockerFallbackLinkStyle}>ops/audit</Link>.
+                  </small>
+                </div>
+              )}
+              <div style={severityMatrixGridStyle}>
+                {OPS_SEVERITY_SLA_MATRIX.map((row) => (
+                  <article key={row.severityKey} style={severityMatrixItemStyle}>
+                    <div style={severityMatrixHeaderStyle}>
+                      <span style={getSeverityBadgeStyle(row.severityKey)}>{row.severityLabel}</span>
+                      <small style={severityMatrixCountStyle}>Ativos: {Number(alertCountBySeverity[row.severityKey] || 0)}</small>
+                    </div>
+                    <small style={severityMatrixMetaStyle}>SLA: {row.responseSla}</small>
+                    <small style={severityMatrixMetaStyle}>Canal: {row.channel}</small>
+                    <small style={severityMatrixMetaStyle}>Owner sugerido: {row.owner}</small>
+                  </article>
+                ))}
+              </div>
+              {lockerSeverityRows.length > 0 ? (
+                <div style={lockerSeverityTableWrapStyle}>
+                  <table style={lockerSeverityTableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={lockerSeverityThStyle}>Locker</th>
+                        <th style={lockerSeverityThStyle}>Severidade 24h</th>
+                        <th style={lockerSeverityThStyle}>Erros/Total</th>
+                        <th style={lockerSeverityThStyle}>Taxa locker</th>
+                        <th style={lockerSeverityThStyle}>Taxa global</th>
+                        <th style={lockerSeverityThStyle}>Delta vs global</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lockerSeverityRows.map((row) => (
+                        <tr key={row.lockerId}>
+                          <td style={lockerSeverityTdStyle}>{row.lockerId}</td>
+                          <td style={lockerSeverityTdStyle}>
+                            <span style={getSeverityBadgeStyle(row.expectedSeverity24h)}>{row.expectedSeverity24h}</span>
+                          </td>
+                          <td style={lockerSeverityTdStyle}>
+                            {row.errorActions24h}/{row.totalActions24h}
+                          </td>
+                          <td style={lockerSeverityTdStyle}>{(row.errorRate24h * 100).toFixed(2)}%</td>
+                          <td style={lockerSeverityTdStyle}>{(row.globalRate24h * 100).toFixed(2)}%</td>
+                          <td style={lockerSeverityTdStyle}>
+                            {row.deltaVsGlobalPp >= 0 ? "+" : ""}
+                            {row.deltaVsGlobalPp.toFixed(2)} p.p.
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div style={lockerFallbackStyle}>
+                  <small style={predictiveReviewHintStyle}>
+                    {lockerDataStatus === "unavailable"
+                      ? "Tabela por locker indisponível: endpoint ops-audit sem payload utilizável."
+                      : "Tabela por locker sem linhas na janela atual (24h)."}
+                  </small>
+                </div>
+              )}
+              <small style={predictiveReviewHintStyle}>
+                Evidência pronta para anexar em auditoria/DoD do US-OPS-002 com snapshot da janela atual.
+              </small>
+            </section>
+
             <div style={alertsWrapStyle}>
-              {(metrics?.alerts || []).length === 0 ? (
+              {activeAlerts.length === 0 ? (
                 <span style={getSeverityBadgeStyle("OK")}>Sem alertas ativos</span>
               ) : (
-                (metrics?.alerts || []).map((alert, index) => (
+                activeAlerts.map((alert, index) => (
                   <article key={`${alert.code}-${index}`} style={alertCardStyle}>
                     {(() => {
                       const alertCode = String(alert.code || "");
@@ -1176,6 +2262,26 @@ const headerRowStyle = {
   flexWrap: "wrap",
 };
 
+const headerTitleRowStyle = {
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
+  flexWrap: "wrap",
+};
+
+const pageVersionBadgeStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(125,211,252,0.55)",
+  background: "rgba(14,116,144,0.16)",
+  color: "#bae6fd",
+  textDecoration: "none",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
 const crossShortcutStyle = {
   display: "flex",
   justifyContent: "flex-end",
@@ -1215,6 +2321,16 @@ const labelStyle = {
 
 const inputStyle = {
   width: 90,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
+
+const longInputStyle = {
+  width: 280,
+  maxWidth: "100%",
   padding: "8px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.14)",
@@ -1270,6 +2386,40 @@ const predictiveTuningGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
   gap: 8,
+};
+
+const predictiveProfileRowStyle = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const predictiveSnapshotFormStyle = {
+  display: "flex",
+  gap: 8,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const copyEvidenceButtonStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(134,239,172,0.55)",
+  background: "rgba(22,101,52,0.18)",
+  color: "#dcfce7",
+  cursor: "pointer",
+  fontWeight: 700,
+};
+
+const copyEvidencePlainButtonStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(125,211,252,0.55)",
+  background: "rgba(14,116,144,0.16)",
+  color: "#bae6fd",
+  cursor: "pointer",
+  fontWeight: 700,
 };
 
 const predictiveReviewHintStyle = {
@@ -1350,6 +2500,103 @@ const trendSectionStyle = {
   gap: 10,
 };
 
+const severityMatrixSectionStyle = {
+  marginTop: 14,
+  borderRadius: 12,
+  border: "1px solid rgba(186,230,253,0.42)",
+  background: "rgba(14,116,144,0.11)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const severityMatrixGridStyle = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+};
+
+const severityMatrixItemStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background: "rgba(15,23,42,0.35)",
+  padding: 10,
+  display: "grid",
+  gap: 4,
+};
+
+const topLockerCardStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(251,191,36,0.45)",
+  background: "rgba(120,53,15,0.2)",
+  padding: 10,
+  display: "grid",
+  gap: 4,
+};
+
+const severityMatrixHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+};
+
+const severityMatrixCountStyle = {
+  color: "#cbd5e1",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const severityMatrixMetaStyle = {
+  color: "#e2e8f0",
+  fontSize: 12,
+};
+
+const lockerSeverityTableWrapStyle = {
+  overflowX: "auto",
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.35)",
+};
+
+const lockerSeverityTableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  minWidth: 760,
+  background: "rgba(15,23,42,0.28)",
+};
+
+const lockerSeverityThStyle = {
+  textAlign: "left",
+  fontSize: 12,
+  color: "#bfdbfe",
+  padding: "8px 10px",
+  borderBottom: "1px solid rgba(148,163,184,0.35)",
+  whiteSpace: "nowrap",
+};
+
+const lockerSeverityTdStyle = {
+  fontSize: 12,
+  color: "#e2e8f0",
+  padding: "8px 10px",
+  borderBottom: "1px solid rgba(148,163,184,0.2)",
+  whiteSpace: "nowrap",
+};
+
+const lockerFallbackStyle = {
+  borderRadius: 10,
+  border: "1px dashed rgba(148,163,184,0.45)",
+  background: "rgba(15,23,42,0.24)",
+  padding: 10,
+  display: "grid",
+  gap: 4,
+};
+
+const lockerFallbackLinkStyle = {
+  color: "#93c5fd",
+  fontWeight: 700,
+  textDecoration: "none",
+};
+
 const trendGridStyle = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
@@ -1390,6 +2637,128 @@ const lineChartLabelsStyle = {
   justifyContent: "space-between",
   color: "rgba(203,213,225,0.92)",
   fontSize: 11,
+};
+
+const topErrorsListStyle = {
+  display: "grid",
+  gap: 8,
+};
+
+const topErrorItemStyle = {
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(15,23,42,0.32)",
+  padding: "8px 10px",
+  display: "grid",
+  gridTemplateColumns: "28px 1fr",
+  gap: 8,
+  alignItems: "start",
+};
+
+const topErrorRankStyle = {
+  color: "#FCA5A5",
+  fontSize: 12,
+};
+
+const topErrorMessageStyle = {
+  color: "#E2E8F0",
+  fontSize: 12,
+  fontWeight: 700,
+  lineHeight: 1.3,
+};
+
+const topErrorMetaStyle = {
+  color: "#CBD5E1",
+  fontSize: 11,
+};
+
+const redCheckGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 8,
+};
+
+const redCheckItemStyle = (ok) => ({
+  borderRadius: 10,
+  border: ok ? "1px solid rgba(74,222,128,0.55)" : "1px solid rgba(248,113,113,0.65)",
+  background: ok ? "rgba(22,101,52,0.20)" : "rgba(127,29,29,0.24)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 3,
+  color: "#E2E8F0",
+});
+
+const redCheckFooterStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const errorCategoryGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+  gap: 8,
+};
+
+const errorCategoryItemStyle = {
+  borderRadius: 8,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background: "rgba(15,23,42,0.28)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 3,
+};
+
+const errorCategoryNameStyle = {
+  fontSize: 12,
+  color: "#F8FAFC",
+};
+
+const errorCategoryMetaStyle = {
+  fontSize: 11,
+  color: "#CBD5E1",
+};
+
+const auditInvestigationHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const snapshotHistoryGridStyle = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+};
+
+const snapshotHistoryItemStyle = {
+  borderRadius: 8,
+  border: "1px solid rgba(148,163,184,0.35)",
+  background: "rgba(15,23,42,0.28)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 3,
+};
+
+const snapshotComparisonCardStyle = {
+  borderRadius: 8,
+  border: "1px solid rgba(96,165,250,0.45)",
+  background: "rgba(30,58,138,0.18)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 3,
+};
+
+const snapshotHistoryTitleStyle = {
+  fontSize: 12,
+  color: "#E2E8F0",
+};
+
+const snapshotHistoryMetaStyle = {
+  fontSize: 11,
+  color: "#CBD5E1",
 };
 
 const trendCardStyle = {

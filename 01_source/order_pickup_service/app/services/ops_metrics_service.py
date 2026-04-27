@@ -389,6 +389,154 @@ def _evaluate_predictive_monitoring(
     }
 
 
+def _classify_error_type(message: str) -> str:
+    normalized = str(message or "").strip().lower()
+    if not normalized:
+        return "OUTROS"
+
+    timeout_keywords = ["timeout", "timed out", "tempo esgotado", "deadline exceeded"]
+    validation_keywords = ["valid", "inval", "schema", "required", "obrigat", "constraint", "payload"]
+    integration_keywords = ["gateway", "http", "api", "upstream", "locker", "integration", "integracao", "webhook"]
+    infra_keywords = ["database", "db ", "redis", "connection refused", "network", "dns", "unavailable", "infra", "memory"]
+
+    if any(token in normalized for token in timeout_keywords):
+        return "TIMEOUT"
+    if any(token in normalized for token in validation_keywords):
+        return "VALIDACAO"
+    if any(token in normalized for token in integration_keywords):
+        return "INTEGRACAO"
+    if any(token in normalized for token in infra_keywords):
+        return "INFRA"
+    return "OUTROS"
+
+
+def _build_predictive_snapshots_history(*, db: Session, limit: int = 8) -> list[dict]:
+    rows = (
+        db.query(OpsActionAudit)
+        .filter(OpsActionAudit.action == "OPS_PREDICTIVE_WEEKLY_SNAPSHOT")
+        .order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc())
+        .limit(max(int(limit or 8), 1))
+        .all()
+    )
+    snapshots: list[dict] = []
+    for row in rows:
+        details = row.details_json if isinstance(row.details_json, dict) else {}
+        thresholds = details.get("thresholds") if isinstance(details.get("thresholds"), dict) else {}
+        monitoring = details.get("monitoring") if isinstance(details.get("monitoring"), dict) else {}
+        snapshots.append(
+            {
+                "id": row.id,
+                "created_at": _as_aware_utc(row.created_at).isoformat() if _as_aware_utc(row.created_at) else None,
+                "environment": str(details.get("environment") or "unknown"),
+                "decision": str(details.get("decision") or "KEEP"),
+                "rationale": str(details.get("rationale")) if details.get("rationale") else None,
+                "false_positive_rate": float(monitoring.get("false_positive_rate") or 0.0),
+                "emitted_alerts": int(monitoring.get("emitted_alerts") or 0),
+                "confirmed_alerts": int(monitoring.get("confirmed_alerts") or 0),
+                "false_positive_alerts": int(monitoring.get("false_positive_alerts") or 0),
+                "thresholds": {
+                    "predictive_min_volume": int(thresholds.get("predictive_min_volume") or 0),
+                    "predictive_error_min_rate": float(thresholds.get("predictive_error_min_rate") or 0.0),
+                    "predictive_error_accel_factor": float(thresholds.get("predictive_error_accel_factor") or 0.0),
+                    "predictive_latency_min_ms": float(thresholds.get("predictive_latency_min_ms") or 0.0),
+                    "predictive_latency_accel_factor": float(thresholds.get("predictive_latency_accel_factor") or 0.0),
+                },
+            }
+        )
+    return snapshots
+
+
+def build_ops_error_investigation_report(
+    *,
+    db: Session,
+    lookback_hours: int = 24,
+    top_causes_limit: int = 3,
+    evidence_per_cause_limit: int = 3,
+) -> dict:
+    now = _utc_now()
+    lookback = max(int(lookback_hours or 24), 1)
+    window_start = now - timedelta(hours=lookback)
+
+    rows = (
+        db.query(OpsActionAudit)
+        .filter(
+            OpsActionAudit.created_at >= window_start,
+            OpsActionAudit.created_at < now,
+            OpsActionAudit.result == "ERROR",
+        )
+        .order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc())
+        .all()
+    )
+    total_errors = len(rows)
+    category_counts: dict[str, int] = {
+        "TIMEOUT": 0,
+        "VALIDACAO": 0,
+        "INTEGRACAO": 0,
+        "INFRA": 0,
+        "OUTROS": 0,
+    }
+    cause_counts: dict[tuple[str, str], int] = {}
+    cause_evidence: dict[tuple[str, str], list[dict]] = {}
+
+    for row in rows:
+        message = str(row.error_message or "Erro não classificado").strip() or "Erro não classificado"
+        category = _classify_error_type(message)
+        category_counts[category] = int(category_counts.get(category, 0)) + 1
+        cause_key = (message, category)
+        cause_counts[cause_key] = int(cause_counts.get(cause_key, 0)) + 1
+        if cause_key not in cause_evidence:
+            cause_evidence[cause_key] = []
+        if len(cause_evidence[cause_key]) < max(int(evidence_per_cause_limit or 3), 1):
+            created = _as_aware_utc(row.created_at)
+            cause_evidence[cause_key].append(
+                {
+                    "audit_id": row.id,
+                    "created_at": created.isoformat() if created else None,
+                    "correlation_id": str(row.correlation_id or ""),
+                    "action": str(row.action or ""),
+                    "message": message,
+                    "category": category,
+                }
+            )
+
+    categories = []
+    for category in ["TIMEOUT", "VALIDACAO", "INTEGRACAO", "INFRA", "OUTROS"]:
+        count = int(category_counts.get(category, 0))
+        if count <= 0:
+            continue
+        categories.append(
+            {
+                "category": category,
+                "count": count,
+                "percentage": round((float(count) / float(total_errors)) * 100.0, 2) if total_errors > 0 else 0.0,
+            }
+        )
+
+    sorted_causes = sorted(cause_counts.items(), key=lambda item: item[1], reverse=True)[: max(int(top_causes_limit or 3), 1)]
+    top_causes = []
+    for (message, category), count in sorted_causes:
+        top_causes.append(
+            {
+                "message": message,
+                "category": category,
+                "count": int(count),
+                "percentage": round((float(count) / float(total_errors)) * 100.0, 2) if total_errors > 0 else 0.0,
+                "evidence": cause_evidence.get((message, category), []),
+            }
+        )
+
+    return {
+        "window": {
+            "lookback_hours": lookback,
+            "from": window_start.isoformat(),
+            "to": now.isoformat(),
+        },
+        "total_error_actions": int(total_errors),
+        "categories": categories,
+        "top_causes": top_causes,
+    }
+
+
 def build_ops_metrics(
     *,
     db: Session,
@@ -606,6 +754,56 @@ def build_ops_metrics(
         )
     )
 
+    top_error_rows = (
+        db.query(OpsActionAudit.error_message, func.count(OpsActionAudit.id).label("total"))
+        .filter(
+            OpsActionAudit.created_at >= window_start,
+            OpsActionAudit.created_at < now,
+            OpsActionAudit.result == "ERROR",
+        )
+        .group_by(OpsActionAudit.error_message)
+        .order_by(func.count(OpsActionAudit.id).desc())
+        .limit(5)
+        .all()
+    )
+    top_errors = []
+    category_counter = {
+        "TIMEOUT": 0,
+        "VALIDACAO": 0,
+        "INTEGRACAO": 0,
+        "INFRA": 0,
+        "OUTROS": 0,
+    }
+    for error_message, total in top_error_rows:
+        count = int(total or 0)
+        message = str(error_message or "Erro não classificado").strip() or "Erro não classificado"
+        percentage = round((float(count) / float(error_actions)) * 100.0, 2) if error_actions > 0 else 0.0
+        category = _classify_error_type(message)
+        category_counter[category] = int(category_counter.get(category, 0)) + count
+        top_errors.append(
+            {
+                "message": message,
+                "count": count,
+                "percentage": percentage,
+                "category": category,
+            }
+        )
+
+    category_items = []
+    categorized_actions = 0
+    for category in ["TIMEOUT", "VALIDACAO", "INTEGRACAO", "INFRA", "OUTROS"]:
+        count = int(category_counter.get(category, 0))
+        if count <= 0:
+            continue
+        categorized_actions += count
+        category_items.append(
+            {
+                "category": category,
+                "count": count,
+                "percentage": round((float(count) / float(error_actions)) * 100.0, 2) if error_actions > 0 else 0.0,
+            }
+        )
+
     return {
         "window": {
             "lookback_hours": lookback,
@@ -660,4 +858,11 @@ def build_ops_metrics(
             "predictive_latency_min_ms": round(float(predictive_latency_min_ms or 100.0), 2),
             "predictive_latency_accel_factor": round(float(predictive_latency_accel_factor or 1.4), 3),
         },
+        "top_errors": top_errors,
+        "error_classification": {
+            "total_error_actions": int(error_actions),
+            "categorized_actions": int(categorized_actions),
+            "categories": category_items,
+        },
+        "predictive_snapshots": _build_predictive_snapshots_history(db=db, limit=8),
     }

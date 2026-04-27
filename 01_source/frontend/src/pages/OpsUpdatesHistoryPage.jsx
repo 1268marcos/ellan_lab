@@ -47,6 +47,48 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 
 const UPDATES = [
   {
+    date: "2026-04-27",
+    scope: "OPS Sprint - US-OPS-002",
+    title: "Matriz SLA/canal por severidade + evidência auditável",
+    description:
+      "A página ops/health passou a exibir matriz operacional por severidade (CRITICO/ALTO/MEDIO/BAIXO), com SLA, canal, owner e contagem de alertas ativos por nível. Também foi adicionado bloco de evidência auditável com cópia em 1 clique, incluindo janela from/to e checklist de DoD.",
+    routes: [
+      "UI /ops/health",
+      "UI ação: Copiar evidência US-OPS-002",
+      "UI ação: Copiar para seção US-OPS-002",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir OPS Health (US-OPS-002)",
+  },
+  {
+    date: "2026-04-27",
+    scope: "OPS Sprint - US-OPS-001",
+    title: "Fechamento US-001 assistido na UI",
+    description:
+      "O card Investigação auditável ganhou ação para copiar fechamento pré-formatado da seção 19, com top 3 causas da janela, distribuição por categoria e checklist de encerramento para evidência operacional.",
+    routes: [
+      "GET /dev-admin/ops-metrics/error-investigation",
+      "GET /dev-admin/ops-metrics/error-investigation/export.csv",
+      "UI ação: Copiar fechamento US-001 (seção 19)",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir investigação auditável (US-001)",
+  },
+  {
+    date: "2026-04-27",
+    scope: "OPS Governance",
+    title: "Política de versionamento da ops/health",
+    description:
+      "Nova rota dedicada para explicar o padrão major.minor.patch + sprint, com regras de incremento, checklist por release e links de navegação cruzada para governança e auditoria.",
+    routes: [
+      "UI /ops/auth/policy/versioning",
+      "UI /ops/auth/policy",
+      "UI /ops/health (badge de versão clicável)",
+    ],
+    directLink: "/ops/auth/policy/versioning",
+    directLinkLabel: "Abrir política de versionamento",
+  },
+  {
     date: "2026-04-26",
     scope: "L-3 Orders Integration",
     title: "Rota OPS dedicada para partner-lookup",

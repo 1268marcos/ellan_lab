@@ -54,6 +54,7 @@ export default function OpsAuthorizationPolicyPage() {
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
         <Link to="/ops/sp">Voltar ao dashboard OPS SP</Link>
         <Link to="/ops/pt">Ir para dashboard OPS PT</Link>
+        <Link to="/ops/auth/policy/versioning">Política de versionamento (ops/health)</Link>
       </div>
     </main>
   );
