@@ -60,6 +60,7 @@ export default function OpsVersioningPolicyPage() {
         <ul style={listStyle}>
           <li>Atualizar badge da versão na página `ops/health`.</li>
           <li>Registrar versão e entregas no documento de sprint.</li>
+          <li>Atualizar board visual (`docs/ellan_lab_sprint_board.html`) mantendo consistência ELLAN LAB.</li>
           <li>Anexar evidência operacional (snapshot/export/runbook/ticket).</li>
         </ul>
       </section>
@@ -67,6 +68,8 @@ export default function OpsVersioningPolicyPage() {
       <div style={linksRowStyle}>
         <Link to="/ops/health">Voltar para ops/health</Link>
         <Link to="/ops/auth/policy">Voltar para política de autorização</Link>
+        <Link to="/ops/updates">Abrir registro de atualizações OPS</Link>
+        <a href="/docs/ellan_lab_sprint_board.html">Abrir board visual de sprint</a>
       </div>
     </main>
   );

@@ -48,6 +48,21 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 const UPDATES = [
   {
     date: "2026-04-27",
+    scope: "OPS Sprint Board - Products/Partners/Lockers",
+    title: "Board visual com gates de UX/CX, risco operacional e WCAG AA",
+    description:
+      "Foi publicada uma versão visual do plano de sprint em tabs/kanban com triagem por história (impacto no cliente, risco operacional e conformidade WCAG AA), incluindo governança cruzada com ops/auth/policy, versioning e trilha em ops/updates para manter consistência visual ELLAN LAB.",
+    routes: [
+      "DOC docs/ellan_lab_sprint_board.html",
+      "UI /ops/auth/policy",
+      "UI /ops/auth/policy/versioning",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir trilha de atualizações OPS",
+  },
+  {
+    date: "2026-04-27",
     scope: "OPS Sprint - US-AUDIT-FINAL-VALIDATION",
     title: "Fechamento operacional auditável em 1 clique",
     description:

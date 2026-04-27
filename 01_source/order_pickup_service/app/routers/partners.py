@@ -59,12 +59,34 @@ from app.schemas.partners import (
     PartnerSlaAgreementListOut,
     PartnerSlaAgreementOut,
     PartnerSettlementApproveIn,
+    PartnerSettlementPayIn,
     PartnerSettlementGenerateIn,
+    PartnerSettlementItemListOut,
+    PartnerSettlementItemOut,
+    PartnerSettlementReconciliationAlertOut,
+    PartnerSettlementReconciliationAlertTimelineItemOut,
+    PartnerSettlementReconciliationAlertTimelineOut,
+    PartnerSettlementReconciliationBatchRunItemOut,
+    PartnerSettlementReconciliationBatchRunOut,
+    PartnerSettlementReconciliationCompareOut,
+    PartnerSettlementReconciliationCompareWindowOut,
+    PartnerSettlementReconciliationTopDivergenceItemOut,
+    PartnerSettlementReconciliationTopDivergenceSeverityCountsOut,
+    PartnerSettlementReconciliationTopDivergencesOut,
+    PartnerSettlementReconciliationOut,
     PartnerSettlementListOut,
     PartnerSettlementOut,
     PartnerServiceAreaIn,
     PartnerServiceAreaListOut,
     PartnerServiceAreaOut,
+    PartnerEligibleProductItemOut,
+    PartnerEligibleProductListOut,
+    PartnerSlotAllocationPickIn,
+    PartnerSlotAllocationPickOut,
+    PartnerSlotAllocationPickupConfirmIn,
+    PartnerSlotAllocationPickupConfirmOut,
+    PartnerProductCreateIn,
+    PartnerProductCreateOut,
     PartnerStatusHistoryItemOut,
     PartnerStatusHistoryListOut,
     PartnerStatusOut,
@@ -80,6 +102,9 @@ from app.schemas.partners import (
     PartnerWebhookOpsMetricsOut,
     PartnerWebhookOpsTopEndpointOut,
     PartnerWebhookOpsTopPartnerOut,
+    PartnerPickupConfirmMetricsCompareOut,
+    PartnerPickupConfirmMetricsCompareWindowOut,
+    PartnerPickupConfirmMetricsOut,
 )
 
 router = APIRouter(
@@ -131,6 +156,20 @@ def _load_partner_status(db: Session, partner_id: str) -> str:
             },
         )
     return str(row.get("status") or "DRAFT")
+
+
+def _ensure_partner_is_active_for_catalog(db: Session, partner_id: str) -> None:
+    status = str(_load_partner_status(db, partner_id=partner_id) or "DRAFT").strip().upper()
+    if status != "ACTIVE":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "PARTNER_NOT_ACTIVE",
+                "message": "Parceiro precisa estar ACTIVE para cadastrar produtos.",
+                "partner_id": partner_id,
+                "status": status,
+            },
+        )
 
 
 def _parse_iso_date(raw_value: str, *, field_name: str) -> date:
@@ -258,6 +297,52 @@ def _safe_delta_pct(current: int, previous: int) -> float:
             return 0.0
         return 100.0
     return round(((current - previous) / previous) * 100, 2)
+
+
+# Divergência batch vs itens: severidade para comitê (gross pesa mais que contagem isolada).
+_SHARE_DIVERGENCE_MEDIUM_THRESHOLD_CENTS = 10
+
+
+def _settlement_reconciliation_severity(
+    *, delta_total_orders: int, delta_gross_revenue_cents: int, delta_revenue_share_cents: int
+) -> str:
+    abs_g = abs(int(delta_gross_revenue_cents))
+    abs_o = abs(int(delta_total_orders))
+    abs_s = abs(int(delta_revenue_share_cents))
+    if abs_g > 0:
+        return "HIGH"
+    if abs_o > 0 or abs_s >= _SHARE_DIVERGENCE_MEDIUM_THRESHOLD_CENTS:
+        return "MEDIUM"
+    if abs_s > 0:
+        return "LOW"
+    return "MEDIUM"
+
+
+_SETTLEMENT_SEVERITY_RANK = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}
+
+
+def _parse_min_settlement_severity(min_severity: str | None) -> str | None:
+    raw = str(min_severity or "").strip().upper()
+    if not raw:
+        return None
+    if raw not in _SETTLEMENT_SEVERITY_RANK:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_MIN_SEVERITY",
+                "message": "min_severity deve ser HIGH, MEDIUM ou LOW.",
+                "allowed": ["HIGH", "MEDIUM", "LOW"],
+            },
+        )
+    return raw
+
+
+def _settlement_severity_meets_minimum(*, severity: str, min_severity: str | None) -> bool:
+    if min_severity is None:
+        return True
+    return int(_SETTLEMENT_SEVERITY_RANK.get(str(severity).upper(), 0)) >= int(
+        _SETTLEMENT_SEVERITY_RANK[min_severity]
+    )
 
 
 def _collect_change_type_counter(rows: list[OpsActionAudit]) -> Counter[str]:
@@ -1017,6 +1102,35 @@ def post_partner_settlement_generate(
             "notes": (payload.notes.strip() if payload.notes else None),
         },
     )
+    db.execute(
+        text(
+            """
+            INSERT INTO partner_settlement_items (
+                batch_id, order_id, order_date, gross_cents, share_pct, share_cents, currency
+            )
+            SELECT
+                :batch_id,
+                o.id,
+                o.created_at,
+                o.amount_cents,
+                CAST(:share_pct AS numeric(6,4)),
+                ROUND(o.amount_cents * CAST(:share_pct AS numeric(6,4)))::bigint,
+                :currency
+            FROM orders o
+            WHERE o.ecommerce_partner_id = :partner_id
+              AND o.created_at >= CAST(:period_start AS date)
+              AND o.created_at < (CAST(:period_end AS date) + INTERVAL '1 day')
+            """
+        ),
+        {
+            "batch_id": batch_id,
+            "partner_id": partner_id,
+            "period_start": period_start,
+            "period_end": period_end,
+            "share_pct": Decimal(str(payload.revenue_share_pct)),
+            "currency": payload.currency.strip().upper() or "BRL",
+        },
+    )
     _audit_ops(
         db=db,
         action="PARTNER_SETTLEMENT_GENERATE",
@@ -1212,6 +1326,744 @@ def patch_partner_settlement_approve(
     )
 
 
+@router.patch("/{partner_id}/settlements/{batch_id}/pay", response_model=PartnerSettlementOut)
+def patch_partner_settlement_pay(
+    partner_id: str,
+    batch_id: str,
+    payload: PartnerSettlementPayIn,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    before = db.execute(
+        text(
+            """
+            SELECT id, partner_id, status, settlement_ref, notes
+            FROM partner_settlement_batches
+            WHERE id = :batch_id AND partner_id = :partner_id
+            """
+        ),
+        {"batch_id": batch_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not before:
+        raise HTTPException(status_code=404, detail={"type": "SETTLEMENT_NOT_FOUND", "message": "Batch de liquidação não encontrado."})
+
+    previous_status = str(before["status"] or "")
+    if previous_status == "PAID":
+        row = db.execute(
+            text(
+                """
+                SELECT
+                    id, partner_id, partner_type, period_start, period_end, currency,
+                    total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                    fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                    notes, created_at, updated_at
+                FROM partner_settlement_batches
+                WHERE id = :batch_id
+                """
+            ),
+            {"batch_id": batch_id},
+        ).mappings().first()
+        return PartnerSettlementOut(
+            id=str(row["id"]),
+            partner_id=str(row["partner_id"]),
+            partner_type=str(row["partner_type"]),
+            period_start=row["period_start"].isoformat(),
+            period_end=row["period_end"].isoformat(),
+            currency=str(row["currency"] or "BRL"),
+            total_orders=int(row["total_orders"] or 0),
+            gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+            revenue_share_pct=float(row["revenue_share_pct"] or 0),
+            revenue_share_cents=int(row["revenue_share_cents"] or 0),
+            fees_cents=int(row["fees_cents"] or 0),
+            net_amount_cents=int(row["net_amount_cents"] or 0),
+            status=str(row["status"]),
+            settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+            settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+            notes=str(row["notes"]) if row["notes"] else None,
+            created_at=_to_iso_utc(row["created_at"]),
+            updated_at=_to_iso_utc(row["updated_at"]),
+        )
+
+    if previous_status != "APPROVED":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_SETTLEMENT_STATUS_TRANSITION",
+                "message": "Pagamento exige batch em status APPROVED.",
+                "current_status": previous_status,
+            },
+        )
+
+    db.execute(
+        text(
+            """
+            UPDATE partner_settlement_batches
+            SET status = 'PAID',
+                settled_at = NOW(),
+                settlement_ref = COALESCE(:settlement_ref, settlement_ref),
+                notes = COALESCE(:notes, notes),
+                updated_at = NOW()
+            WHERE id = :batch_id AND partner_id = :partner_id
+            """
+        ),
+        {
+            "batch_id": batch_id,
+            "partner_id": partner_id,
+            "settlement_ref": (payload.settlement_ref.strip() if payload.settlement_ref else None),
+            "notes": (payload.notes.strip() if payload.notes else None),
+        },
+    )
+    _audit_ops(
+        db=db,
+        action="PARTNER_SETTLEMENT_PAY",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "before": {"id": batch_id, "status": previous_status},
+            "after": {"id": batch_id, "status": "PAID"},
+        },
+    )
+    db.commit()
+    row = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, partner_type, period_start, period_end, currency,
+                total_orders, gross_revenue_cents, revenue_share_pct, revenue_share_cents,
+                fees_cents, net_amount_cents, status, settled_at, settlement_ref,
+                notes, created_at, updated_at
+            FROM partner_settlement_batches
+            WHERE id = :batch_id
+            """
+        ),
+        {"batch_id": batch_id},
+    ).mappings().first()
+    return PartnerSettlementOut(
+        id=str(row["id"]),
+        partner_id=str(row["partner_id"]),
+        partner_type=str(row["partner_type"]),
+        period_start=row["period_start"].isoformat(),
+        period_end=row["period_end"].isoformat(),
+        currency=str(row["currency"] or "BRL"),
+        total_orders=int(row["total_orders"] or 0),
+        gross_revenue_cents=int(row["gross_revenue_cents"] or 0),
+        revenue_share_pct=float(row["revenue_share_pct"] or 0),
+        revenue_share_cents=int(row["revenue_share_cents"] or 0),
+        fees_cents=int(row["fees_cents"] or 0),
+        net_amount_cents=int(row["net_amount_cents"] or 0),
+        status=str(row["status"]),
+        settled_at=_to_iso_utc(row["settled_at"]) if row["settled_at"] else None,
+        settlement_ref=str(row["settlement_ref"]) if row["settlement_ref"] else None,
+        notes=str(row["notes"]) if row["notes"] else None,
+        created_at=_to_iso_utc(row["created_at"]),
+        updated_at=_to_iso_utc(row["updated_at"]),
+    )
+
+
+@router.get("/{partner_id}/settlements/{batch_id}/items", response_model=PartnerSettlementItemListOut)
+def get_partner_settlement_items(
+    partner_id: str,
+    batch_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    _load_partner_status(db, partner_id=partner_id)
+    batch = db.execute(
+        text("SELECT id FROM partner_settlement_batches WHERE id = :batch_id AND partner_id = :partner_id"),
+        {"batch_id": batch_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not batch:
+        raise HTTPException(status_code=404, detail={"type": "SETTLEMENT_NOT_FOUND", "message": "Batch de liquidação não encontrado."})
+
+    totals = db.execute(
+        text(
+            """
+            SELECT
+                COUNT(*)::int AS total,
+                COALESCE(SUM(gross_cents), 0)::bigint AS gross_total_cents,
+                COALESCE(SUM(share_cents), 0)::bigint AS share_total_cents
+            FROM partner_settlement_items
+            WHERE batch_id = :batch_id
+            """
+        ),
+        {"batch_id": batch_id},
+    ).mappings().first() or {}
+    rows = db.execute(
+        text(
+            """
+            SELECT id, batch_id, order_id, order_date, gross_cents, share_pct, share_cents, currency
+            FROM partner_settlement_items
+            WHERE batch_id = :batch_id
+            ORDER BY order_date DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"batch_id": batch_id, "limit": int(limit), "offset": int(offset)},
+    ).mappings().all()
+    items = [
+        PartnerSettlementItemOut(
+            id=int(row["id"]),
+            batch_id=str(row["batch_id"]),
+            order_id=str(row["order_id"]),
+            order_date=_to_iso_utc(row["order_date"]),
+            gross_cents=int(row["gross_cents"] or 0),
+            share_pct=float(row["share_pct"] or 0),
+            share_cents=int(row["share_cents"] or 0),
+            currency=str(row["currency"] or "BRL"),
+        )
+        for row in rows
+    ]
+    return PartnerSettlementItemListOut(
+        ok=True,
+        total=int(totals.get("total") or 0),
+        limit=int(limit),
+        offset=int(offset),
+        gross_total_cents=int(totals.get("gross_total_cents") or 0),
+        share_total_cents=int(totals.get("share_total_cents") or 0),
+        items=items,
+    )
+
+
+@router.get("/{partner_id}/settlements/{batch_id}/reconciliation", response_model=PartnerSettlementReconciliationOut)
+def get_partner_settlement_reconciliation(
+    partner_id: str,
+    batch_id: str,
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    _load_partner_status(db, partner_id=partner_id)
+    batch = db.execute(
+        text(
+            """
+            SELECT
+                id, partner_id, status, total_orders, gross_revenue_cents, revenue_share_cents
+            FROM partner_settlement_batches
+            WHERE id = :batch_id AND partner_id = :partner_id
+            """
+        ),
+        {"batch_id": batch_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not batch:
+        raise HTTPException(status_code=404, detail={"type": "SETTLEMENT_NOT_FOUND", "message": "Batch de liquidação não encontrado."})
+
+    items_totals = db.execute(
+        text(
+            """
+            SELECT
+                COUNT(*)::int AS total_orders,
+                COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
+                COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
+            FROM partner_settlement_items
+            WHERE batch_id = :batch_id
+            """
+        ),
+        {"batch_id": batch_id},
+    ).mappings().first() or {}
+
+    expected_total_orders = int(batch.get("total_orders") or 0)
+    expected_gross_revenue_cents = int(batch.get("gross_revenue_cents") or 0)
+    expected_revenue_share_cents = int(batch.get("revenue_share_cents") or 0)
+    actual_total_orders = int(items_totals.get("total_orders") or 0)
+    actual_gross_revenue_cents = int(items_totals.get("gross_revenue_cents") or 0)
+    actual_revenue_share_cents = int(items_totals.get("revenue_share_cents") or 0)
+
+    delta_total_orders = actual_total_orders - expected_total_orders
+    delta_gross_revenue_cents = actual_gross_revenue_cents - expected_gross_revenue_cents
+    delta_revenue_share_cents = actual_revenue_share_cents - expected_revenue_share_cents
+    has_divergence = any(
+        [
+            delta_total_orders != 0,
+            delta_gross_revenue_cents != 0,
+            delta_revenue_share_cents != 0,
+        ]
+    )
+
+    alerts: list[PartnerSettlementReconciliationAlertOut] = []
+    if has_divergence:
+        severity = _settlement_reconciliation_severity(
+            delta_total_orders=delta_total_orders,
+            delta_gross_revenue_cents=delta_gross_revenue_cents,
+            delta_revenue_share_cents=delta_revenue_share_cents,
+        )
+        alerts.append(
+            PartnerSettlementReconciliationAlertOut(
+                code="SETTLEMENT_RECONCILIATION_DIVERGENCE",
+                severity=severity,
+                title="Divergência no fechamento financeiro",
+                message=(
+                    "Diferença entre totais do batch e somatório dos itens. "
+                    "Escalar para comitê operacional para validação e correção."
+                ),
+            )
+        )
+
+    _audit_ops(
+        db=db,
+        action="PARTNER_SETTLEMENT_RECONCILIATION_CHECK",
+        result=("WARNING" if has_divergence else "SUCCESS"),
+        correlation_id=corr_id,
+        user_id=str(current_user.id),
+        details={
+            "partner_id": partner_id,
+            "batch_id": batch_id,
+            "has_divergence": has_divergence,
+            "delta_total_orders": delta_total_orders,
+            "delta_gross_revenue_cents": delta_gross_revenue_cents,
+            "delta_revenue_share_cents": delta_revenue_share_cents,
+            "alerts": [alert.model_dump() for alert in alerts],
+        },
+    )
+    db.commit()
+
+    return PartnerSettlementReconciliationOut(
+        ok=True,
+        partner_id=partner_id,
+        batch_id=batch_id,
+        status=str(batch.get("status") or ""),
+        has_divergence=has_divergence,
+        expected_total_orders=expected_total_orders,
+        expected_gross_revenue_cents=expected_gross_revenue_cents,
+        expected_revenue_share_cents=expected_revenue_share_cents,
+        actual_total_orders=actual_total_orders,
+        actual_gross_revenue_cents=actual_gross_revenue_cents,
+        actual_revenue_share_cents=actual_revenue_share_cents,
+        delta_total_orders=delta_total_orders,
+        delta_gross_revenue_cents=delta_gross_revenue_cents,
+        delta_revenue_share_cents=delta_revenue_share_cents,
+        alerts=alerts,
+    )
+
+
+@router.get("/ops/settlements/reconciliation-alerts", response_model=PartnerSettlementReconciliationAlertTimelineOut)
+def get_ops_settlement_reconciliation_alerts(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    partner_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    dt_to = _parse_iso_datetime_utc_optional(to, field_name="to") or datetime.now(timezone.utc)
+    dt_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (dt_to - timedelta(days=30))
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
+        )
+
+    rows = db.query(OpsActionAudit).filter(
+        OpsActionAudit.action == "PARTNER_SETTLEMENT_RECONCILIATION_CHECK",
+        OpsActionAudit.created_at >= dt_from,
+        OpsActionAudit.created_at <= dt_to,
+    ).order_by(OpsActionAudit.created_at.desc(), OpsActionAudit.id.desc()).limit(5000).all()
+
+    filtered: list[OpsActionAudit] = []
+    for row in rows:
+        details = _json_load_dict(row.details_json, default={})
+        if not bool(details.get("has_divergence")):
+            continue
+        row_partner = str(details.get("partner_id") or "")
+        if str(partner_id or "").strip() and row_partner != str(partner_id).strip():
+            continue
+        filtered.append(row)
+
+    total = len(filtered)
+    paged = filtered[int(offset): int(offset) + int(limit)]
+    items: list[PartnerSettlementReconciliationAlertTimelineItemOut] = []
+    for row in paged:
+        details = _json_load_dict(row.details_json, default={})
+        alert_items = details.get("alerts") if isinstance(details.get("alerts"), list) else []
+        first_alert = alert_items[0] if alert_items else {}
+        items.append(
+            PartnerSettlementReconciliationAlertTimelineItemOut(
+                audit_id=str(row.id),
+                created_at=_to_iso_utc(row.created_at),
+                partner_id=str(details.get("partner_id") or ""),
+                batch_id=str(details.get("batch_id") or ""),
+                severity=str(first_alert.get("severity") or "HIGH"),
+                message=str(first_alert.get("message") or "Divergência de reconciliação detectada."),
+                delta_total_orders=int(details.get("delta_total_orders") or 0),
+                delta_gross_revenue_cents=int(details.get("delta_gross_revenue_cents") or 0),
+                delta_revenue_share_cents=int(details.get("delta_revenue_share_cents") or 0),
+            )
+        )
+
+    return PartnerSettlementReconciliationAlertTimelineOut(
+        ok=True,
+        **{"from": _to_iso_utc(dt_from), "to": _to_iso_utc(dt_to)},
+        total=total,
+        limit=int(limit),
+        offset=int(offset),
+        items=items,
+    )
+
+
+@router.post("/ops/settlements/reconciliation/run", response_model=PartnerSettlementReconciliationBatchRunOut)
+def post_ops_settlement_reconciliation_run(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    partner_id: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=1000),
+    dry_run: bool = Query(default=True),
+    confirm_live_run: bool = Query(default=False),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    live_run_limit_guard = 200
+    if not dry_run and not bool(confirm_live_run):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "LIVE_RUN_CONFIRMATION_REQUIRED",
+                "message": "Para dry_run=false, informe confirm_live_run=true.",
+            },
+        )
+    if not dry_run and int(limit) > live_run_limit_guard:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "LIVE_RUN_LIMIT_EXCEEDED",
+                "message": "Para execucao real, limit deve ser <= 200.",
+                "max_limit": live_run_limit_guard,
+            },
+        )
+
+    dt_to = _parse_iso_datetime_utc_optional(to, field_name="to") or datetime.now(timezone.utc)
+    dt_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (dt_to - timedelta(days=30))
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
+        )
+
+    where_parts = [
+        "created_at >= :dt_from",
+        "created_at <= :dt_to",
+        "status IN ('DRAFT','APPROVED','PAID')",
+    ]
+    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to, "limit": int(limit)}
+    normalized_partner = str(partner_id or "").strip()
+    if normalized_partner:
+        where_parts.append("partner_id = :partner_id")
+        params["partner_id"] = normalized_partner
+    where_sql = " AND ".join(where_parts)
+
+    batches = db.execute(
+        text(
+            f"""
+            SELECT id, partner_id, status, total_orders, gross_revenue_cents, revenue_share_cents
+            FROM partner_settlement_batches
+            WHERE {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    items: list[PartnerSettlementReconciliationBatchRunItemOut] = []
+    divergent_batches = 0
+    for batch in batches:
+        batch_id = str(batch.get("id") or "")
+        totals = db.execute(
+            text(
+                """
+                SELECT
+                    COUNT(*)::int AS total_orders,
+                    COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
+                    COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
+                FROM partner_settlement_items
+                WHERE batch_id = :batch_id
+                """
+            ),
+            {"batch_id": batch_id},
+        ).mappings().first() or {}
+
+        delta_total_orders = int(totals.get("total_orders") or 0) - int(batch.get("total_orders") or 0)
+        delta_gross_revenue_cents = int(totals.get("gross_revenue_cents") or 0) - int(batch.get("gross_revenue_cents") or 0)
+        delta_revenue_share_cents = int(totals.get("revenue_share_cents") or 0) - int(batch.get("revenue_share_cents") or 0)
+        has_divergence = any(
+            [
+                delta_total_orders != 0,
+                delta_gross_revenue_cents != 0,
+                delta_revenue_share_cents != 0,
+            ]
+        )
+        severity: str | None = None
+        if has_divergence:
+            divergent_batches += 1
+            severity = _settlement_reconciliation_severity(
+                delta_total_orders=delta_total_orders,
+                delta_gross_revenue_cents=delta_gross_revenue_cents,
+                delta_revenue_share_cents=delta_revenue_share_cents,
+            )
+
+        items.append(
+            PartnerSettlementReconciliationBatchRunItemOut(
+                batch_id=batch_id,
+                partner_id=str(batch.get("partner_id") or ""),
+                status=str(batch.get("status") or ""),
+                has_divergence=has_divergence,
+                delta_total_orders=delta_total_orders,
+                delta_gross_revenue_cents=delta_gross_revenue_cents,
+                delta_revenue_share_cents=delta_revenue_share_cents,
+                severity=severity,
+            )
+        )
+
+    scanned_batches = len(items)
+    divergence_rate_pct = round((divergent_batches / scanned_batches) * 100.0, 2) if scanned_batches > 0 else 0.0
+    if not dry_run:
+        _audit_ops(
+            db=db,
+            action="PARTNER_SETTLEMENT_RECONCILIATION_BATCH_RUN",
+            result=("WARNING" if divergent_batches > 0 else "SUCCESS"),
+            correlation_id=corr_id,
+            user_id=str(current_user.id),
+            details={
+                "from": _to_iso_utc(dt_from),
+                "to": _to_iso_utc(dt_to),
+                "partner_id": normalized_partner or None,
+                "limit": int(limit),
+                "dry_run": False,
+                "confirm_live_run": True,
+                "scanned_batches": scanned_batches,
+                "divergent_batches": divergent_batches,
+                "divergence_rate_pct": divergence_rate_pct,
+                "items": [item.model_dump() for item in items[:200]],
+            },
+        )
+        db.commit()
+
+    return PartnerSettlementReconciliationBatchRunOut(
+        ok=True,
+        **{"from": _to_iso_utc(dt_from), "to": _to_iso_utc(dt_to)},
+        partner_id=(normalized_partner or None),
+        limit=int(limit),
+        dry_run=bool(dry_run),
+        confirm_live_run=bool(confirm_live_run),
+        scanned_batches=scanned_batches,
+        divergent_batches=divergent_batches,
+        divergence_rate_pct=divergence_rate_pct,
+        items=items,
+    )
+
+
+@router.get("/ops/settlements/reconciliation/compare", response_model=PartnerSettlementReconciliationCompareOut)
+def get_ops_settlement_reconciliation_compare(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    partner_id: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    current_to = _parse_iso_datetime_utc_optional(to, field_name="to") or datetime.now(timezone.utc)
+    current_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (current_to - timedelta(days=30))
+    if current_from > current_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
+        )
+
+    window_span = current_to - current_from
+    previous_to = current_from
+    previous_from = previous_to - window_span
+    normalized_partner = str(partner_id or "").strip()
+
+    def _calc_window_metrics(window_from: datetime, window_to: datetime) -> PartnerSettlementReconciliationCompareWindowOut:
+        where_parts = [
+            "created_at >= :dt_from",
+            "created_at <= :dt_to",
+            "status IN ('DRAFT','APPROVED','PAID')",
+        ]
+        params: dict[str, object] = {"dt_from": window_from, "dt_to": window_to}
+        if normalized_partner:
+            where_parts.append("partner_id = :partner_id")
+            params["partner_id"] = normalized_partner
+        where_sql = " AND ".join(where_parts)
+        batches = db.execute(
+            text(
+                f"""
+                SELECT id, total_orders, gross_revenue_cents, revenue_share_cents
+                FROM partner_settlement_batches
+                WHERE {where_sql}
+                ORDER BY created_at DESC, id DESC
+                LIMIT 5000
+                """
+            ),
+            params,
+        ).mappings().all()
+
+        divergent_batches = 0
+        for batch in batches:
+            totals = db.execute(
+                text(
+                    """
+                    SELECT
+                        COUNT(*)::int AS total_orders,
+                        COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
+                        COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
+                    FROM partner_settlement_items
+                    WHERE batch_id = :batch_id
+                    """
+                ),
+                {"batch_id": str(batch.get("id") or "")},
+            ).mappings().first() or {}
+            if (
+                int(totals.get("total_orders") or 0) != int(batch.get("total_orders") or 0)
+                or int(totals.get("gross_revenue_cents") or 0) != int(batch.get("gross_revenue_cents") or 0)
+                or int(totals.get("revenue_share_cents") or 0) != int(batch.get("revenue_share_cents") or 0)
+            ):
+                divergent_batches += 1
+
+        scanned_batches = len(batches)
+        divergence_rate_pct = round((divergent_batches / scanned_batches) * 100.0, 2) if scanned_batches > 0 else 0.0
+        return PartnerSettlementReconciliationCompareWindowOut(
+            scanned_batches=scanned_batches,
+            divergent_batches=divergent_batches,
+            divergence_rate_pct=divergence_rate_pct,
+        )
+
+    current = _calc_window_metrics(current_from, current_to)
+    previous = _calc_window_metrics(previous_from, previous_to)
+
+    return PartnerSettlementReconciliationCompareOut(
+        ok=True,
+        **{"from": _to_iso_utc(current_from), "to": _to_iso_utc(current_to)},
+        previous_from=_to_iso_utc(previous_from),
+        previous_to=_to_iso_utc(previous_to),
+        partner_id=(normalized_partner or None),
+        current=current,
+        previous=previous,
+        delta_scanned_batches_pct=_safe_delta_pct(current.scanned_batches, previous.scanned_batches),
+        delta_divergent_batches_pct=_safe_delta_pct(current.divergent_batches, previous.divergent_batches),
+        delta_divergence_rate_pct=round(current.divergence_rate_pct - previous.divergence_rate_pct, 2),
+    )
+
+
+@router.get("/ops/settlements/reconciliation/top-divergences", response_model=PartnerSettlementReconciliationTopDivergencesOut)
+def get_ops_settlement_reconciliation_top_divergences(
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = Query(default=None),
+    partner_id: str | None = Query(default=None),
+    top_n: int = Query(default=10, ge=1, le=200),
+    min_severity: str | None = Query(
+        default=None,
+        description="Inclui divergencias com severidade >= ao nivel (HIGH > MEDIUM > LOW). Omitir retorna todas.",
+    ),
+    db: Session = Depends(get_db),
+):
+    min_sev = _parse_min_settlement_severity(min_severity)
+    dt_to = _parse_iso_datetime_utc_optional(to, field_name="to") or datetime.now(timezone.utc)
+    dt_from = _parse_iso_datetime_utc_optional(from_, field_name="from") or (dt_to - timedelta(days=30))
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
+        )
+
+    where_parts = [
+        "created_at >= :dt_from",
+        "created_at <= :dt_to",
+        "status IN ('DRAFT','APPROVED','PAID')",
+    ]
+    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to}
+    normalized_partner = str(partner_id or "").strip()
+    if normalized_partner:
+        where_parts.append("partner_id = :partner_id")
+        params["partner_id"] = normalized_partner
+    where_sql = " AND ".join(where_parts)
+
+    batches = db.execute(
+        text(
+            f"""
+            SELECT id, partner_id, status, total_orders, gross_revenue_cents, revenue_share_cents
+            FROM partner_settlement_batches
+            WHERE {where_sql}
+            ORDER BY created_at DESC, id DESC
+            LIMIT 5000
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    divergences: list[PartnerSettlementReconciliationTopDivergenceItemOut] = []
+    severity_totals = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+    for batch in batches:
+        batch_id = str(batch.get("id") or "")
+        totals = db.execute(
+            text(
+                """
+                SELECT
+                    COUNT(*)::int AS total_orders,
+                    COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
+                    COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
+                FROM partner_settlement_items
+                WHERE batch_id = :batch_id
+                """
+            ),
+            {"batch_id": batch_id},
+        ).mappings().first() or {}
+
+        delta_total_orders = int(totals.get("total_orders") or 0) - int(batch.get("total_orders") or 0)
+        delta_gross_revenue_cents = int(totals.get("gross_revenue_cents") or 0) - int(batch.get("gross_revenue_cents") or 0)
+        delta_revenue_share_cents = int(totals.get("revenue_share_cents") or 0) - int(batch.get("revenue_share_cents") or 0)
+        if delta_total_orders == 0 and delta_gross_revenue_cents == 0 and delta_revenue_share_cents == 0:
+            continue
+
+        impact_score = (
+            abs(delta_gross_revenue_cents)
+            + abs(delta_revenue_share_cents)
+            + (abs(delta_total_orders) * 100)
+        )
+        severity = _settlement_reconciliation_severity(
+            delta_total_orders=delta_total_orders,
+            delta_gross_revenue_cents=delta_gross_revenue_cents,
+            delta_revenue_share_cents=delta_revenue_share_cents,
+        )
+        bucket = str(severity).strip().upper()
+        if bucket in severity_totals:
+            severity_totals[bucket] += 1
+        else:
+            severity_totals["MEDIUM"] += 1
+        if not _settlement_severity_meets_minimum(severity=severity, min_severity=min_sev):
+            continue
+        divergences.append(
+            PartnerSettlementReconciliationTopDivergenceItemOut(
+                batch_id=batch_id,
+                partner_id=str(batch.get("partner_id") or ""),
+                status=str(batch.get("status") or ""),
+                impact_score=int(impact_score),
+                delta_total_orders=delta_total_orders,
+                delta_gross_revenue_cents=delta_gross_revenue_cents,
+                delta_revenue_share_cents=delta_revenue_share_cents,
+                severity=severity,
+            )
+        )
+
+    divergences.sort(key=lambda item: item.impact_score, reverse=True)
+    top_items = divergences[: int(top_n)]
+    return PartnerSettlementReconciliationTopDivergencesOut(
+        ok=True,
+        **{"from": _to_iso_utc(dt_from), "to": _to_iso_utc(dt_to)},
+        partner_id=(normalized_partner or None),
+        top_n=int(top_n),
+        min_severity=min_sev,
+        severity_counts=PartnerSettlementReconciliationTopDivergenceSeverityCountsOut.model_validate(severity_totals),
+        total_divergent_batches=len(divergences),
+        items=top_items,
+    )
+
+
 @router.get("/{partner_id}/performance", response_model=PartnerPerformanceListOut)
 def get_partner_performance(
     partner_id: str,
@@ -1373,6 +2225,868 @@ def post_partner_service_area(
         valid_until=(row["valid_until"].isoformat() if row["valid_until"] else None),
         is_active=bool(row["is_active"]),
         created_at=_to_iso_utc(row["created_at"]),
+    )
+
+
+@router.post("/{partner_id}/products", response_model=PartnerProductCreateOut)
+def post_partner_product(
+    partner_id: str,
+    payload: PartnerProductCreateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    _ensure_partner_is_active_for_catalog(db, partner_id=partner_id)
+
+    product_id = str(payload.id or "").strip()
+    if not product_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_PRODUCT_ID", "message": "id do produto é obrigatório."},
+        )
+
+    existing_product = db.execute(
+        text("SELECT id FROM products WHERE id = :id"),
+        {"id": product_id},
+    ).fetchone()
+    if existing_product:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "PRODUCT_ALREADY_EXISTS",
+                "message": "Produto já cadastrado para este id.",
+                "product_id": product_id,
+            },
+        )
+
+    category_exists = db.execute(
+        text("SELECT id FROM product_categories WHERE id = :category_id"),
+        {"category_id": payload.category_id},
+    ).fetchone()
+    if not category_exists:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_CATEGORY",
+                "message": "Categoria não encontrada em product_categories.",
+                "category_id": payload.category_id,
+            },
+        )
+
+    eligible_lockers_count_row = db.execute(
+        text(
+            """
+            SELECT COUNT(DISTINCT psa.locker_id) AS total
+            FROM partner_service_areas psa
+            JOIN locker_slot_configs lsc
+              ON lsc.locker_id = psa.locker_id
+            JOIN product_locker_configs plc
+              ON plc.locker_id = psa.locker_id
+             AND plc.category = :category_id
+             AND plc.allowed = TRUE
+            WHERE psa.partner_id = :partner_id
+              AND psa.is_active = TRUE
+              AND psa.valid_from <= CURRENT_DATE
+              AND (psa.valid_until IS NULL OR psa.valid_until >= CURRENT_DATE)
+              AND lsc.width_mm >= :width_mm
+              AND lsc.height_mm >= :height_mm
+              AND lsc.depth_mm >= :depth_mm
+              AND lsc.max_weight_g >= :weight_g
+            """
+        ),
+        {
+            "partner_id": partner_id,
+            "category_id": payload.category_id,
+            "width_mm": payload.width_mm,
+            "height_mm": payload.height_mm,
+            "depth_mm": payload.depth_mm,
+            "weight_g": payload.weight_g,
+        },
+    ).mappings().first()
+    eligible_lockers_count = int((eligible_lockers_count_row or {}).get("total") or 0)
+
+    recommended_row = db.execute(
+        text(
+            """
+            SELECT
+                psa.locker_id AS locker_id,
+                lsc.slot_size AS slot_size
+            FROM partner_service_areas psa
+            JOIN locker_slot_configs lsc
+              ON lsc.locker_id = psa.locker_id
+            JOIN product_locker_configs plc
+              ON plc.locker_id = psa.locker_id
+             AND plc.category = :category_id
+             AND plc.allowed = TRUE
+            WHERE psa.partner_id = :partner_id
+              AND psa.is_active = TRUE
+              AND psa.valid_from <= CURRENT_DATE
+              AND (psa.valid_until IS NULL OR psa.valid_until >= CURRENT_DATE)
+              AND lsc.width_mm >= :width_mm
+              AND lsc.height_mm >= :height_mm
+              AND lsc.depth_mm >= :depth_mm
+              AND lsc.max_weight_g >= :weight_g
+            ORDER BY
+              psa.priority DESC,
+              CASE lsc.slot_size
+                WHEN 'XS' THEN 1
+                WHEN 'S' THEN 2
+                WHEN 'P' THEN 2
+                WHEN 'M' THEN 3
+                WHEN 'G' THEN 4
+                WHEN 'L' THEN 4
+                WHEN 'XG' THEN 5
+                ELSE 99
+              END ASC,
+              psa.locker_id ASC
+            LIMIT 1
+            """
+        ),
+        {
+            "partner_id": partner_id,
+            "category_id": payload.category_id,
+            "width_mm": payload.width_mm,
+            "height_mm": payload.height_mm,
+            "depth_mm": payload.depth_mm,
+            "weight_g": payload.weight_g,
+        },
+    ).mappings().first()
+
+    if not recommended_row:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "PRODUCT_NOT_ELIGIBLE",
+                "message": "Produto não cabe em nenhum locker ativo do parceiro para a categoria informada.",
+                "partner_id": partner_id,
+                "category_id": payload.category_id,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    db.execute(
+        text(
+            """
+            INSERT INTO products (
+                id,
+                name,
+                description,
+                amount_cents,
+                currency,
+                category_id,
+                width_mm,
+                height_mm,
+                depth_mm,
+                weight_g,
+                is_active,
+                requires_age_verification,
+                requires_id_check,
+                requires_signature,
+                is_hazardous,
+                is_fragile,
+                metadata_json,
+                created_at,
+                updated_at,
+                status
+            ) VALUES (
+                :id,
+                :name,
+                :description,
+                :amount_cents,
+                :currency,
+                :category_id,
+                :width_mm,
+                :height_mm,
+                :depth_mm,
+                :weight_g,
+                FALSE,
+                :requires_age_verification,
+                :requires_id_check,
+                :requires_signature,
+                :is_hazardous,
+                :is_fragile,
+                CAST(:metadata_json AS JSONB),
+                :created_at,
+                :updated_at,
+                'DRAFT'
+            )
+            """
+        ),
+        {
+            "id": product_id,
+            "name": payload.name.strip(),
+            "description": (payload.description.strip() if payload.description else None),
+            "amount_cents": int(payload.amount_cents),
+            "currency": str(payload.currency or "BRL").strip().upper(),
+            "category_id": payload.category_id.strip(),
+            "width_mm": int(payload.width_mm),
+            "height_mm": int(payload.height_mm),
+            "depth_mm": int(payload.depth_mm),
+            "weight_g": int(payload.weight_g),
+            "requires_age_verification": bool(payload.requires_age_verification),
+            "requires_id_check": bool(payload.requires_id_check),
+            "requires_signature": bool(payload.requires_signature),
+            "is_hazardous": bool(payload.is_hazardous),
+            "is_fragile": bool(payload.is_fragile),
+            "metadata_json": json.dumps(payload.metadata_json or {}),
+            "created_at": now,
+            "updated_at": now,
+        },
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO product_status_history (
+                id,
+                product_id,
+                from_status,
+                to_status,
+                reason,
+                changed_by,
+                changed_at
+            ) VALUES (
+                :id,
+                :product_id,
+                NULL,
+                'DRAFT',
+                :reason,
+                :changed_by,
+                :changed_at
+            )
+            """
+        ),
+        {
+            "id": str(uuid4()),
+            "product_id": product_id,
+            "reason": "Partner product registration with eligibility validation",
+            "changed_by": (str(current_user.id) if current_user and current_user.id else None),
+            "changed_at": now,
+        },
+    )
+    db.commit()
+
+    return PartnerProductCreateOut(
+        ok=True,
+        product_id=product_id,
+        partner_id=partner_id,
+        status="DRAFT",
+        eligibility_ok=True,
+        recommended_locker_id=str(recommended_row["locker_id"]),
+        recommended_slot_size=str(recommended_row["slot_size"]),
+        eligible_lockers_count=eligible_lockers_count,
+        reason=None,
+    )
+
+
+@router.get("/{partner_id}/lockers/{locker_id}/eligible-products", response_model=PartnerEligibleProductListOut)
+def get_partner_locker_eligible_products(
+    partner_id: str,
+    locker_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    _ensure_partner_is_active_for_catalog(db, partner_id=partner_id)
+
+    psa_exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM partner_service_areas psa
+            WHERE psa.partner_id = :partner_id
+              AND psa.locker_id = :locker_id
+              AND psa.is_active = TRUE
+              AND psa.valid_from <= CURRENT_DATE
+              AND (psa.valid_until IS NULL OR psa.valid_until >= CURRENT_DATE)
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id, "locker_id": locker_id},
+    ).fetchone()
+    if not psa_exists:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "LOCKER_NOT_IN_PARTNER_SERVICE_AREA",
+                "message": "Locker não está ativo na área de atendimento do parceiro.",
+                "partner_id": partner_id,
+                "locker_id": locker_id,
+            },
+        )
+
+    total_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM products p
+            WHERE COALESCE(p.status, 'DRAFT') = 'ACTIVE'
+              AND EXISTS (
+                    SELECT 1
+                    FROM product_locker_configs plc
+                    WHERE plc.locker_id = :locker_id
+                      AND plc.category = p.category_id
+                      AND plc.allowed = TRUE
+              )
+              AND EXISTS (
+                    SELECT 1
+                    FROM locker_slot_configs lsc
+                    WHERE lsc.locker_id = :locker_id
+                      AND lsc.width_mm >= p.width_mm
+                      AND lsc.height_mm >= p.height_mm
+                      AND lsc.depth_mm >= p.depth_mm
+                      AND lsc.max_weight_g >= p.weight_g
+              )
+            """
+        ),
+        {"locker_id": locker_id},
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+
+    rows = db.execute(
+        text(
+            """
+            WITH ranked_slots AS (
+                SELECT
+                    p.id AS product_id,
+                    p.name,
+                    p.category_id,
+                    COALESCE(p.status, 'DRAFT') AS status,
+                    p.width_mm,
+                    p.height_mm,
+                    p.depth_mm,
+                    p.weight_g,
+                    lsc.slot_size,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.id
+                        ORDER BY
+                            CASE lsc.slot_size
+                                WHEN 'XS' THEN 1
+                                WHEN 'S' THEN 2
+                                WHEN 'P' THEN 2
+                                WHEN 'M' THEN 3
+                                WHEN 'G' THEN 4
+                                WHEN 'L' THEN 4
+                                WHEN 'XG' THEN 5
+                                ELSE 99
+                            END ASC
+                    ) AS rn
+                FROM products p
+                JOIN product_locker_configs plc
+                  ON plc.locker_id = :locker_id
+                 AND plc.category = p.category_id
+                 AND plc.allowed = TRUE
+                JOIN locker_slot_configs lsc
+                  ON lsc.locker_id = :locker_id
+                 AND lsc.width_mm >= p.width_mm
+                 AND lsc.height_mm >= p.height_mm
+                 AND lsc.depth_mm >= p.depth_mm
+                 AND lsc.max_weight_g >= p.weight_g
+                WHERE COALESCE(p.status, 'DRAFT') = 'ACTIVE'
+            )
+            SELECT
+                product_id,
+                name,
+                category_id,
+                status,
+                slot_size AS recommended_slot_size,
+                width_mm,
+                height_mm,
+                depth_mm,
+                weight_g
+            FROM ranked_slots
+            WHERE rn = 1
+            ORDER BY name ASC, product_id ASC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        {"locker_id": locker_id, "limit": int(limit), "offset": int(offset)},
+    ).mappings().all()
+
+    items = [
+        PartnerEligibleProductItemOut(
+            product_id=str(row["product_id"]),
+            name=str(row["name"] or ""),
+            category_id=(str(row["category_id"]) if row["category_id"] is not None else None),
+            status=str(row["status"] or "DRAFT"),
+            recommended_slot_size=str(row["recommended_slot_size"] or ""),
+            width_mm=int(row["width_mm"] or 0),
+            height_mm=int(row["height_mm"] or 0),
+            depth_mm=int(row["depth_mm"] or 0),
+            weight_g=int(row["weight_g"] or 0),
+        )
+        for row in rows
+    ]
+
+    return PartnerEligibleProductListOut(
+        ok=True,
+        partner_id=partner_id,
+        locker_id=locker_id,
+        total=total,
+        limit=int(limit),
+        offset=int(offset),
+        items=items,
+    )
+
+
+@router.post("/{partner_id}/lockers/{locker_id}/slot-allocations/pick", response_model=PartnerSlotAllocationPickOut)
+def post_partner_locker_slot_allocation_pick(
+    partner_id: str,
+    locker_id: str,
+    payload: PartnerSlotAllocationPickIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_partner_is_active_for_catalog(db, partner_id=partner_id)
+
+    psa_exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM partner_service_areas psa
+            WHERE psa.partner_id = :partner_id
+              AND psa.locker_id = :locker_id
+              AND psa.is_active = TRUE
+              AND psa.valid_from <= CURRENT_DATE
+              AND (psa.valid_until IS NULL OR psa.valid_until >= CURRENT_DATE)
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id, "locker_id": locker_id},
+    ).fetchone()
+    if not psa_exists:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "LOCKER_NOT_IN_PARTNER_SERVICE_AREA",
+                "message": "Locker não está ativo na área de atendimento do parceiro.",
+                "partner_id": partner_id,
+                "locker_id": locker_id,
+            },
+        )
+
+    product_row = db.execute(
+        text(
+            """
+            SELECT
+                p.id,
+                p.category_id,
+                p.width_mm,
+                p.height_mm,
+                p.depth_mm,
+                p.weight_g,
+                COALESCE(p.status, 'DRAFT') AS status
+            FROM products p
+            WHERE p.id = :product_id
+            """
+        ),
+        {"product_id": payload.product_id},
+    ).mappings().first()
+    if not product_row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "PRODUCT_NOT_FOUND",
+                "message": "Produto não encontrado.",
+                "product_id": payload.product_id,
+            },
+        )
+    if str(product_row["status"]).upper() != "ACTIVE":
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "PRODUCT_NOT_ACTIVE",
+                "message": "Produto precisa estar ACTIVE para alocação de slot.",
+                "product_id": payload.product_id,
+                "status": str(product_row["status"]),
+            },
+        )
+
+    allocation_id = str(payload.allocation_id or f"al_{uuid4().hex[:24]}")
+    slot_row = db.execute(
+        text(
+            """
+            WITH best_slot AS (
+                SELECT
+                    ls.id,
+                    ls.slot_label,
+                    ls.slot_size
+                FROM locker_slots ls
+                JOIN locker_slot_configs lsc
+                  ON lsc.locker_id = ls.locker_id
+                 AND lsc.slot_size = ls.slot_size
+                JOIN product_locker_configs plc
+                  ON plc.locker_id = ls.locker_id
+                 AND plc.category = :category_id
+                 AND plc.allowed = TRUE
+                WHERE ls.locker_id = :locker_id
+                  AND ls.status = 'AVAILABLE'
+                  AND lsc.width_mm >= :width_mm
+                  AND lsc.height_mm >= :height_mm
+                  AND lsc.depth_mm >= :depth_mm
+                  AND lsc.max_weight_g >= :weight_g
+                ORDER BY
+                    CASE ls.slot_size
+                        WHEN 'XS' THEN 1
+                        WHEN 'S' THEN 2
+                        WHEN 'P' THEN 2
+                        WHEN 'M' THEN 3
+                        WHEN 'G' THEN 4
+                        WHEN 'L' THEN 4
+                        WHEN 'XG' THEN 5
+                        ELSE 99
+                    END ASC,
+                    ls.last_opened_at ASC NULLS FIRST,
+                    ls.slot_label ASC
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            UPDATE locker_slots ls
+            SET
+                status = 'OCCUPIED',
+                occupied_since = NOW(),
+                current_allocation_id = :allocation_id,
+                updated_at = NOW()
+            FROM best_slot
+            WHERE ls.id = best_slot.id
+            RETURNING ls.id, ls.slot_label, ls.slot_size
+            """
+        ),
+        {
+            "locker_id": locker_id,
+            "category_id": str(product_row["category_id"] or ""),
+            "width_mm": int(product_row["width_mm"] or 0),
+            "height_mm": int(product_row["height_mm"] or 0),
+            "depth_mm": int(product_row["depth_mm"] or 0),
+            "weight_g": int(product_row["weight_g"] or 0),
+            "allocation_id": allocation_id,
+        },
+    ).mappings().first()
+
+    if not slot_row:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "SLOT_NOT_AVAILABLE",
+                "message": "Nenhum slot disponível para o produto no locker informado.",
+                "partner_id": partner_id,
+                "locker_id": locker_id,
+                "product_id": payload.product_id,
+            },
+        )
+
+    db.commit()
+
+    slot_label = str(slot_row["slot_label"] or "")
+    slot_number = 0
+    if "-" in slot_label:
+        raw_num = slot_label.split("-", 1)[1]
+        if raw_num.isdigit():
+            slot_number = int(raw_num)
+
+    return PartnerSlotAllocationPickOut(
+        ok=True,
+        partner_id=partner_id,
+        locker_id=locker_id,
+        product_id=str(product_row["id"]),
+        allocation_id=allocation_id,
+        slot_id=str(slot_row["id"]),
+        slot_label=slot_label,
+        slot_size=str(slot_row["slot_size"] or ""),
+        slot_number=slot_number,
+        state="RESERVED_PENDING_PAYMENT",
+    )
+
+
+@router.post(
+    "/{partner_id}/lockers/{locker_id}/slot-allocations/{allocation_id}/pickup-confirm",
+    response_model=PartnerSlotAllocationPickupConfirmOut,
+)
+def post_partner_locker_slot_allocation_pickup_confirm(
+    partner_id: str,
+    locker_id: str,
+    allocation_id: str,
+    payload: PartnerSlotAllocationPickupConfirmIn,
+    db: Session = Depends(get_db),
+):
+    _ensure_partner_is_active_for_catalog(db, partner_id=partner_id)
+    _ = payload.note
+    corr_id = _resolve_correlation_id(None)
+
+    psa_exists = db.execute(
+        text(
+            """
+            SELECT 1
+            FROM partner_service_areas psa
+            WHERE psa.partner_id = :partner_id
+              AND psa.locker_id = :locker_id
+              AND psa.is_active = TRUE
+              AND psa.valid_from <= CURRENT_DATE
+              AND (psa.valid_until IS NULL OR psa.valid_until >= CURRENT_DATE)
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id, "locker_id": locker_id},
+    ).fetchone()
+    if not psa_exists:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "LOCKER_NOT_IN_PARTNER_SERVICE_AREA",
+                "message": "Locker não está ativo na área de atendimento do parceiro.",
+                "partner_id": partner_id,
+                "locker_id": locker_id,
+            },
+        )
+
+    allocation_row = db.execute(
+        text(
+            """
+            SELECT id, order_id, locker_id, state
+            FROM allocations
+            WHERE id = :allocation_id
+            FOR UPDATE
+            """
+        ),
+        {"allocation_id": allocation_id},
+    ).mappings().first()
+    if not allocation_row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "ALLOCATION_NOT_FOUND",
+                "message": "Allocation não encontrada.",
+                "allocation_id": allocation_id,
+            },
+        )
+    if str(allocation_row["locker_id"] or "") != locker_id:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "ALLOCATION_LOCKER_MISMATCH",
+                "message": "Allocation não pertence ao locker informado.",
+                "allocation_id": allocation_id,
+                "locker_id": locker_id,
+            },
+        )
+
+    slot_row = db.execute(
+        text(
+            """
+            SELECT id, slot_label, slot_size
+            FROM locker_slots
+            WHERE locker_id = :locker_id
+              AND current_allocation_id = :allocation_id
+            FOR UPDATE
+            """
+        ),
+        {"locker_id": locker_id, "allocation_id": allocation_id},
+    ).mappings().first()
+
+    allocation_state = str(allocation_row["state"] or "").upper()
+    if allocation_state == "PICKED_UP":
+        if not slot_row:
+            slot_row = db.execute(
+                text(
+                    """
+                    SELECT id, slot_label, slot_size
+                    FROM locker_slots
+                    WHERE locker_id = :locker_id
+                    ORDER BY updated_at DESC, id DESC
+                    LIMIT 1
+                    """
+                ),
+                {"locker_id": locker_id},
+            ).mappings().first()
+        pickup_row = db.execute(
+            text(
+                """
+                SELECT id, status
+                FROM pickups
+                WHERE order_id = :order_id
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+                """
+            ),
+            {"order_id": str(allocation_row["order_id"])},
+        ).mappings().first()
+        order_row = db.execute(
+            text("SELECT status, picked_up_at FROM orders WHERE id = :order_id"),
+            {"order_id": str(allocation_row["order_id"])},
+        ).mappings().first()
+        _audit_ops(
+            db=db,
+            action="PARTNER_SLOT_PICKUP_CONFIRM",
+            result="SUCCESS",
+            correlation_id=corr_id,
+            user_id=None,
+            details={
+                "partner_id": partner_id,
+                "locker_id": locker_id,
+                "allocation_id": allocation_id,
+                "order_id": str(allocation_row["order_id"]),
+                "idempotent": True,
+            },
+        )
+        db.commit()
+        return PartnerSlotAllocationPickupConfirmOut(
+            ok=True,
+            idempotent=True,
+            partner_id=partner_id,
+            locker_id=locker_id,
+            allocation_id=allocation_id,
+            order_id=str(allocation_row["order_id"]),
+            pickup_id=(str(pickup_row["id"]) if pickup_row else None),
+            slot_id=(str(slot_row["id"]) if slot_row else ""),
+            slot_label=(str(slot_row["slot_label"]) if slot_row else ""),
+            slot_size=(str(slot_row["slot_size"]) if slot_row else ""),
+            allocation_state="PICKED_UP",
+            pickup_status=(str(pickup_row["status"]) if pickup_row else None),
+            order_status=(str((order_row or {}).get("status") or "PICKED_UP")),
+            released_at=_to_iso_utc((order_row or {}).get("picked_up_at") or datetime.now(timezone.utc)),
+        )
+
+    if allocation_state not in {"RESERVED_PAID_PENDING_PICKUP", "OPENED_FOR_PICKUP"}:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "ALLOCATION_STATE_NOT_PICKUP_READY",
+                "message": "Allocation não está pronta para confirmação de retirada.",
+                "allocation_id": allocation_id,
+                "state": allocation_state,
+            },
+        )
+
+    if not slot_row:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "SLOT_ALLOCATION_LINK_BROKEN",
+                "message": "Slot vinculado à allocation não foi encontrado no locker.",
+                "allocation_id": allocation_id,
+                "locker_id": locker_id,
+            },
+        )
+
+    now = datetime.now(timezone.utc)
+    pickup_row = db.execute(
+        text(
+            """
+            SELECT id, status
+            FROM pickups
+            WHERE order_id = :order_id
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            FOR UPDATE
+            """
+        ),
+        {"order_id": str(allocation_row["order_id"])},
+    ).mappings().first()
+    if pickup_row:
+        pickup_status = str(pickup_row["status"] or "").upper()
+        if pickup_status != "REDEEMED":
+            db.execute(
+                text(
+                    """
+                    UPDATE pickups
+                    SET
+                        status = 'REDEEMED',
+                        lifecycle_stage = 'COMPLETED',
+                        redeemed_at = COALESCE(redeemed_at, :now),
+                        redeemed_via = 'OPERATOR',
+                        item_removed_at = COALESCE(item_removed_at, :now),
+                        door_closed_at = COALESCE(door_closed_at, :now),
+                        current_token_id = NULL,
+                        updated_at = :now
+                    WHERE id = :pickup_id
+                    """
+                ),
+                {"pickup_id": str(pickup_row["id"]), "now": now},
+            )
+
+    db.execute(
+        text(
+            """
+            UPDATE orders
+            SET
+                status = 'PICKED_UP',
+                picked_up_at = COALESCE(picked_up_at, :now),
+                updated_at = :now
+            WHERE id = :order_id
+            """
+        ),
+        {"order_id": str(allocation_row["order_id"]), "now": now},
+    )
+    db.execute(
+        text(
+            """
+            UPDATE allocations
+            SET
+                state = 'PICKED_UP',
+                locked_until = NULL,
+                updated_at = :now
+            WHERE id = :allocation_id
+            """
+        ),
+        {"allocation_id": allocation_id, "now": now},
+    )
+    db.execute(
+        text(
+            """
+            UPDATE locker_slots
+            SET
+                status = 'AVAILABLE',
+                occupied_since = NULL,
+                current_allocation_id = NULL,
+                last_opened_at = :now,
+                updated_at = :now
+            WHERE id = :slot_id
+            """
+        ),
+        {"slot_id": str(slot_row["id"]), "now": now},
+    )
+
+    pickup_after = db.execute(
+        text("SELECT id, status FROM pickups WHERE id = :pickup_id"),
+        {"pickup_id": (str(pickup_row["id"]) if pickup_row else "")},
+    ).mappings().first() if pickup_row else None
+    order_after = db.execute(
+        text("SELECT status, picked_up_at FROM orders WHERE id = :order_id"),
+        {"order_id": str(allocation_row["order_id"])},
+    ).mappings().first()
+    db.commit()
+    _audit_ops(
+        db=db,
+        action="PARTNER_SLOT_PICKUP_CONFIRM",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=None,
+        details={
+            "partner_id": partner_id,
+            "locker_id": locker_id,
+            "allocation_id": allocation_id,
+            "order_id": str(allocation_row["order_id"]),
+            "pickup_id": (str(pickup_after["id"]) if pickup_after else None),
+            "idempotent": False,
+        },
+    )
+    db.commit()
+
+    return PartnerSlotAllocationPickupConfirmOut(
+        ok=True,
+        idempotent=False,
+        partner_id=partner_id,
+        locker_id=locker_id,
+        allocation_id=allocation_id,
+        order_id=str(allocation_row["order_id"]),
+        pickup_id=(str(pickup_after["id"]) if pickup_after else None),
+        slot_id=str(slot_row["id"]),
+        slot_label=str(slot_row["slot_label"] or ""),
+        slot_size=str(slot_row["slot_size"] or ""),
+        allocation_state="PICKED_UP",
+        pickup_status=(str(pickup_after["status"]) if pickup_after else None),
+        order_status=str((order_after or {}).get("status") or "PICKED_UP"),
+        released_at=_to_iso_utc((order_after or {}).get("picked_up_at") or now),
     )
 
 
@@ -1769,6 +3483,150 @@ def get_partners_ops_webhook_metrics(
         top_partners=top_partners,
         top_endpoints=top_endpoints,
         alerts=alerts,
+    )
+
+
+@router.get("/ops/pickup-confirm/metrics", response_model=PartnerPickupConfirmMetricsOut)
+def get_partners_ops_pickup_confirm_metrics(
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    dt_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to") or datetime.now(timezone.utc)
+    dt_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from") or (dt_to - timedelta(days=7))
+    if dt_from > dt_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    rows = db.execute(
+        text(
+            """
+            SELECT result, details_json
+            FROM ops_action_audit
+            WHERE action = 'PARTNER_SLOT_PICKUP_CONFIRM'
+              AND created_at >= :dt_from
+              AND created_at <= :dt_to
+            """
+        ),
+        {"dt_from": dt_from, "dt_to": dt_to},
+    ).mappings().all()
+    total_calls = len(rows)
+    total_success = 0
+    total_error = 0
+    idempotent_calls = 0
+    for row in rows:
+        result = str(row.get("result") or "").upper()
+        details = _json_load_dict(row.get("details_json"))
+        if result == "SUCCESS":
+            total_success += 1
+        else:
+            total_error += 1
+        if bool(details.get("idempotent")):
+            idempotent_calls += 1
+    effective_calls = max(total_success - idempotent_calls, 0)
+    success_rate_pct = round((total_success / total_calls) * 100.0, 2) if total_calls > 0 else 0.0
+    idempotent_rate_pct = round((idempotent_calls / total_success) * 100.0, 2) if total_success > 0 else 0.0
+    return PartnerPickupConfirmMetricsOut(
+        ok=True,
+        period_from=_to_iso_utc(dt_from),
+        period_to=_to_iso_utc(dt_to),
+        total_calls=total_calls,
+        total_success=total_success,
+        total_error=total_error,
+        success_rate_pct=success_rate_pct,
+        idempotent_calls=idempotent_calls,
+        effective_calls=effective_calls,
+        idempotent_rate_pct=idempotent_rate_pct,
+    )
+
+
+def _calc_pickup_confirm_window_metrics(rows: list[dict]) -> PartnerPickupConfirmMetricsCompareWindowOut:
+    total_calls = len(rows)
+    total_success = 0
+    total_error = 0
+    idempotent_calls = 0
+    for row in rows:
+        result = str(row.get("result") or "").upper()
+        details = _json_load_dict(row.get("details_json"))
+        if result == "SUCCESS":
+            total_success += 1
+        else:
+            total_error += 1
+        if bool(details.get("idempotent")):
+            idempotent_calls += 1
+    effective_calls = max(total_success - idempotent_calls, 0)
+    success_rate_pct = round((total_success / total_calls) * 100.0, 2) if total_calls > 0 else 0.0
+    idempotent_rate_pct = round((idempotent_calls / total_success) * 100.0, 2) if total_success > 0 else 0.0
+    return PartnerPickupConfirmMetricsCompareWindowOut(
+        total_calls=total_calls,
+        total_success=total_success,
+        total_error=total_error,
+        success_rate_pct=success_rate_pct,
+        idempotent_calls=idempotent_calls,
+        effective_calls=effective_calls,
+        idempotent_rate_pct=idempotent_rate_pct,
+    )
+
+
+@router.get("/ops/pickup-confirm/metrics/compare", response_model=PartnerPickupConfirmMetricsCompareOut)
+def get_partners_ops_pickup_confirm_metrics_compare(
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    current_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to") or datetime.now(timezone.utc)
+    current_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from") or (current_to - timedelta(days=7))
+    if current_from > current_to:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
+        )
+
+    window_span = current_to - current_from
+    previous_to = current_from
+    previous_from = previous_to - window_span
+
+    current_rows = db.execute(
+        text(
+            """
+            SELECT result, details_json
+            FROM ops_action_audit
+            WHERE action = 'PARTNER_SLOT_PICKUP_CONFIRM'
+              AND created_at >= :dt_from
+              AND created_at <= :dt_to
+            """
+        ),
+        {"dt_from": current_from, "dt_to": current_to},
+    ).mappings().all()
+    previous_rows = db.execute(
+        text(
+            """
+            SELECT result, details_json
+            FROM ops_action_audit
+            WHERE action = 'PARTNER_SLOT_PICKUP_CONFIRM'
+              AND created_at >= :dt_from
+              AND created_at <= :dt_to
+            """
+        ),
+        {"dt_from": previous_from, "dt_to": previous_to},
+    ).mappings().all()
+
+    current = _calc_pickup_confirm_window_metrics(current_rows)
+    previous = _calc_pickup_confirm_window_metrics(previous_rows)
+
+    return PartnerPickupConfirmMetricsCompareOut(
+        ok=True,
+        period_from=_to_iso_utc(current_from),
+        period_to=_to_iso_utc(current_to),
+        previous_from=_to_iso_utc(previous_from),
+        previous_to=_to_iso_utc(previous_to),
+        current=current,
+        previous=previous,
+        delta_calls_pct=_safe_delta_pct(current.total_calls, previous.total_calls),
+        delta_effective_calls_pct=_safe_delta_pct(current.effective_calls, previous.effective_calls),
+        delta_success_rate_pct=round(current.success_rate_pct - previous.success_rate_pct, 2),
     )
 
 

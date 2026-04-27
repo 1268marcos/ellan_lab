@@ -2433,6 +2433,41 @@ def _create_partner_order_events_outbox(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_ops_outbox_replay_priority_runs(conn, applied: list[str]) -> None:
+    name = "ops_outbox_replay_priority_runs.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ops_outbox_replay_priority_runs (
+            id                      VARCHAR(36) PRIMARY KEY,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_by_role         VARCHAR(30) NOT NULL DEFAULT 'ops_user',
+            dry_run                 BOOLEAN NOT NULL DEFAULT TRUE,
+            run_after_replay        BOOLEAN NOT NULL DEFAULT FALSE,
+            top_n_groups            INTEGER NOT NULL DEFAULT 5,
+            max_items               INTEGER NOT NULL DEFAULT 100,
+            total_groups_selected   INTEGER NOT NULL DEFAULT 0,
+            total_candidates        INTEGER NOT NULL DEFAULT 0,
+            selected_count          INTEGER NOT NULL DEFAULT 0,
+            replayed_count          INTEGER NOT NULL DEFAULT 0,
+            skipped_count           INTEGER NOT NULL DEFAULT 0,
+            filters_json            JSONB NOT NULL DEFAULT '{}'::jsonb,
+            selected_groups_json    JSONB NOT NULL DEFAULT '[]'::jsonb,
+            worker_run_json         JSONB
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_oorp_runs_created_at "
+        "ON ops_outbox_replay_priority_runs(created_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_oorp_runs_dry_mode "
+        "ON ops_outbox_replay_priority_runs(dry_run, run_after_replay, created_at DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_order_fulfillment_tracking(conn, applied: list[str]) -> None:
     name = "order_fulfillment_tracking.create_table_v1"
     if _migration_applied(conn, name):
@@ -4112,6 +4147,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _ensure_product_fiscal_config_v1,
     _harden_pr3_foundation_v2,
     _create_partner_order_events_outbox,
+    _create_ops_outbox_replay_priority_runs,
     _create_order_fulfillment_tracking,
     _create_fiscal_documents,
     _create_notification_logs,

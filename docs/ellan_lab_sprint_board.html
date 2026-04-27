@@ -1,0 +1,1040 @@
+
+<style>
+h2.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-sans)}
+.board{padding:1rem 0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:1.25rem}
+.tab{padding:6px 14px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary);color:var(--color-text-secondary);cursor:pointer;font-size:13px;transition:all .15s}
+.tab.active{background:var(--color-background-primary);border-color:var(--color-border-primary);color:var(--color-text-primary);font-weight:500}
+.sprint-header{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.sprint-title{font-size:16px;font-weight:500;color:var(--color-text-primary)}
+.sprint-meta{font-size:12px;color:var(--color-text-tertiary)}
+.sprint-desc{font-size:13px;color:var(--color-text-secondary);margin-bottom:12px;line-height:1.5}
+.tasks{display:flex;flex-direction:column;gap:8px}
+.task{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;display:flex;gap:10px;align-items:flex-start;cursor:pointer;transition:border-color .15s}
+.task:hover{border-color:var(--color-border-secondary)}
+.task.selected{border-color:var(--color-border-info);background:var(--color-background-info)}
+.task-left{display:flex;flex-direction:column;gap:4px;flex:1;min-width:0}
+.task-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+.task.selected .task-title{color:var(--color-text-info)}
+.task-sub{font-size:12px;color:var(--color-text-secondary);line-height:1.4}
+.task-right{display:flex;flex-direction:column;gap:4px;align-items:flex-end;flex-shrink:0}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;white-space:nowrap;font-weight:500}
+.b-blue{background:var(--color-background-info);color:var(--color-text-info)}
+.b-green{background:var(--color-background-success);color:var(--color-text-success)}
+.b-amber{background:var(--color-background-warning);color:var(--color-text-warning)}
+.b-red{background:var(--color-background-danger);color:var(--color-text-danger)}
+.b-gray{background:var(--color-background-secondary);color:var(--color-text-secondary)}
+.quality-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.quality-chip{font-size:10px;padding:2px 7px;border-radius:999px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary);background:var(--color-background-secondary)}
+.q-impact-high{border-color:var(--color-border-info);color:var(--color-text-info);background:var(--color-background-info)}
+.q-risk-high{border-color:var(--color-border-danger,var(--color-border-tertiary));color:var(--color-text-danger);background:var(--color-background-danger)}
+.q-wcag-aa{border-color:var(--color-border-success,var(--color-border-tertiary));color:var(--color-text-success);background:var(--color-background-success)}
+.tables-used{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.tbl{font-size:10px;padding:1px 6px;border-radius:4px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.detail-panel{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:14px 16px;margin-top:14px;display:none}
+.detail-panel.show{display:block}
+.detail-panel h3{font-size:13px;font-weight:500;margin-bottom:8px;color:var(--color-text-primary)}
+.code-block{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:10px 12px;font-family:var(--font-mono);font-size:11px;color:var(--color-text-secondary);line-height:1.6;white-space:pre;overflow-x:auto}
+.flow-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:8px}
+.flow-node{font-size:11px;padding:3px 8px;border-radius:4px;background:var(--color-background-primary);border:0.5px solid var(--color-border-secondary);color:var(--color-text-secondary)}
+.flow-arr{color:var(--color-text-tertiary);font-size:12px}
+.section-label{font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;margin-top:10px}
+.gap-box{background:var(--color-background-danger);border:0.5px solid var(--color-border-danger,var(--color-border-tertiary));border-radius:var(--border-radius-md);padding:8px 10px;margin-bottom:8px}
+.gap-box .gap-title{font-size:12px;font-weight:500;color:var(--color-text-danger)}
+.gap-box .gap-desc{font-size:11px;color:var(--color-text-secondary);margin-top:2px}
+.progress-bar{height:4px;background:var(--color-border-tertiary);border-radius:2px;overflow:hidden;margin-bottom:16px}
+.progress-fill{height:100%;border-radius:2px;transition:width .3s}
+.overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+.metric-card{background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:12px 14px}
+.metric-val{font-size:22px;font-weight:500;color:var(--color-text-primary)}
+.metric-lbl{font-size:12px;color:var(--color-text-secondary);margin-top:2px}
+.flow-diagram{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:12px;margin-top:8px}
+.flow-col{display:flex;flex-direction:column;gap:6px;align-items:center}
+.flow-box{font-size:11px;padding:5px 10px;border-radius:6px;border:0.5px solid var(--color-border-secondary);text-align:center;width:100%;color:var(--color-text-secondary)}
+.alloc-state{font-size:10px;padding:2px 6px;border-radius:10px;border:0.5px solid var(--color-border-secondary);color:var(--color-text-tertiary);font-family:var(--font-mono)}
+.governance-box{margin-bottom:12px;padding:10px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.governance-links{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.governance-link{font-size:11px;padding:4px 9px;border-radius:999px;border:0.5px solid var(--color-border-secondary);text-decoration:none;color:var(--color-text-secondary);background:var(--color-background-primary)}
+.exec-toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.exec-label{font-size:11px;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.05em}
+.exec-select{font-size:12px;padding:5px 8px;border-radius:8px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-primary)}
+.exec-toggle{font-size:12px;padding:5px 9px;border-radius:999px;border:0.5px solid var(--color-border-secondary);background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer}
+.exec-toggle.active{border-color:var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info)}
+.exec-empty{font-size:12px;padding:10px 12px;border-radius:var(--border-radius-md);border:0.5px dashed var(--color-border-tertiary);color:var(--color-text-tertiary);background:var(--color-background-secondary)}
+.exec-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.exec-summary-card{padding:10px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.exec-summary-value{font-size:18px;font-weight:600;color:var(--color-text-primary)}
+.exec-summary-label{font-size:11px;color:var(--color-text-tertiary);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+.trend-card{margin-bottom:10px;padding:12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-tertiary);background:var(--color-background-secondary)}
+.trend-title{font-size:12px;font-weight:600;color:var(--color-text-primary);margin-bottom:8px}
+.trend-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.trend-kpi{padding:8px 10px;border-radius:8px;border:0.5px solid var(--color-border-tertiary);background:var(--color-background-primary)}
+.trend-kpi-value{font-size:16px;font-weight:600;color:var(--color-text-primary)}
+.trend-kpi-label{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+.trend-up{color:var(--color-text-success)}
+.trend-down{color:var(--color-text-danger)}
+.trend-neutral{color:var(--color-text-secondary)}
+</style>
+
+<h2 class="sr-only">Sprint plan para alocação de produtos por parceiro no ELLAN LAB — 6 sprints cobrindo gaps de seed data, catálogo de produtos, engine de alocação de slots, gestão de inventário, pickup/release, notificações e settlement.</h2>
+
+<div class="board">
+  <div class="tabs" id="tabs"></div>
+  <div id="content"></div>
+</div>
+
+<script>
+const sprints = [
+  {
+    id: 0,
+    label: 'Overview',
+    title: 'Visão geral do projeto',
+    duration: '',
+    desc: 'Diagnóstico dos gaps e mapa de implementação para atingir nível Amazon/InPost.',
+    type: 'overview'
+  },
+  {
+    id: 1,
+    label: 'Sprint 0',
+    title: 'Fundação & Seed Data',
+    duration: '1 semana',
+    desc: 'O schema está completo mas vazio. Nenhum locker tem slots definidos, nenhum parceiro está vinculado a nenhum locker. Sem isso, zero alocação é possível.',
+    tasks: [
+      {
+        title: 'Definir e seedar locker_slot_configs para os 13 lockers',
+        sub: 'Cada locker tem 24 slots — distribuir XS(6), S(8), M(6), L(4). Lockers refrigerados recebem slots menores para cold pack.',
+        type: 'SEED',
+        badge: 'b-red',
+        priority: 'BLOQUEADOR',
+        tables: ['locker_slot_configs','locker_slots'],
+        detail: {
+          desc: 'Os 13 lockers existentes têm slots_count=24 mas nenhum slot físico registrado. Sem locker_slot_configs não há tamanho disponível para o algoritmo de alocação.',
+          code: `-- Seed locker_slot_configs (exemplo para SP-OSASCO-CENTRO-LK-001)
+INSERT INTO locker_slot_configs 
+  (locker_id, slot_size, slot_count, width_mm, height_mm, depth_mm, max_weight_g)
+VALUES
+  ('SP-OSASCO-CENTRO-LK-001', 'XS', 6, 150, 200, 150, 2000),
+  ('SP-OSASCO-CENTRO-LK-001', 'S',  8, 250, 300, 200, 5000),
+  ('SP-OSASCO-CENTRO-LK-001', 'M',  6, 350, 400, 300, 10000),
+  ('SP-OSASCO-CENTRO-LK-001', 'L',  4, 450, 500, 400, 20000);
+
+-- Depois materializar os slots físicos em locker_slots
+INSERT INTO locker_slots (id, locker_id, slot_label, slot_size, status)
+SELECT gen_random_uuid(), locker_id,
+  slot_size || '-' || gs AS slot_label,
+  slot_size, 'AVAILABLE'
+FROM locker_slot_configs, generate_series(1, slot_count) gs
+WHERE locker_id = 'SP-OSASCO-CENTRO-LK-001';`,
+          flow: ['locker_slot_configs', '→', 'locker_slots (AVAILABLE x N)']
+        }
+      },
+      {
+        title: 'Seedar ecommerce_partners e logistics_partners',
+        sub: 'OP-ELLAN-001 e OP-PHARMA-001 referenciam operators mas não existem como ecommerce_partners. Criar registros base com tier, revenue_share, SLA.',
+        type: 'SEED',
+        badge: 'b-red',
+        priority: 'BLOQUEADOR',
+        tables: ['ecommerce_partners','logistics_partners','partner_sla_agreements'],
+        detail: {
+          desc: 'Os lockers referem operator_id = "OP-ELLAN-001" mas não há registro em nenhuma tabela de parceiros. Todos os flows de partner_service_areas dependem disso.',
+          code: `INSERT INTO ecommerce_partners
+  (id, name, code, integration_type, revenue_share_pct, country, tier, status)
+VALUES
+  ('OP-ELLAN-001', 'Ellan Operações', 'ELLAN', 'DIRECT', 0.15, 'BR', 'PREMIUM', 'ACTIVE'),
+  ('OP-PHARMA-001', 'Rede Farmácias', 'PHARMA', 'WEBHOOK', 0.12, 'PT', 'STANDARD', 'ACTIVE');
+
+-- SLA default por parceiro
+INSERT INTO partner_sla_agreements
+  (id, partner_id, partner_type, country, sla_pickup_hours, sla_return_hours, valid_from, is_active)
+VALUES
+  (gen_random_uuid(), 'OP-ELLAN-001', 'ECOMMERCE', 'BR', 72, 24, CURRENT_DATE, true),
+  (gen_random_uuid(), 'OP-PHARMA-001', 'ECOMMERCE', 'PT', 48, 24, CURRENT_DATE, true);`,
+          flow: ['ecommerce_partners', '→', 'partner_sla_agreements', '→', 'partner_service_areas']
+        }
+      },
+      {
+        title: 'Seedar partner_service_areas (parceiro ↔ locker)',
+        sub: 'Define quais parceiros atendem quais lockers, com prioridade e exclusividade. É o "roteador" de onde produtos de cada parceiro podem aparecer.',
+        type: 'SEED',
+        badge: 'b-red',
+        priority: 'BLOQUEADOR',
+        tables: ['partner_service_areas'],
+        detail: {
+          desc: 'Sem partner_service_areas o sistema não sabe para qual locker um parceiro pode enviar produtos. É o mapeamento central da alocação geográfica.',
+          code: `-- ELLAN serve todos os lockers BR com prioridade 100
+INSERT INTO partner_service_areas
+  (id, partner_id, partner_type, locker_id, priority, exclusive, valid_from, is_active)
+SELECT gen_random_uuid(), 'OP-ELLAN-001', 'ECOMMERCE', id, 100, false, CURRENT_DATE, true
+FROM lockers WHERE country = 'BR' AND active = true;
+
+-- PHARMA serve apenas o locker de Lisboa (exclusivo)
+INSERT INTO partner_service_areas
+  (id, partner_id, partner_type, locker_id, priority, exclusive, valid_from, is_active)
+VALUES
+  (gen_random_uuid(), 'OP-PHARMA-001', 'ECOMMERCE',
+   'PT-LISBOA-PHARMA-LK-001', 200, true, CURRENT_DATE, true);`,
+          flow: ['ecommerce_partners', '→', 'partner_service_areas', '→', 'lockers']
+        }
+      },
+      {
+        title: 'Seedar product_locker_configs por categoria e locker',
+        sub: 'Define o que pode entrar em cada locker: medicamentos só em lockers com security_level ENHANCED, refrigerados só em lockers REFRIGERATED.',
+        type: 'SEED',
+        badge: 'b-amber',
+        priority: 'ALTO',
+        tables: ['product_locker_configs'],
+        detail: {
+          desc: 'O algoritmo de elegibilidade de produto usa product_locker_configs. Sem isso qualquer produto seria aceito em qualquer locker — violando temperatura e segurança.',
+          code: `-- Lockers AMBIENT aceitam categorias gerais
+INSERT INTO product_locker_configs
+  (locker_id, category, allowed, temperature_zone, max_weight_g)
+SELECT id, 'ELETRONICOS', true, 'AMBIENT', 5000 FROM lockers
+WHERE temperature_zone = 'AMBIENT' AND active = true;
+
+-- Locker refrigerado: somente alimentos/farmácia fria
+INSERT INTO product_locker_configs
+  (locker_id, category, allowed, temperature_zone, max_weight_g)
+VALUES
+  ('SP-VILAOLIMPIA-FOOD-LK-001', 'ALIMENTOS', true, 'REFRIGERATED', 3000),
+  ('SP-VILAOLIMPIA-FOOD-LK-001', 'COSMETICOS', false, 'REFRIGERATED', 0);
+
+-- Locker ENHANCED security: farmácia e alto valor
+INSERT INTO product_locker_configs
+  (locker_id, category, allowed, temperature_zone, requires_id_check)
+VALUES
+  ('PT-LISBOA-PHARMA-LK-001', 'MEDICAMENTOS', true, 'AMBIENT', true),
+  ('PT-LISBOA-PHARMA-LK-001', 'FARMACIA_GERAL', true, 'AMBIENT', false);`,
+          flow: ['product_categories', '→', 'product_locker_configs', '→', 'slot allocation engine']
+        }
+      }
+    ]
+  },
+  {
+    id: 2,
+    label: 'Sprint 1',
+    title: 'Catálogo de Produtos por Parceiro',
+    duration: '2 semanas',
+    desc: 'API para parceiros registrarem seus produtos com dimensões e metadados. O sistema valida se o produto é elegível para lockers do parceiro antes de ativar.',
+    tasks: [
+      {
+        title: 'POST /v1/partner/products — registro de produto',
+        sub: 'Parceiro envia SKU, dimensões (mm), peso, categoria, temperatura. Sistema valida contra product_locker_configs antes de salvar como DRAFT.',
+        type: 'API',
+        badge: 'b-blue',
+        priority: 'ALTO',
+        tables: ['products','product_categories','product_status_history'],
+        detail: {
+          desc: 'Produto começa em status=DRAFT. Só é ativado após validação editorial e elegibilidade dimensional contra pelo menos um locker do parceiro.',
+          code: `POST /v1/partner/{partner_id}/products
+{
+  "id": "SKU-ELLAN-CAFE-001",
+  "name": "Café Torrado Premium 250g",
+  "category_id": "ALIMENTOS",
+  "amount_cents": 2490,
+  "currency": "BRL",
+  "width_mm": 120, "height_mm": 180, "depth_mm": 60,
+  "weight_g": 280,
+  "is_fragile": false, "is_hazardous": false
+}
+
+-- Engine valida: produto cabe em algum slot do parceiro?
+SELECT lsc.slot_size FROM locker_slot_configs lsc
+JOIN partner_service_areas psa ON psa.locker_id = lsc.locker_id
+WHERE psa.partner_id = :partner_id
+  AND lsc.width_mm >= :width AND lsc.height_mm >= :height
+  AND lsc.depth_mm >= :depth AND lsc.max_weight_g >= :weight_g
+LIMIT 1;  -- se vazio → rejeitar`,
+          flow: ['POST product', '→', 'products (DRAFT)', '→', 'validate dimensions', '→', 'product_status_history']
+        }
+      },
+      {
+        title: 'POST /v1/partner/products/{id}/barcodes',
+        sub: 'Registro de EAN13, GTIN14, QR por SKU. Permite scan no kiosk e validação no inbound (carrier_payload_json). Suporta múltiplos barcodes por SKU.',
+        type: 'API',
+        badge: 'b-blue',
+        priority: 'MÉDIO',
+        tables: ['product_barcodes'],
+        detail: {
+          desc: 'Necessário para scan físico no locker kiosk e para matching com inbound_deliveries.barcode enviado pela transportadora.',
+          code: `POST /v1/partner/products/{sku_id}/barcodes
+[
+  {"barcode_type": "EAN13", "barcode_value": "7896039081014", "is_primary": true},
+  {"barcode_type": "QR",    "barcode_value": "https://ellan.io/p/SKU-001", "is_primary": false}
+]`,
+          flow: ['product_barcodes', '→', 'inbound matching', '→', 'kiosk scan']
+        }
+      },
+      {
+        title: 'GET /v1/partner/lockers/{id}/eligible-products',
+        sub: 'Retorna quais SKUs do parceiro são elegíveis para um locker específico, com slot_size sugerido para cada um. Base para a UI de reabastecimento.',
+        type: 'API',
+        badge: 'b-blue',
+        priority: 'MÉDIO',
+        tables: ['products','product_locker_configs','locker_slot_configs'],
+        detail: {
+          desc: 'Cruza dimensões do produto com slots disponíveis do locker e regras de categoria. Retorna slot_size recomendado para cada SKU.',
+          code: `GET /v1/partner/lockers/SP-OSASCO-CENTRO-LK-001/eligible-products?partner_id=OP-ELLAN-001
+
+-- Query
+SELECT p.id, p.name, lsc.slot_size AS recommended_slot_size
+FROM products p
+JOIN product_locker_configs plc ON plc.category = p.category_id
+  AND plc.locker_id = :locker_id AND plc.allowed = true
+JOIN locker_slot_configs lsc ON lsc.locker_id = :locker_id
+  AND lsc.width_mm  >= p.width_mm
+  AND lsc.height_mm >= p.height_mm
+  AND lsc.depth_mm  >= p.depth_mm
+  AND lsc.max_weight_g >= p.weight_g
+WHERE p.status = 'ACTIVE'
+ORDER BY lsc.slot_size ASC;`,
+          flow: ['products', '→', 'product_locker_configs', '→', 'locker_slot_configs', '→', 'elegíveis']
+        }
+      },
+      {
+        title: 'PATCH /v1/admin/products/{id}/status + fiscal config',
+        sub: 'Admin aprova produto (DRAFT→ACTIVE) e preenche product_fiscal_config com NCM, CST, CFOP. Obrigatório para emissão de NF no Brasil.',
+        type: 'ADMIN',
+        badge: 'b-gray',
+        priority: 'MÉDIO',
+        tables: ['products','product_status_history','product_fiscal_config'],
+        detail: {
+          desc: 'Separar aprovação de produto (compliance editorial) de configuração fiscal (requisito legal BR/PT). Ambos bloqueiam produto de entrar em produção.',
+          code: `PATCH /v1/admin/products/{sku_id}/status
+{ "status": "ACTIVE", "reason": "Revisão aprovada" }
+
+-- Fiscal obrigatório para BR
+INSERT INTO product_fiscal_config
+  (sku_id, ncm_code, icms_cst, pis_cst, cofins_cst, cfop, is_active)
+VALUES
+  ('SKU-ELLAN-CAFE-001', '09011100', '060', '01', '01', '5102', true);`,
+          flow: ['DRAFT', '→', 'admin review', '→', 'ACTIVE', '→', 'product_fiscal_config']
+        }
+      }
+    ]
+  },
+  {
+    id: 3,
+    label: 'Sprint 2',
+    title: 'Engine de Alocação de Slots',
+    duration: '2 semanas',
+    desc: 'O coração do sistema. Quando um parceiro envia um produto/pacote, qual slot físico recebe? Dois flows: Retail (estoque pré-carregado) e PUDO (entrega de carrier).',
+    tasks: [
+      {
+        title: 'Algoritmo de seleção de slot (slot picker)',
+        sub: 'Dado produto + locker → encontrar melhor slot AVAILABLE. Critérios: size fit → temperatura → segurança → menor tempo ocupado anteriormente.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'CRÍTICO',
+        tables: ['locker_slots','locker_slot_configs','product_locker_configs'],
+        detail: {
+          desc: 'SELECT com ranking multi-critério. Deve ser atômico (SELECT FOR UPDATE SKIP LOCKED) para evitar dupla alocação em picos de carga — requisito Amazon-grade.',
+          code: `-- Slot picker atômico (SELECT FOR UPDATE SKIP LOCKED)
+WITH best_slot AS (
+  SELECT ls.id, ls.slot_size
+  FROM locker_slots ls
+  JOIN locker_slot_configs lsc
+    ON lsc.locker_id = ls.locker_id AND lsc.slot_size = ls.slot_size
+  JOIN product_locker_configs plc
+    ON plc.locker_id = ls.locker_id
+  WHERE ls.locker_id    = :locker_id
+    AND ls.status       = 'AVAILABLE'
+    AND lsc.width_mm   >= :product_width_mm
+    AND lsc.height_mm  >= :product_height_mm
+    AND lsc.depth_mm   >= :product_depth_mm
+    AND lsc.max_weight_g >= :product_weight_g
+    AND plc.category   = :product_category
+    AND plc.allowed    = true
+  ORDER BY
+    lsc.slot_size ASC,       -- menor slot que cabe (evita desperdício)
+    ls.last_opened_at ASC NULLS FIRST  -- slot menos usado primeiro
+  LIMIT 1
+  FOR UPDATE SKIP LOCKED     -- concurrency safe
+)
+UPDATE locker_slots
+SET status = 'OCCUPIED', occupied_since = now()
+FROM best_slot WHERE locker_slots.id = best_slot.id
+RETURNING locker_slots.id, locker_slots.slot_label, locker_slots.slot_size;`,
+          flow: ['locker_slots', '→', 'SELECT FOR UPDATE', '→', 'OCCUPIED', '→', 'allocations']
+        }
+      },
+      {
+        title: 'Flow A — Restock (produto pré-carregado)',
+        sub: 'Operador carrega locker fisicamente → API cria product_inventory + inventory_movement RESTOCK. Produto disponível para compra imediata no kiosk/app.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'ALTO',
+        tables: ['product_inventory','inventory_movements','locker_slots'],
+        detail: {
+          desc: 'Flow de vending: produto está no locker antes da venda. Slot só é alocado no momento do pagamento, não no restock.',
+          code: `-- 1. Operador confirma carga física
+POST /v1/admin/lockers/{locker_id}/restock
+{ "items": [{ "product_id": "SKU-ELLAN-CAFE-001", "slot_size": "S", "quantity": 3 }] }
+
+-- 2. Upsert product_inventory
+INSERT INTO product_inventory
+  (id, product_id, locker_id, slot_size, quantity_on_hand, reorder_point, reorder_quantity)
+VALUES (:uuid, :sku, :locker_id, 'S', 3, 1, 3)
+ON CONFLICT (product_id, locker_id, slot_size)
+DO UPDATE SET quantity_on_hand = product_inventory.quantity_on_hand + EXCLUDED.quantity_on_hand,
+              updated_at = now();
+
+-- 3. Registra movimento
+INSERT INTO inventory_movements
+  (id, product_id, locker_id, movement_type, quantity_delta, reference_type, occurred_at)
+VALUES (:uuid, :sku, :locker_id, 'RESTOCK', 3, 'MANUAL_RESTOCK', now());`,
+          flow: ['restock API', '→', 'product_inventory ++', '→', 'RESTOCK movement', '→', 'produto visível']
+        }
+      },
+      {
+        title: 'Flow B — PUDO Inbound (carrier entrega pacote)',
+        sub: 'Carrier notifica entrega → sistema aloca slot físico → cria inbound_delivery → gera pickup_token → notifica destinatário. Como InPost/Lockers Americanas.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'ALTO',
+        tables: ['inbound_deliveries','locker_slots','allocations'],
+        detail: {
+          desc: 'Flow PUDO: pacote chega sem compra prévia. Slot é reservado no inbound, não na venda. Carrier pode informar dimensões para slot picker otimizar.',
+          code: `-- Carrier webhook: pacote chegou ao locker
+POST /v1/inbound/deliveries
+{
+  "logistics_partner_id": "CORREIOS-001",
+  "locker_id": "SP-OSASCO-CENTRO-LK-001",
+  "tracking_code": "BR123456789BR",
+  "recipient_email": "cliente@email.com",
+  "weight_g": 850, "width_mm": 200, "height_mm": 150, "depth_mm": 100,
+  "declared_value_cents": 15000
+}
+
+-- Sistema executa slot picker → aloca → cria inbound_delivery
+INSERT INTO inbound_deliveries
+  (id, logistics_partner_id, locker_id, slot_label, tracking_code,
+   recipient_email, weight_g, status, pickup_deadline_at)
+VALUES
+  (:uuid, :partner_id, :locker_id, :chosen_slot_label, :tracking_code,
+   :email, :weight_g, 'STORED', now() + INTERVAL '72 hours');`,
+          flow: ['carrier webhook', '→', 'slot picker', '→', 'inbound_deliveries', '→', 'email destinatário']
+        }
+      },
+      {
+        title: 'Máquina de estados de allocations + locker_slots',
+        sub: 'Implementar todas as transições: RESERVED→PAID→OPENED→PICKED_UP / EXPIRED / RELEASED. Cada transição grava inventory_movements correspondente.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'ALTO',
+        tables: ['allocations','locker_slots','inventory_movements','inventory_reservations'],
+        detail: {
+          desc: 'Estado da allocation deve sempre refletir o estado do locker_slot. Transições devem ser idempotentes para tolerância a retries de webhook.',
+          code: `-- allocationstate transitions:
+-- RESERVED_PENDING_PAYMENT → pagar → RESERVED_PAID_PENDING_PICKUP
+--   → abrir porta → OPENED_FOR_PICKUP
+--   → cliente retirou → PICKED_UP (→ SALE movement, slot=AVAILABLE)
+--   → timeout pré-pag → EXPIRED (→ slot=AVAILABLE)
+--   → timeout pós-pag → EXPIRED (→ EXPIRED movement, 50% crédito)
+--   → operador → RELEASED (→ slot=AVAILABLE)
+
+-- Ao PICKED_UP:
+UPDATE locker_slots SET status='AVAILABLE', occupied_since=NULL
+  WHERE slot_label = :label AND locker_id = :locker_id;
+INSERT INTO inventory_movements VALUES (..., 'SALE', -1, ...);
+UPDATE inventory_reservations SET status='CONSUMED' WHERE order_id = :order_id;`,
+          flow: ['RESERVED', '→', 'PAID', '→', 'OPENED', '→', 'PICKED_UP', '→', 'RELEASED']
+        }
+      }
+    ]
+  },
+  {
+    id: 4,
+    label: 'Sprint 3',
+    title: 'Gestão de Inventário',
+    duration: '2 semanas',
+    desc: 'Com produtos no locker, o sistema precisa rastrear estoque em tempo real, alertar sobre baixo estoque e permitir ajustes pelo operador.',
+    tasks: [
+      {
+        title: 'GET /v1/partner/lockers/{id}/inventory — consulta de estoque',
+        sub: 'Retorna quantity_on_hand, quantity_reserved, quantity_available por SKU por slot_size. Quantidade disponível é campo computed no schema.',
+        type: 'API',
+        badge: 'b-blue',
+        priority: 'ALTO',
+        tables: ['product_inventory','inventory_reservations'],
+        detail: {
+          desc: 'product_inventory.quantity_available é GENERATED ALWAYS AS (quantity_on_hand - quantity_reserved) STORED — já computado pelo banco.',
+          code: `GET /v1/partner/lockers/SP-OSASCO-CENTRO-LK-001/inventory
+
+-- Response:
+[
+  {
+    "product_id": "SKU-ELLAN-CAFE-001",
+    "slot_size": "S",
+    "quantity_on_hand": 3,
+    "quantity_reserved": 1,
+    "quantity_available": 2,    -- campo computed do schema
+    "reorder_point": 1,
+    "reorder_quantity": 3
+  }
+]`,
+          flow: ['product_inventory', '→', 'quantity_available (computed)', '→', 'partner dashboard']
+        }
+      },
+      {
+        title: 'Reserva atômica no momento da venda',
+        sub: 'Ao criar pedido: quantity_reserved++ + cria inventory_reservation com expires_at. Se pagamento falhar, reservation expira e estoque volta ao pool.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'CRÍTICO',
+        tables: ['inventory_reservations','product_inventory'],
+        detail: {
+          desc: 'Previne oversell. A reserva tem TTL (expires_at) e é consumida no pickup ou liberada no cancelamento/expiração.',
+          code: `-- Ao criar pedido (dentro de transação)
+INSERT INTO inventory_reservations
+  (id, order_id, product_id, locker_id, slot_size, quantity, expires_at, status)
+VALUES
+  (:uuid, :order_id, :sku_id, :locker_id, :slot_size, 1,
+   now() + INTERVAL '15 minutes', 'ACTIVE');
+
+UPDATE product_inventory
+SET quantity_reserved = quantity_reserved + 1, updated_at = now()
+WHERE product_id = :sku_id AND locker_id = :locker_id AND slot_size = :slot_size
+  AND quantity_available >= 1;  -- atomic check
+
+-- Job de expiração (a cada minuto)
+UPDATE inventory_reservations SET status = 'EXPIRED'
+WHERE status = 'ACTIVE' AND expires_at < now();`,
+          flow: ['order created', '→', 'inventory_reservations (ACTIVE)', '→', 'quantity_reserved++']
+        }
+      },
+      {
+        title: 'Alertas de baixo estoque + webhook ao parceiro',
+        sub: 'Quando quantity_available < reorder_point, dispara webhook ao parceiro para reabastecimento. Grava em partner_order_events_outbox para entrega garantida.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'MÉDIO',
+        tables: ['product_inventory','partner_order_events_outbox','partner_webhook_endpoints'],
+        detail: {
+          desc: 'Padrão outbox pattern: evento entra na fila e um worker entrega ao endpoint do parceiro com retry exponencial — exatamente como partner_order_events_outbox já modela.',
+          code: `-- Trigger após cada SALE movement
+-- Verificar se abaixo de reorder_point
+SELECT pi.*, p.name FROM product_inventory pi
+JOIN products p ON p.id = pi.product_id
+WHERE pi.locker_id = :locker_id
+  AND pi.quantity_available <= pi.reorder_point
+  AND pi.reorder_point > 0;
+
+-- Se sim → enfileirar evento de restock_needed
+INSERT INTO partner_order_events_outbox
+  (id, partner_id, order_id, event_type, payload_json, status, max_attempts)
+VALUES
+  (:uuid, :partner_id, :locker_id, 'RESTOCK_NEEDED',
+   '{"product_id":"SKU-001","qty_available":0,"reorder_qty":3}'::jsonb,
+   'PENDING', 5);`,
+          flow: ['SALE movement', '→', 'check reorder_point', '→', 'outbox event', '→', 'partner webhook']
+        }
+      },
+      {
+        title: 'GET /v1/admin/inventory/heatmap — mapa de ocupação',
+        sub: 'Agrega ocupação de slots por locker (% ocupado, % disponível, alertas vermelhos). Usa runtime_lockers + product_inventory. Base do painel operacional.',
+        type: 'ADMIN',
+        badge: 'b-gray',
+        priority: 'MÉDIO',
+        tables: ['runtime_locker_slots','product_inventory','locker_slots'],
+        detail: {
+          desc: 'Cruzar locker_slots (estado físico real-time) com product_inventory (estoque lógico). Divergências entre os dois indicam inconsistência e devem gerar alerta.',
+          code: `SELECT
+  l.id, l.display_name,
+  COUNT(ls.id) FILTER (WHERE ls.status = 'AVAILABLE')  AS slots_available,
+  COUNT(ls.id) FILTER (WHERE ls.status = 'OCCUPIED')   AS slots_occupied,
+  COUNT(ls.id) FILTER (WHERE ls.status = 'MAINTENANCE') AS slots_maint,
+  ROUND(COUNT(ls.id) FILTER (WHERE ls.status='OCCUPIED')::numeric
+    / NULLIF(COUNT(ls.id),0) * 100, 1) AS occupancy_pct
+FROM lockers l
+LEFT JOIN locker_slots ls ON ls.locker_id = l.id
+GROUP BY l.id, l.display_name
+ORDER BY occupancy_pct DESC;`,
+          flow: ['locker_slots', '→', 'aggregate por locker', '→', 'heatmap dashboard']
+        }
+      }
+    ]
+  },
+  {
+    id: 5,
+    label: 'Sprint 4',
+    title: 'Pickup, Release & Expiração',
+    duration: '1 semana',
+    desc: 'O loop se fecha aqui: cliente retira, slot volta ao pool. Jobs de expiração liberam slots automaticamente conforme os SLAs configurados.',
+    tasks: [
+      {
+        title: 'POST /v1/pickup/redeem — validação de código e abertura',
+        sub: 'Cliente insere pickup code (6 dígitos) → sistema valida allocation/inbound_delivery → abre slot → grava phase OPENED_FOR_PICKUP.',
+        type: 'API',
+        badge: 'b-blue',
+        priority: 'CRÍTICO',
+        tables: ['allocations','inbound_deliveries','locker_slots'],
+        detail: {
+          desc: 'pickup_code_length=6 e pickup_reuse_policy=NO_REUSE já configurados nos lockers. Implementar via pickup_tokens com hash e TTL.',
+          code: `POST /v1/pickup/redeem
+{ "locker_id": "SP-OSASCO-CENTRO-LK-001", "pickup_code": "439821" }
+
+-- 1. Validar código → achar allocation / inbound_delivery
+-- 2. Verificar estado (RESERVED_PAID_PENDING_PICKUP ou STORED)
+-- 3. Enviar comando ao hardware para abrir slot
+-- 4. Atualizar estados
+UPDATE allocations SET state = 'OPENED_FOR_PICKUP' WHERE id = :alloc_id;
+UPDATE locker_slots SET last_opened_at = now() WHERE id = :slot_id;`,
+          flow: ['pickup_code', '→', 'allocation lookup', '→', 'hardware open', '→', 'OPENED_FOR_PICKUP']
+        }
+      },
+      {
+        title: 'Confirmação de pickup (sensor/door-close event)',
+        sub: 'Após porta fechada, confirmar PICKED_UP: liberar slot, gravar SALE em inventory_movements, consumir reservation, disparar evento ao parceiro.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'CRÍTICO',
+        tables: ['allocations','locker_slots','inventory_movements','inventory_reservations','partner_order_events_outbox'],
+        detail: {
+          desc: 'Transição crítica. Deve ser idempotente — door-close pode ser recebido duplicado. Usar picked_up_at IS NULL como guard.',
+          code: `-- Door closed event (hardware → webhook interno)
+BEGIN;
+UPDATE allocations SET state='PICKED_UP', released_at=now()
+  WHERE id=:alloc_id AND state='OPENED_FOR_PICKUP' AND released_at IS NULL;
+
+UPDATE locker_slots SET status='AVAILABLE', occupied_since=NULL,
+  current_allocation_id=NULL, last_closed_at=now()
+WHERE id=:slot_id;
+
+INSERT INTO inventory_movements
+  (..., 'SALE', -1, 'ORDER', :order_id, now());
+
+UPDATE inventory_reservations SET status='CONSUMED'
+WHERE order_id=:order_id AND status='ACTIVE';
+
+-- Notificar parceiro
+INSERT INTO partner_order_events_outbox
+  (..., 'ORDER_PICKED_UP', ..., 'PENDING');
+COMMIT;`,
+          flow: ['door_close event', '→', 'PICKED_UP', '→', 'slot AVAILABLE', '→', 'SALE movement', '→', 'partner event']
+        }
+      },
+      {
+        title: 'Job de expiração automática (cron)',
+        sub: 'Parcela pré-pago não pago expira em TTL. Parcela pós-pago não retirado expira em pickup_deadline_at. Slot liberado, inventário ajustado, crédito de 50% emitido.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'ALTO',
+        tables: ['allocations','locker_slots','inventory_movements','orders'],
+        detail: {
+          desc: 'orderstatus.EXPIRED_CREDIT_50 sugere que parcela paga não retirada gera crédito parcial. Implementar dois jobs diferentes: pre-payment vs post-payment expiry.',
+          code: `-- Job PREPAYMENT_TIMEOUT (a cada 5 min)
+UPDATE allocations SET state='EXPIRED', release_reason='PREPAYMENT_TIMEOUT', released_at=now()
+WHERE state='RESERVED_PENDING_PAYMENT'
+  AND locked_until < now();
+-- → liberar slot, RESERVATION_RELEASE movement
+
+-- Job POSTPAYMENT_EXPIRY (a cada 15 min)
+UPDATE inbound_deliveries SET status='EXPIRED', returned_at=now()
+WHERE status='STORED' AND pickup_deadline_at < now();
+-- → liberar slot, EXPIRED movement, parceiro notificado
+-- → criar return_request se necessário`,
+          flow: ['cron', '→', 'check deadlines', '→', 'EXPIRED', '→', 'slot released', '→', 'partner notified']
+        }
+      }
+    ]
+  },
+  {
+    id: 6,
+    label: 'Sprint 5',
+    title: 'Notificações & Settlement',
+    duration: '2 semanas',
+    desc: 'Fechar o ciclo financeiro e operacional com parceiros: webhooks confiáveis com retry, relatórios de SLA e fechamento de settlement mensal.',
+    tasks: [
+      {
+        title: 'Worker do partner_order_events_outbox (outbox pattern)',
+        sub: 'Worker processa eventos PENDING, entrega ao webhook do parceiro, registra resultado. Retry exponencial até max_attempts. DEAD_LETTER após falha total.',
+        type: 'INFRA',
+        badge: 'b-gray',
+        priority: 'ALTO',
+        tables: ['partner_order_events_outbox','partner_webhook_endpoints','partner_webhook_deliveries'],
+        detail: {
+          desc: 'O schema já tem as tabelas e status corretos. Implementar worker como job periódico (30s) com SELECT FOR UPDATE SKIP LOCKED para paralelismo seguro.',
+          code: `-- Worker loop (a cada 30s)
+SELECT * FROM partner_order_events_outbox
+WHERE status = 'PENDING'
+  AND (next_retry_at IS NULL OR next_retry_at <= now())
+  AND attempt_count < max_attempts
+ORDER BY created_at
+LIMIT 20
+FOR UPDATE SKIP LOCKED;
+
+-- Para cada evento:
+-- 1. POST ao partner_webhook_endpoints.url com HMAC signature
+-- 2. Se 2xx → status='DELIVERED', delivered_at=now()
+-- 3. Se erro → attempt_count++, next_retry_at = now() + 2^attempt * 60s
+-- 4. Se attempt_count >= max_attempts → status='DEAD_LETTER'
+
+-- Registrar em partner_webhook_deliveries
+INSERT INTO partner_webhook_deliveries
+  (..., :endpoint_id, :event_id, :event_type, :payload, :http_status, 'DELIVERED', now());`,
+          flow: ['outbox PENDING', '→', 'HTTP POST', '→', 'DELIVERED / retry', '→', 'partner_webhook_deliveries']
+        }
+      },
+      {
+        title: 'Detecção e gravação de SLA breach',
+        sub: 'Comparar pickup_deadline_at de inbound_deliveries vs picked_up_at. Se ultrapassou → sla_breach_events. Notificar parceiro + calcular penalty_pct.',
+        type: 'ENGINE',
+        badge: 'b-amber',
+        priority: 'MÉDIO',
+        tables: ['sla_breach_events','partner_sla_agreements','inbound_deliveries'],
+        detail: {
+          desc: 'A tabela sla_breach_events já existe. Implementar job que roda após expiração para detectar brechs e calcular impacto financeiro conforme partner_sla_agreements.',
+          code: `-- Detectar SLA breaches
+INSERT INTO sla_breach_events
+  (id, delivery_id, logistics_partner_id, breach_type, deadline_at, actual_at, delay_hours)
+SELECT
+  gen_random_uuid(), id, logistics_partner_id,
+  'PICKUP_TIMEOUT',
+  pickup_deadline_at,
+  COALESCE(picked_up_at, now()),
+  EXTRACT(EPOCH FROM (COALESCE(picked_up_at, now()) - pickup_deadline_at))/3600
+FROM inbound_deliveries
+WHERE status IN ('EXPIRED', 'RETURNED')
+  AND pickup_deadline_at < COALESCE(picked_up_at, returned_at)
+  AND id NOT IN (SELECT delivery_id FROM sla_breach_events);`,
+          flow: ['inbound_deliveries (EXPIRED)', '→', 'sla_breach_events', '→', 'penalty calculation']
+        }
+      },
+      {
+        title: 'Geração de partner_settlement_batches mensal',
+        sub: 'Fechar mês: somar GMV por parceiro, aplicar revenue_share_pct, calcular net_amount. Gerar partner_settlement_items por pedido. Status DRAFT → APPROVED → PAID.',
+        type: 'FINANCE',
+        badge: 'b-green',
+        priority: 'MÉDIO',
+        tables: ['partner_settlement_batches','partner_settlement_items','orders'],
+        detail: {
+          desc: 'O schema já tem todas as colunas necessárias incluindo gross_revenue_cents, revenue_share_pct e net_amount_cents. Implementar job de fechamento mensal.',
+          code: `-- Gerar batch mensal por parceiro
+INSERT INTO partner_settlement_batches
+  (id, partner_id, period_start, period_end, currency,
+   total_orders, gross_revenue_cents, revenue_share_pct,
+   revenue_share_cents, net_amount_cents, status)
+SELECT
+  gen_random_uuid(), ep.id,
+  date_trunc('month', :period)::date,
+  (date_trunc('month', :period) + INTERVAL '1 month - 1 day')::date,
+  'BRL',
+  COUNT(o.id),
+  SUM(o.amount_cents),
+  ep.revenue_share_pct,
+  SUM(o.amount_cents) * ep.revenue_share_pct / 100,
+  SUM(o.amount_cents) - SUM(o.amount_cents) * ep.revenue_share_pct / 100,
+  'DRAFT'
+FROM orders o
+JOIN ecommerce_partners ep ON ep.id = o.ecommerce_partner_id
+WHERE o.status = 'PICKED_UP'
+  AND date_trunc('month', o.paid_at) = date_trunc('month', :period)
+GROUP BY ep.id, ep.revenue_share_pct;`,
+          flow: ['orders (PICKED_UP)', '→', 'settlement_batch (DRAFT)', '→', 'APPROVED', '→', 'PAID']
+        }
+      }
+    ]
+  }
+];
+
+let currentSprint = 0;
+let selectedTask = null;
+let executivePriorityFilter = 'ALL';
+let executiveOnlyHigh = false;
+let pickupCompareData = null;
+
+function renderTabs() {
+  const c = document.getElementById('tabs');
+  c.innerHTML = sprints.map(s => `
+    <button class="tab ${s.id === currentSprint ? 'active' : ''}" onclick="selectSprint(${s.id})">
+      ${s.label}
+    </button>
+  `).join('');
+}
+
+function selectSprint(id) {
+  currentSprint = id;
+  selectedTask = null;
+  renderTabs();
+  renderContent();
+}
+
+function selectTask(idx) {
+  selectedTask = selectedTask === idx ? null : idx;
+  renderContent();
+}
+
+function setExecutivePriorityFilter(next) {
+  executivePriorityFilter = String(next || 'ALL').toUpperCase();
+  selectedTask = null;
+  renderContent();
+}
+
+function toggleExecutiveOnlyHigh() {
+  executiveOnlyHigh = !executiveOnlyHigh;
+  selectedTask = null;
+  renderContent();
+}
+
+function renderContent() {
+  const s = sprints[currentSprint];
+  const c = document.getElementById('content');
+  const governanceBlock = `
+    <div class="governance-box">
+      <div class="section-label" style="margin-top:0">Governanca OPS obrigatoria</div>
+      <div style="font-size:12px;color:var(--color-text-secondary);line-height:1.45">
+        Este board segue padrao ELLAN LAB com foco em UX/CX, WCAG AA e trilha auditavel.
+      </div>
+      <div class="governance-links">
+        <a class="governance-link" href="/ops/auth/policy/versioning">ops/auth/policy/versioning</a>
+        <a class="governance-link" href="/ops/auth/policy">ops/auth/policy</a>
+        <a class="governance-link" href="/ops/updates">ops/updates</a>
+      </div>
+    </div>
+  `;
+  
+  if (s.type === 'overview') {
+    const gaps = [
+      { title: 'locker_slot_configs vazio', desc: '13 lockers, 0 slots físicos definidos. Alocação impossível.' },
+      { title: 'partner_service_areas vazio', desc: 'Nenhum parceiro vinculado a nenhum locker.' },
+      { title: 'product_locker_configs vazio', desc: 'Sem regras de categoria por locker. Qualquer produto entraria em qualquer locker.' },
+      { title: 'Sem ecommerce_partners/logistics_partners', desc: 'OP-ELLAN-001 referenciado nos lockers mas não existe como registro.' },
+    ];
+    c.innerHTML = `
+      ${governanceBlock}
+      <div class="sprint-header"><span class="sprint-title">${s.title}</span></div>
+      <p class="sprint-desc">${s.desc}</p>
+      <div class="overview-grid">
+        <div class="metric-card"><div class="metric-val">13</div><div class="metric-lbl">Lockers ativos</div></div>
+        <div class="metric-card"><div class="metric-val">6</div><div class="metric-lbl">Sprints planejados</div></div>
+        <div class="metric-card"><div class="metric-val">~10 sem</div><div class="metric-lbl">Duração total</div></div>
+        <div class="metric-card"><div class="metric-val">4</div><div class="metric-lbl">Gaps críticos</div></div>
+      </div>
+      <div class="section-label">Gaps críticos identificados no schema</div>
+      ${gaps.map(g => `
+        <div class="gap-box">
+          <div class="gap-title">${g.title}</div>
+          <div class="gap-desc">${g.desc}</div>
+        </div>
+      `).join('')}
+      <div class="section-label">Os dois flows de alocação</div>
+      <div class="flow-diagram">
+        <div class="section-label" style="margin-top:0">Flow A — Retail / Vending</div>
+        <div class="flow-row">
+          <span class="flow-node">Restock API</span><span class="flow-arr">→</span>
+          <span class="flow-node">product_inventory++</span><span class="flow-arr">→</span>
+          <span class="flow-node">Pedido criado</span><span class="flow-arr">→</span>
+          <span class="flow-node">Reserva slot</span><span class="flow-arr">→</span>
+          <span class="flow-node">Pagamento</span><span class="flow-arr">→</span>
+          <span class="flow-node">Pickup</span><span class="flow-arr">→</span>
+          <span class="flow-node">Slot liberado</span>
+        </div>
+        <div class="section-label" style="margin-top:14px">Flow B — PUDO (Carrier entrega pacote)</div>
+        <div class="flow-row">
+          <span class="flow-node">Carrier webhook</span><span class="flow-arr">→</span>
+          <span class="flow-node">Slot picker</span><span class="flow-arr">→</span>
+          <span class="flow-node">inbound_delivery</span><span class="flow-arr">→</span>
+          <span class="flow-node">Notif. destinatário</span><span class="flow-arr">→</span>
+          <span class="flow-node">Pickup code</span><span class="flow-arr">→</span>
+          <span class="flow-node">Slot liberado</span>
+        </div>
+        <div class="section-label" style="margin-top:14px">Estados de alocação (allocationstate)</div>
+        <div class="flow-row" style="flex-wrap:wrap;gap:4px">
+          ${['RESERVED_PENDING_PAYMENT','RESERVED_PAID_PENDING_PICKUP','OPENED_FOR_PICKUP','PICKED_UP','EXPIRED','RELEASED','CANCELLED','MAINTENANCE'].map(s => `<span class="alloc-state">${s}</span>`).join('')}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const tasks = (s.tasks || []).filter((t) => {
+    const priorityText = String(t.priority || '').toUpperCase();
+    const impact = resolveCustomerImpact(t);
+    const risk = resolveOperationalRisk(t);
+    const priorityMatches =
+      executivePriorityFilter === 'ALL' ||
+      priorityText.includes(executivePriorityFilter);
+    const highMatches = !executiveOnlyHigh || impact === 'ALTO' || risk === 'ALTO';
+    return priorityMatches && highMatches;
+  });
+  const totalFiltered = tasks.length;
+  const totalHighImpact = tasks.filter((t) => resolveCustomerImpact(t) === 'ALTO').length;
+  const totalHighRisk = tasks.filter((t) => resolveOperationalRisk(t) === 'ALTO').length;
+  const highImpactPct = totalFiltered > 0 ? Math.round((totalHighImpact / totalFiltered) * 100) : 0;
+  const highRiskPct = totalFiltered > 0 ? Math.round((totalHighRisk / totalFiltered) * 100) : 0;
+  const showTrendCard = Number(s.id) === 6;
+  const taskHtml = tasks.map((t, i) => {
+    const sel = selectedTask === i;
+    const impact = resolveCustomerImpact(t);
+    const risk = resolveOperationalRisk(t);
+    const wcag = resolveWcagConformance(t);
+    return `
+      <div class="task ${sel ? 'selected' : ''}" onclick="selectTask(${i})">
+        <div class="task-left">
+          <div class="task-title">${t.title}</div>
+          <div class="task-sub">${t.sub}</div>
+          <div class="quality-row">
+            <span class="quality-chip ${impact === 'ALTO' ? 'q-impact-high' : ''}">Impacto cliente: ${impact}</span>
+            <span class="quality-chip ${risk === 'ALTO' ? 'q-risk-high' : ''}">Risco operacional: ${risk}</span>
+            <span class="quality-chip q-wcag-aa">WCAG: ${wcag}</span>
+          </div>
+          <div class="tables-used">
+            ${t.tables.map(tb => `<span class="tbl">${tb}</span>`).join('')}
+          </div>
+        </div>
+        <div class="task-right">
+          <span class="badge ${t.badge}">${t.priority}</span>
+          <span class="badge b-gray">${t.type}</span>
+        </div>
+      </div>
+      ${sel ? `<div class="detail-panel show">
+        <div class="section-label" style="margin-top:0">Contexto</div>
+        <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.5;margin-bottom:10px">${t.detail.desc}</p>
+        <div class="section-label">Gates de qualidade</div>
+        <div class="quality-row" style="margin-top:0;margin-bottom:8px">
+          <span class="quality-chip ${impact === 'ALTO' ? 'q-impact-high' : ''}">Impacto no cliente: ${impact}</span>
+          <span class="quality-chip ${risk === 'ALTO' ? 'q-risk-high' : ''}">Risco operacional: ${risk}</span>
+          <span class="quality-chip q-wcag-aa">Conformidade: ${wcag}</span>
+        </div>
+        <div class="section-label">SQL / Exemplo de implementação</div>
+        <div class="code-block">${escHtml(t.detail.code)}</div>
+        <div class="section-label" style="margin-top:10px">Flow de dados</div>
+        <div class="flow-row">
+          ${t.detail.flow.map(f => f === '→' ? `<span class="flow-arr">→</span>` : `<span class="flow-node">${f}</span>`).join('')}
+        </div>
+      </div>` : ''}
+    `;
+  }).join('');
+
+  c.innerHTML = `
+    ${governanceBlock}
+    <div class="exec-toolbar">
+      <span class="exec-label">Modo executivo</span>
+      <select class="exec-select" onchange="setExecutivePriorityFilter(this.value)">
+        <option value="ALL" ${executivePriorityFilter === 'ALL' ? 'selected' : ''}>P0/P1/P2: todos</option>
+        <option value="P0" ${executivePriorityFilter === 'P0' ? 'selected' : ''}>Somente P0</option>
+        <option value="P1" ${executivePriorityFilter === 'P1' ? 'selected' : ''}>Somente P1</option>
+        <option value="P2" ${executivePriorityFilter === 'P2' ? 'selected' : ''}>Somente P2</option>
+      </select>
+      <button class="exec-toggle ${executiveOnlyHigh ? 'active' : ''}" onclick="toggleExecutiveOnlyHigh()">
+        ${executiveOnlyHigh ? 'Impacto/Risco alto: ON' : 'Impacto/Risco alto: OFF'}
+      </button>
+    </div>
+    <div class="exec-summary-grid">
+      <div class="exec-summary-card">
+        <div class="exec-summary-value">${totalFiltered}</div>
+        <div class="exec-summary-label">Total filtrado</div>
+      </div>
+      <div class="exec-summary-card">
+        <div class="exec-summary-value">${highImpactPct}%</div>
+        <div class="exec-summary-label">Alto impacto</div>
+      </div>
+      <div class="exec-summary-card">
+        <div class="exec-summary-value">${highRiskPct}%</div>
+        <div class="exec-summary-label">Alto risco</div>
+      </div>
+    </div>
+    ${showTrendCard ? renderPickupTrendCard() : ''}
+    <div class="sprint-header">
+      <span class="sprint-title">${s.title}</span>
+      <span class="sprint-meta">${s.duration}</span>
+    </div>
+    <p class="sprint-desc">${s.desc}</p>
+    <div class="tasks">${taskHtml || '<div class="exec-empty">Nenhuma historia encontrada para os filtros do modo executivo.</div>'}</div>
+  `;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function resolveCustomerImpact(task) {
+  if (task && task.impact) return String(task.impact).toUpperCase();
+  if (String(task.priority || '').toUpperCase().includes('BLOQUEADOR')) return 'ALTO';
+  if (String(task.priority || '').toUpperCase().includes('CRÍTICO')) return 'ALTO';
+  if (String(task.type || '').toUpperCase() === 'ENGINE') return 'ALTO';
+  if (String(task.priority || '').toUpperCase().includes('ALTO')) return 'MEDIO';
+  return 'MEDIO';
+}
+
+function resolveOperationalRisk(task) {
+  if (task && task.risk) return String(task.risk).toUpperCase();
+  if (String(task.priority || '').toUpperCase().includes('BLOQUEADOR')) return 'ALTO';
+  if (String(task.priority || '').toUpperCase().includes('CRÍTICO')) return 'ALTO';
+  if (String(task.type || '').toUpperCase() === 'INFRA') return 'ALTO';
+  if (String(task.type || '').toUpperCase() === 'ENGINE') return 'MEDIO';
+  return 'MEDIO';
+}
+
+function resolveWcagConformance(task) {
+  if (task && task.wcag) return String(task.wcag).toUpperCase();
+  return 'AA';
+}
+
+function trendClass(val) {
+  if (Number(val) > 0) return 'trend-up';
+  if (Number(val) < 0) return 'trend-down';
+  return 'trend-neutral';
+}
+
+function trendSignal(val) {
+  if (Number(val) > 0) return '▲';
+  if (Number(val) < 0) return '▼';
+  return '■';
+}
+
+function renderPickupTrendCard() {
+  const d = pickupCompareData;
+  const calls = d ? Number(d.delta_calls_pct || 0).toFixed(2) : '0.00';
+  const effective = d ? Number(d.delta_effective_calls_pct || 0).toFixed(2) : '0.00';
+  const success = d ? Number(d.delta_success_rate_pct || 0).toFixed(2) : '0.00';
+  const windowLabel = d ? `${d.period_from} → ${d.period_to}` : 'Sem dados carregados';
+  return `
+    <div class="trend-card">
+      <div class="trend-title">Card executivo de tendencia — Pickup KPI (current vs previous)</div>
+      <div style="font-size:11px;color:var(--color-text-tertiary);margin-bottom:8px">${windowLabel}</div>
+      <div class="trend-row">
+        <div class="trend-kpi">
+          <div class="trend-kpi-value ${trendClass(calls)}">${trendSignal(calls)} ${calls}%</div>
+          <div class="trend-kpi-label">Delta de volume (calls)</div>
+        </div>
+        <div class="trend-kpi">
+          <div class="trend-kpi-value ${trendClass(effective)}">${trendSignal(effective)} ${effective}%</div>
+          <div class="trend-kpi-label">Delta de efetividade</div>
+        </div>
+        <div class="trend-kpi">
+          <div class="trend-kpi-value ${trendClass(success)}">${trendSignal(success)} ${success} pp</div>
+          <div class="trend-kpi-label">Delta de taxa de sucesso</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function loadPickupCompare() {
+  try {
+    const token = (window.localStorage.getItem('ops_token') || '').trim();
+    if (!token) {
+      return;
+    }
+    const resp = await fetch('/partners/ops/pickup-confirm/metrics/compare', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!resp.ok) {
+      return;
+    }
+    pickupCompareData = await resp.json();
+    if (Number(currentSprint) === 6) {
+      renderContent();
+    }
+  } catch (e) {
+    // board permanece funcional mesmo sem endpoint/token
+  }
+}
+
+renderTabs();
+renderContent();
+loadPickupCompare();
+</script>

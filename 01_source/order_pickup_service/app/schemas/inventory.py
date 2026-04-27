@@ -129,3 +129,42 @@ class InventoryReservationHealthOut(BaseModel):
     entities_with_divergence_current: int
     entities_with_divergence_previous: int
     ranking: list[InventoryReservationHealthRankItemOut]
+
+
+class InventoryReservationExpiryRunOut(BaseModel):
+    ok: bool
+    changed: int
+    message: str
+
+
+class InventoryReservationListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    period_from: str | None = None
+    period_to: str | None = None
+    status_filter: str | None = None
+    items: list[InventoryReservationOut]
+
+
+class InventoryLowStockItemOut(BaseModel):
+    id: str
+    product_id: str
+    locker_id: str
+    slot_size: str
+    quantity_on_hand: int
+    quantity_reserved: int
+    quantity_available: int
+    reorder_point: int
+    reorder_quantity: int
+    updated_at: str
+
+
+class InventoryLowStockListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    threshold: int
+    items: list[InventoryLowStockItemOut]

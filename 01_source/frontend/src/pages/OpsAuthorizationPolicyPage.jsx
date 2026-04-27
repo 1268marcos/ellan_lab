@@ -55,6 +55,8 @@ export default function OpsAuthorizationPolicyPage() {
         <Link to="/ops/sp">Voltar ao dashboard OPS SP</Link>
         <Link to="/ops/pt">Ir para dashboard OPS PT</Link>
         <Link to="/ops/auth/policy/versioning">Política de versionamento (ops/health)</Link>
+        <Link to="/ops/updates">Registro de atualizações OPS</Link>
+        <a href="/docs/ellan_lab_sprint_board.html">Board visual de sprint (ELLAN LAB)</a>
       </div>
     </main>
   );

@@ -15,6 +15,10 @@ from app.core.db import get_db
 from app.models.ops_action_audit import OpsActionAudit
 from app.models.user import User
 from app.schemas.inventory import (
+    InventoryLowStockItemOut,
+    InventoryLowStockListOut,
+    InventoryReservationListOut,
+    InventoryReservationExpiryRunOut,
     InventoryReservationHealthOut,
     InventoryReservationHealthRankItemOut,
     InventoryReservationActionOut,
@@ -29,6 +33,7 @@ from app.schemas.inventory import (
     ProductInventoryListOut,
 )
 from app.jobs.inventory_reserved_reconciliation import run_inventory_reserved_reconciliation_once
+from app.jobs.inventory_reservations_expiry import run_inventory_reservations_expiry_once
 from app.services.ops_audit_service import record_ops_action_audit
 
 router = APIRouter(
@@ -116,6 +121,21 @@ def _to_reservation_item(row: dict) -> InventoryReservationOut:
     )
 
 
+def _to_low_stock_item(row: dict) -> InventoryLowStockItemOut:
+    return InventoryLowStockItemOut(
+        id=str(row.get("id") or ""),
+        product_id=str(row.get("product_id") or ""),
+        locker_id=str(row.get("locker_id") or ""),
+        slot_size=str(row.get("slot_size") or ""),
+        quantity_on_hand=int(row.get("quantity_on_hand") or 0),
+        quantity_reserved=int(row.get("quantity_reserved") or 0),
+        quantity_available=int(row.get("quantity_available") or 0),
+        reorder_point=int(row.get("reorder_point") or 0),
+        reorder_quantity=int(row.get("reorder_quantity") or 0),
+        updated_at=_to_iso_utc(row.get("updated_at")),
+    )
+
+
 def _load_inventory_row(*, db: Session, product_id: str, locker_id: str, slot_size: str) -> dict:
     row = db.execute(
         text(
@@ -170,6 +190,22 @@ def _to_int(value: object) -> int:
         return int(value or 0)
     except Exception:
         return 0
+
+
+def _normalize_reservation_status(raw_status: str | None) -> str | None:
+    value = str(raw_status or "").strip().upper()
+    if not value:
+        return None
+    allowed = {"ACTIVE", "EXPIRED", "RELEASED", "CONSUMED", "CANCELLED"}
+    if value not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_RESERVATION_STATUS",
+                "message": "status deve ser um de ACTIVE, EXPIRED, RELEASED, CONSUMED, CANCELLED.",
+            },
+        )
+    return value
 
 
 @router.get("/products/{product_id}/inventory", response_model=ProductInventoryListOut)
@@ -826,6 +862,132 @@ def post_inventory_reservation_consume(
     )
 
 
+@router.get("/ops/inventory/reservations", response_model=InventoryReservationListOut)
+def get_inventory_reservations_ops_list(
+    status: str | None = Query(default=None),
+    period_from: str | None = Query(default=None),
+    period_to: str | None = Query(default=None),
+    locker_id: str | None = Query(default=None),
+    product_id: str | None = Query(default=None),
+    order_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    status_filter = _normalize_reservation_status(status)
+    parsed_from = _parse_iso_datetime_utc_optional(period_from, field_name="period_from")
+    parsed_to = _parse_iso_datetime_utc_optional(period_to, field_name="period_to")
+    if parsed_from and parsed_to and parsed_from >= parsed_to:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_DATE_RANGE",
+                "message": "period_from deve ser menor que period_to.",
+            },
+        )
+
+    where_parts = ["1=1"]
+    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    if status_filter:
+        where_parts.append("status = :status")
+        params["status"] = status_filter
+    if parsed_from:
+        where_parts.append("updated_at >= :period_from")
+        params["period_from"] = parsed_from
+    if parsed_to:
+        where_parts.append("updated_at <= :period_to")
+        params["period_to"] = parsed_to
+    if str(locker_id or "").strip():
+        where_parts.append("locker_id = :locker_id")
+        params["locker_id"] = str(locker_id).strip()
+    if str(product_id or "").strip():
+        where_parts.append("product_id = :product_id")
+        params["product_id"] = str(product_id).strip()
+    if str(order_id or "").strip():
+        where_parts.append("order_id = :order_id")
+        params["order_id"] = str(order_id).strip()
+
+    where_sql = " AND ".join(where_parts)
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS total FROM inventory_reservations WHERE {where_sql}"),
+        params,
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                id, order_id, product_id, locker_id, slot_size, quantity, status, expires_at, updated_at
+            FROM inventory_reservations
+            WHERE {where_sql}
+            ORDER BY updated_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+    items = [_to_reservation_item(dict(row)) for row in rows]
+    return InventoryReservationListOut(
+        ok=True,
+        total=total,
+        limit=limit,
+        offset=offset,
+        period_from=(_to_iso_utc(parsed_from) if parsed_from else None),
+        period_to=(_to_iso_utc(parsed_to) if parsed_to else None),
+        status_filter=status_filter,
+        items=items,
+    )
+
+
+@router.get("/ops/inventory/low-stock", response_model=InventoryLowStockListOut)
+def get_inventory_low_stock_ops(
+    threshold: int = Query(default=3, ge=0, le=100000),
+    locker_id: str | None = Query(default=None),
+    product_id: str | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    where_parts = ["quantity_available <= :threshold"]
+    params: dict[str, object] = {"threshold": int(threshold), "limit": int(limit), "offset": int(offset)}
+    if str(locker_id or "").strip():
+        where_parts.append("locker_id = :locker_id")
+        params["locker_id"] = str(locker_id).strip()
+    if str(product_id or "").strip():
+        where_parts.append("product_id = :product_id")
+        params["product_id"] = str(product_id).strip()
+
+    where_sql = " AND ".join(where_parts)
+    total_row = db.execute(
+        text(f"SELECT COUNT(*) AS total FROM product_inventory WHERE {where_sql}"),
+        params,
+    ).mappings().first()
+    total = int((total_row or {}).get("total") or 0)
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                id, product_id, locker_id, slot_size, quantity_on_hand, quantity_reserved,
+                quantity_available, reorder_point, reorder_quantity, updated_at
+            FROM product_inventory
+            WHERE {where_sql}
+            ORDER BY quantity_available ASC, updated_at DESC, id DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+    items = [_to_low_stock_item(dict(row)) for row in rows]
+    return InventoryLowStockListOut(
+        ok=True,
+        total=total,
+        limit=limit,
+        offset=offset,
+        threshold=int(threshold),
+        items=items,
+    )
+
+
 @router.get("/inventory/ops/view", response_class=HTMLResponse)
 def get_inventory_ops_view() -> HTMLResponse:
     html = """
@@ -1129,5 +1291,17 @@ def get_inventory_ops_reservation_health(
         entities_with_divergence_current=len(grouped_current),
         entities_with_divergence_previous=len(grouped_previous),
         ranking=ranking_items,
+    )
+
+
+@router.post("/ops/inventory/reservations/expire/run", response_model=InventoryReservationExpiryRunOut)
+def run_inventory_reservations_expiry_now(
+    db: Session = Depends(get_db),
+):
+    changed = int(run_inventory_reservations_expiry_once(db) or 0)
+    return InventoryReservationExpiryRunOut(
+        ok=True,
+        changed=changed,
+        message="Job de expiração de reservas executado.",
     )
 

@@ -242,6 +242,11 @@ class PartnerSettlementApproveIn(BaseModel):
     notes: str | None = Field(default=None, max_length=2000)
 
 
+class PartnerSettlementPayIn(BaseModel):
+    settlement_ref: str | None = Field(default=None, max_length=128)
+    notes: str | None = Field(default=None, max_length=2000)
+
+
 class PartnerSettlementOut(BaseModel):
     id: str
     partner_id: str
@@ -267,6 +272,150 @@ class PartnerSettlementListOut(BaseModel):
     ok: bool
     total: int
     items: list[PartnerSettlementOut]
+
+
+class PartnerSettlementItemOut(BaseModel):
+    id: int
+    batch_id: str
+    order_id: str
+    order_date: str
+    gross_cents: int
+    share_pct: float
+    share_cents: int
+    currency: str
+
+
+class PartnerSettlementItemListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    gross_total_cents: int
+    share_total_cents: int
+    items: list[PartnerSettlementItemOut]
+
+
+class PartnerSettlementReconciliationAlertOut(BaseModel):
+    code: str
+    severity: str
+    title: str
+    message: str
+
+
+class PartnerSettlementReconciliationOut(BaseModel):
+    ok: bool
+    partner_id: str
+    batch_id: str
+    status: str
+    has_divergence: bool
+    expected_total_orders: int
+    expected_gross_revenue_cents: int
+    expected_revenue_share_cents: int
+    actual_total_orders: int
+    actual_gross_revenue_cents: int
+    actual_revenue_share_cents: int
+    delta_total_orders: int
+    delta_gross_revenue_cents: int
+    delta_revenue_share_cents: int
+    alerts: list[PartnerSettlementReconciliationAlertOut]
+
+
+class PartnerSettlementReconciliationAlertTimelineItemOut(BaseModel):
+    audit_id: str
+    created_at: str
+    partner_id: str
+    batch_id: str
+    severity: str
+    message: str
+    delta_total_orders: int
+    delta_gross_revenue_cents: int
+    delta_revenue_share_cents: int
+
+
+class PartnerSettlementReconciliationAlertTimelineOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    total: int
+    limit: int
+    offset: int
+    items: list[PartnerSettlementReconciliationAlertTimelineItemOut]
+
+
+class PartnerSettlementReconciliationBatchRunItemOut(BaseModel):
+    batch_id: str
+    partner_id: str
+    status: str
+    has_divergence: bool
+    delta_total_orders: int
+    delta_gross_revenue_cents: int
+    delta_revenue_share_cents: int
+    severity: str | None = None
+
+
+class PartnerSettlementReconciliationBatchRunOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    partner_id: str | None = None
+    limit: int
+    dry_run: bool
+    confirm_live_run: bool
+    scanned_batches: int
+    divergent_batches: int
+    divergence_rate_pct: float
+    items: list[PartnerSettlementReconciliationBatchRunItemOut]
+
+
+class PartnerSettlementReconciliationCompareWindowOut(BaseModel):
+    scanned_batches: int
+    divergent_batches: int
+    divergence_rate_pct: float
+
+
+class PartnerSettlementReconciliationCompareOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    previous_from: str
+    previous_to: str
+    partner_id: str | None = None
+    current: PartnerSettlementReconciliationCompareWindowOut
+    previous: PartnerSettlementReconciliationCompareWindowOut
+    delta_scanned_batches_pct: float
+    delta_divergent_batches_pct: float
+    delta_divergence_rate_pct: float
+
+
+class PartnerSettlementReconciliationTopDivergenceItemOut(BaseModel):
+    batch_id: str
+    partner_id: str
+    status: str
+    impact_score: int
+    delta_total_orders: int
+    delta_gross_revenue_cents: int
+    delta_revenue_share_cents: int
+    severity: str
+
+
+class PartnerSettlementReconciliationTopDivergenceSeverityCountsOut(BaseModel):
+    """Batches divergentes na janela (e partner_id), por severidade; independente de min_severity nos items."""
+
+    HIGH: int = 0
+    MEDIUM: int = 0
+    LOW: int = 0
+
+
+class PartnerSettlementReconciliationTopDivergencesOut(BaseModel):
+    ok: bool
+    from_: str = Field(..., alias="from")
+    to: str
+    partner_id: str | None = None
+    top_n: int
+    min_severity: str | None = None
+    severity_counts: PartnerSettlementReconciliationTopDivergenceSeverityCountsOut
+    total_divergent_batches: int
+    items: list[PartnerSettlementReconciliationTopDivergenceItemOut]
 
 
 class PartnerPerformanceOut(BaseModel):
@@ -314,6 +463,98 @@ class PartnerServiceAreaListOut(BaseModel):
     ok: bool
     total: int
     items: list[PartnerServiceAreaOut]
+
+
+class PartnerProductCreateIn(BaseModel):
+    id: str = Field(..., min_length=1, max_length=255, description="SKU/ID do produto")
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=2000)
+    amount_cents: int = Field(..., ge=0)
+    currency: str = Field(default="BRL", min_length=3, max_length=8)
+    category_id: str = Field(..., min_length=1, max_length=64)
+    width_mm: int = Field(..., gt=0)
+    height_mm: int = Field(..., gt=0)
+    depth_mm: int = Field(..., gt=0)
+    weight_g: int = Field(..., gt=0)
+    requires_age_verification: bool = Field(default=False)
+    requires_id_check: bool = Field(default=False)
+    requires_signature: bool = Field(default=False)
+    is_hazardous: bool = Field(default=False)
+    is_fragile: bool = Field(default=False)
+    metadata_json: dict = Field(default_factory=dict)
+
+
+class PartnerProductCreateOut(BaseModel):
+    ok: bool
+    product_id: str
+    partner_id: str
+    status: str
+    eligibility_ok: bool
+    recommended_locker_id: str | None = None
+    recommended_slot_size: str | None = None
+    eligible_lockers_count: int = 0
+    reason: str | None = None
+
+
+class PartnerEligibleProductItemOut(BaseModel):
+    product_id: str
+    name: str
+    category_id: str | None = None
+    status: str
+    recommended_slot_size: str
+    width_mm: int
+    height_mm: int
+    depth_mm: int
+    weight_g: int
+
+
+class PartnerEligibleProductListOut(BaseModel):
+    ok: bool
+    partner_id: str
+    locker_id: str
+    total: int
+    limit: int
+    offset: int
+    items: list[PartnerEligibleProductItemOut]
+
+
+class PartnerSlotAllocationPickIn(BaseModel):
+    product_id: str = Field(..., min_length=1, max_length=255)
+    allocation_id: str | None = Field(default=None, max_length=64)
+
+
+class PartnerSlotAllocationPickOut(BaseModel):
+    ok: bool
+    partner_id: str
+    locker_id: str
+    product_id: str
+    allocation_id: str
+    slot_id: str
+    slot_label: str
+    slot_size: str
+    slot_number: int
+    state: str
+
+
+class PartnerSlotAllocationPickupConfirmIn(BaseModel):
+    note: str | None = Field(default=None, max_length=1000)
+
+
+class PartnerSlotAllocationPickupConfirmOut(BaseModel):
+    ok: bool
+    idempotent: bool
+    partner_id: str
+    locker_id: str
+    allocation_id: str
+    order_id: str
+    pickup_id: str | None = None
+    slot_id: str
+    slot_label: str
+    slot_size: str
+    allocation_state: str
+    pickup_status: str | None = None
+    order_status: str
+    released_at: str
 
 
 class PartnerOpsAuditItemOut(BaseModel):
@@ -512,3 +753,39 @@ class PartnerWebhookOpsMetricsOut(BaseModel):
     top_partners: list[PartnerWebhookOpsTopPartnerOut]
     top_endpoints: list[PartnerWebhookOpsTopEndpointOut]
     alerts: list[PartnerWebhookOpsAlertOut]
+
+
+class PartnerPickupConfirmMetricsOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    total_calls: int
+    total_success: int
+    total_error: int
+    success_rate_pct: float
+    idempotent_calls: int
+    effective_calls: int
+    idempotent_rate_pct: float
+
+
+class PartnerPickupConfirmMetricsCompareWindowOut(BaseModel):
+    total_calls: int
+    total_success: int
+    total_error: int
+    success_rate_pct: float
+    idempotent_calls: int
+    effective_calls: int
+    idempotent_rate_pct: float
+
+
+class PartnerPickupConfirmMetricsCompareOut(BaseModel):
+    ok: bool
+    period_from: str
+    period_to: str
+    previous_from: str
+    previous_to: str
+    current: PartnerPickupConfirmMetricsCompareWindowOut
+    previous: PartnerPickupConfirmMetricsCompareWindowOut
+    delta_calls_pct: float
+    delta_effective_calls_pct: float
+    delta_success_rate_pct: float

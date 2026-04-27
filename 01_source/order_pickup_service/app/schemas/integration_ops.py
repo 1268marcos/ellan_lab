@@ -102,3 +102,66 @@ class OrderPartnerLookupListOut(BaseModel):
     limit: int
     offset: int
     items: list[OrderPartnerLookupItemOut]
+
+
+class OrderEventOutboxDeadLetterPriorityItemOut(BaseModel):
+    partner_id: str
+    event_type: str
+    dead_letter_count: int
+    distinct_orders: int
+    oldest_created_at: str
+    newest_created_at: str
+    latest_updated_at: str
+
+
+class OrderEventOutboxDeadLetterPriorityOut(BaseModel):
+    ok: bool
+    total_groups: int
+    total_dead_letters: int
+    total_distinct_orders: int
+    limit: int
+    items: list[OrderEventOutboxDeadLetterPriorityItemOut]
+
+
+class OrderEventOutboxPriorityReplayOut(BaseModel):
+    ok: bool
+    execution_id: str
+    dry_run: bool
+    run_after_replay: bool
+    max_deliveries_after_replay: int | None = None
+    top_n_groups: int
+    max_items: int
+    total_groups_selected: int
+    total_candidates: int
+    selected_count: int
+    replayed_count: int
+    skipped_count: int
+    groups: list[OrderEventOutboxDeadLetterPriorityItemOut]
+    items: list[OrderEventOutboxItemOut]
+    worker_run: OrderEventOutboxRunOut | None = None
+
+
+class OrderEventOutboxPriorityReplayRunItemOut(BaseModel):
+    execution_id: str
+    created_at: str
+    dry_run: bool
+    run_after_replay: bool
+    top_n_groups: int
+    max_items: int
+    total_groups_selected: int
+    total_candidates: int
+    selected_count: int
+    replayed_count: int
+    skipped_count: int
+    effectiveness_rate_pct: float
+
+
+class OrderEventOutboxPriorityReplayRunTimelineOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    period_from: str | None = None
+    period_to: str | None = None
+    average_effectiveness_rate_pct: float
+    items: list[OrderEventOutboxPriorityReplayRunItemOut]
