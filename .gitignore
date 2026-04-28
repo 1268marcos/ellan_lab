@@ -272,6 +272,17 @@ $RECYCLE.BIN/
 
 
 # ==============================================================
+# [15] PASTAS ESPECÍFICAS DO PROJETO
+# ==============================================================
+
+# Grafana e suas configurações/persistência
+grafana/
+**/grafana/
+dbt_financial/
+**/dbt_financial/
+
+
+# ==============================================================
 # NOTA SOBRE FICHEIROS QUE DEVEM ESTAR NO REPOSITÓRIO
 # (para evitar ignorar por engano)
 # ==============================================================

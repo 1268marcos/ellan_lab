@@ -1054,8 +1054,9 @@ def _ensure_ellanlab_revenue_recognition(engine: Engine) -> None:
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ux_err_source_day
         ON ellanlab_revenue_recognition (source_type, source_id, recognition_date);
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_err_dedupe_key
-        ON ellanlab_revenue_recognition (dedupe_key)
+    DROP INDEX IF EXISTS ux_err_dedupe_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_err_dedupe_key_time
+        ON ellanlab_revenue_recognition (dedupe_key, recognition_date)
         WHERE dedupe_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS ix_err_partner_locker_day
         ON ellanlab_revenue_recognition (partner_id, locker_id, recognition_date);
@@ -1093,8 +1094,9 @@ def _ensure_financial_kpi_daily(engine: Engine) -> None:
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ux_fkd_partner_locker_day
         ON financial_kpi_daily (partner_id, locker_id, snapshot_date);
-    CREATE UNIQUE INDEX IF NOT EXISTS ux_fkd_dedupe_key
-        ON financial_kpi_daily (dedupe_key)
+    DROP INDEX IF EXISTS ux_fkd_dedupe_key;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fkd_dedupe_key_time
+        ON financial_kpi_daily (dedupe_key, snapshot_date)
         WHERE dedupe_key IS NOT NULL;
     CREATE INDEX IF NOT EXISTS ix_fkd_snapshot_day
         ON financial_kpi_daily (snapshot_date);

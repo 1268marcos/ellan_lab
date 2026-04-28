@@ -721,6 +721,55 @@ services:
     networks:
       - locker-network
 
+  # =========================
+  # GRAFANA (FA-5 Dashboards / Alertas)
+  # =========================
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin123}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+    volumes:
+      - ../03_data/grafana:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+  # =========================
+  # METABASE (FA-5 BI / Autoatendimento)
+  # =========================
+  metabase:
+    image: metabase/metabase:v0.53.6
+    container_name: metabase
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: postgres_central
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: locker_central
+      MB_DB_USER: admin
+      MB_DB_PASS: admin123
+      MB_SITE_URL: http://localhost:3001
+      JAVA_TIMEZONE: UTC
+    volumes:
+      - ../03_data/metabase:/metabase-data
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
 
   # =========================
   # PGADMIN - Interface Web gráfica (provisório na fase desenvolvimento)
