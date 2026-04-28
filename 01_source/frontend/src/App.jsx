@@ -55,6 +55,7 @@ const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegration
 const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
 const OpsIntegrationOrdersPartnerLookupPage = lazy(() => import("./pages/OpsIntegrationOrdersPartnerLookupPage"));
 const OpsPartnersFinancialsServiceAreasPage = lazy(() => import("./pages/OpsPartnersFinancialsServiceAreasPage"));
+const OpsPartnersReconciliationDashboardPage = lazy(() => import("./pages/OpsPartnersReconciliationDashboardPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -264,7 +265,7 @@ function TopNav() {
     
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
     { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
-    { to: "/ops/dev/base", label: "ops /dev/base", aria: "Gestão de tabelas e enums base" },
+    { to: "/ops/dev/base", label: "ops /dev/base (db)", aria: "Gestão de tabelas e enums base" },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id" },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional" },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas" },
@@ -282,10 +283,11 @@ function TopNav() {
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)" },
     { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref" },
     { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas" },
+    { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", isNew: true },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" },
-    { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health", isNew: true }
+    { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health" }
   ] : [];
 
   const myAreaLinks = [
@@ -963,6 +965,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsPartnersFinancialsServiceAreasPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/partners/reconciliation-dashboard"
+              element={
+                <OpsRoute>
+                  <OpsPartnersReconciliationDashboardPage />
                 </OpsRoute>
               }
             />

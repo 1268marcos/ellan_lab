@@ -9,6 +9,12 @@ const TIMELINE_TEMPLATE_JSON = `{
   "scope": "L-3 D4",
   "title": "Resumo curto da entrega",
   "description": "Descrição breve do valor operacional entregue.",
+  "uiRoutesNew": [
+    "/ops/nova-rota-ui"
+  ],
+  "apiRoutesNew": [
+    "GET /alguma/rota-nova"
+  ],
   "routes": [
     "GET /alguma/rota",
     "POST /alguma/rota"
@@ -46,6 +52,22 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 }
 
 const UPDATES = [
+  {
+    date: "2026-04-28",
+    scope: "Sprint 12 - Dashboard Operacional",
+    title: "Novo dashboard OPS de reconciliação (Partners)",
+    description:
+      "Foi iniciada a página operacional mínima para reconciliação de settlements, com filtros (partner_id, janela, min_severity, top_n), cards de priorização e consumo dos endpoints executivos de compare + top-divergences.",
+    uiRoutesNew: ["/ops/partners/reconciliation-dashboard"],
+    apiRoutesNew: [],
+    routes: [
+      "UI /ops/partners/reconciliation-dashboard",
+      "GET /partners/ops/settlements/reconciliation/compare",
+      "GET /partners/ops/settlements/reconciliation/top-divergences",
+    ],
+    directLink: "/ops/partners/reconciliation-dashboard",
+    directLinkLabel: "Abrir dashboard OPS de reconciliação",
+  },
   {
     date: "2026-04-27",
     scope: "OPS Sprint Board - Products/Partners/Lockers",
@@ -365,7 +387,8 @@ export default function OpsUpdatesHistoryPage() {
         <details style={templateBoxStyle}>
           <summary style={templateSummaryStyle}>Mini-template JSON (novos itens da timeline)</summary>
           <p style={{ ...mutedStyle, marginTop: 8 }}>
-            Campos obrigatórios: <b>scope</b>, <b>description</b>, <b>routes</b>, <b>directLink</b>.
+            Campos obrigatórios: <b>scope</b>, <b>description</b>, <b>directLink</b>. Convenção NEW:
+            use <b>uiRoutesNew</b> e <b>apiRoutesNew</b> para destacar novidades do sprint.
           </p>
           <button type="button" style={copyButtonStyle} onClick={() => void handleCopyTemplate()}>
             Copiar template
@@ -383,6 +406,30 @@ export default function OpsUpdatesHistoryPage() {
               </div>
               <small style={{ color: "#94A3B8" }}>{entry.date}</small>
               <p style={{ margin: "8px 0", color: "#CBD5E1" }}>{entry.description}</p>
+              {(entry.uiRoutesNew || []).length ? (
+                <div style={newRoutesBlockStyle}>
+                  <small style={newRoutesTitleStyle}>UI route NEW</small>
+                  <ul style={routesListStyle}>
+                    {entry.uiRoutesNew.map((route) => (
+                      <li key={`ui-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
+                        {route} <span style={newInlineBadgeStyle}>NEW</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {(entry.apiRoutesNew || []).length ? (
+                <div style={newRoutesBlockStyle}>
+                  <small style={newRoutesTitleStyle}>API route NEW</small>
+                  <ul style={routesListStyle}>
+                    {entry.apiRoutesNew.map((route) => (
+                      <li key={`api-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
+                        {route} <span style={newInlineBadgeStyle}>NEW</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <ul style={routesListStyle}>
                 {entry.routes.map((route) => (
                   <li key={route} style={{ color: "#BFDBFE", fontSize: 12 }}>
@@ -461,6 +508,19 @@ const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
 const templateJsonStyle = { marginTop: 8, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 10, overflow: "auto", fontSize: 12 };
 const timelineStyle = { display: "grid", gap: 10 };
 const entryStyle = { border: "1px solid #334155", borderRadius: 12, padding: 12, background: "#0B1220" };
+const newRoutesBlockStyle = { marginBottom: 8 };
+const newRoutesTitleStyle = { color: "#93C5FD", fontWeight: 700, fontSize: 11 };
+const newInlineBadgeStyle = {
+  display: "inline-flex",
+  marginLeft: 6,
+  padding: "1px 6px",
+  borderRadius: 999,
+  fontSize: 10,
+  fontWeight: 700,
+  color: "#ECFEFF",
+  border: "1px solid rgba(45,212,191,0.55)",
+  background: "rgba(45,212,191,0.16)",
+};
 const routesListStyle = { margin: 0, paddingLeft: 16, display: "grid", gap: 4 };
 const directLinkStyle = {
   display: "inline-flex",
