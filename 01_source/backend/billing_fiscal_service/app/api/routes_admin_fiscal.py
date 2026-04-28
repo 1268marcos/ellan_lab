@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -33,6 +34,15 @@ from app.services.sefaz_svrs_batch_stub_service import (
     query_svrs_issue_batch_stub,
     reset_svrs_issue_batch_stub_state,
     submit_svrs_issue_batch_stub,
+)
+from app.services.financial_pnl_service import (
+    calculate_monthly_kpis,
+    list_daily_kpis,
+    list_monthly_pnl,
+    list_revenue_recognition,
+    recompute_daily_kpis,
+    recompute_daily_revenue_recognition,
+    recompute_monthly_pnl,
 )
 
 router = APIRouter(prefix="/admin/fiscal", tags=["admin-fiscal"])
@@ -422,4 +432,379 @@ def resend_invoice_email(
         "invoice_id": inv.id,
         "order_id": inv.order_id,
         "status": "RESEND_QUEUED",
+    }
+
+
+@router.get("/ledger-compat/audit")
+def get_ledger_compat_audit(
+    external_reference: str | None = Query(default=None, description="dedupe_key/external_reference"),
+    event_type: str | None = Query(default=None),
+    only_mismatches: bool = Query(default=False),
+    from_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    to_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """
+    Auditoria operacional rápida:
+    compara lado a lado journal_entries (fonte primária) vs financial_ledger (compat layer)
+    usando external_reference == dedupe_key.
+    """
+    clauses = ["1=1"]
+    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    if external_reference:
+        clauses.append("fl.external_reference = :external_reference")
+        params["external_reference"] = external_reference.strip()
+    if event_type:
+        clauses.append("COALESCE(fl.metadata->>'event_type', je.reference_type) = :event_type")
+        params["event_type"] = event_type.strip().upper()
+    if from_date:
+        clauses.append("COALESCE(je.created_at, fl.created_at)::date >= :from_date")
+        params["from_date"] = from_date
+    if to_date:
+        clauses.append("COALESCE(je.created_at, fl.created_at)::date <= :to_date")
+        params["to_date"] = to_date
+    if only_mismatches:
+        clauses.append(
+            """
+            (
+                je.id IS NULL
+                OR COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                   <> COALESCE((SELECT SUM(jel.credit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                OR fl.amount_cents
+                   <> CAST(
+                       ROUND(
+                           COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                           * 100
+                       ) AS BIGINT
+                   )
+            )
+            """
+        )
+
+    rows = db.execute(
+        text(
+            f"""
+            SELECT
+                fl.external_reference,
+                fl.entry_type AS ledger_entry_type,
+                fl.amount_cents AS ledger_amount_cents,
+                fl.currency AS ledger_currency,
+                fl.status AS ledger_status,
+                fl.metadata AS ledger_metadata,
+                fl.created_at AS ledger_created_at,
+                je.id AS journal_entry_id,
+                je.reference_type AS journal_reference_type,
+                je.description AS journal_description,
+                je.currency AS journal_currency,
+                je.created_at AS journal_created_at,
+                COALESCE((
+                    SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel
+                    WHERE jel.journal_entry_id = je.id
+                ), 0) AS journal_debit_total,
+                COALESCE((
+                    SELECT SUM(jel.credit_amount) FROM journal_entry_lines jel
+                    WHERE jel.journal_entry_id = je.id
+                ), 0) AS journal_credit_total
+            FROM financial_ledger fl
+            LEFT JOIN journal_entries je
+                ON je.dedupe_key = fl.external_reference
+            WHERE {' AND '.join(clauses)}
+            ORDER BY COALESCE(je.created_at, fl.created_at) DESC
+            LIMIT :limit OFFSET :offset
+            """
+        ),
+        params,
+    ).mappings().all()
+
+    count_row = db.execute(
+        text(
+            f"""
+            SELECT COUNT(*)
+            FROM financial_ledger fl
+            LEFT JOIN journal_entries je
+                ON je.dedupe_key = fl.external_reference
+            WHERE {' AND '.join(clauses)}
+            """
+        ),
+        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+    ).fetchone()
+
+    items = []
+    for r in rows:
+        ledger_amount_cents = int(r.get("ledger_amount_cents") or 0)
+        journal_debit_total = r.get("journal_debit_total")
+        journal_credit_total = r.get("journal_credit_total")
+        journal_balanced = (
+            journal_debit_total is not None
+            and journal_credit_total is not None
+            and journal_debit_total == journal_credit_total
+        )
+        journal_amount_cents_derived = None
+        if journal_debit_total is not None:
+            journal_amount_cents_derived = int(round(float(journal_debit_total) * 100))
+        amount_matches = (
+            journal_amount_cents_derived is not None
+            and ledger_amount_cents == journal_amount_cents_derived
+        )
+
+        items.append(
+            {
+                "external_reference": r.get("external_reference"),
+                "event_type": (
+                    (r.get("ledger_metadata") or {}).get("event_type")
+                    if isinstance(r.get("ledger_metadata"), dict)
+                    else None
+                )
+                or r.get("journal_reference_type"),
+                "ledger": {
+                    "entry_type": r.get("ledger_entry_type"),
+                    "amount_cents": ledger_amount_cents,
+                    "currency": r.get("ledger_currency"),
+                    "status": r.get("ledger_status"),
+                    "created_at": r.get("ledger_created_at").isoformat() if r.get("ledger_created_at") else None,
+                    "metadata": r.get("ledger_metadata") or {},
+                },
+                "journal": {
+                    "journal_entry_id": r.get("journal_entry_id"),
+                    "reference_type": r.get("journal_reference_type"),
+                    "description": r.get("journal_description"),
+                    "currency": r.get("journal_currency"),
+                    "created_at": r.get("journal_created_at").isoformat() if r.get("journal_created_at") else None,
+                    "debit_total": str(journal_debit_total) if journal_debit_total is not None else None,
+                    "credit_total": str(journal_credit_total) if journal_credit_total is not None else None,
+                    "is_balanced": journal_balanced,
+                    "amount_cents_derived": journal_amount_cents_derived,
+                },
+                "audit": {
+                    "has_journal_entry": r.get("journal_entry_id") is not None,
+                    "journal_balanced": journal_balanced,
+                    "amount_matches_compat": amount_matches,
+                },
+            }
+        )
+
+    return {
+        "count": len(items),
+        "total": int(count_row[0] if count_row else 0),
+        "limit": limit,
+        "offset": offset,
+        "only_mismatches": only_mismatches,
+        "items": items,
+    }
+
+
+@router.post("/pnl/recompute")
+def post_recompute_monthly_pnl(
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if month:
+        try:
+            parts = month.strip().split("-")
+            target = datetime(int(parts[0]), int(parts[1]), 1).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.") from exc
+    return {"ok": True, **recompute_monthly_pnl(db, month=target)}
+
+
+@router.get("/pnl/monthly")
+def get_monthly_pnl(
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if month:
+        try:
+            parts = month.strip().split("-")
+            target = datetime(int(parts[0]), int(parts[1]), 1).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.") from exc
+    return list_monthly_pnl(db, month=target, limit=limit, offset=offset)
+
+
+@router.get("/kpi/monthly")
+def get_monthly_financial_kpis(
+    month: str | None = Query(default=None, description="YYYY-MM"),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if month:
+        try:
+            parts = month.strip().split("-")
+            target = datetime(int(parts[0]), int(parts[1]), 1).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid month format. Use YYYY-MM.") from exc
+    return calculate_monthly_kpis(db, month=target)
+
+
+@router.post("/revenue-recognition/recompute")
+def post_recompute_daily_revenue_recognition(
+    date_ref: str | None = Query(default=None, description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if date_ref:
+        try:
+            target = datetime.fromisoformat(date_ref).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    return {"ok": True, **recompute_daily_revenue_recognition(db, snapshot_date=target)}
+
+
+@router.get("/revenue-recognition")
+def get_revenue_recognition(
+    from_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    to_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    start = None
+    end = None
+    if from_date:
+        try:
+            start = datetime.fromisoformat(from_date).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid from_date format. Use YYYY-MM-DD.") from exc
+    if to_date:
+        try:
+            end = datetime.fromisoformat(to_date).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid to_date format. Use YYYY-MM-DD.") from exc
+    return list_revenue_recognition(db, from_date=start, to_date=end, limit=limit, offset=offset)
+
+
+@router.post("/kpi/daily/recompute")
+def post_recompute_daily_kpis(
+    date_ref: str | None = Query(default=None, description="YYYY-MM-DD"),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if date_ref:
+        try:
+            target = datetime.fromisoformat(date_ref).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    return {"ok": True, **recompute_daily_kpis(db, snapshot_date=target)}
+
+
+@router.get("/kpi/daily")
+def get_daily_kpis(
+    date_ref: str | None = Query(default=None, description="YYYY-MM-DD"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    target = None
+    if date_ref:
+        try:
+            target = datetime.fromisoformat(date_ref).date()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    return list_daily_kpis(db, snapshot_date=target, limit=limit, offset=offset)
+
+
+@router.get("/timescale/status")
+def get_timescale_status(
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    ext_row = db.execute(
+        text(
+            """
+            SELECT extname, extversion
+            FROM pg_extension
+            WHERE extname = 'timescaledb'
+            """
+        )
+    ).mappings().first()
+    ext_ok = bool(ext_row)
+
+    hypertable_rows = (
+        db.execute(
+            text(
+                """
+                SELECT hypertable_schema, hypertable_name
+                FROM timescaledb_information.hypertables
+                WHERE hypertable_schema = 'public'
+                  AND hypertable_name IN (
+                      'ellanlab_revenue_recognition',
+                      'financial_kpi_daily',
+                      'ellanlab_monthly_pnl'
+                  )
+                ORDER BY hypertable_name
+                """
+            )
+        ).mappings().all()
+        if ext_ok
+        else []
+    )
+    job_rows = (
+        db.execute(
+            text(
+                """
+                SELECT hypertable_name, proc_name, schedule_interval
+                FROM timescaledb_information.jobs
+                WHERE hypertable_schema = 'public'
+                  AND hypertable_name IN (
+                      'ellanlab_revenue_recognition',
+                      'financial_kpi_daily',
+                      'ellanlab_monthly_pnl'
+                  )
+                  AND proc_name IN ('policy_compression', 'policy_retention')
+                ORDER BY hypertable_name, proc_name
+                """
+            )
+        ).mappings().all()
+        if ext_ok
+        else []
+    )
+    dedupe_count = (
+        int(
+            db.execute(
+                text(
+                    """
+                    SELECT COUNT(*)::INT
+                    FROM pg_indexes
+                    WHERE schemaname = 'public'
+                      AND indexname IN ('ux_err_dedupe_key_time', 'ux_fkd_dedupe_key_time')
+                    """
+                )
+            ).scalar_one()
+        )
+        if ext_ok
+        else 0
+    )
+
+    hypertable_count = len(hypertable_rows)
+    policy_count = len(job_rows)
+    smoke_ok = ext_ok and hypertable_count == 3 and policy_count == 6 and dedupe_count == 2
+    return {
+        "ext_ok": ext_ok,
+        "extension": dict(ext_row) if ext_row else None,
+        "hypertable_count": hypertable_count,
+        "policy_count": policy_count,
+        "dedupe_index_count": dedupe_count,
+        "smoke_result": "SMOKE_OK" if smoke_ok else "SMOKE_FAIL",
+        "hypertables": [dict(r) for r in hypertable_rows],
+        "jobs": [
+            {
+                **dict(r),
+                "schedule_interval": str(r.get("schedule_interval")) if r.get("schedule_interval") is not None else None,
+            }
+            for r in job_rows
+        ],
     }

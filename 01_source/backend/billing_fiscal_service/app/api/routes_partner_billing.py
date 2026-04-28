@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import text
@@ -18,6 +19,7 @@ from app.schemas.partner_billing_schema import (
 )
 from app.services.partner_billing_cycle_service import compute_cycle_once, open_cycle_dispute
 from app.services.partner_billing_utilization_service import recompute_daily_utilization_snapshot
+from app.services.accounting_posting_service import PostingEvent, post_event
 
 router = APIRouter(prefix="/v1/partners", tags=["partner-billing"])
 
@@ -724,3 +726,91 @@ def recompute_utilization_snapshots(
         locker_id=locker_id,
     )
     return {"ok": True, **result}
+
+
+@router.post("/{partner_id}/invoices/{invoice_id}/cancel")
+def cancel_partner_invoice(
+    partner_id: str,
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    row = db.execute(
+        text(
+            """
+            UPDATE partner_b2b_invoices
+            SET status = 'CANCELLED',
+                cancelled_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :invoice_id
+              AND partner_id = :partner_id
+              AND status <> 'CANCELLED'
+            RETURNING id, amount_cents, currency
+            """
+        ),
+        {"invoice_id": invoice_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not row:
+        raise _api_error(
+            404,
+            "INVOICE_NOT_FOUND_OR_ALREADY_CANCELLED",
+            "Invoice not found or already cancelled",
+            {"invoice_id": invoice_id, "partner_id": partner_id},
+        )
+    db.commit()
+    post_result = post_event(
+        db,
+        PostingEvent(
+            event_type="PARTNER_INVOICE_CANCELLED",
+            reference_source="partner_b2b_invoice",
+            reference_id=invoice_id,
+            amount=(Decimal(row.get("amount_cents") or 0) / Decimal("100")),
+            currency=row.get("currency") or "BRL",
+            description=f"Partner invoice cancelled: {invoice_id}",
+        ),
+    )
+    return {"ok": True, "invoice_id": invoice_id, "status": "CANCELLED", "accounting": post_result}
+
+
+@router.post("/{partner_id}/credit-notes/{credit_note_id}/apply")
+def apply_partner_credit_note(
+    partner_id: str,
+    credit_note_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    row = db.execute(
+        text(
+            """
+            UPDATE partner_credit_notes
+            SET status = 'APPLIED',
+                applied_at = NOW(),
+                updated_at = NOW()
+            WHERE id = :credit_note_id
+              AND partner_id = :partner_id
+              AND status IN ('PENDING', 'APPROVED')
+            RETURNING id, amount_cents, currency
+            """
+        ),
+        {"credit_note_id": credit_note_id, "partner_id": partner_id},
+    ).mappings().first()
+    if not row:
+        raise _api_error(
+            404,
+            "CREDIT_NOTE_NOT_FOUND_OR_NOT_APPLICABLE",
+            "Credit note not found or not in applicable status",
+            {"credit_note_id": credit_note_id, "partner_id": partner_id},
+        )
+    db.commit()
+    post_result = post_event(
+        db,
+        PostingEvent(
+            event_type="PARTNER_CREDIT_NOTE_APPLIED",
+            reference_source="partner_credit_note",
+            reference_id=credit_note_id,
+            amount=(Decimal(row.get("amount_cents") or 0) / Decimal("100")),
+            currency=row.get("currency") or "BRL",
+            description=f"Partner credit note applied: {credit_note_id}",
+        ),
+    )
+    return {"ok": True, "credit_note_id": credit_note_id, "status": "APPLIED", "accounting": post_result}

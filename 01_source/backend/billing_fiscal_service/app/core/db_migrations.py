@@ -736,6 +736,446 @@ def _ensure_locker_utilization_snapshots(engine: Engine) -> None:
         conn.execute(text(stmt))
 
 
+def _ensure_chart_of_accounts(engine: Engine) -> None:
+    """
+    FA-3: plano de contas contábil (double-entry).
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        account_code VARCHAR(32) NOT NULL,
+        account_name VARCHAR(140) NOT NULL,
+        account_type VARCHAR(20) NOT NULL,
+        normal_balance VARCHAR(10) NOT NULL,
+        parent_account_id VARCHAR(36),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_coa_account_code UNIQUE (account_code),
+        CONSTRAINT ck_coa_account_type CHECK (
+            account_type IN ('ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE')
+        ),
+        CONSTRAINT ck_coa_normal_balance CHECK (
+            normal_balance IN ('DEBIT', 'CREDIT')
+        ),
+        CONSTRAINT ck_coa_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_coa_type_active
+        ON chart_of_accounts (account_type, is_active);
+    CREATE INDEX IF NOT EXISTS ix_coa_country_jurisdiction
+        ON chart_of_accounts (country_code, jurisdiction_code);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_journal_entry_lines(engine: Engine) -> None:
+    """
+    FA-3: linhas de lançamento para garantir partidas dobradas.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS journal_entry_lines (
+        id BIGSERIAL PRIMARY KEY,
+        journal_entry_id VARCHAR(36) NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+        line_number INTEGER NOT NULL,
+        account_id VARCHAR(36) NOT NULL REFERENCES chart_of_accounts(id),
+        partner_id VARCHAR(36),
+        locker_id VARCHAR(36),
+        description VARCHAR(255),
+        debit_amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+        credit_amount NUMERIC(16,2) NOT NULL DEFAULT 0,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        reference_source VARCHAR(50) NOT NULL DEFAULT 'manual',
+        reference_id VARCHAR(36),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_jel_journal_entry_line_number UNIQUE (journal_entry_id, line_number),
+        CONSTRAINT ck_jel_single_side CHECK (
+            (debit_amount > 0 AND credit_amount = 0)
+            OR (credit_amount > 0 AND debit_amount = 0)
+        ),
+        CONSTRAINT ck_jel_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_jel_journal_entry
+        ON journal_entry_lines (journal_entry_id);
+    CREATE INDEX IF NOT EXISTS ix_jel_account
+        ON journal_entry_lines (account_id);
+    CREATE INDEX IF NOT EXISTS ix_jel_partner_locker
+        ON journal_entry_lines (partner_id, locker_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_financial_ledger_compat(engine: Engine) -> None:
+    """
+    FA-3: financial_ledger como camada de compatibilidade (derivada de journal entries).
+    Não deve ser usada como fonte primária de verdade contábil.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS financial_ledger (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        order_id VARCHAR(36),
+        payment_transaction_id VARCHAR(36),
+        wallet_id VARCHAR(36),
+        entry_type VARCHAR(30) NOT NULL,
+        amount_cents BIGINT NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        status VARCHAR(20) NOT NULL DEFAULT 'POSTED',
+        external_reference VARCHAR(100),
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_ledger_amount_nonzero CHECK (amount_cents <> 0),
+        CONSTRAINT ck_ledger_status_check CHECK (
+            status IN ('PENDING', 'POSTED', 'VOIDED')
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_financial_ledger_created_at
+        ON financial_ledger (created_at);
+    CREATE INDEX IF NOT EXISTS ix_financial_ledger_entry_type
+        ON financial_ledger (entry_type);
+    CREATE INDEX IF NOT EXISTS ix_financial_ledger_external_reference
+        ON financial_ledger (external_reference);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_ellanlab_hardware_assets(engine: Engine) -> None:
+    """
+    FA-4: ativos de hardware para cálculo de CAPEX/depreciação por locker.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS ellanlab_hardware_assets (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        asset_code VARCHAR(64) NOT NULL,
+        locker_id VARCHAR(36),
+        partner_id VARCHAR(36),
+        asset_category VARCHAR(40) NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        acquisition_date DATE NOT NULL,
+        in_service_date DATE,
+        acquisition_cost_cents BIGINT NOT NULL,
+        residual_value_cents BIGINT NOT NULL DEFAULT 0,
+        useful_life_months INTEGER NOT NULL,
+        depreciation_method VARCHAR(20) NOT NULL DEFAULT 'STRAIGHT_LINE',
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT uq_eha_asset_code UNIQUE (asset_code),
+        CONSTRAINT ck_eha_asset_category CHECK (
+            asset_category IN ('LOCKER', 'TOTEM', 'SENSOR', 'NETWORK', 'BATTERY', 'OTHER')
+        ),
+        CONSTRAINT ck_eha_method CHECK (
+            depreciation_method IN ('STRAIGHT_LINE')
+        ),
+        CONSTRAINT ck_eha_status CHECK (
+            status IN ('ACTIVE', 'INACTIVE', 'DISPOSED')
+        ),
+        CONSTRAINT ck_eha_life CHECK (useful_life_months > 0),
+        CONSTRAINT ck_eha_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_eha_locker_partner
+        ON ellanlab_hardware_assets (locker_id, partner_id);
+    CREATE INDEX IF NOT EXISTS ix_eha_status
+        ON ellanlab_hardware_assets (status);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_ellanlab_depreciation_schedule(engine: Engine) -> None:
+    """
+    FA-4: agenda mensal de depreciação por ativo.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS ellanlab_depreciation_schedule (
+        id BIGSERIAL PRIMARY KEY,
+        asset_id VARCHAR(36) NOT NULL REFERENCES ellanlab_hardware_assets(id) ON DELETE CASCADE,
+        depreciation_month DATE NOT NULL,
+        partner_id VARCHAR(36),
+        locker_id VARCHAR(36),
+        depreciation_amount_cents BIGINT NOT NULL,
+        accumulated_depreciation_cents BIGINT NOT NULL,
+        nbv_cents BIGINT NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        status VARCHAR(20) NOT NULL DEFAULT 'POSTED',
+        dedupe_key VARCHAR(180),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_eds_status CHECK (status IN ('POSTED', 'REVERSED')),
+        CONSTRAINT ck_eds_month_start CHECK (depreciation_month = date_trunc('month', depreciation_month)::date)
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_eds_asset_month
+        ON ellanlab_depreciation_schedule (asset_id, depreciation_month);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_eds_dedupe_key
+        ON ellanlab_depreciation_schedule (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_eds_partner_locker_month
+        ON ellanlab_depreciation_schedule (partner_id, locker_id, depreciation_month);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_ellanlab_opex_entries(engine: Engine) -> None:
+    """
+    FA-4: lançamentos OPEX operacionais por mês/parceiro/locker.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS ellanlab_opex_entries (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        expense_date DATE NOT NULL,
+        expense_month DATE NOT NULL,
+        partner_id VARCHAR(36),
+        locker_id VARCHAR(36),
+        cost_center_code VARCHAR(32),
+        category VARCHAR(40) NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        amount_cents BIGINT NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        vendor_ref VARCHAR(120),
+        reference_source VARCHAR(50) NOT NULL DEFAULT 'manual',
+        dedupe_key VARCHAR(180),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_eoe_category CHECK (
+            category IN ('MAINTENANCE', 'CONNECTIVITY', 'ENERGY', 'RENT', 'SUPPORT', 'LOGISTICS', 'OTHER')
+        ),
+        CONSTRAINT ck_eoe_month_start CHECK (expense_month = date_trunc('month', expense_month)::date),
+        CONSTRAINT ck_eoe_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_eoe_month
+        ON ellanlab_opex_entries (expense_month);
+    CREATE INDEX IF NOT EXISTS ix_eoe_partner_locker_month
+        ON ellanlab_opex_entries (partner_id, locker_id, expense_month);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_eoe_dedupe_key
+        ON ellanlab_opex_entries (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_ellanlab_monthly_pnl(engine: Engine) -> None:
+    """
+    FA-4: snapshot mensal consolidado de P&L por parceiro/locker.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS ellanlab_monthly_pnl (
+        id BIGSERIAL PRIMARY KEY,
+        pnl_month DATE NOT NULL,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        revenue_cents BIGINT NOT NULL DEFAULT 0,
+        cogs_cents BIGINT NOT NULL DEFAULT 0,
+        opex_cents BIGINT NOT NULL DEFAULT 0,
+        depreciation_cents BIGINT NOT NULL DEFAULT 0,
+        gross_profit_cents BIGINT NOT NULL DEFAULT 0,
+        gross_margin_pct NUMERIC(10,4),
+        ebitda_cents BIGINT NOT NULL DEFAULT 0,
+        net_income_cents BIGINT NOT NULL DEFAULT 0,
+        ar_open_cents BIGINT NOT NULL DEFAULT 0,
+        dso_days NUMERIC(10,2),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_emp_month_start CHECK (pnl_month = date_trunc('month', pnl_month)::date),
+        CONSTRAINT ck_emp_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_emp_partner_locker_month
+        ON ellanlab_monthly_pnl (partner_id, locker_id, pnl_month);
+    CREATE INDEX IF NOT EXISTS ix_emp_month
+        ON ellanlab_monthly_pnl (pnl_month);
+    CREATE INDEX IF NOT EXISTS ix_emp_partner
+        ON ellanlab_monthly_pnl (partner_id, pnl_month);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_ellanlab_revenue_recognition(engine: Engine) -> None:
+    """
+    FA-5: reconhecimento de receita diário por origem operacional (invoice/cycle/etc.).
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS ellanlab_revenue_recognition (
+        id BIGSERIAL PRIMARY KEY,
+        recognition_date DATE NOT NULL,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36),
+        source_type VARCHAR(40) NOT NULL,
+        source_id VARCHAR(64) NOT NULL,
+        recognition_rule VARCHAR(40) NOT NULL DEFAULT 'ACCRUAL_DAILY',
+        recognized_amount_cents BIGINT NOT NULL,
+        deferred_amount_cents BIGINT NOT NULL DEFAULT 0,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        dedupe_key VARCHAR(180),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_err_source_type CHECK (
+            source_type IN ('PARTNER_INVOICE', 'PARTNER_CYCLE', 'MANUAL_ADJUSTMENT')
+        ),
+        CONSTRAINT ck_err_rule CHECK (
+            recognition_rule IN ('ACCRUAL_DAILY', 'CASH_BASIS', 'MANUAL')
+        ),
+        CONSTRAINT ck_err_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_err_source_day
+        ON ellanlab_revenue_recognition (source_type, source_id, recognition_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_err_dedupe_key
+        ON ellanlab_revenue_recognition (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_err_partner_locker_day
+        ON ellanlab_revenue_recognition (partner_id, locker_id, recognition_date);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_financial_kpi_daily(engine: Engine) -> None:
+    """
+    FA-5: snapshot diário de KPIs financeiros operacionais.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS financial_kpi_daily (
+        id BIGSERIAL PRIMARY KEY,
+        snapshot_date DATE NOT NULL,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        revenue_recognized_cents BIGINT NOT NULL DEFAULT 0,
+        ar_open_cents BIGINT NOT NULL DEFAULT 0,
+        arpl_cents BIGINT NOT NULL DEFAULT 0,
+        gross_margin_pct NUMERIC(10,4) NOT NULL DEFAULT 0,
+        dso_days NUMERIC(10,2) NOT NULL DEFAULT 0,
+        active_invoice_count INTEGER NOT NULL DEFAULT 0,
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        dedupe_key VARCHAR(180),
+        computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_fkd_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fkd_partner_locker_day
+        ON financial_kpi_daily (partner_id, locker_id, snapshot_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_fkd_dedupe_key
+        ON financial_kpi_daily (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_fkd_snapshot_day
+        ON financial_kpi_daily (snapshot_date);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_timescale_fa5_policies(engine: Engine) -> None:
+    """
+    FA-5: habilita (quando disponível) hypertables + políticas de compressão/retenção.
+    Mantém execução resiliente para ambientes sem TimescaleDB.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    BEGIN
+                        CREATE EXTENSION IF NOT EXISTS timescaledb;
+                    EXCEPTION WHEN OTHERS THEN
+                        RAISE NOTICE 'timescaledb extension unavailable: %', SQLERRM;
+                    END;
+                END$$;
+                """
+            )
+        )
+
+        conn.execute(
+            text(
+                """
+                DO $$
+                DECLARE
+                    has_timescaledb BOOLEAN := EXISTS (
+                        SELECT 1 FROM pg_extension WHERE extname = 'timescaledb'
+                    );
+                BEGIN
+                    IF NOT has_timescaledb THEN
+                        RAISE NOTICE 'timescaledb not enabled; skipping FA-5 hypertables/policies';
+                        RETURN;
+                    END IF;
+
+                    PERFORM create_hypertable(
+                        'ellanlab_revenue_recognition',
+                        'recognition_date',
+                        if_not_exists => TRUE,
+                        migrate_data => TRUE
+                    );
+                    PERFORM create_hypertable(
+                        'financial_kpi_daily',
+                        'snapshot_date',
+                        if_not_exists => TRUE,
+                        migrate_data => TRUE
+                    );
+                    PERFORM create_hypertable(
+                        'ellanlab_monthly_pnl',
+                        'pnl_month',
+                        if_not_exists => TRUE,
+                        migrate_data => TRUE
+                    );
+
+                    EXECUTE 'ALTER TABLE ellanlab_revenue_recognition SET (timescaledb.compress = true)';
+                    EXECUTE 'ALTER TABLE financial_kpi_daily SET (timescaledb.compress = true)';
+                    EXECUTE 'ALTER TABLE ellanlab_monthly_pnl SET (timescaledb.compress = true)';
+
+                    EXECUTE 'SELECT add_compression_policy(''ellanlab_revenue_recognition'', INTERVAL ''14 days'', if_not_exists => TRUE)';
+                    EXECUTE 'SELECT add_compression_policy(''financial_kpi_daily'', INTERVAL ''14 days'', if_not_exists => TRUE)';
+                    EXECUTE 'SELECT add_compression_policy(''ellanlab_monthly_pnl'', INTERVAL ''90 days'', if_not_exists => TRUE)';
+
+                    EXECUTE 'SELECT add_retention_policy(''ellanlab_revenue_recognition'', INTERVAL ''365 days'', if_not_exists => TRUE)';
+                    EXECUTE 'SELECT add_retention_policy(''financial_kpi_daily'', INTERVAL ''365 days'', if_not_exists => TRUE)';
+                    EXECUTE 'SELECT add_retention_policy(''ellanlab_monthly_pnl'', INTERVAL ''5 years'', if_not_exists => TRUE)';
+                EXCEPTION WHEN OTHERS THEN
+                    RAISE NOTICE 'timescale FA-5 policy setup skipped due to error: %', SQLERRM;
+                END$$;
+                """
+            )
+        )
+
+
 def _ensure_unique_constraint(engine: Engine) -> None:
     stmt = """
     DO $$
@@ -806,6 +1246,16 @@ def run_startup_migrations(engine: Engine) -> None:
     _ensure_partner_b2b_invoices(engine)
     _ensure_partner_credit_notes(engine)
     _ensure_locker_utilization_snapshots(engine)
+    _ensure_chart_of_accounts(engine)
+    _ensure_journal_entry_lines(engine)
+    _ensure_financial_ledger_compat(engine)
+    _ensure_ellanlab_hardware_assets(engine)
+    _ensure_ellanlab_depreciation_schedule(engine)
+    _ensure_ellanlab_opex_entries(engine)
+    _ensure_ellanlab_monthly_pnl(engine)
+    _ensure_ellanlab_revenue_recognition(engine)
+    _ensure_financial_kpi_daily(engine)
+    _ensure_timescale_fa5_policies(engine)
     _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)

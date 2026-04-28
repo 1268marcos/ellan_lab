@@ -38,13 +38,15 @@ services:
   # POSTGRES CENTRAL
   # =========================
   postgres_central:
-    image: postgis/postgis:15-3.4  # Mude de postgres:15 para postgis/postgis:15-3.4
+    # image: postgis/postgis:15-3.4  # Mude de postgres:15 para postgis/postgis:15-3.4
+    build: .  # ← Substitui "image:"
     container_name: postgres_central
     restart: unless-stopped
     environment:
       POSTGRES_DB: locker_central
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
+      POSTGRES_SHARED_PRELOAD_LIBRARIES: 'timescaledb'  # ← Obrigatório
       TZ: UTC
       # Variáveis adicionais para PostGIS
       POSTGRES_HOST_AUTH_METHOD: trust
@@ -54,7 +56,8 @@ services:
       - "5435:5432"
     volumes:
       - ../03_data/postgres_central:/var/lib/postgresql/data
-      - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
+      # - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
+      - ./postgres_central/init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d locker_central"]
       # test: ["CMD-SHELL", "pg_isready -U admin -d locker_central && psql -U admin -d locker_central -c 'SELECT PostGIS_version();' || exit 1"]

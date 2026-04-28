@@ -7,6 +7,8 @@ from decimal import Decimal
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.services.accounting_posting_service import PostingEvent, post_event
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +79,7 @@ def _cycle_context(db: Session, cycle_id: str) -> dict | None:
     row = db.execute(
         text(
             """
-            SELECT id, partner_id, country_code, jurisdiction_code, period_start, period_end
+            SELECT id, partner_id, country_code, jurisdiction_code, currency, period_start, period_end
             FROM partner_billing_cycles
             WHERE id = :cycle_id
             """
@@ -193,6 +195,17 @@ def compute_cycle_once(db: Session, cycle_id: str) -> dict | None:
         },
     )
     db.commit()
+    post_event(
+        db,
+        PostingEvent(
+            event_type="BILLING_CYCLE_COMPUTED",
+            reference_source="partner_billing_cycle",
+            reference_id=cycle_id,
+            amount=(Decimal(total_amount_cents) / Decimal("100")),
+            currency=str(ctx.get("currency") or "BRL"),
+            description=f"Billing cycle computed: {cycle_id}",
+        ),
+    )
 
     return {
         "cycle_id": cycle_id,

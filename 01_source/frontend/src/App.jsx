@@ -57,6 +57,7 @@ const OpsIntegrationOrdersPartnerLookupPage = lazy(() => import("./pages/OpsInte
 const OpsPartnersFinancialsServiceAreasPage = lazy(() => import("./pages/OpsPartnersFinancialsServiceAreasPage"));
 const OpsPartnersReconciliationDashboardPage = lazy(() => import("./pages/OpsPartnersReconciliationDashboardPage"));
 const OpsPartnersBillingMonitoringPage = lazy(() => import("./pages/OpsPartnersBillingMonitoringPage"));
+const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -281,7 +282,8 @@ function TopNav() {
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners", group: "Partners" },
     { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas", group: "Partners" },
     { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", group: "Partners" },
-    { to: "/ops/partners/billing-monitor", label: "ops /partners/billing-monitor", aria: "Monitor simples de billing e invoices de partners", group: "Partners", isNew: true },
+    { to: "/ops/partners/billing-monitor", label: "ops /partners/billing-monitor", aria: "Monitor simples de billing e invoices de partners", group: "Partners" },
+    { to: "/ops/partners/hypertables", label: "ops /partners/hypertables", aria: "Status de hypertables e policies Timescale FA-5", group: "Partners" },
     { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional", group: "Políticas" },
     { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health", group: "Políticas" },
     { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento", group: "Dev" },
@@ -1010,6 +1012,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsPartnersBillingMonitoringPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/partners/hypertables"
+              element={
+                <OpsRoute>
+                  <OpsPartnersHypertablesPage />
                 </OpsRoute>
               }
             />

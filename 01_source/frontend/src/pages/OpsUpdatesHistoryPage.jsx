@@ -54,6 +54,22 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 const UPDATES = [
   {
     date: "2026-04-28",
+    scope: "Sprint FA-5 - Timescale OPS",
+    title: "Página dedicada de hypertables/policies no OPS",
+    description:
+      "Foi adicionada uma rota operacional para visualização organizada das hypertables e jobs Timescale do FA-5, com smoke consolidado em tela para operação e suporte.",
+    uiRoutesNew: ["/ops/partners/hypertables"],
+    apiRoutesNew: ["GET /admin/fiscal/timescale/status"],
+    routes: [
+      "UI /ops/partners/hypertables",
+      "UI /ops/partners/billing-monitor (atalho para hypertables)",
+      "GET /admin/fiscal/timescale/status",
+    ],
+    directLink: "/ops/partners/hypertables",
+    directLinkLabel: "Abrir monitor de hypertables (FA-5)",
+  },
+  {
+    date: "2026-04-28",
     scope: "Sprint FA-1 - Billing Monitor",
     title: "Página simples de acompanhamento de billing para partners",
     description:

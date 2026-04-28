@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
@@ -60,6 +61,51 @@ export default function OpsPartnersBillingMonitoringPage() {
   const [invoices, setInvoices] = useState([]);
   const [creditNotes, setCreditNotes] = useState([]);
   const [disputes, setDisputes] = useState([]);
+  const [externalReference, setExternalReference] = useState("");
+  const [onlyMismatches, setOnlyMismatches] = useState(true);
+  const [auditRows, setAuditRows] = useState([]);
+  const [kpiDate, setKpiDate] = useState(new Date().toISOString().slice(0, 10));
+  const [kpiDailyRows, setKpiDailyRows] = useState([]);
+  const [revRecRows, setRevRecRows] = useState([]);
+
+  function buildKpiAlerts(rows) {
+    const alerts = [];
+    rows.forEach((row) => {
+      const dso = Number(row?.dso_days || 0);
+      const grossMargin = Number(row?.gross_margin_pct || 0);
+      const revenue = Number(row?.revenue_recognized_cents || 0);
+      const codeSuffix = `${row?.partner_id || "UNKNOWN"}:${row?.locker_id || "GLOBAL"}`;
+      if (dso >= 45) {
+        alerts.push({
+          severity: "CRITICAL",
+          code: "OPS_DSO_HIGH",
+          title: "DSO operacional acima do limite",
+          impact: `DSO em ${dso.toFixed(2)} dias para ${codeSuffix}.`,
+          action: "Revisar inadimplência, política de cobrança e aging de AR.",
+        });
+      }
+      if (grossMargin > 0 && grossMargin <= 10) {
+        alerts.push({
+          severity: "HIGH",
+          code: "OPS_GROSS_MARGIN_LOW",
+          title: "Margem bruta operacional baixa",
+          impact: `Gross margin em ${grossMargin.toFixed(2)}% para ${codeSuffix}.`,
+          action: "Validar OPEX/depreciação alocada e revisar preço por ciclo.",
+        });
+      }
+      if (revenue === 0) {
+        alerts.push({
+          severity: "MEDIUM",
+          code: "OPS_REVENUE_RECOGNITION_ZERO",
+          title: "Receita reconhecida zerada no dia",
+          impact: `Sem receita reconhecida para ${codeSuffix} em ${kpiDate}.`,
+          action: "Verificar emissão de invoices, regras de reconhecimento e backfill.",
+        });
+      }
+    });
+    const rank = { CRITICAL: 1, HIGH: 2, MEDIUM: 3, LOW: 4 };
+    return alerts.sort((a, b) => (rank[a.severity] || 10) - (rank[b.severity] || 10));
+  }
 
   async function fetchSection(path, params) {
     const query = buildQuery({ ...params, limit: DEFAULT_LIMIT });
@@ -67,6 +113,14 @@ export default function OpsPartnersBillingMonitoringPage() {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(parseApiError(payload, "Falha na consulta de acompanhamento."));
     return Array.isArray(payload?.items) ? payload.items : [];
+  }
+
+  async function fetchPayload(path, params) {
+    const query = buildQuery(params || {});
+    const response = await fetch(`${BILLING_BASE}${path}?${query}`, { method: "GET", headers });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(parseApiError(payload, "Falha na consulta."));
+    return payload || {};
   }
 
   async function loadAll() {
@@ -78,7 +132,7 @@ export default function OpsPartnersBillingMonitoringPage() {
     setLoading(true);
     setError("");
     try {
-      const [nextCycles, nextInvoices, nextCreditNotes, nextDisputes] = await Promise.all([
+      const [nextCycles, nextInvoices, nextCreditNotes, nextDisputes, nextAudit, nextKpiDaily, nextRevRec] = await Promise.all([
         fetchSection(`/v1/partners/${encodeURIComponent(pid)}/billing/cycles`, {
           country_code: countryCode,
           jurisdiction_code: jurisdictionCode,
@@ -109,12 +163,32 @@ export default function OpsPartnersBillingMonitoringPage() {
           sort_by: "created_at",
           sort_order: "desc",
         }),
+        fetchSection("/admin/fiscal/ledger-compat/audit", {
+          external_reference: externalReference,
+          only_mismatches: onlyMismatches ? "true" : "false",
+          offset: 0,
+          limit: 50,
+        }),
+        fetchPayload("/admin/fiscal/kpi/daily", {
+          date_ref: kpiDate,
+          limit: 50,
+          offset: 0,
+        }),
+        fetchPayload("/admin/fiscal/revenue-recognition", {
+          from_date: kpiDate,
+          to_date: kpiDate,
+          limit: 50,
+          offset: 0,
+        }),
       ]);
 
       setCycles(nextCycles);
       setInvoices(nextInvoices);
       setCreditNotes(nextCreditNotes);
       setDisputes(nextDisputes);
+      setAuditRows(nextAudit);
+      setKpiDailyRows(Array.isArray(nextKpiDaily?.items) ? nextKpiDaily.items : []);
+      setRevRecRows(Array.isArray(nextRevRec?.items) ? nextRevRec.items : []);
       setLastUpdatedAt(new Date().toLocaleString("pt-BR"));
     } catch (err) {
       setError(String(err?.message || err || "Erro desconhecido"));
@@ -142,6 +216,11 @@ export default function OpsPartnersBillingMonitoringPage() {
         <p style={mutedTextStyle}>
           Página simples de acompanhamento para ciclos, invoices, credit notes e histórico de disputas.
         </p>
+        <div style={actionsStyle}>
+          <Link to="/ops/partners/hypertables" style={opsLinkStyle}>
+            Abrir página de Hypertables (FA-5 Timescale)
+          </Link>
+        </div>
 
         <div style={filtersGridStyle}>
           <label style={labelStyle}>
@@ -163,6 +242,19 @@ export default function OpsPartnersBillingMonitoringPage() {
           <label style={labelStyle}>
             invoice status
             <input style={inputStyle} value={invoiceStatus} onChange={(e) => setInvoiceStatus(e.target.value.toUpperCase())} placeholder="ISSUED" />
+          </label>
+          <label style={labelStyle}>
+            external_reference (audit)
+            <input
+              style={inputStyle}
+              value={externalReference}
+              onChange={(e) => setExternalReference(e.target.value)}
+              placeholder="acct:BILLING_CYCLE_COMPUTED:..."
+            />
+          </label>
+          <label style={labelStyle}>
+            data KPI diário (FA-5)
+            <input style={inputStyle} type="date" value={kpiDate} onChange={(e) => setKpiDate(e.target.value)} />
           </label>
         </div>
 
@@ -225,10 +317,19 @@ export default function OpsPartnersBillingMonitoringPage() {
               setInvoiceStatus("");
               setCountryCode("");
               setJurisdictionCode("");
+              setExternalReference("");
             }}
           >
             Limpar filtros
           </button>
+          <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              type="checkbox"
+              checked={onlyMismatches}
+              onChange={(e) => setOnlyMismatches(Boolean(e.target.checked))}
+            />
+            somente divergências (only_mismatches=true)
+          </label>
           {lastUpdatedAt ? <small style={mutedTextStyle}>Última atualização: {lastUpdatedAt}</small> : null}
         </div>
 
@@ -377,6 +478,129 @@ export default function OpsPartnersBillingMonitoringPage() {
             disabled={loading}
           />
         </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Ledger vs Journal (auditoria rápida)</h3>
+          <TableWrap>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>external_reference</th>
+                  <th style={thStyle}>event_type</th>
+                  <th style={thStyle}>journal_balanced</th>
+                  <th style={thStyle}>amount_matches_compat</th>
+                  <th style={thStyle}>ledger_amount_cents</th>
+                  <th style={thStyle}>journal_amount_cents_derived</th>
+                </tr>
+              </thead>
+              <tbody>
+                {auditRows.length ? auditRows.map((row) => (
+                  <tr key={`${row.external_reference}-${row.journal?.journal_entry_id || "no-journal"}`}>
+                    <td style={tdStyle}>{row.external_reference || "-"}</td>
+                    <td style={tdStyle}>{row.event_type || "-"}</td>
+                    <td style={tdStyle}>{String(Boolean(row.audit?.journal_balanced))}</td>
+                    <td style={tdStyle}>{String(Boolean(row.audit?.amount_matches_compat))}</td>
+                    <td style={tdStyle}>{row.ledger?.amount_cents ?? "-"}</td>
+                    <td style={tdStyle}>{row.journal?.amount_cents_derived ?? "-"}</td>
+                  </tr>
+                )) : (
+                  <tr><td style={tdStyle} colSpan={6}>Sem divergências para o filtro atual.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </TableWrap>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>FA-5 - Revenue Recognition & KPI Daily (OPS style)</h3>
+          <div style={healthSectionStyle}>
+            <header style={healthHeaderStyle}>
+              <strong>Alertas ativos - exibindo {buildKpiAlerts(kpiDailyRows).length}/1</strong>
+              <div style={healthFiltersRowStyle}>
+                <input style={inputStyle} readOnly value={(buildKpiAlerts(kpiDailyRows)[0]?.severity || "SEM_ALERTA")} />
+                <input style={inputStyle} readOnly value={(buildKpiAlerts(kpiDailyRows)[0]?.code || "OPS_OK")} />
+                <input style={inputStyle} readOnly value={String(kpiDailyRows.length)} />
+                <button
+                  type="button"
+                  style={buttonGhostStyle}
+                  onClick={() => {
+                    setKpiDailyRows([]);
+                    setRevRecRows([]);
+                  }}
+                >
+                  Limpar seção
+                </button>
+              </div>
+            </header>
+            {buildKpiAlerts(kpiDailyRows).length ? (
+              <article style={alertCardStyle}>
+                <span style={severityTagStyle(buildKpiAlerts(kpiDailyRows)[0]?.severity)}>{buildKpiAlerts(kpiDailyRows)[0]?.severity}</span>
+                <strong style={{ marginLeft: 8 }}>{buildKpiAlerts(kpiDailyRows)[0]?.code}</strong>
+                <p style={mutedTextStyle}>{buildKpiAlerts(kpiDailyRows)[0]?.title}</p>
+                <p style={mutedTextStyle}>Impacto: {buildKpiAlerts(kpiDailyRows)[0]?.impact}</p>
+                <p style={mutedTextStyle}>Ação: {buildKpiAlerts(kpiDailyRows)[0]?.action}</p>
+              </article>
+            ) : (
+              <p style={mutedTextStyle}>Sem alertas ativos para a data selecionada.</p>
+            )}
+            <TableWrap>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>partner_id</th>
+                    <th style={thStyle}>locker_id</th>
+                    <th style={thStyle}>revenue_recognized</th>
+                    <th style={thStyle}>gross_margin_pct</th>
+                    <th style={thStyle}>dso_days</th>
+                    <th style={thStyle}>arpl</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {kpiDailyRows.length ? kpiDailyRows.map((row) => (
+                    <tr key={`${row.partner_id}-${row.locker_id || "global"}`}>
+                      <td style={tdStyle}>{row.partner_id}</td>
+                      <td style={tdStyle}>{row.locker_id || "GLOBAL"}</td>
+                      <td style={tdStyle}>{formatCents(row.revenue_recognized_cents, row.currency || "BRL")}</td>
+                      <td style={tdStyle}>{Number(row.gross_margin_pct || 0).toFixed(2)}%</td>
+                      <td style={tdStyle}>{Number(row.dso_days || 0).toFixed(2)}</td>
+                      <td style={tdStyle}>{formatCents(row.arpl_cents, row.currency || "BRL")}</td>
+                    </tr>
+                  )) : (
+                    <tr><td style={tdStyle} colSpan={6}>Sem registros de KPI diário.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </TableWrap>
+            <TableWrap>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>recognition_date</th>
+                    <th style={thStyle}>partner_id</th>
+                    <th style={thStyle}>locker_id</th>
+                    <th style={thStyle}>source_type</th>
+                    <th style={thStyle}>source_id</th>
+                    <th style={thStyle}>recognized_amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {revRecRows.length ? revRecRows.map((row) => (
+                    <tr key={`${row.source_type}-${row.source_id}-${row.recognition_date}`}>
+                      <td style={tdStyle}>{row.recognition_date}</td>
+                      <td style={tdStyle}>{row.partner_id}</td>
+                      <td style={tdStyle}>{row.locker_id || "GLOBAL"}</td>
+                      <td style={tdStyle}>{row.source_type}</td>
+                      <td style={tdStyle}>{row.source_id}</td>
+                      <td style={tdStyle}>{formatCents(row.recognized_amount_cents, row.currency || "BRL")}</td>
+                    </tr>
+                  )) : (
+                    <tr><td style={tdStyle} colSpan={6}>Sem registros de revenue recognition no período.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </TableWrap>
+          </div>
+        </section>
       </section>
     </div>
   );
@@ -416,3 +640,32 @@ const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 780 };
 const thStyle = { textAlign: "left", borderBottom: "1px solid rgba(255,255,255,0.14)", padding: "8px 10px", fontSize: 12 };
 const tdStyle = { borderBottom: "1px solid rgba(255,255,255,0.08)", padding: "8px 10px", verticalAlign: "top", fontSize: 12 };
 const pagerStyle = { marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" };
+const healthSectionStyle = { border: "1px solid rgba(255,255,255,0.10)", borderRadius: 12, padding: 12, background: "#0f172a" };
+const healthHeaderStyle = { display: "grid", gap: 8, marginBottom: 12 };
+const healthFiltersRowStyle = { display: "grid", gridTemplateColumns: "1fr 1fr 100px auto", gap: 8 };
+const alertCardStyle = { border: "1px solid rgba(248,113,113,0.35)", borderRadius: 12, padding: 12, marginBottom: 12, background: "rgba(127,29,29,0.25)" };
+const severityTagStyle = (severity) => ({
+  display: "inline-block",
+  padding: "2px 8px",
+  borderRadius: 8,
+  fontSize: 11,
+  fontWeight: 700,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background:
+    severity === "CRITICAL"
+      ? "#7f1d1d"
+      : severity === "HIGH"
+        ? "#78350f"
+        : severity === "MEDIUM"
+          ? "#1e3a8a"
+          : "#334155",
+});
+const opsLinkStyle = {
+  textDecoration: "none",
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(59,130,246,0.14)",
+  color: "#bfdbfe",
+  fontWeight: 700,
+};
