@@ -291,6 +291,451 @@ def _ensure_fiscal_authority_callbacks(engine: Engine) -> None:
         conn.execute(text(stmt))
 
 
+def _ensure_partner_payment_holds(engine: Engine) -> None:
+    """FA-0: retenção parcial de recebíveis B2B para proteção de disputas."""
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_payment_holds (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        partner_id VARCHAR(36) NOT NULL,
+        invoice_id VARCHAR(36) NOT NULL,
+        hold_amount_cents BIGINT NOT NULL,
+        release_schedule VARCHAR(30) NOT NULL DEFAULT 'AFTER_15_DAYS',
+        released_at TIMESTAMPTZ,
+        released_amount_cents BIGINT,
+        dispute_opened_at TIMESTAMPTZ,
+        dispute_resolved_at TIMESTAMPTZ,
+        dispute_result VARCHAR(20),
+        status VARCHAR(20) NOT NULL DEFAULT 'HELD',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pph_release_schedule CHECK (
+            release_schedule IN ('AFTER_15_DAYS', 'AFTER_30_DAYS', 'UPON_DISPUTE_RESOLUTION')
+        ),
+        CONSTRAINT ck_pph_status CHECK (
+            status IN ('HELD', 'RELEASED', 'DISPUTED', 'CANCELLED')
+        ),
+        CONSTRAINT ck_pph_dispute_result CHECK (
+            dispute_result IS NULL OR dispute_result IN ('IN_FAVOR_ELLAN', 'IN_FAVOR_PARTNER')
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_partner_payment_holds_partner_status
+        ON partner_payment_holds (partner_id, status);
+    CREATE INDEX IF NOT EXISTS ix_partner_payment_holds_invoice
+        ON partner_payment_holds (invoice_id);
+    CREATE INDEX IF NOT EXISTS ix_partner_payment_holds_created_at
+        ON partner_payment_holds (created_at);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_locker_slot_hourly_occupancy(engine: Engine) -> None:
+    """FA-0: ocupação horária do slot para billing por uso com granularidade fina."""
+    stmt = """
+    CREATE TABLE IF NOT EXISTS locker_slot_hourly_occupancy (
+        id BIGSERIAL PRIMARY KEY,
+        locker_id VARCHAR(36) NOT NULL,
+        slot_number INTEGER NOT NULL,
+        hour_bucket TIMESTAMPTZ NOT NULL,
+        is_occupied BOOLEAN NOT NULL,
+        delivery_id VARCHAR(36),
+        occupied_duration_minutes INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_lsho_occupied_duration CHECK (
+            occupied_duration_minutes >= 0 AND occupied_duration_minutes <= 60
+        ),
+        CONSTRAINT uq_lsho_locker_slot_hour UNIQUE (locker_id, slot_number, hour_bucket)
+    );
+    CREATE INDEX IF NOT EXISTS ix_lsho_locker_hour
+        ON locker_slot_hourly_occupancy (locker_id, hour_bucket);
+    CREATE INDEX IF NOT EXISTS ix_lsho_delivery_hour
+        ON locker_slot_hourly_occupancy (delivery_id, hour_bucket);
+    CREATE INDEX IF NOT EXISTS ix_lsho_hour_bucket
+        ON locker_slot_hourly_occupancy (hour_bucket);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_journal_entries_foundation(engine: Engine) -> None:
+    """
+    FA-0: preparação de dedupe contábil.
+    Garante `journal_entries` com `reference_source` e `dedupe_key` único.
+    """
+    create_stmt = """
+    CREATE TABLE IF NOT EXISTS journal_entries (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        entry_date DATE NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        reference_type VARCHAR(50),
+        reference_id VARCHAR(36),
+        reference_source VARCHAR(50) NOT NULL DEFAULT 'manual',
+        dedupe_key VARCHAR(128),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        is_posted BOOLEAN NOT NULL DEFAULT FALSE,
+        posted_at TIMESTAMPTZ,
+        posted_by VARCHAR(36),
+        created_by VARCHAR(36),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    """
+    with engine.begin() as conn:
+        conn.execute(text(create_stmt))
+
+    # Auto-heal para ambientes em que a tabela já exista sem os campos de dedupe.
+    _add_column_if_missing(engine, "journal_entries", "reference_source", "VARCHAR(50) NOT NULL DEFAULT 'manual'")
+    _add_column_if_missing(engine, "journal_entries", "dedupe_key", "VARCHAR(128)")
+
+    index_stmt = """
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_journal_entries_dedupe_key
+        ON journal_entries (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_journal_entries_reference
+        ON journal_entries (reference_source, reference_type, reference_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(index_stmt))
+
+
+def _ensure_partner_billing_plans(engine: Engine) -> None:
+    """
+    FA-1: catálogo de planos de billing B2B (global-first, multi-país/jurisdição).
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_billing_plans (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        partner_id VARCHAR(36) NOT NULL,
+        partner_type VARCHAR(20) NOT NULL,
+        plan_name VARCHAR(128) NOT NULL,
+        billing_model VARCHAR(30) NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+        monthly_fee_cents BIGINT,
+        fee_per_delivery_cents BIGINT,
+        fee_per_pickup_cents BIGINT,
+        fee_per_day_stored_cents BIGINT,
+        free_storage_hours INTEGER NOT NULL DEFAULT 72,
+        revenue_share_pct NUMERIC(6,4),
+        min_monthly_fee_cents BIGINT,
+        included_deliveries_month INTEGER,
+        overage_fee_cents BIGINT,
+        valid_from DATE NOT NULL,
+        valid_until DATE,
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pbp_partner_type CHECK (
+            partner_type IN ('ECOMMERCE','LOGISTICS','LOCAL_MERCHANT','CARRIER','ENTERPRISE')
+        ),
+        CONSTRAINT ck_pbp_billing_model CHECK (
+            billing_model IN ('FLAT_MONTHLY','PER_USE','HYBRID','REVENUE_SHARE','FREE_TIER')
+        ),
+        CONSTRAINT ck_pbp_revenue_share_pct CHECK (
+            revenue_share_pct IS NULL OR (revenue_share_pct >= 0 AND revenue_share_pct <= 1)
+        ),
+        CONSTRAINT ck_pbp_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_pbp_partner_active
+        ON partner_billing_plans (partner_id, is_active);
+    CREATE INDEX IF NOT EXISTS ix_pbp_country_jurisdiction
+        ON partner_billing_plans (country_code, jurisdiction_code);
+    CREATE INDEX IF NOT EXISTS ix_pbp_validity
+        ON partner_billing_plans (valid_from, valid_until);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_partner_billing_cycles(engine: Engine) -> None:
+    """
+    FA-1: ciclo de billing por parceiro (global-first, suporte por locker ou contrato global).
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_billing_cycles (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36),
+        partner_type VARCHAR(20) NOT NULL,
+        billing_plan_id VARCHAR(36) NOT NULL REFERENCES partner_billing_plans(id),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        period_timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        total_deliveries INTEGER NOT NULL DEFAULT 0,
+        total_pickups INTEGER NOT NULL DEFAULT 0,
+        total_slot_days NUMERIC(10,2) NOT NULL DEFAULT 0,
+        total_overdue_days NUMERIC(10,2) NOT NULL DEFAULT 0,
+        base_fee_cents BIGINT NOT NULL DEFAULT 0,
+        usage_fee_cents BIGINT NOT NULL DEFAULT 0,
+        overage_fee_cents BIGINT NOT NULL DEFAULT 0,
+        sla_penalty_cents BIGINT NOT NULL DEFAULT 0,
+        discount_cents BIGINT NOT NULL DEFAULT 0,
+        tax_cents BIGINT NOT NULL DEFAULT 0,
+        total_amount_cents BIGINT NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+        dedupe_key VARCHAR(160),
+        computed_at TIMESTAMPTZ,
+        approved_at TIMESTAMPTZ,
+        approved_by VARCHAR(36),
+        invoiced_at TIMESTAMPTZ,
+        paid_at TIMESTAMPTZ,
+        payment_ref VARCHAR(128),
+        dispute_reason TEXT,
+        notes TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pbc_status CHECK (
+            status IN ('OPEN','COMPUTING','REVIEW','APPROVED','INVOICED','PAID','DISPUTED','CANCELLED')
+        ),
+        CONSTRAINT ck_pbc_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_pbc_partner_period
+        ON partner_billing_cycles (partner_id, period_start, period_end);
+    CREATE INDEX IF NOT EXISTS ix_pbc_status
+        ON partner_billing_cycles (status);
+    CREATE INDEX IF NOT EXISTS ix_pbc_country_jurisdiction
+        ON partner_billing_cycles (country_code, jurisdiction_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbc_partner_locker_period
+        ON partner_billing_cycles (partner_id, locker_id, period_start, period_end)
+        WHERE locker_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbc_partner_global_period
+        ON partner_billing_cycles (partner_id, period_start, period_end)
+        WHERE locker_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbc_dedupe_key
+        ON partner_billing_cycles (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_partner_billing_line_items(engine: Engine) -> None:
+    """
+    FA-1: detalhamento auditável do billing por ciclo (global-first).
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_billing_line_items (
+        id BIGSERIAL PRIMARY KEY,
+        cycle_id VARCHAR(36) NOT NULL REFERENCES partner_billing_cycles(id) ON DELETE CASCADE,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36),
+        line_type VARCHAR(40) NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        reference_id VARCHAR(36),
+        reference_type VARCHAR(40),
+        reference_source VARCHAR(50) NOT NULL DEFAULT 'billing_engine',
+        dedupe_key VARCHAR(180),
+        quantity NUMERIC(12,4) NOT NULL DEFAULT 1,
+        unit_price_cents BIGINT NOT NULL,
+        total_cents BIGINT NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        tax_code VARCHAR(32),
+        tax_rate_pct NUMERIC(8,4),
+        period_from TIMESTAMPTZ,
+        period_to TIMESTAMPTZ,
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pbli_line_type CHECK (
+            line_type IN (
+                'BASE_FEE','DELIVERY_FEE','PICKUP_FEE','STORAGE_DAY_FEE','OVERAGE_FEE',
+                'SLA_PENALTY','TAX','DISCOUNT','CREDIT_NOTE','ADJUSTMENT'
+            )
+        ),
+        CONSTRAINT ck_pbli_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_pbli_cycle
+        ON partner_billing_line_items (cycle_id);
+    CREATE INDEX IF NOT EXISTS ix_pbli_reference
+        ON partner_billing_line_items (reference_source, reference_type, reference_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbli_dedupe_key
+        ON partner_billing_line_items (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_pbli_country_jurisdiction
+        ON partner_billing_line_items (country_code, jurisdiction_code);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_partner_b2b_invoices(engine: Engine) -> None:
+    """
+    FA-1: faturas B2B globais emitidas para parceiros.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_b2b_invoices (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        cycle_id VARCHAR(36) NOT NULL REFERENCES partner_billing_cycles(id),
+        partner_id VARCHAR(36) NOT NULL,
+        invoice_number VARCHAR(50),
+        invoice_series VARCHAR(20),
+        access_key VARCHAR(140),
+        document_type VARCHAR(30) NOT NULL DEFAULT 'INVOICE',
+        amount_cents BIGINT NOT NULL,
+        tax_cents BIGINT NOT NULL DEFAULT 0,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+        due_date DATE,
+        payment_method VARCHAR(30),
+        emitter_tax_id VARCHAR(32),
+        emitter_name VARCHAR(140),
+        taker_tax_id VARCHAR(32),
+        taker_name VARCHAR(140),
+        taker_email VARCHAR(128),
+        status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+        dedupe_key VARCHAR(180),
+        external_provider_ref VARCHAR(140),
+        issued_at TIMESTAMPTZ,
+        sent_at TIMESTAMPTZ,
+        viewed_at TIMESTAMPTZ,
+        paid_at TIMESTAMPTZ,
+        cancelled_at TIMESTAMPTZ,
+        cancel_reason TEXT,
+        pdf_url VARCHAR(500),
+        xml_content JSONB,
+        government_response JSONB,
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pbi_status CHECK (
+            status IN ('DRAFT','ISSUED','SENT','VIEWED','PAID','OVERDUE','DISPUTED','CANCELLED')
+        ),
+        CONSTRAINT ck_pbi_document_type CHECK (
+            document_type IN ('INVOICE','NFS_E','NFE_55','NFC_E_65','BOLETO','INVOICE_PDF')
+        ),
+        CONSTRAINT ck_pbi_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_pbi_partner_status
+        ON partner_b2b_invoices (partner_id, status);
+    CREATE INDEX IF NOT EXISTS ix_pbi_due_date
+        ON partner_b2b_invoices (due_date);
+    CREATE INDEX IF NOT EXISTS ix_pbi_country_jurisdiction
+        ON partner_b2b_invoices (country_code, jurisdiction_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbi_dedupe_key
+        ON partner_b2b_invoices (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pbi_cycle
+        ON partner_b2b_invoices (cycle_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_partner_credit_notes(engine: Engine) -> None:
+    """
+    FA-1: notas de crédito globais vinculadas a invoice/ciclo/parceiro.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS partner_credit_notes (
+        id VARCHAR(36) NOT NULL PRIMARY KEY,
+        partner_id VARCHAR(36) NOT NULL,
+        original_invoice_id VARCHAR(36) REFERENCES partner_b2b_invoices(id),
+        cycle_id VARCHAR(36) REFERENCES partner_billing_cycles(id),
+        reason_code VARCHAR(40) NOT NULL,
+        description TEXT NOT NULL,
+        amount_cents BIGINT NOT NULL,
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        dedupe_key VARCHAR(180),
+        approved_by VARCHAR(36),
+        approved_at TIMESTAMPTZ,
+        applied_to_cycle_id VARCHAR(36),
+        applied_at TIMESTAMPTZ,
+        expires_at TIMESTAMPTZ,
+        dispute_ref VARCHAR(140),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_pcn_reason_code CHECK (
+            reason_code IN ('SLA_BREACH','HARDWARE_DOWNTIME','COMMERCIAL_ADJUSTMENT','DUPLICATE','TAX_ADJUSTMENT','OTHER')
+        ),
+        CONSTRAINT ck_pcn_status CHECK (
+            status IN ('PENDING','APPROVED','APPLIED','REFUNDED','EXPIRED','CANCELLED')
+        ),
+        CONSTRAINT ck_pcn_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE INDEX IF NOT EXISTS ix_pcn_partner_status
+        ON partner_credit_notes (partner_id, status);
+    CREATE INDEX IF NOT EXISTS ix_pcn_invoice
+        ON partner_credit_notes (original_invoice_id);
+    CREATE INDEX IF NOT EXISTS ix_pcn_country_jurisdiction
+        ON partner_credit_notes (country_code, jurisdiction_code);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_pcn_dedupe_key
+        ON partner_credit_notes (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
+def _ensure_locker_utilization_snapshots(engine: Engine) -> None:
+    """
+    FA-2: snapshots diários de utilização para reconciliação uso x faturamento.
+    """
+    stmt = """
+    CREATE TABLE IF NOT EXISTS locker_utilization_snapshots (
+        id BIGSERIAL PRIMARY KEY,
+        snapshot_date DATE NOT NULL,
+        partner_id VARCHAR(36) NOT NULL,
+        locker_id VARCHAR(36) NOT NULL,
+        country_code VARCHAR(2),
+        jurisdiction_code VARCHAR(32),
+        currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
+        timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
+        measured_occupied_minutes INTEGER NOT NULL DEFAULT 0,
+        measured_occupied_hours NUMERIC(12,4) NOT NULL DEFAULT 0,
+        billed_storage_units NUMERIC(12,4) NOT NULL DEFAULT 0,
+        billed_storage_hours NUMERIC(12,4) NOT NULL DEFAULT 0,
+        billed_storage_amount_cents BIGINT NOT NULL DEFAULT 0,
+        difference_hours NUMERIC(12,4) NOT NULL DEFAULT 0,
+        difference_pct NUMERIC(10,4),
+        divergence_status VARCHAR(20) NOT NULL DEFAULT 'OK',
+        dedupe_key VARCHAR(180),
+        metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT ck_lus_status CHECK (
+            divergence_status IN ('OK', 'UNDER_BILLED', 'OVER_BILLED', 'MISSING_BILLING')
+        ),
+        CONSTRAINT ck_lus_country_code CHECK (
+            country_code IS NULL OR LENGTH(country_code) = 2
+        )
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_lus_partner_locker_date
+        ON locker_utilization_snapshots (partner_id, locker_id, snapshot_date);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_lus_dedupe_key
+        ON locker_utilization_snapshots (dedupe_key)
+        WHERE dedupe_key IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_lus_snapshot_date
+        ON locker_utilization_snapshots (snapshot_date);
+    CREATE INDEX IF NOT EXISTS ix_lus_status_date
+        ON locker_utilization_snapshots (divergence_status, snapshot_date);
+    CREATE INDEX IF NOT EXISTS ix_lus_partner_locker
+        ON locker_utilization_snapshots (partner_id, locker_id);
+    """
+    with engine.begin() as conn:
+        conn.execute(text(stmt))
+
+
 def _ensure_unique_constraint(engine: Engine) -> None:
     stmt = """
     DO $$
@@ -352,6 +797,15 @@ def run_startup_migrations(engine: Engine) -> None:
     _ensure_fiscal_reconciliation_gaps(engine)
     _ensure_fiscal_provider_health_status(engine)
     _ensure_fiscal_authority_callbacks(engine)
+    _ensure_partner_payment_holds(engine)
+    _ensure_locker_slot_hourly_occupancy(engine)
+    _ensure_journal_entries_foundation(engine)
+    _ensure_partner_billing_plans(engine)
+    _ensure_partner_billing_cycles(engine)
+    _ensure_partner_billing_line_items(engine)
+    _ensure_partner_b2b_invoices(engine)
+    _ensure_partner_credit_notes(engine)
+    _ensure_locker_utilization_snapshots(engine)
     _ensure_invoice_order_view(engine)
 
     inspector_after = inspect(engine)

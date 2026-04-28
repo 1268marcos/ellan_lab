@@ -54,6 +54,29 @@ function parseError(payload, fallback = "Nao foi possivel carregar o overview de
 const UPDATES = [
   {
     date: "2026-04-28",
+    scope: "Sprint FA-1 - Billing Monitor",
+    title: "Página simples de acompanhamento de billing para partners",
+    description:
+      "Foi adicionada a tela operacional com filtros, ordenação e paginação para acompanhar ciclos, invoices, credit notes e disputes do partner em um único fluxo.",
+    uiRoutesNew: ["/ops/partners/billing-monitor"],
+    apiRoutesNew: [
+      "GET /v1/partners/{partner_id}/billing/cycles",
+      "GET /v1/partners/{partner_id}/invoices",
+      "GET /v1/partners/{partner_id}/credit-notes",
+      "GET /v1/partners/{partner_id}/billing/disputes",
+    ],
+    routes: [
+      "UI /ops/partners/billing-monitor",
+      "GET /v1/partners/{partner_id}/billing/cycles",
+      "GET /v1/partners/{partner_id}/invoices",
+      "GET /v1/partners/{partner_id}/credit-notes",
+      "GET /v1/partners/{partner_id}/billing/disputes",
+    ],
+    directLink: "/ops/partners/billing-monitor",
+    directLinkLabel: "Abrir monitor de billing de partners",
+  },
+  {
+    date: "2026-04-28",
     scope: "Sprint 12 - Dashboard Operacional",
     title: "Novo dashboard OPS de reconciliação (Partners)",
     description:
