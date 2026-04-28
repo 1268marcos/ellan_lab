@@ -256,39 +256,52 @@ function TopNav() {
 
   // Links de operação
   const opsLinks = opsEnabled ? [
-    { to: "/ops/sp", label: "ops /sp", aria: "Ferramentas operacionais São Paulo" },
-    { to: "/ops/pt", label: "ops /pt", aria: "Ferramentas operacionais Portugal" },
-    
-    { to: "/ops/sp/kiosk", label: "ops /sp/kiosk", aria: "Kiosk São Paulo" },
-    { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal" },
-
-    
-    { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento" },
-    { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot" },
-    { to: "/ops/dev/base", label: "ops /dev/base (db)", aria: "Gestão de tabelas e enums base" },
-    { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id" },
-    { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional" },
-    { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas" },
-    { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT" },
-    { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners" },
-    { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics" },
-    { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2" },
-    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3" },
-    { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns" },
-    { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos" },
-    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos" },
-    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3" },
-    { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health" },
-    { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao" },
-    { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)" },
-    { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref" },
-    { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas" },
-    { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", isNew: true },
-    { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais" },
-    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada" },
-    { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional" },
-    { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health" }
+    { to: "/ops/sp", label: "ops /sp", aria: "Ferramentas operacionais São Paulo", group: "Visão Geral" },
+    { to: "/ops/pt", label: "ops /pt", aria: "Ferramentas operacionais Portugal", group: "Visão Geral" },
+    { to: "/ops/sp/kiosk", label: "ops /sp/kiosk", aria: "Kiosk São Paulo", group: "Visão Geral" },
+    { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal", group: "Visão Geral" },
+    { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
+    { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional", group: "Dashboards" },
+    { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
+    { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
+    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada", group: "Dashboards" },
+    { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
+    { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
+    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
+    { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns", group: "Logística" },
+    { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos", group: "Produtos & Fiscal" },
+    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", group: "Produtos & Fiscal" },
+    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3", group: "Produtos & Fiscal" },
+    { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health", group: "Produtos & Fiscal" },
+    { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT", group: "Produtos & Fiscal" },
+    { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao", group: "Integrações" },
+    { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)", group: "Integrações" },
+    { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", group: "Integrações" },
+    { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners", group: "Partners" },
+    { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas", group: "Partners" },
+    { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", group: "Partners", isNew: true },
+    { to: "/ops/auth/policy", label: "ops /auth/policy", aria: "Política de autorização operacional", group: "Políticas" },
+    { to: "/ops/auth/policy/versioning", label: "ops /auth/policy/versioning", aria: "Política de versionamento da ops/health", group: "Políticas" },
+    { to: "/ops/dev/reset", label: "ops /dev/reset", aria: "Reset de desenvolvimento", group: "Dev" },
+    { to: "/ops/dev/slots", label: "ops /dev/slots", aria: "Alocação de produtos por slot", group: "Dev" },
+    { to: "/ops/dev/base", label: "ops /dev/base (db)", aria: "Gestão de tabelas e enums base", group: "Dev" }
   ] : [];
+  const opsGroupOrder = [
+    "Visão Geral",
+    "Dashboards",
+    "Logística",
+    "Produtos & Fiscal",
+    "Integrações",
+    "Partners",
+    "Políticas",
+    "Dev",
+  ];
+  const groupedOpsLinks = opsGroupOrder
+    .map((group) => ({
+      group,
+      links: opsLinks.filter((link) => link.group === group),
+    }))
+    .filter((entry) => entry.links.length > 0);
 
   const myAreaLinks = [
     { to: "/meus-pedidos", label: "Meus Pedidos", aria: "Ver meus pedidos" },
@@ -378,16 +391,23 @@ function TopNav() {
                 </button>
                 {isOpsMenuOpen ? (
                   <div className="nav-ops-panel" role="menu" aria-label="Menu OPS">
-                    {opsLinks.map(link => (
-                      <Link
-                        key={link.to}
-                        className="nav-ops-item"
-                        to={link.to}
-                        onClick={() => setIsOpsMenuOpen(false)}
-                      >
-                        <span>{link.label}</span>
-                        {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
-                      </Link>
+                    {groupedOpsLinks.map((groupEntry) => (
+                      <div key={groupEntry.group}>
+                        <div className="ops-group-title">
+                          {groupEntry.group}
+                        </div>
+                        {groupEntry.links.map(link => (
+                          <Link
+                            key={link.to}
+                            className="nav-ops-item"
+                            to={link.to}
+                            onClick={() => setIsOpsMenuOpen(false)}
+                          >
+                            <span>{link.label}</span>
+                            {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                          </Link>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 ) : null}
@@ -618,16 +638,23 @@ function TopNav() {
                   </button>
                   {isMobileOpsOpen ? (
                     <div className="mobile-ops-list">
-                      {opsLinks.map(link => (
-                        <Link 
-                          key={link.to} 
-                          className="mobile-nav-link mobile-nav-link--dev" 
-                          to={link.to} 
-                          onClick={() => setIsMobileMenuOpen(false)}
-                        >
-                          <span>{link.label}</span>
-                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
-                        </Link>
+                      {groupedOpsLinks.map((groupEntry) => (
+                        <div key={groupEntry.group}>
+                          <div className="ops-group-title ops-group-title--mobile">
+                            {groupEntry.group}
+                          </div>
+                          {groupEntry.links.map(link => (
+                            <Link 
+                              key={link.to} 
+                              className="mobile-nav-link mobile-nav-link--dev" 
+                              to={link.to} 
+                              onClick={() => setIsMobileMenuOpen(false)}
+                            >
+                              <span>{link.label}</span>
+                              {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                            </Link>
+                          ))}
+                        </div>
                       ))}
                     </div>
                   ) : null}

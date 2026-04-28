@@ -2,17 +2,22 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { upsertPublicFiscalProfile } from "../../services/authApi";
+import {
+  formLabelStyle,
+  formInputStyle,
+  formGridTwoColsStyle,
+  primaryFormButtonStyle,
+} from "./myAreaSharedFormStyles";
 
-const labelStyle = { display: "block", fontWeight: 600, marginBottom: 6, color: "#0f172a" };
 const inputStyle = {
-  width: "100%",
-  padding: "10px 12px",
-  borderRadius: 8,
-  border: "1px solid #cbd5e1",
-  fontSize: 14,
-  boxSizing: "border-box",
+  ...formInputStyle,
 };
-const gridStyle = { display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" };
+const labelStyle = {
+  ...formLabelStyle,
+};
+const gridStyle = {
+  ...formGridTwoColsStyle,
+};
 
 /**
  * @param {object} props
@@ -195,14 +200,11 @@ export default function FiscalProfileForm({ token, user, defaultFiscalCountry = 
           type="submit"
           disabled={saving || !consent}
           style={{
+            ...primaryFormButtonStyle,
             marginTop: 14,
             width: "100%",
             padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
             background: saving ? "#94a3b8" : "#0f766e",
-            color: "#fff",
-            fontWeight: 700,
             cursor: saving ? "default" : "pointer",
           }}
         >

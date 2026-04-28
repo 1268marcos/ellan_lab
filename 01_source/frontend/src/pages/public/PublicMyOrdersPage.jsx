@@ -12,6 +12,30 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { fetchMyOrders } from "../../services/publicApi";
+import { PageHeader, StatusChips, SkeletonCard, ErrorCard, EmptyStateBlock, SummaryMetrics } from "./myAreaSharedComponents";
+import { resolvePersonalGreeting } from "./myAreaDisplayName";
+import {
+  pageStyle,
+  containerStyle,
+  pageHeaderStyle,
+  titleStyle,
+  subtitleStyle,
+  newOrderButtonStyle,
+  filterLeftStyle,
+  filterIconStyle,
+  filterSelectStyle,
+  chipsWrapStyle,
+  statusChipStyle,
+  statusChipActiveStyle,
+} from "./myAreaSharedStyles";
+import {
+  sectionCardBaseStyle,
+  elevatedCardBaseStyle,
+  filterCardBaseStyle,
+  errorCardBaseStyle,
+  errorIconBaseStyle,
+  errorTextBaseStyle,
+} from "./myAreaSharedCardStyles";
 
 const STATUS_CONFIG = {
   PAYMENT_PENDING: { bg: "#fef3c7", color: "#92400e", label: "Pagamento Pendente", accent: "#f59e0b" },
@@ -268,38 +292,15 @@ function OrdersFilter({
           Resetar preferências
         </button>
       </div>
-      <div style={chipsWrapStyle} role="tablist" aria-label="Atalhos de status">
-        {statusOptions.map((option) => (
-          <button
-            key={option.key}
-            type="button"
-            onClick={() => onFilterChange(option.key)}
-            style={{
-              ...statusChipStyle,
-              ...(filter === option.key ? statusChipActiveStyle : {}),
-            }}
-            aria-pressed={filter === option.key}
-          >
-            {option.label} ({statusCounts[option.key] ?? 0})
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Componente de Empty State
-function EmptyState() {
-  return (
-    <div style={emptyStateStyle}>
-      <div style={emptyStateIconStyle}>📭</div>
-      <h3 style={emptyStateTitleStyle}>Nenhum pedido encontrado</h3>
-      <p style={emptyStateTextStyle}>
-        Você ainda não realizou nenhum pedido. Comece comprando no nosso catálogo.
-      </p>
-      <Link to="/comprar" style={emptyStateButtonStyle}>
-        🛒 Ir para o catálogo
-      </Link>
+      <StatusChips
+        options={statusOptions}
+        activeKey={filter}
+        counts={statusCounts}
+        onSelect={onFilterChange}
+        wrapStyle={chipsWrapStyle}
+        chipStyle={statusChipStyle}
+        activeChipStyle={statusChipActiveStyle}
+      />
     </div>
   );
 }
@@ -307,23 +308,22 @@ function EmptyState() {
 // Componente de Loading Skeleton
 function OrderSkeleton() {
   return (
-    <div style={skeletonCardStyle}>
-      <div style={skeletonHeaderStyle}>
-        <div style={skeletonBadgeStyle}></div>
-        <div style={skeletonBadgeStyle}></div>
-      </div>
-      <div style={skeletonBodyStyle}>
-        <div style={skeletonLineStyle}></div>
-        <div style={skeletonLineStyle}></div>
-        <div style={skeletonLineStyle}></div>
-      </div>
-    </div>
+    <SkeletonCard
+      containerStyle={skeletonCardStyle}
+      headerStyle={skeletonHeaderStyle}
+      bodyStyle={skeletonBodyStyle}
+      lineStyle={skeletonLineStyle}
+      headerLeftStyle={skeletonBadgeStyle}
+      headerRightStyle={skeletonBadgeStyle}
+      lineCount={3}
+    />
   );
 }
 
 // Página Principal
 export default function PublicMyOrdersPage() {
-  const { token, loading: authLoading, isAuthenticated } = useAuth();
+  const { token, user, loading: authLoading, isAuthenticated } = useAuth();
+  const greeting = resolvePersonalGreeting(user);
   const storedPrefs = readStoredOrdersPrefs();
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
@@ -479,36 +479,30 @@ export default function PublicMyOrdersPage() {
     <main style={pageStyle}>
       <div style={containerStyle}>
         {/* Header da Página */}
-        <header style={pageHeaderStyle}>
-          <div>
-            <h1 style={titleStyle}>Meus Pedidos</h1>
-            <p style={subtitleStyle}>
-              Acompanhe aqui todos os seus pedidos realizados no fluxo público.
-            </p>
-          </div>
-          <Link to="/comprar" style={newOrderButtonStyle}>
-            ✨ Novo Pedido
-          </Link>
-        </header>
+        <PageHeader
+          title="Meus Pedidos"
+          subtitle={`${greeting}Acompanhe aqui todos os seus pedidos realizados no fluxo público.`}
+          ctaTo="/comprar"
+          ctaLabel="✨ Novo Pedido"
+          headerStyle={pageHeaderStyle}
+          titleStyle={titleStyle}
+          subtitleStyle={subtitleStyle}
+          ctaStyle={newOrderButtonStyle}
+        />
         {!authLoading && !pageLoading && !error && items.length > 0 ? (
-          <section style={summaryBarStyle} aria-label="Resumo dos pedidos">
-            <div style={summaryMetricStyle}>
-              <span style={summaryMetricLabelStyle}>Total</span>
-              <strong style={summaryMetricValueStyle}>{statusCounts.all}</strong>
-            </div>
-            <div style={summaryMetricStyle}>
-              <span style={summaryMetricLabelStyle}>Aguardando retirada</span>
-              <strong style={summaryMetricValueStyle}>{statusCounts.PAID_PENDING_PICKUP}</strong>
-            </div>
-            <div style={summaryMetricStyle}>
-              <span style={summaryMetricLabelStyle}>Pagamento pendente</span>
-              <strong style={summaryMetricValueStyle}>{statusCounts.PAYMENT_PENDING}</strong>
-            </div>
-            <div style={summaryMetricStyle}>
-              <span style={summaryMetricLabelStyle}>Expirados</span>
-              <strong style={summaryMetricValueStyle}>{statusCounts.EXPIRED}</strong>
-            </div>
-          </section>
+          <SummaryMetrics
+            sectionAriaLabel="Resumo dos pedidos"
+            sectionStyle={summaryBarStyle}
+            cardStyle={summaryMetricStyle}
+            labelStyle={summaryMetricLabelStyle}
+            valueStyle={summaryMetricValueStyle}
+            items={[
+              { key: "all", label: "Total", value: statusCounts.all },
+              { key: "pending_pickup", label: "Aguardando retirada", value: statusCounts.PAID_PENDING_PICKUP },
+              { key: "payment_pending", label: "Pagamento pendente", value: statusCounts.PAYMENT_PENDING },
+              { key: "expired", label: "Expirados", value: statusCounts.EXPIRED },
+            ]}
+          />
         ) : null}
 
         {/* Estado de Carregamento */}
@@ -522,24 +516,38 @@ export default function PublicMyOrdersPage() {
 
         {/* Estado de Erro */}
         {!authLoading && !pageLoading && error ? (
-          <div style={errorCardStyle}>
-            <div style={errorIconStyle}>⚠️</div>
-            <div>
-              <strong>Não foi possível carregar seus pedidos</strong>
-              <p style={errorTextStyle}>{error}</p>
+          <ErrorCard
+            title="Não foi possível carregar seus pedidos"
+            message={error}
+            icon="⚠️"
+            containerStyle={errorCardStyle}
+            iconStyle={errorIconStyle}
+            textStyle={errorTextStyle}
+            action={
               <button
                 onClick={() => window.location.reload()}
                 style={retryButtonStyle}
               >
                 🔄 Tentar novamente
               </button>
-            </div>
-          </div>
+            }
+          />
         ) : null}
 
         {/* Estado Vazio */}
         {!authLoading && !pageLoading && !error && items.length === 0 ? (
-          <EmptyState />
+          <EmptyStateBlock
+            title="Nenhum pedido encontrado"
+            description="Você ainda não realizou nenhum pedido. Comece comprando no nosso catálogo."
+            icon="📭"
+            ctaTo="/comprar"
+            ctaLabel="🛒 Ir para o catálogo"
+            containerStyle={emptyStateStyle}
+            iconStyle={emptyStateIconStyle}
+            titleStyle={emptyStateTitleStyle}
+            descriptionStyle={emptyStateTextStyle}
+            buttonStyle={emptyStateButtonStyle}
+          />
         ) : null}
 
         {/* Lista de Pedidos */}
@@ -637,52 +645,6 @@ export default function PublicMyOrdersPage() {
 // ESTILOS
 // ============================================
 
-const pageStyle = {
-  minHeight: "100vh",
-  background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
-  padding: "24px 16px",
-};
-
-const containerStyle = {
-  maxWidth: 960,
-  margin: "0 auto",
-};
-
-const pageHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 16,
-  marginBottom: 24,
-  flexWrap: "wrap",
-};
-
-const titleStyle = {
-  margin: "0 0 8px 0",
-  fontSize: 32,
-  fontWeight: 800,
-  color: "#1a202c",
-};
-
-const subtitleStyle = {
-  margin: 0,
-  fontSize: 16,
-  color: "#4a5568",
-  lineHeight: 1.5,
-};
-
-const newOrderButtonStyle = {
-  textDecoration: "none",
-  padding: "12px 20px",
-  borderRadius: 12,
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  color: "white",
-  fontWeight: 700,
-  fontSize: 14,
-  boxShadow: "0 4px 6px -1px rgba(102, 126, 234, 0.4)",
-  transition: "all 0.2s",
-  whiteSpace: "nowrap",
-};
 
 const listWrapperStyle = {
   display: "grid",
@@ -696,11 +658,8 @@ const orderCardLinkStyle = {
 };
 
 const orderCardStyle = {
+  ...elevatedCardBaseStyle,
   padding: 20,
-  borderRadius: 16,
-  border: "1px solid #dbe3ef",
-  background: "white",
-  boxShadow: "0 4px 10px rgba(0, 0, 0, 0.05)",
   transition: "all 0.2s",
 };
 
@@ -815,15 +774,12 @@ const viewDetailsStyle = {
 };
 
 const filterContainerStyle = {
+  ...filterCardBaseStyle,
   display: "flex",
   justifyContent: "space-between",
   alignItems: "center",
   gap: 16,
   marginBottom: 20,
-  padding: 16,
-  background: "white",
-  borderRadius: 12,
-  border: "1px solid #e2e8f0",
   flexWrap: "wrap",
 };
 
@@ -834,28 +790,6 @@ const searchWrapStyle = {
   flexWrap: "wrap",
 };
 
-const filterLeftStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-};
-
-const filterIconStyle = {
-  fontSize: 18,
-};
-
-const filterSelectStyle = {
-  padding: "10px 14px",
-  borderRadius: 10,
-  border: "1px solid #e2e8f0",
-  background: "#f7fafc",
-  color: "#1a202c",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-  outline: "none",
-  minWidth: 200,
-};
 
 const filterHintRowStyle = {
   width: "100%",
@@ -906,30 +840,6 @@ const clearSearchButtonStyle = {
   cursor: "pointer",
 };
 
-const chipsWrapStyle = {
-  width: "100%",
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  marginTop: 6,
-};
-
-const statusChipStyle = {
-  padding: "8px 10px",
-  borderRadius: 999,
-  border: "1px solid #cbd5e1",
-  background: "#f8fafc",
-  color: "#334155",
-  fontSize: 12,
-  fontWeight: 600,
-  cursor: "pointer",
-};
-
-const statusChipActiveStyle = {
-  border: "1px solid #4f46e5",
-  background: "#e0e7ff",
-  color: "#312e81",
-};
 
 const summaryBarStyle = {
   display: "grid",
@@ -939,9 +849,7 @@ const summaryBarStyle = {
 };
 
 const summaryMetricStyle = {
-  border: "1px solid #e2e8f0",
-  background: "white",
-  borderRadius: 12,
+  ...sectionCardBaseStyle,
   padding: "10px 12px",
   display: "grid",
   gap: 4,
@@ -1027,25 +935,16 @@ const emptyStateButtonStyle = {
 };
 
 const errorCardStyle = {
-  padding: 20,
-  borderRadius: 16,
-  border: "1px solid #fecaca",
-  background: "#fff1f2",
-  display: "flex",
-  gap: 16,
-  alignItems: "flex-start",
+  ...errorCardBaseStyle,
   marginBottom: 20,
 };
 
 const errorIconStyle = {
-  fontSize: 24,
-  flexShrink: 0,
+  ...errorIconBaseStyle,
 };
 
 const errorTextStyle = {
-  margin: "8px 0 0 0",
-  fontSize: 14,
-  color: "#991b1b",
+  ...errorTextBaseStyle,
 };
 
 const retryButtonStyle = {

@@ -3,9 +3,21 @@ import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import FiscalProfileForm from "../../components/public/FiscalProfileForm";
+import { PageHeader } from "./myAreaSharedComponents";
+import {
+  pageStyle,
+  containerStyle,
+  pageHeaderStyle,
+  titleStyle,
+  subtitleStyle,
+  newOrderButtonStyle,
+} from "./myAreaSharedStyles";
+import { elevatedCardBaseStyle } from "./myAreaSharedCardStyles";
+import { resolvePersonalGreeting } from "./myAreaDisplayName";
 
 export default function PublicFiscalDataPage() {
   const { token, user, refreshUser } = useAuth();
+  const greeting = resolvePersonalGreeting(user);
 
   const defaultCountry = useMemo(() => {
     const t = String(user?.tax_country || "").trim().toUpperCase();
@@ -14,41 +26,65 @@ export default function PublicFiscalDataPage() {
   }, [user?.tax_country]);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
-      <header style={{ marginBottom: 20 }}>
-        <p style={{ margin: "0 0 8px 0" }}>
-          <Link to="/seguranca" style={{ color: "#0f766e", textDecoration: "none" }}>
+    <main style={pageStyle}>
+      <div style={containerStyle}>
+        <PageHeader
+          title="Dados fiscais"
+          subtitle={`${greeting}Gerencie os dados fiscais usados nos seus pedidos.`}
+          ctaTo="/comprar"
+          ctaLabel="✨ Novo Pedido"
+          headerStyle={pageHeaderStyle}
+          titleStyle={titleStyle}
+          subtitleStyle={subtitleStyle}
+          ctaStyle={newOrderButtonStyle}
+        />
+        <p style={descriptionStyle}>
+          Estes dados alimentam o contexto fiscal dos seus pedidos (nome, documento, morada e contacto da nota).
+          Após guardar, atualizamos automaticamente as invoices pendentes no serviço de faturação, quando configurado.
+        </p>
+        <p style={securityLinkWrapStyle}>
+          <Link to="/seguranca" style={{ color: "#0f766e", textDecoration: "none", fontWeight: 600 }}>
             ← Conta / Segurança
           </Link>
         </p>
-        <h1 style={{ margin: 0 }}>Dados fiscais</h1>
-        <p style={{ marginTop: 8, color: "#475569" }}>
-          Estes dados alimentam o contexto fiscal dos seus pedidos (nome, documento, morada e contacto da nota).
-          Após guardar, atualizamos automaticamente as invoices pendentes no serviço de faturação, quando
-          configurado.
-        </p>
-      </header>
 
       {token && user ? (
-        <section
-          style={{
-            border: "1px solid #e2e8f0",
-            borderRadius: 12,
-            padding: 20,
-            background: "#fff",
-          }}
-        >
-          <FiscalProfileForm
-            token={token}
-            user={user}
-            defaultFiscalCountry={defaultCountry}
-            onSaved={refreshUser}
-            variant="account"
-          />
-        </section>
+        <div style={fiscalFormWrapStyle}>
+          <section
+            style={{
+              ...elevatedCardBaseStyle,
+              padding: 20,
+              borderLeft: "5px solid #0ea5e9",
+            }}
+          >
+            <FiscalProfileForm
+              token={token}
+              user={user}
+              defaultFiscalCountry={defaultCountry}
+              onSaved={refreshUser}
+              variant="account"
+            />
+          </section>
+        </div>
       ) : (
         <p>Inicie sessão para gerir os dados fiscais.</p>
       )}
+      </div>
     </main>
   );
 }
+
+const fiscalFormWrapStyle = {
+  maxWidth: 720,
+};
+
+const descriptionStyle = {
+  margin: "0 0 8px 0",
+  color: "#475569",
+  lineHeight: 1.5,
+  maxWidth: 720,
+};
+
+const securityLinkWrapStyle = {
+  margin: "0 0 16px 0",
+};

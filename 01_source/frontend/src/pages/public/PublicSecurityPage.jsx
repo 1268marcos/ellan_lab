@@ -3,6 +3,24 @@ import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { changePublicPassword, resendPublicEmailVerification } from "../../services/authApi";
+import { PageHeader } from "./myAreaSharedComponents";
+import {
+  pageStyle,
+  containerStyle,
+  pageHeaderStyle,
+  titleStyle,
+  subtitleStyle,
+  newOrderButtonStyle,
+} from "./myAreaSharedStyles";
+import { elevatedCardBaseStyle } from "./myAreaSharedCardStyles";
+import {
+  formLabelStyle,
+  formInputStyle,
+  passwordFieldWrapperStyle,
+  passwordToggleButtonStyle,
+  primaryFormButtonStyle,
+} from "../../components/public/myAreaSharedFormStyles";
+import { resolvePersonalGreeting } from "./myAreaDisplayName";
 
 export default function PublicSecurityPage() {
   const { token, user, refreshUser } = useAuth();
@@ -25,6 +43,7 @@ export default function PublicSecurityPage() {
   const isVerified = Boolean(user?.email_verified);
   const strengthInfo = getPasswordStrengthLabel(passwordStrength);
   const isPasswordAcceptable = passwordStrength >= 3;
+  const greeting = resolvePersonalGreeting(user);
 
   React.useEffect(() => {
     let strength = 0;
@@ -93,20 +112,20 @@ export default function PublicSecurityPage() {
   }
 
   return (
-    <main style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: 0 }}>Segurança da conta</h1>
-        <p style={{ marginTop: 8, color: "#475569" }}>
-          Gerencie senha e verificação de e-mail da sua conta.
-        </p>
-        <p style={{ marginTop: 12 }}>
-          <Link to="/conta/dados-fiscais" style={{ color: "#0f766e", fontWeight: 600 }}>
-            Dados fiscais (nota e morada)
-          </Link>
-        </p>
-      </header>
+    <main style={pageStyle}>
+      <div style={containerStyle}>
+        <PageHeader
+          title="Segurança da conta"
+          subtitle={`${greeting}Gerencie senha e verificação de e-mail da sua conta.`}
+          ctaTo="/conta/dados-fiscais"
+          ctaLabel="📄 Dados fiscais"
+          headerStyle={pageHeaderStyle}
+          titleStyle={titleStyle}
+          subtitleStyle={subtitleStyle}
+          ctaStyle={newOrderButtonStyle}
+        />
 
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, borderLeft: `5px solid ${isVerified ? "#22c55e" : "#f59e0b"}` }}>
         <h2 style={sectionTitleStyle}>Verificação de e-mail</h2>
         <p style={{ marginTop: 0, color: "#334155" }}>
           Status atual: <strong>{isVerified ? "Verificado" : "Não verificado"}</strong>
@@ -134,7 +153,7 @@ export default function PublicSecurityPage() {
         )}
       </section>
 
-      <section style={cardStyle}>
+      <section style={{ ...cardStyle, borderLeft: "5px solid #3b82f6" }}>
         <h2 style={sectionTitleStyle}>Trocar senha</h2>
         <form onSubmit={handleChangePassword} style={{ display: "grid", gap: 12 }}>
           <label style={labelStyle}>
@@ -240,19 +259,18 @@ export default function PublicSecurityPage() {
         </form>
       </section>
 
-      <div>
-        <Link to="/meus-pedidos">Voltar para meus pedidos</Link>
+      <div style={backLinkWrapStyle}>
+        <Link to="/meus-pedidos" style={backLinkStyle}>Voltar para meus pedidos</Link>
+      </div>
       </div>
     </main>
   );
 }
 
 const cardStyle = {
-  border: "1px solid #e2e8f0",
-  borderRadius: 12,
-  background: "#ffffff",
-  padding: 16,
-  marginBottom: 16,
+  ...elevatedCardBaseStyle,
+  padding: 20,
+  marginBottom: 18,
 };
 
 const sectionTitleStyle = {
@@ -260,47 +278,23 @@ const sectionTitleStyle = {
 };
 
 const labelStyle = {
-  display: "grid",
-  gap: 6,
-  color: "#334155",
-  fontWeight: 600,
+  ...formLabelStyle,
 };
 
 const inputStyle = {
-  border: "1px solid #cbd5e1",
-  borderRadius: 8,
-  padding: "10px 12px",
-  fontSize: 14,
-  width: "100%",
-  boxSizing: "border-box",
+  ...formInputStyle,
 };
 
 const passwordWrapperStyle = {
-  position: "relative",
-  display: "flex",
-  alignItems: "center",
+  ...passwordFieldWrapperStyle,
 };
 
 const togglePasswordStyle = {
-  position: "absolute",
-  right: 10,
-  top: "50%",
-  transform: "translateY(-50%)",
-  border: "none",
-  background: "none",
-  cursor: "pointer",
-  fontSize: 16,
-  padding: 4,
+  ...passwordToggleButtonStyle,
 };
 
 const buttonStyle = {
-  border: "none",
-  borderRadius: 8,
-  background: "#0f172a",
-  color: "#fff",
-  padding: "10px 14px",
-  cursor: "pointer",
-  fontWeight: 700,
+  ...primaryFormButtonStyle,
 };
 
 const okStyle = {
@@ -332,6 +326,19 @@ const passwordStrengthFillStyle = {
   height: "100%",
   borderRadius: 2,
   transition: "all 0.3s ease",
+};
+
+const backLinkWrapStyle = {
+  marginTop: 10,
+  padding: "10px 4px",
+};
+
+const backLinkStyle = {
+  color: "#334155",
+  fontWeight: 700,
+  textDecoration: "none",
+  borderBottom: "2px solid #cbd5e1",
+  paddingBottom: 2,
 };
 
 function getPasswordStrengthLabel(strength) {

@@ -3,6 +3,42 @@ import { Link } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import { fetchMyCredits } from "../../services/publicApi";
+import { PageHeader, StatusChips, SkeletonCard, ErrorCard, EmptyStateBlock, SummaryMetrics } from "./myAreaSharedComponents";
+import { resolvePersonalGreeting } from "./myAreaDisplayName";
+import {
+  pageStyle,
+  containerStyle,
+  pageHeaderStyle,
+  titleStyle,
+  subtitleStyle,
+  newOrderButtonStyle,
+  filterLeftStyle,
+  filterIconStyle,
+  filterSelectStyle,
+  chipsWrapStyle,
+  statusChipStyle,
+  statusChipActiveStyle,
+  emptyStateStyle,
+  emptyStateIconStyle,
+  emptyStateTitleStyle,
+  emptyStateTextStyle,
+  emptyStateButtonStyle,
+  skeletonListStyle,
+  skeletonCardStyle,
+  skeletonHeaderStyle,
+  skeletonBodyStyle,
+  skeletonLineStyle,
+  skeletonLineShortStyle,
+  skeletonBadgeStyle,
+} from "./myAreaSharedStyles";
+import {
+  sectionCardBaseStyle,
+  elevatedCardBaseStyle,
+  filterCardBaseStyle,
+  errorCardBaseStyle,
+  errorIconBaseStyle,
+  errorTextBaseStyle,
+} from "./myAreaSharedCardStyles";
 
 function formatMoney(cents, currency = "BRL") {
   const value = Number(cents || 0);
@@ -96,8 +132,33 @@ function renderCreditOrderLinks(credit) {
   );
 }
 
+function creditAccentColor(status) {
+  const palette = {
+    AVAILABLE: "#22c55e",
+    USED: "#3b82f6",
+    EXPIRED: "#ef4444",
+    REVOKED: "#94a3b8",
+  };
+  return palette[String(status || "").toUpperCase()] || "#cbd5e1";
+}
+
+function CreditSkeleton() {
+  return (
+    <SkeletonCard
+      containerStyle={skeletonCardStyle}
+      headerStyle={skeletonHeaderStyle}
+      bodyStyle={skeletonBodyStyle}
+      lineStyle={skeletonLineStyle}
+      headerLeftStyle={skeletonLineShortStyle}
+      headerRightStyle={skeletonBadgeStyle}
+      lineCount={3}
+    />
+  );
+}
+
 export default function PublicMyCreditsPage() {
-  const { token, loading: authLoading, isAuthenticated } = useAuth();
+  const { token, user, loading: authLoading, isAuthenticated } = useAuth();
+  const greeting = resolvePersonalGreeting(user);
   const [payload, setPayload] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -185,97 +246,181 @@ export default function PublicMyCreditsPage() {
     return items.filter((item) => item.status === statusFilter);
   }, [items, statusFilter]);
 
+  const statusCounts = useMemo(() => {
+    const counts = {
+      ALL: items.length,
+      AVAILABLE: 0,
+      USED: 0,
+      EXPIRED: 0,
+      REVOKED: 0,
+    };
+    for (const item of items) {
+      const key = String(item?.status || "").toUpperCase();
+      if (counts[key] != null) counts[key] += 1;
+    }
+    return counts;
+  }, [items]);
+
+  const statusOptions = [
+    { key: "ALL", label: "Todos" },
+    { key: "AVAILABLE", label: "Disponíveis" },
+    { key: "USED", label: "Usados" },
+    { key: "EXPIRED", label: "Expirados" },
+    { key: "REVOKED", label: "Revogados" },
+  ];
+
   return (
-    <main style={{ padding: 24, maxWidth: 980, margin: "0 auto" }}>
-      <header style={{ marginBottom: 20 }}>
-        <h1 style={{ margin: 0 }}>Meus Créditos</h1>
-        <p style={{ marginTop: 8, color: "#475569" }}>
-          Acompanhe seu saldo, validade e histórico de créditos.
-        </p>
-      </header>
+    <main style={pageStyle}>
+      <div style={containerStyle}>
+        <PageHeader
+          title="Meus Créditos"
+          subtitle={`${greeting}Acompanhe saldo, validade e histórico dos créditos recebidos.`}
+          ctaTo="/comprar"
+          ctaLabel="✨ Novo Pedido"
+          headerStyle={pageHeaderStyle}
+          titleStyle={titleStyle}
+          subtitleStyle={subtitleStyle}
+          ctaStyle={newOrderButtonStyle}
+        />
 
-      <section style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", marginBottom: 24 }}>
-        <article style={cardStyle}>
-          <small style={mutedStyle}>Saldo disponível</small>
-          <div style={valueStyle}>
-            {formatMoney(summary.available_balance_cents, summary.currency || "BRL")}
+        {!authLoading && !loading ? (
+          <SummaryMetrics
+            sectionAriaLabel="Resumo dos créditos"
+            sectionStyle={summaryBarStyle}
+            cardStyle={summaryCardStyle}
+            labelStyle={mutedStyle}
+            valueStyle={valueStyle}
+            items={[
+              {
+                key: "available_balance",
+                label: "Saldo disponível",
+                value: formatMoney(summary.available_balance_cents, summary.currency || "BRL"),
+              },
+              { key: "available_count", label: "Créditos disponíveis", value: summary.available_count },
+              { key: "expiring_soon", label: "Próximos de vencer (7 dias)", value: summary.expiring_soon_count },
+            ]}
+          />
+        ) : null}
+
+        {!authLoading && !loading && !error ? (
+          <section style={filterContainerStyle}>
+            <div style={filterLeftStyle}>
+              <span style={filterIconStyle}>🔍</span>
+              <label htmlFor="credit-status-filter" style={filterLabelStyle}>
+                Filtrar status:
+              </label>
+              <select
+                id="credit-status-filter"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                style={filterSelectStyle}
+              >
+                <option value="ALL">Todos</option>
+                <option value="AVAILABLE">Disponível</option>
+                <option value="USED">Usado</option>
+                <option value="EXPIRED">Expirado</option>
+                <option value="REVOKED">Revogado</option>
+              </select>
+            </div>
+            <StatusChips
+              options={statusOptions}
+              activeKey={statusFilter}
+              counts={statusCounts}
+              onSelect={setStatusFilter}
+              wrapStyle={chipsWrapStyle}
+              chipStyle={statusChipStyle}
+              activeChipStyle={statusChipActiveStyle}
+            />
+          </section>
+        ) : null}
+
+        {(authLoading || loading) ? (
+          <div style={skeletonListStyle}>
+            {[1, 2, 3].map((entry) => (
+              <CreditSkeleton key={entry} />
+            ))}
           </div>
-        </article>
-        <article style={cardStyle}>
-          <small style={mutedStyle}>Créditos disponíveis</small>
-          <div style={valueStyle}>{summary.available_count}</div>
-        </article>
-        <article style={cardStyle}>
-          <small style={mutedStyle}>Próximos de vencer (7 dias)</small>
-          <div style={valueStyle}>{summary.expiring_soon_count}</div>
-        </article>
-      </section>
+        ) : null}
 
-      <div style={{ marginBottom: 16, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-        <label htmlFor="credit-status-filter">Filtrar status:</label>
-        <select
-          id="credit-status-filter"
-          value={statusFilter}
-          onChange={(event) => setStatusFilter(event.target.value)}
-          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #cbd5e1" }}
-        >
-          <option value="ALL">Todos</option>
-          <option value="AVAILABLE">Disponível</option>
-          <option value="USED">Usado</option>
-          <option value="EXPIRED">Expirado</option>
-          <option value="REVOKED">Revogado</option>
-        </select>
+        {!authLoading && !loading && error ? (
+          <ErrorCard
+            title="Falha ao carregar créditos"
+            message={error}
+            icon="⚠️"
+            containerStyle={errorCardStyle}
+            iconStyle={errorIconStyle}
+            textStyle={errorTextStyle}
+          />
+        ) : null}
+
+        {!authLoading && !loading && !error && filteredItems.length === 0 ? (
+          <EmptyStateBlock
+            title="Nenhum crédito encontrado"
+            description="Não encontramos créditos para o filtro selecionado."
+            icon="💳"
+            ctaTo="/comprar"
+            ctaLabel="🛒 Ir para catálogo"
+            containerStyle={emptyStateStyle}
+            iconStyle={emptyStateIconStyle}
+            titleStyle={emptyStateTitleStyle}
+            descriptionStyle={emptyStateTextStyle}
+            buttonStyle={emptyStateButtonStyle}
+          />
+        ) : null}
+
+        {!authLoading && !loading && !error && filteredItems.length > 0 ? (
+          <div style={listWrapperStyle}>
+            {filteredItems.map((credit) => (
+              <article
+                key={credit.id}
+                style={{
+                  ...creditCardStyle,
+                  borderLeft: `5px solid ${creditAccentColor(credit.status)}`,
+                }}
+              >
+                <div style={creditCardHeaderStyle}>
+                  <strong style={creditAmountStyle}>
+                    {formatMoney(credit.amount_cents, summary.currency || "BRL")}
+                  </strong>
+                  <span style={badgeStyle(credit.status)}>{statusLabel(credit.status)}</span>
+                </div>
+                <div style={creditMetaGridStyle}>
+                  <p style={creditInfoStyle}>
+                    <span style={creditInfoLabelStyle}>Origem</span>
+                    <span>{credit.source_type || "—"} / {credit.source_reason || "—"}</span>
+                  </p>
+                  <p style={creditInfoStyle}>
+                    <span style={creditInfoLabelStyle}>Validade</span>
+                    <span>
+                      {formatDate(credit.expires_at)}
+                      {typeof credit.days_to_expiration === "number" && credit.status === "AVAILABLE"
+                        ? ` (${credit.days_to_expiration} dia(s))`
+                        : ""}
+                    </span>
+                  </p>
+                </div>
+                {renderCreditOrderLinks(credit)}
+                {credit.notes ? (
+                  <p style={creditNotesStyle}>{renderCreditNotes(credit.notes)}</p>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : null}
       </div>
-
-      {(authLoading || loading) && <p>Carregando créditos...</p>}
-
-      {!authLoading && !loading && error ? (
-        <div style={{ ...cardStyle, borderColor: "#fecaca", background: "#fff1f2" }}>
-          <strong>Falha ao carregar créditos</strong>
-          <p style={{ marginBottom: 0 }}>{error}</p>
-        </div>
-      ) : null}
-
-      {!authLoading && !loading && !error && filteredItems.length === 0 ? (
-        <div style={cardStyle}>
-          <p style={{ marginTop: 0 }}>Nenhum crédito encontrado para o filtro selecionado.</p>
-          <Link to="/comprar">Ir para catálogo</Link>
-        </div>
-      ) : null}
-
-      {!authLoading && !loading && !error && filteredItems.length > 0 ? (
-        <div style={{ display: "grid", gap: 12 }}>
-          {filteredItems.map((credit) => (
-            <article key={credit.id} style={cardStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <strong>{formatMoney(credit.amount_cents, summary.currency || "BRL")}</strong>
-                <span style={badgeStyle(credit.status)}>{statusLabel(credit.status)}</span>
-              </div>
-              <p style={{ margin: "8px 0 0", color: "#334155" }}>
-                Origem: {credit.source_type || "—"} / {credit.source_reason || "—"}
-              </p>
-              <p style={{ margin: "6px 0 0", color: "#334155" }}>
-                Validade: {formatDate(credit.expires_at)}
-                {typeof credit.days_to_expiration === "number" && credit.status === "AVAILABLE"
-                  ? ` (${credit.days_to_expiration} dia(s))`
-                  : ""}
-              </p>
-              {renderCreditOrderLinks(credit)}
-              {credit.notes ? (
-                <p style={{ margin: "6px 0 0", color: "#0f172a" }}>{renderCreditNotes(credit.notes)}</p>
-              ) : null}
-            </article>
-          ))}
-        </div>
-      ) : null}
     </main>
   );
 }
 
-const cardStyle = {
-  border: "1px solid #e2e8f0",
-  borderRadius: 12,
-  background: "#ffffff",
+const summaryBarStyle = {
+  display: "grid",
+  gap: 12,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  marginBottom: 16,
+};
+
+const summaryCardStyle = {
+  ...sectionCardBaseStyle,
   padding: 16,
 };
 
@@ -289,6 +434,78 @@ const valueStyle = {
   fontSize: 24,
   fontWeight: 700,
   color: "#0f172a",
+};
+
+const filterContainerStyle = {
+  ...filterCardBaseStyle,
+  display: "grid",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const filterLabelStyle = {
+  color: "#334155",
+  fontWeight: 600,
+  fontSize: 14,
+};
+
+const listWrapperStyle = {
+  display: "grid",
+  gap: 12,
+};
+
+const creditCardStyle = {
+  ...elevatedCardBaseStyle,
+  padding: 16,
+};
+
+const creditCardHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "wrap",
+  marginBottom: 10,
+};
+
+const creditAmountStyle = {
+  fontSize: 20,
+  color: "#0f172a",
+};
+
+const creditMetaGridStyle = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+};
+
+const creditInfoStyle = {
+  margin: 0,
+  color: "#334155",
+  display: "grid",
+  gap: 4,
+};
+
+const creditInfoLabelStyle = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 600,
+};
+
+const creditNotesStyle = {
+  margin: "8px 0 0",
+  color: "#0f172a",
+};
+
+const errorCardStyle = {
+  ...errorCardBaseStyle,
+};
+
+const errorIconStyle = {
+  ...errorIconBaseStyle,
+};
+
+const errorTextStyle = {
+  ...errorTextBaseStyle,
 };
 
 const badgeStyle = (status) => {
