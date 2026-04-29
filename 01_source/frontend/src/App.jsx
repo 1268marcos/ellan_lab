@@ -2,6 +2,7 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import FiscalPageLayout from "./components/FiscalPageLayout";
 import {
   clearRuntimeGeoScopeTenantOverride,
   getRuntimeGeoScopeTenantOverride,
@@ -59,6 +60,9 @@ const OpsPartnersFinancialsServiceAreasPage = lazy(() => import("./pages/OpsPart
 const OpsPartnersReconciliationDashboardPage = lazy(() => import("./pages/OpsPartnersReconciliationDashboardPage"));
 const OpsPartnersBillingMonitoringPage = lazy(() => import("./pages/OpsPartnersBillingMonitoringPage"));
 const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
+const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
+const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
+const FiscalUpdatesPage = lazy(() => import("./pages/FiscalUpdatesPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -97,8 +101,10 @@ function TopNav() {
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false);
+  const [isFiscalMenuOpen, setIsFiscalMenuOpen] = useState(false);
   const [isMyAreaMenuOpen, setIsMyAreaMenuOpen] = useState(false);
   const [isMobileOpsOpen, setIsMobileOpsOpen] = useState(false);
+  const [isMobileFiscalOpen, setIsMobileFiscalOpen] = useState(false);
   const [isMobileMyAreaOpen, setIsMobileMyAreaOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [tenantOverride, setTenantOverride] = useState("");
@@ -106,11 +112,14 @@ function TopNav() {
   const buttonRef = useRef(null);
   const opsMenuRef = useRef(null);
   const opsButtonRef = useRef(null);
+  const fiscalMenuRef = useRef(null);
+  const fiscalButtonRef = useRef(null);
   const myAreaMenuRef = useRef(null);
   const myAreaButtonRef = useRef(null);
   const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const hasTenantOverride = Boolean(tenantOverride);
   const isOpsRoute = location.pathname.startsWith("/ops");
+  const isFiscalRoute = location.pathname.startsWith("/fiscal");
 
   // Detectar tamanho da tela
   useEffect(() => {
@@ -158,6 +167,23 @@ function TopNav() {
     document.addEventListener("mousedown", handleOpsClickOutside);
     return () => document.removeEventListener("mousedown", handleOpsClickOutside);
   }, [isOpsMenuOpen]);
+
+  useEffect(() => {
+    const handleFiscalClickOutside = (event) => {
+      if (
+        isFiscalMenuOpen &&
+        fiscalMenuRef.current &&
+        !fiscalMenuRef.current.contains(event.target) &&
+        fiscalButtonRef.current &&
+        !fiscalButtonRef.current.contains(event.target)
+      ) {
+        setIsFiscalMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleFiscalClickOutside);
+    return () => document.removeEventListener("mousedown", handleFiscalClickOutside);
+  }, [isFiscalMenuOpen]);
 
   useEffect(() => {
     const handleMyAreaClickOutside = (event) => {
@@ -228,8 +254,10 @@ function TopNav() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsOpsMenuOpen(false);
+    setIsFiscalMenuOpen(false);
     setIsMyAreaMenuOpen(false);
     setIsMobileOpsOpen(false);
+    setIsMobileFiscalOpen(false);
     setIsMobileMyAreaOpen(false);
   }, [location]);
 
@@ -308,13 +336,19 @@ function TopNav() {
       links: opsLinks.filter((link) => link.group === group),
     }))
     .filter((entry) => entry.links.length > 0);
-
   const myAreaLinks = [
     { to: "/meus-pedidos", label: "Meus Pedidos", aria: "Ver meus pedidos" },
     { to: "/meus-creditos", label: "Meus Créditos", aria: "Ver meus créditos" },
     { to: "/seguranca", label: "Segurança", aria: "Gerenciar segurança da conta" },
     { to: "/conta/dados-fiscais", label: "Dados fiscais", aria: "Dados fiscais da conta" },
   ];
+  const fiscalLinks = opsEnabled
+    ? [
+        { to: "/fiscal", label: "fiscal /global", aria: "Catálogo e matriz fiscal global" },
+        { to: "/fiscal/countries", label: "fiscal /countries", aria: "Cockpit FG-1/FG-2 por país" },
+        { to: "/fiscal/updates", label: "fiscal /updates", aria: "Histórico da trilha fiscal global" },
+      ]
+    : [];
 
   return (
     <>
@@ -420,6 +454,43 @@ function TopNav() {
               </div>
             </>
           )}
+
+          {opsEnabled && canAccessOps && fiscalLinks.length > 0 && (
+            <>
+              <div className="nav-divider" aria-hidden="true">|</div>
+              <div
+                className="nav-ops-dropdown"
+                role="group"
+                aria-label="Ferramentas fiscais"
+                ref={fiscalMenuRef}
+              >
+                <button
+                  ref={fiscalButtonRef}
+                  type="button"
+                  className="nav-link nav-link--fiscal nav-ops-toggle"
+                  onClick={() => setIsFiscalMenuOpen((value) => !value)}
+                  aria-haspopup="menu"
+                  aria-expanded={isFiscalMenuOpen}
+                >
+                  FISCAL menu ({fiscalLinks.length}) {isFiscalMenuOpen ? "▲" : "▼"}
+                </button>
+                {isFiscalMenuOpen ? (
+                  <div className="nav-fiscal-panel" role="menu" aria-label="Menu FISCAL">
+                    {fiscalLinks.map((link) => (
+                      <Link
+                        key={link.to}
+                        className="nav-fiscal-item"
+                        to={link.to}
+                        onClick={() => setIsFiscalMenuOpen(false)}
+                      >
+                        <span>{link.label}</span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </>
+          )}
           
           <div className="nav-spacer" aria-hidden="true" />
           
@@ -478,7 +549,7 @@ function TopNav() {
         </div>
       </nav>
 
-      {isOpsRoute && (
+      {(isOpsRoute || isFiscalRoute) && (
         <div
           style={{
             margin: "8px 16px 0",
@@ -498,6 +569,11 @@ function TopNav() {
         >
           <div style={{ fontSize: 12, color: "#f8fafc", display: "flex", gap: 12, flexWrap: "wrap" }}>
             <span><b style={{ color: "#bfdbfe" }}>Contexto Ops</b></span>
+            {isFiscalRoute ? (
+              <span className="context-fiscal-badge">
+                Contexto Fiscal
+              </span>
+            ) : null}
             <span>Tenant env: <b style={{ color: "#e2e8f0" }}>{envTenant || "-"}</b></span>
             <span>
               Tenant ativo:{" "}
@@ -667,6 +743,33 @@ function TopNav() {
                 </div>
               )}
 
+              {opsEnabled && canAccessOps && fiscalLinks.length > 0 && (
+                <div className="mobile-menu-section">
+                  <button
+                    type="button"
+                    className="mobile-fiscal-toggle"
+                    onClick={() => setIsMobileFiscalOpen((value) => !value)}
+                    aria-expanded={isMobileFiscalOpen}
+                  >
+                    Fiscal ({fiscalLinks.length}) {isMobileFiscalOpen ? "▲" : "▼"}
+                  </button>
+                  {isMobileFiscalOpen ? (
+                    <div className="mobile-ops-list">
+                      {fiscalLinks.map((link) => (
+                        <Link
+                          key={link.to}
+                          className="mobile-nav-link mobile-nav-link--fiscal"
+                          to={link.to}
+                          onClick={() => setIsMobileMenuOpen(false)}
+                        >
+                          <span>{link.label}</span>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {/* Botão de logout para usuários autenticados */}
               {!loading && isAuthenticated && (
                 <div className="mobile-menu-section">
@@ -717,6 +820,15 @@ function OpsRoute({ children }) {
     return <Navigate to="/acesso-negado" replace />;
   }
   return children;
+}
+
+function RecoverFiscalCountriesRoute() {
+  const location = useLocation();
+  const normalizedPath = String(location.pathname || "").toLowerCase();
+  if (normalizedPath.includes("fiscal/countries")) {
+    return <Navigate to="/fiscal/countries" replace />;
+  }
+  return <PublicNotFoundPage />;
 }
 
 function AppContent() {
@@ -780,6 +892,36 @@ function AppContent() {
             />
             <Route path="/verificar-email" element={<PublicEmailVerificationPage />} />
             <Route path="/acesso-negado" element={<PublicAccessDeniedPage />} />
+            <Route
+              path="/fiscal"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalGlobalPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/countries"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalCountriesPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/updates"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalUpdatesPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
             <Route
               path="/ops/sp"
               element={
@@ -1067,10 +1209,7 @@ function AppContent() {
             />
 
             {/* Rota 404 - Página não encontrada */}
-            <Route 
-              path="*" 
-              element={<PublicNotFoundPage />}
-            />
+            <Route path="*" element={<RecoverFiscalCountriesRoute />} />
           </Routes>
         </Suspense>
       </div>

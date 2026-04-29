@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -79,6 +80,45 @@ function severityEmoji(severity) {
   if (normalized === "HIGH" || normalized === "ERROR") return "🟠";
   if (normalized === "MEDIUM" || normalized === "WARN") return "🟡";
   return "🟢";
+}
+
+function resolveOpsSanitySemaphore(report) {
+  const result = String(report?.result || "").toUpperCase();
+  const failCount = Number(report?.fail_count || 0);
+  if (result === "OPS_SANITY_OK" && failCount === 0) {
+    return {
+      label: "Verde",
+      reason: "Plantão estável: sanidade OPS OK sem falhas.",
+      style: {
+        border: "1px solid rgba(34,197,94,0.65)",
+        background: "rgba(34,197,94,0.2)",
+        color: "#bbf7d0",
+      },
+    };
+  }
+  if (result === "OPS_SANITY_FAIL" && failCount > 0 && failCount <= 2) {
+    return {
+      label: "Amarelo",
+      reason: `Plantão em atenção: ${failCount} falha(s) parcial(is) com possível degradação localizada.`,
+      style: {
+        border: "1px solid rgba(245,158,11,0.65)",
+        background: "rgba(245,158,11,0.2)",
+        color: "#fde68a",
+      },
+    };
+  }
+  return {
+    label: "Vermelho",
+    reason:
+      failCount > 0
+        ? `Plantão crítico: ${failCount} falha(s) no checklist de sanidade.`
+        : "Plantão crítico: sanidade sem resultado válido.",
+    style: {
+      border: "1px solid rgba(239,68,68,0.65)",
+      background: "rgba(239,68,68,0.22)",
+      color: "#fecaca",
+    },
+  };
 }
 
 function resolveAuditImpactScore(item) {
@@ -260,6 +300,9 @@ export default function OpsAuditPage() {
   const [timelineLimit, setTimelineLimit] = useState(30);
   const [validationOutcome, setValidationOutcome] = useState("APPROVED");
   const [validationNotes, setValidationNotes] = useState("");
+  const [opsSanityReport, setOpsSanityReport] = useState(null);
+  const [opsSanityLoading, setOpsSanityLoading] = useState(false);
+  const [opsSanityError, setOpsSanityError] = useState("");
   const didInitialLoadRef = useRef(false);
 
   const authHeaders = useMemo(() => {
@@ -983,6 +1026,31 @@ export default function OpsAuditPage() {
     }
   }
 
+  async function loadOpsSanityLatest() {
+    if (!token) return;
+    setOpsSanityLoading(true);
+    setOpsSanityError("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-sanity/latest`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar a última sanidade OPS."));
+      }
+      setOpsSanityReport(payload?.report || null);
+    } catch (err) {
+      setOpsSanityReport(null);
+      setOpsSanityError(String(err?.message || err));
+    } finally {
+      setOpsSanityLoading(false);
+    }
+  }
+
   async function exportStatusAuditCsv() {
     if (!token) return;
     setLoading(true);
@@ -1158,7 +1226,9 @@ export default function OpsAuditPage() {
     didInitialLoadRef.current = true;
     loadAudit(0);
     loadStatusAudit(0);
+    loadOpsSanityLatest();
   }, [token]);
+  const opsSanitySemaphore = resolveOpsSanitySemaphore(opsSanityReport);
 
   return (
     <div style={pageStyle}>
@@ -1172,13 +1242,46 @@ export default function OpsAuditPage() {
           </Link>
         </div>
 
-        <h1 style={{ marginTop: 0 }}>OPS - Trilha de Auditoria</h1>
-        <div style={{ marginBottom: 8 }}>
-          <span style={pageVersionBadgeStyle}>{OPS_AUDIT_PAGE_VERSION}</span>
-        </div>
+        <OpsPageTitleHeader title="OPS - Trilha de Auditoria" versionLabel={OPS_AUDIT_PAGE_VERSION} />
         <p style={mutedTextStyle}>
           Consulte ações operacionais por order_id, locker, resultado e tipo de ação.
         </p>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Última sanidade OPS</h3>
+            <button type="button" onClick={() => loadOpsSanityLatest()} style={buttonStyle} disabled={opsSanityLoading}>
+              {opsSanityLoading ? "Atualizando..." : "Atualizar sanidade"}
+            </button>
+          </div>
+          {opsSanityError ? <small style={{ color: "#fecaca" }}>{opsSanityError}</small> : null}
+          {opsSanityReport ? (
+            <div style={summary24hGridStyle}>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{String(opsSanityReport.result || "-")}</strong>
+                <small style={summary24hLabelStyle}>Resultado final</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{Number(opsSanityReport.fail_count || 0)}</strong>
+                <small style={summary24hLabelStyle}>Falhas</small>
+              </article>
+              <article style={{ ...summary24hItemStyle, ...opsSanitySemaphore.style }}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 15 }}>{opsSanitySemaphore.label}</strong>
+                <small style={{ ...summary24hLabelStyle, color: "inherit" }}>{opsSanitySemaphore.reason}</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>
+                  {String(opsSanityReport.generated_at || "-")}
+                </strong>
+                <small style={summary24hLabelStyle}>Gerado em (UTC)</small>
+              </article>
+            </div>
+          ) : (
+            <small style={summary24hHintStyle}>
+              Execute `02_docker/run_ops_sanity.sh --json` para gerar `ops_sanity_latest.json`.
+            </small>
+          )}
+        </section>
 
         <div style={filtersGridStyle}>
           <label style={labelStyle}>
@@ -1971,18 +2074,6 @@ const mutedTextStyle = {
   marginBottom: 0,
 };
 
-const pageVersionBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "3px 8px",
-  borderRadius: 999,
-  border: "1px solid rgba(125,211,252,0.55)",
-  background: "rgba(14,116,144,0.16)",
-  color: "#bae6fd",
-  fontSize: 11,
-  fontWeight: 700,
-};
-
 const shortcutRowStyle = {
   display: "flex",
   gap: 8,
@@ -2226,6 +2317,16 @@ const summary24hSectionStyle = {
   gap: 10,
 };
 
+const opsSanityCardStyle = {
+  marginTop: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
 const summary24hHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
@@ -2286,13 +2387,6 @@ const localFilterRowStyle = {
   gap: 8,
   gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
   alignItems: "end",
-};
-
-const localFilterLabelStyle = {
-  color: "#cbd5e1",
-  fontSize: 12,
-  fontWeight: 700,
-  marginBottom: 4,
 };
 
 const localFilterFieldStyle = {

@@ -1,6 +1,7 @@
 // 01_source/frontend/src/pages/RegionPage.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
@@ -1013,7 +1014,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   return (
     <div style={pageStyle}>
       <div style={headerCardStyle}>
-        <h1 style={{ margin: 0 }}>Simulador KIOSK — {region}</h1>
+        <OpsPageTitleHeader title={`Simulador KIOSK — ${region}`} containerStyle={{ marginBottom: 0 }} titleStyle={{ margin: 0 }} />
         <div style={subtleStyle}>
           Esta tela continua como simulador operacional de KIOSK. Agora ela busca
           a lista de unidades no endpoint real do gateway e usa fallback local apenas se houver falha.

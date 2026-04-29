@@ -1,6 +1,7 @@
 // 01_source/frontend/src/pages/PickupHealthPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_LIFECYCLE_BASE =
   import.meta.env.VITE_ORDER_LIFECYCLE_BASE_URL || "http://localhost:8010";
@@ -521,7 +522,7 @@ export default function PickupHealthPage() {
       <section style={headerCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <h1 style={{ margin: 0 }}>Pickup Health Dashboard</h1>
+            <OpsPageTitleHeader title="Pickup Health Dashboard" containerStyle={{ marginBottom: 0 }} titleStyle={{ margin: 0 }} />
             <div style={subtleStyle}>
               Priorizacao de risco por entidade, com sinais operacionais e acao recomendada.
             </div>

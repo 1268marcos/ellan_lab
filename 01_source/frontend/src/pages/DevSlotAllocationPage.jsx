@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const GATEWAY_BASE =
   import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
@@ -345,7 +346,7 @@ export default function DevSlotAllocationPage() {
     return (
       <div style={pageStyle}>
         <section style={cardStyle}>
-          <h1 style={{ marginTop: 0 }}>Ops — Alocação de Produtos por Slot</h1>
+          <OpsPageTitleHeader title="Ops — Alocação de Produtos por Slot" />
           <div style={warningStyle}>
             Esta interface exige categoria/perfil autorizado. Defina um papel permitido em
             <b> VITE_SLOT_ALLOCATION_ALLOWED_ROLES</b> ou use ambiente de desenvolvimento com
@@ -363,7 +364,7 @@ export default function DevSlotAllocationPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>Ops — Alocação de Produtos por Slot</h1>
+        <OpsPageTitleHeader title="Ops — Alocação de Produtos por Slot" />
         <div style={warningStyle}>
           Ferramenta operacional para mapear SKU em gaveta/slot do locker. O catálogo público
           passa a refletir esta alocação. Esta tela é exclusivamente para ambiente de desenvolvimento 

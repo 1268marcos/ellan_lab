@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const TIMELINE_TEMPLATE_JSON = `{
   "date": "YYYY-MM-DD",
@@ -22,6 +23,604 @@ const TIMELINE_TEMPLATE_JSON = `{
 }`;
 
 const UPDATES = [
+  {
+    date: "2026-04-29",
+    scope: "Fiscal UX - integração com FG-1 wave scope",
+    title: "Badge IN WAVE (FG-1) no fiscal/countries sem regra hardcoded",
+    description:
+      "Conexão do cockpit fiscal/countries ao endpoint `global/fg1-wave-scope`: cada país agora exibe badge IN WAVE/OUT WAVE com base no backend, incluindo campo no export CSV/JSON para rastreabilidade do escopo da onda.",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1-wave-scope"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir badge IN WAVE no cockpit fiscal",
+  },
+  {
+    date: "2026-04-29",
+    scope: "FG-1 execução - export e scope de onda",
+    title: "Export CSV/JSON no fiscal/countries + endpoint FG-1 wave scope",
+    description:
+      "Microevolução operacional aplicada: o board fiscal/countries agora exporta snapshot em CSV/JSON para anexar no acompanhamento diário. Na sequência do roteiro, foi adicionado endpoint admin com escopo formal da onda FG-1 (países + cenários obrigatórios).",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1-wave-scope"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_global_catalog_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir board com export + avanço FG-1",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Fiscal UX - board vivo FG-1/FG-2",
+    title: "Status por país (TODO/IN_PROGRESS/DONE) no fiscal/countries",
+    description:
+      "Evolução do cockpit fiscal/countries para execução diária: adição de status por país com persistência local, filtro por execução e contadores em tempo real para operar a onda FG-1/FG-2 como board vivo.",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir board vivo por país no fiscal/countries",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Frontend UX - varredura geral de órfãos",
+    title: "Checklist de constantes/helpers órfãos fora de OPS (resultado limpo)",
+    description:
+      "Varredura automática aplicada no restante do frontend (fora do escopo OPS já tratado): nenhuma constante/helper local órfã adicional foi encontrada em arquivos JS/JSX/TS/TSX, confirmando base enxuta após os refactors recentes.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src (scan de JS/JSX/TS/TSX fora de OPS)",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir registro da varredura geral no frontend",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Fiscal UX - cockpit de países FG-1/FG-2",
+    title: "Nova página fiscal/countries com filtros por região/prioridade/autoridade",
+    description:
+      "Entrega do cockpit de execução FG-1/FG-2: página fiscal/countries com filtros operacionais sobre o catálogo global, conectada ao menu FISCAL para priorização rápida por região, tier e autoridade.",
+    uiRoutesNew: ["/fiscal/countries", "/fiscal", "/fiscal/updates"],
+    apiRoutesNew: ["GET /admin/fiscal/global/catalog"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir cockpit fiscal/countries",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Fiscal UX - menu dedicado",
+    title: "Novo menu FISCAL com páginas fiscal/global e fiscal/updates",
+    description:
+      "Para acompanhar a expansão multipaís, foi criado menu dedicado FISCAL no topo (desktop e mobile), com rotas protegidas para catálogo/matriz global e histórico próprio de updates fiscais, no mesmo padrão operacional já usado em OPS.",
+    uiRoutesNew: ["/fiscal", "/fiscal/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/global/catalog",
+      "GET /admin/fiscal/global/scenario-matrix",
+    ],
+    routes: [
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalUpdatesPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir menu e página FISCAL global",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS UX - cleanup de helpers órfãos",
+    title: "Varredura final de constantes não-style sem uso nas páginas OPS",
+    description:
+      "Rodada complementar de limpeza técnica executada após a padronização de headers: remoção de helpers e constantes locais legadas sem referência ativa nas páginas OPS/rotas OPS, reduzindo ruído e risco de manutenção futura.",
+    uiRoutesNew: ["/ops/updates", "/ops/sp/kiosk"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/RegionPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir registro da varredura de helpers órfãos",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS UX - dead style cleanup final",
+    title: "Rodada final de limpeza de estilos órfãos após header unificado",
+    description:
+      "Limpeza final de manutenção aplicada nas páginas OPS após extração do OpsPageTitleHeader: remoção de constantes de estilo locais sem uso para reduzir ruído visual no código e manter a base pronta para evolução do padrão de header.",
+    uiRoutesNew: ["/ops/audit", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir registro da limpeza final de estilos",
+  },
+  {
+    date: "2026-04-29",
+    scope: "FG-0 Foundation - catálogo e matriz canônica",
+    title: "Endpoints admin para catálogo fiscal global e scenario matrix",
+    description:
+      "Primeiro sprint codado da trilha global: o billing_fiscal_service agora expõe catálogo fiscal multipaís e matriz canônica de cenários obrigatórios via rotas admin protegidas por token interno, preparando execução de FG-1/FG-2 sem depender só de documentação.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/global/catalog",
+      "GET /admin/fiscal/global/scenario-matrix",
+    ],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_global_catalog_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir entrega FG-0 em execução",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS UX - Header unificado",
+    title: "Componente único OpsPageTitleHeader para título, versão e ajuda",
+    description:
+      "Refinamento visual final aplicado para eliminar divergência de header: criação do componente OpsPageTitleHeader e adoção nas páginas OPS (incluindo rotas compartilhadas de /ops/*), padronizando ordem e espaçamento entre h1, badge de versão e ação de Ajuda.",
+    uiRoutesNew: ["/ops/audit", "/ops/health", "/ops/reconciliation", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/components/OpsPageTitleHeader.jsx",
+      "Frontend: páginas OPS e rotas compartilhadas /ops/*",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir registro do header unificado OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Gate UX - constantes centralizadas de escopo",
+    title: "Textos de escopo extraídos para src/constants/fiscalScope.js",
+    description:
+      "Microajuste de manutenção aplicado: os textos de escopo dos gates fiscais foram centralizados em constantes compartilhadas, reduzindo risco de divergência entre ops/health, ops/fiscal/providers e util de summary.",
+    uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/constants/fiscalScope.js",
+      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.js",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir padronização de constantes de escopo",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Gate UX - util compartilhado de escopo",
+    title: "Helper de summary fiscal extraído para src/utils (fonte única de regra)",
+    description:
+      "Refatoração para consistência e evolução segura: a regra de prefixo de escopo para summaries genéricos de gates fiscais foi extraída para util compartilhado e passou a ser importada por ops/health e ops/fiscal/providers, eliminando duplicação.",
+    uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.js",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir entregas com util compartilhado de escopo",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Gate UX - summary/tooltips com escopo",
+    title: "Prefixo de escopo aplicado quando summary do backend é genérico",
+    description:
+      "Padronização de consistência no ELLAN LAB: os summaries dos gates BR/PT agora recebem prefixo explícito de escopo (Trilha B real BR/PT) quando o payload vier genérico, com o mesmo texto também em tooltip (`title`) nas telas ops/health e ops/fiscal/providers.",
+    uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir summaries padronizados com escopo",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Fiscal Providers - linguagem de escopo explícito",
+    title: "Cards BR/PT alinhados ao padrão de escopo atual no ops/health",
+    description:
+      "Padronização de linguagem aplicada em ops/fiscal/providers: títulos e ações dos cards de gate BR/PT passaram a indicar explicitamente o escopo atual da Trilha B real, evitando interpretação de que sejam os únicos gates fiscais futuros.",
+    uiRoutesNew: ["/ops/fiscal/providers", "/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir cards de gate com escopo explícito",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS UX - Ajuda no título em todas as rotas OPS",
+    title: "Botão Ajuda migrado para o título de todas as páginas /ops/*",
+    description:
+      "Padronização visual concluída: o botão ?/Ajuda saiu do bloco Contexto Ops e foi movido para o título das páginas OPS, com conteúdo rico por rota centralizado em arquivo dedicado. A experiência ficou consistente entre dashboards, logística, produtos, integrações, partners, políticas, dev, regiões e kiosk.",
+    uiRoutesNew: [
+      "/ops/health",
+      "/ops/audit",
+      "/ops/reconciliation",
+      "/ops/analytics/pickup",
+      "/ops/updates",
+    ],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/components/OpsRouteHelpButton.jsx",
+      "Frontend: 01_source/frontend/src/constants/opsTutorialContent.js",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: páginas OPS e rotas compartilhadas de /ops/*",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir registro da migração de Ajuda para o título",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Health - criticidade e nomenclatura de gates",
+    title: "Botões por criticidade (Gate x Rollback) e título com escopo explícito",
+    description:
+      "Ajuste operacional aplicado: no card de gates fiscais do ops/health, comandos de rollback receberam visual de alerta e comandos de gate visual informativo. O título também foi ajustado para indicar claramente o escopo atual (Trilha B real BR/PT), sem sugerir que estes são os únicos gates fiscais futuros.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card de gates com criticidade e escopo explícito",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Health - ações rápidas de plantão",
+    title: "Botões de cópia para Gate/Rollback BR/PT no card fiscal",
+    description:
+      "Sprint de agilidade operacional: o card fiscal no ops/health agora inclui botões para copiar comandos de Gate BR/PT e Rollback BR/PT, reduzindo tempo de resposta durante incidente e evitando erro manual de digitação.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir ações rápidas de plantão no gate fiscal",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Fiscal Providers - reforço visual de navegação",
+    title: "Rótulo temporário 'Seção alvo' durante highlight por âncora",
+    description:
+      "Aprimoramento de leitura rápida no plantão: além do auto-scroll suave e highlight, as seções BR/PT agora exibem o rótulo temporário 'Seção alvo' enquanto o foco por âncora está ativo.",
+    uiRoutesNew: ["/ops/fiscal/providers"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers#go-no-go-pt",
+    directLinkLabel: "Abrir com rótulo temporário de seção alvo",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Fiscal Providers - Navegação por âncora",
+    title: "Auto-scroll suave + destaque temporário no alvo BR/PT",
+    description:
+      "Melhoria de velocidade no plantão: ao abrir ops/fiscal/providers com âncora (#go-no-go-br ou #go-no-go-pt), a tela faz scroll suave automático para a seção alvo e aplica destaque visual temporário para facilitar foco imediato.",
+    uiRoutesNew: ["/ops/fiscal/providers", "/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers#go-no-go-br",
+    directLinkLabel: "Abrir com auto-scroll e highlight no BR",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Health -> Fiscal Providers (drill-down)",
+    title: "Links diretos BR/PT no card de Gate fiscal para abrir contexto em 1 clique",
+    description:
+      "Melhoria de fluxo operacional: o card de Gate fiscal BR/PT no ops/health passou a ter links de drill-down por país, abrindo ops/fiscal/providers já na seção correta (âncoras BR/PT) para investigação rápida.",
+    uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card com drill-down BR/PT",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Health - Gate fiscal resumido",
+    title: "Card GO/NO-GO BR/PT no ops/health para leitura rápida de plantão",
+    description:
+      "Próximo sprint operacional aplicado: o painel de saúde agora exibe o gate fiscal BR/PT (snapshot atual) com decisão GO/NO-GO por país, resumo e botão de atualização, reduzindo troca de contexto com ops/fiscal/providers durante plantão.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir gate fiscal BR/PT no ops/health",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Plantão - Padronização de semáforo",
+    title: "Texto de razão do semáforo unificado entre ops/audit e ops/health",
+    description:
+      "Padronização concluída para plantão: ambos os cards de Última sanidade OPS agora usam a mesma redação operacional de razão para Verde/Amarelo/Vermelho, eliminando divergência de interpretação entre telas.",
+    uiRoutesNew: ["/ops/audit", "/ops/health"],
+    apiRoutesNew: ["GET /dev-admin/ops-sanity/latest"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir cards padronizados de sanidade OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Health - Semáforo de sanidade",
+    title: "Card resumido de plantão com Última sanidade OPS no ops/health",
+    description:
+      "Entrega concluída no painel de saúde operacional: inclusão do card de sanidade OPS com botão de atualização e semáforo visual (verde/amarelo/vermelho) baseado em report.result e fail_count, no mesmo padrão operacional do ops/audit.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: ["GET /dev-admin/ops-sanity/latest"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir semáforo de sanidade no ops/health",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS UX - Tutoriais in-page (piloto)",
+    title: "Botão ? padronizado em todas as rotas OPS + conteúdo centralizado",
+    description:
+      "Padronização final aplicada: botão de ajuda consolidado no Contexto Ops para todas as rotas /ops/* (evitando inconsistência entre páginas) e textos movidos para arquivo dedicado por domínio para facilitar manutenção. Preferência por usuário/página em localStorage e reset em /ops/updates permanecem ativos.",
+    uiRoutesNew: ["/ops/updates", "/ops/audit", "/ops/health", "/ops/reconciliation"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/components/OpsHelpTutorialModal.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: 01_source/frontend/src/constants/opsTutorialContent.js",
+      "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/OpsReconciliationPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir reset e histórico de tutoriais OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Audit - Semáforo visual de sanidade",
+    title: "Card Última sanidade OPS com status verde/amarelo/vermelho",
+    description:
+      "Melhoria visual no ops/audit: o card de última sanidade ganhou semáforo operacional com regras por report.result e fail_count, facilitando decisão rápida de plantão sem abrir o JSON completo.",
+    uiRoutesNew: ["/ops/audit"],
+    apiRoutesNew: ["GET /dev-admin/ops-sanity/latest"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/audit",
+    directLinkLabel: "Abrir semáforo de sanidade OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Audit - Última sanidade automática",
+    title: "Card no ops/audit lendo ops_sanity_latest.json automaticamente",
+    description:
+      "Conexão concluída entre auditoria e sanidade OPS: o ops/audit agora consulta endpoint dedicado para carregar o último relatório JSON e exibe card com resultado final, falhas e timestamp, com botão de atualização.",
+    uiRoutesNew: ["/ops/audit"],
+    apiRoutesNew: ["GET /dev-admin/ops-sanity/latest"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
+      "Backend: 01_source/order_pickup_service/app/routers/dev_admin.py",
+      "Infra: 02_docker/docker-compose.yml (volume ../04_logs:/app/ops_logs)",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/audit",
+    directLinkLabel: "Abrir card de última sanidade OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Automacao - Relatorio JSON para auditoria",
+    title: "run_ops_sanity com --json e trilha estável para ops/audit",
+    description:
+      "Automação expandida para auditoria: script de sanidade OPS agora exporta relatório estruturado em JSON, mantendo histórico por timestamp e um arquivo latest estável para consumo direto no fluxo ops/audit.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Script: 02_docker/run_ops_sanity.sh (--json, --json-path)",
+      "Artefato: 04_logs/ops/ops_sanity_<timestamp>.json",
+      "Artefato: 04_logs/ops/ops_sanity_latest.json",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir entrega de JSON para auditoria OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Automacao - Sanidade end-to-end",
+    title: "Script run_ops_sanity.sh para checagem única após troca de OPS_TOKEN",
+    description:
+      "Automação operacional adicionada para plantão: script único executa validações dos endpoints críticos OPS e fiscal em sequência, com leitura de token via .env e resultado final consolidado (OK/FAIL) em um comando.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /partners/ops/settlements/reconciliation/top-divergences",
+      "GET /ops/integration/order-events-outbox",
+      "GET /ops/integration/order-events-outbox/dead-letter-priority",
+      "GET /admin/fiscal/providers/status",
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Script: 02_docker/run_ops_sanity.sh",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir automação de sanidade OPS",
+  },
+  {
+    date: "2026-04-29",
+    scope: "OPS Sanidade - novo token + correção endpoint",
+    title: "Validação de fluxo OPS com novo OPS_TOKEN e fix em dead-letter-priority",
+    description:
+      "Checagem de sanidade executada com novo OPS_TOKEN nos endpoints críticos do fluxo OPS. Foi identificado e corrigido um erro 500 no endpoint de priorização de dead letters (ajuste de cast SQLAlchemy), com revalidação em 200 após rebuild do order_pickup_service.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /partners/ops/settlements/reconciliation/top-divergences",
+      "GET /ops/integration/order-events-outbox",
+      "GET /ops/integration/order-events-outbox/dead-letter-priority",
+      "GET /admin/fiscal/providers/status",
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Backend: 01_source/order_pickup_service/app/routers/integration_ops.py",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir sanidade OPS com novo token",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Preflight consolidado",
+    title: "Script único de decisão GO/NO-GO (ENV + gates BR/PT)",
+    description:
+      "Novo passo operacional para reduzir erro manual: script run_f3_preflight.sh valida variáveis de ambiente críticas, executa os gates BR/PT e retorna decisão final GO/NO_GO em uma única execução.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Script: 02_docker/run_f3_preflight.sh",
+      "DOC docs/F3_RUNBOOK_GO_LIVE_REAL_BR_PT.md",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir preflight consolidado F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Padronizacao ENV",
+    title: "Bloco fiscal real oficializado em .env e arquivos de referência",
+    description:
+      "Padronização operacional aplicada: as variáveis FISCAL_REAL_PROVIDER_* agora estão documentadas no 02_docker/.env e também nos arquivos de referência (.env.example, .env.development, .env.production), reduzindo inconsistência entre ambientes.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Infra: 02_docker/.env",
+      "Infra: 02_docker/.env.example",
+      "Infra: 02_docker/.env.development",
+      "Infra: 02_docker/.env.production",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir padronização ENV F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Simulacao local GO/NO-GO",
+    title: "ENV local de laboratório para treino operacional sem credenciais reais",
+    description:
+      "Foi adicionado arquivo de ambiente local sem segredos para simulação controlada da trilha real BR/PT, permitindo treinar fluxo de gate, painel OPS e rollback por flag antes do go-live com credenciais oficiais.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Infra: 02_docker/.env.f3-real.local.example",
+      "Script: 02_docker/run_f3_go_no_go.sh",
+      "DOC docs/F3_RUNBOOK_GO_LIVE_REAL_BR_PT.md",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir template local de simulação F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - ENV template de go-live",
+    title: "Arquivo exemplo de ENV real BR/PT com checklist de preenchimento",
+    description:
+      "Foi criado template operacional para acelerar a virada real quando credenciais estiverem disponíveis: arquivo .env de exemplo com placeholders BR/PT, flags de habilitação, timeout/retries e checklist de pré-go-live.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Infra: 02_docker/.env.f3-real.example",
+      "DOC docs/F3_RUNBOOK_GO_LIVE_REAL_BR_PT.md",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir template ENV de go-live F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Hardening de configuracao",
+    title: "Compose fiscal por ENV + atalho unico para gates BR/PT",
+    description:
+      "Próximo sprint de execução técnica focado em desbloquear go-live real com segurança: variáveis de provider real foram parametrizadas no compose com defaults seguros (sem acoplamento fixo) e foi criado script operacional para executar go/no-go BR/PT em 1 comando.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+    ],
+    routes: [
+      "Infra: 02_docker/docker-compose.yml",
+      "Script: 02_docker/run_f3_go_no_go.sh",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir hardening de configuração F-3",
+  },
   {
     date: "2026-04-29",
     scope: "F-3 Trilha B - Janela controlada executada",
@@ -757,6 +1356,7 @@ const UPDATES = [
 export default function OpsUpdatesHistoryPage() {
   const [copyStatus, setCopyStatus] = useState("");
   const [openEntries, setOpenEntries] = useState({});
+  const [resetStatus, setResetStatus] = useState("");
 
   async function handleCopyTemplate() {
     try {
@@ -768,13 +1368,55 @@ export default function OpsUpdatesHistoryPage() {
     }
   }
 
+  function handleResetTutorialPreferences() {
+    try {
+      const keysToRemove = [];
+      for (let idx = 0; idx < window.localStorage.length; idx += 1) {
+        const key = window.localStorage.key(idx);
+        if (String(key || "").startsWith("ops:tutorial:hidden:v1:")) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach((key) => window.localStorage.removeItem(key));
+      setResetStatus(
+        keysToRemove.length > 0
+          ? `Preferências de tutorial resetadas (${keysToRemove.length} chave(s)).`
+          : "Nenhuma preferência de tutorial encontrada para reset."
+      );
+      window.setTimeout(() => setResetStatus(""), 2800);
+    } catch (_err) {
+      setResetStatus("Não foi possível resetar preferências de tutorial neste navegador.");
+    }
+  }
+
+  function resolveUpdateDateKey(entry) {
+    return String(entry?.dateTime || entry?.date || "").trim();
+  }
+
+  function formatUpdateDateTime(entry) {
+    const raw = resolveUpdateDateKey(entry);
+    if (!raw) return "-";
+    const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+    const normalized = isDateOnly ? `${raw}T00:00:00-03:00` : raw;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return raw;
+    return new Intl.DateTimeFormat("pt-BR", {
+      dateStyle: "short",
+      timeStyle: "short",
+    }).format(parsed);
+  }
+
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Updates History</h1>
+        <OpsPageTitleHeader title="OPS - Updates History" />
         <p style={mutedStyle}>
           Histórico de acréscimos OPS com descrição curta de valor e trilha técnica por sprint.
         </p>
+        <button type="button" style={copyButtonStyle} onClick={handleResetTutorialPreferences}>
+          Resetar preferências de tutoriais
+        </button>
+        {resetStatus ? <div style={copyStatusStyle}>{resetStatus}</div> : null}
 
         <details style={templateBoxStyle}>
           <summary style={templateSummaryStyle}>Mini-template JSON (novos itens da timeline)</summary>
@@ -792,10 +1434,10 @@ export default function OpsUpdatesHistoryPage() {
         <div style={timelineStyle}>
           {UPDATES.map((entry) => (
             <details
-              key={`${entry.date}-${entry.scope}-${entry.title}`}
+              key={`${resolveUpdateDateKey(entry)}-${entry.scope}-${entry.title}`}
               style={entryStyle}
               onToggle={(event) => {
-                const entryKey = `${entry.date}-${entry.scope}-${entry.title}`;
+                const entryKey = `${resolveUpdateDateKey(entry)}-${entry.scope}-${entry.title}`;
                 const isOpen = Boolean(event.currentTarget?.open);
                 setOpenEntries((prev) => ({ ...prev, [entryKey]: isOpen }));
               }}
@@ -807,12 +1449,12 @@ export default function OpsUpdatesHistoryPage() {
                     <span style={{ ...getSeverityBadgeStyle("WARN"), width: "fit-content" }}>{entry.scope}</span>
                   </div>
                   <span style={entryToggleBadgeStyle}>
-                    {openEntries[`${entry.date}-${entry.scope}-${entry.title}`] ? "Recolher" : "Expandir"}
+                    {openEntries[`${resolveUpdateDateKey(entry)}-${entry.scope}-${entry.title}`] ? "Recolher" : "Expandir"}
                   </span>
                 </div>
               </summary>
               <div style={entryBodyStyle}>
-                <small style={{ color: "#94A3B8" }}>{entry.date}</small>
+                <small style={{ color: "#94A3B8" }}>{formatUpdateDateTime(entry)}</small>
                 <p style={{ margin: "8px 0", color: "#CBD5E1" }}>{entry.description}</p>
                 {(entry.uiRoutesNew || []).length ? (
                   <div style={newRoutesBlockStyle}>

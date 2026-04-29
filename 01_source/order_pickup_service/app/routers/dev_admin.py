@@ -12,6 +12,7 @@ import logging
 import csv
 import io
 import json
+from pathlib import Path
 
 from typing import Any
 
@@ -591,6 +592,58 @@ def dev_ops_audit_list(
         },
     )
     return DevOpsAuditListOut(ok=True, total=len(items), items=items)
+
+
+@router.get("/ops-sanity/latest")
+def dev_ops_sanity_latest(
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    candidates = [
+        Path("/app/ops_logs/ops/ops_sanity_latest.json"),
+        Path("/home/marcos/ellan_lab/04_logs/ops/ops_sanity_latest.json"),
+    ]
+    latest_path = next((p for p in candidates if p.exists()), candidates[0])
+    if not latest_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "OPS_SANITY_REPORT_NOT_FOUND",
+                "message": "Relatório de sanidade OPS ainda não foi gerado.",
+                "expected_paths": [str(p) for p in candidates],
+            },
+        )
+
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "OPS_SANITY_REPORT_INVALID",
+                "message": "Relatório de sanidade OPS inválido para leitura.",
+                "error_type": exc.__class__.__name__,
+            },
+        ) from exc
+
+    _safe_record_ops_audit(
+        action="OPS_SANITY_LATEST_VIEW",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "source_path": str(latest_path),
+            "result": payload.get("result"),
+            "fail_count": payload.get("fail_count"),
+        },
+    )
+    return {
+        "ok": True,
+        "source_path": str(latest_path),
+        "report": payload,
+    }
 
 
 @router.get("/ops-metrics", response_model=DevOpsMetricsOut)

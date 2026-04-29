@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -212,7 +213,7 @@ export default function OpsPartnersBillingMonitoringPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0, marginBottom: 8 }}>OPS - Partners Billing Monitor</h1>
+        <OpsPageTitleHeader title="OPS - Partners Billing Monitor" />
         <p style={mutedTextStyle}>
           Página simples de acompanhamento para ciclos, invoices, credit notes e histórico de disputas.
         </p>

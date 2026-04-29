@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 
@@ -61,7 +62,7 @@ export default function OpsLogisticsManifestsOverviewPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Logistics Manifests Overview</h1>
+        <OpsPageTitleHeader title="OPS - Logistics Manifests Overview" />
         <p style={mutedStyle}>Painel D3 para backlog, taxa de partial/failed, confidence badge e alertas operacionais.</p>
 
         <div style={filtersStyle}>

@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -326,7 +327,7 @@ export default function OpsReconciliationPage() {
       </section>
 
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Reconciliação de pedido</h1>
+        <OpsPageTitleHeader title="OPS - Reconciliação de pedido" />
         <p style={mutedTextStyle}>
           Use esta ação para reconciliar pedidos com crédito e/ou slot presos por falha parcial.
           Informe o <code>order_id</code> e execute.

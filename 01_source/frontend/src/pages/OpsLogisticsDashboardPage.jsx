@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getTrendBadgeStyle, getTrendToken } from "../components/opsVisualTokens";
 
@@ -203,7 +204,7 @@ export default function OpsLogisticsDashboardPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Logistics Dashboard</h1>
+        <OpsPageTitleHeader title="OPS - Logistics Dashboard" />
         <p style={mutedStyle}>
           Acompanhamento operacional de tracking events, delivery attempts e shipment labels.
         </p>

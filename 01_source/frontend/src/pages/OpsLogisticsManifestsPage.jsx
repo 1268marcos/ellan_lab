@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -199,7 +200,7 @@ export default function OpsLogisticsManifestsPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Logistics Manifests (D2)</h1>
+        <OpsPageTitleHeader title="OPS - Logistics Manifests (D2)" />
         <p style={mutedStyle}>
           Operação rápida para endpoints D2 de manifesto: listar itens, fechar manifesto e registrar exception idempotente.
         </p>

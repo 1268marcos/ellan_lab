@@ -1,5 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const VERSIONING_EXAMPLES = [
   {
@@ -20,7 +21,7 @@ export default function OpsVersioningPolicyPage() {
   return (
     <main style={pageStyle}>
       <header style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0 }}>OPS — Política de versionamento (ops/health)</h1>
+        <OpsPageTitleHeader title="OPS — Política de versionamento (ops/health)" titleStyle={{ margin: 0 }} />
         <p style={subtitleStyle}>
           Referência operacional para rastrear evoluções da página de saúde operacional em suporte, auditoria e incidentes.
         </p>

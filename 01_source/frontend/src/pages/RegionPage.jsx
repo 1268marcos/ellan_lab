@@ -5,6 +5,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
@@ -70,44 +71,6 @@ function formatMoney(cents, currency) {
     return `${amount.toFixed(2)} ${currency || ""}`.trim();
   }
 }
-
-function normalizeLockerItem_legacy(locker) {
-  const address =
-    locker?.address && typeof locker.address === "object"
-      ? locker.address
-      : {
-          address: locker?.address || "",
-          number: locker?.number ?? "",
-          additional_information: locker?.additional_information || "",
-          locality: locker?.locality || "",
-          city: locker?.city || "",
-          federative_unit: locker?.federative_unit || "",
-          postal_code: locker?.postal_code || "",
-          country: locker?.country || "",
-        };
-
-  const slotCountFromRuntime = Array.isArray(locker?.slot_ids)
-    ? locker.slot_ids.length
-    : Number(locker?.slots || 0);
-
-  return {
-    locker_id: String(locker?.locker_id || "").trim(),
-    pickup_code_length: Number(locker?.pickup_code_length || 6),
-    region: String(locker?.region || "").toUpperCase(),
-    site_id: locker?.site_id || "",
-    display_name: locker?.display_name || locker?.locker_id || "",
-    backend_region: String(locker?.backend_region || locker?.region || "").toUpperCase(),
-    slots: Number(slotCountFromRuntime || 0),
-    channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
-    payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((item) => String(item).trim())
-      : [],
-    address,
-    active: Boolean(locker?.active),
-  };
-}
-
-
 
 function normalizeLockerItem(locker) {
   const rawAddress =
@@ -200,26 +163,6 @@ function normalizeLockerItem(locker) {
   };
 }
 
-
-
-function formatAddress_com_erro_legacy(locker) {
-  if (!locker) return "-";
-
-  const address = locker.address || {};
-
-  const parts = [
-    [address.address, address.number].filter(Boolean).join(", "),
-    address.additional_information || "",
-    address.locality || "",
-    [address.city, address.federative_unit].filter(Boolean).join(" / "),
-    address.postal_code || "",
-    address.country || "",
-  ]
-    .map((item) => String(item || "").trim())
-    .filter(Boolean);
-
-  return parts.join(" • ");
-}
 
 
 function formatAddress(locker) {
@@ -1232,7 +1175,7 @@ export default function RegionPage({ region, mode = "kiosk" }) {
   return (
     <div style={pageStyle}>
       <div style={headerCardStyle}>
-        <h1 style={{ margin: 0 }}>Simulador KIOSK — {region}</h1>
+        <OpsPageTitleHeader title={`Simulador KIOSK — ${region}`} containerStyle={{ marginBottom: 0 }} titleStyle={{ margin: 0 }} />
         <div style={subtleStyle}>
           Tela operacional usando gateway + runtime. Sem backend_sp/backend_pt e sem fallback local no frontend.
         </div>
@@ -1890,8 +1833,6 @@ const slotMetaStyle = { display: "grid", gap: 4, fontSize: 12, opacity: 0.9 };
 const gridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16 };
 const okBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(16,185,129,0.16)", border: "1px solid rgba(16,185,129,0.34)", display: "grid", gap: 10 };
 const rejectedBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(239,68,68,0.16)", border: "1px solid rgba(239,68,68,0.34)", display: "grid", gap: 10 };
-const gatewayDebugCardStyle = { padding: 12, borderRadius: 12, background: "rgba(15,23,42,0.42)", border: "1px solid rgba(255,255,255,0.10)", display: "grid", gap: 12 };
-const gatewayReasonItemStyle = { padding: 10, borderRadius: 10, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", display: "grid", gap: 4, fontSize: 13 };
 const errorBoxStyle = { padding: 14, borderRadius: 12, background: "rgba(239,68,68,0.16)", border: "1px solid rgba(239,68,68,0.34)", color: "#fecaca", whiteSpace: "pre-wrap", wordBreak: "break-word" };
 const jsonBoxStyle = { margin: 0, padding: 12, borderRadius: 12, background: "rgba(15,23,42,0.78)", overflowX: "auto", fontSize: 12 };
 const summaryListStyle = { display: "grid", gap: 4, fontSize: 13 };

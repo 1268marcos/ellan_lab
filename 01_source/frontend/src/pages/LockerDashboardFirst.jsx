@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 import { QRCodeCanvas } from "qrcode.react";
 
@@ -1874,7 +1875,7 @@ export default function LockerDashboard({ region = "PT" }) {
   return (
     <div style={{ minHeight: "100vh", background: "#0f1115", color: "white", padding: 16, fontFamily: "system-ui" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>ELLAN • Locker Dashboard</h1>
+        <OpsPageTitleHeader title="ELLAN • Locker Dashboard" titleStyle={{ margin: 0, fontSize: 22 }} containerStyle={{ marginBottom: 0 }} />
 
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <div style={{ opacity: 0.8, fontSize: 12 }}>

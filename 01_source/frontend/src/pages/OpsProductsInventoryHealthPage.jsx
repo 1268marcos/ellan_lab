@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { getTrendBadgeStyle, getTrendToken } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -214,7 +215,7 @@ export default function OpsProductsInventoryHealthPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Products Inventory Health</h1>
+        <OpsPageTitleHeader title="OPS - Products Inventory Health" />
         <p style={mutedStyle}>Saúde de reservas por locker/produto com ranking de divergências e tendência por janela.</p>
 
         <div style={filtersGridStyle}>

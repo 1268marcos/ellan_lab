@@ -31,6 +31,16 @@ from app.services.fiscal_provider_ops_service import (
     list_provider_status,
     test_provider_connectivity,
 )
+from app.services.fiscal_global_catalog_service import (
+    build_fiscal_fg1_wave_scope,
+    build_fiscal_global_catalog,
+    build_fiscal_global_scenario_matrix,
+)
+from app.services.fiscal_fg1_stub_service import (
+    build_fg1_fixtures_matrix,
+    build_fg1_stub_adapters_catalog,
+    simulate_fg1_stub,
+)
 from app.integrations.fiscal_real_provider_client import list_canonical_error_codes
 from app.services.invoice_delivery_service import record_invoice_delivery
 from app.services.invoice_email_service import send_danfe_email_stub
@@ -307,6 +317,54 @@ def get_pt_provider_go_no_go(
     _: None = Depends(validate_internal_token),
 ):
     return build_pt_go_no_go_checklist(db, run_connectivity=run_connectivity)
+
+
+@router.get("/global/catalog")
+def get_fiscal_global_catalog(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fiscal_global_catalog()
+
+
+@router.get("/global/scenario-matrix")
+def get_fiscal_global_scenario_matrix(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fiscal_global_scenario_matrix()
+
+
+@router.get("/global/fg1-wave-scope")
+def get_fiscal_fg1_wave_scope(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fiscal_fg1_wave_scope()
+
+
+@router.get("/global/fg1/stub-adapters")
+def get_fiscal_fg1_stub_adapters(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_stub_adapters_catalog()
+
+
+@router.get("/global/fg1/fixtures-matrix")
+def get_fiscal_fg1_fixtures_matrix(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_fixtures_matrix()
+
+
+@router.post("/global/fg1/simulate")
+def post_fiscal_fg1_stub_simulate(
+    country: str = Query(...),
+    operation: str = Query(..., pattern="^(authorize|cancel|correct|status)$"),
+    scenario: str | None = Query(default=None),
+    _: None = Depends(validate_internal_token),
+):
+    try:
+        return simulate_fg1_stub(country=country, operation=operation, scenario=scenario)
+    except ValueError as exc:
+        raise _safe_client_error("Invalid FG-1 simulation parameters.") from exc
 
 
 @router.post("/providers/stub/svrs/batch-submit")

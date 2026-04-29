@@ -1,6 +1,7 @@
 // 01_source/frontend/src/pages/DevLockerResetPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -210,7 +211,7 @@ export default function DevLockerResetPage() {
   return (
     <div style={pageStyle}>
       <section style={dangerCardStyle}>
-        <h1 style={{ marginTop: 0 }}>DEV — Reset de locker</h1>
+        <OpsPageTitleHeader title="DEV — Reset de locker" />
         <div style={warningStyle}>
           Esta tela é exclusivamente para ambiente de desenvolvimento controlado com
           <b> VITE_DEV_BYPASS_AUTH=true</b>. Veja 02_docker/.env 

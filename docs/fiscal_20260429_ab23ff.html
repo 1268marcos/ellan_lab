@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELLAN LAB - Diretrizes de Desenvolvimento em Modo Stub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #eef2f5;
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            line-height: 1.5;
+            padding: 40px 20px;
+        }
+
+        /* Container estilo documento */
+        .document {
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.15);
+            border-radius: 4px;
+            padding: 60px 56px;
+            transition: all 0.2s;
+        }
+
+        @media (max-width: 700px) {
+            .document {
+                padding: 32px 20px;
+            }
+        }
+
+        /* Tipografia e cores */
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1B3A6B;
+            margin-top: 48px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 4px solid #2E5FA3;
+            letter-spacing: -0.3px;
+        }
+
+        h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2E5FA3;
+            margin-top: 36px;
+            margin-bottom: 14px;
+        }
+
+        h3 {
+            font-size: 19px;
+            font-weight: 600;
+            color: #1B3A6B;
+            margin-top: 28px;
+            margin-bottom: 12px;
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.55;
+            color: #222222;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        .text-justify {
+            text-align: justify;
+        }
+
+        /* listas */
+        ul, .bullet-list {
+            margin: 0.8rem 0 1rem 2rem;
+        }
+
+        li, .bullet-item {
+            font-size: 15px;
+            margin-bottom: 6px;
+            color: #222;
+        }
+
+        .numbered-list {
+            margin: 0.8rem 0 1rem 2rem;
+            list-style-type: decimal;
+        }
+
+        /* tabelas */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0 28px;
+            font-size: 14px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        th {
+            background-color: #1B3A6B;
+            color: white;
+            padding: 12px 10px;
+            font-weight: 600;
+            text-align: center;
+            border: 1px solid #CCCCCC;
+        }
+
+        td {
+            padding: 10px 10px;
+            border: 1px solid #CCCCCC;
+            color: #1f2d3d;
+            vertical-align: top;
+        }
+
+        tr:nth-child(even) {
+            background-color: #F2F4F7;
+        }
+
+        /* blocos de código */
+        pre {
+            background-color: #1E1E2E;
+            color: #A6E3A1;
+            padding: 18px 20px;
+            border-radius: 12px;
+            overflow-x: auto;
+            font-family: 'Courier New', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.45;
+            margin: 20px 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            tab-size: 4;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            background-color: #f4f6fc;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #1B3A6B;
+        }
+
+        /* callout / boxes */
+        .callout {
+            background-color: #D6E4F7;
+            border-left: 6px solid #2E5FA3;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 12px;
+        }
+
+        .callout-warning {
+            background-color: #FFF8E1;
+            border-left-color: #F4A826;
+        }
+
+        .callout-success {
+            background-color: #E8F5E9;
+            border-left-color: #2E7D32;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .callout p {
+            margin-bottom: 8px;
+        }
+
+        .badge {
+            background-color: #F4A826;
+            padding: 2px 10px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #1B3A6B;
+            display: inline-block;
+        }
+
+        hr {
+            margin: 32px 0;
+            border: none;
+            border-top: 1px solid #cbd5e1;
+        }
+
+        .cover-logo {
+            text-align: center;
+            margin-top: 60px;
+        }
+
+        .footer-note {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 12px;
+            color: #555555;
+            border-top: 1px solid #dce3ec;
+            padding-top: 28px;
+            font-style: italic;
+        }
+
+        /* spacers */
+        .clearfix {
+            clear: both;
+        }
+
+        .spacer-sm {
+            margin-top: 12px;
+        }
+
+        .page-break {
+            page-break-before: always;
+            margin-top: 40px;
+        }
+
+        /* responsividade */
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .document {
+                box-shadow: none;
+                padding: 20px;
+                max-width: 100%;
+            }
+            pre {
+                page-break-inside: avoid;
+            }
+            .callout, table {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="document">
+    <!-- COVER PAGE -->
+    <div style="text-align: center; margin: 20px 0 40px 0;">
+        <div style="margin-top: 100px;"></div>
+        <h1 style="font-size: 52px; border-bottom: none; margin-bottom: 16px; color: #1B3A6B;">ELLAN LAB</h1>
+        <p style="font-size: 28px; font-weight: 500; color: #2E5FA3; margin-bottom: 30px;">Diretrizes de Desenvolvimento em Modo Stub</p>
+        <p style="font-size: 18px; color: #555555; font-style: italic; margin-bottom: 60px;">Integração com Autoridades Fiscais — Estratégia para Ambientes sem Credenciais Reais</p>
+        <div style="width: 120px; height: 4px; background-color: #F4A826; margin: 20px auto;"></div>
+        <p style="font-size: 14px; color: #555555; margin-top: 50px;">Versão 1.0  •  Abril 2025</p>
+        <p style="font-size: 13px; color: #555555; font-style: italic;">Classificação: Interno — Uso restrito à equipe técnica</p>
+    </div>
+    <div class="page-break" style="border-top: 1px solid #e2e8f0; margin: 20px 0 30px;"></div>
+
+    <!-- SECTION 1 -->
+    <h1>1. Contexto e Objetivo</h1>
+    <p>O projeto ELLAN LAB possui integração com múltiplas autoridades fiscais globais para emissão, autorização, cancelamento e correção de documentos eletrônicos. Enquanto as credenciais de homologação real não estiverem disponíveis — seja por indisponibilidade de contato com os órgãos competentes ou por falta de cadastro formal — a equipe deve avançar o desenvolvimento usando uma camada de simulação controlada: o Modo Stub.</p>
+    <p>Este documento define padrões, contratos de interface, estrutura de dados e boas práticas para que o desenvolvimento em stub seja diretamente substituível pela integração real sem necessidade de refatoração de alto impacto.</p>
+    
+    <div class="callout callout-warning">
+        <div class="callout-title">⚠️  Premissa Fundamental</div>
+        <p>Todo código escrito em modo stub DEVE ser estruturado de forma que a substituição pelo provedor real exija apenas a troca do adaptador de infraestrutura, sem alterar regras de negócio ou contratos de domínio. O stub é um adapter de desenvolvimento — não uma solução definitiva.</p>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h1>2. Arquitetura da Camada Stub</h1>
+    <h2>2.1 Padrão de Separação por Interface</h2>
+    <p>A equipe deve adotar o padrão Port & Adapter (Hexagonal Architecture). Cada autoridade fiscal é representada por uma interface (porta), e o stub é um adaptador concreto dessa porta. A troca para o adaptador real acontece apenas na camada de infraestrutura.</p>
+    <pre><code>// Exemplo em TypeScript
+// PORTA — nunca muda, é o contrato de domínio
+interface IFiscalProvider {
+  authorize(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt;;
+  cancel(doc: FiscalDocument, reason: string): Promise&lt;CancelResult&gt;;
+  correct(doc: FiscalDocument, correction: CorrectionData): Promise&lt;CorrectResult&gt;;
+  status(key: string): Promise&lt;StatusResult&gt;;
+}
+
+// ADAPTADOR STUB — substitui o real durante desenvolvimento
+class FiscalProviderStub implements IFiscalProvider {
+  async authorize(doc) { return StubFactory.authorizeSuccess(doc); }
+  async cancel(doc, reason) { return StubFactory.cancelSuccess(doc); }
+  async correct(doc, correction) { return StubFactory.correctSuccess(doc); }
+  async status(key) { return StubFactory.statusApproved(key); }
+}
+
+// REGISTRO — troca via variável de ambiente
+const provider = process.env.FISCAL_MODE === 'real'
+  ? new SefazNFeProvider(credentials)
+  : new FiscalProviderStub();</code></pre>
+
+    <h2>2.2 Estrutura de Diretórios Recomendada</h2>
+    <pre><code>src/
+├── domain/fiscal/
+│   ├── IFiscalProvider.ts          # Interface única (porta)
+│   ├── FiscalDocument.ts           # Entidade de domínio
+│   └── FiscalResult.ts             # Value objects de resultado
+├── infrastructure/fiscal/
+│   ├── stub/
+│   │   ├── FiscalProviderStub.ts   # Implementação stub
+│   │   ├── StubFactory.ts          # Fábrica de respostas simuladas
+│   │   ├── StubScenarios.ts        # Cenários de erro e sucesso
+│   │   └── fixtures/               # XMLs e JSONs de resposta simulada
+│   ├── sefaz/
+│   │   └── SefazNFeProvider.ts     # Implementação real (futura)
+│   ├── atpt/
+│   │   └── AtPtProvider.ts         # Implementação real (futura)
+│   └── FiscalProviderFactory.ts    # Decide qual adaptador usar
+└── config/
+    └── fiscal.config.ts            # Variáveis de ambiente e flags</code></pre>
+
+    <!-- SECTION 3 -->
+    <h1>3. Autoridades Fiscais Cobertas</h1>
+    <p>A tabela abaixo mapeia as principais autoridades fiscais por país, o protocolo esperado e o status de implementação stub recomendado:</p>
+    <table>
+        <thead><tr><th>País</th><th>Autoridade</th><th>Documento</th><th>Protocolo</th><th>Endpoint Stub Sugerido</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>🇧🇷 Brasil</td><td>SEFAZ / SVRS</td><td>NF-e / NFC-e / CT-e / MDF-e</td><td>SOAP / HTTPS</td><td>/stub/sefaz/nfe</td></tr>
+            <tr><td>🇧🇷 Brasil</td><td>Prefeituras (ISS)</td><td>NFS-e</td><td>REST / SOAP</td><td>/stub/nfse/{cidade}</td></tr>
+            <tr><td>🇵🇹 Portugal</td><td>AT (Autoridade Tributária)</td><td>Fatura SAF-T / QR Code</td><td>REST HTTPS</td><td>/stub/atpt/faturas</td></tr>
+            <tr><td>🇵🇹 Portugal</td><td>AT — AT-SAF-T</td><td>Declaração mensal</td><td>REST HTTPS</td><td>/stub/atpt/saft</td></tr>
+            <tr><td>🇲🇽 México</td><td>SAT</td><td>CFDI 4.0</td><td>SOAP / PAC</td><td>/stub/sat/cfdi</td></tr>
+            <tr><td>🇦🇷 Argentina</td><td>AFIP</td><td>CAE / CAEA / Factura-e</td><td>REST SOAP</td><td>/stub/afip/fce</td></tr>
+            <tr><td>🇨🇱 Chile</td><td>SII</td><td>DTE (XML + Firma Digital)</td><td>REST HTTPS</td><td>/stub/sii/dte</td></tr>
+            <tr><td>🇨🇴 Colômbia</td><td>DIAN</td><td>Factura Electrónica UBL 2.1</td><td>REST HTTPS</td><td>/stub/dian/fe</td></tr>
+            <tr><td>🇵🇪 Peru</td><td>SUNAT</td><td>XML UBL 2.1 / OSE</td><td>REST HTTPS</td><td>/stub/sunat/cpe</td></tr>
+            <tr><td>🇪🇸 Espanha</td><td>AEAT</td><td>Facturae / SII (IVA)</td><td>REST HTTPS</td><td>/stub/aeat/facturae</td></tr>
+            <tr><td>🇮🇹 Itália</td><td>AdE / SDI</td><td>FatturaPA (XML)</td><td>REST FTP</td><td>/stub/sdi/fatturapa</td></tr>
+            <tr><td>🇩🇪 Alemanha</td><td>Finanzämter</td><td>XRechnung / ZUGFeRD</td><td>REST peppol</td><td>/stub/de/xrechnung</td></tr>
+            <tr><td>🇫🇷 França</td><td>DGFiP</td><td>Factur-X / Chorus Pro</td><td>REST HTTPS</td><td>/stub/fr/chorus</td></tr>
+            <tr><td>🇬🇧 Reino Unido</td><td>HMRC</td><td>MTD VAT / Making Tax Digital</td><td>REST OAuth2</td><td>/stub/hmrc/mtd</td></tr>
+            <tr><td>🌐 Europa (Peppol)</td><td>OpenPeppol</td><td>BIS Billing 3.0 UBL</td><td>AS4 REST</td><td>/stub/peppol/bis3</td></tr>
+            <tr><td>🇮🇳 Índia</td><td>GSTN / IRP</td><td>e-Invoice JSON + IRN</td><td>REST HTTPS</td><td>/stub/gstn/einvoice</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 4 -->
+    <h1>4. Contratos de Resposta do Stub</h1>
+    <h2>4.1 Envelope de Resposta Universal</h2>
+    <p>Todas as respostas do stub, independente da autoridade fiscal, devem seguir um envelope único para facilitar o parsing na camada de aplicação:</p>
+    <pre><code>// StubResult — envelope universal
+{
+  "stub": true,                        // Flag obrigatória — identifica resposta simulada
+  "provider": "SEFAZ_SP",              // Identificador do provedor simulado
+  "scenario": "AUTHORIZE_SUCCESS",     // Cenário executado
+  "timestamp": "2025-04-29T10:00:00Z",// Timestamp ISO 8601
+  "latencyMs": 320,                    // Latência simulada (realismo)
+  "payload": {                         // Payload específico do documento
+    "protocol": "135251234567890",
+    "status": "100",
+    "statusDescription": "Autorizado o uso da NF-e",
+    "xml": "&lt;nfeProc&gt;...&lt;/nfeProc&gt;",   // XML conforme layout real
+    "qrCode": "https://www.sefaz.../...",
+    "chaveAcesso": "35250429..."
+  },
+  "rawResponse": "&lt;?xml version=..."   // String bruta simulando o protocolo real
+}</code></pre>
+    
+    <h2>4.2 Cenários Obrigatórios por Operação</h2>
+    <p>Para cada operação, o stub DEVE implementar ao menos os cenários listados abaixo:</p>
+    <table>
+        <thead><tr><th>Operação</th><th>Cenário</th><th>Código Simulado</th><th>Uso Recomendado</th></tr></thead>
+        <tbody>
+            <tr><td>Autorizar</td><td>AUTHORIZE_SUCCESS</td><td>100 — Autorizado</td><td>Fluxo feliz padrão</td></tr>
+            <tr><td>Autorizar</td><td>AUTHORIZE_REJECTED</td><td>204 — Uso denegado</td><td>Teste de rejeição de negócio</td></tr>
+            <tr><td>Autorizar</td><td>AUTHORIZE_SCHEMA_ERROR</td><td>225 — Erro de schema</td><td>Validação de payload malformado</td></tr>
+            <tr><td>Autorizar</td><td>AUTHORIZE_TIMEOUT</td><td>timeout 30s</td><td>Resiliência e circuit breaker</td></tr>
+            <tr><td>Cancelar</td><td>CANCEL_SUCCESS</td><td>101 — Cancelado</td><td>Fluxo de cancelamento padrão</td></tr>
+            <tr><td>Cancelar</td><td>CANCEL_DEADLINE_EXPIRED</td><td>301 — Prazo expirado</td><td>Regra de prazo de cancelamento</td></tr>
+            <tr><td>Corrigir (CC-e)</td><td>CORRECT_SUCCESS</td><td>135 — CC-e vinculada</td><td>Carta de correção padrão</td></tr>
+            <tr><td>Consultar</td><td>STATUS_AUTHORIZED</td><td>100</td><td>Consulta de chave autorizada</td></tr>
+            <tr><td>Consultar</td><td>STATUS_NOT_FOUND</td><td>217 — NF-e não encontrada</td><td>Chave inexistente na SEFAZ</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 5 -->
+    <h1>5. Implementação da StubFactory</h1>
+    <h2>5.1 Modelo de Fábrica com Cenários Configuráveis</h2>
+    <pre><code>// StubFactory.ts
+export class StubFactory {
+  private static async delay(ms = 300) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  static async authorizeSuccess(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt; {
+    await this.delay(StubConfig.latencyMs);
+    return {
+      stub: true,
+      scenario: 'AUTHORIZE_SUCCESS',
+      protocol: this.generateProtocol(),
+      status: '100',
+      statusDescription: 'Autorizado o uso da NF-e',
+      chaveAcesso: doc.chaveAcesso,
+      xml: StubFixtures.load('nfe_authorized.xml'),
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  static generateProtocol(): string {
+    const uf = '35'; // SP
+    const aamm = new Date().toISOString().slice(2,4) + new Date().toISOString().slice(5,7);
+    const seq = String(Date.now()).slice(-12);
+    return `${uf}${aamm}${seq}`;
+  }
+}</code></pre>
+
+    <h2>5.2 Controle de Cenário por Variável de Ambiente</h2>
+    <pre><code># .env.development
+FISCAL_MODE=stub                          # stub | real | hybrid
+STUB_DEFAULT_SCENARIO=AUTHORIZE_SUCCESS   # Cenário padrão
+STUB_LATENCY_MS=350                       # Simular latência de rede
+STUB_SEFAZ_TIMEOUT=false                  # Forçar timeout no SEFAZ
+STUB_LOG_REQUESTS=true                    # Logar todos os requests simulados</code></pre>
+
+    <!-- SECTION 6 -->
+    <h1>6. Fixtures XML — Padrão por Autoridade</h1>
+    <h2>6.1 Estrutura de Fixtures</h2>
+    <p>Cada autoridade fiscal deve ter seus próprios fixtures XML/JSON representando respostas reais da autoridade:</p>
+    <pre><code>infrastructure/fiscal/stub/fixtures/
+├── br/
+│   ├── sefaz/
+│   │   ├── nfe_authorized.xml          # retEnviNFe com cStat=100
+│   │   ├── nfe_cancelled.xml
+│   │   └── nfe_rejected_204.xml
+│   ├── nfse/
+│   └── cte/
+├── pt/atpt/
+├── mx/sat/
+├── ar/afip/
+└── eu/peppol/</code></pre>
+    <div class="callout">
+        <div class="callout-title">📌 Fontes Oficiais para Extração de Fixtures</div>
+        <p>BR — NF-e: Portal da NF-e (nfe.fazenda.gov.br) — Schemas XSD e exemplos oficiais. • PT — AT: Portal das Finanças. • MX — SAT: sat.gob.mx — Anexo 20 CFDI 4.0. IT — AdE: fatturapa.gov.it.</p>
+    </div>
+
+    <!-- SECTION 7 -->
+    <h1>7. Regras de Negócio que o Stub DEVE Respeitar</h1>
+    <h2>7.1 Brasil — SEFAZ / SVRS</h2>
+    <ul>
+        <li>Chave de acesso deve ter 44 dígitos com dígito verificador calculado corretamente (Mod 11)</li>
+        <li>Protocolo de autorização gerado com formato real: cUF(2) + AAMM(4) + sequencial(12)</li>
+        <li>Prazo de cancelamento: stub deve rejeitar cancelamentos com mais de 24 horas da emissão (cStat=301)</li>
+        <li>Limite de 20 cartas de correção por NF-e — stub deve rastrear e rejeitar na 21ª</li>
+    </ul>
+    <h2>7.2 Portugal — AT</h2>
+    <ul><li>ATCUD (Código Único de Documento) deve ser gerado com hash SHA-1 da chave privada simulada</li><li>QR Code seguir formato exato dos Despachos 412/2021</li></ul>
+    <h2>7.3 México — SAT / CFDI 4.0</h2>
+    <ul><li>UUID do TimbreFiscalDigital deve ser UUID v4 válido gerado pelo 'PAC' stub</li><li>Versão CFDI: usar 4.0 exclusivamente</li></ul>
+
+    <!-- SECTION 8 -->
+    <h1>8. Logging e Observabilidade do Stub</h1>
+    <p>O stub deve gerar logs estruturados em todos os requests para facilitar debug e auditoria.</p>
+    <pre><code>{
+  "level": "INFO",
+  "stub": true,
+  "provider": "SEFAZ_SP",
+  "operation": "authorize",
+  "scenario": "AUTHORIZE_SUCCESS",
+  "latencyMs": 342,
+  "requestId": "req_abc123"
+}</code></pre>
+    <div class="callout">
+        <div class="callout-title">🔍 Métricas que o Stub deve Expor (Prometheus / OpenTelemetry)</div>
+        <p>fiscal_stub_requests_total{provider, operation, scenario}<br>fiscal_stub_latency_ms, fiscal_stub_errors_total</p>
+    </div>
+
+    <!-- SECTION 9 -->
+    <h1>9. Checklist de Migração Stub → Real</h1>
+    <table>
+        <thead><tr><th>#</th><th>Tarefa de Migração</th><th>Responsável</th><th>Status</th></tr></thead>
+        <tbody>
+            <tr><td>1</td><td>Obter credenciais de homologação junto à autoridade fiscal</td><td>Tech Lead</td><td>[ ]</td></tr>
+            <tr><td>3</td><td>Implementar adaptador real cumprindo IFiscalProvider</td><td>Dev</td><td>[ ]</td></tr>
+            <tr><td>5</td><td>Executar suite de testes E2E no ambiente de homologação real</td><td>QA</td><td>[ ]</td></tr>
+            <tr><td>9</td><td>Configurar FISCAL_MODE=real em staging e executar smoke tests</td><td>DevOps</td><td>[ ]</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 10 -->
+    <h1>10. Boas Práticas e Regras da Equipe</h1>
+    <h2>10.1 O que SEMPRE fazer</h2>
+    <ul><li>Implementar a interface completa — nunca deixar métodos não implementados</li><li>Versionar os fixtures no repositório — eles são parte do contrato</li><li>Testar todos os cenários de erro — stub deve cobrir rejeições, timeouts</li></ul>
+    <h2>10.2 O que NUNCA fazer</h2>
+    <ul><li>Usar o stub em produção — flag stub: true deve alertar</li><li>Retornar estruturas de dados diferentes do adaptador real</li><li>Hardcodar cenários sem possibilidade de override</li></ul>
+    <div class="callout callout-success">
+        <div class="callout-title">✅ Definição de 'Stub Pronto para Migração'</div>
+        <p>1. Todos os cenários obrigatórios da Seção 4.2 implementados.<br>2. Fixtures seguem layout oficial da autoridade.<br>3. IFiscalProvider completamente satisfeita.<br>4. Testes unitários passam com stub.<br>5. FISCAL_MODE=real resulta apenas em troca de adaptador.</p>
+    </div>
+    
+    <!-- SECTION 11 -->
+    <h1>11. Roadmap de Integração Real por Autoridade</h1>
+    <table>
+        <thead><tr><th>Autoridade</th><th>Prioridade</th><th>Complexidade</th><th>Próximo Passo</th></tr></thead>
+        <tbody>
+            <tr><td>SEFAZ / SVRS (BR)</td><td>🔴 Crítica</td><td>Alta</td><td>Solicitar acesso SEFAZ Virtual RS</td></tr>
+            <tr><td>AT Portugal</td><td>🔴 Crítica</td><td>Média</td><td>Registrar séries no portal AT</td></tr>
+            <tr><td>SAT México (CFDI)</td><td>🟠 Alta</td><td>Alta</td><td>Escolher PAC homologado</td></tr>
+            <tr><td>AFIP Argentina</td><td>🟠 Alta</td><td>Média</td><td>Solicitar CUIT e cadastro AFIP</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 12 Glossary -->
+    <h1>12. Glossário</h1>
+    <table>
+        <thead><tr><th>Termo</th><th>Definição</th></tr></thead>
+        <tbody>
+            <tr><td>Stub</td><td>Implementação simulada de uma dependência externa para uso em desenvolvimento e testes</td></tr>
+            <tr><td>Port & Adapter</td><td>Padrão arquitetural que separa lógica de negócio de implementações externas</td></tr>
+            <tr><td>ATCUD</td><td>Código Único de Documento — identificador em documentos fiscais portugueses desde 2023</td></tr>
+            <tr><td>Peppol</td><td>Pan-European Public Procurement On-Line — rede europeia de intercâmbio de documentos</td></tr>
+            <tr><td>ICP-Brasil</td><td>Infraestrutura de Chaves Públicas Brasileira</td></tr>
+        </tbody>
+    </table>
+
+    <div class="footer-note">
+        ELLAN LAB — Documento Interno  •  Versão 1.0  •  Abril 2025<br>
+        Este documento deve ser revisado a cada nova autoridade fiscal integrada ou mudança de arquitetura.
+    </div>
+</div>
+</body>
+</html>

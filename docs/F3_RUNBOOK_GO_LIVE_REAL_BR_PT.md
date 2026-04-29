@@ -11,6 +11,11 @@ Com rollback imediato por feature flag e reinício dos serviços fiscais.
 
 ## Pré-condições obrigatórias (GO/NO-GO)
 
+Arquivo base para preenchimento rápido de credenciais/flags:
+
+- `02_docker/.env.f3-real.example`
+- `02_docker/.env.f3-real.local.example` (simulação de laboratório sem segredos)
+
 Antes de habilitar real em produção/ambiente alvo, validar:
 
 1. Gate BR:
@@ -28,8 +33,54 @@ curl -s "http://localhost:8020/admin/fiscal/providers/pt-go-no-go?run_connectivi
 ```
 
 3. Ambos devem retornar `go_no_go=GO`.
+4. Opcional recomendado: preflight consolidado retornar `RESULTADO FINAL: GO`.
 
 ## Sequência de habilitação controlada
+
+### Preparar ENV de go-live
+
+1. Criar arquivo de trabalho:
+
+```bash
+cp /home/marcos/ellan_lab/02_docker/.env.f3-real.example /home/marcos/ellan_lab/02_docker/.env.f3-real
+```
+
+2. Preencher placeholders (`BR/PT host` e `API keys`).
+3. Subir serviços fiscais com env-file:
+
+```bash
+docker compose --env-file /home/marcos/ellan_lab/02_docker/.env.f3-real \
+  -f /home/marcos/ellan_lab/02_docker/docker-compose.yml \
+  up -d --build billing_fiscal_service billing_fiscal_issue_worker billing_fiscal_event_worker
+```
+
+### Preparar ENV de laboratório (simulação controlada)
+
+1. Criar arquivo local:
+
+```bash
+cp /home/marcos/ellan_lab/02_docker/.env.f3-real.local.example /home/marcos/ellan_lab/02_docker/.env.f3-real.local
+```
+
+2. Subir serviços fiscais com env-file local:
+
+```bash
+docker compose --env-file /home/marcos/ellan_lab/02_docker/.env.f3-real.local \
+  -f /home/marcos/ellan_lab/02_docker/docker-compose.yml \
+  up -d --build billing_fiscal_service billing_fiscal_issue_worker billing_fiscal_event_worker
+```
+
+3. Executar gates em modo laboratório:
+
+```bash
+/home/marcos/ellan_lab/02_docker/run_f3_go_no_go.sh
+```
+
+4. Executar preflight consolidado (env + gates):
+
+```bash
+/home/marcos/ellan_lab/02_docker/run_f3_preflight.sh /home/marcos/ellan_lab/02_docker/.env.f3-real.local.example
+```
 
 ### Etapa 1 — BR real
 

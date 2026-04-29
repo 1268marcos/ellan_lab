@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
 import { getConfidenceBadgeStyle, getDataQualityFlagStyle } from "../components/opsVisualTokens";
 
@@ -230,7 +231,7 @@ export default function OpsPartnersDashboardPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Partners Dashboard</h1>
+        <OpsPageTitleHeader title="OPS - Partners Dashboard" />
         <p style={mutedStyle}>
           Visualização consolidada de KPI, comparativo e série temporal (global ou foco por parceiro).
         </p>

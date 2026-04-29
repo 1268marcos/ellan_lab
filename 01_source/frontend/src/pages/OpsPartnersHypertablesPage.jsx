@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -131,7 +132,7 @@ Referencia completa:
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0, marginBottom: 8 }}>OPS - Partners Hypertables</h1>
+        <OpsPageTitleHeader title="OPS - Partners Hypertables" />
         <p style={mutedStyle}>
           Visão organizada das hypertables/policies do bloco FA-5 (Timescale). Esta tela consolida o smoke operacional.
         </p>

@@ -1,6 +1,7 @@
 // 01_source/frontend/src/features/locker-dashboard/components/LockerDashboardHeader.jsx
 
 import React from "react";
+import OpsPageTitleHeader from "../../../components/OpsPageTitleHeader";
 
 export default function LockerDashboardHeader({
   region,
@@ -23,7 +24,11 @@ export default function LockerDashboardHeader({
     >
       <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 24, fontWeight: 900 }}>Locker Dashboard</div>
+          <OpsPageTitleHeader
+            title="Locker Dashboard"
+            titleStyle={{ margin: 0, fontSize: 24, fontWeight: 900 }}
+            containerStyle={{ marginBottom: 0 }}
+          />
           <div style={{ fontSize: 13, opacity: 0.78 }}>
             Painel operacional e administrativo por locker.
           </div>

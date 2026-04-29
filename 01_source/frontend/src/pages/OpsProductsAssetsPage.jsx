@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const MEDIA_FEEDBACK_STORAGE_KEY = "ops_products_assets_media_feedback_v1";
@@ -202,7 +203,7 @@ export default function OpsProductsAssetsPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Products Assets (Pr-1)</h1>
+        <OpsPageTitleHeader title="OPS - Products Assets (Pr-1)" />
         <p style={mutedStyle}>Operação mínima para media/barcodes por produto.</p>
 
         <label style={labelStyle}>

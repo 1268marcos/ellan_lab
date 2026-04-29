@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import and_, asc, column, desc, func, or_, select, table, text, tuple_
+from sqlalchemy import Integer, and_, asc, column, desc, func, or_, select, table, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import require_user_roles
@@ -219,11 +219,11 @@ def get_order_events_outbox_dead_letter_priority(
 
     summary_row = db.execute(
         select(
-            func.count().cast(text("int")).label("total_dead_letters"),
-            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("total_distinct_orders"),
+            func.count().cast(Integer).label("total_dead_letters"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(Integer).label("total_distinct_orders"),
             func.count(
                 func.distinct(tuple_(partner_order_events_outbox_table.c.partner_id, partner_order_events_outbox_table.c.event_type))
-            ).cast(text("int")).label("total_groups"),
+            ).cast(Integer).label("total_groups"),
         )
         .select_from(partner_order_events_outbox_table)
         .where(where_expr)
@@ -236,8 +236,8 @@ def get_order_events_outbox_dead_letter_priority(
         select(
             partner_order_events_outbox_table.c.partner_id,
             partner_order_events_outbox_table.c.event_type,
-            func.count().cast(text("int")).label("dead_letter_count"),
-            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("distinct_orders"),
+            func.count().cast(Integer).label("dead_letter_count"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(Integer).label("distinct_orders"),
             func.min(partner_order_events_outbox_table.c.created_at).label("oldest_created_at"),
             func.max(partner_order_events_outbox_table.c.created_at).label("newest_created_at"),
             func.max(partner_order_events_outbox_table.c.updated_at).label("latest_updated_at"),
@@ -344,8 +344,8 @@ def replay_order_events_outbox_priority_groups(
         select(
             partner_order_events_outbox_table.c.partner_id,
             partner_order_events_outbox_table.c.event_type,
-            func.count().cast(text("int")).label("dead_letter_count"),
-            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("distinct_orders"),
+            func.count().cast(Integer).label("dead_letter_count"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(Integer).label("distinct_orders"),
             func.min(partner_order_events_outbox_table.c.created_at).label("oldest_created_at"),
             func.max(partner_order_events_outbox_table.c.created_at).label("newest_created_at"),
             func.max(partner_order_events_outbox_table.c.updated_at).label("latest_updated_at"),
@@ -379,7 +379,7 @@ def replay_order_events_outbox_priority_groups(
             partner_order_events_outbox_table.c.event_type,
         ).in_(group_pairs)
         total_row = db.execute(
-            select(func.count().cast(text("int")).label("total"))
+            select(func.count().cast(Integer).label("total"))
             .select_from(partner_order_events_outbox_table)
             .where(partner_order_events_outbox_table.c.status == "DEAD_LETTER")
             .where(group_filter)
@@ -576,7 +576,7 @@ def get_order_events_outbox_priority_replay_runs_timeline(
     if dry_run is not None:
         filters.append(ops_outbox_replay_priority_runs_table.c.dry_run == bool(dry_run))
     where_expr = and_(*filters) if filters else None
-    total_stmt = select(func.count().cast(text("int")).label("total")).select_from(ops_outbox_replay_priority_runs_table)
+    total_stmt = select(func.count().cast(Integer).label("total")).select_from(ops_outbox_replay_priority_runs_table)
     if where_expr is not None:
         total_stmt = total_stmt.where(where_expr)
     total = int((db.execute(total_stmt).mappings().first() or {}).get("total") or 0)

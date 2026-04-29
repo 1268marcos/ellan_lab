@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsActionButton from "../components/OpsActionButton";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
@@ -110,7 +111,7 @@ export default function OpsIntegrationOrdersPartnerLookupPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Orders Partner Lookup (L-3)</h1>
+        <OpsPageTitleHeader title="OPS - Orders Partner Lookup (L-3)" />
         <p style={mutedStyle}>
           Guia rápido: 1) informar <b>partner_id</b>; 2) opcionalmente filtrar por <b>partner_order_ref</b>; 3) executar lookup e copiar evidência.
         </p>

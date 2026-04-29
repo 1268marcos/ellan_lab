@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
@@ -273,7 +274,7 @@ export default function OpsProductsCatalogPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Products Catalog</h1>
+        <OpsPageTitleHeader title="OPS - Products Catalog" />
         <p style={mutedStyle}>Distribuição por status e tendência simples por janela (atual vs anterior).</p>
 
         <div style={filtersGridStyle}>

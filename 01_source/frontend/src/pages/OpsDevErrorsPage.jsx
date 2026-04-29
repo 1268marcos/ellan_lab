@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -105,7 +106,7 @@ export default function OpsDevErrorsPage() {
           </Link>
         </div>
 
-        <h1 style={{ marginTop: 0 }}>OPS - Dev Errors</h1>
+        <OpsPageTitleHeader title="OPS - Dev Errors" />
         <p style={mutedStyle}>
           Visualizacao interna da rota <code>/internal/dev/errors</code> para diagnostico rapido em desenvolvimento.
         </p>

@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 
 import AuthorizationPolicyPanel from "../components/AuthorizationPolicyPanel";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { fetchPublicAuthorizationPolicy } from "../services/authApi";
 
 export default function OpsAuthorizationPolicyPage() {
@@ -38,7 +39,7 @@ export default function OpsAuthorizationPolicyPage() {
   return (
     <main style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
       <header style={{ marginBottom: 14 }}>
-        <h1 style={{ margin: 0 }}>OPS — Política de autorização</h1>
+        <OpsPageTitleHeader title="OPS — Política de autorização" titleStyle={{ margin: 0 }} />
         <p style={{ marginTop: 8, color: "#475569" }}>
           Referência operacional única de permissões e regras de acesso.
         </p>

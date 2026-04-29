@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsActionButton from "../components/OpsActionButton";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -351,10 +352,13 @@ export default function OpsPartnersReconciliationDashboardPage() {
     <div style={pageStyle}>
       <section style={cardStyle}>
         <div style={headerRowStyle}>
-          <h1 style={{ margin: 0 }}>OPS - Partners Reconciliation Dashboard</h1>
-          <Link to="/ops/auth/policy/versioning" style={pageVersionBadgeStyle} title="Abrir política de versionamento">
-            {OPS_RECON_DASHBOARD_VERSION}
-          </Link>
+          <OpsPageTitleHeader
+            title="OPS - Partners Reconciliation Dashboard"
+            versionLabel={OPS_RECON_DASHBOARD_VERSION}
+            versionTo="/ops/auth/policy/versioning"
+            containerStyle={{ marginBottom: 0 }}
+            titleStyle={{ margin: 0 }}
+          />
         </div>
         <p style={mutedStyle}>
           Painel executivo para comitê operacional: tendência de divergência (`compare`) + priorização por impacto (`top-divergences`).
@@ -696,17 +700,6 @@ export default function OpsPartnersReconciliationDashboardPage() {
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "#E2E8F0", fontFamily: "system-ui, sans-serif", display: "grid", gap: 12 };
 const cardStyle = { background: "#111827", border: "1px solid #334155", borderRadius: 16, padding: 16 };
 const headerRowStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" };
-const pageVersionBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  border: "1px solid #4b5563",
-  borderRadius: 999,
-  padding: "4px 10px",
-  fontSize: 11,
-  color: "#cbd5e1",
-  textDecoration: "none",
-  background: "#0f172a",
-};
 const mutedStyle = { color: "#94A3B8" };
 const filtersStyle = { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", marginBottom: 10 };
 const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };

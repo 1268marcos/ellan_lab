@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELLAN LAB - Diretrizes de Desenvolvimento em Modo Stub</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #eef2f5;
+            font-family: 'Segoe UI', 'Arial', sans-serif;
+            line-height: 1.5;
+            padding: 40px 20px;
+        }
+
+        .document {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: #ffffff;
+            box-shadow: 0 20px 35px -12px rgba(0,0,0,0.15);
+            border-radius: 4px;
+            padding: 60px 56px;
+            transition: all 0.2s;
+        }
+
+        @media (max-width: 700px) {
+            .document {
+                padding: 32px 20px;
+            }
+        }
+
+        h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1B3A6B;
+            margin-top: 48px;
+            margin-bottom: 20px;
+            padding-bottom: 12px;
+            border-bottom: 4px solid #2E5FA3;
+            letter-spacing: -0.3px;
+        }
+
+        h2 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #2E5FA3;
+            margin-top: 36px;
+            margin-bottom: 14px;
+        }
+
+        h3 {
+            font-size: 19px;
+            font-weight: 600;
+            color: #1B3A6B;
+            margin-top: 28px;
+            margin-bottom: 12px;
+        }
+
+        p {
+            font-size: 15px;
+            line-height: 1.55;
+            color: #222222;
+            margin-bottom: 1rem;
+            text-align: justify;
+        }
+
+        .text-center {
+            text-align: center;
+        }
+
+        ul, .bullet-list {
+            margin: 0.8rem 0 1rem 2rem;
+        }
+
+        li, .bullet-item {
+            font-size: 15px;
+            margin-bottom: 6px;
+            color: #222;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0 28px;
+            font-size: 13px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+
+        th {
+            background-color: #1B3A6B;
+            color: white;
+            padding: 12px 8px;
+            font-weight: 600;
+            text-align: center;
+            border: 1px solid #CCCCCC;
+        }
+
+        td {
+            padding: 10px 8px;
+            border: 1px solid #CCCCCC;
+            color: #1f2d3d;
+            vertical-align: top;
+        }
+
+        tr:nth-child(even) {
+            background-color: #F2F4F7;
+        }
+
+        pre {
+            background-color: #1E1E2E;
+            color: #A6E3A1;
+            padding: 18px 20px;
+            border-radius: 12px;
+            overflow-x: auto;
+            font-family: 'Courier New', 'Fira Code', monospace;
+            font-size: 13px;
+            line-height: 1.45;
+            margin: 20px 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            tab-size: 4;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            background-color: #f4f6fc;
+            padding: 2px 6px;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #1B3A6B;
+        }
+
+        .callout {
+            background-color: #D6E4F7;
+            border-left: 6px solid #2E5FA3;
+            padding: 20px 24px;
+            margin: 28px 0;
+            border-radius: 12px;
+        }
+
+        .callout-warning {
+            background-color: #FFF8E1;
+            border-left-color: #F4A826;
+        }
+
+        .callout-success {
+            background-color: #E8F5E9;
+            border-left-color: #2E7D32;
+        }
+
+        .callout-title {
+            font-weight: 700;
+            font-size: 16px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .badge {
+            background-color: #F4A826;
+            padding: 2px 10px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: bold;
+            color: #1B3A6B;
+            display: inline-block;
+        }
+
+        .footer-note {
+            margin-top: 60px;
+            text-align: center;
+            font-size: 12px;
+            color: #555555;
+            border-top: 1px solid #dce3ec;
+            padding-top: 28px;
+            font-style: italic;
+        }
+
+        .page-break {
+            page-break-before: always;
+            margin-top: 40px;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+            .document {
+                box-shadow: none;
+                padding: 20px;
+                max-width: 100%;
+            }
+            pre {
+                page-break-inside: avoid;
+            }
+            .callout, table {
+                page-break-inside: avoid;
+            }
+        }
+
+        .flag-icon {
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+<div class="document">
+    <!-- COVER PAGE -->
+    <div style="text-align: center; margin: 20px 0 40px 0;">
+        <div style="margin-top: 80px;"></div>
+        <h1 style="font-size: 52px; border-bottom: none; margin-bottom: 16px; color: #1B3A6B;">ELLAN LAB</h1>
+        <p style="font-size: 28px; font-weight: 500; color: #2E5FA3; margin-bottom: 30px;">Diretrizes de Desenvolvimento em Modo Stub</p>
+        <p style="font-size: 18px; color: #555555; font-style: italic; margin-bottom: 60px;">Integração com Autoridades Fiscais — Estratégia para Ambientes sem Credenciais Reais</p>
+        <div style="width: 120px; height: 4px; background-color: #F4A826; margin: 20px auto;"></div>
+        <p style="font-size: 14px; color: #555555; margin-top: 50px;">Versão 2.0  •  Maio 2026</p>
+        <p style="font-size: 13px; color: #555555; font-style: italic;">Classificação: Interno — Uso restrito à equipe técnica</p>
+    </div>
+    <div class="page-break" style="border-top: 1px solid #e2e8f0; margin: 20px 0 30px;"></div>
+
+    <!-- SECTION 1 -->
+    <h1>1. Contexto e Objetivo</h1>
+    <p>O projeto ELLAN LAB possui integração com múltiplas autoridades fiscais globais para emissão, autorização, cancelamento e correção de documentos eletrônicos. Enquanto as credenciais de homologação real não estiverem disponíveis — seja por indisponibilidade de contato com os órgãos competentes ou por falta de cadastro formal — a equipe deve avançar o desenvolvimento usando uma camada de simulação controlada: o Modo Stub.</p>
+    <p>Este documento define padrões, contratos de interface, estrutura de dados e boas práticas para que o desenvolvimento em stub seja diretamente substituível pela integração real sem necessidade de refatoração de alto impacto. A versão 2.0 expande a cobertura para Estados Unidos, Austrália, Tailândia, Alemanha, Polônia, Canadá e França, incluindo regionalidades como Califórnia, Texas e Quebec.</p>
+    
+    <div class="callout callout-warning">
+        <div class="callout-title">⚠️  Premissa Fundamental</div>
+        <p>Todo código escrito em modo stub DEVE ser estruturado de forma que a substituição pelo provedor real exija apenas a troca do adaptador de infraestrutura, sem alterar regras de negócio ou contratos de domínio. O stub é um adapter de desenvolvimento — não uma solução definitiva.</p>
+    </div>
+
+    <!-- SECTION 2 -->
+    <h1>2. Arquitetura da Camada Stub</h1>
+    <h2>2.1 Padrão de Separação por Interface</h2>
+    <p>A equipe deve adotar o padrão Port & Adapter (Hexagonal Architecture). Cada autoridade fiscal é representada por uma interface (porta), e o stub é um adaptador concreto dessa porta. A troca para o adaptador real acontece apenas na camada de infraestrutura.</p>
+    <pre><code>// Exemplo em TypeScript
+// PORTA — nunca muda, é o contrato de domínio
+interface IFiscalProvider {
+  authorize(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt;;
+  cancel(doc: FiscalDocument, reason: string): Promise&lt;CancelResult&gt;;
+  correct(doc: FiscalDocument, correction: CorrectionData): Promise&lt;CorrectResult&gt;;
+  status(key: string): Promise&lt;StatusResult&gt;;
+}
+
+// ADAPTADOR STUB — substitui o real durante desenvolvimento
+class FiscalProviderStub implements IFiscalProvider {
+  async authorize(doc) { return StubFactory.authorizeSuccess(doc); }
+  async cancel(doc, reason) { return StubFactory.cancelSuccess(doc); }
+  async correct(doc, correction) { return StubFactory.correctSuccess(doc); }
+  async status(key) { return StubFactory.statusApproved(key); }
+}</code></pre>
+
+    <h2>2.2 Estrutura de Diretórios Recomendada (Expandida)</h2>
+    <pre><code>src/
+├── domain/fiscal/
+│   ├── IFiscalProvider.ts
+│   └── FiscalDocument.ts
+├── infrastructure/fiscal/
+│   ├── stub/
+│   │   ├── FiscalProviderStub.ts
+│   │   ├── StubFactory.ts
+│   │   └── fixtures/
+│   │       ├── br/           # Brasil
+│   │       ├── us/           # Estados Unidos (IRS, state-level)
+│   │       ├── au/           # Austrália (ATO)
+│   │       ├── th/           # Tailândia (RD)
+│   │       ├── de/           # Alemanha (Finanzämter)
+│   │       ├── pl/           # Polônia (KAS)
+│   │       ├── ca/           # Canadá (CRA + Quebec)
+│   │       └── fr/           # França (DGFiP)
+│   └── real/                 # Implementações futuras
+└── config/fiscal.config.ts</code></pre>
+
+    <!-- SECTION 3 - TABELA EXPANDIDA -->
+    <h1>3. Autoridades Fiscais Cobertas (Global)</h1>
+    <p>A tabela abaixo mapeia as principais autoridades fiscais por país/região, incluindo as novas adições:</p>
+    <table>
+        <thead><tr><th>País/Região</th><th>Autoridade</th><th>Documento/Modalidade</th><th>Protocolo</th><th>Endpoint Stub</th></tr></thead>
+        <tbody>
+            <tr><td>🇧🇷 Brasil</td><td>SEFAZ / SVRS</td><td>NF-e / NFC-e / CT-e</td><td>SOAP / HTTPS</td><td>/stub/sefaz/nfe</td></tr>
+            <tr><td>🇵🇹 Portugal</td><td>AT</td><td>Fatura SAF-T / ATCUD</td><td>REST HTTPS</td><td>/stub/atpt/faturas</td></tr>
+            <tr><td>🇲🇽 México</td><td>SAT</td><td>CFDI 4.0</td><td>SOAP / PAC</td><td>/stub/sat/cfdi</td></tr>
+            <tr><td>🇺🇸 EUA (Federal)</td><td>IRS</td><td>1099-K, 1099-NEC, W-2, FATCA</td><td>MeF (XML), AIR</td><td>/stub/irs/mef</td></tr>
+            <tr><td>🇺🇸 Califórnia</td><td>CDTFA</td><td>Sales & Use Tax Return</td><td>REST / HTTPS</td><td>/stub/us/ca/cdtfa</td></tr>
+            <tr><td>🇺🇸 Texas</td><td>Texas Comptroller</td><td>Sales Tax Permit / Franchise Tax</td><td>REST / Webfile</td><td>/stub/us/tx/comptroller</td></tr>
+            <tr><td>🇺🇸 Nova York</td><td>NY DTF</td><td>Sales Tax / Withholding</td><td>REST</td><td>/stub/us/ny/dtf</td></tr>
+            <tr><td>🇦🇺 Austrália</td><td>ATO</td><td>e-Invoicing (Peppol), BAS, GST</td><td>REST / Peppol</td><td>/stub/au/ato</td></tr>
+            <tr><td>🇹🇭 Tailândia</td><td>RD (Revenue Dept)</td><td>e-Tax Invoice, e-Receipt, Withholding Tax</td><td>REST / XML</td><td>/stub/th/rd</td></tr>
+            <tr><td>🇩🇪 Alemanha</td><td>Finanzämter</td><td>XRechnung, ZUGFeRD, E-Rechnung</td><td>Peppol / ZUGFeRD</td><td>/stub/de/xrechnung</td></tr>
+            <tr><td>🇵🇱 Polônia</td><td>KAS (Krajowa Administracja Skarbowa)</td><td>JPK_VAT, e-Faktura (KSeF)</td><td>REST / SOAP</td><td>/stub/pl/kas/jpk</td></tr>
+            <tr><td>🇨🇦 Canadá (Federal)</td><td>CRA</td><td>GST/HST, Payroll, T4, NR4</td><td>REST / SOAP</td><td>/stub/ca/cra</td></tr>
+            <tr><td>🇨🇦 Quebec</td><td>Revenu Québec</td><td>QST, RL-1, Sales Tax</td><td>REST / XML</td><td>/stub/ca/qc/rq</td></tr>
+            <tr><td>🇫🇷 França</td><td>DGFiP</td><td>Factur-X, Chorus Pro, e-Invoicing</td><td>REST / Chorus Pro</td><td>/stub/fr/chorus</td></tr>
+            <tr><td>🇨🇱 Chile</td><td>SII</td><td>DTE</td><td>REST HTTPS</td><td>/stub/sii/dte</td></tr>
+            <tr><td>🇨🇴 Colômbia</td><td>DIAN</td><td>Factura Electrónica</td><td>REST</td><td>/stub/dian/fe</td></tr>
+            <tr><td>🇮🇹 Itália</td><td>AdE / SDI</td><td>FatturaPA</td><td>REST FTP</td><td>/stub/sdi/fatturapa</td></tr>
+            <tr><td>🇬🇧 Reino Unido</td><td>HMRC</td><td>MTD VAT</td><td>REST OAuth2</td><td>/stub/hmrc/mtd</td></tr>
+            <tr><td>🇮🇳 Índia</td><td>GSTN</td><td>e-Invoice IRN</td><td>REST</td><td>/stub/gstn/einvoice</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 4 - Contratos mantidos -->
+    <h1>4. Contratos de Resposta do Stub</h1>
+    <h2>4.1 Envelope de Resposta Universal</h2>
+    <pre><code>{
+  "stub": true,
+  "provider": "IRS_MeF",
+  "scenario": "AUTHORIZE_SUCCESS",
+  "timestamp": "2025-04-29T10:00:00Z",
+  "latencyMs": 320,
+  "payload": { /* específico por autoridade */ },
+  "rawResponse": "&lt;?xml...&gt;"
+}</code></pre>
+    <h2>4.2 Cenários Obrigatórios (Base + Expansão)</h2>
+    <table>
+        <thead><tr><th>Operação</th><th>Cenário</th><th>Código Simulado</th><th>Uso</th></tr></thead>
+        <tbody>
+            <tr><td>Autorizar</td><td>AUTHORIZE_SUCCESS</td><td>200 / 100</td><td>Fluxo feliz</td></tr>
+            <tr><td>Autorizar</td><td>AUTHORIZE_REJECTED</td><td>204 / 400</td><td>Rejeição negocial</td></tr>
+            <tr><td>Cancelar</td><td>CANCEL_SUCCESS</td><td>101</td><td>Cancelamento ok</td></tr>
+            <tr><td>Cancelar</td><td>CANCEL_DEADLINE_EXPIRED</td><td>301</td><td>Prazo expirado</td></tr>
+            <tr><td>Consultar</td><td>STATUS_NOT_FOUND</td><td>404/217</td><td>Documento não localizado</td></tr>
+            <tr><td>US - IRS</td><td>IRS_ACK_SUCCESS</td><td>AcceptanceCode 00000</td><td>Retorno MeF aceito</td></tr>
+            <tr><td>AU - ATO</td><td>ATO_BAS_VALID</td><td>BAS_2025</td><td>Business Activity Statement ok</td></tr>
+            <tr><td>PL - KSeF</td><td>KSEF_SESSION_OK</td><td>SessionToken</td><td>Sessão e-Faktura criada</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 5 - StubFactory com novos provedores -->
+    <h1>5. StubFactory para Novas Autoridades</h1>
+    <h2>5.1 Implementações Regionais</h2>
+    <pre><code>// StubFactory expansão global
+static async authorizeIRS(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt; {
+  await this.delay(400);
+  return {
+    stub: true,
+    scenario: 'IRS_ACK_SUCCESS',
+    acceptanceCode: '00000',
+    submissionId: `IRS-${Date.now()}`,
+    status: 'ACCEPTED',
+    timestamp: new Date().toISOString()
+  };
+}
+
+static async authorizeATO(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt; {
+  return {
+    stub: true,
+    scenario: 'ATO_BAS_VALID',
+    basonumber: `BAS${Math.floor(Math.random()*1e9)}`,
+    status: 'LODGED',
+    timestamp: new Date().toISOString()
+  };
+}
+
+static async authorizeKSeF(doc: FiscalDocument): Promise&lt;AuthorizeResult&gt; {
+  return {
+    stub: true,
+    scenario: 'KSEF_SESSION_OK',
+    sessionToken: Buffer.from(`session-${Date.now()}`).toString('base64'),
+    invoiceReference: `FAKTURA/${Date.now()}`,
+    status: 'ZAREJESTROWANO'
+  };
+}</code></pre>
+
+    <h2>5.2 Variáveis de Ambiente para Novos Cenários</h2>
+    <pre><code># EUA
+STUB_IRS_SCENARIO=REJECT_BUSINESS_RULE
+STUB_CA_CDTFA_FILING_STATUS=PENDING
+STUB_TX_COMPTROLLER_ERROR=SALES_TAX_MISMATCH
+
+# Austrália
+STUB_ATO_BAS_ADJUSTMENT=UNDER_REVIEW
+STUB_ATO_GST_REFUND_DELAY=5000
+
+# Tailândia
+STUB_TH_RD_WHTAX_CERT=APPROVED
+
+# Polônia
+STUB_PL_KSEF_ERROR=DUPLICATE_INVOICE
+
+# Canadá
+STUB_CA_CRA_BUSINESS_NUMBER=123456789RP0001
+STUB_CA_QC_CERT_VERIFICATION=VALID
+
+# França
+STUB_FR_CHORUS_PRO_INVOICE_STATUS=ACCEPTEE</code></pre>
+
+    <!-- SECTION 6 - Fixtures por nova região -->
+    <h1>6. Fixtures XML/JSON por Novo País</h1>
+    <h2>6.1 Estrutura de Fixtures Expandida</h2>
+    <pre><code>infrastructure/fiscal/stub/fixtures/
+├── us/
+│   ├── irs/
+│   │   ├── form1099_ack.xml         # MeF submission acceptance
+│   │   ├── fatca_accept.json
+│   │   └── rejection_codes.json
+│   ├── ca/ (California)
+│   │   └── cdtfa_sales_tax_response.json
+│   └── tx/
+│       └── comptroller_permit.json
+├── au/ato/
+│   ├── bas_success.json
+│   └── gst_refund.xml
+├── th/rd/
+│   ├── e_tax_invoice_success.xml
+│   └── withholding_cert.pdf (mock)
+├── de/finanzaemter/
+│   ├── xrechnung_ack.xml
+│   └── zugferd_invoice.json
+├── pl/kas/
+│   ├── ksef_invoice_confirmation.xml
+│   └── jpk_vat_response.json
+├── ca/cra/
+│   ├── gsthst_remittance.xml
+│   └── t4_summary.json
+├── ca/qc/
+│   └── rl1_slip_response.json
+└── fr/dgfip/
+    ├── chorus_pro_ack.xml
+    └── facturx_response.json</code></pre>
+
+    <div class="callout">
+        <div class="callout-title">📌  Fontes Oficiais para Extração de Fixtures (Novas)</div>
+        <p>🇺🇸 IRS: irs.gov/e-file-providers/MeF • 🇦🇺 ATO: ato.gov.au/eInvoicing • 🇹🇭 RD: rd.go.th/e-TaxInvoice • 🇩🇪 Finanzamt: xrechnung.bund.de • 🇵🇱 KAS: gov.pl/web/kas/ksef • 🇨🇦 CRA: canada.ca/gst-hst-technical • 🇨🇦 Revenu Québec: revenuquebec.ca/en/web-services • 🇫🇷 DGFiP: chorus-pro.gouv.fr</p>
+    </div>
+
+    <!-- SECTION 7 - Regras de Negócio Novas -->
+    <h1>7. Regras de Negócio Específicas (Stub Obrigatório)</h1>
+    <h2>7.1 Estados Unidos (IRS e Estados)</h2>
+    <ul>
+        <li><strong>IRS MeF</strong>: Gerar SubmissionId com formato IRS-TAX-YEAR-XXXX, aceitar códigos de rejeição como R0000-502 (Business Rule Violation).</li>
+        <li><strong>Califórnia (CDTFA)</strong>: Simular registro de Seller’s Permit, campo "CDTFA-XXXX" e validação de periodicidade de filing (mensal/trimestral).</li>
+        <li><strong>Texas (Comptroller)</strong>: Simular Sales Tax Permit com validação de Out-of-State dealers, endpoint /webfile deve retornar Webfile ID.</li>
+        <li><em>Regionalidade</em>: diferenças entre estados — no stub é possível alternar via header X-State-Code.</li>
+    </ul>
+    <h2>7.2 Austrália (ATO)</h2>
+    <ul><li>e-Invoicing via Peppol: validar ABN (Australian Business Number) com algoritmo de checksum.</li><li>BAS (Business Activity Statement): simular campos G1-G11 com validação de GST, respostas via Standard Business Reporting (SBR).</li></ul>
+    <h2>7.3 Tailândia (RD)</h2>
+    <ul><li>e-Tax Invoice: formato XML segundo PDPA laws, número de identificação fiscal (TIN) deve ter 13 dígitos (formato tailandês). Simular aprovação de Withholding Tax Certificate (Por Por 30).</li></ul>
+    <h2>7.4 Alemanha (XRechnung / Peppol)</h2>
+    <ul><li>Presença obrigatória do Leitweg-ID (município) e Buyer Reference. Stub deve retornar acknowledgment Peppol AS4 com MessageID único.</li></ul>
+    <h2>7.5 Polônia (KSeF - Krajowy System e-Faktur)</h2>
+    <ul><li>Simular sessão autenticada por token (SessionToken). Invoices devem possuir número de referência (Numer referencyjny) gerado no stub com prefixo KSeF/YYYY/MM.</li><li>JPK_VAT: validar estrutura XML e rejeitar se falta pola 6/7.</li></ul>
+    <h2>7.6 Canadá (CRA + Revenu Québec)</h2>
+    <ul><li>CRA: GST/HST NETFILE - simular AccessCode e Business Number (9 dígitos + RP/RC).</li><li>Quebec: QST e RL-1 slip com validação de NEQ (Número d'entreprise du Québec). Stub deve aceitar formulário CO-17 para imposto de renda corporativo Quebec.</li></ul>
+    <h2>7.7 França (DGFiP / Chorus Pro)</h2>
+    <ul><li>Factur-X / Chorus Pro: simular identificador Chorus (SIRET + indice de emission). O stub deve reproduzir a mensagem "Statut: Acceptée par le fournisseur".</li></ul>
+
+    <!-- SECTION 8 - Logging -->
+    <h1>8. Logging e Observabilidade (Multipaís)</h1>
+    <pre><code>{
+  "level": "INFO",
+  "stub": true,
+  "provider": "IRS_MeF|ATO|RD|KSeF",
+  "region": "California/Texas/Quebec",
+  "scenario": "AUTHORIZE_SUCCESS",
+  "latencyMs": 285,
+  "correlationId": "req_eu_pl_ksef_001"
+}</code></pre>
+    <div class="callout">
+        <div class="callout-title">📊 Métricas Adicionais</div>
+        <p>fiscal_stub_provider_fallback_total{provider} — quando real não disponível, stub atua como fallback.<br>fiscal_stub_regional_override_total{region, scenario} — identificação de testes regionais.</p>
+    </div>
+
+    <!-- SECTION 9 - Checklist Migração -->
+    <h1>9. Checklist de Migração Stub → Real (Novos Países)</h1>
+    <table>
+        <thead><tr><th>País</th><th>Item Crítico</th><th>Órgão</th><th>Validação</th></tr></thead>
+        <tbody>
+            <tr><td>EUA</td><td>Obter EIN / certificado de e-file (MeF)</td><td>IRS</td><td>Testes ATS Sandbox</td></tr>
+            <tr><td>Califórnia</td><td>Registrar Seller’s Permit</td><td>CDTFA</td><td>Validação no portal</td></tr>
+            <tr><td>Austrália</td><td>Conectar via Standard Business Reporting (SBR)</td><td>ATO</td><td>Certificado AUSkey/Machine Credential</td></tr>
+            <tr><td>Tailândia</td><td>Obter credenciais RD Smart Tax</td><td>Revenue Dept</td><td>Ambiente Sandbox</td></tr>
+            <tr><td>Alemanha</td><td>Certificado Peppol Access Point</td><td>Finanzamt</td><td>Validação Central de E-Rechnung</td></tr>
+            <tr><td>Polônia</td><td>Credencial do Ministério das Finanças para KSeF</td><td>KAS</td><td>Testy w środowisku demo KSeF</td></tr>
+            <tr><td>Canadá</td><td>Business Number + Represent a Client (CRA)</td><td>CRA</td><td>Sandbox My Business Account</td></tr>
+            <tr><td>Quebec</td><td>NEQ + clicSÉQUR</td><td>Revenu Québec</td><td>Certificado para web services</td></tr>
+            <tr><td>França</td><td>Certificado Chorus Pro (PSN / SIRET)</td><td>DGFiP</td><td>Portail Pro Facture</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 10 - Boas Práticas Expandidas -->
+    <h1>10. Boas Práticas e Regras da Equipe</h1>
+    <h2>10.1 O que SEMPRE fazer (Global)</h2>
+    <ul><li>Manter compatibilidade com múltiplos formatos regionais (XML/JSON/UBN/Peppol).</li><li>Simular latências realistas de cada autoridade: ≥200ms para CRA, ≤100ms para IRS sandbox.</li><li>Versionar fixtures com tag da especificação fiscal (ex: CFDIv4, XRechnung1.2).</li></ul>
+    <h2>10.2 O que NUNCA fazer</h2>
+    <ul><li>Retornar envelope universal sem campo "provider" específico.</li><li>Utilizar dados reais de certificados de produção nos fixtures de stub.</li><li>Ignorar validação de regras regionais (ex: não validar formato de TIN australiano pode quebrar contrato).</li></ul>
+    <div class="callout callout-success">
+        <div class="callout-title">✅ Definição de "Stub Global Pronto para Migração"</div>
+        <p>1. Todos os endpoints regionais documentados na seção 3 respondem com envelope padronizado.<br>2. Fixtures atualizados conforme última especificação técnica (2025/2026).<br>3. Testes unitários com cobertura de cenários de erro regionais.<br>4. Troca via FISCAL_MODE=real deve apontar para adaptador autenticado, sem alterar contrato.</p>
+    </div>
+
+    <!-- SECTION 11 - Roadmap Priorizado -->
+    <h1>11. Roadmap de Integração Real por Autoridade (Atualizado)</h1>
+    <table>
+        <thead><tr><th>Autoridade</th><th>Prioridade</th><th>Complexidade</th><th>Próximo Passo Estratégico</th></tr></thead>
+        <tbody>
+            <tr><td>IRS (EUA)</td><td>🔴 Alta</td><td>Alta (SOAP/MeF)</td><td>Obter credenciais de e-file no portal IRS</td></tr>
+            <tr><td>ATO (Austrália)</td><td>🟠 Média-Alta</td><td>Média (REST/Peppol)</td><td>Registrar ABN e ativar e-Invoicing</td></tr>
+            <tr><td>KSeF (Polônia)</td><td>🟠 Alta</td><td>Média</td><td>Testar sessão demo KSeF</td></tr>
+            <tr><td>CRA (Canadá)</td><td>🟡 Média</td><td>Média</td><td>Configurar Represent a Client</td></tr>
+            <tr><td>Chorus Pro (França)</td><td>🟢 Baixa</td><td>Média</td><td>Solicitar certificado PSN</td></tr>
+            <tr><td>RD Tailândia</td><td>🟡 Média</td><td>Média</td><td>Aderir ao e-Tax Invoice & e-Receipt</td></tr>
+        </tbody>
+    </table>
+
+    <!-- SECTION 12 - Glossário Expandido -->
+    <h1>12. Glossário</h1>
+    </table>
+        <thead><tr><th>Termo</th><th>Definição</th></tr></thead>
+        <tbody>
+            <tr><td>MeF (Modernized e-File)</td><td>Sistema do IRS para envio eletrônico de declarações e formulários.</td></tr>
+            <tr><td>BAS (Business Activity Statement)</td><td>Declaração de GST na Austrália.</td></tr>
+            <tr><td>KSeF</td><td>Sistema nacional de e-faturas da Polônia (obrigatório).</td></tr>
+            <tr><td>XRechnung</td><td>Padrão europeu de e-invoicing na Alemanha conforme EN 16931.</td></tr>
+            <tr><td>NEQ</td><td>Número de empresa único de Quebec.</td></tr>
+            <tr><td>Chorus Pro</td><td>Plataforma francesa de faturamento eletrônico para setor público.</td></tr>
+            <tr><td>ATCUD</td><td>Código único de documento português.</td></tr>
+            <tr><td>CDTFA</td><td>California Department of Tax and Fee Administration.</td></tr>
+            <tr><td>JPK_VAT</td><td>Estrutura de arquivo fiscal polonês (Jednolity Plik Kontrolny).</td></tr>
+        </tbody>
+    </table>
+
+    <div class="footer-note">
+        ELLAN LAB — Documento Interno  •  Versão 2.0  •  Maio 2026<br>
+        Inclui autoridades dos EUA (federal + Califórnia, Texas, NY), Austrália, Tailândia, Alemanha, Polônia, Canadá (CRA + Quebec) e França.<br>
+        Este documento deve ser revisado a cada nova autoridade fiscal integrada ou mudança de arquitetura.
+    </div>
+</div>
+</body>
+</html>

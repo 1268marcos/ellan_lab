@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -338,7 +339,7 @@ export default function OpsProductsPricingFiscalPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Products Pricing/Fiscal (Pr-3)</h1>
+        <OpsPageTitleHeader title="OPS - Products Pricing/Fiscal (Pr-3)" />
         <p style={mutedStyle}>Guia rápido: 1) consultar overview; 2) validar bundles/promotions; 3) confirmar fiscal config e log técnico.</p>
 
         <OpsScenarioPresets

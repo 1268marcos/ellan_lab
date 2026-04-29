@@ -70,6 +70,10 @@ sem depender de suíte formal de testes nesta fase.
     - rollback por flag validado via override compose (BR=false) + restart;
     - janela de 30 min sem `CRITICAL` após rollback (status `INFO/SKIPPED`).
   - **Saída esperada:** autorização/cancelamento BR via client real, fallback preservado.
+  - **Hardening de configuração aplicado:** compose fiscal agora lê flags/URLs/keys por ENV com default seguro (`false` e vazio), sem acoplamento fixo em `stub.local`.
+  - **Acelerador de operação:** exemplo de ENV pronto em `02_docker/.env.f3-real.example`.
+  - **Acelerador de simulação local:** `02_docker/.env.f3-real.local.example` (sem segredos).
+  - **Padrão de configuração:** variáveis também registradas em `02_docker/.env` e em `.env.example/.env.development/.env.production`.
 
 ### 2) AT PT real
 
@@ -87,6 +91,10 @@ sem depender de suíte formal de testes nesta fase.
     - rollback por flag validado (PT=false) + restart;
     - janela de 30 min sem `CRITICAL` após rollback (status `INFO/SKIPPED`).
   - **Saída esperada:** emissão/cancelamento PT via provider real com normalização de erros.
+  - **Hardening de configuração aplicado:** workers e API fiscal alinhados ao mesmo conjunto de ENV da trilha real (BR/PT), evitando drift operacional.
+  - **Acelerador de operação:** exemplo de ENV pronto em `02_docker/.env.f3-real.example`.
+  - **Acelerador de simulação local:** `02_docker/.env.f3-real.local.example` (sem segredos).
+  - **Padrão de configuração:** variáveis também registradas em `02_docker/.env` e em `.env.example/.env.development/.env.production`.
 
 ---
 
@@ -117,7 +125,7 @@ sem depender de suíte formal de testes nesta fase.
 ## Critério de fechamento do F-3 (operação)
 
 - [ ] Fluxo fiscal BR/PT estável na trilha escolhida.
-- [ ] Feature flags de go-live/rollback documentadas e operáveis.
+- [x] Feature flags de go-live/rollback documentadas e operáveis.
 - [x] Painel OPS com indicadores de ação (erro/latência/fallback).
 - [x] Runbook/playbook atualizados.
 - [x] Evidência registrada no acompanhamento com data/hora/owner.

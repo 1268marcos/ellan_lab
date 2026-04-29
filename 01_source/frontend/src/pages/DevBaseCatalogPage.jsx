@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -401,7 +402,7 @@ export default function DevBaseCatalogPage() {
     return (
       <div style={pageStyle}>
         <section style={cardStyle}>
-          <h1 style={{ marginTop: 0 }}>Ops — Base Catalog Management</h1>
+          <OpsPageTitleHeader title="Ops — Base Catalog Management" />
           <div style={warningStyle}>
             Esta interface exige perfil autorizado. Ajuste <b>VITE_BASE_CATALOG_ALLOWED_ROLES</b> ou habilite
             <b> VITE_DEV_BYPASS_AUTH=true</b> no ambiente controlado.
@@ -418,7 +419,7 @@ export default function DevBaseCatalogPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>Ops — Base Catalog Management</h1>
+        <OpsPageTitleHeader title="Ops — Base Catalog Management" />
         <div style={warningStyle}>
           Gestão operacional de tabelas base do projeto (country/province/products) e leitura de enums/tabelas
           do schema público. Esta tela é exclusivamente para ambiente de desenvolvimento controlado com VITE_DEV_BYPASS_AUTH=true. Veja 02_docker/.env

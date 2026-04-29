@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -327,7 +328,7 @@ export default function OpsIntegrationOutboxReplayPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Integration Outbox Replay</h1>
+        <OpsPageTitleHeader title="OPS - Integration Outbox Replay" />
         <p style={mutedStyle}>
           Painel operacional para replay controlado do outbox com guard rails explícitos, execução opcional do worker e evidência imediata.
         </p>

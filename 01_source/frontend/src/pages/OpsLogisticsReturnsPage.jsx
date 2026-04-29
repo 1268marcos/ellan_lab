@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
@@ -431,7 +432,7 @@ export default function OpsLogisticsReturnsPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Logistics Returns</h1>
+        <OpsPageTitleHeader title="OPS - Logistics Returns" />
         <p style={mutedStyle}>
           Visão operacional de devoluções com filtros, presets e persistência para continuidade de contexto.
         </p>

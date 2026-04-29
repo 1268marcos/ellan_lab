@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
+import { FISCAL_SCOPE_PROVIDERS_INFO, buildFiscalScopedGateTitle } from "../constants/fiscalScope";
 
 const BILLING_BASE =
   import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
@@ -33,6 +36,7 @@ function getActionBadgeStyle(severity) {
 }
 
 export default function OpsFiscalProvidersPage() {
+  const location = useLocation();
   const [items, setItems] = useState([]);
   const [canonicalErrorCodes, setCanonicalErrorCodes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,6 +52,9 @@ export default function OpsFiscalProvidersPage() {
   const [ptGoNoGo, setPtGoNoGo] = useState(null);
   const [goNoGoBusy, setGoNoGoBusy] = useState(false);
   const [ptGoNoGoBusy, setPtGoNoGoBusy] = useState(false);
+  const [highlightedAnchor, setHighlightedAnchor] = useState("");
+  const brScopedSummary = withScopePrefixIfGenericSummary(brGoNoGo?.summary, "BR");
+  const ptScopedSummary = withScopePrefixIfGenericSummary(ptGoNoGo?.summary, "PT");
 
   async function loadStatus() {
     setLoading(true);
@@ -345,6 +352,21 @@ export default function OpsFiscalProvidersPage() {
     void loadPtGoNoGo(false);
   }, []);
 
+  useEffect(() => {
+    const rawHash = String(location.hash || "");
+    if (!rawHash.startsWith("#")) return undefined;
+    const anchorId = rawHash.slice(1);
+    if (!anchorId) return undefined;
+    const target = document.getElementById(anchorId);
+    if (!target) return undefined;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    setHighlightedAnchor(anchorId);
+    const timer = window.setTimeout(() => {
+      setHighlightedAnchor((current) => (current === anchorId ? "" : current));
+    }, 2200);
+    return () => window.clearTimeout(timer);
+  }, [location.hash]);
+
   const smokeInvoice = danfeResult?.payload?.invoice || null;
   const smokeProviderNamespace =
     smokeInvoice?.government_response?.provider_namespace ||
@@ -364,7 +386,7 @@ export default function OpsFiscalProvidersPage() {
         </div>
         <div style={headerRowStyle}>
           <div>
-            <h1 style={{ margin: 0 }}>OPS - Fiscal Providers (BR/PT)</h1>
+            <OpsPageTitleHeader title="OPS - Fiscal Providers (BR/PT)" containerStyle={{ marginBottom: 0 }} titleStyle={{ margin: 0 }} />
             <p style={mutedTextStyle}>
               Status do provider real por país, último erro e teste de conectividade.
             </p>
@@ -486,15 +508,22 @@ export default function OpsFiscalProvidersPage() {
           </div>
         ) : null}
 
-        <section style={actionCardStyle}>
+        <p style={{ ...mutedTextStyle, marginTop: 8 }}>{FISCAL_SCOPE_PROVIDERS_INFO}</p>
+
+        <section id="go-no-go-br" style={resolveActionCardStyle("go-no-go-br", highlightedAnchor)}>
           <div style={actionHeaderStyle}>
-            <h3 style={{ margin: 0 }}>Trilha B BR real - Gate GO/NO-GO</h3>
+            <div style={sectionTargetHeaderTitleStyle}>
+              <h3 style={{ margin: 0 }}>{buildFiscalScopedGateTitle("BR")}</h3>
+              {isHighlightedTarget("go-no-go-br", highlightedAnchor) ? (
+                <span style={sectionTargetBadgeStyle}>Seção alvo</span>
+              ) : null}
+            </div>
             <span style={getActionBadgeStyle(brGoNoGo?.go_no_go === "GO" ? "OK" : "HIGH")}>
               {brGoNoGo?.go_no_go || "NO_GO"}
             </span>
           </div>
-          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
-            {brGoNoGo?.summary || "Checklist não carregado."}
+          <p style={{ ...mutedTextStyle, marginTop: 6 }} title={brScopedSummary}>
+            {brScopedSummary}
           </p>
           <div style={toolbarStyle}>
             <button
@@ -502,14 +531,14 @@ export default function OpsFiscalProvidersPage() {
               style={buttonGhostStyle}
               disabled={goNoGoBusy}
             >
-              {goNoGoBusy ? "Validando..." : "Reavaliar (snapshot atual)"}
+              {goNoGoBusy ? "Validando..." : "Reavaliar gate BR (snapshot atual)"}
             </button>
             <button
               onClick={() => void loadBrGoNoGo(true)}
               style={buttonPrimaryStyle}
               disabled={goNoGoBusy}
             >
-              {goNoGoBusy ? "Executando..." : "Reavaliar com teste BR"}
+              {goNoGoBusy ? "Executando..." : "Reavaliar gate BR com teste"}
             </button>
           </div>
           {Array.isArray(brGoNoGo?.checks) && brGoNoGo.checks.length > 0 ? (
@@ -523,15 +552,20 @@ export default function OpsFiscalProvidersPage() {
           ) : null}
         </section>
 
-        <section style={actionCardStyle}>
+        <section id="go-no-go-pt" style={resolveActionCardStyle("go-no-go-pt", highlightedAnchor)}>
           <div style={actionHeaderStyle}>
-            <h3 style={{ margin: 0 }}>Trilha B PT real - Gate GO/NO-GO</h3>
+            <div style={sectionTargetHeaderTitleStyle}>
+              <h3 style={{ margin: 0 }}>{buildFiscalScopedGateTitle("PT")}</h3>
+              {isHighlightedTarget("go-no-go-pt", highlightedAnchor) ? (
+                <span style={sectionTargetBadgeStyle}>Seção alvo</span>
+              ) : null}
+            </div>
             <span style={getActionBadgeStyle(ptGoNoGo?.go_no_go === "GO" ? "OK" : "HIGH")}>
               {ptGoNoGo?.go_no_go || "NO_GO"}
             </span>
           </div>
-          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
-            {ptGoNoGo?.summary || "Checklist não carregado."}
+          <p style={{ ...mutedTextStyle, marginTop: 6 }} title={ptScopedSummary}>
+            {ptScopedSummary}
           </p>
           <div style={toolbarStyle}>
             <button
@@ -539,14 +573,14 @@ export default function OpsFiscalProvidersPage() {
               style={buttonGhostStyle}
               disabled={ptGoNoGoBusy}
             >
-              {ptGoNoGoBusy ? "Validando..." : "Reavaliar (snapshot atual)"}
+              {ptGoNoGoBusy ? "Validando..." : "Reavaliar gate PT (snapshot atual)"}
             </button>
             <button
               onClick={() => void loadPtGoNoGo(true)}
               style={buttonPrimaryStyle}
               disabled={ptGoNoGoBusy}
             >
-              {ptGoNoGoBusy ? "Executando..." : "Reavaliar com teste PT"}
+              {ptGoNoGoBusy ? "Executando..." : "Reavaliar gate PT com teste"}
             </button>
           </div>
           {Array.isArray(ptGoNoGo?.checks) && ptGoNoGo.checks.length > 0 ? (
@@ -704,6 +738,20 @@ function buildAlertBadge(item) {
   return <span style={getSeverityBadgeStyle("OK")}>OK</span>;
 }
 
+function resolveActionCardStyle(anchorId, highlightedAnchor) {
+  if (String(anchorId || "") !== String(highlightedAnchor || "")) return actionCardStyle;
+  return {
+    ...actionCardStyle,
+    border: "1px solid rgba(96,165,250,0.88)",
+    background: "linear-gradient(180deg, rgba(30,58,138,0.34) 0%, rgba(30,58,138,0.16) 100%)",
+    boxShadow: "0 0 0 2px rgba(96,165,250,0.35)",
+  };
+}
+
+function isHighlightedTarget(anchorId, highlightedAnchor) {
+  return String(anchorId || "") === String(highlightedAnchor || "");
+}
+
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "#f5f7fa", fontFamily: "system-ui, sans-serif" };
 const cardStyle = { background: "#11161c", border: "1px solid rgba(255,255,255,0.10)", borderRadius: 16, padding: 16 };
 const headerRowStyle = { display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap" };
@@ -830,6 +878,22 @@ const actionHeaderStyle = {
   justifyContent: "space-between",
   gap: 10,
   flexWrap: "wrap",
+};
+const sectionTargetHeaderTitleStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+const sectionTargetBadgeStyle = {
+  display: "inline-flex",
+  borderRadius: 999,
+  padding: "2px 8px",
+  border: "1px solid rgba(96,165,250,0.72)",
+  background: "rgba(96,165,250,0.22)",
+  color: "#bfdbfe",
+  fontSize: 11,
+  fontWeight: 700,
 };
 const opsListStyle = {
   margin: "6px 0 0",

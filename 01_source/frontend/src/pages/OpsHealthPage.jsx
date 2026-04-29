@@ -4,9 +4,16 @@ import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getDataQualityFlagStyle, getSeverityBadgeStyle, getConfidenceBadgeStyle } from "../components/opsVisualTokens";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
+import { FISCAL_SCOPE_GATE_PANEL_TITLE, FISCAL_SCOPE_QUICK_ACTIONS_TITLE } from "../constants/fiscalScope";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const BILLING_BASE =
+  import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
+const INTERNAL_TOKEN =
+  import.meta.env.VITE_INTERNAL_TOKEN || "";
 const OPS_HEALTH_WINDOW_PREF_KEY = "ops_health:window_hours";
 const OPS_HEALTH_PERSONA_PREF_KEY = "ops_health:persona";
 const OPS_HEALTH_COLLAPSE_PREF_KEY = "ops_health:collapse_state:v1";
@@ -169,6 +176,61 @@ function severityEmoji(severity) {
   if (normalized === "HIGH" || normalized === "ERROR") return "🟠";
   if (normalized === "MEDIUM" || normalized === "WARN") return "🟡";
   return "🟢";
+}
+
+function resolveOpsSanitySemaphore(report) {
+  const result = String(report?.result || "").toUpperCase();
+  const failCount = Number(report?.fail_count || 0);
+  if (result === "OPS_SANITY_OK" && failCount === 0) {
+    return {
+      label: "Verde",
+      reason: "Plantão estável: sanidade OPS OK sem falhas.",
+      style: {
+        border: "1px solid rgba(34,197,94,0.65)",
+        background: "rgba(34,197,94,0.2)",
+        color: "#bbf7d0",
+      },
+    };
+  }
+  if (result === "OPS_SANITY_FAIL" && failCount > 0 && failCount <= 2) {
+    return {
+      label: "Amarelo",
+      reason: `Plantão em atenção: ${failCount} falha(s) parcial(is) com possível degradação localizada.`,
+      style: {
+        border: "1px solid rgba(245,158,11,0.65)",
+        background: "rgba(245,158,11,0.2)",
+        color: "#fde68a",
+      },
+    };
+  }
+  return {
+    label: "Vermelho",
+    reason:
+      failCount > 0
+        ? `Plantão crítico: ${failCount} falha(s) no checklist de sanidade.`
+        : "Plantão crítico: sanidade sem resultado válido.",
+    style: {
+      border: "1px solid rgba(239,68,68,0.65)",
+      background: "rgba(239,68,68,0.22)",
+      color: "#fecaca",
+    },
+  };
+}
+
+function resolveGateBadgeStyle(decision) {
+  const normalized = String(decision || "").toUpperCase();
+  if (normalized === "GO") {
+    return {
+      border: "1px solid rgba(34,197,94,0.65)",
+      background: "rgba(34,197,94,0.2)",
+      color: "#bbf7d0",
+    };
+  }
+  return {
+    border: "1px solid rgba(239,68,68,0.65)",
+    background: "rgba(239,68,68,0.22)",
+    color: "#fecaca",
+  };
 }
 
 function getSeveritySurfaceStyle(severity) {
@@ -591,6 +653,13 @@ export default function OpsHealthPage() {
   const [alertsLimit, setAlertsLimit] = useState(20);
   const [lineChartGridMode, setLineChartGridMode] = useState(() => loadLineChartGridModePreference());
   const [showAdminConfig, setShowAdminConfig] = useState(false);
+  const [opsSanityReport, setOpsSanityReport] = useState(null);
+  const [opsSanityLoading, setOpsSanityLoading] = useState(false);
+  const [opsSanityError, setOpsSanityError] = useState("");
+  const [fiscalGoNoGo, setFiscalGoNoGo] = useState({ br: null, pt: null });
+  const [fiscalGoNoGoLoading, setFiscalGoNoGoLoading] = useState(false);
+  const [fiscalGoNoGoError, setFiscalGoNoGoError] = useState("");
+  const [fiscalQuickActionStatus, setFiscalQuickActionStatus] = useState("");
   const [personaView, setPersonaView] = useState(() => {
     try {
       const stored = window.localStorage.getItem(OPS_HEALTH_PERSONA_PREF_KEY);
@@ -758,6 +827,105 @@ export default function OpsHealthPage() {
       setLockerDataStatus("unavailable");
     } finally {
       if (!silent) setLoading(false);
+    }
+  }
+
+  async function loadOpsSanityLatest({ silent = false } = {}) {
+    if (!token) return;
+    if (!silent) setOpsSanityLoading(true);
+    setOpsSanityError("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/ops-sanity/latest`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar última sanidade OPS."));
+      }
+      setOpsSanityReport(payload?.report || null);
+    } catch (err) {
+      setOpsSanityReport(null);
+      setOpsSanityError(String(err?.message || err));
+    } finally {
+      if (!silent) setOpsSanityLoading(false);
+    }
+  }
+
+  async function loadFiscalGoNoGoSummary({ silent = false } = {}) {
+    if (!INTERNAL_TOKEN) {
+      setFiscalGoNoGo({ br: null, pt: null });
+      setFiscalGoNoGoError("Token interno ausente/inválido (422/403). Configure VITE_INTERNAL_TOKEN com o valor correto.");
+      return;
+    }
+    if (!silent) setFiscalGoNoGoLoading(true);
+    setFiscalGoNoGoError("");
+    try {
+      const headers = {
+        Accept: "application/json",
+        "X-Internal-Token": INTERNAL_TOKEN,
+      };
+      const [brRes, ptRes] = await Promise.all([
+        fetch(`${BILLING_BASE}/admin/fiscal/providers/br-go-no-go?run_connectivity=false`, { method: "GET", headers }),
+        fetch(`${BILLING_BASE}/admin/fiscal/providers/pt-go-no-go?run_connectivity=false`, { method: "GET", headers }),
+      ]);
+      const [brPayload, ptPayload] = await Promise.all([brRes.json().catch(() => ({})), ptRes.json().catch(() => ({}))]);
+      if (!brRes.ok || !ptRes.ok) {
+        const firstError = !brRes.ok ? brPayload : ptPayload;
+        throw new Error(extractErrorMessage(firstError, "Não foi possível carregar Gate GO/NO-GO BR/PT."));
+      }
+      setFiscalGoNoGo({
+        br: brPayload || null,
+        pt: ptPayload || null,
+      });
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setFiscalGoNoGoError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setFiscalGoNoGoError(raw);
+      }
+    } finally {
+      if (!silent) setFiscalGoNoGoLoading(false);
+    }
+  }
+
+  async function copyFiscalQuickActionCommand(actionKey) {
+    const internalTokenRef = "${INTERNAL_TOKEN:-<token-interno>}";
+    const billingBaseRef = BILLING_BASE || "http://localhost:8020";
+    const commands = {
+      gate_br: `curl -sS -H "X-Internal-Token: ${internalTokenRef}" "${billingBaseRef}/admin/fiscal/providers/br-go-no-go?run_connectivity=false"`,
+      gate_pt: `curl -sS -H "X-Internal-Token: ${internalTokenRef}" "${billingBaseRef}/admin/fiscal/providers/pt-go-no-go?run_connectivity=false"`,
+      rollback_br:
+        "cd 02_docker && export FISCAL_REAL_PROVIDER_BR_ENABLED=false && docker compose up -d billing_fiscal_service billing_fiscal_worker",
+      rollback_pt:
+        "cd 02_docker && export FISCAL_REAL_PROVIDER_PT_ENABLED=false && docker compose up -d billing_fiscal_service billing_fiscal_worker",
+    };
+    const selected = commands[actionKey];
+    if (!selected) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(selected);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = selected;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setFiscalQuickActionStatus("Comando de plantão copiado.");
+      window.setTimeout(() => setFiscalQuickActionStatus(""), 2000);
+    } catch (err) {
+      setFiscalQuickActionStatus(`Falha ao copiar comando: ${String(err?.message || err)}`);
     }
   }
 
@@ -1285,6 +1453,8 @@ export default function OpsHealthPage() {
 
   useEffect(() => {
     void loadMetrics();
+    void loadOpsSanityLatest({ silent: true });
+    void loadFiscalGoNoGoSummary({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     token,
@@ -1733,6 +1903,9 @@ export default function OpsHealthPage() {
       };
     })
     .filter((group) => group.cards.length > 0);
+  const opsSanitySemaphore = resolveOpsSanitySemaphore(opsSanityReport);
+  const brScopedSummary = withScopePrefixIfGenericSummary(fiscalGoNoGo?.br?.summary, "BR");
+  const ptScopedSummary = withScopePrefixIfGenericSummary(fiscalGoNoGo?.pt?.summary, "PT");
 
   async function copyRunbook(alertPayload) {
     const text = buildRunbookClipboardText(alertPayload, metrics);
@@ -1796,12 +1969,13 @@ export default function OpsHealthPage() {
         </div>
         <div style={headerRowStyle}>
           <div>
-            <div style={headerTitleRowStyle}>
-              <h1 style={{ margin: 0 }}>OPS - Saúde Operacional</h1>
-              <Link to="/ops/auth/policy/versioning" style={pageVersionBadgeStyle} title="Abrir política de versionamento">
-                {OPS_HEALTH_PAGE_VERSION}
-              </Link>
-            </div>
+            <OpsPageTitleHeader
+              title="OPS - Saúde Operacional"
+              versionLabel={OPS_HEALTH_PAGE_VERSION}
+              versionTo="/ops/auth/policy/versioning"
+              containerStyle={{ marginBottom: 0 }}
+              titleStyle={{ margin: 0 }}
+            />
             <p style={mutedTextStyle}>
               {personaSubtitleByView[personaView]}
             </p>
@@ -1861,6 +2035,104 @@ export default function OpsHealthPage() {
             </div>
           ) : null}
         </div>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Última sanidade OPS</h3>
+            <button type="button" onClick={() => void loadOpsSanityLatest()} style={buttonGhostStyle} disabled={opsSanityLoading}>
+              {opsSanityLoading ? "Atualizando..." : "Atualizar sanidade"}
+            </button>
+          </div>
+          {opsSanityError ? <small style={{ color: "#fecaca" }}>{opsSanityError}</small> : null}
+          {opsSanityReport ? (
+            <div style={summary24hGridStyle}>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(opsSanityReport.result || "-")}</strong>
+                <small style={summary24hLabelStyle}>Resultado</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{Number(opsSanityReport.fail_count || 0)}</strong>
+                <small style={summary24hLabelStyle}>Falhas</small>
+              </article>
+              <article style={{ ...summary24hItemStyle, ...opsSanitySemaphore.style }}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 15 }}>{opsSanitySemaphore.label}</strong>
+                <small style={{ ...summary24hLabelStyle, color: "inherit" }}>{opsSanitySemaphore.reason}</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(opsSanityReport.generated_at || "-")}</strong>
+                <small style={summary24hLabelStyle}>Gerado em (UTC)</small>
+              </article>
+            </div>
+          ) : (
+            <small style={summary24hHintStyle}>
+              Execute `02_docker/run_ops_sanity.sh --json` para gerar `ops_sanity_latest.json`.
+            </small>
+          )}
+        </section>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>{FISCAL_SCOPE_GATE_PANEL_TITLE}</h3>
+            <button type="button" onClick={() => void loadFiscalGoNoGoSummary()} style={buttonGhostStyle} disabled={fiscalGoNoGoLoading}>
+              {fiscalGoNoGoLoading ? "Atualizando..." : "Atualizar gate"}
+            </button>
+          </div>
+          {fiscalGoNoGoError ? <small style={{ color: "#fecaca" }}>{fiscalGoNoGoError}</small> : null}
+          {fiscalGoNoGo?.br || fiscalGoNoGo?.pt ? (
+            <>
+              <div style={summary24hGridStyle}>
+              <article style={summary24hItemStyle}>
+                <div style={gateTitleRowStyle}>
+                  <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>BR</strong>
+                  <span style={{ ...gateBadgeStyle, ...resolveGateBadgeStyle(fiscalGoNoGo?.br?.go_no_go) }}>
+                    {String(fiscalGoNoGo?.br?.go_no_go || "NO_GO")}
+                  </span>
+                </div>
+                <small style={summary24hLabelStyle} title={brScopedSummary}>
+                  {brScopedSummary}
+                </small>
+                <Link to="/ops/fiscal/providers#go-no-go-br" style={gateDrilldownLinkStyle}>
+                  Drill-down BR em 1 clique
+                </Link>
+              </article>
+              <article style={summary24hItemStyle}>
+                <div style={gateTitleRowStyle}>
+                  <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>PT</strong>
+                  <span style={{ ...gateBadgeStyle, ...resolveGateBadgeStyle(fiscalGoNoGo?.pt?.go_no_go) }}>
+                    {String(fiscalGoNoGo?.pt?.go_no_go || "NO_GO")}
+                  </span>
+                </div>
+                <small style={summary24hLabelStyle} title={ptScopedSummary}>
+                  {ptScopedSummary}
+                </small>
+                <Link to="/ops/fiscal/providers#go-no-go-pt" style={gateDrilldownLinkStyle}>
+                  Drill-down PT em 1 clique
+                </Link>
+              </article>
+              </div>
+              <div style={fiscalQuickActionsWrapStyle}>
+                <strong style={{ fontSize: 12, color: "#cbd5e1" }}>{FISCAL_SCOPE_QUICK_ACTIONS_TITLE}</strong>
+                <div style={fiscalQuickActionsRowStyle}>
+                  <button type="button" style={quickActionInfoButtonStyle} onClick={() => void copyFiscalQuickActionCommand("gate_br")}>
+                    Copiar comando Gate BR
+                  </button>
+                  <button type="button" style={quickActionInfoButtonStyle} onClick={() => void copyFiscalQuickActionCommand("gate_pt")}>
+                    Copiar comando Gate PT
+                  </button>
+                  <button type="button" style={quickActionAlertButtonStyle} onClick={() => void copyFiscalQuickActionCommand("rollback_br")}>
+                    Copiar rollback BR
+                  </button>
+                  <button type="button" style={quickActionAlertButtonStyle} onClick={() => void copyFiscalQuickActionCommand("rollback_pt")}>
+                    Copiar rollback PT
+                  </button>
+                </div>
+                {fiscalQuickActionStatus ? <small style={summary24hHintStyle}>{fiscalQuickActionStatus}</small> : null}
+              </div>
+            </>
+          ) : (
+            <small style={summary24hHintStyle}>Sem snapshot carregado do gate BR/PT.</small>
+          )}
+        </section>
 
         <details style={adminConfigDetailsStyle} open={showAdminConfig} onToggle={(event) => setShowAdminConfig(event.currentTarget.open)}>
           <summary style={adminConfigSummaryStyle}>Configurações avançadas (Admin) - calibração preditiva</summary>
@@ -2646,26 +2918,6 @@ const headerRowStyle = {
   flexWrap: "wrap",
 };
 
-const headerTitleRowStyle = {
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-
-const pageVersionBadgeStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "3px 8px",
-  borderRadius: 999,
-  border: "1px solid rgba(125,211,252,0.55)",
-  background: "rgba(14,116,144,0.16)",
-  color: "#bae6fd",
-  textDecoration: "none",
-  fontSize: 11,
-  fontWeight: 700,
-};
-
 const crossShortcutStyle = {
   display: "flex",
   justifyContent: "flex-end",
@@ -2826,6 +3078,108 @@ const criticalBannerStyle = {
   padding: "10px 12px",
   fontWeight: 700,
   fontSize: 13,
+};
+
+const opsSanityCardStyle = {
+  marginTop: 6,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const summary24hHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summary24hGridStyle = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+};
+
+const summary24hItemStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.3)",
+  background: "rgba(15,23,42,0.35)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 2,
+};
+
+const summary24hValueStyle = {
+  color: "#f8fafc",
+  fontSize: 18,
+  fontWeight: 800,
+};
+
+const summary24hLabelStyle = {
+  color: "#cbd5e1",
+  fontSize: 12,
+};
+
+const summary24hHintStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+};
+
+const gateTitleRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+};
+
+const gateBadgeStyle = {
+  borderRadius: 999,
+  padding: "3px 9px",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const gateDrilldownLinkStyle = {
+  marginTop: 8,
+  width: "fit-content",
+  color: "#93c5fd",
+  textDecoration: "underline",
+  fontSize: 12,
+  fontWeight: 600,
+};
+
+const fiscalQuickActionsWrapStyle = {
+  marginTop: 10,
+  borderRadius: 10,
+  border: "1px dashed rgba(148,163,184,0.35)",
+  background: "rgba(2,6,23,0.24)",
+  padding: 10,
+  display: "grid",
+  gap: 8,
+};
+
+const fiscalQuickActionsRowStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const quickActionInfoButtonStyle = {
+  ...buttonGhostStyle,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(30,64,175,0.2)",
+  color: "#bfdbfe",
+};
+
+const quickActionAlertButtonStyle = {
+  ...buttonGhostStyle,
+  border: "1px solid rgba(248,113,113,0.65)",
+  background: "rgba(127,29,29,0.28)",
+  color: "#fecaca",
 };
 
 const adminConfigDetailsStyle = {

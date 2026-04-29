@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -207,7 +208,7 @@ export default function OpsIntegrationOrdersFiscalPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Integration Orders/Fiscal (I-1)</h1>
+        <OpsPageTitleHeader title="OPS - Integration Orders/Fiscal (I-1)" />
         <p style={mutedStyle}>Guia rápido: 1) consultar fulfillment; 2) inspecionar/retry de partner-events; 3) consultar/reprocessar classificação fiscal por pedido.</p>
 
         <div style={filtersStyle}>

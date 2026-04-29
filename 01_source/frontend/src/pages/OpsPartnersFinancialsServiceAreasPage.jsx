@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
+import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -302,7 +303,7 @@ export default function OpsPartnersFinancialsServiceAreasPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <h1 style={{ marginTop: 0 }}>OPS - Partners Financials & Service Areas (P-3)</h1>
+        <OpsPageTitleHeader title="OPS - Partners Financials & Service Areas (P-3)" />
         <p style={mutedStyle}>Guia rápido: 1) listar/gerar settlements; 2) aprovar batch; 3) validar performance e service-areas com rastreio por chips.</p>
 
         <div style={filtersStyle}>
