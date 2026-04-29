@@ -1,0 +1,92 @@
+export const FISCAL_API_GROUPS = [
+  {
+    key: "global",
+    label: "Global Catalog & FG-1",
+    endpoints: [
+      "GET /admin/fiscal/global/catalog",
+      "GET /admin/fiscal/global/scenario-matrix",
+      "GET /admin/fiscal/global/fg1-wave-scope",
+      "GET /admin/fiscal/global/fg1/stub-adapters",
+      "GET /admin/fiscal/global/fg1/fixtures-matrix",
+      "GET /admin/fiscal/global/fg1/fixture-inventory",
+      "GET /admin/fiscal/global/fg1/fixture-document",
+      "GET /admin/fiscal/global/fg1/coverage-gate",
+      "GET /admin/fiscal/global/fg1/readiness-gate",
+      "GET /admin/fiscal/global/fg1/readiness-action-plan",
+      "POST /admin/fiscal/global/fg1/simulate",
+    ],
+  },
+  {
+    key: "providers",
+    label: "Providers & Gates",
+    endpoints: [
+      "GET /admin/fiscal/providers/status",
+      "POST /admin/fiscal/providers/test-connectivity",
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+      "POST /admin/fiscal/providers/stub/svrs/batch-submit",
+      "GET /admin/fiscal/providers/stub/svrs/batch-query",
+      "POST /admin/fiscal/providers/stub/svrs/batch-reset",
+      "POST /admin/fiscal/providers/stub/svrs/smoke-issue/{order_id}",
+    ],
+  },
+  {
+    key: "ops-finance",
+    label: "Ops Finance & Timescale",
+    endpoints: [
+      "GET /admin/fiscal/gaps",
+      "POST /admin/fiscal/force-issue/{order_id}",
+      "GET /admin/fiscal/dead-letters",
+      "GET /admin/fiscal/ledger-compat/audit",
+      "POST /admin/fiscal/pnl/recompute",
+      "GET /admin/fiscal/pnl/monthly",
+      "GET /admin/fiscal/kpi/monthly",
+      "POST /admin/fiscal/revenue-recognition/recompute",
+      "GET /admin/fiscal/revenue-recognition",
+      "POST /admin/fiscal/kpi/daily/recompute",
+      "GET /admin/fiscal/kpi/daily",
+      "GET /admin/fiscal/timescale/status",
+    ],
+  },
+  {
+    key: "invoice",
+    label: "Invoice Lifecycle",
+    endpoints: [
+      "POST /invoices/generate/{order_id}",
+      "POST /invoices/rebuild-order-snapshots",
+      "GET /invoices/{invoice_id}",
+      "GET /invoices/by-order/{order_id}",
+      "GET /invoices/by-receipt-code/{receipt_code}",
+      "POST /invoices/{invoice_id}/retry",
+      "POST /invoices/{invoice_id}/cce-request",
+      "POST /invoices/{invoice_id}/cancel-request",
+      "POST /invoices/{invoice_id}/reissue",
+      "POST /admin/fiscal/invoices/{invoice_id}/resend-email",
+      "GET /admin/fiscal/danfe/{invoice_id}/pdf",
+      "GET /fiscal/danfe/{invoice_id}/thermal",
+      "POST /fiscal/callback",
+    ],
+  },
+  {
+    key: "partner-billing",
+    label: "Partner Billing",
+    endpoints: [
+      "GET /v1/partners/{partner_id}/billing/cycles",
+      "GET /v1/partners/{partner_id}/billing/cycles/{cycle_id}/line-items",
+      "GET /v1/partners/{partner_id}/invoices",
+      "GET /v1/partners/{partner_id}/credit-notes",
+      "GET /v1/partners/{partner_id}/billing/disputes",
+      "POST /v1/partners/{partner_id}/billing/cycles/{cycle_id}/compute",
+      "POST /v1/partners/{partner_id}/billing/cycles/{cycle_id}/dispute",
+      "GET /v1/partners/ops/utilization-divergences",
+      "POST /v1/partners/ops/utilization-snapshots/recompute",
+      "POST /v1/partners/{partner_id}/invoices/{invoice_id}/cancel",
+      "POST /v1/partners/{partner_id}/credit-notes/{credit_note_id}/apply",
+    ],
+  },
+];
+
+export function buildFiscalSwaggerUrl(baseUrl) {
+  const root = String(baseUrl || "").replace(/\/+$/, "");
+  return `${root}/docs#/`;
+}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 
 
 FG1_WAVE_COUNTRIES = ("US", "AU", "PL", "CA", "FR")
@@ -24,6 +26,14 @@ _ADAPTER_BY_COUNTRY = {
     "PL": "ksef_stub_adapter_v1",
     "CA": "cra_stub_adapter_v1",
     "FR": "chorus_stub_adapter_v1",
+}
+
+_AUTHORITY_BY_COUNTRY = {
+    "US": "IRS",
+    "AU": "ATO",
+    "PL": "KSeF",
+    "CA": "CRA",
+    "FR": "DGFiP",
 }
 
 
@@ -76,6 +86,88 @@ def _validate_operation(operation: str) -> str:
     if normalized not in FG1_OPERATIONS:
         raise ValueError(f"operation must be one of: {', '.join(FG1_OPERATIONS)}")
     return normalized
+
+
+def fg1_fixtures_root() -> Path:
+    """Raiz do serviço billing_fiscal_service: .../fixtures/fiscal/fg1."""
+    return Path(__file__).resolve().parents[2] / "fixtures" / "fiscal" / "fg1"
+
+
+def fg1_fixture_absolute_path(country: str, operation: str, scenario_code: str) -> Path:
+    return fg1_fixtures_root() / country.lower() / operation / f"{scenario_code.lower()}.json"
+
+
+def build_fg1_fixture_document(country: str, operation: str, scenario_code: str) -> dict:
+    """Documento canônico persistido em disco (mesmo contrato usado pelo simulate quando arquivo ausente)."""
+    normalized_country = _validate_country(country)
+    normalized_operation = _validate_operation(operation)
+    scen = str(scenario_code or "").strip().upper()
+    scenarios = _scenario_map()
+    if scen not in scenarios:
+        raise ValueError("scenario is invalid for FG-1 scenario matrix")
+    row = scenarios[scen]
+    if row["operation"] != normalized_operation:
+        raise ValueError("scenario does not belong to provided operation")
+    base = _fixture_payload(normalized_country, normalized_operation, scen)
+    return {
+        **base,
+        "adapter_name": _ADAPTER_BY_COUNTRY[normalized_country],
+        "authority": _AUTHORITY_BY_COUNTRY.get(normalized_country, normalized_country),
+        "canonical_status": row["canonical_status"],
+        "authority_status": row["authority_status"],
+        "fixture_relative_path": (
+            f"fixtures/fiscal/fg1/{normalized_country.lower()}/{normalized_operation}/{scen.lower()}.json"
+        ),
+    }
+
+
+def read_fg1_fixture_document(country: str, operation: str, scenario: str | None = None) -> dict:
+    normalized_country = _validate_country(country)
+    normalized_operation = _validate_operation(operation)
+    scenario_code = str(scenario or "").strip().upper() or _default_scenario_for_operation(normalized_operation)
+    path = fg1_fixture_absolute_path(normalized_country, normalized_operation, scenario_code)
+    if path.is_file():
+        return json.loads(path.read_text(encoding="utf-8"))
+    return build_fg1_fixture_document(normalized_country, normalized_operation, scenario_code)
+
+
+def fg1_fixture_source(country: str, operation: str, scenario: str | None = None) -> str:
+    normalized_country = _validate_country(country)
+    normalized_operation = _validate_operation(operation)
+    scenario_code = str(scenario or "").strip().upper() or _default_scenario_for_operation(normalized_operation)
+    return "disk" if fg1_fixture_absolute_path(normalized_country, normalized_operation, scenario_code).is_file() else "synthetic"
+
+
+def build_fg1_fixture_inventory() -> dict:
+    root = fg1_fixtures_root()
+    expected = len(_scenario_map()) * len(FG1_WAVE_COUNTRIES)
+    if not root.exists():
+        return {
+            "wave": "FG-1-WAVE-1",
+            "inventory_version": "fg1-fixture-inventory-v1",
+            "fixture_root": "fixtures/fiscal/fg1",
+            "absolute_path": str(root),
+            "exists": False,
+            "count": 0,
+            "expected_count": expected,
+            "complete": False,
+            "files": [],
+        }
+    files = []
+    for path in sorted(root.rglob("*.json")):
+        rel = path.relative_to(root).as_posix()
+        files.append({"relative_path": rel, "bytes": path.stat().st_size})
+    return {
+        "wave": "FG-1-WAVE-1",
+        "inventory_version": "fg1-fixture-inventory-v1",
+        "fixture_root": "fixtures/fiscal/fg1",
+        "absolute_path": str(root),
+        "exists": True,
+        "count": len(files),
+        "expected_count": expected,
+        "complete": len(files) == expected,
+        "files": files,
+    }
 
 
 def build_fg1_stub_adapters_catalog() -> dict:
@@ -132,6 +224,67 @@ def build_fg1_fixtures_matrix() -> dict:
     }
 
 
+def build_fg1_coverage_gate() -> dict:
+    scenarios = _scenario_map()
+    required_operations = list(FG1_OPERATIONS)
+    required_scenarios_by_operation: dict[str, list[str]] = {}
+    for operation in required_operations:
+        required_scenarios_by_operation[operation] = sorted(
+            [code for code, row in scenarios.items() if row["operation"] == operation]
+        )
+
+    fixtures = build_fg1_fixtures_matrix()
+    coverage_rows = fixtures["rows"]
+    countries = []
+    missing_total = 0
+    for country in FG1_WAVE_COUNTRIES:
+        country_rows = [row for row in coverage_rows if row["country_code"] == country]
+        present_by_operation: dict[str, set[str]] = {}
+        for row in country_rows:
+            operation = str(row.get("operation") or "").lower()
+            scenario = str(row.get("scenario") or "").upper()
+            present_by_operation.setdefault(operation, set()).add(scenario)
+
+        operation_items = []
+        country_missing = 0
+        for operation in required_operations:
+            required_scenarios = required_scenarios_by_operation.get(operation, [])
+            present = sorted(present_by_operation.get(operation, set()))
+            missing = sorted([scenario for scenario in required_scenarios if scenario not in set(present)])
+            country_missing += len(missing)
+            operation_items.append(
+                {
+                    "operation": operation,
+                    "required_scenarios": required_scenarios,
+                    "present_scenarios": present,
+                    "missing_scenarios": missing,
+                    "coverage_status": "OK" if len(missing) == 0 else "MISSING",
+                }
+            )
+
+        missing_total += country_missing
+        countries.append(
+            {
+                "country_code": country,
+                "adapter_name": _ADAPTER_BY_COUNTRY[country],
+                "missing_scenarios_count": country_missing,
+                "coverage_status": "GO" if country_missing == 0 else "NO_GO",
+                "operations": operation_items,
+            }
+        )
+
+    return {
+        "wave": "FG-1-WAVE-1",
+        "gate_version": "fg1-coverage-gate-v1",
+        "required_operations": required_operations,
+        "required_scenarios_total": len(scenarios),
+        "country_count": len(countries),
+        "missing_scenarios_total": missing_total,
+        "decision": "GO" if missing_total == 0 else "NO_GO",
+        "countries": countries,
+    }
+
+
 def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None) -> dict:
     normalized_country = _validate_country(country)
     normalized_operation = _validate_operation(operation)
@@ -145,7 +298,8 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None)
         raise ValueError("scenario does not belong to provided operation")
 
     trace_id = f"fg1stub-{normalized_country.lower()}-{normalized_operation}-{int(datetime.now(timezone.utc).timestamp())}"
-    fixture = _fixture_payload(normalized_country, normalized_operation, scenario_code)
+    fixture = read_fg1_fixture_document(normalized_country, normalized_operation, scenario_code)
+    fixture_source = fg1_fixture_source(normalized_country, normalized_operation, scenario_code)
     provider_adapter = _ADAPTER_BY_COUNTRY[normalized_country]
     return {
         "wave": "FG-1-WAVE-1",
@@ -158,6 +312,7 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None)
         "telemetry": {
             "trace_id": trace_id,
             "provider_adapter": provider_adapter,
+            "fixture_source": fixture_source,
             "event_name": "fiscal_fg1_stub_simulated",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         },

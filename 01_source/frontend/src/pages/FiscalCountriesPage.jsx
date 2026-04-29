@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -17,6 +18,9 @@ export default function FiscalCountriesPage() {
   const initialFilters = useMemo(() => loadCountriesFilters(), []);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [fg1Warning, setFg1Warning] = useState("");
+  const [fg1GateSummary, setFg1GateSummary] = useState(null);
+  const [fg1ReadinessByCountry, setFg1ReadinessByCountry] = useState({});
   const [copyContextStatus, setCopyContextStatus] = useState("");
   const [items, setItems] = useState([]);
   const [fg1WaveCountrySet, setFg1WaveCountrySet] = useState(() => new Set());
@@ -35,16 +39,72 @@ export default function FiscalCountriesPage() {
     }
     setLoading(true);
     setError("");
+    setFg1Warning("");
     try {
       const response = await fetch(`${BILLING_BASE}/admin/fiscal/global/catalog`, { method: "GET", headers: headersJson() });
-      const waveResponse = await fetch(`${BILLING_BASE}/admin/fiscal/global/fg1-wave-scope`, { method: "GET", headers: headersJson() });
       const payload = await response.json().catch(() => ({}));
-      const wavePayload = await waveResponse.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload?.detail || "Falha ao carregar catálogo fiscal global."));
-      if (!waveResponse.ok) throw new Error(String(wavePayload?.detail || "Falha ao carregar escopo FG-1."));
       setItems(Array.isArray(payload?.items) ? payload.items : []);
-      const countries = Array.isArray(wavePayload?.countries) ? wavePayload.countries : [];
-      setFg1WaveCountrySet(new Set(countries.map((item) => String(item?.country_code || "").toUpperCase()).filter(Boolean)));
+
+      const [waveResult, gateResult, readinessResult] = await Promise.allSettled([
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1-wave-scope`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/coverage-gate`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/readiness-gate`, { method: "GET", headers: headersJson() }),
+      ]);
+
+      if (waveResult.status === "fulfilled") {
+        const waveResponse = waveResult.value;
+        const wavePayload = await waveResponse.json().catch(() => ({}));
+        if (waveResponse.ok) {
+          const countries = Array.isArray(wavePayload?.countries) ? wavePayload.countries : [];
+          setFg1WaveCountrySet(new Set(countries.map((item) => String(item?.country_code || "").toUpperCase()).filter(Boolean)));
+        } else {
+          setFg1WaveCountrySet(new Set());
+          setFg1Warning("Escopo FG-1 indisponível no backend atual. Board carregado com catálogo global.");
+        }
+      } else {
+        setFg1WaveCountrySet(new Set());
+        setFg1Warning("Escopo FG-1 indisponível no backend atual. Board carregado com catálogo global.");
+      }
+
+      if (gateResult.status === "fulfilled") {
+        const gateResponse = gateResult.value;
+        const gatePayload = await gateResponse.json().catch(() => ({}));
+        if (gateResponse.ok) {
+          setFg1GateSummary({
+            decision: String(gatePayload?.decision || "NO_GO"),
+            missingScenariosTotal: Number(gatePayload?.missing_scenarios_total || 0),
+            countryCount: Number(gatePayload?.country_count || 0),
+            requiredScenariosTotal: Number(gatePayload?.required_scenarios_total || 0),
+            gateVersion: String(gatePayload?.gate_version || ""),
+          });
+        } else {
+          setFg1GateSummary(null);
+        }
+      } else {
+        setFg1GateSummary(null);
+      }
+
+      if (readinessResult.status === "fulfilled") {
+        const readinessResponse = readinessResult.value;
+        const readinessPayload = await readinessResponse.json().catch(() => ({}));
+        if (readinessResponse.ok) {
+          const map = {};
+          for (const country of readinessPayload?.countries || []) {
+            const code = String(country?.country_code || "").toUpperCase();
+            if (!code) continue;
+            map[code] = {
+              readinessStatus: String(country?.readiness_status || "NO_GO").toUpperCase(),
+              blockingReasonsCount: Array.isArray(country?.blocking_reasons) ? country.blocking_reasons.length : 0,
+            };
+          }
+          setFg1ReadinessByCountry(map);
+        } else {
+          setFg1ReadinessByCountry({});
+        }
+      } else {
+        setFg1ReadinessByCountry({});
+      }
     } catch (err) {
       const raw = String(err?.message || err);
       if (raw.toLowerCase().includes("failed to fetch")) {
@@ -163,6 +223,10 @@ export default function FiscalCountriesPage() {
     setOnlyInWave(false);
   }
 
+  function applyRecommendedStartMode() {
+    handleResetFilters();
+  }
+
   async function handleCopyFilterContext() {
     const contextText = buildFilterContextText({
       regionFilter,
@@ -247,6 +311,9 @@ export default function FiscalCountriesPage() {
     <div style={pageStyle}>
       <section style={cardStyle}>
         <div style={shortcutRowStyle}>
+          <a href={buildFiscalSwaggerUrl(BILLING_BASE)} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>
+            Abrir Swagger FISCAL
+          </a>
           <Link to="/fiscal" style={shortcutLinkStyle}>
             Abrir fiscal/global
           </Link>
@@ -257,6 +324,14 @@ export default function FiscalCountriesPage() {
 
         <OpsPageTitleHeader title="FISCAL - Countries Cockpit (FG-1/FG-2)" versionLabel={FISCAL_COUNTRIES_PAGE_VERSION} />
         <p style={mutedTextStyle}>Cockpit operacional para execução FG-1/FG-2 com filtro por região, prioridade e autoridade.</p>
+        <details style={howToUseWrapStyle}>
+          <summary style={howToUseSummaryStyle}>Como usar este cockpit (rápido)</summary>
+          <ol style={howToUseListStyle}>
+            <li>Comece por <b>Limpar filtros</b> para visualizar toda a base.</li>
+            <li>Use <b>Somente IN WAVE</b> ou presets FG-1 para focar execução.</li>
+            <li>Atualize status por país e finalize com <b>Copiar contexto do filtro</b> no handoff.</li>
+          </ol>
+        </details>
 
         <div style={filtersGridStyle}>
           <label style={labelStyle}>
@@ -321,6 +396,9 @@ export default function FiscalCountriesPage() {
               <button type="button" onClick={handleResetFilters} style={buttonStyle}>
                 Limpar filtros
               </button>
+              <button type="button" onClick={applyRecommendedStartMode} style={recommendedStartButtonStyle}>
+                Modo inicial recomendado
+              </button>
               <button type="button" onClick={() => void handleCopyFilterContext()} style={buttonStyle}>
                 Copiar contexto do filtro
               </button>
@@ -328,6 +406,22 @@ export default function FiscalCountriesPage() {
           </div>
         </div>
         {copyContextStatus ? <small style={copyStatusStyle}>{copyContextStatus}</small> : null}
+        {!error && fg1Warning ? <div style={warningStyle}>{fg1Warning}</div> : null}
+        {!error && fg1GateSummary ? (
+          <div style={gateSummaryWrapStyle}>
+            <span style={fg1GateSummary.decision === "GO" ? gateGoBadgeStyle : gateNoGoBadgeStyle}>
+              Coverage Gate FG-1: {fg1GateSummary.decision}
+            </span>
+            <span style={inWaveSummaryStyle}>
+              Missing: {fg1GateSummary.missingScenariosTotal} | Países: {fg1GateSummary.countryCount} | Cenários obrigatórios:{" "}
+              {fg1GateSummary.requiredScenariosTotal}
+            </span>
+            <span style={summaryStyle}>Versão: {fg1GateSummary.gateVersion || "-"}</span>
+            <Link to="/fiscal/fg1-gate" style={shortcutLinkStyle}>
+              Abrir detalhe do gate
+            </Link>
+          </div>
+        ) : null}
 
         {!error ? (
           <div style={boardSummaryStyle}>
@@ -365,6 +459,15 @@ export default function FiscalCountriesPage() {
 
         {error ? <div style={errorStyle}>{error}</div> : null}
         {!error ? <small style={summaryStyle}>Países filtrados: {filteredItems.length}</small> : null}
+        {!error && filteredItems.length === 0 ? (
+          <div style={emptyStateStyle}>
+            <strong>Nenhum país no recorte atual.</strong>
+            <span>Isso geralmente ocorre por combinação de filtros/preset. Clique em <b>Limpar filtros</b> para voltar ao estado completo.</span>
+            <button type="button" onClick={handleResetFilters} style={buttonStyle}>
+              Limpar filtros e mostrar tudo
+            </button>
+          </div>
+        ) : null}
 
         {!error ? (
           <div style={tableWrapStyle}>
@@ -376,6 +479,7 @@ export default function FiscalCountriesPage() {
                   <th style={thStyle}>Autoridade</th>
                   <th style={thStyle}>Execução</th>
                   <th style={thStyle}>FG-1</th>
+                  <th style={thStyle}>Readiness</th>
                   <th style={thStyle}>Prioridade</th>
                   <th style={thStyle}>Protocolo</th>
                   <th style={thStyle}>Stub Endpoint</th>
@@ -405,6 +509,9 @@ export default function FiscalCountriesPage() {
                         <span style={outWaveBadgeStyle}>OUT WAVE</span>
                       )}
                     </td>
+                    <td style={tdStyle}>
+                      {renderReadinessBadge(fg1ReadinessByCountry, item.country_code)}
+                    </td>
                     <td style={tdStyle}>{String(item.priority_tier || "-").toUpperCase()}</td>
                     <td style={tdStyle}>{item.protocol}</td>
                     <td style={tdStyle}>
@@ -414,7 +521,7 @@ export default function FiscalCountriesPage() {
                 ))}
                 {!loading && filteredItems.length === 0 ? (
                   <tr>
-                    <td style={tdStyle} colSpan={8}>
+                    <td style={tdStyle} colSpan={9}>
                       Nenhum país encontrado para os filtros aplicados.
                     </td>
                   </tr>
@@ -522,6 +629,12 @@ const closeoutPresetButtonStyle = {
   background: "rgba(16,185,129,0.16)",
   color: "#bbf7d0",
 };
+const recommendedStartButtonStyle = {
+  ...buttonStyle,
+  border: "1px solid rgba(56,189,248,0.65)",
+  background: "rgba(56,189,248,0.16)",
+  color: "#bae6fd",
+};
 const statusChipStyle = (status) => {
   if (status === "DONE") {
     return {
@@ -559,8 +672,49 @@ const statusChipStyle = (status) => {
   };
 };
 const errorStyle = { marginTop: 12, background: "#2b1d1d", color: "#ffb4b4", padding: 12, borderRadius: 12, overflow: "auto" };
+const warningStyle = { marginTop: 10, background: "rgba(245,158,11,0.12)", color: "#fde68a", padding: 12, borderRadius: 12, overflow: "auto" };
 const summaryStyle = { marginTop: 10, display: "inline-flex", color: "var(--fiscal-accent-2)", fontWeight: 700 };
+const gateSummaryWrapStyle = { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" };
+const gateGoBadgeStyle = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid rgba(34,197,94,0.65)",
+  background: "rgba(34,197,94,0.18)",
+  color: "#bbf7d0",
+  fontSize: 12,
+  fontWeight: 700,
+};
+const gateNoGoBadgeStyle = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid rgba(239,68,68,0.65)",
+  background: "rgba(239,68,68,0.18)",
+  color: "#fecaca",
+  fontSize: 12,
+  fontWeight: 700,
+};
 const copyStatusStyle = { marginTop: 8, display: "inline-flex", color: "var(--fiscal-accent-2)", fontWeight: 700 };
+const howToUseWrapStyle = {
+  marginTop: 10,
+  border: "1px solid var(--fiscal-box-border)",
+  borderRadius: 10,
+  background: "var(--fiscal-box-bg)",
+  padding: "8px 10px",
+};
+const howToUseSummaryStyle = { cursor: "pointer", color: "var(--fiscal-accent-2)", fontWeight: 700 };
+const howToUseListStyle = { margin: "8px 0 0", paddingLeft: 18, display: "grid", gap: 4, color: "var(--fiscal-soft-text)" };
+const emptyStateStyle = {
+  marginTop: 10,
+  border: "1px dashed var(--fiscal-box-border)",
+  borderRadius: 10,
+  background: "var(--fiscal-box-bg)",
+  padding: 12,
+  display: "grid",
+  gap: 8,
+  color: "var(--fiscal-soft-text)",
+};
 const tableWrapStyle = { marginTop: 10, overflowX: "auto" };
 const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 820 };
 const thStyle = { textAlign: "left", borderBottom: "1px solid var(--fiscal-table-separator-strong)", padding: "8px 10px", fontSize: 13 };
@@ -583,6 +737,26 @@ const outWaveBadgeStyle = {
   border: "1px solid rgba(148,163,184,0.55)",
   background: "rgba(148,163,184,0.18)",
   color: "#cbd5e1",
+  fontSize: 11,
+  fontWeight: 700,
+};
+const readinessGoBadgeStyle = {
+  display: "inline-flex",
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(34,197,94,0.65)",
+  background: "rgba(34,197,94,0.18)",
+  color: "#bbf7d0",
+  fontSize: 11,
+  fontWeight: 700,
+};
+const readinessNoGoBadgeStyle = {
+  display: "inline-flex",
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(239,68,68,0.65)",
+  background: "rgba(239,68,68,0.18)",
+  color: "#fecaca",
   fontSize: 11,
   fontWeight: 700,
 };
@@ -700,4 +874,12 @@ function buildFilterContextText(input) {
     `total_items: ${Number(input?.totalCount || 0)}`,
     `in_wave_summary: total=${Number(inWave.TOTAL || 0)} todo=${Number(inWave.TODO || 0)} in_progress=${Number(inWave.IN_PROGRESS || 0)} done=${Number(inWave.DONE || 0)}`,
   ].join("\n");
+}
+
+function renderReadinessBadge(readinessByCountry, countryCode) {
+  const code = String(countryCode || "").toUpperCase();
+  const row = readinessByCountry?.[code];
+  if (!row) return <span style={outWaveBadgeStyle}>N/D</span>;
+  if (row.readinessStatus === "GO") return <span style={readinessGoBadgeStyle}>GO</span>;
+  return <span style={readinessNoGoBadgeStyle}>NO_GO ({Number(row.blockingReasonsCount || 0)})</span>;
 }

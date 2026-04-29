@@ -37,9 +37,16 @@ from app.services.fiscal_global_catalog_service import (
     build_fiscal_global_scenario_matrix,
 )
 from app.services.fiscal_fg1_stub_service import (
+    build_fg1_coverage_gate,
+    build_fg1_fixture_inventory,
     build_fg1_fixtures_matrix,
     build_fg1_stub_adapters_catalog,
+    read_fg1_fixture_document,
     simulate_fg1_stub,
+)
+from app.services.fiscal_fg1_readiness_service import (
+    build_fg1_readiness_action_plan,
+    build_fg1_readiness_gate,
 )
 from app.integrations.fiscal_real_provider_client import list_canonical_error_codes
 from app.services.invoice_delivery_service import record_invoice_delivery
@@ -354,6 +361,28 @@ def get_fiscal_fg1_fixtures_matrix(
     return build_fg1_fixtures_matrix()
 
 
+@router.get("/global/fg1/fixture-inventory")
+def get_fiscal_fg1_fixture_inventory(
+    _: None = Depends(validate_internal_token),
+):
+    """Lista arquivos em fixtures/fiscal/fg1/ e valida contagem esperada (onda 1)."""
+    return build_fg1_fixture_inventory()
+
+
+@router.get("/global/fg1/fixture-document")
+def get_fiscal_fg1_fixture_document(
+    country: str = Query(...),
+    operation: str = Query(..., pattern="^(authorize|cancel|correct|status)$"),
+    scenario: str | None = Query(default=None),
+    _: None = Depends(validate_internal_token),
+):
+    """Retorna o JSON canônico da fixture (disco se existir; caso contrário sintético alinhado ao simulate)."""
+    try:
+        return read_fg1_fixture_document(country=country, operation=operation, scenario=scenario)
+    except ValueError as exc:
+        raise _safe_client_error("Invalid FG-1 fixture parameters.") from exc
+
+
 @router.post("/global/fg1/simulate")
 def post_fiscal_fg1_stub_simulate(
     country: str = Query(...),
@@ -365,6 +394,27 @@ def post_fiscal_fg1_stub_simulate(
         return simulate_fg1_stub(country=country, operation=operation, scenario=scenario)
     except ValueError as exc:
         raise _safe_client_error("Invalid FG-1 simulation parameters.") from exc
+
+
+@router.get("/global/fg1/coverage-gate")
+def get_fiscal_fg1_coverage_gate(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_coverage_gate()
+
+
+@router.get("/global/fg1/readiness-gate")
+def get_fiscal_fg1_readiness_gate(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_readiness_gate()
+
+
+@router.get("/global/fg1/readiness-action-plan")
+def get_fiscal_fg1_readiness_action_plan(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_readiness_action_plan()
 
 
 @router.post("/providers/stub/svrs/batch-submit")

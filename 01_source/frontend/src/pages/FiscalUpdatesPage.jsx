@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 
 const FISCAL_UPDATES_PAGE_VERSION = "fiscal/updates v1.0.0";
 const TIMELINE_TEMPLATE_JSON = `{
@@ -23,6 +24,325 @@ const TIMELINE_TEMPLATE_JSON = `{
 }`;
 
 const UPDATES = [
+  {
+    dateTime: "2026-04-29T20:30:00-03:00",
+    scope: "FG-1 fixtures — decisão disco vs BD",
+    title: "Registro no acompanhamento: canónico em repo; futuro BD sobrepõe ou só metadados",
+    description:
+      "Decisão arquitetural documentada em docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt: manter fixtures FG-1 canónicas em disco/repositório; evolução opcional com overrides na BD sobre ficheiro ou apenas metadados (hash, ativo, origem). Backlog explícito: sprint Postgres (modelo + migração + seed + API com fallback) apenas se solicitado.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: ["DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt"],
+    directLink: "/fiscal/updates",
+    directLinkLabel: "Ver histórico FISCAL (entrada de decisão)",
+  },
+  {
+    dateTime: "2026-04-29T20:05:00-03:00",
+    scope: "FG-1 G+2 — fixtures on-disk + inventário",
+    title: "Árvore fixtures/fiscal/fg1 + GET fixture-inventory/fixture-document + simulate lê disco",
+    description:
+      "Sprint Kanban G+2: 45 JSON versionados no serviço fiscal (onda US/AU/PL/CA/FR), endpoints de inventário e documento, simulate com telemetry fixture_source disk|synthetic, script run_fg1_fixture_inventory_smoke.sh e catálogo Swagger FISCAL atualizado.",
+    uiRoutesNew: [],
+    apiRoutesNew: [
+      "GET /admin/fiscal/global/fg1/fixture-inventory",
+      "GET /admin/fiscal/global/fg1/fixture-document",
+    ],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_stub_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Script: 01_source/backend/billing_fiscal_service/scripts/write_fg1_fixtures.py",
+      "Script: 02_docker/run_fg1_fixture_inventory_smoke.sh",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+    ],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir hub FISCAL (APIs novas no catálogo)",
+  },
+  {
+    dateTime: "2026-04-29T19:18:00-03:00",
+    scope: "FG-1 readiness execution - handoff export + Trilha B BR/PT",
+    title: "Export CSV/JSON latest (mesmo sufixo de sessão do fg1-gate) + bloco BR/PT bloqueados",
+    description:
+      "Board fiscal/readiness-execution: exportação do estado completo do plano + execução local com arquivos fg1_readiness_execution_latest_<sessão>.json/.csv, botão copiar nomes latest, duas linhas BR_SNAPSHOT/PT_SNAPSHOT no CSV e objeto trilha_b_br_pt no JSON. Card fixo Trilha B com links para ops/fiscal/providers (#go-no-go-br / #go-no-go-pt), destaque de linhas BR/PT bloqueadas na tabela e resumo BR/PT no copiar handoff.",
+    uiRoutesNew: ["/fiscal/readiness-execution"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalReadinessExecutionPage.jsx"],
+    directLink: "/fiscal/readiness-execution",
+    directLinkLabel: "Abrir board com export e BR/PT",
+  },
+  {
+    dateTime: "2026-04-29T19:10:00-03:00",
+    scope: "FG-1 Fase 6 - execução operacional de readiness",
+    title: "Nova página fiscal/readiness-execution para fechar bloqueios por país com owner/ETA/status",
+    description:
+      "Próximo sprint macro codado: criada página dedicada de execução para o readiness-action-plan com board por país, status TODO/IN_PROGRESS/DONE, owner, ETA, notas e cópia de resumo para handoff diário. Menu FISCAL atualizado com novo item e destaque NEW nessa rota.",
+    uiRoutesNew: ["/fiscal/readiness-execution"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/readiness-action-plan"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalReadinessExecutionPage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+    ],
+    directLink: "/fiscal/readiness-execution",
+    directLinkLabel: "Abrir board de execução de readiness FG-1",
+  },
+  {
+    dateTime: "2026-04-29T19:02:00-03:00",
+    scope: "FG-1 plantão - ticket imediato",
+    title: "Botão no ops/health para copiar ticket imediato do país mais bloqueado",
+    description:
+      "Próximo sprint executado com foco em ação rápida: o card FG-1 final no ops/health ganhou botão para copiar ticket imediato do país crítico (maior pending_actions), reduzindo tempo de resposta em incidente e priorização operacional.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx"],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir ops/health com ticket imediato FG-1",
+  },
+  {
+    dateTime: "2026-04-29T18:56:00-03:00",
+    scope: "FG-1 handoff em 1 clique no plantão",
+    title: "Botão no ops/health para copiar payload resumido Slack/Teams do handoff final FG-1",
+    description:
+      "Fechamento do ciclo operacional: card de decisão final FG-1 no ops/health agora possui ação de cópia em 1 clique para Slack/Teams, reduzindo fricção no plantão e padronizando a comunicação de go/no-go.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx"],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir ops/health com cópia 1-clique do handoff FG-1",
+  },
+  {
+    dateTime: "2026-04-29T18:47:00-03:00",
+    scope: "FG-1 x OPS - handoff server-side",
+    title: "Snapshot final FG-1 via script + endpoint OPS + card no ops/health",
+    description:
+      "Sprint de integração concluído para reduzir esforço operacional: criado script server-side que gera fg1_final_decision_latest.json, endpoint dev-admin autenticado por OPS_TOKEN para leitura segura e card no ops/health para consumo direto da decisão global no plantão.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: ["GET /dev-admin/fiscal-fg1-final/latest"],
+    routes: [
+      "Script: 02_docker/run_fg1_final_handoff_snapshot.sh",
+      "Backend: 01_source/order_pickup_service/app/routers/dev_admin.py",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card FG-1 final no ops/health",
+  },
+  {
+    dateTime: "2026-04-29T18:38:00-03:00",
+    scope: "FG-1 handoff pipeline - redução de esforço",
+    title: "Botão 'Copiar nome latest atual' no fiscal/fg1-gate",
+    description:
+      "Para reduzir esforço operacional no rito diário, foi adicionado botão que copia automaticamente os nomes latest atuais (JSON/CSV) da sessão, pronto para plugar no pipeline de upload sem digitação manual.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx"],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir painel com cópia de nomes latest",
+  },
+  {
+    dateTime: "2026-04-29T18:33:00-03:00",
+    scope: "FG-1 handoff automático - naming estável",
+    title: "Export do painel final com nome latest estável por sessão (CSV/JSON)",
+    description:
+      "Sprint de padronização concluído: os arquivos exportados do fiscal/fg1-gate agora usam nomenclatura latest com sufixo estável por sessão, facilitando integração com upload automático no rito de handoff.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx"],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir export latest por sessão",
+  },
+  {
+    dateTime: "2026-04-29T18:31:00-03:00",
+    scope: "FG-1 handoff de governança fiscal",
+    title: "Export do painel final em CSV/JSON no fiscal/fg1-gate",
+    description:
+      "Sprint de operacionalização concluído: o painel de decisão final passou a exportar CSV/JSON com decisão global e por país (coverage/readiness/pendências/critério de saída), pronto para anexar diretamente no handoff diário.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx"],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir painel final com export CSV/JSON",
+  },
+  {
+    dateTime: "2026-04-29T18:28:00-03:00",
+    scope: "FG-1 decisão executiva de go-live",
+    title: "Painel de decisão final adicionado em fiscal/fg1-gate (global + por país + saída para [x])",
+    description:
+      "Último passo do sprint macro implementado: o cockpit fiscal/fg1-gate agora consolida decisão final por país e global com critério de saída para [x], unificando coverage, readiness e pendências do action plan em uma única camada de decisão operacional.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx"],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir painel de decisão final FG-1",
+  },
+  {
+    dateTime: "2026-04-29T18:18:00-03:00",
+    scope: "FG-1 Fase 5 - plano executável de remediação",
+    title: "Readiness Action Plan API + seção operacional no fiscal/fg1-gate",
+    description:
+      "Próximo sprint macro codado: backend publica plano de ação por país com ENVs obrigatórias e ações recomendadas por blocking reason. O fiscal/fg1-gate agora expõe esse plano para execução diária e fechamento objetivo dos bloqueios NO_GO.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/readiness-action-plan"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_readiness_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir plano de remediação FG-1",
+  },
+  {
+    dateTime: "2026-04-29T18:07:00-03:00",
+    scope: "FG-1 Fase 4 - readiness regulatório/operacional",
+    title: "Readiness Gate por país com blocking reasons + decisão consolidada no cockpit FG-1",
+    description:
+      "Sprint macro concluído com gate de prontidão por país: backend agora avalia auth/homologação/certificado/SLA e expõe blocking reasons objetivos. A página fiscal/fg1-gate passou a consolidar Coverage+Readiness em GO/NO_GO único e o fiscal/countries mostra readiness por país para priorização operacional.",
+    uiRoutesNew: ["/fiscal/fg1-gate", "/fiscal/countries"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/readiness-gate"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_readiness_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir gate macro FG-1 (coverage + readiness)",
+  },
+  {
+    dateTime: "2026-04-29T18:05:00-03:00",
+    scope: "FG-1 operação diária - smoke + cockpit",
+    title: "Script run_fg1_coverage_gate_smoke.sh + integração do gate no fiscal/countries",
+    description:
+      "Evolução de operação diária da trilha global: criado script curto de smoke do Coverage Gate com JSON/latest em 04_logs/ops e o cockpit fiscal/countries passou a exibir resumo GO/NO_GO do gate em tempo real com link direto para o detalhe técnico.",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/coverage-gate"],
+    routes: [
+      "Script: 02_docker/run_fg1_coverage_gate_smoke.sh",
+      "Log: 04_logs/ops/fg1_coverage_gate_smoke_latest.json",
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+    ],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir cockpit com resumo do coverage gate",
+  },
+  {
+    dateTime: "2026-04-29T17:51:00-03:00",
+    scope: "FISCAL menu - destaque de novidade operacional",
+    title: "Badge NEW aplicado somente em fiscal/fg1-gate (removendo destaque anterior)",
+    description:
+      "Padronização de navegação do sprint: no menu FISCAL, a rota nova fiscal/fg1-gate passou a exibir selo NEW em desktop/mobile, com remoção de destaque de itens anteriores para evitar ambiguidade.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/App.jsx"],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir rota NEW do sprint atual",
+  },
+  {
+    dateTime: "2026-04-29T17:47:00-03:00",
+    scope: "FG-1 Fase 3 - Coverage Gate técnico",
+    title: "Novo endpoint de cobertura FG-1 + página fiscal/fg1-gate para decisão GO/NO_GO",
+    description:
+      "Entrega de sprint focada em execução: backend agora expõe gate objetivo de cobertura por país/operação/cenário (missing explícito) e frontend ganhou cockpit técnico dedicado em /fiscal/fg1-gate para decisão de onda com atualização em tempo real.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/coverage-gate"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_stub_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir cockpit de gate FG-1",
+  },
+  {
+    dateTime: "2026-04-29T17:44:00-03:00",
+    scope: "Fiscal Countries - onboarding imediato",
+    title: "Botão Modo inicial recomendado no cockpit fiscal/countries",
+    description:
+      "Sincronizado no histórico FISCAL: adicionado botão único de onboarding para reset rápido do cockpit (Execução=ALL e Somente IN WAVE=false), reduzindo ambiguidade para novos operadores.",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx", "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt"],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir cockpit com modo inicial recomendado",
+  },
+  {
+    dateTime: "2026-04-29T17:36:00-03:00",
+    scope: "Fiscal Countries - correção de uso e visualização",
+    title: "fiscal/countries robusto contra backend parcial + guia de uso rápido",
+    description:
+      "Corrigido cenário em que o cockpit parecia vazio: a tela agora carrega catálogo mesmo quando o endpoint de escopo FG-1 falha, exibe aviso claro, adiciona guia de uso rápido e estado vazio com ação direta para limpar filtros.",
+    uiRoutesNew: ["/fiscal/countries"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx", "UI /fiscal/updates"],
+    directLink: "/fiscal/countries",
+    directLinkLabel: "Abrir cockpit com correção de visualização",
+  },
+  {
+    dateTime: "2026-04-29T17:33:00-03:00",
+    scope: "Fiscal API Hub - navegação técnica acelerada",
+    title: "Filtro rápido por método (GET/POST) e grupo no fiscal/global",
+    description:
+      "Evolução operacional no hub de APIs FISCAL: adição de filtros rápidos por método e por grupo de API para reduzir tempo de busca técnica durante operação e integração.",
+    uiRoutesNew: ["/fiscal"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx", "UI /fiscal/updates"],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir filtros de método/grupo no catálogo FISCAL",
+  },
+  {
+    dateTime: "2026-04-29T17:30:00-03:00",
+    scope: "Fiscal API Hub - integração com Swagger",
+    title: "Páginas FISCAL conectadas ao conjunto completo de endpoints",
+    description:
+      "Integração do domínio FISCAL com catálogo de APIs: fiscal/global agora exibe endpoints agrupados por responsabilidade e todas as páginas fiscais receberam atalho direto para Swagger, reduzindo fricção para operação e integração.",
+    uiRoutesNew: ["/fiscal", "/fiscal/countries", "/fiscal/updates"],
+    apiRoutesNew: ["Catálogo unificado de endpoints FISCAL (admin/invoice/partner/fiscal)"],
+    routes: [
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalCountriesPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalUpdatesPage.jsx",
+    ],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir hub de APIs FISCAL",
+  },
+  {
+    dateTime: "2026-04-29T17:26:00-03:00",
+    scope: "Fiscal Global - robustez contra backend parcial",
+    title: "fiscal/global com degradação graciosa quando APIs FG-1 não estão disponíveis",
+    description:
+      "Correção de regressão de visualização: catálogo e matriz (FG-0) agora carregam mesmo se endpoints FG-1 retornarem Not Found no backend atual, exibindo apenas aviso informativo e evitando quebra total da página.",
+    uiRoutesNew: ["/fiscal"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx", "UI /fiscal/updates"],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir fiscal/global com fallback robusto",
+  },
+  {
+    dateTime: "2026-04-29T17:22:00-03:00",
+    scope: "Fiscal QA - prevenção de regressão de rotas",
+    title: "Script de smoke para /fiscal, /fiscal/updates e /fiscal/countries",
+    description:
+      "Criado health-check simples de rotas fiscais para execução recorrente em sprints: valida HTTP 200, bloqueia resposta com Not Found e confirma marcador esperado de cada página fiscal.",
+    uiRoutesNew: ["/fiscal", "/fiscal/updates", "/fiscal/countries"],
+    apiRoutesNew: [],
+    routes: ["Script: 02_docker/run_fiscal_routes_smoke.sh", "Log: 04_logs/ops/fiscal_routes_smoke_latest.json"],
+    directLink: "/fiscal/updates",
+    directLinkLabel: "Abrir histórico da proteção de rotas fiscais",
+  },
+  {
+    dateTime: "2026-04-29T17:20:00-03:00",
+    scope: "Fiscal Router - robustez de navegação",
+    title: "Recuperação automática para aliases /fiscal/* (global, updates, countries)",
+    description:
+      "Correção aplicada para eliminar Not Found intermitente em navegação fiscal: a rota de fallback agora recupera caminhos malformados/aliases de todo o namespace /fiscal/*, redirecionando para /fiscal, /fiscal/updates ou /fiscal/countries conforme o contexto.",
+    uiRoutesNew: ["/fiscal", "/fiscal/updates", "/fiscal/countries"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/src/App.jsx", "UI /fiscal/updates"],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir fiscal/global com fallback robusto",
+  },
   {
     dateTime: "2026-04-29T17:14:00-03:00",
     scope: "FG-1 Stub Global - fase 2 (catálogo conectado)",
@@ -177,6 +497,9 @@ export default function FiscalUpdatesPage() {
     <div style={pageStyle}>
       <section style={cardStyle}>
         <div style={shortcutRowStyle}>
+          <a href={buildFiscalSwaggerUrl(import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020")} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>
+            Abrir Swagger FISCAL
+          </a>
           <Link to="/fiscal" style={shortcutLinkStyle}>
             Abrir fiscal/global
           </Link>

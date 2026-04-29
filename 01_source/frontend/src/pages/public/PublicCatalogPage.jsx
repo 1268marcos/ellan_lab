@@ -11,6 +11,7 @@ const RUNTIME_BASE =
   import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
 
 const SORT_TYPES = {
+  RELEVANCE: "relevance",
   SLOT: "slot",
   NAME: "name",
   PRICE_ASC: "price_asc",
@@ -18,11 +19,53 @@ const SORT_TYPES = {
 };
 
 const SORT_LABELS = {
+  [SORT_TYPES.RELEVANCE]: "✨ Mais Relevantes",
   [SORT_TYPES.SLOT]: "🔢 Ordem de Gaveta",
   [SORT_TYPES.NAME]: "🍽️ Ordem de Sabor",
   [SORT_TYPES.PRICE_ASC]: "💰 Menor Preço",
   [SORT_TYPES.PRICE_DESC]: "💰 Maior Preço",
 };
+
+const trustChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid rgba(102, 126, 234, 0.25)",
+  background: "rgba(102, 126, 234, 0.09)",
+  color: "var(--color-primary-dark)",
+  fontSize: "var(--font-size-xs)",
+  fontWeight: 700,
+};
+
+const contextChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.32)",
+  background: "rgba(255,255,255,0.14)",
+  color: "white",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+function CatalogTrustStrip() {
+  return (
+    <div
+      style={{
+        marginTop: "var(--spacing-4)",
+        display: "flex",
+        gap: "var(--spacing-2)",
+        flexWrap: "wrap",
+      }}
+    >
+      <span style={trustChipStyle}>🔒 Pagamento seguro</span>
+      <span style={trustChipStyle}>⚡ Compra rápida</span>
+      <span style={trustChipStyle}>📦 Retirada no locker</span>
+    </div>
+  );
+}
 
 function formatCatalogSnapshot(iso) {
   if (!iso) return null;
@@ -60,6 +103,17 @@ function formatMoney(cents, currency, locale = undefined) {
       ? `${amount.toFixed(2)} ${safeCurrency}`.trim()
       : amount.toFixed(2);
   }
+}
+
+function resolveCatalogDisplayCurrency(rawCurrency, region) {
+  const currency = String(rawCurrency || "").trim().toUpperCase();
+  if (currency && currency !== "BRL") return currency;
+  if (String(region || "").trim().toUpperCase() === "PT") return "EUR";
+  return currency || "BRL";
+}
+
+function resolveCatalogLocale(region) {
+  return String(region || "").trim().toUpperCase() === "PT" ? "pt-PT" : "pt-BR";
 }
 
 function useDebounce(value, delay) {
@@ -217,12 +271,26 @@ export default function PublicCatalogPage() {
   const [error, setError] = useState("");
   const [selectedLockerDetails, setSelectedLockerDetails] = useState(null);
   const [expandedCards, setExpandedCards] = useState(new Set());
-  const [sortType, setSortType] = useState(SORT_TYPES.SLOT);
+  const [sortType, setSortType] = useState(SORT_TYPES.RELEVANCE);
+  const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [viewportWidth, setViewportWidth] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth : 1024
+  );
   /** Quando o runtime não manda updated_at, ainda exibimos o horário do último GET do catálogo. */
   const [catalogFetchedAt, setCatalogFetchedAt] = useState(null);
 
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+  const isMicroMobile = viewportWidth >= 320 && viewportWidth <= 390;
+  const isMobile = viewportWidth <= 768;
+
+  useEffect(() => {
+    function handleResize() {
+      setViewportWidth(window.innerWidth);
+    }
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams);
@@ -389,15 +457,19 @@ export default function PublicCatalogPage() {
   }, [lockerId]);
 
   const filteredBySearch = useMemo(() => {
-    if (!debouncedSearchTerm.trim()) return items;
+    const baseItems = onlyAvailable
+      ? items.filter((item) => item.is_operationally_available)
+      : items;
+
+    if (!debouncedSearchTerm.trim()) return baseItems;
 
     const searchLower = debouncedSearchTerm.toLowerCase().trim();
-    return items.filter(
+    return baseItems.filter(
       (item) =>
         item.name.toLowerCase().includes(searchLower) ||
         (item.description && item.description.toLowerCase().includes(searchLower))
     );
-  }, [items, debouncedSearchTerm]);
+  }, [items, debouncedSearchTerm, onlyAvailable]);
 
   const sortedItems = useMemo(() => {
     if (!filteredBySearch.length) return [];
@@ -405,6 +477,16 @@ export default function PublicCatalogPage() {
     const itemsCopy = [...filteredBySearch];
 
     switch (sortType) {
+      case SORT_TYPES.RELEVANCE:
+        return itemsCopy.sort((a, b) => {
+          if (a.is_operationally_available !== b.is_operationally_available) {
+            return a.is_operationally_available ? -1 : 1;
+          }
+          if (a.amount_cents !== b.amount_cents) {
+            return a.amount_cents - b.amount_cents;
+          }
+          return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+        });
       case SORT_TYPES.SLOT:
         return itemsCopy.sort((a, b) => a.slot - b.slot);
       case SORT_TYPES.NAME:
@@ -448,6 +530,13 @@ export default function PublicCatalogPage() {
 
   const clearSearch = useCallback(() => {
     setSearchTerm("");
+  }, []);
+
+  const scrollToResults = useCallback(() => {
+    const target = document.getElementById("catalog-results-header");
+    if (target) {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
   }, []);
 
   async function handleReserve(item) {
@@ -532,8 +621,8 @@ export default function PublicCatalogPage() {
           aria-labelledby="catalog-title"
           style={{
             borderRadius: "var(--radius-2xl)",
-            padding: "var(--spacing-6)",
-            marginBottom: "var(--spacing-6)",
+            padding: isMobile ? "var(--spacing-4)" : "var(--spacing-5)",
+            marginBottom: isMobile ? "var(--spacing-4)" : "var(--spacing-5)",
             background: "rgba(255,255,255,0.95)",
             boxShadow: "var(--shadow-xl)",
           }}
@@ -571,16 +660,17 @@ export default function PublicCatalogPage() {
 
           <p
             style={{
-              marginTop: "var(--spacing-3)",
+              marginTop: "var(--spacing-2)",
               marginBottom: 0,
               fontSize: "var(--font-size-base)",
-              lineHeight: 1.6,
+              lineHeight: 1.45,
               color: "var(--color-text-muted)",
               maxWidth: "600px",
             }}
           >
             Cada gaveta contém um produto único com preço já definido.
           </p>
+          <CatalogTrustStrip />
 
           <div
             className="filters-toolbar"
@@ -588,7 +678,7 @@ export default function PublicCatalogPage() {
               display: "grid",
               gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
               gap: "var(--spacing-3)",
-              marginTop: "var(--spacing-5)",
+              marginTop: "var(--spacing-4)",
             }}
             role="group"
             aria-label="Filtros de catálogo"
@@ -651,8 +741,8 @@ export default function PublicCatalogPage() {
           <div
             className="search-bar"
             style={{
-              marginTop: "var(--spacing-5)",
-              marginBottom: "var(--spacing-3)",
+              marginTop: "var(--spacing-4)",
+              marginBottom: "var(--spacing-2)",
             }}
           >
             <div style={{ position: "relative", width: "100%" }}>
@@ -731,12 +821,15 @@ export default function PublicCatalogPage() {
             style={{
               display: "flex",
               gap: "var(--spacing-3)",
-              marginTop: "var(--spacing-4)",
-              paddingTop: "var(--spacing-4)",
+              marginTop: "var(--spacing-3)",
+              paddingTop: "var(--spacing-3)",
               borderTop: "1px solid var(--color-border)",
               flexWrap: "wrap",
             }}
           >
+            <button onClick={scrollToResults} className="btn btn--primary" type="button">
+              Ver produtos
+            </button>
             <Link to="/" className="btn btn--secondary">
               ← Voltar
             </Link>
@@ -792,21 +885,26 @@ export default function PublicCatalogPage() {
         ) : (
           <>
             <div
+              id="catalog-results-header"
               className="results-header"
               style={{
                 marginBottom: "var(--spacing-4)",
                 display: "flex",
                 justifyContent: "space-between",
-                alignItems: "center",
+                alignItems: isMicroMobile ? "stretch" : "center",
+                flexDirection: isMicroMobile ? "column" : "row",
                 flexWrap: "wrap",
                 gap: "var(--spacing-3)",
                 background: "rgba(255,255,255,0.1)",
                 padding: "var(--spacing-3)",
                 borderRadius: "var(--radius-lg)",
                 backdropFilter: "blur(10px)",
+                position: "sticky",
+                top: "var(--spacing-3)",
+                zIndex: 20,
               }}
             >
-              <div>
+              <div style={{ width: isMicroMobile ? "100%" : "auto" }}>
                 <h2
                   style={{
                     fontSize: "var(--font-size-xl)",
@@ -871,6 +969,12 @@ export default function PublicCatalogPage() {
                     ) : null}
                   </p>
                 ) : null}
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <span style={contextChipStyle}>🌎 {region}</span>
+                  <span style={contextChipStyle}>
+                    📍 {selectedLockerDetails?.label || lockerId || "Locker não selecionado"}
+                  </span>
+                </div>
               </div>
 
               <div
@@ -880,18 +984,40 @@ export default function PublicCatalogPage() {
                   gap: "var(--spacing-2)",
                   flexWrap: "wrap",
                   alignItems: "center",
+                  width: isMicroMobile ? "100%" : "auto",
                 }}
               >
                 <label
                   htmlFor="sort-select"
                   style={{
-                    fontSize: "var(--font-size-sm)",
-                    fontWeight: 600,
-                    color: "white",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "rgba(255,255,255,0.86)",
                     marginRight: "var(--spacing-1)",
                   }}
                 >
                   Ordenar por:
+                </label>
+                <label
+                  htmlFor="only-available-toggle"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 12,
+                    fontWeight: 500,
+                    color: "rgba(255,255,255,0.86)",
+                    marginRight: "var(--spacing-1)",
+                    width: isMicroMobile ? "100%" : "auto",
+                  }}
+                >
+                  <input
+                    id="only-available-toggle"
+                    type="checkbox"
+                    checked={onlyAvailable}
+                    onChange={(e) => setOnlyAvailable(e.target.checked)}
+                  />
+                  Somente disponíveis
                 </label>
                 <select
                   id="sort-select"
@@ -900,15 +1026,19 @@ export default function PublicCatalogPage() {
                   style={{
                     padding: "var(--spacing-2) var(--spacing-3)",
                     borderRadius: "var(--radius-md)",
-                    border: "1px solid rgba(255,255,255,0.3)",
-                    background: "rgba(255,255,255,0.95)",
-                    fontSize: "var(--font-size-sm)",
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    background: "rgba(255,255,255,0.9)",
+                    fontSize: 12,
                     fontWeight: 500,
                     cursor: "pointer",
                     outline: "none",
+                    width: isMicroMobile ? "100%" : "auto",
                   }}
                   aria-label="Ordenar produtos"
                 >
+                  <option value={SORT_TYPES.RELEVANCE}>
+                    {SORT_LABELS[SORT_TYPES.RELEVANCE]}
+                  </option>
                   <option value={SORT_TYPES.SLOT}>{SORT_LABELS[SORT_TYPES.SLOT]}</option>
                   <option value={SORT_TYPES.NAME}>{SORT_LABELS[SORT_TYPES.NAME]}</option>
                   <option value={SORT_TYPES.PRICE_ASC}>{SORT_LABELS[SORT_TYPES.PRICE_ASC]}</option>
@@ -986,7 +1116,7 @@ export default function PublicCatalogPage() {
                       style={{
                         background: "white",
                         borderRadius: "var(--radius-xl)",
-                        padding: "var(--spacing-4)",
+                        padding: isMicroMobile ? "var(--spacing-3)" : "var(--spacing-4)",
                         boxShadow: "var(--shadow-md)",
                         transition: "all var(--transition-base)",
                         border:
@@ -995,119 +1125,158 @@ export default function PublicCatalogPage() {
                             : "none",
                       }}
                     >
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                          gap: "var(--spacing-3)",
-                        }}
-                      >
+                      <div style={{ display: "grid", gap: "var(--spacing-3)" }}>
                         <div
                           style={{
                             display: "flex",
-                            alignItems: "center",
-                            gap: "var(--spacing-3)",
-                            flex: 1,
+                            justifyContent: "space-between",
+                            alignItems: isMicroMobile ? "stretch" : "flex-start",
+                            flexDirection: isMicroMobile ? "column" : "row",
+                            gap: isMicroMobile ? "var(--spacing-2)" : "var(--spacing-3)",
                           }}
                         >
-                          <div
-                            style={{
-                              width: 50,
-                              height: 50,
-                              background: isNameHighlighted
-                                ? "#e5e7eb"
-                                : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-                              borderRadius: "var(--radius-lg)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: "var(--font-size-xl)",
-                              fontWeight: 800,
-                              color: isNameHighlighted ? "#4a5568" : "white",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {item.slot}
-                          </div>
-
-                          <div style={{ flex: 1 }}>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <div
                               style={{
-                                fontSize: isNameHighlighted
-                                  ? "var(--font-size-lg)"
-                                  : "var(--font-size-base)",
+                                fontSize: isMicroMobile
+                                  ? "0.95rem"
+                                  : isNameHighlighted
+                                    ? "var(--font-size-lg)"
+                                    : "var(--font-size-base)",
                                 fontWeight: isNameHighlighted ? 800 : 700,
                                 color: isNameHighlighted ? "#667eea" : "var(--color-text)",
                                 marginBottom: "var(--spacing-1)",
-                                lineHeight: 1.3,
+                                lineHeight: isMicroMobile ? 1.22 : 1.3,
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
                               }}
                             >
-                              {debouncedSearchTerm
-                                ? highlightSearchTerm(item.name, debouncedSearchTerm)
-                                : item.name}
+                              {debouncedSearchTerm ? highlightSearchTerm(item.name, debouncedSearchTerm) : item.name}
                             </div>
-
                             <div
                               style={{
-                                fontSize: isPriceHighlighted
-                                  ? "var(--font-size-xl)"
-                                  : "var(--font-size-lg)",
+                                fontSize: isPriceHighlighted ? "var(--font-size-xl)" : "var(--font-size-lg)",
                                 fontWeight: isPriceHighlighted ? 900 : 800,
                                 color: isPriceHighlighted ? "#92400e" : "#1e3a8a",
+                                lineHeight: isMicroMobile ? 1.18 : 1.24,
                               }}
                             >
-                              {formatMoney(item.amount_cents, item.currency)}
+                              {formatMoney(
+                                item.amount_cents,
+                                resolveCatalogDisplayCurrency(item.currency, region),
+                                resolveCatalogLocale(region)
+                              )}
                             </div>
+                          </div>
 
-                            <div
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: "var(--spacing-2)",
+                              alignItems: "center",
+                              flexShrink: 0,
+                              width: isMicroMobile ? "100%" : "auto",
+                            }}
+                          >
+                            <button
+                              onClick={() => handleReserve(item)}
+                              disabled={submittingSlot === item.slot || !item.is_operationally_available}
+                              className="btn btn--primary"
                               style={{
-                                marginTop: 6,
-                                fontSize: 12,
-                                color:
-                                  item.locker_state === "AVAILABLE" ? "#047857" : "#b91c1c",
-                                fontWeight: 700,
+                                minWidth: isMicroMobile ? 0 : 124,
+                                width: isMicroMobile ? "100%" : "auto",
+                                height: isMicroMobile ? 42 : 44,
+                                borderRadius: "var(--radius-lg)",
+                                padding: "0 12px",
+                                fontSize: isMicroMobile ? "0.82rem" : "var(--font-size-sm)",
+                                fontWeight: 800,
                               }}
+                              aria-label={`Reservar ${item.name} - Gaveta ${item.slot}`}
                             >
-                              Estado: {item.locker_state || "-"}
-                            </div>
+                              {submittingSlot === item.slot
+                                ? "Processando..."
+                                : item.is_operationally_available
+                                  ? "Comprar agora"
+                                  : "Indisponível"}
+                            </button>
+
+                            <button
+                              onClick={() => toggleExpand(item.slot)}
+                              className="btn btn--secondary"
+                              style={{
+                                width: isMicroMobile ? 44 : 36,
+                                height: isMicroMobile ? 44 : 36,
+                                borderRadius: "var(--radius-md)",
+                                padding: 0,
+                                fontSize: "var(--font-size-sm)",
+                                flexShrink: 0,
+                              }}
+                              aria-label={isExpanded ? "Recolher detalhes" : "Expandir detalhes"}
+                              aria-expanded={isExpanded}
+                            >
+                              {isExpanded ? "▲" : "▼"}
+                            </button>
                           </div>
                         </div>
 
-                        <div style={{ display: "flex", gap: "var(--spacing-2)", alignItems: "center" }}>
-                          <button
-                            onClick={() => handleReserve(item)}
-                            disabled={
-                              submittingSlot === item.slot || !item.is_operationally_available
-                            }
-                            className="btn btn--primary"
+                        <div style={{ display: "flex", alignItems: "center", gap: "var(--spacing-2)", flexWrap: "wrap" }}>
+                          <span
                             style={{
-                              width: 50,
-                              height: 50,
-                              borderRadius: "var(--radius-lg)",
-                              padding: 0,
-                              fontSize: "20px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 6,
+                              borderRadius: 999,
+                              padding: isMicroMobile ? "3px 8px" : "4px 10px",
+                              border: "1px solid rgba(29,78,216,0.25)",
+                              background: "rgba(29,78,216,0.08)",
+                              color: "#1e40af",
+                              fontWeight: 800,
+                              fontSize: isMicroMobile ? 11 : 12,
                             }}
-                            aria-label={`Reservar ${item.name} - Gaveta ${item.slot}`}
+                            aria-label={`Gaveta ${item.slot}`}
                           >
-                            {submittingSlot === item.slot ? "⏳" : "🛒"}
-                          </button>
-
-                          <button
-                            onClick={() => toggleExpand(item.slot)}
-                            className="btn btn--secondary"
+                            <span style={{ fontSize: isMicroMobile ? 9 : 10, textTransform: "uppercase", opacity: 0.8 }}>Gaveta</span>
+                            <span style={{ fontSize: isMicroMobile ? 13 : 14 }}>{item.slot}</span>
+                          </span>
+                          <span
                             style={{
-                              width: 40,
-                              height: 40,
-                              borderRadius: "var(--radius-md)",
-                              padding: 0,
-                              fontSize: "var(--font-size-sm)",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              borderRadius: 999,
+                              padding: isMicroMobile ? "3px 8px" : "4px 10px",
+                              border: item.locker_state === "AVAILABLE" ? "1px solid rgba(4,120,87,0.25)" : "1px solid rgba(185,28,28,0.22)",
+                              background: item.locker_state === "AVAILABLE" ? "rgba(4,120,87,0.08)" : "rgba(185,28,28,0.08)",
+                              color: item.locker_state === "AVAILABLE" ? "#047857" : "#b91c1c",
+                              fontWeight: 700,
+                              fontSize: isMicroMobile ? 11 : 12,
                             }}
-                            aria-label={isExpanded ? "Recolher detalhes" : "Expandir detalhes"}
-                            aria-expanded={isExpanded}
                           >
-                            {isExpanded ? "▲" : "▼"}
-                          </button>
+                            {item.is_operationally_available ? "Disponível agora" : "Indisponível"}
+                          </span>
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              borderRadius: 999,
+                              padding: isMicroMobile ? "3px 8px" : "4px 10px",
+                              border: item.is_operationally_available
+                                ? "1px solid rgba(59,130,246,0.22)"
+                                : "1px solid rgba(148,163,184,0.3)",
+                              background: item.is_operationally_available
+                                ? "rgba(59,130,246,0.08)"
+                                : "rgba(148,163,184,0.12)",
+                              color: item.is_operationally_available ? "#1e40af" : "#475569",
+                              fontWeight: 600,
+                              fontSize: isMicroMobile ? 11 : 12,
+                            }}
+                          >
+                            {item.is_operationally_available
+                              ? "Retirada no locker selecionado"
+                              : "Sem retirada no momento"}
+                          </span>
                         </div>
                       </div>
 

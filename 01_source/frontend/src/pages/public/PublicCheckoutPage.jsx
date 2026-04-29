@@ -40,7 +40,7 @@ function TrustSignals() {
       </div>
       <div style={trustItemStyle}>
         <span style={trustIconStyle}>📦</span>
-        <span style={trustTextStyle}>Retirada em 2 horas 24/7</span>
+        <span style={trustTextStyle}>Retirada após confirmação</span>
       </div>
     </div>
   );
@@ -276,6 +276,15 @@ export default function PublicCheckoutPage() {
   const allowedPaymentMethods = useMemo(() => {
     return Array.isArray(locker?.payment_methods) ? locker.payment_methods : [];
   }, [locker]);
+  const displayLocale = region === "PT" ? "pt-PT" : "pt-BR";
+  const catalogCurrency = String(product?.currency || "").trim().toUpperCase();
+  const previewCurrency = String(creditPreview?.currency || "").trim().toUpperCase();
+  const displayCurrency = useMemo(() => {
+    if (previewCurrency) return previewCurrency;
+    if (catalogCurrency && catalogCurrency !== "BRL") return catalogCurrency;
+    if (region === "PT") return "EUR";
+    return catalogCurrency || "BRL";
+  }, [previewCurrency, catalogCurrency, region]);
 
   // 15/04/2026
   const [loadingSimulatePayment, setLoadingSimulatePayment] = useState(false);
@@ -761,8 +770,8 @@ export default function PublicCheckoutPage() {
           <div style={heroContentStyle}>
             <h1 style={titleStyle}>Finalizar Reserva</h1>
             <p style={subtitleStyle}>
-              Você está reservando uma gaveta real do locker selecionado. O pedido será criado
-              no canal ONLINE usando runtime central.
+              Confira os dados do seu pedido, escolha a forma de pagamento e confirme sua
+              reserva para retirada no locker selecionado.
             </p>
           </div>
           <TrustSignals />
@@ -809,31 +818,30 @@ export default function PublicCheckoutPage() {
               <pre style={errorBoxStyle}>{productError}</pre>
             ) : product ? (
               <div style={summaryGridStyle}>
+                <div style={summaryHighlightStyle}>
+                  <small style={summaryHighlightLabelStyle}>Produto selecionado</small>
+                  <div style={summaryHighlightMainRowStyle}>
+                    <div style={summaryHighlightProductStyle}>{product.name || "-"}</div>
+                    <span style={summaryHighlightMetaChipStyle}>Gaveta {slot}</span>
+                    <div style={summaryHighlightPriceStyle}>
+                      {formatMoney(product.amount_cents, displayCurrency, displayLocale)}
+                    </div>
+                  </div>
+                  <small style={summaryHighlightHintStyle}>
+                    Retirada liberada após confirmação do pagamento.
+                  </small>
+                </div>
                 <div style={summaryItemStyle}>
                   <span style={summaryLabelStyle}>Região</span>
                   <span style={summaryValueStyle}>{region}</span>
                 </div>
                 <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Locker ID</span>
+                  <span style={summaryLabelStyle}>Identificador do locker</span>
                   <span style={summaryValueStyle}>{lockerId}</span>
                 </div>
                 <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Gaveta</span>
-                  <span style={summaryValueStyle}>{slot}</span>
-                </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>SKU</span>
+                  <span style={summaryLabelStyle}>Identificador do SKU</span>
                   <span style={summaryValueStyle}>{product.sku_id || skuId}</span>
-                </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Produto</span>
-                  <span style={summaryValueStyle}>{product.name || "-"}</span>
-                </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Preço</span>
-                  <span style={priceStyle}>
-                    {formatMoney(product.amount_cents, product.currency)}
-                  </span>
                 </div>
                 {useCredit ? (
                   <div style={summaryItemStyle}>
@@ -841,14 +849,20 @@ export default function PublicCheckoutPage() {
                     <span style={priceStyle}>
                       {formatMoney(
                         creditPreview?.final_amount_cents ?? product.amount_cents,
-                        creditPreview?.currency || product.currency
+                        displayCurrency,
+                        displayLocale
                       )}
                     </span>
                   </div>
                 ) : null}
                 <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Moeda</span>
-                  <span style={summaryValueStyle}>{product.currency || "-"}</span>
+                  <span style={summaryLabelStyle}>Moeda exibida</span>
+                  <span style={summaryValueStyle}>
+                    {displayCurrency || "-"}
+                    {catalogCurrency && catalogCurrency !== displayCurrency
+                      ? ` (catálogo: ${catalogCurrency})`
+                      : ""}
+                  </span>
                 </div>
               </div>
             ) : (
@@ -914,8 +928,8 @@ export default function PublicCheckoutPage() {
                     <small style={{ color: "#475569" }}>Simulando crédito disponível...</small>
                   ) : creditPreview?.eligible ? (
                     <small style={{ color: "#166534" }}>
-                      Crédito selecionado: {formatMoney(creditPreview.discount_cents, creditPreview.currency || product?.currency)}.
-                      Total final: {formatMoney(creditPreview.final_amount_cents, creditPreview.currency || product?.currency)}.
+                      Crédito selecionado: {formatMoney(creditPreview.discount_cents, displayCurrency, displayLocale)}.
+                      Total final: {formatMoney(creditPreview.final_amount_cents, displayCurrency, displayLocale)}.
                     </small>
                   ) : (
                     <small style={{ color: "#b91c1c" }}>
@@ -930,10 +944,10 @@ export default function PublicCheckoutPage() {
             <div style={noticeStyle}>
               <span style={noticeIconStyle}>ℹ️</span>
               <div>
-                <strong>Informação importante:</strong>
+                <strong>Antes de confirmar:</strong>
                 <p style={{ margin: "4px 0 0 0" }}>
-                  O pedido criado aqui entra no fluxo ONLINE real, respeitando locker, gaveta,
-                  SKU e método de pagamento. O preço final não é confiado ao frontend.
+                  O valor final e a disponibilidade são validados novamente no servidor no momento
+                  da confirmação para garantir segurança e consistência do pedido.
                 </p>
               </div>
             </div>
@@ -1006,7 +1020,7 @@ export default function PublicCheckoutPage() {
                   Pedido Criado! Redirecionando...
                 </>
               ) : (
-                "Criar Pedido Online"
+                "Confirmar reserva e pagar"
               )}
             </button>
 
@@ -1222,6 +1236,63 @@ const cardTextStyle = {
 const summaryGridStyle = {
   display: "grid",
   gap: 12,
+};
+
+const summaryHighlightStyle = {
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid #c7d2fe",
+  background: "#eef2ff",
+  display: "grid",
+  gap: 6,
+};
+
+const summaryHighlightLabelStyle = {
+  fontSize: 12,
+  color: "#4f46e5",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.03em",
+};
+
+const summaryHighlightMainRowStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summaryHighlightProductStyle = {
+  fontSize: 16,
+  color: "#1e1b4b",
+  fontWeight: 700,
+  lineHeight: 1.35,
+  flex: "1 1 220px",
+};
+
+const summaryHighlightMetaChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  padding: "3px 8px",
+  borderRadius: 999,
+  border: "1px solid rgba(79,70,229,0.24)",
+  background: "rgba(79,70,229,0.1)",
+  color: "#4338ca",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const summaryHighlightPriceStyle = {
+  fontSize: 22,
+  color: "#3730a3",
+  fontWeight: 900,
+  lineHeight: 1.2,
+};
+
+const summaryHighlightHintStyle = {
+  fontSize: 12,
+  color: "#4338ca",
+  fontWeight: 500,
 };
 
 const summaryItemStyle = {

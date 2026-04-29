@@ -1704,7 +1704,7 @@ export default function OpsAuditPage() {
           <section style={summary24hSectionStyle}>
             <details open={rankingOpen} onToggle={(event) => setRankingOpen(event.currentTarget.open)} style={collapsibleDetailsStyle}>
               <summary style={collapsibleSummaryStyle}>
-                Ranking crítico (severidade -> impacto -> recência) · exibindo {filteredCriticalRanking.length}/{criticalRanking.length}
+                Ranking crítico (severidade -&gt; impacto -&gt; recência) · exibindo {filteredCriticalRanking.length}/{criticalRanking.length}
               </summary>
               <div style={localFilterRowStyle}>
                 <label style={localFilterFieldStyle}>

@@ -1,0 +1,16 @@
+{
+  "fixture_version": "fg1-fixtures-v1",
+  "country_code": "CA",
+  "operation": "cancel",
+  "scenario": "CANCEL_DEADLINE_EXPIRED",
+  "document_reference": "CA-cancel-DOC-001",
+  "order_reference": "CA-cancel-ORDER-001",
+  "amount_cents": 12345,
+  "currency": "LOCAL",
+  "customer_tax_id": "TAX-STUB-001",
+  "adapter_name": "cra_stub_adapter_v1",
+  "authority": "CRA",
+  "canonical_status": "BUSINESS_REJECTED",
+  "authority_status": "PRAZO_EXPIRADO",
+  "fixture_relative_path": "fixtures/fiscal/fg1/ca/cancel/cancel_deadline_expired.json"
+}

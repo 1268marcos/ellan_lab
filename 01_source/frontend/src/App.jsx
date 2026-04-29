@@ -63,6 +63,8 @@ const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHyperta
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
 const FiscalUpdatesPage = lazy(() => import("./pages/FiscalUpdatesPage"));
+const FiscalFg1GatePage = lazy(() => import("./pages/FiscalFg1GatePage"));
+const FiscalReadinessExecutionPage = lazy(() => import("./pages/FiscalReadinessExecutionPage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -346,6 +348,8 @@ function TopNav() {
     ? [
         { to: "/fiscal", label: "fiscal /global", aria: "Catálogo e matriz fiscal global" },
         { to: "/fiscal/countries", label: "fiscal /countries", aria: "Cockpit FG-1/FG-2 por país" },
+        { to: "/fiscal/fg1-gate", label: "fiscal /fg1-gate", aria: "Gate técnico FG-1 (GO/NO_GO)" },
+        { to: "/fiscal/readiness-execution", label: "fiscal /readiness-execution", aria: "Execução operacional de readiness FG-1", isNew: true },
         { to: "/fiscal/updates", label: "fiscal /updates", aria: "Histórico da trilha fiscal global" },
       ]
     : [];
@@ -484,6 +488,7 @@ function TopNav() {
                         onClick={() => setIsFiscalMenuOpen(false)}
                       >
                         <span>{link.label}</span>
+                        {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
                       </Link>
                     ))}
                   </div>
@@ -763,6 +768,7 @@ function TopNav() {
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <span>{link.label}</span>
+                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
                         </Link>
                       ))}
                     </div>
@@ -822,11 +828,23 @@ function OpsRoute({ children }) {
   return children;
 }
 
-function RecoverFiscalCountriesRoute() {
+function RecoverFiscalRoute() {
   const location = useLocation();
   const normalizedPath = String(location.pathname || "").toLowerCase();
   if (normalizedPath.includes("fiscal/countries")) {
     return <Navigate to="/fiscal/countries" replace />;
+  }
+  if (normalizedPath.includes("fiscal/updates")) {
+    return <Navigate to="/fiscal/updates" replace />;
+  }
+  if (normalizedPath.includes("fiscal/fg1-gate")) {
+    return <Navigate to="/fiscal/fg1-gate" replace />;
+  }
+  if (normalizedPath.includes("fiscal/readiness-execution")) {
+    return <Navigate to="/fiscal/readiness-execution" replace />;
+  }
+  if (normalizedPath.includes("fiscal/global") || normalizedPath.includes("/fiscal")) {
+    return <Navigate to="/fiscal" replace />;
   }
   return <PublicNotFoundPage />;
 }
@@ -913,11 +931,31 @@ function AppContent() {
               }
             />
             <Route
+              path="/fiscal/fg1-gate"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalFg1GatePage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/fiscal/updates"
               element={
                 <OpsRoute>
                   <FiscalPageLayout>
                     <FiscalUpdatesPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/readiness-execution"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalReadinessExecutionPage />
                   </FiscalPageLayout>
                 </OpsRoute>
               }
@@ -1209,7 +1247,7 @@ function AppContent() {
             />
 
             {/* Rota 404 - Página não encontrada */}
-            <Route path="*" element={<RecoverFiscalCountriesRoute />} />
+            <Route path="*" element={<RecoverFiscalRoute />} />
           </Routes>
         </Suspense>
       </div>

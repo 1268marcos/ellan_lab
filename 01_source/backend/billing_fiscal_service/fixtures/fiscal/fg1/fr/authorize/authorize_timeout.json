@@ -1,0 +1,16 @@
+{
+  "fixture_version": "fg1-fixtures-v1",
+  "country_code": "FR",
+  "operation": "authorize",
+  "scenario": "AUTHORIZE_TIMEOUT",
+  "document_reference": "FR-authorize-DOC-001",
+  "order_reference": "FR-authorize-ORDER-001",
+  "amount_cents": 12345,
+  "currency": "LOCAL",
+  "customer_tax_id": "TAX-STUB-001",
+  "adapter_name": "chorus_stub_adapter_v1",
+  "authority": "DGFiP",
+  "canonical_status": "TIMEOUT",
+  "authority_status": "TIMEOUT",
+  "fixture_relative_path": "fixtures/fiscal/fg1/fr/authorize/authorize_timeout.json"
+}

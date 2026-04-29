@@ -656,6 +656,10 @@ export default function OpsHealthPage() {
   const [opsSanityReport, setOpsSanityReport] = useState(null);
   const [opsSanityLoading, setOpsSanityLoading] = useState(false);
   const [opsSanityError, setOpsSanityError] = useState("");
+  const [fg1FinalDecisionReport, setFg1FinalDecisionReport] = useState(null);
+  const [fg1FinalDecisionLoading, setFg1FinalDecisionLoading] = useState(false);
+  const [fg1FinalDecisionError, setFg1FinalDecisionError] = useState("");
+  const [fg1FinalDecisionCopyStatus, setFg1FinalDecisionCopyStatus] = useState("");
   const [fiscalGoNoGo, setFiscalGoNoGo] = useState({ br: null, pt: null });
   const [fiscalGoNoGoLoading, setFiscalGoNoGoLoading] = useState(false);
   const [fiscalGoNoGoError, setFiscalGoNoGoError] = useState("");
@@ -852,6 +856,31 @@ export default function OpsHealthPage() {
       setOpsSanityError(String(err?.message || err));
     } finally {
       if (!silent) setOpsSanityLoading(false);
+    }
+  }
+
+  async function loadFg1FinalDecisionLatest({ silent = false } = {}) {
+    if (!token) return;
+    if (!silent) setFg1FinalDecisionLoading(true);
+    setFg1FinalDecisionError("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/fiscal-fg1-final/latest`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar snapshot final FG-1."));
+      }
+      setFg1FinalDecisionReport(payload?.report || null);
+    } catch (err) {
+      setFg1FinalDecisionReport(null);
+      setFg1FinalDecisionError(String(err?.message || err));
+    } finally {
+      if (!silent) setFg1FinalDecisionLoading(false);
     }
   }
 
@@ -1454,6 +1483,7 @@ export default function OpsHealthPage() {
   useEffect(() => {
     void loadMetrics();
     void loadOpsSanityLatest({ silent: true });
+    void loadFg1FinalDecisionLatest({ silent: true });
     void loadFiscalGoNoGoSummary({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -1614,6 +1644,87 @@ export default function OpsHealthPage() {
       window.setTimeout(() => setDailySlackStatus(""), 2500);
     } catch (err) {
       setDailySlackStatus(`Falha ao copiar daily: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function copyFg1FinalDecisionSlack() {
+    if (!fg1FinalDecisionReport) {
+      setFg1FinalDecisionCopyStatus("Snapshot FG-1 indisponível para cópia.");
+      window.setTimeout(() => setFg1FinalDecisionCopyStatus(""), 2200);
+      return;
+    }
+    try {
+      const nowIso = new Date().toISOString();
+      const text = [
+        `📌 *FG-1 Handoff Final | ${nowIso}*`,
+        `Decisão global: ${String(fg1FinalDecisionReport.final_global_decision || "-")}`,
+        `Países aptos: ${Number(fg1FinalDecisionReport.countries_ready || 0)} | Países bloqueados: ${Number(fg1FinalDecisionReport.countries_blocked || 0)} | Total: ${Number(fg1FinalDecisionReport.country_count || 0)}`,
+        `Versões: coverage=${String(fg1FinalDecisionReport?.sources?.coverage_gate_version || "-")} | readiness=${String(fg1FinalDecisionReport?.sources?.readiness_gate_version || "-")} | action_plan=${String(fg1FinalDecisionReport?.sources?.action_plan_version || "-")}`,
+        `Gerado em UTC: ${String(fg1FinalDecisionReport.generated_at || "-")}`,
+      ].join("\n");
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setFg1FinalDecisionCopyStatus("Payload resumido FG-1 copiado para Slack/Teams.");
+      window.setTimeout(() => setFg1FinalDecisionCopyStatus(""), 2400);
+    } catch (err) {
+      setFg1FinalDecisionCopyStatus(`Falha ao copiar payload FG-1: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function copyFg1TopBlockedTicket() {
+    if (!fg1FinalDecisionReport) {
+      setFg1FinalDecisionCopyStatus("Snapshot FG-1 indisponível para ticket imediato.");
+      window.setTimeout(() => setFg1FinalDecisionCopyStatus(""), 2200);
+      return;
+    }
+    const countries = Array.isArray(fg1FinalDecisionReport.countries) ? fg1FinalDecisionReport.countries : [];
+    const blocked = countries
+      .filter((row) => String(row?.final_decision || "").toUpperCase() !== "GO")
+      .sort((a, b) => Number(b?.pending_actions || 0) - Number(a?.pending_actions || 0));
+    if (blocked.length === 0) {
+      setFg1FinalDecisionCopyStatus("Sem país bloqueado no snapshot atual (todos GO).");
+      window.setTimeout(() => setFg1FinalDecisionCopyStatus(""), 2200);
+      return;
+    }
+    const top = blocked[0];
+    const country = String(top?.country_code || "-").toUpperCase();
+    const pending = Number(top?.pending_actions || 0);
+    const text = [
+      `🎯 [FG-1 Ticket imediato] País crítico: ${country}`,
+      `Bloqueios pendentes: ${pending}`,
+      `Coverage: ${String(top?.coverage_status || "-")} | Readiness: ${String(top?.readiness_status || "-")}`,
+      "Ação recomendada: executar readiness-action-plan do país e fechar primeiro auth/homologação/certificado/SLA.",
+      `Snapshot UTC: ${String(fg1FinalDecisionReport.generated_at || "-")}`,
+    ].join("\n");
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setFg1FinalDecisionCopyStatus(`Ticket imediato FG-1 copiado (${country}).`);
+      window.setTimeout(() => setFg1FinalDecisionCopyStatus(""), 2400);
+    } catch (err) {
+      setFg1FinalDecisionCopyStatus(`Falha ao copiar ticket imediato FG-1: ${String(err?.message || err)}`);
     }
   }
 
@@ -2072,6 +2183,49 @@ export default function OpsHealthPage() {
 
         <section style={opsSanityCardStyle}>
           <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>FG-1 decisão final (handoff latest)</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => void loadFg1FinalDecisionLatest()} style={buttonGhostStyle} disabled={fg1FinalDecisionLoading}>
+                {fg1FinalDecisionLoading ? "Atualizando..." : "Atualizar handoff FG-1"}
+              </button>
+              <button type="button" onClick={() => void copyFg1FinalDecisionSlack()} style={buttonGhostStyle} disabled={!fg1FinalDecisionReport}>
+                Copiar payload Slack/Teams
+              </button>
+              <button type="button" onClick={() => void copyFg1TopBlockedTicket()} style={buttonGhostStyle} disabled={!fg1FinalDecisionReport}>
+                Copiar ticket imediato FG-1
+              </button>
+            </div>
+          </div>
+          {fg1FinalDecisionError ? <small style={{ color: "#fecaca" }}>{fg1FinalDecisionError}</small> : null}
+          {fg1FinalDecisionCopyStatus ? <small style={summary24hHintStyle}>{fg1FinalDecisionCopyStatus}</small> : null}
+          {fg1FinalDecisionReport ? (
+            <div style={summary24hGridStyle}>
+              <article style={{ ...summary24hItemStyle, ...resolveGateBadgeStyle(fg1FinalDecisionReport.final_global_decision) }}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(fg1FinalDecisionReport.final_global_decision || "-")}</strong>
+                <small style={summary24hLabelStyle}>Decisão global</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{Number(fg1FinalDecisionReport.countries_ready || 0)}</strong>
+                <small style={summary24hLabelStyle}>Países aptos</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{Number(fg1FinalDecisionReport.countries_blocked || 0)}</strong>
+                <small style={summary24hLabelStyle}>Países bloqueados</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(fg1FinalDecisionReport.generated_at || "-")}</strong>
+                <small style={summary24hLabelStyle}>Gerado em (UTC)</small>
+              </article>
+            </div>
+          ) : (
+            <small style={summary24hHintStyle}>
+              Execute `02_docker/run_fg1_final_handoff_snapshot.sh` para gerar `fg1_final_decision_latest.json`.
+            </small>
+          )}
+        </section>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
             <h3 style={{ margin: 0, fontSize: 14 }}>{FISCAL_SCOPE_GATE_PANEL_TITLE}</h3>
             <button type="button" onClick={() => void loadFiscalGoNoGoSummary()} style={buttonGhostStyle} disabled={fiscalGoNoGoLoading}>
               {fiscalGoNoGoLoading ? "Atualizando..." : "Atualizar gate"}
@@ -2438,7 +2592,7 @@ export default function OpsHealthPage() {
             <section style={drilldownSectionStyle}>
               <h3 style={{ margin: 0, fontSize: 15 }}>Drill-down operacional</h3>
               <p style={drilldownHelpTextStyle}>
-                Nível 1: visão geral (esta tela) -> Nível 2: componente/processo -> Nível 3: evidência operacional.
+                Nível 1: visão geral (esta tela) -&gt; Nível 2: componente/processo -&gt; Nível 3: evidência operacional.
               </p>
               <div style={drilldownActionsStyle}>
                 <Link to={drilldownLinks.auditErrors} style={drilldownLinkStyle}>

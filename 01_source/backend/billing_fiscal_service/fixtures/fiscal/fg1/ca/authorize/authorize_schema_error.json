@@ -1,0 +1,16 @@
+{
+  "fixture_version": "fg1-fixtures-v1",
+  "country_code": "CA",
+  "operation": "authorize",
+  "scenario": "AUTHORIZE_SCHEMA_ERROR",
+  "document_reference": "CA-authorize-DOC-001",
+  "order_reference": "CA-authorize-ORDER-001",
+  "amount_cents": 12345,
+  "currency": "LOCAL",
+  "customer_tax_id": "TAX-STUB-001",
+  "adapter_name": "cra_stub_adapter_v1",
+  "authority": "CRA",
+  "canonical_status": "VALIDATION_ERROR",
+  "authority_status": "ERRO_VALIDACAO",
+  "fixture_relative_path": "fixtures/fiscal/fg1/ca/authorize/authorize_schema_error.json"
+}
