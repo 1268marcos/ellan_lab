@@ -404,7 +404,8 @@ def kiosk_create_order(
             status_code=500,
             detail={
                 "type": "KIOSK_CREATE_ORDER_FAILED",
-                "error": str(exc),
+                "message": "Falha ao criar pedido KIOSK.",
+                "error_type": exc.__class__.__name__,
             },
         )
 

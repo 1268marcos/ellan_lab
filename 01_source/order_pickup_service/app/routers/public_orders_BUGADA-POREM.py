@@ -465,7 +465,7 @@ def kiosk_create_order(
                 "slot": payload.slot,
                 "sku_id": payload.sku_id,
                 "payment_method": resolved_method,
-                "error": str(exc),
+                "error_type": exc.__class__.__name__,
             },
         ) from exc
 

@@ -114,12 +114,22 @@ class RiskEventsService:
             params.append(porta)
             
         # Ordenação
-        valid_sort_fields = ["created_at", "id", "score", "region", "decision"]
-        if sort_by not in valid_sort_fields:
-            sort_by = "created_at"
-            
-        sort_order = "ASC" if sort_order.upper() == "ASC" else "DESC"
-        query += f" ORDER BY {sort_by} {sort_order}"
+        valid_sort_fields = {"created_at", "id", "score", "region", "decision"}
+        normalized_sort_by = sort_by if sort_by in valid_sort_fields else "created_at"
+        normalized_sort_order = "ASC" if sort_order.upper() == "ASC" else "DESC"
+        order_clause_map = {
+            ("created_at", "ASC"): " ORDER BY created_at ASC",
+            ("created_at", "DESC"): " ORDER BY created_at DESC",
+            ("id", "ASC"): " ORDER BY id ASC",
+            ("id", "DESC"): " ORDER BY id DESC",
+            ("score", "ASC"): " ORDER BY score ASC",
+            ("score", "DESC"): " ORDER BY score DESC",
+            ("region", "ASC"): " ORDER BY region ASC",
+            ("region", "DESC"): " ORDER BY region DESC",
+            ("decision", "ASC"): " ORDER BY decision ASC",
+            ("decision", "DESC"): " ORDER BY decision DESC",
+        }
+        query += order_clause_map[(normalized_sort_by, normalized_sort_order)]
         
         # Paginação
         query += " LIMIT ? OFFSET ?"

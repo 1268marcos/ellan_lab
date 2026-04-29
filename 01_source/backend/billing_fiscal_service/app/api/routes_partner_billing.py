@@ -4,7 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import text
+from sqlalchemy import String, and_, asc, cast, column, desc, func, literal, select, table, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -174,6 +174,10 @@ def _resolve_sorting(
     return allowed_fields[field_key], order
 
 
+def _resolve_order_expr(sort_field: str, sort_direction: str):
+    return asc(column(sort_field)) if sort_direction == "ASC" else desc(column(sort_field))
+
+
 @router.get("/{partner_id}/billing/cycles")
 def list_partner_cycles(
     partner_id: str,
@@ -190,11 +194,10 @@ def list_partner_cycles(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["partner_id = :partner_id"]
-    params: dict[str, object] = {"partner_id": partner_id}
+    billing_cycles = table("partner_billing_cycles")
+    filters = [column("partner_id") == partner_id]
     if year is not None:
-        clauses.append("EXTRACT(YEAR FROM period_start) = :year")
-        params["year"] = int(year)
+        filters.append(func.extract("year", column("period_start")) == int(year))
     status_norm = _normalize_enum(
         status,
         VALID_CYCLE_STATUS,
@@ -202,22 +205,15 @@ def list_partner_cycles(
         error_code="INVALID_CYCLE_STATUS",
     )
     if status_norm:
-        clauses.append("status = :status")
-        params["status"] = status_norm
+        filters.append(column("status") == status_norm)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     if from_date:
-        clauses.append("period_start >= :from_date")
-        params["from_date"] = from_date
+        filters.append(column("period_start") >= from_date)
     if to_date:
-        clauses.append("period_end <= :to_date")
-        params["to_date"] = to_date
-    params["limit"] = int(limit)
-    params["offset"] = int(offset)
+        filters.append(column("period_end") <= to_date)
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -226,21 +222,30 @@ def list_partner_cycles(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, status, currency, country_code, jurisdiction_code, period_timezone,
-                   period_start, period_end, total_amount_cents, dedupe_key, computed_at
-            FROM partner_billing_cycles
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, created_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("id"),
+            column("partner_id"),
+            column("status"),
+            column("currency"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            column("period_timezone"),
+            column("period_start"),
+            column("period_end"),
+            column("total_amount_cents"),
+            column("dedupe_key"),
+            column("computed_at"),
+        )
+        .select_from(billing_cycles)
+        .where(and_(*filters))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), desc(column("created_at")))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM partner_billing_cycles WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(billing_cycles)
+        .where(and_(*filters))
     ).fetchone()
     items = [PartnerBillingCycleOut(**_row_to_dict(r)) for r in rows]
     return {
@@ -268,8 +273,8 @@ def list_cycle_line_items(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["partner_id = :partner_id", "cycle_id = :cycle_id"]
-    params: dict[str, object] = {"partner_id": partner_id, "cycle_id": cycle_id, "limit": int(limit), "offset": int(offset)}
+    line_items = table("partner_billing_line_items")
+    filters = [column("partner_id") == partner_id, column("cycle_id") == cycle_id]
     line_type_norm = _normalize_enum(
         line_type,
         VALID_LINE_TYPES,
@@ -277,14 +282,11 @@ def list_cycle_line_items(
         error_code="INVALID_LINE_TYPE",
     )
     if line_type_norm:
-        clauses.append("line_type = :line_type")
-        params["line_type"] = line_type_norm
+        filters.append(column("line_type") == line_type_norm)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -293,21 +295,31 @@ def list_cycle_line_items(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT id, cycle_id, partner_id, line_type, description, quantity::text, unit_price_cents,
-                   total_cents, currency, country_code, jurisdiction_code, dedupe_key, created_at
-            FROM partner_billing_line_items
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, id ASC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("id"),
+            column("cycle_id"),
+            column("partner_id"),
+            column("line_type"),
+            column("description"),
+            cast(column("quantity"), String).label("quantity"),
+            column("unit_price_cents"),
+            column("total_cents"),
+            column("currency"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            column("dedupe_key"),
+            column("created_at"),
+        )
+        .select_from(line_items)
+        .where(and_(*filters))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), asc(column("id")))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM partner_billing_line_items WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(line_items)
+        .where(and_(*filters))
     ).fetchone()
     items = [PartnerBillingLineItemOut(**_row_to_dict(r)) for r in rows]
     return {
@@ -337,8 +349,8 @@ def list_partner_b2b_invoices(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["partner_id = :partner_id"]
-    params: dict[str, object] = {"partner_id": partner_id}
+    invoices = table("partner_b2b_invoices")
+    filters = [column("partner_id") == partner_id]
     status_norm = _normalize_enum(
         status,
         VALID_INVOICE_STATUS,
@@ -346,20 +358,15 @@ def list_partner_b2b_invoices(
         error_code="INVALID_INVOICE_STATUS",
     )
     if status_norm:
-        clauses.append("status = :status")
-        params["status"] = status_norm
+        filters.append(column("status") == status_norm)
     if from_date:
-        clauses.append("created_at::date >= :from_date")
-        params["from_date"] = from_date
+        filters.append(func.date(column("created_at")) >= from_date)
     if to_date:
-        clauses.append("created_at::date <= :to_date")
-        params["to_date"] = to_date
+        filters.append(func.date(column("created_at")) <= to_date)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     document_type_norm = _normalize_enum(
         document_type,
         VALID_INVOICE_DOCUMENT_TYPES,
@@ -367,10 +374,7 @@ def list_partner_b2b_invoices(
         error_code="INVALID_DOCUMENT_TYPE",
     )
     if document_type_norm:
-        clauses.append("document_type = :document_type")
-        params["document_type"] = document_type_norm
-    params["limit"] = int(limit)
-    params["offset"] = int(offset)
+        filters.append(column("document_type") == document_type_norm)
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -379,21 +383,32 @@ def list_partner_b2b_invoices(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT id, cycle_id, partner_id, status, document_type, amount_cents, tax_cents, currency,
-                   country_code, jurisdiction_code, timezone, due_date, dedupe_key, created_at
-            FROM partner_b2b_invoices
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, created_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("id"),
+            column("cycle_id"),
+            column("partner_id"),
+            column("status"),
+            column("document_type"),
+            column("amount_cents"),
+            column("tax_cents"),
+            column("currency"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            column("timezone"),
+            column("due_date"),
+            column("dedupe_key"),
+            column("created_at"),
+        )
+        .select_from(invoices)
+        .where(and_(*filters))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), desc(column("created_at")))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM partner_b2b_invoices WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(invoices)
+        .where(and_(*filters))
     ).fetchone()
     items = [PartnerB2BInvoiceOut(**_row_to_dict(r)) for r in rows]
     return {
@@ -421,8 +436,8 @@ def list_partner_credit_notes(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["partner_id = :partner_id"]
-    params: dict[str, object] = {"partner_id": partner_id, "limit": int(limit), "offset": int(offset)}
+    credit_notes = table("partner_credit_notes")
+    filters = [column("partner_id") == partner_id]
     status_norm = _normalize_enum(
         status,
         VALID_CREDIT_NOTE_STATUS,
@@ -430,8 +445,7 @@ def list_partner_credit_notes(
         error_code="INVALID_CREDIT_NOTE_STATUS",
     )
     if status_norm:
-        clauses.append("status = :status")
-        params["status"] = status_norm
+        filters.append(column("status") == status_norm)
     reason_code_norm = _normalize_enum(
         reason_code,
         VALID_CREDIT_NOTE_REASON_CODES,
@@ -439,14 +453,11 @@ def list_partner_credit_notes(
         error_code="INVALID_CREDIT_NOTE_REASON_CODE",
     )
     if reason_code_norm:
-        clauses.append("reason_code = :reason_code")
-        params["reason_code"] = reason_code_norm
+        filters.append(column("reason_code") == reason_code_norm)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -455,21 +466,32 @@ def list_partner_credit_notes(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, original_invoice_id, cycle_id, reason_code, amount_cents, currency,
-                   country_code, jurisdiction_code, timezone, status, dispute_ref, dedupe_key, created_at
-            FROM partner_credit_notes
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, created_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("id"),
+            column("partner_id"),
+            column("original_invoice_id"),
+            column("cycle_id"),
+            column("reason_code"),
+            column("amount_cents"),
+            column("currency"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            column("timezone"),
+            column("status"),
+            column("dispute_ref"),
+            column("dedupe_key"),
+            column("created_at"),
+        )
+        .select_from(credit_notes)
+        .where(and_(*filters))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), desc(column("created_at")))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM partner_credit_notes WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(credit_notes)
+        .where(and_(*filters))
     ).fetchone()
     items = [PartnerCreditNoteOut(**_row_to_dict(r)) for r in rows]
     return {
@@ -498,8 +520,8 @@ def list_partner_disputes_history(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["partner_id = :partner_id", "status = 'DISPUTED'"]
-    params: dict[str, object] = {"partner_id": partner_id, "limit": int(limit), "offset": int(offset)}
+    cycles = table("partner_billing_cycles")
+    filters = [column("partner_id") == partner_id, column("status") == "DISPUTED"]
     if status:
         status_norm = _normalize_enum(
             status,
@@ -507,20 +529,15 @@ def list_partner_disputes_history(
             param_name="status",
             error_code="INVALID_CYCLE_STATUS",
         )
-        clauses.append("status = :status")
-        params["status"] = status_norm
+        filters.append(column("status") == status_norm)
     if from_date:
-        clauses.append("updated_at::date >= :from_date")
-        params["from_date"] = from_date
+        filters.append(func.date(column("updated_at")) >= from_date)
     if to_date:
-        clauses.append("updated_at::date <= :to_date")
-        params["to_date"] = to_date
+        filters.append(func.date(column("updated_at")) <= to_date)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -529,22 +546,27 @@ def list_partner_disputes_history(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT id AS cycle_id, partner_id, 'CYCLE' AS dispute_scope, dispute_reason, status,
-                   country_code, jurisdiction_code, COALESCE(updated_at, created_at) AS opened_at,
-                   jsonb_build_object('dedupe_key', dedupe_key) AS metadata
-            FROM partner_billing_cycles
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, opened_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("id").label("cycle_id"),
+            column("partner_id"),
+            literal("CYCLE").label("dispute_scope"),
+            column("dispute_reason"),
+            column("status"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            func.coalesce(column("updated_at"), column("created_at")).label("opened_at"),
+            func.jsonb_build_object("dedupe_key", column("dedupe_key")).label("metadata"),
+        )
+        .select_from(cycles)
+        .where(and_(*filters))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), desc(func.coalesce(column("updated_at"), column("created_at"))))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM partner_billing_cycles WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(cycles)
+        .where(and_(*filters))
     ).fetchone()
     items = [PartnerDisputeHistoryOut(**_row_to_dict(r)) for r in rows]
     return {
@@ -636,29 +658,22 @@ def list_utilization_divergences(
     db: Session = Depends(get_db),
     _: None = Depends(validate_internal_token),
 ):
-    clauses = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    utilization = table("locker_utilization_snapshots")
+    filters = []
     if snapshot_date:
-        clauses.append("snapshot_date = :snapshot_date")
-        params["snapshot_date"] = snapshot_date
+        filters.append(column("snapshot_date") == snapshot_date)
     if from_date:
-        clauses.append("snapshot_date >= :from_date")
-        params["from_date"] = from_date
+        filters.append(column("snapshot_date") >= from_date)
     if to_date:
-        clauses.append("snapshot_date <= :to_date")
-        params["to_date"] = to_date
+        filters.append(column("snapshot_date") <= to_date)
     if partner_id:
-        clauses.append("partner_id = :partner_id")
-        params["partner_id"] = partner_id
+        filters.append(column("partner_id") == partner_id)
     if locker_id:
-        clauses.append("locker_id = :locker_id")
-        params["locker_id"] = locker_id
+        filters.append(column("locker_id") == locker_id)
     if country_code:
-        clauses.append("country_code = :country_code")
-        params["country_code"] = country_code.strip().upper()
+        filters.append(column("country_code") == country_code.strip().upper())
     if jurisdiction_code:
-        clauses.append("jurisdiction_code = :jurisdiction_code")
-        params["jurisdiction_code"] = jurisdiction_code.strip().upper()
+        filters.append(column("jurisdiction_code") == jurisdiction_code.strip().upper())
     status_norm = _normalize_enum(
         divergence_status,
         VALID_UTILIZATION_STATUS,
@@ -666,8 +681,7 @@ def list_utilization_divergences(
         error_code="INVALID_UTILIZATION_STATUS",
     )
     if status_norm:
-        clauses.append("divergence_status = :divergence_status")
-        params["divergence_status"] = status_norm
+        filters.append(column("divergence_status") == status_norm)
     sort_field, sort_direction = _resolve_sorting(
         sort_by=sort_by,
         sort_order=sort_order,
@@ -676,23 +690,35 @@ def list_utilization_divergences(
     )
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT snapshot_date, partner_id, locker_id, country_code, jurisdiction_code, currency, timezone,
-                   measured_occupied_minutes, measured_occupied_hours::text,
-                   billed_storage_units::text, billed_storage_hours::text, billed_storage_amount_cents,
-                   difference_hours::text, difference_pct::text, divergence_status, dedupe_key, updated_at
-            FROM locker_utilization_snapshots
-            WHERE {' AND '.join(clauses)}
-            ORDER BY {sort_field} {sort_direction}, updated_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            column("snapshot_date"),
+            column("partner_id"),
+            column("locker_id"),
+            column("country_code"),
+            column("jurisdiction_code"),
+            column("currency"),
+            column("timezone"),
+            column("measured_occupied_minutes"),
+            cast(column("measured_occupied_hours"), String).label("measured_occupied_hours"),
+            cast(column("billed_storage_units"), String).label("billed_storage_units"),
+            cast(column("billed_storage_hours"), String).label("billed_storage_hours"),
+            column("billed_storage_amount_cents"),
+            cast(column("difference_hours"), String).label("difference_hours"),
+            cast(column("difference_pct"), String).label("difference_pct"),
+            column("divergence_status"),
+            column("dedupe_key"),
+            column("updated_at"),
+        )
+        .select_from(utilization)
+        .where(and_(*filters) if filters else text("1=1"))
+        .order_by(_resolve_order_expr(sort_field, sort_direction), desc(column("updated_at")))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     count_row = db.execute(
-        text(f"SELECT COUNT(*) FROM locker_utilization_snapshots WHERE {' AND '.join(clauses)}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+        select(func.count())
+        .select_from(utilization)
+        .where(and_(*filters) if filters else text("1=1"))
     ).fetchone()
     items = [_row_to_dict(r) for r in rows]
     return {

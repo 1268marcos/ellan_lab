@@ -821,7 +821,11 @@ def create_order_core(
         except ValueError as exc:
             raise HTTPException(
                 status_code=400,
-                detail={"type": "INVALID_NCM", "message": str(exc)},
+                detail={
+                    "type": "INVALID_NCM",
+                    "message": "NCM inválido para o item do pedido.",
+                    "error_type": exc.__class__.__name__,
+                },
             ) from exc
 
     # =========================
@@ -1069,7 +1073,7 @@ def create_order_core(
                 "order_id": order.id,
                 "allocation_id": allocation.id,
                 "locker_id": order.totem_id,
-                "error": str(exc),
+                "error_type": exc.__class__.__name__,
             },
         ) from exc
 

@@ -12,8 +12,8 @@ Fechar o item de dashboards FA-5 com stack operacional real para:
 
 Servicos adicionados:
 
-- `grafana` -> `http://localhost:3000`
-- `metabase` -> `http://localhost:3001`
+- `grafana` -> `http://localhost:8300`
+- `metabase` -> `http://localhost:8301`
 
 Datasource Grafana provisionado automaticamente:
 
@@ -33,13 +33,13 @@ docker compose ps
 
 ### Grafana
 
-- URL: `http://localhost:3000`
+- URL: `http://localhost:8300`
 - user: `admin` (ou `GRAFANA_ADMIN_USER`)
 - senha: `admin123` (ou `GRAFANA_ADMIN_PASSWORD`)
 
 ### Metabase
 
-- URL: `http://localhost:3001`
+- URL: `http://localhost:8301`
 - primeira execucao abre wizard de setup.
 
 ## Configurar banco no Metabase

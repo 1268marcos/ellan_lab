@@ -78,7 +78,7 @@ def get_user_wallet_currency(db: Session, *, user_id: str | None) -> str | None:
     except SQLAlchemyError as exc:
         logger.warning(
             "get_user_wallet_currency_failed",
-            extra={"user_id": user_id, "error": str(exc)},
+            extra={"user_id": user_id, "error_type": exc.__class__.__name__},
         )
         return None
 

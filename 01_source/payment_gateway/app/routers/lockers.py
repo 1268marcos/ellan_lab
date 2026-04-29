@@ -32,33 +32,6 @@ def _extract_items(payload) -> list[dict]:
     return []
 
 
-def _safe_address_from_runtime_legacy_erro(item: dict) -> dict:
-    address = item.get("address")
-
-    if isinstance(address, dict):
-        return {
-            "address": address.get("address"),
-            "number": address.get("number"),
-            "additional_information": address.get("additional_information"),
-            "locality": address.get("locality"),
-            "city": address.get("city"),
-            "federative_unit": address.get("federative_unit"),
-            "postal_code": address.get("postal_code"),
-            "country": address.get("country"),
-        }
-
-    return {
-        "address": None,
-        "number": None,
-        "additional_information": None,
-        "locality": None,
-        "city": item.get("city"),
-        "federative_unit": item.get("state"),
-        "postal_code": item.get("postal_code"),
-        "country": item.get("country"),
-    }
-
-
 def _safe_address_from_runtime(item: dict) -> dict:
     address = item.get("address")
 
@@ -158,7 +131,6 @@ def _fetch_runtime_lockers() -> list[dict]:
                 "type": "RUNTIME_LOCKERS_UNAVAILABLE",
                 "message": "Falha ao consultar lockers no backend_runtime.",
                 "runtime_url": url,
-                "error": str(exc),
             },
         ) from exc
     except ValueError as exc:
@@ -168,7 +140,6 @@ def _fetch_runtime_lockers() -> list[dict]:
                 "type": "RUNTIME_LOCKERS_INVALID_RESPONSE",
                 "message": "Resposta inválida do backend_runtime.",
                 "runtime_url": url,
-                "error": str(exc),
             },
         ) from exc
 

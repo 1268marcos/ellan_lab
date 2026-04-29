@@ -117,6 +117,14 @@ class Settings(BaseSettings):
         default=30,
         alias="INTEGRATION_ORDER_EVENTS_OUTBOX_BASE_BACKOFF_SEC",
     )
+    public_rate_limit_requests: int = Field(
+        default=120,
+        alias="PUBLIC_RATE_LIMIT_REQUESTS",
+    )
+    public_rate_limit_window_sec: int = Field(
+        default=60,
+        alias="PUBLIC_RATE_LIMIT_WINDOW_SEC",
+    )
     reconciliation_retry_batch_size: int = Field(
         default=25,
         alias="RECONCILIATION_RETRY_BATCH_SIZE",
@@ -696,6 +704,8 @@ inventory_reserved_reconciliation_batch_size = settings.inventory_reserved_recon
 inventory_reservation_expiry_poll_sec = settings.inventory_reservation_expiry_poll_sec
 integration_order_events_outbox_poll_sec = settings.integration_order_events_outbox_poll_sec
 integration_order_events_outbox_batch_size = settings.integration_order_events_outbox_batch_size
+public_rate_limit_requests = settings.public_rate_limit_requests
+public_rate_limit_window_sec = settings.public_rate_limit_window_sec
 
 expiry_batch_size = settings.expiry_batch_size
 expiry_max_retries = settings.expiry_max_retries

@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import text
+from sqlalchemy import and_, asc, desc, func, select, table, column, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,34 @@ from app.services.ops_audit_service import record_ops_action_audit
 router = APIRouter(
     tags=["inventory"],
     dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria"}))],
+)
+
+product_inventory_table = table(
+    "product_inventory",
+    column("id"),
+    column("product_id"),
+    column("locker_id"),
+    column("slot_size"),
+    column("quantity_on_hand"),
+    column("quantity_reserved"),
+    column("quantity_available"),
+    column("reorder_point"),
+    column("reorder_quantity"),
+    column("last_counted_at"),
+    column("updated_at"),
+)
+
+inventory_reservations_table = table(
+    "inventory_reservations",
+    column("id"),
+    column("order_id"),
+    column("product_id"),
+    column("locker_id"),
+    column("slot_size"),
+    column("quantity"),
+    column("status"),
+    column("expires_at"),
+    column("updated_at"),
 )
 
 
@@ -220,28 +248,33 @@ def get_product_inventory(
     if not exists:
         raise HTTPException(status_code=404, detail={"type": "PRODUCT_NOT_FOUND", "message": "Produto não encontrado."})
 
-    where_parts = ["product_id = :product_id"]
-    params: dict[str, object] = {"product_id": product_id, "limit": int(limit), "offset": int(offset)}
+    filters = [product_inventory_table.c.product_id == product_id]
     if str(locker_id or "").strip():
-        where_parts.append("locker_id = :locker_id")
-        params["locker_id"] = str(locker_id).strip()
+        filters.append(product_inventory_table.c.locker_id == str(locker_id).strip())
 
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(text(f"SELECT COUNT(*) AS total FROM product_inventory WHERE {where_sql}"), params).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
+    where_expr = and_(*filters)
+    total = int(
+        db.execute(select(func.count()).select_from(product_inventory_table).where(where_expr)).scalar() or 0
+    )
     rows = db.execute(
-        text(
-            f"""
-            SELECT
-                id, product_id, locker_id, slot_size, quantity_on_hand, quantity_reserved,
-                quantity_available, reorder_point, reorder_quantity, last_counted_at, updated_at
-            FROM product_inventory
-            WHERE {where_sql}
-            ORDER BY updated_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            product_inventory_table.c.id,
+            product_inventory_table.c.product_id,
+            product_inventory_table.c.locker_id,
+            product_inventory_table.c.slot_size,
+            product_inventory_table.c.quantity_on_hand,
+            product_inventory_table.c.quantity_reserved,
+            product_inventory_table.c.quantity_available,
+            product_inventory_table.c.reorder_point,
+            product_inventory_table.c.reorder_quantity,
+            product_inventory_table.c.last_counted_at,
+            product_inventory_table.c.updated_at,
+        )
+        .select_from(product_inventory_table)
+        .where(where_expr)
+        .order_by(desc(product_inventory_table.c.updated_at), desc(product_inventory_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     items = [_to_inventory_item(row) for row in rows]
     return ProductInventoryListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
@@ -886,46 +919,45 @@ def get_inventory_reservations_ops_list(
             },
         )
 
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     if status_filter:
-        where_parts.append("status = :status")
-        params["status"] = status_filter
+        filters.append(inventory_reservations_table.c.status == status_filter)
     if parsed_from:
-        where_parts.append("updated_at >= :period_from")
-        params["period_from"] = parsed_from
+        filters.append(inventory_reservations_table.c.updated_at >= parsed_from)
     if parsed_to:
-        where_parts.append("updated_at <= :period_to")
-        params["period_to"] = parsed_to
+        filters.append(inventory_reservations_table.c.updated_at <= parsed_to)
     if str(locker_id or "").strip():
-        where_parts.append("locker_id = :locker_id")
-        params["locker_id"] = str(locker_id).strip()
+        filters.append(inventory_reservations_table.c.locker_id == str(locker_id).strip())
     if str(product_id or "").strip():
-        where_parts.append("product_id = :product_id")
-        params["product_id"] = str(product_id).strip()
+        filters.append(inventory_reservations_table.c.product_id == str(product_id).strip())
     if str(order_id or "").strip():
-        where_parts.append("order_id = :order_id")
-        params["order_id"] = str(order_id).strip()
+        filters.append(inventory_reservations_table.c.order_id == str(order_id).strip())
 
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM inventory_reservations WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT
-                id, order_id, product_id, locker_id, slot_size, quantity, status, expires_at, updated_at
-            FROM inventory_reservations
-            WHERE {where_sql}
-            ORDER BY updated_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(inventory_reservations_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
+    rows_stmt = (
+        select(
+            inventory_reservations_table.c.id,
+            inventory_reservations_table.c.order_id,
+            inventory_reservations_table.c.product_id,
+            inventory_reservations_table.c.locker_id,
+            inventory_reservations_table.c.slot_size,
+            inventory_reservations_table.c.quantity,
+            inventory_reservations_table.c.status,
+            inventory_reservations_table.c.expires_at,
+            inventory_reservations_table.c.updated_at,
+        )
+        .select_from(inventory_reservations_table)
+        .order_by(desc(inventory_reservations_table.c.updated_at), desc(inventory_reservations_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [_to_reservation_item(dict(row)) for row in rows]
     return InventoryReservationListOut(
         ok=True,
@@ -948,34 +980,38 @@ def get_inventory_low_stock_ops(
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    where_parts = ["quantity_available <= :threshold"]
-    params: dict[str, object] = {"threshold": int(threshold), "limit": int(limit), "offset": int(offset)}
+    filters = [product_inventory_table.c.quantity_available <= int(threshold)]
     if str(locker_id or "").strip():
-        where_parts.append("locker_id = :locker_id")
-        params["locker_id"] = str(locker_id).strip()
+        filters.append(product_inventory_table.c.locker_id == str(locker_id).strip())
     if str(product_id or "").strip():
-        where_parts.append("product_id = :product_id")
-        params["product_id"] = str(product_id).strip()
+        filters.append(product_inventory_table.c.product_id == str(product_id).strip())
 
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM product_inventory WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
+    where_expr = and_(*filters)
+    total = int(
+        db.execute(select(func.count()).select_from(product_inventory_table).where(where_expr)).scalar() or 0
+    )
     rows = db.execute(
-        text(
-            f"""
-            SELECT
-                id, product_id, locker_id, slot_size, quantity_on_hand, quantity_reserved,
-                quantity_available, reorder_point, reorder_quantity, updated_at
-            FROM product_inventory
-            WHERE {where_sql}
-            ORDER BY quantity_available ASC, updated_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
+        select(
+            product_inventory_table.c.id,
+            product_inventory_table.c.product_id,
+            product_inventory_table.c.locker_id,
+            product_inventory_table.c.slot_size,
+            product_inventory_table.c.quantity_on_hand,
+            product_inventory_table.c.quantity_reserved,
+            product_inventory_table.c.quantity_available,
+            product_inventory_table.c.reorder_point,
+            product_inventory_table.c.reorder_quantity,
+            product_inventory_table.c.updated_at,
+        )
+        .select_from(product_inventory_table)
+        .where(where_expr)
+        .order_by(
+            asc(product_inventory_table.c.quantity_available),
+            desc(product_inventory_table.c.updated_at),
+            desc(product_inventory_table.c.id),
+        )
+        .limit(int(limit))
+        .offset(int(offset))
     ).mappings().all()
     items = [_to_low_stock_item(dict(row)) for row in rows]
     return InventoryLowStockListOut(

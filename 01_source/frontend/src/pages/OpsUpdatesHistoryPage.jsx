@@ -1,9 +1,7 @@
-import React, { useMemo, useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 
-const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const TIMELINE_TEMPLATE_JSON = `{
   "date": "YYYY-MM-DD",
   "scope": "L-3 D4",
@@ -23,35 +21,303 @@ const TIMELINE_TEMPLATE_JSON = `{
   "directLinkLabel": "Abrir página operacional"
 }`;
 
-function toLocalInputValue(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const hh = String(date.getHours()).padStart(2, "0");
-  const mm = String(date.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${d}T${hh}:${mm}`;
-}
-
-function toIsoOrNull(localDateTimeValue) {
-  const raw = String(localDateTimeValue || "").trim();
-  if (!raw) return null;
-  const parsed = new Date(raw);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toISOString();
-}
-
-function parseError(payload, fallback = "Nao foi possivel carregar o overview de manifestos.") {
-  if (!payload) return fallback;
-  if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail.trim();
-  if (payload?.detail && typeof payload.detail === "object") {
-    if (typeof payload.detail.message === "string" && payload.detail.message.trim()) return payload.detail.message.trim();
-    if (typeof payload.detail.type === "string" && payload.detail.type.trim()) return payload.detail.type.trim();
-  }
-  if (typeof payload?.message === "string" && payload.message.trim()) return payload.message.trim();
-  return fallback;
-}
-
 const UPDATES = [
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Runtime Final Closure",
+    title: "Fechamento formal da trilha crítica (CORS dinâmico + sanitização final)",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Rodada curta final em runtime com alinhamento de CORS por ENV no `order_pickup_service` e sanitização dos últimos pontos com `str(exc)` em fluxos internos de confirmação de pagamento e validação de NCM, preservando observabilidade via `error_type`.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "runtime config: CORS_ALLOW_ORIGINS no order_pickup_service",
+      "POST /internal/orders/{order_id}/payment/confirm (erro sanitizado)",
+      "POST /public/orders (validação NCM sanitizada)",
+    ],
+    routes: [
+      "Backend: order_pickup_service/app/main.py",
+      "Backend: order_pickup_service/app/routers/internal.py",
+      "Backend: order_pickup_service/app/services/order_creation_service.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir fechamento formal da trilha crítica",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Cosmetic Cleanup - Legacy/Dev",
+    title: "Limpeza de artefatos legados não usados e comentários históricos",
+    description:
+      "Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Passada cosmética final removendo helpers legados não referenciados e ajustando comentários/descrições históricas para reduzir ruído operacional sem impacto no fluxo principal.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Backend: payment_gateway/app/routers/lockers.py (helper legado removido)",
+      "Backend: runtime/app/repositories/runtime_registry_repo.py (função legado removida)",
+      "Backend: order_pickup_service/app/routers/public_orders.py (comentário histórico limpo)",
+      "Backend: billing_fiscal_service/app/api/routes_invoice.py (comentário legado limpo)",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de limpeza cosmética final",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Legacy/Dev Final Sweep",
+    title: "Sanitização final em health interno e retorno de migration",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Ajustes finais em arquivos legados/dev fora da rota principal: sanitização de erro no health interno e padronização para `error_type` no retorno de falha de migrations.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /internal/health",
+      "startup migration status payload",
+    ],
+    routes: [
+      "Backend: order_pickup_service/app/health/internal.py",
+      "Backend: order_pickup_service/app/core/db_migrations.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de varredura final legacy/dev",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Internal/Dev Sanitization",
+    title: "Sanitização adicional em internos/dev com error_type e telemetria estruturada",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Sanitização de respostas e metadados internos/dev para evitar exposição de `str(exc)`, preservando observabilidade com `error_type` e eventos estruturados em runtime, gateway, billing e order_pickup.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST /dev-admin/release-regional-allocations",
+      "POST /dev-admin/reset-locker",
+      "POST /kiosk/orders (legacy/public)",
+      "gateway/payment backend fallback paths",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/dev_admin.py",
+      "Backend router legado descontinuado (antes: public_orders_BUGADA-POREM.py)",
+      "Backend service: order_pickup_service/app/services/locker_service.py",
+      "Backend service: order_pickup_service/app/services/credits_service.py",
+      "Backend service: payment_gateway/app/services/payment_service.py",
+      "Backend core: payment_gateway/app/core/runtime_client.py",
+      "Backend service: backend/runtime/app/services/hardware_command_service.py",
+      "Backend services: billing_fiscal_service adapters (AT/SVRS)",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de sanitização interna/dev",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Continuous Pass",
+    title: "Remanescentes de SQL dinâmico e erros sensíveis sanitizados",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Remoção de SQL dinâmico residual em serviços de billing/payment e sanitização de detalhes sensíveis de exceção em fluxos de criação KIOSK, integração runtime e registro de deadline no lifecycle.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST/worker recompute utilization snapshots",
+      "GET /risk/events (listagem com ORDER BY seguro)",
+      "POST /kiosk/orders",
+    ],
+    routes: [
+      "Backend service: billing_fiscal_service/app/services/partner_billing_utilization_service.py",
+      "Backend service: payment_gateway/app/services/risk_events_service.py",
+      "Backend router: order_pickup_service/app/routers/kiosk.py",
+      "Backend service: order_pickup_service/app/services/order_creation_service.py",
+      "Backend core: payment_gateway/app/core/runtime_client.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de correções remanescentes",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Error Sanitization + Tracing",
+    title: "Sanitização adicional em pricing/lockers e tracing padronizado em lifecycle+billing",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Remoção de detalhes sensíveis em erros de `pricing_fiscal` e `payment_gateway/lockers`, além da padronização de middleware/handler de trace (`X-Trace-Id`) nos serviços `billing_fiscal_service` e `order_lifecycle_service`.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST /products/bundles",
+      "POST /promotions",
+      "GET /lockers",
+      "GET /lockers/{locker_id}",
+      "billing_fiscal_service global tracing middleware",
+      "order_lifecycle_service global tracing middleware",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/pricing_fiscal.py",
+      "Backend router: payment_gateway/app/routers/lockers.py",
+      "Backend app: backend/billing_fiscal_service/app/main.py",
+      "Backend app: backend/order_lifecycle_service/app/main.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de tracing e sanitização",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Billing/Internal Sanitization",
+    title: "Billing fiscal sem SQL dinâmico remanescente + sanitização de erros internos",
+    description:
+      "Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Remoção dos últimos pontos com SQL dinâmico em billing_fiscal_service e sanitização de respostas de erro em billing_fiscal_service, order_pickup_service/internal e order_lifecycle_service/internal.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /v1/partners/{partner_id}/billing/cycles",
+      "GET /v1/partners/{partner_id}/billing/cycles/{cycle_id}/line-items",
+      "GET /v1/partners/{partner_id}/invoices",
+      "GET /v1/partners/{partner_id}/credit-notes",
+      "GET /v1/partners/{partner_id}/billing/disputes",
+      "GET /v1/partners/ops/utilization-divergences",
+      "GET /admin/fiscal/ledger-compat/audit",
+    ],
+    routes: [
+      "Backend: billing_fiscal_service/app/api/routes_partner_billing.py",
+      "Backend: billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Backend: billing_fiscal_service/app/api/routes_invoice.py",
+      "Backend: order_pickup_service/app/routers/internal.py",
+      "Backend: order_lifecycle_service/app/routers/internal.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de hardening final",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Dev Tooling - Internal Errors HTML",
+    title: "Nova página ops/dev/errors com filtros por status e rota",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Foi adicionada uma página HTML interna para visualizar `/internal/dev/errors` no navegador com filtros (status/rota), cards de indicadores e integração no OPS menu como NEW.',
+    uiRoutesNew: ["/ops/dev/errors"],
+    apiRoutesNew: ["GET /internal/dev/errors"],
+    routes: [
+      "UI /ops/dev/errors",
+      "UI OPS menu (Dashboards) com badge NEW",
+      "Backend endpoint interno /internal/dev/errors",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir visualizador interno de erros",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Hardening Config + Dev Error Registry",
+    title: "CORS por ENV, bloqueio de segredos default e trilha de erros em dev",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Hardening adicional controlado por ENV para CORS/segredos fora de dev e criação de endpoint interno de registro de erros HTTP/500 em desenvolvimento para acelerar diagnóstico sem expor detalhes em respostas públicas.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /internal/dev/errors",
+      "CORS_ALLOW_ORIGINS (env)",
+    ],
+    routes: [
+      "Backend app: order_pickup_service/app/main.py",
+      "Backend app: billing_fiscal_service/app/main.py",
+      "Backend app: order_lifecycle_service/app/main.py",
+      "Backend app: runtime/app/main.py",
+      "Backend app: payment_gateway/app/main.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de hardening por ENV",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Review - Public/Auth e Runtime",
+    title: "Sanitização de erros públicos e hardening de exceções",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Revisão adicional com correção de vazamento de detalhes internos em /public/auth, padronização de erro 500 no runtime com trace_id e ajuste seguro de ordenação em partner billing.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST /public/auth/register",
+      "POST /public/auth/login",
+      "PUT /public/auth/me/fiscal-profile",
+      "POST /public/auth/change-password",
+      "POST /public/auth/reset-password",
+      "POST /public/auth/email-verification/resend",
+      "GET /public/auth/email-verification/confirm",
+      "runtime global exception handler",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/public_auth.py",
+      "Backend app: backend/runtime/app/main.py",
+      "Backend router: billing_fiscal_service/app/api/routes_partner_billing.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de revisão de segurança",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - SQLAlchemy Core Completo",
+    title: "Partners router migrado para select/where/order_by sem text(...)",
+    description:
+      'Correção de problemas críticos (SQL injection, logging, tracing, rate limiting). Conversão dos blocos de reconciliação e métricas de webhook no partners router para SQLAlchemy Core completo, com consultas estruturadas e sem SQL textual dinâmico.',
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST /partners/ops/settlements/reconciliation/run",
+      "GET /partners/ops/settlements/reconciliation/compare",
+      "GET /partners/ops/settlements/reconciliation/top-divergences",
+      "GET /partners/ops/webhooks/metrics",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/partners.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização SQLAlchemy Core completo",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Partners Router",
+    title: "Hardening adicional em /partners com SQL estático parametrizado",
+    description:
+      "Passada complementar no router de partners para remover composição dinâmica de WHERE em reconciliação de settlements e métricas de webhooks, padronizando uso de filtros opcionais por bind params e reduzindo risco de SQL injection em rotas OPS críticas.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "POST /partners/ops/settlements/reconciliation/run",
+      "GET /partners/ops/settlements/reconciliation/compare",
+      "GET /partners/ops/settlements/reconciliation/top-divergences",
+      "GET /partners/ops/webhooks/metrics",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/partners.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de hardening em partners",
+  },
+  {
+    date: "2026-04-29",
+    scope: "Security Hardening - Defense in Depth",
+    title: "Queries migradas para SQLAlchemy select/where/order_by",
+    description:
+      "Passada de hardening focada em defesa em profundidade: listagens com filtros dinâmicos migradas de SQL textual com concatenação para SQLAlchemy Core (select/where/order_by), padronizando construção segura de queries em OPS e reduzindo superfície para SQL injection.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /products",
+      "GET /products/{product_id}/inventory",
+      "GET /ops/inventory/reservations",
+      "GET /ops/inventory/low-stock",
+      "GET /products/bundles",
+      "GET /promotions",
+      "GET /fiscal/auto-classification-log",
+      "GET /ops/integration/order-events-outbox",
+      "GET /ops/integration/order-events-outbox/dead-letter-priority",
+      "GET /ops/integration/order-events-outbox/replay-priority-groups/runs",
+      "POST /ops/integration/order-events-outbox/replay-batch",
+      "GET /ops/integration/order-fulfillment-tracking",
+    ],
+    routes: [
+      "Backend router: order_pickup_service/app/routers/products.py",
+      "Backend router: order_pickup_service/app/routers/inventory.py",
+      "Backend router: order_pickup_service/app/routers/pricing_fiscal.py",
+      "Backend router: order_pickup_service/app/routers/integration_ops.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de hardening de segurança",
+  },
   {
     date: "2026-04-28",
     scope: "Sprint FA-5 - Timescale OPS",
@@ -366,44 +632,8 @@ const UPDATES = [
 ];
 
 export default function OpsUpdatesHistoryPage() {
-  const { token } = useAuth();
-  const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
-  const now = new Date();
-  const fromDefault = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const [from, setFrom] = useState(toLocalInputValue(fromDefault));
-  const [to, setTo] = useState(toLocalInputValue(now));
-  const [partnerId, setPartnerId] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [payload, setPayload] = useState(null);
   const [copyStatus, setCopyStatus] = useState("");
-
-  async function loadOverview() {
-    if (!token) return;
-    setLoading(true);
-    setError("");
-    try {
-      const params = new URLSearchParams();
-      const fromIso = toIsoOrNull(from);
-      const toIso = toIsoOrNull(to);
-      if (fromIso) params.set("from", fromIso);
-      if (toIso) params.set("to", toIso);
-      if (String(partnerId || "").trim()) params.set("partner_id", String(partnerId).trim());
-      const endpoint = `${ORDER_PICKUP_BASE}/logistics/ops/manifests/overview?${params.toString()}`;
-      const response = await fetch(endpoint, {
-        method: "GET",
-        headers: { Accept: "application/json", ...authHeaders },
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(parseError(data));
-      setPayload(data || null);
-    } catch (err) {
-      setError(String(err?.message || err || "erro desconhecido"));
-      setPayload(null);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [openEntries, setOpenEntries] = useState({});
 
   async function handleCopyTemplate() {
     try {
@@ -438,102 +668,74 @@ export default function OpsUpdatesHistoryPage() {
 
         <div style={timelineStyle}>
           {UPDATES.map((entry) => (
-            <article key={`${entry.date}-${entry.scope}-${entry.title}`} style={entryStyle}>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-                <strong>{entry.title}</strong>
-                <span style={getSeverityBadgeStyle("WARN")}>{entry.scope}</span>
-              </div>
-              <small style={{ color: "#94A3B8" }}>{entry.date}</small>
-              <p style={{ margin: "8px 0", color: "#CBD5E1" }}>{entry.description}</p>
-              {(entry.uiRoutesNew || []).length ? (
-                <div style={newRoutesBlockStyle}>
-                  <small style={newRoutesTitleStyle}>UI route NEW</small>
-                  <ul style={routesListStyle}>
-                    {entry.uiRoutesNew.map((route) => (
-                      <li key={`ui-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
-                        {route} <span style={newInlineBadgeStyle}>NEW</span>
-                      </li>
-                    ))}
-                  </ul>
+            <details
+              key={`${entry.date}-${entry.scope}-${entry.title}`}
+              style={entryStyle}
+              onToggle={(event) => {
+                const entryKey = `${entry.date}-${entry.scope}-${entry.title}`;
+                const isOpen = Boolean(event.currentTarget?.open);
+                setOpenEntries((prev) => ({ ...prev, [entryKey]: isOpen }));
+              }}
+            >
+              <summary style={entrySummaryStyle}>
+                <div style={entrySummaryContentStyle}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <strong>{entry.title}</strong>
+                    <span style={{ ...getSeverityBadgeStyle("WARN"), width: "fit-content" }}>{entry.scope}</span>
+                  </div>
+                  <span style={entryToggleBadgeStyle}>
+                    {openEntries[`${entry.date}-${entry.scope}-${entry.title}`] ? "Recolher" : "Expandir"}
+                  </span>
                 </div>
-              ) : null}
-              {(entry.apiRoutesNew || []).length ? (
-                <div style={newRoutesBlockStyle}>
-                  <small style={newRoutesTitleStyle}>API route NEW</small>
-                  <ul style={routesListStyle}>
-                    {entry.apiRoutesNew.map((route) => (
-                      <li key={`api-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
-                        {route} <span style={newInlineBadgeStyle}>NEW</span>
-                      </li>
-                    ))}
-                  </ul>
+              </summary>
+              <div style={entryBodyStyle}>
+                <small style={{ color: "#94A3B8" }}>{entry.date}</small>
+                <p style={{ margin: "8px 0", color: "#CBD5E1" }}>{entry.description}</p>
+                {(entry.uiRoutesNew || []).length ? (
+                  <div style={newRoutesBlockStyle}>
+                    <small style={newRoutesTitleStyle}>UI route NEW</small>
+                    <ul style={routesListStyle}>
+                      {entry.uiRoutesNew.map((route) => (
+                        <li key={`ui-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
+                          {route} <span style={newInlineBadgeStyle}>NEW</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {(entry.apiRoutesNew || []).length ? (
+                  <div style={newRoutesBlockStyle}>
+                    <small style={newRoutesTitleStyle}>API route NEW</small>
+                    <ul style={routesListStyle}>
+                      {entry.apiRoutesNew.map((route) => (
+                        <li key={`api-${route}`} style={{ color: "#BFDBFE", fontSize: 12 }}>
+                          {route} <span style={newInlineBadgeStyle}>NEW</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                <ul style={routesListStyle}>
+                  {entry.routes.map((route) => (
+                    <li key={route} style={{ color: "#BFDBFE", fontSize: 12 }}>
+                      {route}
+                    </li>
+                  ))}
+                </ul>
+                {entry.directLink ? (
+                  <div style={{ marginTop: 8 }}>
+                    <Link to={entry.directLink} style={directLinkStyle}>
+                      {entry.directLinkLabel || "Abrir rota relacionada"}
+                    </Link>
+                  </div>
+                ) : null}
                 </div>
-              ) : null}
-              <ul style={routesListStyle}>
-                {entry.routes.map((route) => (
-                  <li key={route} style={{ color: "#BFDBFE", fontSize: 12 }}>
-                    {route}
-                  </li>
-                ))}
-              </ul>
-              {entry.directLink ? (
-                <div style={{ marginTop: 8 }}>
-                  <Link to={entry.directLink} style={directLinkStyle}>
-                    {entry.directLinkLabel || "Abrir rota relacionada"}
-                  </Link>
-                </div>
-              ) : null}
-            </article>
+            </details>
           ))}
         </div>
       </section>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Overview D3 - Manifests</h2>
-        <p style={mutedStyle}>Consumo da rota `/logistics/ops/manifests/overview` para validação operacional contínua.</p>
-        <div style={filtersStyle}>
-          <label style={labelStyle}>
-            From
-            <input type="datetime-local" value={from} onChange={(e) => setFrom(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            To
-            <input type="datetime-local" value={to} onChange={(e) => setTo(e.target.value)} style={inputStyle} />
-          </label>
-          <label style={labelStyle}>
-            Partner ID (opcional)
-            <input value={partnerId} onChange={(e) => setPartnerId(e.target.value)} style={inputStyle} placeholder="ex.: lpt_001" />
-          </label>
-        </div>
-        <button type="button" onClick={() => void loadOverview()} style={buttonStyle} disabled={loading}>
-          {loading ? "Atualizando..." : "Atualizar overview"}
-        </button>
-
-        {error ? <pre style={errorStyle}>{error}</pre> : null}
-        {payload ? (
-          <div style={{ marginTop: 12 }}>
-            <div style={kpiGridStyle}>
-              <Kpi label="Confidence" value={payload?.confidence_badge || "-"} />
-              <Kpi label="Current total" value={payload?.totals?.current_total ?? 0} />
-              <Kpi label="Pending/In transit" value={payload?.totals?.pending_or_in_transit ?? 0} />
-              <Kpi label="Partial/Failed rate" value={`${payload?.totals?.partial_failed_rate_pct ?? 0}%`} />
-            </div>
-            <pre style={jsonStyle}>{JSON.stringify(payload, null, 2)}</pre>
-          </div>
-        ) : (
-          <p style={mutedStyle}>Clique em "Atualizar overview" para carregar os dados.</p>
-        )}
-      </section>
     </div>
-  );
-}
-
-function Kpi({ label, value }) {
-  return (
-    <article style={kpiStyle}>
-      <strong style={{ color: "#BFDBFE", fontSize: 20 }}>{value}</strong>
-      <small style={{ color: "#94A3B8" }}>{label}</small>
-    </article>
   );
 }
 
@@ -546,7 +748,11 @@ const copyButtonStyle = { marginTop: 8, padding: "6px 10px", borderRadius: 999, 
 const copyStatusStyle = { marginTop: 8, fontSize: 12, color: "#93C5FD" };
 const templateJsonStyle = { marginTop: 8, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 10, overflow: "auto", fontSize: 12 };
 const timelineStyle = { display: "grid", gap: 10 };
-const entryStyle = { border: "1px solid #334155", borderRadius: 12, padding: 12, background: "#0B1220" };
+const entryStyle = { border: "1px solid #334155", borderRadius: 12, padding: "8px 12px", background: "#0B1220" };
+const entrySummaryStyle = { cursor: "pointer", display: "flex", alignItems: "center", listStyle: "none", outline: "none", padding: "2px 0" };
+const entrySummaryContentStyle = { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", width: "100%" };
+const entryToggleBadgeStyle = { border: "1px solid rgba(59,130,246,0.45)", background: "rgba(59,130,246,0.12)", color: "#BFDBFE", borderRadius: 999, padding: "4px 8px", fontSize: 11, fontWeight: 700 };
+const entryBodyStyle = { marginTop: 8 };
 const newRoutesBlockStyle = { marginBottom: 8 };
 const newRoutesTitleStyle = { color: "#93C5FD", fontWeight: 700, fontSize: 11 };
 const newInlineBadgeStyle = {
@@ -572,11 +778,3 @@ const directLinkStyle = {
   fontSize: 12,
   fontWeight: 700,
 };
-const filtersStyle = { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", marginBottom: 10 };
-const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };
-const inputStyle = { padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#020617", color: "#E2E8F0" };
-const buttonStyle = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const errorStyle = { marginTop: 10, background: "rgba(220,38,38,0.12)", color: "#FCA5A5", border: "1px solid rgba(220,38,38,0.45)", borderRadius: 10, padding: 10 };
-const jsonStyle = { marginTop: 10, background: "#020617", border: "1px solid #1E293B", borderRadius: 10, padding: 12, overflow: "auto", fontSize: 12 };
-const kpiGridStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8 };
-const kpiStyle = { background: "#0B1220", border: "1px solid #334155", borderRadius: 10, padding: 10, display: "grid", gap: 4 };

@@ -3,7 +3,7 @@
 # 11/04/2026 - substituição de: Converte payload para CreateOrderIn 
 #                         para: USAR PAYLOAD DIRETO (SEM CreateOrderIn)
 # 14/04/2026 - Volta para produção desta versão do código
-#              veja public_orders_BUGADA_POREM.py (causou problemas em ONLINE, porém, KIOSK ok)
+#              versão alternativa experimental mantida apenas para referência histórica
 #
 # 17/04/2026 - nova def _serialize_order() e inclusão em @router.get("/{order_id}")
 # 17/04/2026 - correção de "manual_code": 

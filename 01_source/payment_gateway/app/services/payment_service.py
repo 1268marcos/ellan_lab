@@ -361,7 +361,8 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "result": "rejected",
                 "error": {
                     "type": "LOCKER_CONTEXT_INVALID",
-                    "message": str(exc),
+                    "message": "Locker context is invalid.",
+                    "error_type": exc.__class__.__name__,
                     "retryable": False,
                     "details": locker_registry.debug_context(getattr(data, "locker_id", None)),
                 },
@@ -384,7 +385,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "canal": canal,
                     "metodo": metodo,
                     "locker_id": getattr(data, "locker_id", None),
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                 },
             }
         )
@@ -1070,7 +1071,8 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "result": "rejected",
                 "error": {
                     "type": "BACKEND_UNAVAILABLE",
-                    "message": f"Falha ao chamar backend regional: {str(e)}",
+                    "message": "Falha ao chamar backend regional.",
+                    "error_type": e.__class__.__name__,
                     "retryable": True,
                 },
                 "anti_replay": {
@@ -1094,7 +1096,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "region": region,
                 "payload": {
                     "backend_url": locker_registry.get_backend_url(locker_id),
-                    "error": str(e),
+                    "error_type": e.__class__.__name__,
                     "locker_id": locker_id,
                 },
             }

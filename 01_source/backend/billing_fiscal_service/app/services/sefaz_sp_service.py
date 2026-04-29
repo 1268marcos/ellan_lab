@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from app.core.config import settings
 from app.models.invoice_model import Invoice
 from app.services.nfce_xml_builder_v40 import build_nfce_xml_v40_stub
 
@@ -201,6 +202,15 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
             invoice_number=invoice_number,
             invoice_series=invoice_series,
         )
+        signature = dict(nfce.get("signature") or {})
+        if settings.fiscal_a1_dry_run_enabled:
+            signature["mode"] = "A1_DRY_RUN"
+            signature["dry_run_enabled"] = True
+            signature["cert_ref"] = settings.fiscal_a1_dry_run_cert_ref or "A1_DRY_RUN_LOCAL"
+        else:
+            signature["mode"] = "A1_STUB_PENDING"
+            signature["dry_run_enabled"] = False
+        nfce["signature"] = signature
         base["format"] = nfce.get("format") or base["format"]
         base["schema_version"] = nfce.get("schema_version")
         base["xml_preview"] = nfce.get("xml_preview") or base["xml_preview"]
@@ -210,7 +220,7 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
 
 def _sefaz_sp_build_government_response(invoice: Invoice, invoice_number: str, invoice_series: str, access_key: str) -> dict:
     return {
-        "provider_namespace": "sefaz_sp",
+        "provider_namespace": "sefaz_sp_stub",
         "provider_status": "AUTHORIZED",
         "provider_code": "100",
         "provider_message": "Autorizado o uso da NF-e (stub).",
@@ -223,10 +233,15 @@ def _sefaz_sp_build_government_response(invoice: Invoice, invoice_number: str, i
         "region": invoice.region,
         "processed_at": _sefaz_sp_now_iso(),
         "raw": {
+            "contract_version": "f3_stub_canonical_v1",
+            "provider_namespace": "sefaz_sp_stub",
+            "provider_mode": "stub_dedicated",
             "environment": "stub",
             "state": "SP",
             "integration_mode": "local_stub",
+            "operation": "ISSUE",
             "order_id": invoice.order_id,
+            "invoice_id": invoice.id,
             "amount_cents": invoice.amount_cents,
             "currency": invoice.currency,
             "payment_method": invoice.payment_method,
@@ -285,9 +300,14 @@ def sefaz_sp_cc_e_stub(invoice: Invoice, correction_text: str | None) -> dict:
         "processed_at": _sefaz_sp_now_iso(),
         "xml_event_preview": xml_event_preview,
         "raw": {
+            "contract_version": "f3_stub_canonical_v1",
+            "provider_namespace": "sefaz_sp_stub",
+            "provider_mode": "stub_dedicated",
             "environment": "stub",
             "integration_mode": "local_stub",
+            "operation": "CORRECTION",
             "order_id": invoice.order_id,
+            "invoice_id": invoice.id,
             "xml_event_preview": xml_event_preview,
         },
     }
@@ -304,9 +324,14 @@ def sefaz_sp_cancel_invoice(invoice: Invoice) -> dict:
         "protocol_number": f"sefaz_sp_cancel_{uuid.uuid4().hex[:20]}",
         "processed_at": _sefaz_sp_now_iso(),
         "raw": {
+            "contract_version": "f3_stub_canonical_v1",
+            "provider_namespace": "sefaz_sp_stub",
+            "provider_mode": "stub_dedicated",
             "environment": "stub",
             "integration_mode": "local_stub",
+            "operation": "CANCEL",
             "order_id": invoice.order_id,
+            "invoice_id": invoice.id,
             "note": "Cancelamento NFC-e (stub) — substituir por integração SEFAZ real (F-3).",
         },
     }

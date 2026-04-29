@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +30,19 @@ app = FastAPI(
     title="ELLAN Backend Operacional Canônico - runtime operacional multi-locker",
     version="1.0.3",
 )
+
+
+def _is_dev_env() -> bool:
+    return str(os.getenv("APP_ENV", os.getenv("NODE_ENV", "dev"))).strip().lower() in {"dev", "development", "local", "test"}
+
+
+def _resolve_cors_origins() -> list[str]:
+    raw = str(os.getenv("CORS_ALLOW_ORIGINS", "")).strip()
+    if raw:
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    if _is_dev_env():
+        return ["http://localhost:5173", "http://localhost:3000"]
+    return []
 
 
 @app.on_event("startup")
@@ -78,7 +93,7 @@ app.include_router(dev_catalog_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_resolve_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,13 +115,22 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
+    trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
+    logger.exception(
+        "runtime_unhandled_exception path=%s trace_id=%s error_type=%s",
+        str(request.url.path),
+        trace_id,
+        exc.__class__.__name__,
+    )
     return JSONResponse(
         status_code=500,
         content={
             "type": "UNHANDLED_EXCEPTION",
-            "message": str(exc),
+            "message": "Internal server error",
             "retryable": True,
             "service": "backend_runtime",
             "path": str(request.url.path),
+            "trace_id": trace_id,
         },
+        headers={"X-Trace-Id": trace_id},
     )

@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import text
+from sqlalchemy import Numeric, case, cast, column, desc, func, select, table, text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -131,6 +131,40 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     "SUSPENDED": {"ACTIVE", "TERMINATED"},
     "TERMINATED": set(),
 }
+
+partner_settlement_batches_table = table(
+    "partner_settlement_batches",
+    column("id"),
+    column("partner_id"),
+    column("status"),
+    column("total_orders"),
+    column("gross_revenue_cents"),
+    column("revenue_share_cents"),
+    column("created_at"),
+)
+
+partner_settlement_items_table = table(
+    "partner_settlement_items",
+    column("batch_id"),
+    column("gross_cents"),
+    column("share_cents"),
+)
+
+partner_webhook_deliveries_table = table(
+    "partner_webhook_deliveries",
+    column("id"),
+    column("endpoint_id"),
+    column("status"),
+    column("created_at"),
+    column("delivered_at"),
+)
+
+partner_webhook_endpoints_table = table(
+    "partner_webhook_endpoints",
+    column("id"),
+    column("partner_id"),
+    column("url"),
+)
 
 
 def _to_iso_utc(value: datetime | None) -> str:
@@ -1746,47 +1780,39 @@ def post_ops_settlement_reconciliation_run(
             detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
         )
 
-    where_parts = [
-        "created_at >= :dt_from",
-        "created_at <= :dt_to",
-        "status IN ('DRAFT','APPROVED','PAID')",
-    ]
-    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to, "limit": int(limit)}
     normalized_partner = str(partner_id or "").strip()
+    batch_stmt = (
+        select(
+            partner_settlement_batches_table.c.id,
+            partner_settlement_batches_table.c.partner_id,
+            partner_settlement_batches_table.c.status,
+            partner_settlement_batches_table.c.total_orders,
+            partner_settlement_batches_table.c.gross_revenue_cents,
+            partner_settlement_batches_table.c.revenue_share_cents,
+        )
+        .select_from(partner_settlement_batches_table)
+        .where(partner_settlement_batches_table.c.created_at >= dt_from)
+        .where(partner_settlement_batches_table.c.created_at <= dt_to)
+        .where(partner_settlement_batches_table.c.status.in_(["DRAFT", "APPROVED", "PAID"]))
+        .order_by(desc(partner_settlement_batches_table.c.created_at), desc(partner_settlement_batches_table.c.id))
+        .limit(int(limit))
+    )
     if normalized_partner:
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = normalized_partner
-    where_sql = " AND ".join(where_parts)
-
-    batches = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, status, total_orders, gross_revenue_cents, revenue_share_cents
-            FROM partner_settlement_batches
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT :limit
-            """
-        ),
-        params,
-    ).mappings().all()
+        batch_stmt = batch_stmt.where(partner_settlement_batches_table.c.partner_id == normalized_partner)
+    batches = db.execute(batch_stmt).mappings().all()
 
     items: list[PartnerSettlementReconciliationBatchRunItemOut] = []
     divergent_batches = 0
     for batch in batches:
         batch_id = str(batch.get("id") or "")
         totals = db.execute(
-            text(
-                """
-                SELECT
-                    COUNT(*)::int AS total_orders,
-                    COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
-                    COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
-                FROM partner_settlement_items
-                WHERE batch_id = :batch_id
-                """
-            ),
-            {"batch_id": batch_id},
+            select(
+                func.count().label("total_orders"),
+                func.coalesce(func.sum(partner_settlement_items_table.c.gross_cents), 0).label("gross_revenue_cents"),
+                func.coalesce(func.sum(partner_settlement_items_table.c.share_cents), 0).label("revenue_share_cents"),
+            )
+            .select_from(partner_settlement_items_table)
+            .where(partner_settlement_items_table.c.batch_id == batch_id)
         ).mappings().first() or {}
 
         delta_total_orders = int(totals.get("total_orders") or 0) - int(batch.get("total_orders") or 0)
@@ -1880,43 +1906,34 @@ def get_ops_settlement_reconciliation_compare(
     normalized_partner = str(partner_id or "").strip()
 
     def _calc_window_metrics(window_from: datetime, window_to: datetime) -> PartnerSettlementReconciliationCompareWindowOut:
-        where_parts = [
-            "created_at >= :dt_from",
-            "created_at <= :dt_to",
-            "status IN ('DRAFT','APPROVED','PAID')",
-        ]
-        params: dict[str, object] = {"dt_from": window_from, "dt_to": window_to}
+        batches_stmt = (
+            select(
+                partner_settlement_batches_table.c.id,
+                partner_settlement_batches_table.c.total_orders,
+                partner_settlement_batches_table.c.gross_revenue_cents,
+                partner_settlement_batches_table.c.revenue_share_cents,
+            )
+            .select_from(partner_settlement_batches_table)
+            .where(partner_settlement_batches_table.c.created_at >= window_from)
+            .where(partner_settlement_batches_table.c.created_at <= window_to)
+            .where(partner_settlement_batches_table.c.status.in_(["DRAFT", "APPROVED", "PAID"]))
+            .order_by(desc(partner_settlement_batches_table.c.created_at), desc(partner_settlement_batches_table.c.id))
+            .limit(5000)
+        )
         if normalized_partner:
-            where_parts.append("partner_id = :partner_id")
-            params["partner_id"] = normalized_partner
-        where_sql = " AND ".join(where_parts)
-        batches = db.execute(
-            text(
-                f"""
-                SELECT id, total_orders, gross_revenue_cents, revenue_share_cents
-                FROM partner_settlement_batches
-                WHERE {where_sql}
-                ORDER BY created_at DESC, id DESC
-                LIMIT 5000
-                """
-            ),
-            params,
-        ).mappings().all()
+            batches_stmt = batches_stmt.where(partner_settlement_batches_table.c.partner_id == normalized_partner)
+        batches = db.execute(batches_stmt).mappings().all()
 
         divergent_batches = 0
         for batch in batches:
             totals = db.execute(
-                text(
-                    """
-                    SELECT
-                        COUNT(*)::int AS total_orders,
-                        COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
-                        COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
-                    FROM partner_settlement_items
-                    WHERE batch_id = :batch_id
-                    """
-                ),
-                {"batch_id": str(batch.get("id") or "")},
+                select(
+                    func.count().label("total_orders"),
+                    func.coalesce(func.sum(partner_settlement_items_table.c.gross_cents), 0).label("gross_revenue_cents"),
+                    func.coalesce(func.sum(partner_settlement_items_table.c.share_cents), 0).label("revenue_share_cents"),
+                )
+                .select_from(partner_settlement_items_table)
+                .where(partner_settlement_items_table.c.batch_id == str(batch.get("id") or ""))
             ).mappings().first() or {}
             if (
                 int(totals.get("total_orders") or 0) != int(batch.get("total_orders") or 0)
@@ -1971,47 +1988,39 @@ def get_ops_settlement_reconciliation_top_divergences(
             detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
         )
 
-    where_parts = [
-        "created_at >= :dt_from",
-        "created_at <= :dt_to",
-        "status IN ('DRAFT','APPROVED','PAID')",
-    ]
-    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to}
     normalized_partner = str(partner_id or "").strip()
+    batches_stmt = (
+        select(
+            partner_settlement_batches_table.c.id,
+            partner_settlement_batches_table.c.partner_id,
+            partner_settlement_batches_table.c.status,
+            partner_settlement_batches_table.c.total_orders,
+            partner_settlement_batches_table.c.gross_revenue_cents,
+            partner_settlement_batches_table.c.revenue_share_cents,
+        )
+        .select_from(partner_settlement_batches_table)
+        .where(partner_settlement_batches_table.c.created_at >= dt_from)
+        .where(partner_settlement_batches_table.c.created_at <= dt_to)
+        .where(partner_settlement_batches_table.c.status.in_(["DRAFT", "APPROVED", "PAID"]))
+        .order_by(desc(partner_settlement_batches_table.c.created_at), desc(partner_settlement_batches_table.c.id))
+        .limit(5000)
+    )
     if normalized_partner:
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = normalized_partner
-    where_sql = " AND ".join(where_parts)
-
-    batches = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, status, total_orders, gross_revenue_cents, revenue_share_cents
-            FROM partner_settlement_batches
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT 5000
-            """
-        ),
-        params,
-    ).mappings().all()
+        batches_stmt = batches_stmt.where(partner_settlement_batches_table.c.partner_id == normalized_partner)
+    batches = db.execute(batches_stmt).mappings().all()
 
     divergences: list[PartnerSettlementReconciliationTopDivergenceItemOut] = []
     severity_totals = {"HIGH": 0, "MEDIUM": 0, "LOW": 0}
     for batch in batches:
         batch_id = str(batch.get("id") or "")
         totals = db.execute(
-            text(
-                """
-                SELECT
-                    COUNT(*)::int AS total_orders,
-                    COALESCE(SUM(gross_cents), 0)::bigint AS gross_revenue_cents,
-                    COALESCE(SUM(share_cents), 0)::bigint AS revenue_share_cents
-                FROM partner_settlement_items
-                WHERE batch_id = :batch_id
-                """
-            ),
-            {"batch_id": batch_id},
+            select(
+                func.count().label("total_orders"),
+                func.coalesce(func.sum(partner_settlement_items_table.c.gross_cents), 0).label("gross_revenue_cents"),
+                func.coalesce(func.sum(partner_settlement_items_table.c.share_cents), 0).label("revenue_share_cents"),
+            )
+            .select_from(partner_settlement_items_table)
+            .where(partner_settlement_items_table.c.batch_id == batch_id)
         ).mappings().first() or {}
 
         delta_total_orders = int(totals.get("total_orders") or 0) - int(batch.get("total_orders") or 0)
@@ -3114,212 +3123,108 @@ def get_partners_ops_webhook_metrics(
             detail={"type": "INVALID_DATE_RANGE", "message": "from deve ser <= to."},
         )
 
-    where_parts = [
-        "d.created_at >= :dt_from",
-        "d.created_at <= :dt_to",
-    ]
-    params: dict[str, object] = {"dt_from": dt_from, "dt_to": dt_to, "top_n": int(top_n)}
     normalized_partner_id = str(partner_id or "").strip()
+    d = partner_webhook_deliveries_table
+    e = partner_webhook_endpoints_table
+    join_from = d.join(e, e.c.id == d.c.endpoint_id)
+    latency_expr = case(
+        (d.c.delivered_at.is_not(None), func.extract("epoch", d.c.delivered_at - d.c.created_at) * 1000),
+        else_=None,
+    )
+    base_filters = [d.c.created_at >= dt_from, d.c.created_at <= dt_to]
     if normalized_partner_id:
-        where_parts.append("e.partner_id = :partner_id")
-        params["partner_id"] = normalized_partner_id
-    where_sql = " AND ".join(where_parts)
+        base_filters.append(e.c.partner_id == normalized_partner_id)
 
+    total_deliveries_expr = func.count()
+    error_events_expr = func.count().filter(d.c.status.in_(["FAILED", "DEAD_LETTER"]))
     total_row = db.execute(
-        text(
-            f"""
-            SELECT
-                COUNT(*)::int AS total_deliveries,
-                COUNT(*) FILTER (WHERE d.status = 'DELIVERED')::int AS total_delivered,
-                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS total_failed,
-                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS total_dead_letter,
-                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS backlog_pending_failed,
-                COALESCE(
-                    ROUND(
-                        (
-                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
-                            / NULLIF(COUNT(*)::numeric, 0)
-                        ) * 100.0,
-                        2
-                    ),
-                    0
-                ) AS error_rate_pct,
-                COALESCE(
-                    ROUND(
-                        AVG(
-                            CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS avg_latency_ms,
-                COALESCE(
-                    ROUND(
-                        percentile_cont(0.95) WITHIN GROUP (
-                            ORDER BY CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS p95_latency_ms
-            FROM partner_webhook_deliveries d
-            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
-            WHERE {where_sql}
-            """
-        ),
-        params,
+        select(
+            total_deliveries_expr.cast(cast(0, Numeric).type).label("total_deliveries"),
+            func.count().filter(d.c.status == "DELIVERED").cast(cast(0, Numeric).type).label("total_delivered"),
+            func.count().filter(d.c.status == "FAILED").cast(cast(0, Numeric).type).label("total_failed"),
+            func.count().filter(d.c.status == "DEAD_LETTER").cast(cast(0, Numeric).type).label("total_dead_letter"),
+            func.count().filter(d.c.status.in_(["PENDING", "FAILED"])).cast(cast(0, Numeric).type).label("backlog_pending_failed"),
+            func.coalesce(
+                func.round((cast(error_events_expr, Numeric) / func.nullif(cast(total_deliveries_expr, Numeric), 0)) * 100.0, 2),
+                0,
+            ).label("error_rate_pct"),
+            func.coalesce(func.round(cast(func.avg(latency_expr), Numeric), 2), 0).label("avg_latency_ms"),
+            func.coalesce(func.round(cast(func.percentile_cont(0.95).within_group(latency_expr), Numeric), 2), 0).label("p95_latency_ms"),
+        )
+        .select_from(join_from)
+        .where(*base_filters)
     ).mappings().first() or {}
 
+    day_ref_expr = func.date_trunc("day", d.c.created_at)
+    daily_total_expr = func.count()
+    daily_error_expr = func.count().filter(d.c.status.in_(["FAILED", "DEAD_LETTER"]))
     daily_rows = db.execute(
-        text(
-            f"""
-            SELECT
-                DATE_TRUNC('day', d.created_at) AS day_ref,
-                COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE d.status = 'DELIVERED')::int AS delivered,
-                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
-                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
-                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
-                COALESCE(
-                    ROUND(
-                        (
-                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
-                            / NULLIF(COUNT(*)::numeric, 0)
-                        ) * 100.0,
-                        2
-                    ),
-                    0
-                ) AS error_rate_pct
-            FROM partner_webhook_deliveries d
-            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
-            WHERE {where_sql}
-            GROUP BY DATE_TRUNC('day', d.created_at)
-            ORDER BY DATE_TRUNC('day', d.created_at) ASC
-            """
-        ),
-        params,
+        select(
+            day_ref_expr.label("day_ref"),
+            daily_total_expr.cast(cast(0, Numeric).type).label("total"),
+            func.count().filter(d.c.status == "DELIVERED").cast(cast(0, Numeric).type).label("delivered"),
+            func.count().filter(d.c.status == "FAILED").cast(cast(0, Numeric).type).label("failed"),
+            func.count().filter(d.c.status == "DEAD_LETTER").cast(cast(0, Numeric).type).label("dead_letter"),
+            func.count().filter(d.c.status.in_(["PENDING", "FAILED"])).cast(cast(0, Numeric).type).label("pending"),
+            func.coalesce(
+                func.round((cast(daily_error_expr, Numeric) / func.nullif(cast(daily_total_expr, Numeric), 0)) * 100.0, 2),
+                0,
+            ).label("error_rate_pct"),
+        )
+        .select_from(join_from)
+        .where(*base_filters)
+        .group_by(day_ref_expr)
+        .order_by(day_ref_expr.asc())
     ).mappings().all()
 
+    top_partner_total_expr = func.count()
+    top_partner_error_expr = func.count().filter(d.c.status.in_(["FAILED", "DEAD_LETTER"]))
+    total_partner_label = top_partner_total_expr.label("total")
     top_partner_rows = db.execute(
-        text(
-            f"""
-            SELECT
-                e.partner_id AS partner_id,
-                COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
-                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
-                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
-                COALESCE(
-                    ROUND(
-                        (
-                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
-                            / NULLIF(COUNT(*)::numeric, 0)
-                        ) * 100.0,
-                        2
-                    ),
-                    0
-                ) AS error_rate_pct,
-                COALESCE(
-                    ROUND(
-                        AVG(
-                            CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS avg_latency_ms,
-                COALESCE(
-                    ROUND(
-                        percentile_cont(0.95) WITHIN GROUP (
-                            ORDER BY CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS p95_latency_ms
-            FROM partner_webhook_deliveries d
-            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
-            WHERE {where_sql}
-            GROUP BY e.partner_id
-            ORDER BY total DESC, partner_id ASC
-            LIMIT :top_n
-            """
-        ),
-        params,
+        select(
+            e.c.partner_id.label("partner_id"),
+            total_partner_label,
+            func.count().filter(d.c.status == "FAILED").cast(cast(0, Numeric).type).label("failed"),
+            func.count().filter(d.c.status == "DEAD_LETTER").cast(cast(0, Numeric).type).label("dead_letter"),
+            func.count().filter(d.c.status.in_(["PENDING", "FAILED"])).cast(cast(0, Numeric).type).label("pending"),
+            func.coalesce(
+                func.round((cast(top_partner_error_expr, Numeric) / func.nullif(cast(top_partner_total_expr, Numeric), 0)) * 100.0, 2),
+                0,
+            ).label("error_rate_pct"),
+            func.coalesce(func.round(cast(func.avg(latency_expr), Numeric), 2), 0).label("avg_latency_ms"),
+            func.coalesce(func.round(cast(func.percentile_cont(0.95).within_group(latency_expr), Numeric), 2), 0).label("p95_latency_ms"),
+        )
+        .select_from(join_from)
+        .where(*base_filters)
+        .group_by(e.c.partner_id)
+        .order_by(desc(total_partner_label), e.c.partner_id.asc())
+        .limit(int(top_n))
     ).mappings().all()
 
+    top_endpoint_total_expr = func.count()
+    top_endpoint_error_expr = func.count().filter(d.c.status.in_(["FAILED", "DEAD_LETTER"]))
+    total_endpoint_label = top_endpoint_total_expr.label("total")
     top_endpoint_rows = db.execute(
-        text(
-            f"""
-            SELECT
-                d.endpoint_id AS endpoint_id,
-                e.partner_id AS partner_id,
-                e.url AS endpoint_url,
-                COUNT(*)::int AS total,
-                COUNT(*) FILTER (WHERE d.status = 'FAILED')::int AS failed,
-                COUNT(*) FILTER (WHERE d.status = 'DEAD_LETTER')::int AS dead_letter,
-                COUNT(*) FILTER (WHERE d.status IN ('PENDING', 'FAILED'))::int AS pending,
-                COALESCE(
-                    ROUND(
-                        (
-                            (COUNT(*) FILTER (WHERE d.status IN ('FAILED', 'DEAD_LETTER')))::numeric
-                            / NULLIF(COUNT(*)::numeric, 0)
-                        ) * 100.0,
-                        2
-                    ),
-                    0
-                ) AS error_rate_pct,
-                COALESCE(
-                    ROUND(
-                        AVG(
-                            CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS avg_latency_ms,
-                COALESCE(
-                    ROUND(
-                        percentile_cont(0.95) WITHIN GROUP (
-                            ORDER BY CASE
-                                WHEN d.delivered_at IS NOT NULL
-                                THEN EXTRACT(EPOCH FROM (d.delivered_at - d.created_at)) * 1000
-                                ELSE NULL
-                            END
-                        )::numeric,
-                        2
-                    ),
-                    0
-                ) AS p95_latency_ms
-            FROM partner_webhook_deliveries d
-            JOIN partner_webhook_endpoints e ON e.id = d.endpoint_id
-            WHERE {where_sql}
-            GROUP BY d.endpoint_id, e.partner_id, e.url
-            ORDER BY total DESC, endpoint_id ASC
-            LIMIT :top_n
-            """
-        ),
-        params,
+        select(
+            d.c.endpoint_id.label("endpoint_id"),
+            e.c.partner_id.label("partner_id"),
+            e.c.url.label("endpoint_url"),
+            total_endpoint_label,
+            func.count().filter(d.c.status == "FAILED").cast(cast(0, Numeric).type).label("failed"),
+            func.count().filter(d.c.status == "DEAD_LETTER").cast(cast(0, Numeric).type).label("dead_letter"),
+            func.count().filter(d.c.status.in_(["PENDING", "FAILED"])).cast(cast(0, Numeric).type).label("pending"),
+            func.coalesce(
+                func.round((cast(top_endpoint_error_expr, Numeric) / func.nullif(cast(top_endpoint_total_expr, Numeric), 0)) * 100.0, 2),
+                0,
+            ).label("error_rate_pct"),
+            func.coalesce(func.round(cast(func.avg(latency_expr), Numeric), 2), 0).label("avg_latency_ms"),
+            func.coalesce(func.round(cast(func.percentile_cont(0.95).within_group(latency_expr), Numeric), 2), 0).label("p95_latency_ms"),
+        )
+        .select_from(join_from)
+        .where(*base_filters)
+        .group_by(d.c.endpoint_id, e.c.partner_id, e.c.url)
+        .order_by(desc(total_endpoint_label), d.c.endpoint_id.asc())
+        .limit(int(top_n))
     ).mappings().all()
 
     total_deliveries = int(total_row.get("total_deliveries") or 0)

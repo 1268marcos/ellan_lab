@@ -55,6 +55,13 @@ from app.services.user_roles_service import list_active_user_roles
 router = APIRouter(prefix="/public/auth", tags=["public-auth"])
 
 
+def _raise_public_auth_error(*, status_code: int, code: str, message: str) -> None:
+    raise HTTPException(
+        status_code=status_code,
+        detail={"type": code, "message": message},
+    )
+
+
 def _public_user_payload(user) -> PublicUserOut:
     payload = PublicUserOut.model_validate(user).model_dump()
     payload["fiscal_profile_completeness"] = fiscal_profile_completeness(user)
@@ -98,7 +105,11 @@ def public_register(
         )
 
     except AuthEmailAlreadyExistsError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=409,
+            code="EMAIL_ALREADY_REGISTERED",
+            message="E-mail já cadastrado.",
+        )
 
 
 @router.post("/login", response_model=PublicAuthTokenOut)
@@ -128,7 +139,11 @@ def public_login(
         )
 
     except AuthInvalidCredentialsError as exc:
-        raise HTTPException(status_code=401, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=401,
+            code="INVALID_CREDENTIALS",
+            message="Credenciais inválidas.",
+        )
 
 
 @router.get("/me", response_model=PublicAuthMeOut)
@@ -169,7 +184,11 @@ def public_upsert_fiscal_profile(
             snapshot_rebuild=sync_summary,
         )
     except AuthServiceError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="INVALID_FISCAL_PROFILE",
+            message="Não foi possível atualizar o perfil fiscal.",
+        )
 
 
 @router.get("/me/roles", response_model=PublicAuthRolesOut)
@@ -197,9 +216,17 @@ def public_change_password(
         )
         return PublicChangePasswordOut(ok=True, message="password_updated")
     except AuthCurrentPasswordMismatchError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="CURRENT_PASSWORD_MISMATCH",
+            message="Senha atual inválida.",
+        )
     except AuthWeakPasswordError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="WEAK_PASSWORD",
+            message="A nova senha não atende aos critérios mínimos.",
+        )
 
 
 @router.post("/forgot-password", response_model=PublicForgotPasswordOut)
@@ -228,9 +255,17 @@ def public_reset_password(
         )
         return PublicResetPasswordOut(ok=True, message="password_reset_success")
     except AuthPasswordResetTokenError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="INVALID_OR_EXPIRED_RESET_TOKEN",
+            message="Token de recuperação inválido ou expirado.",
+        )
     except AuthWeakPasswordError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="WEAK_PASSWORD",
+            message="A nova senha não atende aos critérios mínimos.",
+        )
 
 
 @router.post("/email-verification/resend", response_model=PublicEmailVerificationSendOut)
@@ -247,7 +282,11 @@ def public_resend_email_verification(
             verification_link=result.get("verification_link"),
         )
     except AuthEmailDeliveryError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=503,
+            code="EMAIL_DELIVERY_UNAVAILABLE",
+            message="Serviço de e-mail indisponível no momento.",
+        )
 
 
 @router.get("/email-verification/confirm", response_model=PublicEmailVerificationConfirmOut)
@@ -263,4 +302,8 @@ def public_confirm_email_verification(
             user=_public_user_payload(user),
         )
     except AuthEmailVerificationTokenError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        _raise_public_auth_error(
+            status_code=400,
+            code="INVALID_OR_EXPIRED_VERIFICATION_TOKEN",
+            message="Token de verificação inválido ou expirado.",
+        )

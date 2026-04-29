@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
-from sqlalchemy import text
+from sqlalchemy import and_, desc, func, select, table, column, text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -48,6 +48,58 @@ from app.services.ops_audit_service import record_ops_action_audit
 router = APIRouter(
     tags=["pricing-fiscal"],
     dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria"}))],
+)
+
+product_bundles_table = table(
+    "product_bundles",
+    column("id"),
+    column("name"),
+    column("code"),
+    column("description"),
+    column("amount_cents"),
+    column("currency"),
+    column("bundle_type"),
+    column("is_active"),
+    column("valid_from"),
+    column("valid_until"),
+    column("created_at"),
+    column("updated_at"),
+)
+
+promotions_table = table(
+    "promotions",
+    column("id"),
+    column("code"),
+    column("name"),
+    column("type"),
+    column("discount_pct"),
+    column("discount_cents"),
+    column("min_order_cents"),
+    column("max_discount_cents"),
+    column("max_uses"),
+    column("uses_count"),
+    column("per_user_limit"),
+    column("conditions_json"),
+    column("is_active"),
+    column("valid_from"),
+    column("valid_until"),
+    column("created_by"),
+    column("created_at"),
+)
+
+fiscal_auto_classification_log_table = table(
+    "fiscal_auto_classification_log",
+    column("id"),
+    column("order_id"),
+    column("invoice_id"),
+    column("sku_id"),
+    column("ncm_applied"),
+    column("icms_cst_applied"),
+    column("pis_cst_applied"),
+    column("cofins_cst_applied"),
+    column("cfop_applied"),
+    column("source"),
+    column("classified_at"),
 )
 
 
@@ -319,36 +371,41 @@ def list_product_bundles(
             status_code=422,
             detail={"type": "INVALID_DATE_RANGE", "message": "from_date deve ser <= to_date."},
         )
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     if is_active is not None:
-        where_parts.append("is_active = :is_active")
-        params["is_active"] = bool(is_active)
+        filters.append(product_bundles_table.c.is_active == bool(is_active))
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(product_bundles_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM product_bundles WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, name, code, description, amount_cents, currency, bundle_type, is_active,
-                   valid_from, valid_until, created_at, updated_at
-            FROM product_bundles
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+        filters.append(product_bundles_table.c.created_at <= dt_to)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(product_bundles_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
+    rows_stmt = (
+        select(
+            product_bundles_table.c.id,
+            product_bundles_table.c.name,
+            product_bundles_table.c.code,
+            product_bundles_table.c.description,
+            product_bundles_table.c.amount_cents,
+            product_bundles_table.c.currency,
+            product_bundles_table.c.bundle_type,
+            product_bundles_table.c.is_active,
+            product_bundles_table.c.valid_from,
+            product_bundles_table.c.valid_until,
+            product_bundles_table.c.created_at,
+            product_bundles_table.c.updated_at,
+        )
+        .select_from(product_bundles_table)
+        .order_by(desc(product_bundles_table.c.created_at), desc(product_bundles_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [
         ProductBundleOut(
             id=str(row.get("id") or ""),
@@ -419,7 +476,7 @@ def create_product_bundle(
         db.commit()
         raise HTTPException(
             status_code=422,
-            detail={"type": "BUNDLE_CREATE_FAILED", "message": "Não foi possível criar bundle.", "error": str(exc)},
+            detail={"type": "BUNDLE_CREATE_FAILED", "message": "Não foi possível criar bundle."},
         ) from exc
 
     created = db.execute(
@@ -521,41 +578,49 @@ def list_promotions(
             status_code=422,
             detail={"type": "INVALID_DATE_RANGE", "message": "from_date deve ser <= to_date."},
         )
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     normalized_code = str(code or "").strip()
     if is_active is not None:
-        where_parts.append("is_active = :is_active")
-        params["is_active"] = bool(is_active)
+        filters.append(promotions_table.c.is_active == bool(is_active))
     if normalized_code:
-        where_parts.append("code = :code")
-        params["code"] = normalized_code
+        filters.append(promotions_table.c.code == normalized_code)
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(promotions_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM promotions WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, code, name, type, discount_pct, discount_cents, min_order_cents, max_discount_cents,
-                   max_uses, uses_count, per_user_limit, conditions_json, is_active, valid_from, valid_until,
-                   created_by, created_at
-            FROM promotions
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+        filters.append(promotions_table.c.created_at <= dt_to)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(promotions_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
+    rows_stmt = (
+        select(
+            promotions_table.c.id,
+            promotions_table.c.code,
+            promotions_table.c.name,
+            promotions_table.c.type,
+            promotions_table.c.discount_pct,
+            promotions_table.c.discount_cents,
+            promotions_table.c.min_order_cents,
+            promotions_table.c.max_discount_cents,
+            promotions_table.c.max_uses,
+            promotions_table.c.uses_count,
+            promotions_table.c.per_user_limit,
+            promotions_table.c.conditions_json,
+            promotions_table.c.is_active,
+            promotions_table.c.valid_from,
+            promotions_table.c.valid_until,
+            promotions_table.c.created_by,
+            promotions_table.c.created_at,
+        )
+        .select_from(promotions_table)
+        .order_by(desc(promotions_table.c.created_at), desc(promotions_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [_promotion_to_out(dict(row)) for row in rows]
     return PromotionListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
 
@@ -610,7 +675,7 @@ def create_promotion(
         db.commit()
         raise HTTPException(
             status_code=422,
-            detail={"type": "PROMOTION_CREATE_FAILED", "message": "Não foi possível criar promoção.", "error": str(exc)},
+            detail={"type": "PROMOTION_CREATE_FAILED", "message": "Não foi possível criar promoção."},
         ) from exc
     row = db.execute(
         text(
@@ -1002,45 +1067,50 @@ def list_fiscal_auto_classification_log(
             status_code=422,
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     normalized_order_id = str(order_id or "").strip()
     normalized_sku_id = str(sku_id or "").strip()
     normalized_source = str(source or "").strip().upper()
     if normalized_order_id:
-        where_parts.append("order_id = :order_id")
-        params["order_id"] = normalized_order_id
+        filters.append(fiscal_auto_classification_log_table.c.order_id == normalized_order_id)
     if normalized_sku_id:
-        where_parts.append("sku_id = :sku_id")
-        params["sku_id"] = normalized_sku_id
+        filters.append(fiscal_auto_classification_log_table.c.sku_id == normalized_sku_id)
     if normalized_source:
-        where_parts.append("source = :source")
-        params["source"] = normalized_source
+        filters.append(fiscal_auto_classification_log_table.c.source == normalized_source)
     if dt_from is not None:
-        where_parts.append("classified_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(fiscal_auto_classification_log_table.c.classified_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("classified_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM fiscal_auto_classification_log WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, order_id, invoice_id, sku_id, ncm_applied, icms_cst_applied, pis_cst_applied,
-                   cofins_cst_applied, cfop_applied, source, classified_at
-            FROM fiscal_auto_classification_log
-            WHERE {where_sql}
-            ORDER BY classified_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+        filters.append(fiscal_auto_classification_log_table.c.classified_at <= dt_to)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(fiscal_auto_classification_log_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
+    rows_stmt = (
+        select(
+            fiscal_auto_classification_log_table.c.id,
+            fiscal_auto_classification_log_table.c.order_id,
+            fiscal_auto_classification_log_table.c.invoice_id,
+            fiscal_auto_classification_log_table.c.sku_id,
+            fiscal_auto_classification_log_table.c.ncm_applied,
+            fiscal_auto_classification_log_table.c.icms_cst_applied,
+            fiscal_auto_classification_log_table.c.pis_cst_applied,
+            fiscal_auto_classification_log_table.c.cofins_cst_applied,
+            fiscal_auto_classification_log_table.c.cfop_applied,
+            fiscal_auto_classification_log_table.c.source,
+            fiscal_auto_classification_log_table.c.classified_at,
+        )
+        .select_from(fiscal_auto_classification_log_table)
+        .order_by(
+            desc(fiscal_auto_classification_log_table.c.classified_at),
+            desc(fiscal_auto_classification_log_table.c.id),
+        )
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [
         FiscalAutoClassificationLogItemOut(
             id=int(row.get("id") or 0),

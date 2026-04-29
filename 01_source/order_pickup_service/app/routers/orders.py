@@ -7,7 +7,7 @@ from datetime import datetime
 from datetime import timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
@@ -270,38 +270,33 @@ def list_orders_partner_lookup(
         raise HTTPException(status_code=422, detail={"type": "INVALID_PARTNER_ID", "message": "partner_id é obrigatório."})
     normalized_partner_order_ref = str(partner_order_ref or "").strip()
 
-    params: dict[str, object] = {"partner_id": normalized_partner_id, "limit": int(limit), "offset": int(offset)}
-    where = "ecommerce_partner_id = :partner_id"
-    if normalized_partner_order_ref:
-        where += " AND partner_order_ref = :partner_order_ref"
-        params["partner_order_ref"] = normalized_partner_order_ref
+    order_lookup_query = db.query(
+        Order.id.label("id"),
+        Order.ecommerce_partner_id.label("ecommerce_partner_id"),
+        Order.partner_order_ref.label("partner_order_ref"),
+    ).filter(Order.ecommerce_partner_id == normalized_partner_id)
 
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, ecommerce_partner_id, partner_order_ref
-            FROM orders
-            WHERE {where}
-            ORDER BY created_at DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
-    total = int(
-        db.execute(text(f"SELECT COUNT(*) FROM orders WHERE {where}"), {k: v for k, v in params.items() if k not in {"limit", "offset"}}).scalar()
-        or 0
+    if normalized_partner_order_ref:
+        order_lookup_query = order_lookup_query.filter(Order.partner_order_ref == normalized_partner_order_ref)
+
+    rows = (
+        order_lookup_query
+        .order_by(Order.created_at.desc())
+        .offset(int(offset))
+        .limit(int(limit))
+        .all()
     )
+    total = int(order_lookup_query.with_entities(func.count()).scalar() or 0)
     if not rows:
         return OrderPartnerLookupListOut(ok=True, total=total, limit=limit, offset=offset, items=[])
 
-    order_ids = [str(row["id"]) for row in rows if row.get("id")]
+    order_ids = [str(row.id) for row in rows if getattr(row, "id", None)]
     orders = db.query(Order).filter(Order.id.in_(order_ids)).all()
     by_id = {str(order.id): order for order in orders}
 
     items: list[OrderPartnerLookupItemOut] = []
     for row in rows:
-        oid = str(row.get("id") or "")
+        oid = str(getattr(row, "id", "") or "")
         order = by_id.get(oid)
         if not order:
             continue
@@ -315,8 +310,8 @@ def list_orders_partner_lookup(
         items.append(
             OrderPartnerLookupItemOut(
                 order_id=oid,
-                partner_id=str(row.get("ecommerce_partner_id") or "") or None,
-                partner_order_ref=str(row.get("partner_order_ref") or "") or None,
+                partner_id=str(getattr(row, "ecommerce_partner_id", "") or "") or None,
+                partner_order_ref=str(getattr(row, "partner_order_ref", "") or "") or None,
                 status=resolved_status,
                 slot=allocation.slot if allocation else order.slot,
                 locker_id=(allocation.locker_id if allocation and allocation.locker_id else order.totem_id),

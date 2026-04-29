@@ -46,7 +46,7 @@ def _request(
             "type": "RUNTIME_CONNECTION_ERROR",
             "message": "Failed to connect to backend_runtime",
             "retryable": True,
-            "error": str(exc),
+            "error_type": exc.__class__.__name__,
             "url": url,
         }
 

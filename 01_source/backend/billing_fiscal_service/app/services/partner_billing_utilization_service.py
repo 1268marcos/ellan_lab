@@ -47,22 +47,22 @@ def recompute_daily_utilization_snapshot(
     partner_id: str | None = None,
     locker_id: str | None = None,
 ) -> dict:
-    clauses = ["c.period_start <= :snapshot_date", "c.period_end >= :snapshot_date"]
-    params: dict[str, object] = {"snapshot_date": snapshot_date}
-    if partner_id:
-        clauses.append("c.partner_id = :partner_id")
-        params["partner_id"] = partner_id
-    if locker_id:
-        clauses.append("c.locker_id = :locker_id")
-        params["locker_id"] = locker_id
+    params: dict[str, object] = {
+        "snapshot_date": snapshot_date,
+        "partner_id": partner_id,
+        "locker_id": locker_id,
+    }
 
     cycle_rows = db.execute(
         text(
-            f"""
+            """
             SELECT c.partner_id, c.locker_id, c.country_code, c.jurisdiction_code, c.currency, c.period_timezone
             FROM partner_billing_cycles c
             WHERE c.locker_id IS NOT NULL
-              AND {' AND '.join(clauses)}
+              AND c.period_start <= :snapshot_date
+              AND c.period_end >= :snapshot_date
+              AND (:partner_id IS NULL OR c.partner_id = :partner_id)
+              AND (:locker_id IS NULL OR c.locker_id = :locker_id)
             """
         ),
         params,

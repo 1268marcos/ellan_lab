@@ -70,7 +70,7 @@ class LockerService:
                     "type": LockerServiceErrorType.FETCH_FAILED,
                     "message": f"Timeout ao consultar lockers para região {region}",
                     "region": region,
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                 },
             ) from exc
 
@@ -81,7 +81,7 @@ class LockerService:
                     "type": LockerServiceErrorType.FETCH_FAILED,
                     "message": f"Falha ao consultar runtime lockers via gateway para região {region}",
                     "region": region,
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                 },
             ) from exc
 
@@ -91,7 +91,7 @@ class LockerService:
                 detail={
                     "type": LockerServiceErrorType.FETCH_FAILED,
                     "message": "Erro inesperado ao consultar lockers",
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                 },
             ) from exc
 

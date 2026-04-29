@@ -471,7 +471,7 @@ def dev_reconcile_order(
             user_id=current_user.id if current_user else None,
             role="ops_user",
             order_id=order_id or None,
-            error_message=str(exc),
+            error_message=exc.__class__.__name__,
         )
         raise
 
@@ -1117,7 +1117,7 @@ def dev_release_regional_allocations(
                 {
                     "allocation_id": allocation_id,
                     "ok": False,
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                 }
             )
             failed_count += 1
@@ -1186,7 +1186,7 @@ def dev_reset_locker(
 
                     released_allocations.append(allocation.id)
                 except Exception as exc:
-                    released_allocations.append(f"{allocation.id} (erro: {str(exc)})")
+                    released_allocations.append(f"{allocation.id} (erro: {exc.__class__.__name__})")
 
         if not payload.purge_local_data:
             db.flush()
@@ -1211,7 +1211,7 @@ def dev_reset_locker(
                     {
                         "slot": slot,
                         "ok": False,
-                        "error": str(exc),
+                        "error_type": exc.__class__.__name__,
                     }
                 )
 
@@ -1263,7 +1263,7 @@ def dev_reset_locker(
                 "message": "Falha ao executar reset DEV do locker.",
                 "region": region,
                 "locker_id": locker_id,
-                "error": str(exc),
+                "error_type": exc.__class__.__name__,
             },
         ) from exc
 

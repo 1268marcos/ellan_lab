@@ -27,6 +27,26 @@ def _at_pt_generate_access_key(invoice: Invoice) -> str:
     return f"at_pt_{uuid.uuid4().hex}"
 
 
+def _at_pt_build_raw(invoice: Invoice, *, operation: str, extra: dict | None = None) -> dict:
+    payload = {
+        "contract_version": "f3_stub_canonical_v1",
+        "provider_namespace": "at_pt_stub",
+        "provider_mode": "stub_dedicated",
+        "integration_mode": "local_stub",
+        "operation": operation,
+        "order_id": invoice.order_id,
+        "invoice_id": invoice.id,
+        "country": "PT",
+        "region": invoice.region,
+        "amount_cents": int(invoice.amount_cents or 0),
+        "currency": invoice.currency,
+        "payment_method": invoice.payment_method,
+    }
+    if extra:
+        payload.update(extra)
+    return payload
+
+
 def at_pt_issue_invoice(invoice: Invoice) -> dict:
     invoice_number = _at_pt_generate_invoice_number(invoice)
     invoice_series = _at_pt_generate_series()
@@ -70,11 +90,17 @@ def at_pt_issue_invoice(invoice: Invoice) -> dict:
             "generated_at": _at_pt_now_iso(),
         },
         "government_response": {
-            "provider_namespace": "at_pt",
+            "provider_namespace": "at_pt_stub",
             "provider_status": "ACCEPTED",
             "provider_code": "AT-200",
             "provider_message": "Documento fiscal aceite pela AT (stub).",
+            "receipt_number": f"at_pt_rec_{uuid.uuid4().hex[:20]}",
+            "protocol_number": f"at_pt_prot_{uuid.uuid4().hex[:20]}",
+            "invoice_number": invoice_number,
+            "invoice_series": invoice_series,
+            "access_key": access_key,
             "processed_at": _at_pt_now_iso(),
+            "raw": _at_pt_build_raw(invoice, operation="ISSUE"),
         },
     }
 
@@ -84,11 +110,17 @@ def at_pt_cc_e_stub(invoice: Invoice, correction_text: str | None) -> dict:
     text = (correction_text or "").strip() or "Correção documental (stub)."
     return {
         "provider": "at_pt",
-        "kind": "correction_stub",
+        "kind": "correction",
         "country": "PT",
         "access_key": invoice.access_key or _at_pt_generate_access_key(invoice),
         "correction_text": text[:1000],
+        "protocol_number": f"at_pt_corr_{uuid.uuid4().hex[:18]}",
         "processed_at": _at_pt_now_iso(),
+        "raw": _at_pt_build_raw(
+            invoice,
+            operation="CORRECTION",
+            extra={"correction_text": text[:1000]},
+        ),
     }
 
 
@@ -97,7 +129,9 @@ def at_pt_cancel_invoice(invoice: Invoice) -> dict:
     return {
         "provider": "at_pt",
         "country": "PT",
-        "cancel_status": "STUB_CANCELLED",
+        "cancel_status": "CANCELLED",
         "access_key": invoice.access_key or _at_pt_generate_access_key(invoice),
+        "protocol_number": f"at_pt_cancel_{uuid.uuid4().hex[:20]}",
         "processed_at": _at_pt_now_iso(),
+        "raw": _at_pt_build_raw(invoice, operation="CANCEL"),
     }

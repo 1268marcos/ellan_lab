@@ -284,7 +284,7 @@ def execute_hardware_command(
                 machine_id=machine_id,
                 region=region,
                 endpoint=str(request.url.path),
-                error=str(exc),
+                error_type=exc.__class__.__name__,
             ),
         ) from exc
 
@@ -359,7 +359,7 @@ def execute_hardware_command(
                 slot=slot,
                 command=command,
                 command_id=command_id,
-                error=str(exc),
+                error_type=exc.__class__.__name__,
             ),
         ) from exc
 
@@ -386,7 +386,7 @@ def execute_hardware_command(
                     "region": region,
                     "topic": topic,
                     "command_payload": cmd_payload,
-                    "error": str(exc),
+                    "error_type": exc.__class__.__name__,
                     "trace": tb,
                 },
             )
@@ -410,7 +410,7 @@ def execute_hardware_command(
                 mqtt_host=settings.mqtt_host,
                 mqtt_port=int(settings.mqtt_port),
                 topic=topic,
-                error=str(exc),
+                error_type=exc.__class__.__name__,
             ),
         ) from exc
 

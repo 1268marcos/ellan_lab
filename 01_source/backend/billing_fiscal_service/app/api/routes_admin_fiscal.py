@@ -53,6 +53,10 @@ def validate_internal_token(internal_token: str = Header(..., alias="X-Internal-
         raise HTTPException(status_code=403, detail="Invalid internal token")
 
 
+def _safe_client_error(message: str = "Invalid request payload.") -> HTTPException:
+    return HTTPException(status_code=400, detail=message)
+
+
 def _build_danfe_pdf_stub_base64(invoice: Invoice) -> str:
     """
     DANFE simplificado (stub): gera conteúdo textual com envelope PDF-like e retorna em base64.
@@ -167,7 +171,7 @@ def force_issue_order_invoice(
             skip_consumer_fiscal_gate=skip_consumer_fiscal_gate,
         )
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_client_error("Unable to process invoice request.") from exc
 
     now = datetime.now(timezone.utc)
     paid_gap_key = f"paid_without_invoice:{normalized_order_id}"
@@ -294,7 +298,7 @@ def post_svrs_batch_submit_stub(
     try:
         out = submit_svrs_issue_batch_stub(payload or {})
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_client_error("Invalid batch submit payload.") from exc
     return {"ok": True, **out}
 
 
@@ -306,7 +310,7 @@ def get_svrs_batch_query_stub(
     try:
         out = query_svrs_issue_batch_stub(receipt_number)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_client_error("Invalid receipt_number for batch query.") from exc
     return {"ok": True, **out}
 
 
@@ -452,41 +456,16 @@ def get_ledger_compat_audit(
     compara lado a lado journal_entries (fonte primária) vs financial_ledger (compat layer)
     usando external_reference == dedupe_key.
     """
-    clauses = ["1=1"]
     params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
-    if external_reference:
-        clauses.append("fl.external_reference = :external_reference")
-        params["external_reference"] = external_reference.strip()
-    if event_type:
-        clauses.append("COALESCE(fl.metadata->>'event_type', je.reference_type) = :event_type")
-        params["event_type"] = event_type.strip().upper()
-    if from_date:
-        clauses.append("COALESCE(je.created_at, fl.created_at)::date >= :from_date")
-        params["from_date"] = from_date
-    if to_date:
-        clauses.append("COALESCE(je.created_at, fl.created_at)::date <= :to_date")
-        params["to_date"] = to_date
-    if only_mismatches:
-        clauses.append(
-            """
-            (
-                je.id IS NULL
-                OR COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
-                   <> COALESCE((SELECT SUM(jel.credit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
-                OR fl.amount_cents
-                   <> CAST(
-                       ROUND(
-                           COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
-                           * 100
-                       ) AS BIGINT
-                   )
-            )
-            """
-        )
+    params["external_reference"] = external_reference.strip() if external_reference else None
+    params["event_type"] = event_type.strip().upper() if event_type else None
+    params["from_date"] = from_date
+    params["to_date"] = to_date
+    params["only_mismatches"] = bool(only_mismatches)
 
     rows = db.execute(
         text(
-            f"""
+            """
             SELECT
                 fl.external_reference,
                 fl.entry_type AS ledger_entry_type,
@@ -511,7 +490,25 @@ def get_ledger_compat_audit(
             FROM financial_ledger fl
             LEFT JOIN journal_entries je
                 ON je.dedupe_key = fl.external_reference
-            WHERE {' AND '.join(clauses)}
+            WHERE (:external_reference IS NULL OR fl.external_reference = :external_reference)
+              AND (:event_type IS NULL OR COALESCE(fl.metadata->>'event_type', je.reference_type) = :event_type)
+              AND (:from_date IS NULL OR COALESCE(je.created_at, fl.created_at)::date >= :from_date)
+              AND (:to_date IS NULL OR COALESCE(je.created_at, fl.created_at)::date <= :to_date)
+              AND (
+                    :only_mismatches = false
+                    OR (
+                        je.id IS NULL
+                        OR COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                           <> COALESCE((SELECT SUM(jel.credit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                        OR fl.amount_cents
+                           <> CAST(
+                               ROUND(
+                                   COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                                   * 100
+                               ) AS BIGINT
+                           )
+                    )
+                  )
             ORDER BY COALESCE(je.created_at, fl.created_at) DESC
             LIMIT :limit OFFSET :offset
             """
@@ -521,12 +518,30 @@ def get_ledger_compat_audit(
 
     count_row = db.execute(
         text(
-            f"""
+            """
             SELECT COUNT(*)
             FROM financial_ledger fl
             LEFT JOIN journal_entries je
                 ON je.dedupe_key = fl.external_reference
-            WHERE {' AND '.join(clauses)}
+            WHERE (:external_reference IS NULL OR fl.external_reference = :external_reference)
+              AND (:event_type IS NULL OR COALESCE(fl.metadata->>'event_type', je.reference_type) = :event_type)
+              AND (:from_date IS NULL OR COALESCE(je.created_at, fl.created_at)::date >= :from_date)
+              AND (:to_date IS NULL OR COALESCE(je.created_at, fl.created_at)::date <= :to_date)
+              AND (
+                    :only_mismatches = false
+                    OR (
+                        je.id IS NULL
+                        OR COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                           <> COALESCE((SELECT SUM(jel.credit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                        OR fl.amount_cents
+                           <> CAST(
+                               ROUND(
+                                   COALESCE((SELECT SUM(jel.debit_amount) FROM journal_entry_lines jel WHERE jel.journal_entry_id = je.id), 0)
+                                   * 100
+                               ) AS BIGINT
+                           )
+                    )
+                  )
             """
         ),
         {k: v for k, v in params.items() if k not in ("limit", "offset")},

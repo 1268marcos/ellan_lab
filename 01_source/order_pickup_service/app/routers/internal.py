@@ -72,6 +72,13 @@ PICKUP_WINDOW_HOURS = 2
 QR_ROTATE_SEC = settings.qr_rotate_sec
 
 
+def _safe_internal_error(message: str, error_type: str, order_id: str | None = None) -> dict:
+    payload: dict[str, object] = {"type": error_type, "message": message}
+    if order_id:
+        payload["order_id"] = order_id
+    return payload
+
+
 #============ HELPERS =============
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
@@ -126,12 +133,11 @@ def _cancel_prepayment_timeout_for_order(order: Order) -> None:
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail={
-                "type": "PREPAYMENT_DEADLINE_CANCEL_FAILED",
-                "message": "Falha ao cancelar deadline de pré-pagamento após confirmação do pagamento.",
-                "order_id": order.id,
-                "error": str(exc),
-            },
+            detail=_safe_internal_error(
+                "Falha ao cancelar deadline de pré-pagamento após confirmação do pagamento.",
+                "PREPAYMENT_DEADLINE_CANCEL_FAILED",
+                order.id,
+            ),
         ) from exc
 
 
@@ -623,11 +629,11 @@ def payment_confirm(
     except ValueError as exc:
         raise HTTPException(
             status_code=409,
-            detail={
-                "type": "PAYMENT_CONFIRM_INVALID",
-                "message": str(exc),
-                "order_id": order.id,
-            },
+            detail=_safe_internal_error(
+                message="Falha ao confirmar pagamento interno.",
+                error_type=exc.__class__.__name__,
+                order_id=order.id,
+            ),
         ) from exc
 
     # 🔥 CANCELAR TIMEOUT DE PRÉ-PAGAMENTO IMEDIATAMENTE APÓS CONFIRMAÇÃO
@@ -878,7 +884,10 @@ def internal_order_fiscal_context(
     except ValueError as exc:
         if str(exc) == "order_not_found":
             raise HTTPException(status_code=404, detail="order not found") from exc
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_internal_error("Failed to build fiscal context.", "FISCAL_CONTEXT_BUILD_FAILED", order_id),
+        ) from exc
     return {"ok": True, **ctx}
 
 
@@ -897,7 +906,10 @@ def internal_order_invoice_source(
     except ValueError as exc:
         if str(exc) == "order_not_found":
             raise HTTPException(status_code=404, detail="order not found") from exc
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=500,
+            detail=_safe_internal_error("Failed to build invoice source context.", "INVOICE_SOURCE_BUILD_FAILED", order_id),
+        ) from exc
     return {"ok": True, **ctx}
 
 
@@ -957,7 +969,12 @@ def internal_fiscal_health(_=Depends(require_internal_token)):
             "status_code": r.status_code,
         }
     except Exception as exc:
-        out["billing_fiscal_service"] = {"checked": True, "ok": False, "error": str(exc)}
+        out["billing_fiscal_service"] = {
+            "checked": True,
+            "ok": False,
+            "error": "billing_fiscal_service_unreachable",
+            "error_type": exc.__class__.__name__,
+        }
         out["ok"] = False
     return out
 

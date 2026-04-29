@@ -59,6 +59,10 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+def _safe_bad_request(message: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=message)
+
+
 @router.post("/deadlines", response_model=CreateDeadlineResponse)
 def create_deadline(
     payload: CreateDeadlineRequest,
@@ -346,7 +350,7 @@ def get_pickup_breakdown(
             site_id=site_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_bad_request("Invalid breakdown query parameters.") from exc
 
 
 @router.get("/analytics/pickup-ranking", response_model=PickupRankingResponse)
@@ -389,7 +393,7 @@ def get_pickup_ranking(
             site_id=site_id,
         )
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_bad_request("Invalid ranking query parameters.") from exc
 
 
 @router.get(

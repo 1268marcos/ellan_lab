@@ -4220,7 +4220,7 @@ def migrate_order_pickup_schema() -> dict:
 
     except Exception as exc:
         logger.exception("Erro fatal durante migrations: %s", exc)
-        return {"ok": False, "error": str(exc), "applied": []}
+        return {"ok": False, "error_type": exc.__class__.__name__, "applied": []}
 
 
 def _run_startup_migrations_if_enabled():

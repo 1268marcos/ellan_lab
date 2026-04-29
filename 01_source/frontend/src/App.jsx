@@ -40,6 +40,7 @@ const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPa
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
+const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
@@ -264,12 +265,13 @@ function TopNav() {
     { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal", group: "Visão Geral" },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional", group: "Dashboards" },
+    { to: "/ops/dev/errors", label: "ops /dev/errors", aria: "Visualizacao interna de erros 4xx/5xx", group: "Dashboards", isNew: true },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada", group: "Dashboards" },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
-    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
+    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística", isNew: true },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns", group: "Logística" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos", group: "Produtos & Fiscal" },
     { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", group: "Produtos & Fiscal" },
@@ -884,6 +886,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/dev/errors"
+              element={
+                <OpsRoute>
+                  <OpsDevErrorsPage />
                 </OpsRoute>
               }
             />

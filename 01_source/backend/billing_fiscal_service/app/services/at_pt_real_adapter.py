@@ -20,6 +20,22 @@ from app.services.at_pt_service import at_pt_cancel_invoice, at_pt_cc_e_stub, at
 logger = logging.getLogger(__name__)
 
 
+def _annotate_fallback_metadata(payload: dict, *, adapter_name: str, reason: str) -> dict:
+    """
+    Padroniza metadados de fallback no mesmo bloco:
+    government_response.raw (mantendo espelho em raw para retrocompatibilidade).
+    """
+    out = dict(payload or {})
+    gr = dict(out.get("government_response") or {})
+    rw = dict(gr.get("raw") or out.get("raw") or {})
+    rw["provider_adapter"] = adapter_name
+    rw["fallback_reason"] = reason
+    gr["raw"] = rw
+    out["government_response"] = gr
+    out["raw"] = rw
+    return out
+
+
 def issue_invoice_real_or_fallback(invoice: Invoice) -> dict:
     """
     Slice F-3: ponto único para integração AT real.
@@ -36,16 +52,13 @@ def issue_invoice_real_or_fallback(invoice: Invoice) -> dict:
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_at_real_failed_fallback_stub",
-            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error": str(exc)},
+            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error_type": exc.__class__.__name__},
         )
-        out = at_pt_issue_invoice(invoice)
-        gr = dict(out.get("government_response") or {})
-        rw = dict(gr.get("raw") or {})
-        rw["provider_adapter"] = "at_real_adapter_fallback"
-        rw["fallback_reason"] = str(exc)
-        gr["raw"] = rw
-        out["government_response"] = gr
-        return out
+        return _annotate_fallback_metadata(
+            at_pt_issue_invoice(invoice),
+            adapter_name="at_real_adapter_fallback",
+            reason=exc.__class__.__name__,
+        )
 
 
 def cancel_invoice_real_or_fallback(invoice: Invoice) -> dict:
@@ -60,14 +73,13 @@ def cancel_invoice_real_or_fallback(invoice: Invoice) -> dict:
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_at_cancel_real_failed_fallback_stub",
-            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error": str(exc)},
+            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error_type": exc.__class__.__name__},
         )
-        out = at_pt_cancel_invoice(invoice)
-        raw = dict(out.get("raw") or {})
-        raw["provider_adapter"] = "at_real_adapter_fallback"
-        raw["fallback_reason"] = str(exc)
-        out["raw"] = raw
-        return out
+        return _annotate_fallback_metadata(
+            at_pt_cancel_invoice(invoice),
+            adapter_name="at_real_adapter_fallback",
+            reason=exc.__class__.__name__,
+        )
 
 
 def correction_event_real_or_fallback(invoice: Invoice, correction_text: str | None) -> dict:
@@ -86,9 +98,10 @@ def correction_event_real_or_fallback(invoice: Invoice, correction_text: str | N
     except RealProviderClientError as exc:
         logger.warning(
             "fiscal_provider_at_correction_real_failed_fallback_stub",
-            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error": str(exc)},
+            extra={"invoice_id": invoice.id, "order_id": invoice.order_id, "error_type": exc.__class__.__name__},
         )
-        out = at_pt_cc_e_stub(invoice, correction_text)
-        out["provider_adapter"] = "at_real_adapter_fallback"
-        out["fallback_reason"] = str(exc)
-        return out
+        return _annotate_fallback_metadata(
+            at_pt_cc_e_stub(invoice, correction_text),
+            adapter_name="at_real_adapter_fallback",
+            reason=exc.__class__.__name__,
+        )

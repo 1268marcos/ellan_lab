@@ -266,64 +266,6 @@ def invalidate_runtime_locker_cache(locker_id: str | None = None) -> None:
             _cache.clear()
 
 
-def list_runtime_lockers_legacy_erro() -> list[dict[str, Any]]:
-    conn = _get_connection()
-    try:
-        with conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT
-                    locker_id,
-                    machine_id,
-                    display_name,
-                    region,
-                    country,
-                    timezone,
-                    operator_id,
-                    temperature_zone,
-                    security_level,
-                    active,
-                    runtime_enabled,
-                    mqtt_region,
-                    mqtt_locker_id,
-                    topology_version,
-                    payment_methods_json,
-                    slot_count_total
-                FROM runtime_lockers
-                WHERE active = TRUE
-                  AND runtime_enabled = TRUE
-                ORDER BY region, display_name
-                """
-            )
-
-            rows = cur.fetchall()
-
-            return [
-                {
-                    "locker_id": str(row["locker_id"]),
-                    "machine_id": str(row["machine_id"]),
-                    "display_name": str(row["display_name"]),
-                    "region": str(row["region"]),
-                    "country": str(row["country"]),
-                    "timezone": str(row["timezone"]),
-                    "operator_id": row["operator_id"],
-                    "temperature_zone": str(row["temperature_zone"]),
-                    "security_level": str(row["security_level"]),
-                    "active": bool(row["active"]),
-                    "runtime_enabled": bool(row["runtime_enabled"]),
-                    "mqtt_region": str(row["mqtt_region"]),
-                    "mqtt_locker_id": str(row["mqtt_locker_id"]),
-                    "topology_version": int(row["topology_version"]),
-                    "payment_methods": list(row.get("payment_methods_json") or []),
-                    "slot_count_total": int(row["slot_count_total"]),
-                }
-                for row in rows
-            ]
-
-    finally:
-        conn.close()
-
-
 def list_runtime_lockers() -> list[dict[str, Any]]:
     conn = _get_connection()
     try:

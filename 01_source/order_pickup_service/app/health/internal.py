@@ -55,11 +55,15 @@ async def check_database() -> dict:
             "message": "Banco de dados retornou resultado inesperado",
             "latency_ms": latency,
         }
-    except Exception as e:
-        logger.error(f"Erro na verificação do banco de dados: {e}")
+    except Exception as exc:
+        logger.error(
+            "Erro na verificação do banco de dados",
+            extra={"error_type": exc.__class__.__name__},
+        )
         return {
             "status": "unhealthy",
-            "message": f"Erro no banco de dados: {str(e)}",
+            "message": "Erro no banco de dados.",
+            "error_type": exc.__class__.__name__,
             "latency_ms": round((time.time() - start_time) * 1000, 2),
         }
     finally:

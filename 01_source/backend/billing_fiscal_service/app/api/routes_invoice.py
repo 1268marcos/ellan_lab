@@ -1,5 +1,5 @@
 # 01_source/backend/billing_fiscal_service/app/api/routes_invoice.py
-# 01_source/backend/billing_fiscal_service/app/routers/internal_invoices.py (NUNCA FOI CRIADO)
+# rota consolidada em routes_invoice.py (arquivo legado de split não utilizado)
 # 19/04/2026 - datetime
 
 from __future__ import annotations
@@ -37,6 +37,10 @@ router = APIRouter(prefix="/internal/invoices", tags=["invoices"])
 def validate_internal_token(internal_token: str = Header(..., alias="X-Internal-Token")):
     if internal_token != settings.internal_token:
         raise HTTPException(status_code=403, detail="Invalid internal token")
+
+
+def _safe_bad_request(message: str) -> HTTPException:
+    return HTTPException(status_code=400, detail=message)
 
 
 def _iso_or_none(value):
@@ -146,8 +150,8 @@ def create_invoice(
             allow_missing_paid_event=allow_missing_paid_event,
         )
         return _to_invoice_response(invoice)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as exc:
+        raise _safe_bad_request("Unable to process invoice generation request.") from exc
 
 
 @router.post("/rebuild-order-snapshots")
@@ -283,7 +287,7 @@ def request_cancel_invoice_endpoint(
         )
         return _to_invoice_response(inv)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise _safe_bad_request("Invalid cancel request payload.") from exc
 
 
 @router.post("/{invoice_id}/reissue", response_model=InvoiceResponse)

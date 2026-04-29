@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
+from sqlalchemy import and_, asc, column, desc, func, or_, select, table, text, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import require_user_roles
@@ -33,6 +33,48 @@ router = APIRouter(
     prefix="/ops/integration",
     tags=["integration-ops"],
     dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao", "auditoria"}))],
+)
+
+partner_order_events_outbox_table = table(
+    "partner_order_events_outbox",
+    column("id"),
+    column("partner_id"),
+    column("order_id"),
+    column("event_type"),
+    column("status"),
+    column("attempt_count"),
+    column("max_attempts"),
+    column("next_retry_at"),
+    column("delivered_at"),
+    column("created_at"),
+    column("updated_at"),
+)
+
+ops_outbox_replay_priority_runs_table = table(
+    "ops_outbox_replay_priority_runs",
+    column("id"),
+    column("created_at"),
+    column("dry_run"),
+    column("run_after_replay"),
+    column("top_n_groups"),
+    column("max_items"),
+    column("total_groups_selected"),
+    column("total_candidates"),
+    column("selected_count"),
+    column("replayed_count"),
+    column("skipped_count"),
+)
+
+order_fulfillment_tracking_table = table(
+    "order_fulfillment_tracking",
+    column("id"),
+    column("order_id"),
+    column("fulfillment_type"),
+    column("partner_id"),
+    column("status"),
+    column("last_event_type"),
+    column("last_outbox_status"),
+    column("updated_at"),
 )
 
 
@@ -88,46 +130,47 @@ def get_order_events_outbox(
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
 
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     normalized_status = str(status or "").strip().upper()
     normalized_event = str(event_type or "").strip().upper()
     normalized_order = str(order_id or "").strip()
     if normalized_status:
-        where_parts.append("status = :status")
-        params["status"] = normalized_status
+        filters.append(partner_order_events_outbox_table.c.status == normalized_status)
     if normalized_event:
-        where_parts.append("event_type = :event_type")
-        params["event_type"] = normalized_event
+        filters.append(partner_order_events_outbox_table.c.event_type == normalized_event)
     if normalized_order:
-        where_parts.append("order_id = :order_id")
-        params["order_id"] = normalized_order
+        filters.append(partner_order_events_outbox_table.c.order_id == normalized_order)
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(partner_order_events_outbox_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
+        filters.append(partner_order_events_outbox_table.c.created_at <= dt_to)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(partner_order_events_outbox_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
 
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM partner_order_events_outbox WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
-            FROM partner_order_events_outbox
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+    rows_stmt = (
+        select(
+            partner_order_events_outbox_table.c.id,
+            partner_order_events_outbox_table.c.partner_id,
+            partner_order_events_outbox_table.c.order_id,
+            partner_order_events_outbox_table.c.event_type,
+            partner_order_events_outbox_table.c.status,
+            partner_order_events_outbox_table.c.attempt_count,
+            partner_order_events_outbox_table.c.max_attempts,
+            partner_order_events_outbox_table.c.next_retry_at,
+            partner_order_events_outbox_table.c.delivered_at,
+            partner_order_events_outbox_table.c.created_at,
+        )
+        .select_from(partner_order_events_outbox_table)
+        .order_by(desc(partner_order_events_outbox_table.c.created_at), desc(partner_order_events_outbox_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [
         OrderEventOutboxItemOut(
             id=str(row.get("id") or ""),
@@ -163,58 +206,47 @@ def get_order_events_outbox_dead_letter_priority(
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
 
-    where_parts = ["status = 'DEAD_LETTER'"]
-    params: dict[str, object] = {"limit": int(limit)}
+    filters = [partner_order_events_outbox_table.c.status == "DEAD_LETTER"]
     if str(partner_id or "").strip():
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = str(partner_id).strip()
+        filters.append(partner_order_events_outbox_table.c.partner_id == str(partner_id).strip())
     if str(event_type or "").strip():
-        where_parts.append("event_type = :event_type")
-        params["event_type"] = str(event_type).strip().upper()
+        filters.append(partner_order_events_outbox_table.c.event_type == str(event_type).strip().upper())
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(partner_order_events_outbox_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
+        filters.append(partner_order_events_outbox_table.c.created_at <= dt_to)
+    where_expr = and_(*filters)
 
     summary_row = db.execute(
-        text(
-            f"""
-            SELECT
-                COUNT(*)::int AS total_dead_letters,
-                COUNT(DISTINCT order_id)::int AS total_distinct_orders,
-                COUNT(DISTINCT (partner_id, event_type))::int AS total_groups
-            FROM partner_order_events_outbox
-            WHERE {where_sql}
-            """
-        ),
-        params,
+        select(
+            func.count().cast(text("int")).label("total_dead_letters"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("total_distinct_orders"),
+            func.count(
+                func.distinct(tuple_(partner_order_events_outbox_table.c.partner_id, partner_order_events_outbox_table.c.event_type))
+            ).cast(text("int")).label("total_groups"),
+        )
+        .select_from(partner_order_events_outbox_table)
+        .where(where_expr)
     ).mappings().first()
     total_dead_letters = int((summary_row or {}).get("total_dead_letters") or 0)
     total_distinct_orders = int((summary_row or {}).get("total_distinct_orders") or 0)
     total_groups = int((summary_row or {}).get("total_groups") or 0)
 
     rows = db.execute(
-        text(
-            f"""
-            SELECT
-                partner_id,
-                event_type,
-                COUNT(*)::int AS dead_letter_count,
-                COUNT(DISTINCT order_id)::int AS distinct_orders,
-                MIN(created_at) AS oldest_created_at,
-                MAX(created_at) AS newest_created_at,
-                MAX(updated_at) AS latest_updated_at
-            FROM partner_order_events_outbox
-            WHERE {where_sql}
-            GROUP BY partner_id, event_type
-            ORDER BY dead_letter_count DESC, distinct_orders DESC, oldest_created_at ASC
-            LIMIT :limit
-            """
-        ),
-        params,
+        select(
+            partner_order_events_outbox_table.c.partner_id,
+            partner_order_events_outbox_table.c.event_type,
+            func.count().cast(text("int")).label("dead_letter_count"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("distinct_orders"),
+            func.min(partner_order_events_outbox_table.c.created_at).label("oldest_created_at"),
+            func.max(partner_order_events_outbox_table.c.created_at).label("newest_created_at"),
+            func.max(partner_order_events_outbox_table.c.updated_at).label("latest_updated_at"),
+        )
+        .select_from(partner_order_events_outbox_table)
+        .where(where_expr)
+        .group_by(partner_order_events_outbox_table.c.partner_id, partner_order_events_outbox_table.c.event_type)
+        .order_by(desc(text("dead_letter_count")), desc(text("distinct_orders")), asc(text("oldest_created_at")))
+        .limit(int(limit))
     ).mappings().all()
     items = [
         OrderEventOutboxDeadLetterPriorityItemOut(
@@ -295,43 +327,34 @@ def replay_order_events_outbox_priority_groups(
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
 
-    where_parts = ["status = 'DEAD_LETTER'"]
-    params: dict[str, object] = {"top_n_groups": int(top_n_groups)}
+    filters = [partner_order_events_outbox_table.c.status == "DEAD_LETTER"]
     normalized_partner_id = str(partner_id or "").strip()
     normalized_event_type = str(event_type or "").strip().upper()
     if normalized_partner_id:
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = normalized_partner_id
+        filters.append(partner_order_events_outbox_table.c.partner_id == normalized_partner_id)
     if normalized_event_type:
-        where_parts.append("event_type = :event_type")
-        params["event_type"] = normalized_event_type
+        filters.append(partner_order_events_outbox_table.c.event_type == normalized_event_type)
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(partner_order_events_outbox_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
+        filters.append(partner_order_events_outbox_table.c.created_at <= dt_to)
+    where_expr = and_(*filters)
 
     priority_rows = db.execute(
-        text(
-            f"""
-            SELECT
-                partner_id,
-                event_type,
-                COUNT(*)::int AS dead_letter_count,
-                COUNT(DISTINCT order_id)::int AS distinct_orders,
-                MIN(created_at) AS oldest_created_at,
-                MAX(created_at) AS newest_created_at,
-                MAX(updated_at) AS latest_updated_at
-            FROM partner_order_events_outbox
-            WHERE {where_sql}
-            GROUP BY partner_id, event_type
-            ORDER BY dead_letter_count DESC, distinct_orders DESC, oldest_created_at ASC
-            LIMIT :top_n_groups
-            """
-        ),
-        params,
+        select(
+            partner_order_events_outbox_table.c.partner_id,
+            partner_order_events_outbox_table.c.event_type,
+            func.count().cast(text("int")).label("dead_letter_count"),
+            func.count(func.distinct(partner_order_events_outbox_table.c.order_id)).cast(text("int")).label("distinct_orders"),
+            func.min(partner_order_events_outbox_table.c.created_at).label("oldest_created_at"),
+            func.max(partner_order_events_outbox_table.c.created_at).label("newest_created_at"),
+            func.max(partner_order_events_outbox_table.c.updated_at).label("latest_updated_at"),
+        )
+        .select_from(partner_order_events_outbox_table)
+        .where(where_expr)
+        .group_by(partner_order_events_outbox_table.c.partner_id, partner_order_events_outbox_table.c.event_type)
+        .order_by(desc(text("dead_letter_count")), desc(text("distinct_orders")), asc(text("oldest_created_at")))
+        .limit(int(top_n_groups))
     ).mappings().all()
     groups = [
         OrderEventOutboxDeadLetterPriorityItemOut(
@@ -350,39 +373,36 @@ def replay_order_events_outbox_priority_groups(
     outbox_rows: list[dict] = []
     total_candidates = 0
     if groups:
-        group_clauses: list[str] = []
-        select_params: dict[str, object] = {"max_items": int(max_items)}
-        for idx, group in enumerate(groups):
-            pk = f"g_partner_{idx}"
-            ek = f"g_event_{idx}"
-            group_clauses.append(f"(partner_id = :{pk} AND event_type = :{ek})")
-            select_params[pk] = group.partner_id
-            select_params[ek] = group.event_type
-        grouped_where = " OR ".join(group_clauses)
+        group_pairs = [(group.partner_id, group.event_type) for group in groups]
+        group_filter = tuple_(
+            partner_order_events_outbox_table.c.partner_id,
+            partner_order_events_outbox_table.c.event_type,
+        ).in_(group_pairs)
         total_row = db.execute(
-            text(
-                f"""
-                SELECT COUNT(*)::int AS total
-                FROM partner_order_events_outbox
-                WHERE status = 'DEAD_LETTER'
-                  AND ({grouped_where})
-                """
-            ),
-            select_params,
+            select(func.count().cast(text("int")).label("total"))
+            .select_from(partner_order_events_outbox_table)
+            .where(partner_order_events_outbox_table.c.status == "DEAD_LETTER")
+            .where(group_filter)
         ).mappings().first()
         total_candidates = int((total_row or {}).get("total") or 0)
         outbox_rows = db.execute(
-            text(
-                f"""
-                SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
-                FROM partner_order_events_outbox
-                WHERE status = 'DEAD_LETTER'
-                  AND ({grouped_where})
-                ORDER BY created_at ASC, id ASC
-                LIMIT :max_items
-                """
-            ),
-            select_params,
+            select(
+                partner_order_events_outbox_table.c.id,
+                partner_order_events_outbox_table.c.partner_id,
+                partner_order_events_outbox_table.c.order_id,
+                partner_order_events_outbox_table.c.event_type,
+                partner_order_events_outbox_table.c.status,
+                partner_order_events_outbox_table.c.attempt_count,
+                partner_order_events_outbox_table.c.max_attempts,
+                partner_order_events_outbox_table.c.next_retry_at,
+                partner_order_events_outbox_table.c.delivered_at,
+                partner_order_events_outbox_table.c.created_at,
+            )
+            .select_from(partner_order_events_outbox_table)
+            .where(partner_order_events_outbox_table.c.status == "DEAD_LETTER")
+            .where(group_filter)
+            .order_by(asc(partner_order_events_outbox_table.c.created_at), asc(partner_order_events_outbox_table.c.id))
+            .limit(int(max_items))
         ).mappings().all()
 
     selected_count = len(outbox_rows)
@@ -548,39 +568,40 @@ def get_order_events_outbox_priority_replay_runs_timeline(
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
 
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(ops_outbox_replay_priority_runs_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
+        filters.append(ops_outbox_replay_priority_runs_table.c.created_at <= dt_to)
     if dry_run is not None:
-        where_parts.append("dry_run = :dry_run")
-        params["dry_run"] = bool(dry_run)
-    where_sql = " AND ".join(where_parts)
-
-    total_row = db.execute(
-        text(f"SELECT COUNT(*)::int AS total FROM ops_outbox_replay_priority_runs WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT
-                id, created_at, dry_run, run_after_replay,
-                top_n_groups, max_items, total_groups_selected, total_candidates,
-                selected_count, replayed_count, skipped_count
-            FROM ops_outbox_replay_priority_runs
-            WHERE {where_sql}
-            ORDER BY created_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+        filters.append(ops_outbox_replay_priority_runs_table.c.dry_run == bool(dry_run))
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count().cast(text("int")).label("total")).select_from(ops_outbox_replay_priority_runs_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int((db.execute(total_stmt).mappings().first() or {}).get("total") or 0)
+    rows_stmt = (
+        select(
+            ops_outbox_replay_priority_runs_table.c.id,
+            ops_outbox_replay_priority_runs_table.c.created_at,
+            ops_outbox_replay_priority_runs_table.c.dry_run,
+            ops_outbox_replay_priority_runs_table.c.run_after_replay,
+            ops_outbox_replay_priority_runs_table.c.top_n_groups,
+            ops_outbox_replay_priority_runs_table.c.max_items,
+            ops_outbox_replay_priority_runs_table.c.total_groups_selected,
+            ops_outbox_replay_priority_runs_table.c.total_candidates,
+            ops_outbox_replay_priority_runs_table.c.selected_count,
+            ops_outbox_replay_priority_runs_table.c.replayed_count,
+            ops_outbox_replay_priority_runs_table.c.skipped_count,
+        )
+        .select_from(ops_outbox_replay_priority_runs_table)
+        .order_by(desc(ops_outbox_replay_priority_runs_table.c.created_at), desc(ops_outbox_replay_priority_runs_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
 
     items = [
         OrderEventOutboxPriorityReplayRunItemOut(
@@ -786,41 +807,39 @@ def replay_order_events_outbox_batch(
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
 
-    where_parts = ["status IN ('PENDING','FAILED','DEAD_LETTER','SKIPPED')"]
-    params: dict[str, object] = {"limit": int(limit)}
+    filters = [partner_order_events_outbox_table.c.status.in_(["PENDING", "FAILED", "DEAD_LETTER", "SKIPPED"])]
     if str(partner_id or "").strip():
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = str(partner_id).strip()
+        filters.append(partner_order_events_outbox_table.c.partner_id == str(partner_id).strip())
     if normalized_status:
-        where_parts.append("status = :status")
-        params["status"] = normalized_status
+        filters.append(partner_order_events_outbox_table.c.status == normalized_status)
     if str(event_type or "").strip():
-        where_parts.append("event_type = :event_type")
-        params["event_type"] = str(event_type).strip().upper()
+        filters.append(partner_order_events_outbox_table.c.event_type == str(event_type).strip().upper())
     if dt_from is not None:
-        where_parts.append("created_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(partner_order_events_outbox_table.c.created_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("created_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
+        filters.append(partner_order_events_outbox_table.c.created_at <= dt_to)
+    where_expr = and_(*filters)
 
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM partner_order_events_outbox WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total_candidates = int((total_row or {}).get("total") or 0)
+    total_candidates = int(
+        db.execute(select(func.count()).select_from(partner_order_events_outbox_table).where(where_expr)).scalar() or 0
+    )
     rows = db.execute(
-        text(
-            f"""
-            SELECT id, partner_id, order_id, event_type, status, attempt_count, max_attempts, next_retry_at, delivered_at, created_at
-            FROM partner_order_events_outbox
-            WHERE {where_sql}
-            ORDER BY created_at ASC, id ASC
-            LIMIT :limit
-            """
-        ),
-        params,
+        select(
+            partner_order_events_outbox_table.c.id,
+            partner_order_events_outbox_table.c.partner_id,
+            partner_order_events_outbox_table.c.order_id,
+            partner_order_events_outbox_table.c.event_type,
+            partner_order_events_outbox_table.c.status,
+            partner_order_events_outbox_table.c.attempt_count,
+            partner_order_events_outbox_table.c.max_attempts,
+            partner_order_events_outbox_table.c.next_retry_at,
+            partner_order_events_outbox_table.c.delivered_at,
+            partner_order_events_outbox_table.c.created_at,
+        )
+        .select_from(partner_order_events_outbox_table)
+        .where(where_expr)
+        .order_by(asc(partner_order_events_outbox_table.c.created_at), asc(partner_order_events_outbox_table.c.id))
+        .limit(int(limit))
     ).mappings().all()
     selected_count = len(rows)
     replayed_count = 0
@@ -948,41 +967,41 @@ def get_order_fulfillment_tracking(
             status_code=422,
             detail={"type": "INVALID_DATE_RANGE", "message": "period_from deve ser <= period_to."},
         )
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     if str(status or "").strip():
-        where_parts.append("status = :status")
-        params["status"] = str(status).strip().upper()
+        filters.append(order_fulfillment_tracking_table.c.status == str(status).strip().upper())
     if str(partner_id or "").strip():
-        where_parts.append("partner_id = :partner_id")
-        params["partner_id"] = str(partner_id).strip()
+        filters.append(order_fulfillment_tracking_table.c.partner_id == str(partner_id).strip())
     if str(order_id or "").strip():
-        where_parts.append("order_id = :order_id")
-        params["order_id"] = str(order_id).strip()
+        filters.append(order_fulfillment_tracking_table.c.order_id == str(order_id).strip())
     if dt_from is not None:
-        where_parts.append("updated_at >= :dt_from")
-        params["dt_from"] = dt_from
+        filters.append(order_fulfillment_tracking_table.c.updated_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("updated_at <= :dt_to")
-        params["dt_to"] = dt_to
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM order_fulfillment_tracking WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
-    rows = db.execute(
-        text(
-            f"""
-            SELECT id, order_id, fulfillment_type, partner_id, status, last_event_type, last_outbox_status, updated_at
-            FROM order_fulfillment_tracking
-            WHERE {where_sql}
-            ORDER BY updated_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+        filters.append(order_fulfillment_tracking_table.c.updated_at <= dt_to)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(order_fulfillment_tracking_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
+    rows_stmt = (
+        select(
+            order_fulfillment_tracking_table.c.id,
+            order_fulfillment_tracking_table.c.order_id,
+            order_fulfillment_tracking_table.c.fulfillment_type,
+            order_fulfillment_tracking_table.c.partner_id,
+            order_fulfillment_tracking_table.c.status,
+            order_fulfillment_tracking_table.c.last_event_type,
+            order_fulfillment_tracking_table.c.last_outbox_status,
+            order_fulfillment_tracking_table.c.updated_at,
+        )
+        .select_from(order_fulfillment_tracking_table)
+        .order_by(desc(order_fulfillment_tracking_table.c.updated_at), desc(order_fulfillment_tracking_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+    rows = db.execute(rows_stmt).mappings().all()
     items = [
         OrderFulfillmentTrackingItemOut(
             id=str(row.get("id") or ""),
@@ -1027,10 +1046,12 @@ def compare_order_fulfillment_tracking(
         params["partner_id"] = str(partner_id).strip()
     current_rows = db.execute(
         text(
-            f"""
+            """
             SELECT status, COUNT(*)::int AS count
             FROM order_fulfillment_tracking
-            WHERE updated_at >= :dt_from AND updated_at <= :dt_to {where_partner}
+            WHERE updated_at >= :dt_from AND updated_at <= :dt_to """
+            + where_partner
+            + """
             GROUP BY status
             """
         ),
@@ -1038,10 +1059,12 @@ def compare_order_fulfillment_tracking(
     ).mappings().all()
     previous_rows = db.execute(
         text(
-            f"""
+            """
             SELECT status, COUNT(*)::int AS count
             FROM order_fulfillment_tracking
-            WHERE updated_at >= :prev_from AND updated_at <= :prev_to {where_partner}
+            WHERE updated_at >= :prev_from AND updated_at <= :prev_to """
+            + where_partner
+            + """
             GROUP BY status
             """
         ),

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import text
+from sqlalchemy import and_, asc, desc, func, select, table, column, text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -43,6 +43,16 @@ _ALLOWED_PRODUCT_TRANSITIONS: dict[str, set[str]] = {
     "INACTIVE": {"ACTIVE", "DISCONTINUED"},
     "DISCONTINUED": set(),
 }
+
+products_table = table(
+    "products",
+    column("id"),
+    column("name"),
+    column("category_id"),
+    column("status"),
+    column("is_active"),
+    column("updated_at"),
+)
 
 
 def _to_iso_utc(value: datetime | None) -> str:
@@ -145,46 +155,40 @@ def list_products(
             detail={"type": "INVALID_DATE_RANGE", "message": "updated_from deve ser <= updated_to."},
         )
 
-    where_parts = ["1=1"]
-    params: dict[str, object] = {"limit": int(limit), "offset": int(offset)}
+    filters = []
     if normalized_status:
-        where_parts.append("COALESCE(status, 'DRAFT') = :status")
-        params["status"] = normalized_status
+        filters.append(func.coalesce(products_table.c.status, "DRAFT") == normalized_status)
     if normalized_category:
-        where_parts.append("category_id = :category")
-        params["category"] = normalized_category
+        filters.append(products_table.c.category_id == normalized_category)
     if dt_from is not None:
-        where_parts.append("updated_at >= :updated_from")
-        params["updated_from"] = dt_from
+        filters.append(products_table.c.updated_at >= dt_from)
     if dt_to is not None:
-        where_parts.append("updated_at <= :updated_to")
-        params["updated_to"] = dt_to
+        filters.append(products_table.c.updated_at <= dt_to)
 
-    where_sql = " AND ".join(where_parts)
-    total_row = db.execute(
-        text(f"SELECT COUNT(*) AS total FROM products WHERE {where_sql}"),
-        params,
-    ).mappings().first()
-    total = int((total_row or {}).get("total") or 0)
+    where_expr = and_(*filters) if filters else None
+    total_stmt = select(func.count()).select_from(products_table)
+    if where_expr is not None:
+        total_stmt = total_stmt.where(where_expr)
+    total = int(db.execute(total_stmt).scalar() or 0)
 
-    rows = db.execute(
-        text(
-            f"""
-            SELECT
-                id,
-                name,
-                category_id,
-                COALESCE(status, 'DRAFT') AS status,
-                COALESCE(is_active, FALSE) AS is_active,
-                updated_at
-            FROM products
-            WHERE {where_sql}
-            ORDER BY updated_at DESC, id DESC
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).mappings().all()
+    rows_stmt = (
+        select(
+            products_table.c.id,
+            products_table.c.name,
+            products_table.c.category_id,
+            func.coalesce(products_table.c.status, "DRAFT").label("status"),
+            func.coalesce(products_table.c.is_active, False).label("is_active"),
+            products_table.c.updated_at,
+        )
+        .select_from(products_table)
+        .order_by(desc(products_table.c.updated_at), desc(products_table.c.id))
+        .limit(int(limit))
+        .offset(int(offset))
+    )
+    if where_expr is not None:
+        rows_stmt = rows_stmt.where(where_expr)
+
+    rows = db.execute(rows_stmt).mappings().all()
 
     items = [
         ProductListItemOut(
