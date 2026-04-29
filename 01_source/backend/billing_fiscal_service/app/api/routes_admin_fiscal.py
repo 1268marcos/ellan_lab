@@ -25,7 +25,12 @@ from app.services.fiscal_reporting_service import (
     collect_dead_letter_summary,
     get_issued_invoices_for_period,
 )
-from app.services.fiscal_provider_ops_service import list_provider_status, test_provider_connectivity
+from app.services.fiscal_provider_ops_service import (
+    build_br_go_no_go_checklist,
+    build_pt_go_no_go_checklist,
+    list_provider_status,
+    test_provider_connectivity,
+)
 from app.integrations.fiscal_real_provider_client import list_canonical_error_codes
 from app.services.invoice_delivery_service import record_invoice_delivery
 from app.services.invoice_email_service import send_danfe_email_stub
@@ -284,6 +289,24 @@ def post_test_provider_connectivity(
             ]
         }
     return {"items": [test_provider_connectivity(db, country=c)]}
+
+
+@router.get("/providers/br-go-no-go")
+def get_br_provider_go_no_go(
+    run_connectivity: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    return build_br_go_no_go_checklist(db, run_connectivity=run_connectivity)
+
+
+@router.get("/providers/pt-go-no-go")
+def get_pt_provider_go_no_go(
+    run_connectivity: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    return build_pt_go_no_go_checklist(db, run_connectivity=run_connectivity)
 
 
 @router.post("/providers/stub/svrs/batch-submit")

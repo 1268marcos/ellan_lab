@@ -17,6 +17,21 @@ function headersJson() {
   };
 }
 
+function getActionBadgeStyle(severity) {
+  if (severity === "CRITICAL") return getSeverityBadgeStyle("ERROR");
+  if (severity === "HIGH" || severity === "WARN") return getSeverityBadgeStyle("WARN");
+  if (severity === "OK") return getSeverityBadgeStyle("OK");
+  return {
+    border: "1px solid rgba(148,163,184,0.45)",
+    background: "rgba(148,163,184,0.12)",
+    color: "#e2e8f0",
+    borderRadius: 999,
+    padding: "2px 8px",
+    fontSize: 11,
+    fontWeight: 700,
+  };
+}
+
 export default function OpsFiscalProvidersPage() {
   const [items, setItems] = useState([]);
   const [canonicalErrorCodes, setCanonicalErrorCodes] = useState([]);
@@ -29,6 +44,10 @@ export default function OpsFiscalProvidersPage() {
   const [forceBusy, setForceBusy] = useState(false);
   const [smokeBusy, setSmokeBusy] = useState(false);
   const [danfeResult, setDanfeResult] = useState(null);
+  const [brGoNoGo, setBrGoNoGo] = useState(null);
+  const [ptGoNoGo, setPtGoNoGo] = useState(null);
+  const [goNoGoBusy, setGoNoGoBusy] = useState(false);
+  const [ptGoNoGoBusy, setPtGoNoGoBusy] = useState(false);
 
   async function loadStatus() {
     setLoading(true);
@@ -79,6 +98,62 @@ export default function OpsFiscalProvidersPage() {
       }
     } finally {
       setTesting("");
+    }
+  }
+
+  async function loadBrGoNoGo(runConnectivity = false) {
+    setGoNoGoBusy(true);
+    setError("");
+    try {
+      const qs = new URLSearchParams({
+        run_connectivity: runConnectivity ? "true" : "false",
+      }).toString();
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/providers/br-go-no-go?${qs}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao avaliar checklist GO/NO-GO BR.");
+      setBrGoNoGo(payload || null);
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setGoNoGoBusy(false);
+    }
+  }
+
+  async function loadPtGoNoGo(runConnectivity = false) {
+    setPtGoNoGoBusy(true);
+    setError("");
+    try {
+      const qs = new URLSearchParams({
+        run_connectivity: runConnectivity ? "true" : "false",
+      }).toString();
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/providers/pt-go-no-go?${qs}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao avaliar checklist GO/NO-GO PT.");
+      setPtGoNoGo(payload || null);
+    } catch (err) {
+      const raw = String(err?.message || err);
+      if (raw.toLowerCase().includes("failed to fetch")) {
+        setError(
+          `Falha de rede/CORS ao acessar ${BILLING_BASE}. Verifique VITE_BILLING_FISCAL_BASE_URL e se o backend está no ar.`
+        );
+      } else {
+        setError(raw);
+      }
+    } finally {
+      setPtGoNoGoBusy(false);
     }
   }
 
@@ -266,6 +341,8 @@ export default function OpsFiscalProvidersPage() {
 
   useEffect(() => {
     void loadStatus();
+    void loadBrGoNoGo(false);
+    void loadPtGoNoGo(false);
   }, []);
 
   const smokeInvoice = danfeResult?.payload?.invoice || null;
@@ -408,6 +485,121 @@ export default function OpsFiscalProvidersPage() {
             </div>
           </div>
         ) : null}
+
+        <section style={actionCardStyle}>
+          <div style={actionHeaderStyle}>
+            <h3 style={{ margin: 0 }}>Trilha B BR real - Gate GO/NO-GO</h3>
+            <span style={getActionBadgeStyle(brGoNoGo?.go_no_go === "GO" ? "OK" : "HIGH")}>
+              {brGoNoGo?.go_no_go || "NO_GO"}
+            </span>
+          </div>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            {brGoNoGo?.summary || "Checklist não carregado."}
+          </p>
+          <div style={toolbarStyle}>
+            <button
+              onClick={() => void loadBrGoNoGo(false)}
+              style={buttonGhostStyle}
+              disabled={goNoGoBusy}
+            >
+              {goNoGoBusy ? "Validando..." : "Reavaliar (snapshot atual)"}
+            </button>
+            <button
+              onClick={() => void loadBrGoNoGo(true)}
+              style={buttonPrimaryStyle}
+              disabled={goNoGoBusy}
+            >
+              {goNoGoBusy ? "Executando..." : "Reavaliar com teste BR"}
+            </button>
+          </div>
+          {Array.isArray(brGoNoGo?.checks) && brGoNoGo.checks.length > 0 ? (
+            <ul style={opsListStyle}>
+              {brGoNoGo.checks.map((check) => (
+                <li key={check.id} style={opsListItemStyle}>
+                  <b>{check.ok ? "OK" : "PENDENTE"}:</b> {check.label} - {check.detail}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        <section style={actionCardStyle}>
+          <div style={actionHeaderStyle}>
+            <h3 style={{ margin: 0 }}>Trilha B PT real - Gate GO/NO-GO</h3>
+            <span style={getActionBadgeStyle(ptGoNoGo?.go_no_go === "GO" ? "OK" : "HIGH")}>
+              {ptGoNoGo?.go_no_go || "NO_GO"}
+            </span>
+          </div>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            {ptGoNoGo?.summary || "Checklist não carregado."}
+          </p>
+          <div style={toolbarStyle}>
+            <button
+              onClick={() => void loadPtGoNoGo(false)}
+              style={buttonGhostStyle}
+              disabled={ptGoNoGoBusy}
+            >
+              {ptGoNoGoBusy ? "Validando..." : "Reavaliar (snapshot atual)"}
+            </button>
+            <button
+              onClick={() => void loadPtGoNoGo(true)}
+              style={buttonPrimaryStyle}
+              disabled={ptGoNoGoBusy}
+            >
+              {ptGoNoGoBusy ? "Executando..." : "Reavaliar com teste PT"}
+            </button>
+          </div>
+          {Array.isArray(ptGoNoGo?.checks) && ptGoNoGo.checks.length > 0 ? (
+            <ul style={opsListStyle}>
+              {ptGoNoGo.checks.map((check) => (
+                <li key={check.id} style={opsListItemStyle}>
+                  <b>{check.ok ? "OK" : "PENDENTE"}:</b> {check.label} - {check.detail}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+
+        <div style={actionGridStyle}>
+          {items.map((item) => (
+            <section key={`action-${item.country}`} style={actionCardStyle}>
+              <div style={actionHeaderStyle}>
+                <h3 style={{ margin: 0 }}>
+                  Critério de ação - {item.country}
+                </h3>
+                <span style={getActionBadgeStyle(item.action_severity || "INFO")}>
+                  {item.action_severity || "INFO"}
+                </span>
+              </div>
+              <p style={{ ...mutedTextStyle, marginTop: 6, marginBottom: 8 }}>
+                {item.action_summary || "Sem critério definido."}
+              </p>
+              <small style={smallStyle}>
+                {item.action_required ? "Ação imediata: SIM" : "Ação imediata: NAO"}
+              </small>
+              <div style={{ marginTop: 8 }}>
+                <strong style={{ fontSize: 13 }}>Passos operacionais</strong>
+                <ul style={opsListStyle}>
+                  {(item.action_steps || []).map((step, idx) => (
+                    <li key={`${item.country}-step-${idx}`} style={opsListItemStyle}>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <strong style={{ fontSize: 13 }}>Checklist de rollback ({item.country})</strong>
+                <ul style={opsListStyle}>
+                  {(item.rollback_checklist || []).map((step, idx) => (
+                    <li key={`${item.country}-rollback-${idx}`} style={opsListItemStyle}>
+                      {step}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </section>
+          ))}
+        </div>
 
         <div style={tableWrapStyle}>
           <table style={tableStyle}>
@@ -619,4 +811,33 @@ const smokeSummaryValueStyle = {
   fontWeight: 700,
   color: "#f8fafc",
   wordBreak: "break-word",
+};
+const actionGridStyle = {
+  marginTop: 14,
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 10,
+};
+const actionCardStyle = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.04)",
+  padding: 12,
+};
+const actionHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  flexWrap: "wrap",
+};
+const opsListStyle = {
+  margin: "6px 0 0",
+  paddingLeft: 18,
+  display: "grid",
+  gap: 4,
+};
+const opsListItemStyle = {
+  color: "#dbeafe",
+  fontSize: 12,
 };

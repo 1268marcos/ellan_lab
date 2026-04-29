@@ -24,6 +24,108 @@ const TIMELINE_TEMPLATE_JSON = `{
 const UPDATES = [
   {
     date: "2026-04-29",
+    scope: "F-3 Trilha B - Go-live real BR/PT",
+    title: "Runbook/playbook de virada real com rollback por flag e saida objetiva",
+    description:
+      "Fechado o pacote operacional da Trilha B com documentação de go-live real BR/PT: runbook e playbook de 1 página com rollback imediato por flag, critérios de saída para mudança de [~] para [x] e evidência de operação/handoff.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "DOC docs/F3_RUNBOOK_GO_LIVE_REAL_BR_PT.md",
+      "DOC docs/F3_PLAYBOOK_GO_LIVE_REAL_1PAGINA.md",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir pacote de go-live real BR/PT",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Inicio controlado PT real",
+    title: "Gate técnico GO/NO-GO para habilitação PT real",
+    description:
+      "Sequência operacional da Trilha B ampliada para PT com o mesmo padrão do BR: endpoint de go/no-go e card dedicado no ops/fiscal/providers para decisão de liberação real (snapshot e teste de conectividade PT).",
+    uiRoutesNew: ["/ops/fiscal/providers"],
+    apiRoutesNew: ["GET /admin/fiscal/providers/pt-go-no-go"],
+    routes: [
+      "Backend: billing_fiscal_service/app/services/fiscal_provider_ops_service.py",
+      "Backend: billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "UI /ops/fiscal/providers",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir gate GO/NO-GO PT real",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Trilha B - Inicio controlado BR real",
+    title: "Gate técnico GO/NO-GO para habilitação BR real",
+    description:
+      "Foi adicionado checklist técnico de go/no-go para início controlado do provider BR real, com endpoint dedicado e card operacional no ops/fiscal/providers para decisão rápida (snapshot e reavaliação com teste de conectividade). Mantido frontend em JavaScript.",
+    uiRoutesNew: ["/ops/fiscal/providers"],
+    apiRoutesNew: ["GET /admin/fiscal/providers/br-go-no-go"],
+    routes: [
+      "Backend: billing_fiscal_service/app/services/fiscal_provider_ops_service.py",
+      "Backend: billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "UI /ops/fiscal/providers",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir gate GO/NO-GO BR real",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Operacao - Handoff concluido",
+    title: "Fechamento de turno em 1 minuto com bloco pronto no acompanhamento",
+    description:
+      "Foi concluído o handoff operacional do F-3 com padronização explícita no acompanhamento: bloco copiar/colar + exemplo preenchido com nome, contato, janela, owner e status BR/PT para fechamento rápido de plantão.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir evidência de handoff F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Operacao - Trilha A consolidada",
+    title: "Runbook/Playbook F-3 + decisao de curto prazo em JavaScript",
+    description:
+      "Continuidade dos sprints com prioridade de velocidade imediata: frontend permanece em JavaScript no curto prazo. No F-3, a trilha A (stub-ready) foi consolidada com runbook e playbook de plantão dedicados, alinhados ao painel ops/fiscal/providers para fallback/rollback por país.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "DOC docs/F3_RUNBOOK_OPERACAO_TRILHA_A.md",
+      "DOC docs/F3_PLAYBOOK_PLANTAO_1PAGINA.md",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir consolidado operacional F-3",
+  },
+  {
+    date: "2026-04-29",
+    scope: "F-3 Hardening Operacional - Providers",
+    title: "Painel de providers com critérios de ação e rollback por país",
+    description:
+      "No fluxo OPS de providers (BR/PT) foi incluída camada de hardening operacional com decisão acionável por país: severidade, resumo do estado, passos imediatos e checklist de rollback no próprio painel, sem depender de consulta externa.",
+    uiRoutesNew: ["/ops/fiscal/providers"],
+    apiRoutesNew: ["GET /admin/fiscal/providers/status (action_summary/action_steps/rollback_checklist)"],
+    routes: [
+      "UI /ops/fiscal/providers",
+      "Backend: billing_fiscal_service/app/services/fiscal_provider_ops_service.py",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir painel de providers endurecido (F-3)",
+  },
+  {
+    date: "2026-04-29",
     scope: "Security Hardening - Runtime Final Closure",
     title: "Fechamento formal da trilha crítica (CORS dinâmico + sanitização final)",
     description:

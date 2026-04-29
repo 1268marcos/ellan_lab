@@ -1,0 +1,15 @@
+services:
+  billing_fiscal_service:
+    environment:
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "false"
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+
+  billing_fiscal_issue_worker:
+    environment:
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "false"
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
+
+  billing_fiscal_event_worker:
+    environment:
+      FISCAL_REAL_PROVIDER_BR_ENABLED: "false"
+      FISCAL_REAL_PROVIDER_PT_ENABLED: "false"
