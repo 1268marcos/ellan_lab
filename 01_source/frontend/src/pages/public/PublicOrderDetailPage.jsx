@@ -285,6 +285,19 @@ export default function PublicOrderDetailPage() {
       { key: "picked", label: "Retirado", done: picked },
     ];
   }, [order?.created_at, order?.paid_at, order?.status, pickupRedeemedEffective]);
+  const quickMetaItems = useMemo(
+    () => [
+      { label: "Locker", value: getLockerDisplayName(order) },
+      { label: "Gaveta", value: order?.slot || "-" },
+      { label: "Ref parceiro", value: order?.partner_order_ref || "-" },
+      {
+        label: "Validade",
+        value: formatDateTimeByRegion(order?.expires_at || pickup?.expires_at, order?.region),
+      },
+      { label: "Comprovante", value: normalize(order?.receipt_code) || "-" },
+    ],
+    [order, pickup]
+  );
 
   useEffect(() => {
     const syncViewport = () => setIsMobile(window.innerWidth <= 640);
@@ -498,6 +511,13 @@ export default function PublicOrderDetailPage() {
                   </strong>
                 </div>
               </div>
+              <div style={compactMetaWrapStyle} aria-label="Metadados principais do pedido">
+                {quickMetaItems.map((item) => (
+                  <span key={item.label} style={compactMetaChipStyle}>
+                    <span style={compactMetaLabelStyle}>{item.label}:</span> {item.value || "-"}
+                  </span>
+                ))}
+              </div>
               <div style={timelineWrapStyle}>
                 <h3 style={timelineTitleStyle}>Timeline da retirada</h3>
                 <div style={timelineRowStyle}>
@@ -531,49 +551,46 @@ export default function PublicOrderDetailPage() {
                 </div>
               ) : null}
 
-              <div style={detailsGridStyle}>
-                <Field label="Método" value={order.payment_method} />
-                <Field label="Status" value={order.status} />
-                <Field label="Canal" value={order.channel} />
-                <Field label="Locker" value={getLockerDisplayName(order)} />
-                <Field label="ID técnico do locker" value={getLockerTechnicalId(order)} />
-                <Field label="Endereço do locker" value={getLockerFullAddress(order)} />
-                <Field label="Gaveta/Slot" value={order.slot} />
-                <Field label="Produto" value={order.sku_id} />
-                <Field
-                  label={
-                    order.credit_application?.applied
-                      ? "Valor cobrado (após crédito)"
-                      : "Valor"
-                  }
-                  value={formatMoneyCents(order.amount_cents, order.currency || "BRL")}
-                />
-                <Field label="Pago em" value={formatDateTimeByRegion(order.paid_at, order.region)} />
-
-                <Field
-                  label="Retirado em"
-                  value={formatDateTimeByRegion(order.picked_up_at, order.region)}
-                />
-
-                {/* <Field
-                  label="Retirado em"
-                  value={formatDateTimeByRegion(
-                    pickedUpAtValue === "-" ? null : pickedUpAtValue,
-                    order?.region
-                  )}
-                /> */}
-
-                {!pickupRedeemedEffective ? (
+              <DetailsSection
+                title="Dados completos do pedido"
+                defaultOpen={!isMobile}
+              >
+                <div style={detailsGridStyle}>
+                  <Field label="Método" value={order.payment_method} />
+                  <Field label="Status" value={order.status} />
+                  <Field label="Canal" value={order.channel} />
+                  <Field label="Locker" value={getLockerDisplayName(order)} />
+                  <Field label="ID técnico do locker" value={getLockerTechnicalId(order)} />
+                  <Field label="Endereço do locker" value={getLockerFullAddress(order)} />
+                  <Field label="Gaveta/Slot" value={order.slot} />
+                  <Field label="Produto" value={order.sku_id} />
                   <Field
-                    label="Expira a retirada em"
-                    value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
+                    label={
+                      order.credit_application?.applied
+                        ? "Valor cobrado (após crédito)"
+                        : "Valor"
+                    }
+                    value={formatMoneyCents(order.amount_cents, order.currency || "BRL")}
                   />
-                ) : null}
-              </div>
+                  <Field label="Pago em" value={formatDateTimeByRegion(order.paid_at, order.region)} />
+                  <Field
+                    label="Retirado em"
+                    value={formatDateTimeByRegion(order.picked_up_at, order.region)}
+                  />
+                  {!pickupRedeemedEffective ? (
+                    <Field
+                      label="Expira a retirada em"
+                      value={formatDateTimeByRegion(order.expires_at || pickup?.expires_at, order.region)}
+                    />
+                  ) : null}
+                </div>
+              </DetailsSection>
 
               {hasCheckoutCreditSection(order.credit_application) ? (
-                <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid #e5e7eb" }}>
-                  <h3 style={{ margin: "0 0 10px", fontSize: 16 }}>Crédito no checkout</h3>
+                <DetailsSection
+                  title="Crédito no checkout"
+                  defaultOpen={!isMobile}
+                >
                   <div style={detailsGridStyle}>
                     <Field
                       label="Status do crédito"
@@ -614,263 +631,21 @@ export default function PublicOrderDetailPage() {
                       />
                     ) : null}
                   </div>
-                </div>
+                </DetailsSection>
               ) : null}
             </section>
 
-            {hasOrderForInvoiceActions ? (
-              <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
-                <div style={sectionHeaderStyle}>
-                  <h2 style={sectionTitleStyle}>Invoice / comprovante fiscal</h2>
-                  <p style={sectionMetaStyle}>
-                    Ações fiscais do pedido (consulta e reenvio por e-mail).
-                  </p>
-                </div>
-
-                <div style={detailsGridStyle}>
-                  <Field
-                    label="Estado fiscal"
-                    value={
-                      <span
-                        style={{
-                          ...fiscalStateBadgeStyleBase,
-                          ...fiscalStateVisual.style,
-                        }}
-                        aria-label={`Estado fiscal ${fiscalState.label}`}
-                      >
-                        <span aria-hidden="true">{fiscalStateVisual.icon}</span>
-                        <span>{fiscalState.label}</span>
-                      </span>
-                    }
-                  />
-                  <Field label="Código" value={receiptCode || "Ainda não disponível"} />
-                  <Field label="Invoice ID" value={invoiceId || "Ainda não disponível"} />
-                  <Field label="Página pública" value={receiptDeepLink || "-"} />
-                </div>
-                <div
-                  style={{
-                    ...fiscalStateHintStyle,
-                    borderColor: fiscalStateVisual.style.borderColor,
-                    background: fiscalStateVisual.hintBackground,
-                    color: fiscalStateVisual.hintColor,
-                  }}
-                >
-                  <strong>Estado atual:</strong> {fiscalState.code} - {fiscalState.detail}
-                </div>
-                {invoiceManualFallback ? (
-                  <div style={invoiceManualBadgeStyle}>
-                    Invoice gerada manualmente (fallback sem domain_event)
-                  </div>
-                ) : null}
-                {isBillingInvoice ? (
-                  <div style={invoiceSourceBadgeStyle}>
-                    Fonte: billing fiscal
-                    {invoiceId ? ` • invoice_id=${invoiceId}` : ""}
-                  </div>
-                ) : null}
-
-                <div style={actionsRowStyle}>
-                  {receiptDeepLink ? (
-                    <a
-                      href={receiptDeepLink}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={actionButtonStyle}
-                    >
-                      Abrir página do comprovante
-                    </a>
-                  ) : null}
-
-                  {receiptDeepLink ? (
-                    <button
-                      type="button"
-                      onClick={copyReceiptLink}
-                      style={actionButtonStyle}
-                    >
-                      Copiar link
-                    </button>
-                  ) : null}
-
-                  {receiptPrintUrl ? (
-                    <a
-                      href={receiptPrintUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={actionButtonStyle}
-                    >
-                      Abrir impressão
-                    </a>
-                  ) : null}
-
-                  {receiptJsonUrl ? (
-                    <a
-                      href={receiptJsonUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={actionButtonStyle}
-                    >
-                      Ver invoice associada (JSON)
-                    </a>
-                  ) : null}
-
-                  {receiptPrintUrl ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.open(
-                          receiptPrintUrl,
-                          "_blank",
-                          "noopener,noreferrer"
-                        )
-                      }
-                      style={actionButtonStyle}
-                    >
-                      Imprimir / PDF
-                    </button>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    onClick={() => void handleResendInvoiceEmail()}
-                    style={actionButtonStyle}
-                    disabled={resendBusy}
-                  >
-                    {resendBusy ? "Solicitando..." : "Reenviar invoice por e-mail"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleDownloadInvoicePdf()}
-                    style={actionButtonStyle}
-                    disabled={pdfBusy}
-                  >
-                    {pdfBusy ? "Preparando..." : "Baixar PDF da invoice"}
-                  </button>
-
-                  {canForceGenerateInvoice ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleGenerateInvoiceNow()}
-                      style={actionButtonStyle}
-                      disabled={forceBusy}
-                    >
-                      {forceBusy ? "Gerando..." : "Gerar invoice agora"}
-                    </button>
-                  ) : null}
-
-                  {invoiceId ? (
-                    <button
-                      type="button"
-                      onClick={() => void copyInvoiceId()}
-                      style={actionButtonStyle}
-                    >
-                      Copiar invoice_id
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => void copySupportPayload()}
-                    style={actionButtonStyle}
-                  >
-                    Copiar tudo (suporte)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={downloadSupportPayload}
-                    style={actionButtonStyle}
-                  >
-                    Baixar payload suporte (.json)
-                  </button>
-                </div>
-
-                <div style={invoiceHintStyle}>
-                  <strong>Invoice associada ao pedido:</strong>{" "}
-                  use os botões acima para consultar JSON/print da invoice vinculada.
-                  {isBillingInvoice && !receiptLookupSupported ? (
-                    <>
-                      {" "}
-                      Para invoice do billing, os links de comprovante legado
-                      (`/public/fiscal/by-code`) podem não existir para esse código.
-                    </>
-                  ) : null}
-                  {order?.channel === "ONLINE" ? (
-                    <>
-                      {" "}
-                      Para pedidos online, o envio de e-mail fiscal é disparado no fluxo de emissão (quando
-                      `receipt_email`/`guest_email` está disponível).
-                    </>
-                  ) : null}
-                </div>
-                <div style={fiscalLegendStyle}>
-                  <button
-                    type="button"
-                    onClick={() => setShowFiscalLegend((prev) => !prev)}
-                    style={fiscalLegendToggleButtonStyle}
-                    aria-expanded={showFiscalLegend}
-                  >
-                    {showFiscalLegend ? "Ocultar legenda" : "Mostrar legenda"}
-                  </button>
-                  {showFiscalLegend ? (
-                    <div style={{ marginTop: 8 }}>
-                      <strong style={{ display: "block", marginBottom: 8 }}>Legenda de estados fiscais</strong>
-                      <div style={fiscalLegendRowStyle}>
-                        <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("GERADO").style }}>
-                          <span aria-hidden="true">{getFiscalStateVisual("GERADO").icon}</span>
-                          <span>Gerado</span>
-                        </span>
-                        <span style={fiscalLegendTextStyle}>Documento fiscal disponível e associado ao pedido.</span>
-                      </div>
-                      <div style={fiscalLegendRowStyle}>
-                        <span
-                          style={{
-                            ...fiscalStateBadgeStyleBase,
-                            ...getFiscalStateVisual("GERADO_MANUALMENTE").style,
-                          }}
-                        >
-                          <span aria-hidden="true">{getFiscalStateVisual("GERADO_MANUALMENTE").icon}</span>
-                          <span>Gerado manualmente</span>
-                        </span>
-                        <span style={fiscalLegendTextStyle}>Emitido por ação operacional (fallback de suporte).</span>
-                      </div>
-                      <div style={fiscalLegendRowStyle}>
-                        <span
-                          style={{
-                            ...fiscalStateBadgeStyleBase,
-                            ...getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").style,
-                          }}
-                        >
-                          <span aria-hidden="true">{getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").icon}</span>
-                          <span>Sem destinatário de e-mail</span>
-                        </span>
-                        <span style={fiscalLegendTextStyle}>Pedido sem e-mail para envio automático da invoice.</span>
-                      </div>
-                      <div style={fiscalLegendRowStyle}>
-                        <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("PENDENTE").style }}>
-                          <span aria-hidden="true">{getFiscalStateVisual("PENDENTE").icon}</span>
-                          <span>Pendente</span>
-                        </span>
-                        <span style={fiscalLegendTextStyle}>Aguardando geração/materialização no billing fiscal.</span>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                {resendMessage ? <p style={invoiceResendMsgStyle}>{resendMessage}</p> : null}
-              </section>
-            ) : null}
-
             <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
-              <div style={sectionHeaderStyle}>
-                <h2 style={sectionTitleStyle}>
-                  {pickupRedeemedEffective ? "Retirada concluída" : "Retirada"}
-                </h2>
-                <p style={sectionMetaStyle}>
-                  {pickupRedeemedEffective
+              <DetailsSection
+                title={pickupRedeemedEffective ? "Retirada concluída" : "Retirada"}
+                subtitle={
+                  pickupRedeemedEffective
                     ? "Registro da retirada realizada com sucesso."
-                    : "Informações para uso no kiosk/totem"}
-                </p>
-              </div>
-
-              {order ? (
+                    : "Informações para uso no kiosk/totem"
+                }
+                defaultOpen={!isMobile}
+              >
+                {order ? (
                 <>
                   <div style={detailsGridStyle}>
                     <Field
@@ -903,6 +678,7 @@ export default function PublicOrderDetailPage() {
                     />
                   </div>
                   <div style={actionsRowStyle}>
+                    <strong style={actionsGroupTitleStyle}>Ações de retirada</strong>
                     <button
                       type="button"
                       onClick={() => void copyText(order?.id, "ID do pedido")}
@@ -947,13 +723,254 @@ export default function PublicOrderDetailPage() {
                     <p style={infoTextStyle}>{pickupMessage}</p>
                   </div>
                 </>
-              ) : (
-                <div style={infoCardStyle}>
-                  <strong style={infoTitleStyle}>Retirada indisponível no momento</strong>
-                  <p style={infoTextStyle}>{pickupMessage}</p>
-                </div>
-              )}
+                ) : (
+                  <div style={infoCardStyle}>
+                    <strong style={infoTitleStyle}>Retirada indisponível no momento</strong>
+                    <p style={infoTextStyle}>{pickupMessage}</p>
+                  </div>
+                )}
+              </DetailsSection>
             </section>
+
+            {hasOrderForInvoiceActions ? (
+              <section style={{ ...cardStyle, padding: isMobile ? 12 : 16 }}>
+                <DetailsSection
+                  title="Invoice / comprovante fiscal"
+                  subtitle="Ações fiscais do pedido (consulta e reenvio por e-mail)."
+                  defaultOpen={!isMobile}
+                >
+                  <div style={detailsGridStyle}>
+                    <Field
+                      label="Estado fiscal"
+                      value={
+                        <span
+                          style={{
+                            ...fiscalStateBadgeStyleBase,
+                            ...fiscalStateVisual.style,
+                          }}
+                          aria-label={`Estado fiscal ${fiscalState.label}`}
+                        >
+                          <span aria-hidden="true">{fiscalStateVisual.icon}</span>
+                          <span>{fiscalState.label}</span>
+                        </span>
+                      }
+                    />
+                    <Field label="Código" value={receiptCode || "Ainda não disponível"} />
+                    <Field label="Invoice ID" value={invoiceId || "Ainda não disponível"} />
+                    <Field label="Página pública" value={receiptDeepLink || "-"} />
+                  </div>
+                  <div
+                    style={{
+                      ...fiscalStateHintStyle,
+                      borderColor: fiscalStateVisual.style.borderColor,
+                      background: fiscalStateVisual.hintBackground,
+                      color: fiscalStateVisual.hintColor,
+                    }}
+                  >
+                    <strong>Estado atual:</strong> {fiscalState.code} - {fiscalState.detail}
+                  </div>
+                  {invoiceManualFallback ? (
+                    <div style={invoiceManualBadgeStyle}>
+                      Invoice gerada manualmente (fallback sem domain_event)
+                    </div>
+                  ) : null}
+                  {isBillingInvoice ? (
+                    <div style={invoiceSourceBadgeStyle}>
+                      Fonte: billing fiscal
+                      {invoiceId ? ` • invoice_id=${invoiceId}` : ""}
+                    </div>
+                  ) : null}
+
+                  <div style={actionsRowStyle}>
+                    <strong style={actionsGroupTitleStyle}>Ações fiscais</strong>
+                    {receiptDeepLink ? (
+                      <a
+                        href={receiptDeepLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={actionButtonStyle}
+                      >
+                        Abrir página do comprovante
+                      </a>
+                    ) : null}
+
+                    {receiptDeepLink ? (
+                      <button
+                        type="button"
+                        onClick={copyReceiptLink}
+                        style={actionButtonStyle}
+                      >
+                        Copiar link
+                      </button>
+                    ) : null}
+
+                    {receiptPrintUrl ? (
+                      <a
+                        href={receiptPrintUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={actionButtonStyle}
+                      >
+                        Abrir impressão
+                      </a>
+                    ) : null}
+
+                    {receiptJsonUrl ? (
+                      <a
+                        href={receiptJsonUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={actionButtonStyle}
+                      >
+                        Ver invoice associada (JSON)
+                      </a>
+                    ) : null}
+
+                    {receiptPrintUrl ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            receiptPrintUrl,
+                            "_blank",
+                            "noopener,noreferrer"
+                          )
+                        }
+                        style={actionButtonStyle}
+                      >
+                        Imprimir / PDF
+                      </button>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => void handleResendInvoiceEmail()}
+                      style={actionButtonStyle}
+                      disabled={resendBusy}
+                    >
+                      {resendBusy ? "Solicitando..." : "Reenviar invoice por e-mail"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleDownloadInvoicePdf()}
+                      style={actionButtonStyle}
+                      disabled={pdfBusy}
+                    >
+                      {pdfBusy ? "Preparando..." : "Baixar PDF da invoice"}
+                    </button>
+
+                    {canForceGenerateInvoice ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleGenerateInvoiceNow()}
+                        style={actionButtonStyle}
+                        disabled={forceBusy}
+                      >
+                        {forceBusy ? "Gerando..." : "Gerar invoice agora"}
+                      </button>
+                    ) : null}
+
+                    {invoiceId ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyInvoiceId()}
+                        style={actionButtonStyle}
+                      >
+                        Copiar invoice_id
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => void copySupportPayload()}
+                      style={actionButtonStyle}
+                    >
+                      Copiar tudo (suporte)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={downloadSupportPayload}
+                      style={actionButtonStyle}
+                    >
+                      Baixar payload suporte (.json)
+                    </button>
+                  </div>
+
+                  <div style={invoiceHintStyle}>
+                    <strong>Invoice associada ao pedido:</strong>{" "}
+                    use os botões acima para consultar JSON/print da invoice vinculada.
+                    {isBillingInvoice && !receiptLookupSupported ? (
+                      <>
+                        {" "}
+                        Para invoice do billing, os links de comprovante legado
+                        (`/public/fiscal/by-code`) podem não existir para esse código.
+                      </>
+                    ) : null}
+                    {order?.channel === "ONLINE" ? (
+                      <>
+                        {" "}
+                        Para pedidos online, o envio de e-mail fiscal é disparado no fluxo de emissão (quando
+                        `receipt_email`/`guest_email` está disponível).
+                      </>
+                    ) : null}
+                  </div>
+                  <div style={fiscalLegendStyle}>
+                    <button
+                      type="button"
+                      onClick={() => setShowFiscalLegend((prev) => !prev)}
+                      style={fiscalLegendToggleButtonStyle}
+                      aria-expanded={showFiscalLegend}
+                    >
+                      {showFiscalLegend ? "Ocultar legenda" : "Mostrar legenda"}
+                    </button>
+                    {showFiscalLegend ? (
+                      <div style={{ marginTop: 8 }}>
+                        <strong style={{ display: "block", marginBottom: 8 }}>Legenda de estados fiscais</strong>
+                        <div style={fiscalLegendRowStyle}>
+                          <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("GERADO").style }}>
+                            <span aria-hidden="true">{getFiscalStateVisual("GERADO").icon}</span>
+                            <span>Gerado</span>
+                          </span>
+                          <span style={fiscalLegendTextStyle}>Documento fiscal disponível e associado ao pedido.</span>
+                        </div>
+                        <div style={fiscalLegendRowStyle}>
+                          <span
+                            style={{
+                              ...fiscalStateBadgeStyleBase,
+                              ...getFiscalStateVisual("GERADO_MANUALMENTE").style,
+                            }}
+                          >
+                            <span aria-hidden="true">{getFiscalStateVisual("GERADO_MANUALMENTE").icon}</span>
+                            <span>Gerado manualmente</span>
+                          </span>
+                          <span style={fiscalLegendTextStyle}>Emitido por ação operacional (fallback de suporte).</span>
+                        </div>
+                        <div style={fiscalLegendRowStyle}>
+                          <span
+                            style={{
+                              ...fiscalStateBadgeStyleBase,
+                              ...getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").style,
+                            }}
+                          >
+                            <span aria-hidden="true">{getFiscalStateVisual("SEM_DESTINATARIO_EMAIL").icon}</span>
+                            <span>Sem destinatário de e-mail</span>
+                          </span>
+                          <span style={fiscalLegendTextStyle}>Pedido sem e-mail para envio automático da invoice.</span>
+                        </div>
+                        <div style={fiscalLegendRowStyle}>
+                          <span style={{ ...fiscalStateBadgeStyleBase, ...getFiscalStateVisual("PENDENTE").style }}>
+                            <span aria-hidden="true">{getFiscalStateVisual("PENDENTE").icon}</span>
+                            <span>Pendente</span>
+                          </span>
+                          <span style={fiscalLegendTextStyle}>Aguardando geração/materialização no billing fiscal.</span>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  {resendMessage ? <p style={invoiceResendMsgStyle}>{resendMessage}</p> : null}
+                </DetailsSection>
+              </section>
+            ) : null}
             {copyMessage ? <p style={invoiceResendMsgStyle}>{copyMessage}</p> : null}
           </>
         ) : null}
@@ -985,6 +1002,33 @@ function Field({ label, value }) {
       <span style={fieldLabelStyle}>{label}</span>
       <div style={fieldValueStyle}>{value || "-"}</div>
     </div>
+  );
+}
+
+function DetailsSection({ title, subtitle, defaultOpen, children }) {
+  const [isOpen, setIsOpen] = useState(Boolean(defaultOpen));
+
+  useEffect(() => {
+    setIsOpen(Boolean(defaultOpen));
+  }, [defaultOpen]);
+
+  return (
+    <details
+      style={accordionBlockStyle}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(Boolean(event.currentTarget?.open))}
+    >
+      <summary style={detailsSummaryStyle}>
+        <div>
+          <h3 style={accordionTitleStyle}>{title}</h3>
+          {subtitle ? <p style={accordionSubtitleStyle}>{subtitle}</p> : null}
+        </div>
+        <span style={entryToggleBadgeStyle} aria-hidden="true">
+          {isOpen ? "Recolher" : "Expandir"}
+        </span>
+      </summary>
+      <div style={accordionBodyStyle}>{children}</div>
+    </details>
   );
 }
 
@@ -1350,6 +1394,12 @@ const actionsRowStyle = {
   flexWrap: "wrap",
 };
 
+const actionsGroupTitleStyle = {
+  width: "100%",
+  fontSize: 13,
+  color: "#475569",
+};
+
 const actionButtonStyle = {
   padding: "10px 14px",
   borderRadius: 10,
@@ -1465,6 +1515,31 @@ const quickStatsGridStyle = {
   marginBottom: 14,
 };
 
+const compactMetaWrapStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+  marginBottom: 14,
+};
+
+const compactMetaChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: "1px solid #e2e8f0",
+  background: "#ffffff",
+  color: "#334155",
+  fontSize: 12,
+  fontWeight: 500,
+};
+
+const compactMetaLabelStyle = {
+  color: "#64748b",
+  fontWeight: 700,
+};
+
 const quickStatCardStyle = {
   border: "1px solid #e5e7eb",
   borderRadius: 10,
@@ -1532,4 +1607,45 @@ const timelineLabelStyle = {
   fontSize: 12,
   color: "#334155",
   fontWeight: 600,
+};
+
+const accordionBlockStyle = {
+  marginTop: 16,
+  borderTop: "1px solid #e5e7eb",
+  paddingTop: 12,
+};
+
+const detailsSummaryStyle = {
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  listStyle: "none",
+};
+
+const accordionTitleStyle = {
+  margin: 0,
+  fontSize: 16,
+  color: "#1e293b",
+};
+
+const accordionSubtitleStyle = {
+  margin: "6px 0 0",
+  fontSize: 13,
+  color: "#64748b",
+};
+
+const entryToggleBadgeStyle = {
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(59,130,246,0.12)",
+  color: "#1d4ed8",
+  borderRadius: 999,
+  padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const accordionBodyStyle = {
+  marginTop: 10,
 };

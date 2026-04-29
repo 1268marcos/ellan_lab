@@ -123,6 +123,23 @@ function OrderCard({ order }) {
     }).format(date);
   };
 
+  const isExpired = order?.status === "EXPIRED";
+  const isPendingPickup = order?.status === "PAID_PENDING_PICKUP";
+  const hasExpiryDate = Boolean(order?.expires_at);
+  const urgencyLabel =
+    isExpired
+      ? "Pedido expirado"
+      : isPendingPickup && hasExpiryDate
+        ? `Retire ate ${formatShortDate(order.expires_at)}`
+        : null;
+  const secondaryMeta = [
+    { label: "Locker", value: order.totem_id || "—" },
+    { label: "Gaveta", value: order.slot ?? "—" },
+    { label: "Ref parceiro", value: order.partner_order_ref || "—" },
+    { label: "Validade", value: formatShortDate(order.expires_at) },
+    { label: "Comprovante", value: order.receipt_code || "—" },
+  ];
+
   return (
     <Link
       to={`/meus-pedidos/${order.id}`}
@@ -133,70 +150,41 @@ function OrderCard({ order }) {
         style={{
           ...orderCardStyle,
           borderLeft: `5px solid ${statusVisual.accent}`,
-          boxShadow: "0 8px 20px rgba(15, 23, 42, 0.06)",
+          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.07)",
         }}
       >
-        {/* Header do Card */}
         <div style={cardHeaderStyle}>
-          <div style={orderIdContainerStyle}>
-            <span style={orderIconStyle}>📦</span>
+          <div style={cardHeaderMainStyle}>
+            <span style={orderEyebrowStyle}>Pedido</span>
             <strong style={orderIdStyle}>{order.id}</strong>
+            <span style={cardCreatedAtStyle}>Criado em {formatDateTime(order.created_at)}</span>
           </div>
-          <OrderStatusBadge status={order.status} />
+          <div style={cardHeaderSideStyle}>
+            <OrderStatusBadge status={order.status} />
+            <strong style={orderAmountStyle}>{formatAmount(order.amount_cents)}</strong>
+          </div>
         </div>
 
-        {/* Corpo do Card */}
         <div style={cardBodyStyle}>
-          <div style={infoGridStyle}>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Produto</span>
-              <span style={infoValueStyle}>{order.sku_id || "—"}</span>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Valor</span>
-              <span style={infoValueStyle}>{formatAmount(order.amount_cents)}</span>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Locker</span>
-              <span style={infoValueStyle}>{order.totem_id || "—"}</span>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Gaveta</span>
-              <span style={infoValueStyle}>{order.slot ?? "—"}</span>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Ref parceiro</span>
-              <span style={infoValueStyle}>{order.partner_order_ref || "—"}</span>
-            </div>
-            <div style={infoItemStyle}>
-              <span style={infoLabelStyle}>Expira em</span>
-              <span style={infoValueStyle}>{formatShortDate(order.expires_at)}</span>
-            </div>
+          {urgencyLabel ? <div style={orderUrgencyStyle}>{urgencyLabel}</div> : null}
+
+          <div style={primaryInfoStyle}>
+            <span style={infoLabelStyle}>Produto (SKU)</span>
+            <span style={infoValueEmphasisStyle}>{order.sku_id || "—"}</span>
           </div>
 
-          {/* Comprovante Fiscal (se disponível) */}
-          {order.receipt_code && (
-            <div style={receiptSectionStyle}>
-              <span style={receiptIconStyle}>🧾</span>
-              <div>
-                <span style={receiptLabelStyle}>Comprovante fiscal</span>
-                <div style={receiptCodeStyle}>{order.receipt_code}</div>
-              </div>
-            </div>
-          )}
-
-          {/* Data de Criação */}
-          <div style={dateSectionStyle}>
-            <span style={dateIconStyle}>📅</span>
-            <span style={dateTextStyle}>
-              Criado em {formatDateTime(order.created_at)}
-            </span>
+          <div style={metaChipsWrapStyle} aria-label="Metadados do pedido">
+            {secondaryMeta.map((meta) => (
+              <span key={meta.label} style={metaChipStyle}>
+                <span style={metaChipLabelStyle}>{meta.label}:</span> {meta.value}
+              </span>
+            ))}
           </div>
         </div>
 
-        {/* Footer do Card */}
         <div style={cardFooterStyle}>
-          <span style={viewDetailsStyle}>Ver detalhes →</span>
+          <span style={viewDetailsStyle}>Ver detalhes do pedido</span>
+          <span style={viewDetailsArrowStyle} aria-hidden="true">→</span>
         </div>
       </article>
     </Link>
@@ -305,6 +293,28 @@ function OrdersFilter({
   );
 }
 
+function DetailsSection({ title, defaultOpen, children }) {
+  const [isOpen, setIsOpen] = useState(Boolean(defaultOpen));
+
+  useEffect(() => {
+    setIsOpen(Boolean(defaultOpen));
+  }, [defaultOpen]);
+
+  return (
+    <details
+      style={detailsSectionStyle}
+      open={isOpen}
+      onToggle={(event) => setIsOpen(Boolean(event.currentTarget?.open))}
+    >
+      <summary style={detailsSummaryStyle}>
+        <strong style={detailsTitleStyle}>{title}</strong>
+        <span style={detailsToggleBadgeStyle}>{isOpen ? "Recolher" : "Expandir"}</span>
+      </summary>
+      <div style={detailsBodyStyle}>{children}</div>
+    </details>
+  );
+}
+
 // Componente de Loading Skeleton
 function OrderSkeleton() {
   return (
@@ -345,8 +355,16 @@ export default function PublicMyOrdersPage() {
       : DEFAULT_ORDERS_PREFS.page
   );
   const pageSize = 6;
+  const [isMobile, setIsMobile] = useState(false);
 
   // Carregar pedidos
+  useEffect(() => {
+    const syncViewport = () => setIsMobile(window.innerWidth <= 640);
+    syncViewport();
+    window.addEventListener("resize", syncViewport);
+    return () => window.removeEventListener("resize", syncViewport);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
@@ -490,19 +508,21 @@ export default function PublicMyOrdersPage() {
           ctaStyle={newOrderButtonStyle}
         />
         {!authLoading && !pageLoading && !error && items.length > 0 ? (
-          <SummaryMetrics
-            sectionAriaLabel="Resumo dos pedidos"
-            sectionStyle={summaryBarStyle}
-            cardStyle={summaryMetricStyle}
-            labelStyle={summaryMetricLabelStyle}
-            valueStyle={summaryMetricValueStyle}
-            items={[
-              { key: "all", label: "Total", value: statusCounts.all },
-              { key: "pending_pickup", label: "Aguardando retirada", value: statusCounts.PAID_PENDING_PICKUP },
-              { key: "payment_pending", label: "Pagamento pendente", value: statusCounts.PAYMENT_PENDING },
-              { key: "expired", label: "Expirados", value: statusCounts.EXPIRED },
-            ]}
-          />
+          <DetailsSection title="Resumo dos pedidos" defaultOpen={!isMobile}>
+            <SummaryMetrics
+              sectionAriaLabel="Resumo dos pedidos"
+              sectionStyle={summaryBarStyle}
+              cardStyle={summaryMetricStyle}
+              labelStyle={summaryMetricLabelStyle}
+              valueStyle={summaryMetricValueStyle}
+              items={[
+                { key: "all", label: "Total", value: statusCounts.all },
+                { key: "pending_pickup", label: "Aguardando retirada", value: statusCounts.PAID_PENDING_PICKUP },
+                { key: "payment_pending", label: "Pagamento pendente", value: statusCounts.PAYMENT_PENDING },
+                { key: "expired", label: "Expirados", value: statusCounts.EXPIRED },
+              ]}
+            />
+          </DetailsSection>
         ) : null}
 
         {/* Estado de Carregamento */}
@@ -554,18 +574,20 @@ export default function PublicMyOrdersPage() {
         {!authLoading && !pageLoading && !error && items.length > 0 ? (
           <>
             {/* Filtro */}
-            <OrdersFilter
-              filter={filter}
-              onFilterChange={setFilter}
-              sortBy={sortBy}
-              onSortByChange={setSortBy}
-              searchQuery={searchQuery}
-              onSearchQueryChange={setSearchQuery}
-              onResetPreferences={handleResetPreferences}
-              totalOrders={items.length}
-              matchedOrders={sortedItems.length}
-              statusCounts={statusCounts}
-            />
+            <DetailsSection title="Filtros e busca" defaultOpen={!isMobile}>
+              <OrdersFilter
+                filter={filter}
+                onFilterChange={setFilter}
+                sortBy={sortBy}
+                onSortByChange={setSortBy}
+                searchQuery={searchQuery}
+                onSearchQueryChange={setSearchQuery}
+                onResetPreferences={handleResetPreferences}
+                totalOrders={items.length}
+                matchedOrders={sortedItems.length}
+                statusCounts={statusCounts}
+              />
+            </DetailsSection>
 
             {/* Lista */}
             {sortedItems.length === 0 ? (
@@ -651,6 +673,40 @@ const listWrapperStyle = {
   gap: 16,
 };
 
+const detailsSectionStyle = {
+  ...sectionCardBaseStyle,
+  padding: "10px 12px",
+  marginBottom: 14,
+};
+
+const detailsSummaryStyle = {
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  listStyle: "none",
+};
+
+const detailsTitleStyle = {
+  fontSize: 14,
+  color: "#1e293b",
+};
+
+const detailsToggleBadgeStyle = {
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(59,130,246,0.12)",
+  color: "#1d4ed8",
+  borderRadius: 999,
+  padding: "4px 8px",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const detailsBodyStyle = {
+  marginTop: 10,
+};
+
 const orderCardLinkStyle = {
   textDecoration: "none",
   color: "inherit",
@@ -659,49 +715,81 @@ const orderCardLinkStyle = {
 
 const orderCardStyle = {
   ...elevatedCardBaseStyle,
-  padding: 20,
+  padding: 22,
   transition: "all 0.2s",
 };
 
 const cardHeaderStyle = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: 12,
-  marginBottom: 16,
+  marginBottom: 14,
   flexWrap: "wrap",
 };
 
-const orderIdContainerStyle = {
-  display: "flex",
-  alignItems: "center",
+const cardHeaderMainStyle = {
+  display: "grid",
+  gap: 4,
+};
+
+const cardHeaderSideStyle = {
+  display: "grid",
+  justifyItems: "end",
   gap: 8,
 };
 
-const orderIconStyle = {
+const orderEyebrowStyle = {
+  fontSize: 12,
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  color: "#64748b",
+};
+
+const cardCreatedAtStyle = {
+  fontSize: 12,
+  color: "#64748b",
+  fontWeight: 500,
+};
+
+const orderAmountStyle = {
   fontSize: 20,
+  color: "#0f172a",
+  lineHeight: 1,
+};
+
+const orderUrgencyStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  borderRadius: 10,
+  border: "1px solid #fde68a",
+  background: "#fffbeb",
+  color: "#92400e",
+  fontSize: 12,
+  fontWeight: 700,
+  padding: "8px 10px",
 };
 
 const orderIdStyle = {
-  fontSize: 18,
-  color: "#1a202c",
+  fontSize: 17,
+  color: "#0f172a",
   wordBreak: "break-all",
 };
 
 const cardBodyStyle = {
   display: "grid",
-  gap: 16,
-};
-
-const infoGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
   gap: 12,
 };
 
-const infoItemStyle = {
+const primaryInfoStyle = {
   display: "grid",
   gap: 4,
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #e2e8f0",
+  background: "#f8fafc",
 };
 
 const infoLabelStyle = {
@@ -712,65 +800,57 @@ const infoLabelStyle = {
 
 const infoValueStyle = {
   fontSize: 14,
-  color: "#1a202c",
-  fontWeight: 600,
-};
-
-const receiptSectionStyle = {
-  display: "flex",
-  alignItems: "flex-start",
-  gap: 10,
-  padding: 12,
-  borderRadius: 12,
-  background: "#f7fafc",
-  border: "1px dashed #e2e8f0",
-};
-
-const receiptIconStyle = {
-  fontSize: 18,
-  flexShrink: 0,
-};
-
-const receiptLabelStyle = {
-  display: "block",
-  fontSize: 12,
-  color: "#718096",
-  marginBottom: 4,
-};
-
-const receiptCodeStyle = {
-  fontSize: 14,
-  fontWeight: 700,
-  color: "#2d3748",
-  fontFamily: "monospace",
-};
-
-const dateSectionStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 13,
-  color: "#718096",
-};
-
-const dateIconStyle = {
-  fontSize: 16,
-};
-
-const dateTextStyle = {
+  color: "#0f172a",
   fontWeight: 500,
 };
 
+const infoValueEmphasisStyle = {
+  ...infoValueStyle,
+  fontWeight: 700,
+};
+
+const metaChipsWrapStyle = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 8,
+};
+
+const metaChipStyle = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: "1px solid #e2e8f0",
+  background: "#ffffff",
+  fontSize: 12,
+  color: "#334155",
+  maxWidth: "100%",
+};
+
+const metaChipLabelStyle = {
+  color: "#64748b",
+  fontWeight: 700,
+};
+
 const cardFooterStyle = {
-  marginTop: 8,
-  paddingTop: 16,
+  marginTop: 10,
+  paddingTop: 14,
   borderTop: "1px solid #e2e8f0",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
 };
 
 const viewDetailsStyle = {
   fontSize: 14,
   fontWeight: 600,
-  color: "#667eea",
+  color: "#2563eb",
+};
+
+const viewDetailsArrowStyle = {
+  color: "#2563eb",
+  fontWeight: 800,
 };
 
 const filterContainerStyle = {

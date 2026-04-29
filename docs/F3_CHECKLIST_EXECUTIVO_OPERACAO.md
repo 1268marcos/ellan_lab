@@ -65,6 +65,10 @@ sem depender de suíte formal de testes nesta fase.
     - gate BR com `GO` (`run_connectivity=true`);
     - 30 min sem `CRITICAL` em `ops /fiscal/providers`;
     - rollback BR validado por flag (`FISCAL_REAL_PROVIDER_BR_ENABLED=false`) + restart.
+  - **Execução registrada (2026-04-29):**
+    - gate BR executado com `NO_GO` (erro de conectividade em host configurado);
+    - rollback por flag validado via override compose (BR=false) + restart;
+    - janela de 30 min sem `CRITICAL` após rollback (status `INFO/SKIPPED`).
   - **Saída esperada:** autorização/cancelamento BR via client real, fallback preservado.
 
 ### 2) AT PT real
@@ -78,6 +82,10 @@ sem depender de suíte formal de testes nesta fase.
     - gate PT com `GO` (`run_connectivity=true`);
     - 30 min sem `CRITICAL` em `ops /fiscal/providers`;
     - rollback PT validado por flag (`FISCAL_REAL_PROVIDER_PT_ENABLED=false`) + restart.
+  - **Execução registrada (2026-04-29):**
+    - gate PT executado com `NO_GO` (provider real desabilitado/base_url ausente no ambiente);
+    - rollback por flag validado (PT=false) + restart;
+    - janela de 30 min sem `CRITICAL` após rollback (status `INFO/SKIPPED`).
   - **Saída esperada:** emissão/cancelamento PT via provider real com normalização de erros.
 
 ---

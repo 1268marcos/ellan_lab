@@ -24,6 +24,27 @@ const TIMELINE_TEMPLATE_JSON = `{
 const UPDATES = [
   {
     date: "2026-04-29",
+    scope: "F-3 Trilha B - Janela controlada executada",
+    title: "Evidência de 30 min sem CRITICAL pós-rollback por flag (BR/PT)",
+    description:
+      "A janela operacional controlada foi executada: gates BR/PT retornaram NO_GO no ambiente atual, rollback por flag foi validado em ambos os países e a coleta de 30 minutos confirmou ausência de CRITICAL (amostras INFO/SKIPPED).",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/providers/br-go-no-go",
+      "GET /admin/fiscal/providers/pt-go-no-go",
+      "GET /admin/fiscal/providers/status",
+    ],
+    routes: [
+      "DOC 02_docker/docker-compose.f3-rollback-override.yml",
+      "DOC docs/F3_CHECKLIST_EXECUTIVO_OPERACAO.md",
+      "DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir evidência da janela controlada F-3",
+  },
+  {
+    date: "2026-04-29",
     scope: "F-3 Trilha B - Go-live real BR/PT",
     title: "Runbook/playbook de virada real com rollback por flag e saida objetiva",
     description:
