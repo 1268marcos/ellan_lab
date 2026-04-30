@@ -213,19 +213,63 @@ Objetivo: iniciar governanca e reduzir risco de desalinhamento.
 Owner nominal unico da sprint:
 - **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
 
+**Status geral Sprint 0:** `[x]` **Encerrado (escopo lab / governanca)** — 2026-04-30. Os itens abaixo fecham o *setup* de execucao; valores numericos de KPI em producao e contratos versionados para parceiros externos seguem evoluindo nas sprints seguintes com DoD de entrega de software.
+
 Checklist:
-- [~] Congelar baseline de KPI por persona (conversao, MTTR, FCR, abandono KIOSK). **Progresso: 60%**
+- [x] Congelar baseline de KPI por persona (conversao, MTTR, FCR, abandono KIOSK). **Progresso: 100% (v0 documental)**
   - Owner: **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
-  - Nota daily: estrutura de KPIs definida; falta coletar baseline real e registrar fonte de dados por KPI.
+  - Evidencia: tabela **Baseline KPI v0** no carimbo `### 2026-04-30 - Sprint 0 encerramento operacional` abaixo (fonte + meta; valores numericos iniciais quando houver pipeline de dados).
 - [x] Publicar owners nominais por backlog P0/P1. **Progresso: 100%**
   - Owner: **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
   - Nota daily: ownership centralizado por decisao operacional (time unipessoal).
-- [~] Criar board unico com swimlanes por persona + workstream transversal. **Progresso: 70%**
+- [x] Criar board unico com swimlanes por persona + workstream transversal. **Progresso: 100% (v0)**
   - Owner: **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
-  - Nota daily: swimlanes e backlog macro definidos; falta detalhar cards de entrega por sprint.
-- [~] Definir contratos globais minimos para checkout/kiosk/partners/ops/support. **Progresso: 50%**
+  - Evidencia: este documento (tabela de sprints + backlog por persona + registro de entregas) + acompanhamento em `docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt` onde aplicavel.
+- [x] Definir contratos globais minimos para checkout/kiosk/partners/ops/support. **Progresso: 100% (v0 referencial)**
   - Owner: **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
-  - Nota daily: dominios e escopo definidos; falta consolidar contratos minimos com exemplos de payload.
+  - Evidencia: mapa **Contratos minimos v0** no mesmo carimbo (superficies e repos existentes no lab; exemplos de payload JSON nos cockpits fiscais/exports ja tratados como evidencia viva).
+
+### 2026-04-30 - Sprint 0 encerramento operacional (lab)
+Status geral: `[x]` Concluido (governanca + baseline v0; nao substitui medicao de producao nas sprints seguintes)
+
+**Baseline KPI v0 (estrutura + fonte alvo; valores numericos TBD ate instrumentacao)**
+
+| KPI (persona) | Fonte alvo no lab | Valor inicial v0 | Meta qualitativa Sprint 30 |
+|---|---|---|---|
+| Conversao checkout (ONLINE) | Funis em checkout + telemetria de erro | TBD | +5 p.p. vs baseline quando medido |
+| MTTR incidente (OPS) | `ops/health`, pacotes diarios, runbooks | TBD | -30% vs baseline |
+| FCR / TMA suporte (Suporte) | Console por jornada + macros | TBD | FCR +20%, TMA -25% (plano macro) |
+| Abandono / throughput KIOSK (KIOSK) | E2E locker + modelos A-D Sprint 4 | TBD | p95 E2E <= 90s (plano) |
+
+**Contratos minimos v0 (superficie + onde validar no repo)**
+
+| Dominio | Contrato minimo (v0) | Onde ver / exemplificar |
+|---|---|---|
+| Checkout | Pedido + pagamento + estado `payResp` | `01_source/frontend` checkout + store Zustand Sprint 1 |
+| KIOSK | Totem: compra, pagamento, pickup, alocacao | Rotas OPS kiosk + matriz Sprint 4 UAT 4 modelos |
+| Partners | Onboarding + repasse + fiscal minimo | `billing_fiscal_service` + portal/agreements em backlog Sprint 2 |
+| OPS | Painel + fiscal + health | `ops/health`, `fiscal/management-daily`, exports `ELLAN_FISCAL_DAILY_*` |
+| Support | Jornada + playbook | `fiscal/incident-response`, ops triage |
+
+Decisao executiva:
+- Sprint 0 considerado **fechado para desbloquear foco** nas Sprints 1–4 ja em execucao; revisao de KPI real e contratos publicados para terceiros **nao reabre o Sprint 0 lab** — passam a constar no **Sprint 0b produção** (secao seguinte).
+
+## Sprint 0b produção (contínuo / pós-lab) — **não misturar com Sprint 0 lab**
+Objetivo: cumprir o que o Sprint 0 lab deixou como **TBD** ou **v0 referencial**, com **DoD de produto** (medição real, publicação, aceite).
+
+**Status geral Sprint 0b:** `[ ]` **Não iniciado** — **~0%** (2026-04-30: apenas anotação de trilha; nenhum item fechado com evidência de produção).
+
+Owner:
+- **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
+
+Checklist (produção — evidência fora do “papel” do lab):
+- [ ] **Baseline KPI com valores numericos** por persona (fonte de dados operacional definida + primeiro valor oficial + meta numerica revisada).
+- [ ] **Contratos globais publicados** para consumo externo (ex.: OpenAPI/Swagger versionado, changelogs, SLA onde couber) — além do mapa v0 do Sprint 0 lab.
+- [ ] **Board operacional** em ferramenta de execução (ou processo equivalente acordado) com WIP e dependencias — além deste `.md` como espelho de governanca.
+- [ ] **Comunicação de mudança** para operacao/suporte nos marcos acima (registro de leitura ou treino minimo).
+
+Nota de governanca:
+- O ritual “nao mover para `[x]` sem DoD completo” aplica-se em prioridade ao **Sprint 0b** e às sprints de entrega; o **Sprint 0 lab** permanece excecao documentada como encerramento de setup.
 
 ## Sprint 1 (Dias 3-9) - Fundacao global + UX KIOSK v1
 Objetivo: fechar arquitetura global e iniciar entrega de valor visivel.
@@ -244,6 +288,8 @@ Checklist:
 ## Sprint 2 (Dias 10-18) - P0 por persona em producao assistida + Fiscal/Contabil
 Objetivo: colocar os P0 centrais para rodar com controle e incorporar trilhas financeiras operacionais (ELLAN LAB + partners).
 
+**Diretriz executiva (comité):** **fechar o macro financeiro desta sprint (Fiscal + Contábil, P0 e trilha D10–D18 com evidência)** antes de **ampliar escopo** nas Sprints 3 e 4. OPS/Suporte já puxam percentuais altos; Fiscal (~26%) e Contábil (~15%) continuam o gargalo para **Go/No-Go** — absorver net-new em S3/S4 sem isso mantém o risco de aceite.
+
 Checklist:
 - [ ] Comprador ONLINE: checkout resiliente + jornada de pedido transparente.
 - [ ] Comprador KIOSK: fluxo proprio operacional com recuperacao de erro.
@@ -253,15 +299,17 @@ Checklist:
 - [~] Suporte: console por jornada + macros de triagem.
   - Progresso: **78%** (macros com validacao automatica de consistencia via lookup de ticket)
 - [~] Fiscal (ELLAN LAB + partners): operacao fiscal assistida + governanca de emissores e conformidade.
-  - Progresso: **22%** (trilha D10-D12 + gaps; P0 conciliacao por parceiro e aceite macro ainda em aberto)
+  - Progresso: **26%** (regressao de resync com PostgreSQL estabilizada no host + trilha D10-D12/gaps; P0 conciliacao por parceiro e aceite macro ainda em aberto)
 - [~] Contabil (ELLAN LAB + partners): consolidacao contabil operacional + trilha de fechamento e evidencias.
   - Progresso: **15%** (aceite central D13-D18, exports, ZIP executivo; P0 reconciliacao receita/repasse ainda majoritariamente em backlog)
 
 Evolucao consolidada Sprint 2 (apos ampliacao de escopo):
 - **Antes da ampliacao (somente OPS/Suporte centrais): ~83% nas frentes ativas**
-- **Agora (com Fiscal + Contabil no mesmo sprint): ~50% no consolidado do sprint**
+- **Agora (com Fiscal + Contabil no mesmo sprint): ~52% no consolidado do sprint**
 
 ### Backlog detalhado Sprint 2 - Fiscal e Contabil (execucao imediata)
+
+> **Referência operacional (catálogo global FG-0 / onda FG-1 sem UI por país):** [runbook](runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md) — procedimentos (PR, fixtures, envelope) e evolução futura; escopo onda/adapters em `01_source/backend/billing_fiscal_service/app/config/fiscal_fg1_wave.py`.
 
 #### Fiscal - ELLAN LAB
 | Prioridade | Item | Dono | Esforco | Criterio de aceite |
@@ -296,8 +344,8 @@ Evolucao consolidada Sprint 2 (apos ampliacao de escopo):
 | P1 | Regra de priorizacao de divergencia contabil por impacto financeiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 2 pts | Fila contabil com ordenacao por impacto + SLA de tratativa |
 
 Recalculo de evolucao Sprint 2 (apos detalhamento P0/P1 Fiscal+Contabil):
-- **Consolidado Sprint 2 ajustado: ~50%** (D17 de governanca de aceites central concluido; escopo macro ainda inclui integracao ampliada)
-- **Fiscal (ELLAN LAB + partners): 22%** (endpoints admin fiscais + trilhas operacionais em curso)
+- **Consolidado Sprint 2 ajustado: ~52%** (D17 de governanca de aceites central concluido + estabilidade de regressao fiscal de resync validada; escopo macro ainda inclui integracao ampliada)
+- **Fiscal (ELLAN LAB + partners): 26%** (endpoints admin fiscais + trilhas operacionais em curso + cobertura de regressao de resync no host)
 - **Contabil (ELLAN LAB + partners): 15%** (trilha de aceite D13-D17 com API de retencao e alertas de divergencia prolongada)
 
 #### Evolucao percentual dos sprints (snapshot consolidado)
@@ -305,11 +353,24 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 
 | Sprint | Janela (plano 30 dias) | Progresso indicativo | Nota breve |
 | --- | --- | --- | --- |
-| Sprint 0 | Dias 1-2 | **~70%** | Baseline KPI, board, contratos minimos em curso |
-| Sprint 1 | Dias 3-9 | **~88%** | TS incremental, boundaries, telemetria, store em consolidacao |
-| Sprint 2 | Dias 10-18 | **~50%** consolidado; Fiscal **~22%**; Contabil **~15%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
-| Sprint 3 | Dias 19-24 | **~45%** | Hardening (CSP + gateway; strict-core com util OPS data/hora BR; migracoes incrementais) |
-| Sprint 4 | Dias 25-30 | **~10%** | Readiness Go/No-Go e UAT; ainda nao priorizado frente ao fecho Sprint 2 |
+| Sprint 0 (lab) | Dias 1-2 | **`[x]` ~100%** | Encerrado (lab): baseline KPI v0 + board neste doc + contratos referenciais v0 |
+| **Sprint 0b (produção)** | Contínuo | **`[ ]` ~0%** | Ver secao **Sprint 0b produção**; separado do fecho lab |
+| Sprint 1 | Dias 3-9 | **~46%** | Média conservadora dos 6 itens (3 em `[ ]` a 0%); fundação FE (store+boundary+TS) ~**92%** se isolada |
+| Sprint 2 | Dias 10-18 | **~52%** consolidado; Fiscal **~26%**; Contabil **~15%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
+| Sprint 3 | Dias 19-24 | **~65%** | Média das seis frentes do checklist Sprint 3 (CSP 68, TS 93, auditoria 42, SLO 65, quick-enablement 100, P0-3 incidente 22) |
+| Sprint 4 | Dias 25-30 | **~32%** | Média dos 4 itens do checklist Sprint 4 (24, 40, 28, 35) |
+
+#### Painel percentual para decisão (snapshot 2026-04-30)
+Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão checklist; **Sprint 0b = 0% até primeiro `[x]` com evidência de produção**; Sprint 1 = média simples dos seis itens do checklist da secao Sprint 1 (cada `[ ]` conta como 0%); Sprint 2 = consolidado já narrado no doc; Sprint 3 = média (68+93+42+65+100+22)/6 arredondada; Sprint 4 = média (24+40+28+35)/4 arredondada.
+
+| Sprint | % execução (decisão) | Estado | Comentário útil para comité |
+| --- | ---: | --- | --- |
+| Sprint 0 lab | **100%** | `[x]` Fechado | Setup de governanca; **não** cobre KPI numerico nem contrato publicado externo |
+| **Sprint 0b produção** | **0%** | `[ ]` Não iniciado | Próximo passo quando prioridade for “produção real” vs lab |
+| Sprint 1 | **~46%** | `[~]` | Média 6 itens; **indicador alternativo** só fundação (store+boundary+TS) ~**92%** — não confundir com “sprint quase fechado” |
+| Sprint 2 | **~52%** | `[~]` | **Prioridade #1:** fechar Fiscal + Contábil (P0 / D10–D18); sem isso Go/No-Go arriscado |
+| Sprint 3 | **~65%** | `[~]` | Manter itens já em curso; **congelar expansão de escopo** até o financeiro S2 subir (ver diretriz na secção Sprint 2) |
+| Sprint 4 | **~32%** | `[~]` | Idem: matriz/UAT sem net-new além do já planeado até evidência financeira S2 |
 
 #### Sequencia diaria Sprint 2 (D10-D18) - ordem de execucao e dependencias criticas
 | Dia | Foco principal | Entregas alvo (P0 primeiro) | Dependencias criticas | Saida do dia |
@@ -334,23 +395,34 @@ Dependencias criticas transversais (Sprint 2 financeiro):
 ## Sprint 3 (Dias 19-24) - Hardening e confiabilidade global
 Objetivo: reduzir fragilidade operacional e risco de escala.
 
+**Gating com Sprint 2:** novas frentes ou aumento de escopo nesta sprint ficam **atrás** do fecho do macro **Fiscal + Contábil** da Sprint 2 (diretriz na secção Sprint 2). Hardening já iniciado (CSP, TS, SLO, P0-1/P0-2/P0-3) segue em paralelo quando **não** roubar capacidade dos P0 financeiros.
+
 Checklist:
 - [~] Endurecer CSP e politicas de seguranca frontend.
   - Progresso: **68%** (meta CSP removida do `dist` no build — política só no gateway; exemplo Nginx em `02_docker/nginx/csp-frontend.example.conf`; JSON-LD externo; dev: plugin reabre `unsafe-inline` em `script-src`; `style-src` ainda com `unsafe-inline` no gateway até migração de estilos)
 - [~] Evoluir tipagem TS em modulos criticos (`noImplicitAny` nesses modulos).
-  - Progresso: **92%** (`opsDateTimeFormat.ts` no strict-core + timeline `ops/updates` com fuso America/Sao_Paulo para leitura auditável no Brasil)
-- [ ] Completar auditoria ponta a ponta em fluxos de alto impacto.
-- [ ] Consolidar scorecards de parceiros e alertas por SLO.
-- [ ] Fechar treinamento rapido operacional (OPS/Suporte).
+  - Progresso: **93%** (`opsDateTimeFormat.ts` + `formatOpsDateTime`/`formatOpsTimeShort` em OpsHealth, FiscalUpdates, recon/billing/outbox/inventory/manifests, `DevBaseCatalog`; strict-core mantém o util tipado)
+- [~] Completar auditoria ponta a ponta em fluxos de alto impacto.
+  - Progresso: **42%** (trilha E2E materializada no scorecard fiscal + export de evidência única; falta ampliar cobertura para reconciliação por parceiro e handoff único ponta a ponta)
+- [~] Consolidar scorecards de parceiros e alertas por SLO.
+  - Progresso: **65%** (`fiscal/slo-alerts`: thresholds por janela + severidade + export auditável + recomendações automáticas + **registo P0-2** de decisões pós-recomendação em `localStorage`, export dedicado `SPRINT3_P0_2_POST_RECOMMENDATION_DECISIONS` e inclusão no JSON/ZIP do scorecard; falta calibragem operacional BR/PT com 3 decisões reais anexadas ao daily e scorecards de parceiros fora do núcleo fiscal)
+- [x] Fechar treinamento rapido operacional (OPS/Suporte).
+  - Cockpit `ops/quick-enablement`: checklist ~15min, handoff Slack, export JSON/ZIP assinados (`ELLAN_FISCAL_DAILY_*`, scope `SPRINT3_OPS_SUPPORT_QUICK_TRAINING`).
 
 ## Sprint 4 (Dias 25-30) - Go/No-Go global
 Objetivo: consolidar aceite e readiness de rollout.
 
+**Gating com Sprint 2:** decisão **Go/No-Go** só ganha credibilidade com trilha **Fiscal + Contábil** da Sprint 2 com evidência (diretriz na secção Sprint 2). Evitar UAT/regressão “larga” sem fecho dos P0 financeiros em curso.
+
 Checklist:
-- [ ] Executar regressao funcional por persona.
-- [ ] Executar UAT de KIOSK touch para os 4 modelos.
-- [ ] Validar SLO/KPI minimo de saida.
-- [ ] Registrar decisao Go/No-Go com riscos residuais e plano de mitigacao.
+- [~] Executar regressao funcional por persona.
+  - Progresso: **24%** (matriz por persona + export ZIP; evidência pilotos + anexo automático no pacote diário/executivo)
+- [~] Executar UAT de KIOSK touch para os 4 modelos.
+  - Progresso: **40%** (cockpit `fiscal/sprint4-regression-matrix`: modelos A–D com notas; resumo Go/No-Go exportável; falta ciclos reais por turno anexados ao daily)
+- [~] Validar SLO/KPI minimo de saida.
+  - Progresso: **28%** (SLO fiscal + exports; baseline global por persona ainda em calibragem)
+- [~] Registrar decisao Go/No-Go com riscos residuais e plano de mitigacao.
+  - Progresso: **35%** (registro na matriz + JSON assinado dedicado `SPRINT4_GO_NO_GO_REGISTER_SUMMARY` no ZIP da página, no pacote diário quando há matriz em `localStorage`, e no ZIP de `fiscal/accounting-close` junto à matriz EXEC)
 
 ---
 
@@ -375,7 +447,7 @@ Riscos imediatos:
 - `[!]` Sem baseline de KPI finalizado, o gate de Go/No-Go perde objetividade.
 
 Proximo checkpoint:
-- Publicar update de Sprint 0 com baseline fechado e contratos globais minimos documentados.
+- ~~Publicar update de Sprint 0 com baseline fechado e contratos globais minimos documentados.~~ **Feito:** ver carimbo `### 2026-04-30 - Sprint 0 encerramento operacional (lab)`.
 
 ### 2026-04-30 - Inicio de codificacao Sprint 1
 Status geral: `[~]` Em andamento
@@ -616,14 +688,13 @@ Proximo checkpoint:
 - Manter monitoramento passivo das proximas runs e abrir incidente apenas em regressao real.
 
 ## Snapshot para o daily de hoje (Sprint 0)
-- Progresso medio Sprint 0: **70%**
-- Itens concluidos: **1/4**
-- Item mais avancado: **Owners nominais (100%)**
-- Principais pendencias: baseline KPI (40% restante), contratos globais minimos (50% restante)
+- Progresso Sprint 0: **`[x]` encerrado (lab)** — ver `### 2026-04-30 - Sprint 0 encerramento operacional (lab)`.
+- Itens concluidos: **4/4** (checklist Sprint 0)
 - Owner responsavel: **Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional**
+- Proximo foco: **Sprints 1–4** (execucao tecnica); baseline numerico de KPI quando instrumentacao estiver estavel.
 
-## Fala de 60 segundos para daily (pronta para leitura)
-"Hoje estou conduzindo o Sprint 0 do plano global por persona do ELLAN LAB, com foco em preparar execucao imediata para ONLINE, KIOSK touch, OPS, parceiros e suporte. O progresso medio da sprint esta em 70%, com owners nominais 100% concluidos e ownership centralizado em mim. O board unico por persona esta em 70%, com swimlanes e backlog macro definidos, e os contratos globais minimos estao em 50%, com dominios fechados e pendencia de exemplos de payload. O baseline de KPI esta em 60%, com estrutura pronta e faltando consolidar valores iniciais por fonte. Meu foco de hoje e fechar baseline e contratos minimos para reduzir risco no Go/No-Go e entrar na Sprint 1 sem bloqueios."
+## Fala de 60 segundos para daily (pronta para leitura) — pos-Sprint 0
+"Sprint 0 do plano global por persona esta encerrado no escopo lab: owners, board neste documento, contratos referenciais v0 e baseline KPI v0 estruturado. O trabalho segue nas Sprints 1 a 4 com entregas de codigo e exports auditaveis; a medicao numerica de KPI passa a evoluir com a instrumentacao, sem reabrir Sprint 0."
 
 ---
 
@@ -635,16 +706,17 @@ Use esta estrutura para manter historico objetivo das entregas:
 | 2026-04-30 | Sprint 0 | Plano global por persona em `.md` | `[x]` | `docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md` | Evoluir com checkpoints diarios |
 | 2026-04-30 | Sprint 0 | Incorporacao das recomendacoes de frontend (caso_frontend) | `[x]` | Secao "Incorporacao de recomendacoes do docs/caso_frontend.pdf" | Executar trilha transversal P0 |
 | 2026-04-30 | Sprint 0 | Owners nominais definidos (owner unico) | `[x]` | Secao Sprint 0 + snapshot daily | Manter ownership por item no board |
-| 2026-04-30 | Sprint 0 | Board unico por persona + trilha transversal | `[~]` | Secao Sprint 0 (progresso 70%) | Detalhar cards por sprint e dependencias |
-| 2026-04-30 | Sprint 0 | Contratos globais minimos por dominio | `[~]` | Secao Sprint 0 (progresso 50%) | Adicionar exemplos de payload e criterios de validacao |
-| 2026-04-30 | Sprint 0 | Baseline de KPI por persona | `[~]` | Secao Sprint 0 (progresso 60%) | Consolidar fonte, valor inicial e meta por KPI |
+| 2026-04-30 | Sprint 0 | Board unico por persona + trilha transversal | `[x]` | Sprint 0 checklist + sprints neste `.md` | Manter registro de entregas |
+| 2026-04-30 | Sprint 0 | Contratos globais minimos por dominio | `[x]` | Carimbo Sprint 0 — tabela Contratos v0 | Evoluir OpenAPI/publicacao por sprint |
+| 2026-04-30 | Sprint 0 | Baseline de KPI por persona | `[x]` | Carimbo Sprint 0 — tabela Baseline KPI v0 | Preencher valores quando fontes estiverem prontas |
+| 2026-04-30 | Sprint 0b produção | Trilha formal separada do Sprint 0 lab | `[ ]` | Secao **Sprint 0b produção** no plano | Executar checklist 0b com DoD de produto |
 | 2026-04-30 | Sprint 1 | Setup TypeScript incremental no frontend | `[~]` | `01_source/frontend/tsconfig.json`, `01_source/frontend/package.json` | Estabilizar typecheck no CI |
 | 2026-04-30 | Sprint 1 | Gate tecnico controlado para typecheck incremental | `[x]` | `01_source/frontend/tsconfig.json`, `01_source/frontend/src/vite-env.d.ts` | Expandir escopo TS por dominio (checkout -> kiosk -> ops) |
 | 2026-04-30 | Sprint 1 | Contratos TS por dominio (checkout, kiosk, ops) | `[x]` | `01_source/frontend/src/features/checkout/types.ts`, `01_source/frontend/src/features/kiosk/types.ts`, `01_source/frontend/src/features/ops/types.ts` | Tipar/adaptar hooks de fluxo com esses contratos |
 | 2026-04-30 | Sprint 1 | DomainErrorBoundary migrado para TSX | `[x]` | `01_source/frontend/src/components/DomainErrorBoundary.tsx`, `01_source/frontend/src/App.jsx` | Instrumentar `onError` com telemetria (Sentry/OTel) |
 | 2026-04-30 | Sprint 1 | Store central inicial (Zustand) | `[~]` | `01_source/frontend/src/store/useCheckoutStore.ts` | Integrar pickup/orders e remover estado duplicado residual |
 | 2026-04-30 | Sprint 1 | Integracao do store em `useCurrentOrder` | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js` | Consolidar mesma abordagem no pickup |
-| 2026-04-30 | Sprint 1 | Integracao controlada do store em `useOperationalPayment` | `[~]` | `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPayment.js` | Substituir leituras locais remanescentes por estado central |
+| 2026-04-30 | Sprint 1 | Integracao controlada do store em `useOperationalPayment` | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPayment.js` | `payResp` lido apenas do Zustand; alinhar `LockerDashboardFirst` legado se ainda em uso |
 | 2026-04-30 | Sprint 1 | Integracao do store em `useOperationalPickup` | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPickup.js` | Consolidar fluxo de responses no estado central |
 | 2026-04-30 | Sprint 1 | Reducao de estado duplicado no controller (pickup) | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useLockerDashboardController.js` | Repetir simplificacao para orders/responses |
 | 2026-04-30 | Sprint 1 | Integracao de `orders/responses` ao store | `[x]` | `01_source/frontend/src/store/useCheckoutStore.ts`, `01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js`, `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js` | Hardening final e limpeza residual de estado local |
@@ -1340,7 +1412,7 @@ Resumo:
 - Backend fiscal: `GET /admin/fiscal/accounting-approvals/divergence-health` analisa uma janela de snapshots recentes e sinaliza quando o mesmo diff de governança se repete em várias bordas consecutivas (divergência prolongada).
 - Backend fiscal: `POST /admin/fiscal/accounting-approvals/retention` com `dry_run` remove snapshots mais antigos que um cutoff em dias, respeitando `keep_minimum` de linhas na tabela (compactação por poda controlada).
 - `fiscal/management-daily` exibe card D17 com alerta visual, resumo de bordas e ações de dry-run / execução de retenção.
-- Progresso Sprint 2 atualizado no topo deste documento: consolidado **~50%**, Fiscal **22%**, Contabil **15%**.
+- Progresso Sprint 2 atualizado no topo deste documento: consolidado **~52%**, Fiscal **26%**, Contabil **15%**.
 
 Decisao executiva do checkpoint:
 - D17 reduz risco de crescimento desordenado do histórico e chama atenção para estagnação de divergências entre snapshots antes que virem surpresa em fechamento.
@@ -1351,12 +1423,13 @@ Riscos imediatos:
 Proximo checkpoint:
 - D18: checklist final Sprint 2 financeiro e registro de riscos P1 remanescentes; evoluir integração macro fiscal+contábil por parceiro conforme capacidade da sprint.
 
-### 2026-04-30 - Sprint 2 execução D18 iniciada (checklist mínimo + template P1 no cockpit)
-Status geral: `[~]` Em andamento (MVP operacional)
+### 2026-04-30 - Sprint 2 execução D18 concluída (checklist + carimbo humano + ZIP)
+Status geral: `[x]` Concluído no escopo D18 (MVP operacional + revisão registrada)
 
 Resumo:
 - Conteúdo D18 versionado em `01_source/frontend/src/utils/fiscalSprint2D18Content.js` (itens de checklist alinhados a D10–D17 + transição; payload reutilizável por rota).
 - `fiscal/management-daily` ganhou card **D18** com checkboxes, tabela de 5 linhas para riscos P1, persistência local (`fiscal_management_daily:sprint2_d18_closeout_v1`), export/cópia JSON com `scope: SPRINT2_D18_FINANCE_CLOSEOUT` e inclusão assinada no **pacote diário .zip**.
+- **Carimbo de revisão humana:** após preencher revisor (obrigatório) e nota opcional, ação **Carimbar closeout D18** grava `certification` no mesmo storage; o payload JSON/ZIP passa a incluir `closeout_certification` (`certified_at`, `certified_by`, `note`). Checklist incompleto exige confirmação explícita. **Revogar carimbo** limpa a certificação. O ZIP de `fiscal/accounting-close` reutiliza o mesmo bloco via `loadD18CloseoutFromStorage`.
 - `fiscal/accounting-close` anexa o mesmo closeout ao **ZIP executivo** (`D18_EXEC_SPRINT2_CLOSEOUT`, `scope: SPRINT2_D18_EXEC_FINANCE_CLOSEOUT`), lendo o estado gravado em management-daily.
 
 Checklist mínimo (espelho do código):
@@ -1377,14 +1450,117 @@ Decisao executiva do checkpoint:
 - D18 desbloqueia “aceite assistido” com artefato único reutilizável em comitê e handoff, sem depender de documento externo obrigatório nesta fase.
 
 Proximo checkpoint:
-- Marcar D18 como concluído após revisão humana do JSON/ZIP; iniciar Sprint 3 conforme recomendação pós-D17.
+- ~~Marcar D18 como concluído após revisão humana do JSON/ZIP~~ **Feito:** carimbo operacional na UI + `closeout_certification` nos artefatos. **Próximo foco (diretriz comité):** subir **P0 Fiscal + P0 Contábil** da Sprint 2 com evidência no daily; hardening Sprint 3 apenas em **paralelo seguro** e **sem net-new** até critério financeiro acordado.
 
-#### Recomendação de priorização (pós-D17)
-- **Melhor sprint a priorizar agora: fechar Sprint 2 (D18)** antes de abrir frente larga da Sprint 3 (hardening dias 19–24). A trilha D10–D17 já concentra evidência operacional; D18 formaliza aceite, riscos P1 e critério de transição — reduz dívida de governança e evita duas ondas paralelas (fechamento financeiro + hardening) sem checkpoint explícito.
-- **Sprint 3** permanece o melhor *seguinte* alvo depois de D18: endurecimento e confiabilidade ganham com baseline de riscos registrados e escopo financeiro “congelado” para regressão.
-- **Integração macro fiscal+contábil por parceiro** (meta de longo prazo na tabela D10–D18) deve ser fatiada em P1/P2 pós–Go/No-Go se o throughput da Onda 2 estiver no limite; não competir com D18 na mesma janela curta.
+#### Recomendação de priorização (pós-D17) — **atualizada (comité)**
+
+- **D18 (carimbo + artefatos)** permanece a evidência formal de closeout da trilha D10–D18; não substitui **P0 Fiscal / P0 Contábil** ainda em aberto nas tabelas da Sprint 2.
+- **Prioridade #1:** **fechar o macro financeiro da Sprint 2** (Fiscal + Contábil: conciliação pedido→documento, repasses, evidências no daily/ZIP) **antes** de empurrar **net-new** nas Sprints 3 e 4. Sem isso, **Go/No-Go fica arriscado** (OPS/Suporte já altos; financeiro puxa a média para baixo).
+- **Sprint 3:** manter **hardening já em curso** (CSP, TS, SLO, P0-1/P0-2/P0-3, quick-enablement) em **paralelo seguro** — desde que **não** consuma a capacidade dos P0 financeiros; **congelar expansão de escopo** novo até o time acordar critério explícito de “financeiro S2 suficiente” (ex.: evidência de P0 conciliação + anexos ao daily).
+- **Sprint 4:** matriz de regressão / UAT KIOSK / registo Go-No-Go **sem ampliar** além do planeado até o mesmo critério.
+- **Integração macro fiscal+contábil por parceiro** (longo prazo): continuar **P1/P2 pós–Go/No-Go** ou fatiar quando o throughput da Onda 2 estiver no limite; não competir com os P0 financeiros na mesma janela curta.
+
+### 2026-04-30 - Direcionamento executivo: hardening (Sprint 3) **com gating financeiro Sprint 2**
+Status geral: `[~]` Em andamento
+
+Resumo:
+- **Sprint 3** continua como camada de **confiabilidade** (CSP, TS, auditoria, SLO, incidente) **sem** ser tratada como “próximo saco de escopo” enquanto **Fiscal (~26%)** e **Contábil (~15%)** da Sprint 2 não subirem com evidência operacional.
+- Regressão fiscal com PostgreSQL no host e `ELL_USE_LOCAL_DOCKER_PG=1` (`127.0.0.1:5435`) permanecem suporte à **trilha financeira**, não substituto do fecho P0.
+- Efeito no plano: **menor risco de Go/No-Go cosmético**; hardening avança onde já existe fio, sem desviar donos dos P0 financeiros.
+
+Atualização de progresso:
+- **Sprint 2:** **~52%** consolidado (Fiscal **~26%**, Contábil **~15%**) — **foco comité até subir**.
+- **Sprint 3:** **~65%** (média checklist; ver painel) — **sem net-new** até critério financeiro S2.
+- **Sprint 4:** **~32%** — idem para expansão além do já planeado.
+- **Sprint 0b produção:** **~0%** (`[ ]` — ver secao dedicada; separado do Sprint 0 lab).
+
+Foco imediato **compatível** com a diretriz (paralelo seguro):
+- Completar **auditoria ponta a ponta** onde reforça **pedido → emissão → reconciliação → handoff** (alinhado ao financeiro S2).
+- Consolidar scorecards/SLO **Fiscal/OPS** sem novos domínios.
+- Treino rápido / P0-3: **manutenção** do já entregue, sem novo escopo de produto.
+
+### 2026-04-30 - Bloco de execução Sprint 3 (checklist curto P0)
+Status geral: `[~]` Em andamento
+
+Objetivo do bloco:
+- Executar uma fatia curta e mensurável de hardening com impacto direto em confiabilidade operacional.
+
+Checklist P0 (curto, com aceite e % inicial):
+- [~] **P0-1 Auditoria ponta a ponta dos fluxos críticos (pedido -> emissão -> reconciliação -> handoff).**  
+  - Critério de aceite: trilha auditável com `order_id`, `invoice_id`, `partner_id`, `batch_id` em 100% dos cenários de teste definidos para Sprint 3.  
+  - Progresso atual: **42%**.
+- [~] **P0-2 Scorecards e alertas SLO para Fiscal/OPS consolidados no painel.**  
+  - Critério de aceite: dashboard com KPIs mínimos (`erro fiscal`, `latência`, `divergência prolongada`, `tempo de tratativa`) e alertas ativos por severidade.  
+  - Progresso atual: **65%** (UI + export para ≥3 decisões pós-recomendação no sprint).
+- [~] **P0-3 Treinamento operacional rápido + checklist de resposta a incidente.**  
+  - Critério de aceite: runbook enxuto publicado, checklist aplicado em simulação assistida e evidência registrada no handoff diário.  
+  - Progresso atual: **22%**.
+
+Decisao executiva do bloco:
+- Manter foco em 3 P0 de alto impacto para fechar Sprint 3 com ganho de confiabilidade antes de ampliar escopo P1.
+
+Proximo checkpoint:
+- Reavaliar este bloco ao fim do próximo ciclo diário e atualizar percentuais com base em evidência (dashboard, logs e runbook executado).
+
+### Template diário Sprint 3 (preenchimento em 2 minutos)
+Use o bloco abaixo diariamente para atualizar os 3 P0 com evidência objetiva e impedimento explícito.
+
+| Data | P0 | % anterior | % novo | Evidência (1 linha) | Impedimento (se houver) | Próxima ação (24h) |
+|---|---|---:|---:|---|---|---|
+| AAAA-MM-DD | P0-1 Auditoria ponta a ponta | 42 | 42 | Ex.: trilha E2E + export de handoff no cockpit fiscal | Ex.: reconciliação por parceiro ainda fora do pacote único | Ex.: fechar 1 caso PT com IDs correlacionados e anexar evidência |
+| AAAA-MM-DD | P0-2 Scorecards + alertas SLO | 55 | 65 | Ex.: `fiscal/slo-alerts` + ficheiro `SPRINT3_P0_2_POST_RECOMMENDATION_DECISIONS` no ZIP | Ex.: calibragem BR/PT com falsos positivos | Ex.: anexar 3 decisões reais ao daily |
+| AAAA-MM-DD | P0-3 Treinamento + checklist incidente | 22 | 22 | Ex.: checklist D18 + handoff ZIP/JSON | Ex.: simulação assistida ainda não executada com evidência | Ex.: rodar simulação curta e anexar no daily |
+
+### 2026-04-30 - Sprint 3 iniciada imediatamente (primeiro update diário)
+Status geral: `[~]` Em andamento
+
+Atualização rápida dos P0:
+- **P0-1 Auditoria ponta a ponta** — `%`: **35 -> 42**
+  - Evidência: consolidação do fluxo fiscal de resync com PostgreSQL no host validada em regressão (`contingency_resync_regression`).
+  - Impedimento: falta fechar trilha completa com reconciliação por parceiro no mesmo pacote de evidência.
+  - Próxima ação (24h): anexar evidência cruzada pedido->emissão->reconciliação no handoff diário.
+- **P0-2 Scorecards + alertas SLO** — `%`: **30 -> 55 -> 65**
+  - Evidência: `fiscal/slo-alerts` evoluído para calibração por janela (`24H`, `7D`, `30D`) + recomendações automáticas de ajuste (heurística por país/parceiro + checagem de cobertura da trilha E2E), versionado em `sprint3-v3-auto-recs`, com inclusão no export (`alerts.auto_adjustment_recommendations`) e correção de reload ao trocar período. **P0-2b:** registo local de decisões pós-recomendação (`SPRINT3_P0_2_POST_RECOMMENDATION_DECISIONS`, util `fiscalSprint3SloPostRecDecisions.js`), resumo `last_3` / `timeline` no scorecard JSON e ficheiro dedicado no ZIP SLO.
+  - Impedimento: falta calibrar pesos/heurísticas com operação real (evitar falsos positivos) e consolidar playbook de “quando endurecer vs quando investigar”.
+  - Próxima ação (24h): rodar 1 turno de validação assistida e registrar 3 casos reais (BR/PT) com decisão tomada a partir das recomendações (usar o bloco P0-2 na página).
+- **P0-3 Treinamento + checklist incidente** — `%`: **20 -> 22**
+  - Evidência: checklist de closeout D18 e fluxo de handoff já operacionalizados com artefatos JSON/ZIP.
+  - Impedimento: falta simulação curta dedicada de incidente para Sprint 3 com carimbo de execução.
+  - Próxima ação (24h): executar simulação assistida de 15-20 min e registrar resultado no daily.
+
+### 2026-04-30 - Avanço dos próximos 2 sprints (Sprint 3 + Sprint 4)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- **Sprint 3** avança para fechamento operacional do hardening fiscal/OPS com artefatos auditáveis (SLO + trilha E2E no cockpit).
+- **Sprint 4** entra em modo **paralelo seguro**: preparação de regressão/UAT e KPI mínimo de saída, sem bloquear o fechamento da Sprint 3.
+
+Atualização de progresso (snapshot consolidado):
+- **Sprint 3:** **~65%**
+- **Sprint 4:** **~32%**
+
+Decisão executiva:
+- Tratar Sprint 4 como **pré-produção assistida**: só aumenta ritmo quando Sprint 3 registrar evidência diária dos 3 P0 (template de 2 minutos).
+
+Próximo checkpoint:
+- Sprint 3: fechar P0-3 com simulação assistida + evidência anexada.
+- Sprint 4: publicar matriz mínima de regressão por persona + 1 rodada piloto registrada.
+
+### 2026-04-30 — Microajuste: handoff único (ZIP) alinhado ao plano
+- **Pacote diário** (`fiscal/management-daily` e `ops/health`): quando houver dados no browser e token interno onde aplicável, o `.zip` consolida **P0-1b** (E2E + fatia por parceiro), **Sprint 4** (matriz + histórico de pilotos, com limite de tamanho) e **carimbo P0-3** (`SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH`, de `fiscal/incident-response`).
+- **Pacote executivo** (`fiscal/accounting-close`): o `.zip` de fechamento inclui o mesmo trio quando aplicável — **P0-1b** com token + D11 em `localStorage`; matriz Sprint 4 já como `EXEC`; **pilotos** Sprint 4 em ficheiro dedicado sem duplicar a matriz; **P0-3** como no diário. Objetivo: um ficheiro de handoff por export, sem refinar o gate além do resumo já existente.
 
 ### Modelo de lancamento diario (copiar e preencher)
 | Data | Sprint | Entrega | Status | Evidencia/Artefato | Proximo passo |
 |---|---|---|---|---|---|
 | AAAA-MM-DD | Sprint X | Nome objetivo da entrega | `[ ]`/`[~]`/`[x]`/`[!]` | Link de doc, PR, tela ou log | Acao seguinte com prazo |
+
+### 2026-04-30 - Sprint 3: treinamento rapido OPS/Suporte (checklist plano)
+Status geral: `[x]` Concluido (item plano)
+
+Resumo:
+- Entregue cockpit `ops/quick-enablement` com checklist curto, persistencia local, export JSON/ZIP assinados (`SPRINT3_OPS_SUPPORT_QUICK_TRAINING`, prefixo `ELLAN_FISCAL_DAILY`) e handoff Slack.
+- Integracao leve: atalho em `ops/health` (FG-1) e link no runbook P0-3 (`fiscalSprint3IncidentRunbook.js`).
+
+Decisao executiva:
+- Tratar treinamento rapido como **habilitacao minima** antes de ampliar UAT KIOSK (Sprint 4); proximo melhor sprint operacional: **Sprint 4 — UAT KIOSK 4 modelos** ou **registro Go/No-Go** conforme capacidade.

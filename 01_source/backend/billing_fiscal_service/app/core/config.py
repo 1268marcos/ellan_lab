@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     fiscal_real_provider_api_key_pt: str | None = Field(default=None, alias="FISCAL_REAL_PROVIDER_API_KEY_PT")
     fiscal_a1_dry_run_enabled: bool = Field(default=False, alias="FISCAL_A1_DRY_RUN_ENABLED")
     fiscal_a1_dry_run_cert_ref: str | None = Field(default=None, alias="FISCAL_A1_DRY_RUN_CERT_REF")
+    fiscal_a1_dry_run_hmac_secret: str | None = Field(default=None, alias="FISCAL_A1_DRY_RUN_HMAC_SECRET")
 
     fiscal_require_complete_consumer_for_real_issue: bool = Field(
         default=True,

@@ -42,6 +42,7 @@ const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPo
 const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
+const OpsQuickEnablementPage = lazy(() => import("./pages/OpsQuickEnablementPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
 const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage.tsx"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
@@ -71,6 +72,9 @@ const FiscalManagementDailyPage = lazy(() => import("./pages/FiscalManagementDai
 const FiscalDepartmentDashboardsPage = lazy(() => import("./pages/FiscalDepartmentDashboardsPage"));
 const FiscalPartnerPerformancePage = lazy(() => import("./pages/FiscalPartnerPerformancePage"));
 const FiscalAccountingClosePage = lazy(() => import("./pages/FiscalAccountingClosePage"));
+const FiscalSloAlertsPage = lazy(() => import("./pages/FiscalSloAlertsPage"));
+const FiscalSprint4RegressionMatrixPage = lazy(() => import("./pages/FiscalSprint4RegressionMatrixPage"));
+const FiscalIncidentResponsePage = lazy(() => import("./pages/FiscalIncidentResponsePage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -300,14 +304,21 @@ function TopNav() {
     { to: "/ops/sp/kiosk", label: "ops /sp/kiosk", aria: "Kiosk São Paulo", group: "Visão Geral" },
     { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal", group: "Visão Geral" },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
+    {
+      to: "/ops/quick-enablement",
+      label: "ops /quick-enablement",
+      aria: "Treinamento rapido OPS e Suporte (Sprint 3)",
+      group: "Dashboards",
+      isNew: true,
+    },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional", group: "Dashboards" },
-    { to: "/ops/dev/errors", label: "ops /dev/errors", aria: "Visualizacao interna de erros 4xx/5xx", group: "Dashboards", isNew: true },
+    { to: "/ops/dev/errors", label: "ops /dev/errors", aria: "Visualizacao interna de erros 4xx/5xx", group: "Dashboards" },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
     { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada", group: "Dashboards" },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
-    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística", isNew: true },
+    { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns", group: "Logística" },
     { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos", group: "Produtos & Fiscal" },
     { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", group: "Produtos & Fiscal" },
@@ -355,11 +366,24 @@ function TopNav() {
         { to: "/fiscal", label: "fiscal /global", aria: "Catálogo e matriz fiscal global" },
         { to: "/fiscal/countries", label: "fiscal /countries", aria: "Cockpit FG-1/FG-2 por país" },
         { to: "/fiscal/fg1-gate", label: "fiscal /fg1-gate", aria: "Gate técnico FG-1 (GO/NO_GO)" },
-        { to: "/fiscal/readiness-execution", label: "fiscal /readiness-execution", aria: "Execução operacional de readiness FG-1", isNew: true },
-        { to: "/fiscal/management-daily", label: "fiscal /management-daily", aria: "Gestão diária contábil/fiscal", isNew: true },
-        { to: "/fiscal/department-dashboards", label: "fiscal /department-dashboards", aria: "Dashboards departamentais fiscal e contábil", isNew: true },
-        { to: "/fiscal/partner-performance", label: "fiscal /partner-performance", aria: "Desempenho operacional de parceiros fiscais", isNew: true },
-        { to: "/fiscal/accounting-close", label: "fiscal /accounting-close", aria: "Fechamento contábil e fiscal diário", isNew: true },
+        { to: "/fiscal/readiness-execution", label: "fiscal /readiness-execution", aria: "Execução operacional de readiness FG-1" },
+        { to: "/fiscal/management-daily", label: "fiscal /management-daily", aria: "Gestão diária contábil/fiscal" },
+        { to: "/fiscal/department-dashboards", label: "fiscal /department-dashboards", aria: "Dashboards departamentais fiscal e contábil" },
+        { to: "/fiscal/partner-performance", label: "fiscal /partner-performance", aria: "Desempenho operacional de parceiros fiscais" },
+        { to: "/fiscal/accounting-close", label: "fiscal /accounting-close", aria: "Fechamento contábil e fiscal diário" },
+        { to: "/fiscal/slo-alerts", label: "fiscal /slo-alerts", aria: "Scorecards e alertas SLO fiscal/ops" },
+        {
+          to: "/fiscal/sprint4-regression-matrix",
+          label: "fiscal /sprint4-regression-matrix",
+          aria: "Matriz mínima de regressão Sprint 4 (por persona)",
+          isNew: true,
+        },
+        {
+          to: "/fiscal/incident-response",
+          label: "fiscal /incident-response",
+          aria: "Runbook e checklist de resposta a incidente fiscal/ops",
+          isNew: true,
+        },
         { to: "/fiscal/updates", label: "fiscal /updates", aria: "Histórico da trilha fiscal global" },
       ]
     : [];
@@ -865,6 +889,12 @@ function RecoverFiscalRoute() {
   if (normalizedPath.includes("fiscal/accounting-close")) {
     return <Navigate to="/fiscal/accounting-close" replace />;
   }
+  if (normalizedPath.includes("fiscal/slo-alerts")) {
+    return <Navigate to="/fiscal/slo-alerts" replace />;
+  }
+  if (normalizedPath.includes("fiscal/incident-response")) {
+    return <Navigate to="/fiscal/incident-response" replace />;
+  }
   if (normalizedPath.includes("fiscal/global") || normalizedPath.includes("/fiscal")) {
     return <Navigate to="/fiscal" replace />;
   }
@@ -1041,6 +1071,36 @@ function AppContent() {
               }
             />
             <Route
+              path="/fiscal/slo-alerts"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalSloAlertsPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/sprint4-regression-matrix"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalSprint4RegressionMatrixPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/incident-response"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalIncidentResponsePage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/sp"
               element={
                 <OpsRoute>
@@ -1146,6 +1206,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsHealthPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/quick-enablement"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsQuickEnablementPage />)}
                 </OpsRoute>
               }
             />

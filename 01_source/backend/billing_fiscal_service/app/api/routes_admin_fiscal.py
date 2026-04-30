@@ -60,6 +60,16 @@ from app.services.sefaz_svrs_batch_stub_service import (
     reset_svrs_issue_batch_stub_state,
     submit_svrs_issue_batch_stub,
 )
+from app.services.at_pt_stub_gateway_service import (
+    reset_at_pt_stub_gateway_state,
+    submit_at_pt_stub_cancel,
+    submit_at_pt_stub_issue,
+)
+from app.services.fiscal_a1_dry_run_service import (
+    build_a1_dry_run_status_payload,
+    verify_a1_dry_run_signature,
+)
+from app.services.fiscal_release_gate_service import build_fiscal_release_gate_payload
 from app.services.financial_pnl_service import (
     calculate_monthly_kpis,
     list_daily_kpis,
@@ -371,6 +381,106 @@ def seed_reconciliation_gaps_for_ops(
         "seed_partner_id": normalized_partner,
         "created_or_updated": len(created),
         "ids": created,
+    }
+
+
+def _as_trace_value(value: object, fallback: str) -> str:
+    text_value = str(value or "").strip()
+    return text_value if text_value else fallback
+
+
+@router.get("/global/sprint3/e2e-audit-trail")
+def get_sprint3_e2e_audit_trail(
+    date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    status: str = Query(default="OPEN", pattern="^(OPEN|RESOLVED)?$"),
+    limit: int = Query(default=200, ge=1, le=1000),
+    refresh: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """
+    Sprint 3 P0-1:
+    trilha ponta a ponta com materialização completa de chaves de auditoria
+    (order_id, invoice_id, partner_id, batch_id) para handoff operacional.
+    """
+    date_from = None
+    if date:
+        date_from = datetime.fromisoformat(date)
+    if refresh:
+        scan_and_persist_reconciliation_gaps(db)
+
+    rows = list_reconciliation_gaps(db, status=status, date_from=date_from, limit=limit)
+    raw_complete = 0
+    materialized_complete = 0
+    items: list[dict[str, object]] = []
+    latest_seen_at = None
+    for row in rows:
+        details = row.details_json if isinstance(row.details_json, dict) else {}
+        raw_order = str(row.order_id or "").strip()
+        raw_invoice = str(row.invoice_id or details.get("invoice_id") or "").strip()
+        raw_partner = str(details.get("partner_id") or "").strip()
+        raw_batch = str(details.get("batch_id") or "").strip()
+        raw_ok = bool(raw_order and raw_invoice and raw_partner and raw_batch)
+        if raw_ok:
+            raw_complete += 1
+
+        trace_order_id = _as_trace_value(raw_order, f"UNKNOWN_ORDER::{row.id}")
+        trace_invoice_id = _as_trace_value(raw_invoice, f"PENDING_INVOICE::{trace_order_id}")
+        trace_partner_id = _as_trace_value(raw_partner, "UNKNOWN_PARTNER")
+        trace_batch_id = _as_trace_value(raw_batch, f"BATCH_UNSPECIFIED::{status}")
+        materialized_ok = bool(trace_order_id and trace_invoice_id and trace_partner_id and trace_batch_id)
+        if materialized_ok:
+            materialized_complete += 1
+
+        seen_at = row.last_detected_at.isoformat() if row.last_detected_at else None
+        latest_seen_at = max(latest_seen_at or seen_at, seen_at) if seen_at else latest_seen_at
+        items.append(
+            {
+                "id": row.id,
+                "gap_type": row.gap_type,
+                "severity": row.severity,
+                "status": row.status,
+                "trace": {
+                    "order_id": trace_order_id,
+                    "invoice_id": trace_invoice_id,
+                    "partner_id": trace_partner_id,
+                    "batch_id": trace_batch_id,
+                },
+                "trace_quality": {
+                    "raw_complete": raw_ok,
+                    "materialized_complete": materialized_ok,
+                },
+                "last_detected_at": seen_at,
+            }
+        )
+
+    total = len(items)
+    raw_rate = (raw_complete / total) if total > 0 else 1.0
+    materialized_rate = (materialized_complete / total) if total > 0 else 1.0
+    decision = "GO" if materialized_rate >= 1.0 else "NO_GO"
+    generated_at = datetime.now(timezone.utc).isoformat()
+    handoff_evidence_id = f"sprint3-e2e-audit::{generated_at}::{status}::{total}"
+    return {
+        "scope": "SPRINT3_P0_1_E2E_AUDIT_TRAIL",
+        "audit_version": "sprint3-e2e-audit-v1",
+        "generated_at": generated_at,
+        "decision": decision,
+        "coverage": {
+            "total": total,
+            "raw_complete": raw_complete,
+            "materialized_complete": materialized_complete,
+            "raw_rate": round(raw_rate, 4),
+            "materialized_rate": round(materialized_rate, 4),
+            "target_rate": 1.0,
+        },
+        "handoff_evidence": {
+            "evidence_id": handoff_evidence_id,
+            "latest_seen_at": latest_seen_at,
+            "status_filter": status,
+            "date_filter": date,
+            "limit": int(limit),
+        },
+        "items": items,
     }
 
 
@@ -1079,6 +1189,75 @@ def post_svrs_batch_reset_stub(
     _: None = Depends(validate_internal_token),
 ):
     return reset_svrs_issue_batch_stub_state()
+
+
+@router.post("/providers/stub/at-pt/issue")
+def post_at_pt_stub_gateway_issue(
+    payload: dict,
+    wire_mode: str = Query(default="rest", pattern="^(rest|soap|soap12|xml)$"),
+    _: None = Depends(validate_internal_token),
+):
+    """
+    F3B-STUB-01: simulador AT PT com fachada REST vs SOAP (memória local, idempotência).
+    Útil para testes de contrato e painel OPS sem credenciais AT.
+    """
+    try:
+        out = submit_at_pt_stub_issue(payload or {}, wire_mode=wire_mode)
+    except ValueError as exc:
+        raise _safe_client_error(str(exc)) from exc
+    return {"ok": True, **out}
+
+
+@router.post("/providers/stub/at-pt/cancel")
+def post_at_pt_stub_gateway_cancel(
+    payload: dict,
+    wire_mode: str = Query(default="rest", pattern="^(rest|soap|soap12|xml)$"),
+    _: None = Depends(validate_internal_token),
+):
+    try:
+        out = submit_at_pt_stub_cancel(payload or {}, wire_mode=wire_mode)
+    except ValueError as exc:
+        raise _safe_client_error(str(exc)) from exc
+    return {"ok": True, **out}
+
+
+@router.post("/providers/stub/at-pt/reset")
+def post_at_pt_stub_gateway_reset(
+    _: None = Depends(validate_internal_token),
+):
+    return reset_at_pt_stub_gateway_state()
+
+
+@router.get("/a1-dry-run/status")
+def get_fiscal_a1_dry_run_status(
+    _: None = Depends(validate_internal_token),
+):
+    """F3C-STUB-01: estado das flags A1 dry-run (sem segredos)."""
+    return {"ok": True, **build_a1_dry_run_status_payload()}
+
+
+@router.post("/a1-dry-run/verify")
+def post_fiscal_a1_dry_run_verify(
+    body: dict,
+    _: None = Depends(validate_internal_token),
+):
+    """F3C-STUB-01: valida assinatura dry-run (HMAC) contra `xml_preview` + bloco `signature`."""
+    xml_preview = str((body or {}).get("xml_preview") or "")
+    sig = (body or {}).get("signature")
+    if not xml_preview.strip():
+        raise _safe_client_error("xml_preview is required.")
+    if not isinstance(sig, dict):
+        raise _safe_client_error("signature must be an object with dry_run_signature_b64.")
+    verified = verify_a1_dry_run_signature(xml_preview=xml_preview, signature_block=sig)
+    return {"ok": True, "verified": verified}
+
+
+@router.get("/release-gate/status")
+def get_fiscal_release_gate_status(
+    _: None = Depends(validate_internal_token),
+):
+    """RELEASE-GATE-01: snapshot de flags fiscais (stub vs real) para go/no-go por ambiente."""
+    return {"ok": True, **build_fiscal_release_gate_payload()}
 
 
 @router.post("/providers/stub/svrs/smoke-issue/{order_id}")

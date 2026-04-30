@@ -9,8 +9,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
+from app.config.fiscal_fg1_wave import FG1_WAVE_COUNTRIES  # noqa: E402
 from app.services.fiscal_fg1_stub_service import (  # noqa: E402
-    FG1_WAVE_COUNTRIES,
     _scenario_map,
     build_fg1_fixture_document,
 )

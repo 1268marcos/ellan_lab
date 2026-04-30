@@ -4,13 +4,24 @@ import { strToU8, zipSync } from "fflate";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 import { fetchAccountingApprovalsCompare, fetchConsolidatedAccountingApprovals } from "../utils/fiscalAccountingApprovalsHistory";
+import { appendP01bSignedZipEntries } from "../utils/fiscalP01bDailyPackage";
 import { buildD18CloseoutPayload, loadD18CloseoutFromStorage } from "../utils/fiscalSprint2D18Content";
+import { appendSprint3P03OptionalSignedZipEntries } from "../utils/fiscalSprint3IncidentRunbook";
+import {
+  appendSprint4PilotHistoryOptionalSignedZipEntries,
+  buildSprint4GoNoGoRegisterSummaryPayload,
+  buildSprint4RegressionMatrixPayload,
+  loadSprint4MatrixStateRaw,
+} from "../utils/fiscalSprint4RegressionMatrix";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.0.1";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.2-s4-gonogo";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
+const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
+const GO_NO_GO_GATE_VERSION = "go-no-go-gate-v1";
+const GO_NO_GO_MIN_SPRINT4_PCT = Number(import.meta.env.VITE_SPRINT4_MIN_REGRESSION_PCT || 70);
 
 function headersJson() {
   return {
@@ -85,6 +96,21 @@ export default function FiscalAccountingClosePage() {
   const [partnerFilter, setPartnerFilter] = useState("ALL");
   const [periodFilter, setPeriodFilter] = useState("7D");
   const [approvalDraft, setApprovalDraft] = useState(null);
+  const [sprint4MatrixSnapshot, setSprint4MatrixSnapshot] = useState(null);
+
+  function refreshSprint4MatrixSnapshot() {
+    try {
+      const stored = loadSprint4MatrixStateRaw();
+      if (!stored) {
+        setSprint4MatrixSnapshot(null);
+        return;
+      }
+      const payload = buildSprint4RegressionMatrixPayload(new Date().toISOString(), stored);
+      setSprint4MatrixSnapshot(payload);
+    } catch {
+      setSprint4MatrixSnapshot(null);
+    }
+  }
 
   useEffect(() => {
     void loadData();
@@ -94,6 +120,7 @@ export default function FiscalAccountingClosePage() {
     } catch {
       setApprovalDraft(null);
     }
+    refreshSprint4MatrixSnapshot();
   }, []);
 
   const planItems = Array.isArray(readinessPlan?.items) ? readinessPlan.items : [];
@@ -116,6 +143,14 @@ export default function FiscalAccountingClosePage() {
     (a, b) => Number(b?.blocking_reasons_count || 0) - Number(a?.blocking_reasons_count || 0)
   );
   const highRiskCount = filteredItems.filter((item) => Number(item?.blocking_reasons_count || 0) >= 2).length;
+  const sprint4Progress = sprint4MatrixSnapshot?.progress || { total: 0, done: 0, pct: 0 };
+  const gateDecision = String(stubReadiness?.decision || "NO_GO").toUpperCase();
+  const goNoGoReady = gateDecision === "GO" && failedChecks === 0 && sprint4Progress.pct >= GO_NO_GO_MIN_SPRINT4_PCT;
+  const goNoGoReasons = [
+    gateDecision === "GO" ? null : "decision_not_go",
+    failedChecks === 0 ? null : "checks_failed",
+    sprint4Progress.pct >= GO_NO_GO_MIN_SPRINT4_PCT ? null : "sprint4_regression_below_threshold",
+  ].filter(Boolean);
 
   async function loadData() {
     if (!INTERNAL_TOKEN) {
@@ -156,11 +191,26 @@ export default function FiscalAccountingClosePage() {
         period: periodFilter,
       },
       close_kpis: {
-        decision_consolidated: String(stubReadiness?.decision || "NO_GO").toUpperCase(),
+        decision_consolidated: gateDecision,
         checks_pass: `${passedChecks}/${readinessChecks.length}`,
         checks_failed: failedChecks,
         countries_in_scope: filteredItems.length,
         high_risk_countries: highRiskCount,
+      },
+      go_no_go_gate: {
+        version: GO_NO_GO_GATE_VERSION,
+        ready: goNoGoReady,
+        reasons: goNoGoReasons,
+        thresholds: {
+          sprint4_min_regression_pct: GO_NO_GO_MIN_SPRINT4_PCT,
+          checks_failed_must_equal: 0,
+          decision_must_be: "GO",
+        },
+        current: {
+          decision: gateDecision,
+          checks_failed: failedChecks,
+          sprint4_regression_pct: sprint4Progress.pct,
+        },
       },
       pending_by_country: filteredItems.map((item) => {
         const country = String(item?.country_code || "-").toUpperCase();
@@ -176,6 +226,10 @@ export default function FiscalAccountingClosePage() {
         owner: String(approvalDraft?.owner || "-"),
         status: String(approvalDraft?.status || "PENDING_REVIEW"),
         timestamp: String(approvalDraft?.timestamp || "-"),
+      },
+      sprint4_regression_matrix_snapshot: sprint4MatrixSnapshot || {
+        scope: "SPRINT4_REGRESSION_MATRIX",
+        status: "NOT_AVAILABLE",
       },
     };
   }
@@ -194,7 +248,19 @@ export default function FiscalAccountingClosePage() {
     const nowIso = new Date().toISOString();
     const day = toAuditDayStamp(nowIso);
     const ts = nowIso.replace(/[:.]/g, "-");
-    const signedClose = await buildSignedPayload(buildClosePayload(nowIso));
+    const closePayload = buildClosePayload(nowIso);
+    const signedClose = await buildSignedPayload(closePayload);
+    const signedGateSummary = await buildSignedPayload({
+      scope: "FISCAL_GO_NO_GO_GATE_SUMMARY",
+      generated_at: nowIso,
+      source: "fiscal/accounting-close",
+      gate: closePayload.go_no_go_gate,
+      executive_snapshot: {
+        decision_consolidated: closePayload.close_kpis.decision_consolidated,
+        checks_failed: closePayload.close_kpis.checks_failed,
+        sprint4_regression_pct: closePayload.go_no_go_gate?.current?.sprint4_regression_pct,
+      },
+    });
     const signedApproval = await buildSignedPayload({
       scope: "FISCAL_ACCOUNTING_APPROVAL_SNAPSHOT",
       generated_at: nowIso,
@@ -207,6 +273,7 @@ export default function FiscalAccountingClosePage() {
     });
     const zipEntries = {
       [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_CLOSE_${ts}.json`]: strToU8(JSON.stringify(signedClose, null, 2)),
+      [`${DAILY_AUDIT_PREFIX}_${day}_GO_NO_GO_GATE_${ts}.json`]: strToU8(JSON.stringify(signedGateSummary, null, 2)),
       [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`]: strToU8(JSON.stringify(signedApproval, null, 2)),
     };
     if (INTERNAL_TOKEN) {
@@ -260,6 +327,38 @@ export default function FiscalAccountingClosePage() {
         });
         zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_D16_EXEC_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
       }
+      try {
+        let d11Snapshot = null;
+        try {
+          const rawD11 = window.localStorage.getItem(FISCAL_D11_HANDOFF_KEY);
+          if (rawD11) {
+            const parsed = JSON.parse(rawD11);
+            d11Snapshot = parsed && typeof parsed === "object" ? parsed : null;
+          }
+        } catch {
+          d11Snapshot = null;
+        }
+        await appendP01bSignedZipEntries({
+          billingBase: BILLING_BASE,
+          getHeaders: headersJson,
+          buildSignedPayload,
+          strToU8,
+          fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+          ts,
+          nowIso,
+          d11Handoff: d11Snapshot,
+          source: "fiscal/accounting-close",
+          zipEntries,
+        });
+      } catch (err) {
+        const signedErr = await buildSignedPayload({
+          scope: "SPRINT3_P0_1B_E2E_ATTACH_ERROR",
+          generated_at: nowIso,
+          source: "fiscal/accounting-close",
+          error: String(err?.message || err),
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_P0_1B_EXEC_E2E_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+      }
     }
     try {
       const stored = loadD18CloseoutFromStorage();
@@ -270,6 +369,7 @@ export default function FiscalAccountingClosePage() {
         checklistById: stored.checklist,
         p1Rows: stored.p1Risks,
         source: "fiscal/accounting-close",
+        certification: stored.certification,
         context: {
           decision_consolidated: decision,
           risk_level: riskLevel,
@@ -291,8 +391,70 @@ export default function FiscalAccountingClosePage() {
         // no-op
       }
     }
+    try {
+      const storedMatrix = loadSprint4MatrixStateRaw();
+      const matrixPayload = buildSprint4RegressionMatrixPayload(nowIso, storedMatrix);
+      const signedMatrix = await buildSignedPayload(matrixPayload);
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_EXEC_REGRESSION_MATRIX_${ts}.json`] = strToU8(JSON.stringify(signedMatrix, null, 2));
+      const signedSprint4GoNoGo = await buildSignedPayload(
+        buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedMatrix && typeof storedMatrix === "object" ? storedMatrix : {})
+      );
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_GO_NO_GO_REGISTER_${ts}.json`] = strToU8(JSON.stringify(signedSprint4GoNoGo, null, 2));
+    } catch {
+      try {
+        const signedMatrixErr = await buildSignedPayload({
+          scope: "SPRINT4_REGRESSION_MATRIX_ATTACH",
+          generated_at: nowIso,
+          source: "fiscal/accounting-close",
+          error: "Não foi possível anexar a matriz Sprint 4 ao ZIP executivo (estado local inválido ou indisponível).",
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_EXEC_REGRESSION_MATRIX_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedMatrixErr, null, 2));
+      } catch {
+        // no-op
+      }
+    }
+    try {
+      await appendSprint4PilotHistoryOptionalSignedZipEntries({
+        buildSignedPayload,
+        strToU8,
+        fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+        ts,
+        nowIso,
+        zipEntries,
+        source: "fiscal/accounting-close",
+      });
+    } catch (err) {
+      const signedErr = await buildSignedPayload({
+        scope: "SPRINT4_PILOT_EXEC_ATTACH_ERROR",
+        generated_at: nowIso,
+        source: "fiscal/accounting-close",
+        error: String(err?.message || err),
+      });
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PILOT_EXEC_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+    }
+    try {
+      await appendSprint3P03OptionalSignedZipEntries({
+        buildSignedPayload,
+        strToU8,
+        fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+        ts,
+        nowIso,
+        zipEntries,
+        source: "fiscal/accounting-close",
+      });
+    } catch (err) {
+      const signedErr = await buildSignedPayload({
+        scope: "SPRINT3_P03_EXEC_ATTACH_ERROR",
+        generated_at: nowIso,
+        source: "fiscal/accounting-close",
+        error: String(err?.message || err),
+      });
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_P03_EXEC_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
-    setStatus("Pacote ZIP de accounting-close exportado (D16 histórico 30d + diff + D18 closeout executivo).");
+    setStatus(
+      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D18 + matriz Sprint 4 + resumo Go/No-Go Sprint 4 + pilotos + carimbo P0-3 (quando houver no browser).",
+    );
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -302,6 +464,7 @@ export default function FiscalAccountingClosePage() {
         <div style={shortcutRowStyle}>
           <Link to="/fiscal/management-daily" style={shortcutLinkStyle}>Abrir fiscal/management-daily</Link>
           <Link to="/fiscal/readiness-execution" style={shortcutLinkStyle}>Abrir fiscal/readiness-execution</Link>
+          <Link to="/fiscal/sprint4-regression-matrix" style={shortcutLinkStyle}>Abrir fiscal/sprint4-regression-matrix</Link>
           <a href={buildFiscalSwaggerUrl(BILLING_BASE)} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>Abrir Swagger FISCAL</a>
         </div>
         <OpsPageTitleHeader title="FISCAL - Accounting Close" versionLabel={PAGE_VERSION} />
@@ -337,9 +500,13 @@ export default function FiscalAccountingClosePage() {
 
         <div style={toolbarStyle}>
           <button type="button" onClick={() => void loadData()} style={buttonStyle} disabled={loading}>{loading ? "Atualizando..." : "Atualizar"}</button>
+          <button type="button" onClick={() => refreshSprint4MatrixSnapshot()} style={buttonStyle} disabled={loading}>Recarregar matriz Sprint 4</button>
           <button type="button" onClick={() => void exportJson()} style={buttonStyle} disabled={loading}>Exportar JSON</button>
           <button type="button" onClick={() => void exportZip()} style={buttonStyle} disabled={loading}>Exportar ZIP auditável</button>
         </div>
+        <small style={mutedTextStyle}>
+          O ZIP alinha ao handoff único do sprint: com token e dados no browser, inclui P0-1b (E2E + fatia parceiro + D11), matriz Sprint 4 (EXEC), resumo assinado <code>SPRINT4_GO_NO_GO_REGISTER</code> (decisão + UAT KIOSK + % matriz), histórico de pilotos e carimbo P0-3 — alinhado ao pacote diário em management/ops.
+        </small>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
         {error ? <div style={errorStyle}>{error}</div> : null}
 
@@ -352,7 +519,12 @@ export default function FiscalAccountingClosePage() {
                   <span style={badgeStyle(String(stubReadiness?.decision || "NO_GO"))}>Decisão: {String(stubReadiness?.decision || "NO_GO").toUpperCase()}</span>
                   <span style={chipStyle}>Checks: {passedChecks}/{readinessChecks.length}</span>
                   <span style={chipStyle}>Falhas: {failedChecks}</span>
+                  <span style={gateBadgeStyle(goNoGoReady)}>Go/No-Go ready: {goNoGoReady ? "SIM" : "NÃO"}</span>
                 </div>
+                <small style={mutedTextStyle}>
+                  Gate {GO_NO_GO_GATE_VERSION}: exige `decision=GO`, `checks_failed=0` e{" "}
+                  {`sprint4_pct >= ${GO_NO_GO_MIN_SPRINT4_PCT}`}.
+                </small>
               </section>
               <section style={boxStyle}>
                 <h3 style={boxTitleStyle}>Risco de fechamento</h3>
@@ -361,6 +533,17 @@ export default function FiscalAccountingClosePage() {
                   <span style={chipStyle}>Alto risco ({">=2"} pendências): {highRiskCount}</span>
                   <span style={chipStyle}>Aprovação: {String(approvalDraft?.status || "PENDING_REVIEW")}</span>
                 </div>
+              </section>
+              <section style={boxStyle}>
+                <h3 style={boxTitleStyle}>Sprint 4 — Matriz de regressão</h3>
+                <div style={kpiRowStyle}>
+                  <span style={chipStyle}>Progresso: {sprint4Progress.done}/{sprint4Progress.total}</span>
+                  <span style={chipStyle}>Concluído: {sprint4Progress.pct}%</span>
+                  <span style={chipStyle}>Owner: {String(sprint4MatrixSnapshot?.owner || "-")}</span>
+                </div>
+                <small style={mutedTextStyle}>
+                  Última atualização local: {String(sprint4MatrixSnapshot?.storage?.updated_at || "não disponível")}.
+                </small>
               </section>
             </div>
 
@@ -415,6 +598,12 @@ const badgeStyle = (status) => {
     color: ok ? "#bbf7d0" : "#fecaca",
   };
 };
+const gateBadgeStyle = (ready) => ({
+  ...chipStyle,
+  border: ready ? "1px solid rgba(34,197,94,0.65)" : "1px solid rgba(239,68,68,0.65)",
+  background: ready ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)",
+  color: ready ? "#bbf7d0" : "#fecaca",
+});
 const barRowStyle = { display: "flex", gap: 8, alignItems: "center" };
 const barTrackStyle = { flex: 1, height: 10, borderRadius: 999, background: "rgba(148,163,184,0.25)", overflow: "hidden" };
 const barFillStyle = { height: "100%", borderRadius: 999, background: "linear-gradient(90deg, rgba(99,102,241,0.85), rgba(239,68,68,0.85))" };

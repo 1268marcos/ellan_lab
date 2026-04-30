@@ -1,5 +1,6 @@
 // 01_source/frontend/src/pages/LockerDashboardFirst.jsx
-import React, { useEffect, useMemo, useRef, useState } from "react";
+/** Rota OPS `/ops/00`: protótipo “first”. Mensagem `payResp` usa o mesmo Zustand que `/ops/sp` (useOperationalPayment). */
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
@@ -8,6 +9,7 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { QRCodeCanvas } from "qrcode.react";
 
 import { useAuth } from "../context/AuthContext";
+import { useCheckoutStore } from "../store/useCheckoutStore";
 
 /**
  * Estados das gavetas (use os mesmos nomes do backend)
@@ -1025,7 +1027,37 @@ export default function LockerDashboard({ region = "PT" }) {
   const [payMethod, setPayMethod] = useState("CARTAO");
   const [payValue, setPayValue] = useState(100);
   const [paySlot, setPaySlot] = useState(1);
-  const [payResp, setPayResp] = useState("");
+  const setStorePayResp = useCheckoutStore((s) => s.setPayResp);
+  const payResp = useCheckoutStore((s) => s.payResp?.message ?? "");
+  const setPayResp = useCallback(
+    (messageOrUpdater) => {
+      if (typeof messageOrUpdater === "function") {
+        const prev = useCheckoutStore.getState().payResp?.message ?? "";
+        const next = String(messageOrUpdater(prev) || "");
+        if (!next) {
+          setStorePayResp(null);
+          return;
+        }
+        setStorePayResp({
+          status: "idle",
+          message: next,
+          raw: { source: "LockerDashboardFirst" },
+        });
+        return;
+      }
+      const normalized = String(messageOrUpdater || "");
+      if (!normalized) {
+        setStorePayResp(null);
+        return;
+      }
+      setStorePayResp({
+        status: "idle",
+        message: normalized,
+        raw: { source: "LockerDashboardFirst" },
+      });
+    },
+    [setStorePayResp],
+  );
   const [payLoading, setPayLoading] = useState(false);
   const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
   const [cardType, setCardType] = useState("creditCard");

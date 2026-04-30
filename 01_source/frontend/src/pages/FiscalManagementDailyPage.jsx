@@ -19,10 +19,14 @@ import {
   createInitialP1RiskRows,
   loadD18CloseoutFromStorage,
 } from "../utils/fiscalSprint2D18Content";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
+import { appendP01bSignedZipEntries } from "../utils/fiscalP01bDailyPackage";
+import { appendSprint3P03OptionalSignedZipEntries } from "../utils/fiscalSprint3IncidentRunbook";
+import { appendSprint4OptionalSignedZipEntries } from "../utils/fiscalSprint4RegressionMatrix";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.3";
+const PAGE_VERSION = "fiscal/management-daily v1.0.7-s3p03-attach";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -117,6 +121,9 @@ export default function FiscalManagementDailyPage() {
   const [d17RetentionBusy, setD17RetentionBusy] = useState(false);
   const [d18Checklist, setD18Checklist] = useState({});
   const [d18P1Rows, setD18P1Rows] = useState(() => createInitialP1RiskRows());
+  const [d18Certification, setD18Certification] = useState(null);
+  const [d18CarimboBy, setD18CarimboBy] = useState("");
+  const [d18CarimboNote, setD18CarimboNote] = useState("");
 
   useEffect(() => {
     void loadData();
@@ -167,18 +174,22 @@ export default function FiscalManagementDailyPage() {
   }, [d13ChecklistState]);
 
   useEffect(() => {
-    const { checklist, p1Risks } = loadD18CloseoutFromStorage();
+    const { checklist, p1Risks, certification } = loadD18CloseoutFromStorage();
     setD18Checklist(checklist);
     setD18P1Rows(p1Risks);
+    setD18Certification(certification);
   }, []);
 
   useEffect(() => {
     try {
-      window.localStorage.setItem(D18_CLOSEOUT_STORAGE_KEY, JSON.stringify({ checklist: d18Checklist, p1Risks: d18P1Rows }));
+      window.localStorage.setItem(
+        D18_CLOSEOUT_STORAGE_KEY,
+        JSON.stringify({ checklist: d18Checklist, p1Risks: d18P1Rows, certification: d18Certification }),
+      );
     } catch {
       // no-op
     }
-  }, [d18Checklist, d18P1Rows]);
+  }, [d18Checklist, d18P1Rows, d18Certification]);
 
   const readinessChecks = Array.isArray(stubReadiness?.checks) ? stubReadiness.checks : [];
   const passedChecks = readinessChecks.filter((check) => String(check?.status || "").toUpperCase() === "PASS").length;
@@ -323,12 +334,46 @@ export default function FiscalManagementDailyPage() {
       checklistById: d18Checklist,
       p1Rows: d18P1Rows,
       source: "fiscal/management-daily",
+      certification: d18Certification,
       context: {
         decision_consolidated: decision,
         risk_level: riskLevel,
         readiness_version: String(stubReadiness?.readiness_version || "-"),
       },
     });
+  }
+
+  function stampD18Closeout() {
+    const by = String(d18CarimboBy || approvalOwner || "").trim();
+    if (!by) {
+      setStatus("Informe quem carimba (nome ou sigla) antes de carimbar o D18.");
+      window.setTimeout(() => setStatus(""), 3200);
+      return;
+    }
+    const done = countD18ChecklistDone(d18Checklist);
+    const total = D18_CHECKLIST_ITEMS.length;
+    if (done < total) {
+      const ok = window.confirm(
+        `Checklist D18 incompleto (${done}/${total}). Carimbar mesmo assim declara revisão humana com ressalva. Continuar?`,
+      );
+      if (!ok) return;
+    }
+    const note = String(d18CarimboNote || "").trim();
+    setD18Certification({
+      certified_at: new Date().toISOString(),
+      certified_by: by,
+      note,
+    });
+    setStatus("Closeout D18 carimbado. Incluído em JSON/ZIP no próximo export.");
+    window.setTimeout(() => setStatus(""), 3200);
+  }
+
+  function revokeD18Certification() {
+    if (!d18Certification) return;
+    if (!window.confirm("Revogar o carimbo D18? O JSON/ZIP deixará de incluir closeout_certification até novo carimbo.")) return;
+    setD18Certification(null);
+    setStatus("Carimbo D18 revogado.");
+    window.setTimeout(() => setStatus(""), 2200);
   }
 
   function toggleD18Checklist(id) {
@@ -751,6 +796,68 @@ export default function FiscalManagementDailyPage() {
         zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_D16_APPROVALS_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedDiffErr, null, 2));
       }
     }
+    if (INTERNAL_TOKEN) {
+      try {
+        await appendP01bSignedZipEntries({
+          billingBase: BILLING_BASE,
+          getHeaders: headersJson,
+          buildSignedPayload,
+          strToU8,
+          fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+          ts,
+          nowIso,
+          d11Handoff,
+          source: "fiscal/management-daily",
+          zipEntries,
+        });
+      } catch (err) {
+        const signedErr = await buildSignedPayload({
+          scope: "SPRINT3_P0_1B_E2E_ATTACH_ERROR",
+          generated_at: nowIso,
+          source: "fiscal/management-daily",
+          error: String(err?.message || err),
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_P0_1B_E2E_AUDIT_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+      }
+    }
+    try {
+      await appendSprint4OptionalSignedZipEntries({
+        buildSignedPayload,
+        strToU8,
+        fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+        ts,
+        nowIso,
+        zipEntries,
+        source: "fiscal/management-daily",
+      });
+    } catch (err) {
+      const signedErr = await buildSignedPayload({
+        scope: "SPRINT4_DAILY_ATTACH_ERROR",
+        generated_at: nowIso,
+        source: "fiscal/management-daily",
+        error: String(err?.message || err),
+      });
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+    }
+    try {
+      await appendSprint3P03OptionalSignedZipEntries({
+        buildSignedPayload,
+        strToU8,
+        fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+        ts,
+        nowIso,
+        zipEntries,
+        source: "fiscal/management-daily",
+      });
+    } catch (err) {
+      const signedErr = await buildSignedPayload({
+        scope: "SPRINT3_P03_DAILY_ATTACH_ERROR",
+        generated_at: nowIso,
+        source: "fiscal/management-daily",
+        error: String(err?.message || err),
+      });
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_P03_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+    }
     try {
       const signedD18 = await buildSignedPayload(buildD18CloseoutPayload(nowIso));
       zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_D18_SPRINT2_CLOSEOUT_${ts}.json`] = strToU8(JSON.stringify(signedD18, null, 2));
@@ -758,7 +865,9 @@ export default function FiscalManagementDailyPage() {
       // no-op: closeout D18 é opcional no pacote
     }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
-    setStatus("Pacote diário (.zip) com OPS + FISCAL + APPROVAL + D16 + D18 (closeout Sprint 2).");
+    setStatus(
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + D16 + P0-1b + Sprint 4 (matriz + Go/No-Go resumo + pilotos, se houver) + carimbo P0-3 + D18 quando disponível.",
+    );
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -856,7 +965,10 @@ export default function FiscalManagementDailyPage() {
                   <span style={chipStyle}>INFO: {Number(d11Handoff?.summary?.severity?.INFO || 0)}</span>
                 </div>
                 <small style={mutedTextStyle}>
-                  Este snapshot D11 já entra automaticamente nos payloads JSON/ZIP do handoff contábil diário.
+                  Este snapshot D11 já entra automaticamente nos payloads JSON/ZIP do handoff contábil diário. O pacote .zip inclui também Sprint 3{" "}
+                  <strong>P0-1b</strong>: <code>SPRINT3_E2E_AUDIT_TRAIL</code> + <code>P0_1B_PARTNER_RECONCILIATION</code> (mesmo padrão SHA-256), com{" "}
+                  <code>d11_cross_check</code> quando o lote D11 estiver carregado. Com dados no browser, anexa ainda Sprint 4 (matriz/pilotos) e carimbo P0-3 (
+                  <code>SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH</code>) de <code>fiscal/incident-response</code>.
                 </small>
               </>
             ) : (
@@ -1186,7 +1298,68 @@ export default function FiscalManagementDailyPage() {
               <span style={chipStyle}>
                 Checklist D18: {countD18ChecklistDone(d18Checklist)}/{D18_CHECKLIST_ITEMS.length}
               </span>
+              {d18Certification ? (
+                <span style={{ ...chipStyle, borderColor: "rgba(34,197,94,0.55)", background: "rgba(34,197,94,0.12)" }}>
+                  Carimbado · {d18Certification.certified_by} ·{" "}
+                  {formatOpsDateTime(d18Certification.certified_at, { dateStyle: "short", timeStyle: "medium" })}
+                </span>
+              ) : (
+                <span style={{ ...chipStyle, opacity: 0.85 }}>Sem carimbo de revisão (closeout em rascunho)</span>
+              )}
             </div>
+            {d18Certification ? (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  borderRadius: 10,
+                  border: "1px solid rgba(34,197,94,0.45)",
+                  background: "rgba(34,197,94,0.08)",
+                  fontSize: 13,
+                }}
+              >
+                <strong>Revisão registrada.</strong> Por <b>{d18Certification.certified_by}</b> em{" "}
+                {formatOpsDateTime(d18Certification.certified_at, { dateStyle: "medium", timeStyle: "medium" })}
+                {d18Certification.note ? (
+                  <>
+                    <br />
+                    <span style={{ opacity: 0.92 }}>Nota: {d18Certification.note}</span>
+                  </>
+                ) : null}
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" onClick={() => revokeD18Certification()} style={buttonStyle}>
+                    Revogar carimbo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 12, display: "grid", gap: 8, maxWidth: 480 }}>
+                <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                  Revisor (nome ou sigla) — obrigatório para carimbar
+                  <input
+                    value={d18CarimboBy}
+                    onChange={(e) => setD18CarimboBy(e.target.value)}
+                    style={inputStyle}
+                    placeholder={String(approvalOwner || "").trim() || "ex.: Marcos / SRE-plantão"}
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                  Nota opcional (contexto da revisão)
+                  <textarea
+                    value={d18CarimboNote}
+                    onChange={(e) => setD18CarimboNote(e.target.value)}
+                    rows={2}
+                    style={{ ...inputStyle, resize: "vertical", minHeight: 52 }}
+                    placeholder="Ex.: Checklist validado com operação; P1 aceitos com ETAs."
+                  />
+                </label>
+                <div>
+                  <button type="button" onClick={() => stampD18Closeout()} style={buttonStyle}>
+                    Carimbar closeout D18 (revisão humana)
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
               {D18_CHECKLIST_ITEMS.map((row) => (
                 <label key={row.id} style={checkItemStyle}>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.config.fiscal_fg1_wave import FG1_WAVE_COUNTRIES
+
 
 def build_fiscal_global_catalog() -> dict:
     items = [
@@ -94,9 +96,48 @@ def build_fiscal_global_catalog() -> dict:
             "fiscal_mode_supported": ["stub", "real", "hybrid"],
             "priority_tier": "medium",
         },
+        {
+            "country_code": "PH",
+            "country_name": "Philippines",
+            "region": "APAC",
+            "authority": "BIR (Bureau of Internal Revenue)",
+            "document_types": ["E_INVOICE", "VAT", "WITHHOLDING"],
+            "protocol": "REST/HTTPS",
+            "stub_endpoint": "/stub/ph/bir",
+            "timezone": "Asia/Manila",
+            "currency": "PHP",
+            "fiscal_mode_supported": ["stub", "real", "hybrid"],
+            "priority_tier": "medium",
+        },
+        {
+            "country_code": "ID",
+            "country_name": "Indonesia",
+            "region": "APAC",
+            "authority": "DJP (Direktorat Jenderal Pajak)",
+            "document_types": ["E_FAKTUR", "VAT", "WITHHOLDING"],
+            "protocol": "REST/SOAP",
+            "stub_endpoint": "/stub/id/djp",
+            "timezone": "Asia/Jakarta",
+            "currency": "IDR",
+            "fiscal_mode_supported": ["stub", "real", "hybrid"],
+            "priority_tier": "medium",
+        },
+        {
+            "country_code": "NO",
+            "country_name": "Norway",
+            "region": "EU",
+            "authority": "Skatteetaten",
+            "document_types": ["EHF_INVOICE", "VAT", "Peppol"],
+            "protocol": "REST/Peppol",
+            "stub_endpoint": "/stub/no/skatteetaten",
+            "timezone": "Europe/Oslo",
+            "currency": "NOK",
+            "fiscal_mode_supported": ["stub", "real", "hybrid"],
+            "priority_tier": "medium",
+        },
     ]
     return {
-        "catalog_version": "fg0-v1",
+        "catalog_version": "fg0-v2",
         "items": items,
         "count": len(items),
     }
@@ -131,10 +172,15 @@ def build_fiscal_global_scenario_matrix() -> dict:
 def build_fiscal_fg1_wave_scope() -> dict:
     catalog = build_fiscal_global_catalog()
     matrix = build_fiscal_global_scenario_matrix()
-    wave1_countries = ["US", "AU", "PL", "CA", "FR"]
-    countries = [item for item in catalog["items"] if item.get("country_code") in wave1_countries]
+    by_code = {item["country_code"]: item for item in catalog["items"] if item.get("country_code") in FG1_WAVE_COUNTRIES}
+    missing = [code for code in FG1_WAVE_COUNTRIES if code not in by_code]
+    if missing:
+        raise ValueError(
+            "FG1_WAVE_COUNTRIES includes codes missing from fiscal global catalog: " + ", ".join(missing)
+        )
+    countries = [by_code[code] for code in FG1_WAVE_COUNTRIES]
     return {
-        "scope_version": "fg1-wave1-v1",
+        "scope_version": "fg1-wave1-v2",
         "wave": "FG-1-WAVE-1",
         "countries": countries,
         "required_scenarios": matrix["required_scenarios"],

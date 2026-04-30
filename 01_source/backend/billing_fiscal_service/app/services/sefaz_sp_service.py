@@ -8,6 +8,10 @@ from datetime import datetime, timezone
 from app.core.config import settings
 from app.models.invoice_model import Invoice
 from app.services.nfce_xml_builder_v40 import build_nfce_xml_v40_stub
+from app.services.fiscal_a1_dry_run_service import (
+    build_a1_dry_run_signature_extensions,
+    verify_a1_dry_run_signature,
+)
 
 from app.core.datetime_utils import to_iso_utc
 
@@ -203,10 +207,17 @@ def _sefaz_sp_build_xml(invoice: Invoice, invoice_number: str, invoice_series: s
             invoice_series=invoice_series,
         )
         signature = dict(nfce.get("signature") or {})
+        xml_pv = str(nfce.get("xml_preview") or "")
         if settings.fiscal_a1_dry_run_enabled:
             signature["mode"] = "A1_DRY_RUN"
             signature["dry_run_enabled"] = True
             signature["cert_ref"] = settings.fiscal_a1_dry_run_cert_ref or "A1_DRY_RUN_LOCAL"
+            signature.update(
+                build_a1_dry_run_signature_extensions(xml_preview=xml_pv, access_key=access_key)
+            )
+            signature["dry_run_local_verification_ok"] = verify_a1_dry_run_signature(
+                xml_preview=xml_pv, signature_block=signature
+            )
         else:
             signature["mode"] = "A1_STUB_PENDING"
             signature["dry_run_enabled"] = False

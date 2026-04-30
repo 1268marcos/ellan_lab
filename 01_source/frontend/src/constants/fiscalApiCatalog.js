@@ -15,6 +15,7 @@ export const FISCAL_API_GROUPS = [
       "GET /admin/fiscal/global/fg1/coverage-gate",
       "GET /admin/fiscal/global/fg1/readiness-gate",
       "GET /admin/fiscal/global/fg1/readiness-action-plan",
+      "GET /admin/fiscal/global/sprint3/e2e-audit-trail",
       "POST /admin/fiscal/global/fg1/simulate",
     ],
   },

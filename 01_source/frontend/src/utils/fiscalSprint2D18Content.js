@@ -31,10 +31,22 @@ export function countD18ChecklistDone(checklistById) {
   return D18_CHECKLIST_ITEMS.filter((row) => Boolean(map[row.id])).length;
 }
 
+function normalizeD18Certification(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const certified_at = String(raw.certified_at || "").trim();
+  const certified_by = String(raw.certified_by || "").trim();
+  if (!certified_at || !certified_by) return null;
+  return {
+    certified_at,
+    certified_by,
+    note: String(raw.note ?? "").trim(),
+  };
+}
+
 export function loadD18CloseoutFromStorage() {
   try {
     const raw = window.localStorage.getItem(D18_CLOSEOUT_STORAGE_KEY);
-    if (!raw) return { checklist: {}, p1Risks: createInitialP1RiskRows() };
+    if (!raw) return { checklist: {}, p1Risks: createInitialP1RiskRows(), certification: null };
     const parsed = JSON.parse(raw);
     const checklist = parsed?.checklist && typeof parsed.checklist === "object" ? parsed.checklist : {};
     const base = createInitialP1RiskRows();
@@ -51,9 +63,10 @@ export function loadD18CloseoutFromStorage() {
           };
         })
       : base;
-    return { checklist, p1Risks };
+    const certification = normalizeD18Certification(parsed?.certification);
+    return { checklist, p1Risks, certification };
   } catch {
-    return { checklist: {}, p1Risks: createInitialP1RiskRows() };
+    return { checklist: {}, p1Risks: createInitialP1RiskRows(), certification: null };
   }
 }
 
@@ -63,9 +76,10 @@ export function loadD18CloseoutFromStorage() {
  * @param {Record<string, boolean>} params.checklistById
  * @param {Array<{ id: string, title: string, owner: string, eta: string, impact: string }>} params.p1Rows
  * @param {"fiscal/management-daily" | "fiscal/accounting-close"} params.source
+ * @param {{ certified_at: string, certified_by: string, note?: string } | null | undefined} params.certification
  * @param {{ decision_consolidated: string, risk_level: string, readiness_version: string }} params.context
  */
-export function buildD18CloseoutPayload({ generatedAt, checklistById, p1Rows, source, context }) {
+export function buildD18CloseoutPayload({ generatedAt, checklistById, p1Rows, source, context, certification }) {
   const checklist_progress = D18_CHECKLIST_ITEMS.map((row) => ({
     id: row.id,
     label: row.label,
@@ -75,6 +89,7 @@ export function buildD18CloseoutPayload({ generatedAt, checklistById, p1Rows, so
   const total = D18_CHECKLIST_ITEMS.length;
   const scope =
     source === "fiscal/accounting-close" ? "SPRINT2_D18_EXEC_FINANCE_CLOSEOUT" : "SPRINT2_D18_FINANCE_CLOSEOUT";
+  const normalizedCert = normalizeD18Certification(certification);
   return {
     scope,
     generated_at: generatedAt,
@@ -90,6 +105,13 @@ export function buildD18CloseoutPayload({ generatedAt, checklistById, p1Rows, so
       eta: String(r.eta || "").trim(),
       impact: String(r.impact || "").trim(),
     })),
+    closeout_certification: normalizedCert
+      ? {
+          certified_at: normalizedCert.certified_at,
+          certified_by: normalizedCert.certified_by,
+          note: normalizedCert.note || "-",
+        }
+      : null,
     context: {
       decision_consolidated: String(context?.decision_consolidated || "NO_GO").toUpperCase(),
       risk_level: String(context?.risk_level || "UNKNOWN"),

@@ -108,13 +108,13 @@ export default function useOperationalPayment({
   const storeCurrentOrder = useCheckoutStore((state) => state.currentOrder);
   const setStoreCurrentOrder = useCheckoutStore((state) => state.setCurrentOrder);
   const setStorePayResp = useCheckoutStore((state) => state.setPayResp);
+  const payResp = useCheckoutStore((state) => state.payResp?.message ?? "");
 
   const effectiveCurrentOrder = currentOrder || storeCurrentOrder;
 
   const [payMethod, setPayMethod] = useState("CARTAO");
   const [payValue, setPayValue] = useState(100);
   const [paySlot, setPaySlot] = useState(1);
-  const [payResp, setPayRespLocal] = useState("");
   const [payLoading, setPayLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
@@ -125,7 +125,6 @@ export default function useOperationalPayment({
   const setPayResp = useCallback(
     (message) => {
       const normalized = String(message || "");
-      setPayRespLocal(normalized);
       if (!normalized) {
         setStorePayResp(null);
         return;

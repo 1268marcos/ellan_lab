@@ -5,10 +5,16 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
+from app.config.fiscal_fg1_wave import (
+    FG1_ADAPTER_BY_COUNTRY as _ADAPTER_BY_COUNTRY,
+    FG1_ALLOWED_REGIONS_BY_COUNTRY as _ALLOWED_REGIONS_BY_COUNTRY,
+    FG1_AUTHORITY_BY_COUNTRY as _AUTHORITY_BY_COUNTRY,
+    FG1_REGION_BY_COUNTRY as _REGION_BY_COUNTRY,
+    FG1_WAVE_COUNTRIES,
+)
+
 logger = logging.getLogger(__name__)
 
-
-FG1_WAVE_COUNTRIES = ("US", "AU", "PL", "CA", "FR")
 FG1_OPERATIONS = ("authorize", "cancel", "correct", "status")
 
 _SCENARIO_ROWS = (
@@ -22,38 +28,6 @@ _SCENARIO_ROWS = (
     ("STATUS_AUTHORIZED", "status", "AUTHORIZED", "AUTORIZADO"),
     ("STATUS_NOT_FOUND", "status", "NOT_FOUND", "NAO_ENCONTRADO"),
 )
-
-_ADAPTER_BY_COUNTRY = {
-    "US": "irs_mef_stub_adapter_v1",
-    "AU": "ato_stub_adapter_v1",
-    "PL": "ksef_stub_adapter_v1",
-    "CA": "cra_stub_adapter_v1",
-    "FR": "chorus_stub_adapter_v1",
-}
-
-_AUTHORITY_BY_COUNTRY = {
-    "US": "IRS",
-    "AU": "ATO",
-    "PL": "KSeF",
-    "CA": "CRA",
-    "FR": "DGFiP",
-}
-
-_REGION_BY_COUNTRY = {
-    "US": "NA",
-    "AU": "OCEANIA",
-    "PL": "EU",
-    "CA": "NA",
-    "FR": "EU",
-}
-
-_ALLOWED_REGIONS_BY_COUNTRY = {
-    "US": ("NA", "US-CA", "US-TX", "US-NY"),
-    "AU": ("OCEANIA",),
-    "PL": ("EU",),
-    "CA": ("NA", "CA-QC"),
-    "FR": ("EU",),
-}
 
 _FIXTURE_REQUIRED_FIELDS = (
     "fixture_version",

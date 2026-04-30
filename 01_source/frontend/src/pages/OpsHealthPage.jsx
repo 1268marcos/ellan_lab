@@ -9,6 +9,9 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
 import { formatOpsDateTime, formatOpsTimeShort } from "../utils/opsDateTimeFormat";
 import { FISCAL_SCOPE_GATE_PANEL_TITLE, FISCAL_SCOPE_QUICK_ACTIONS_TITLE } from "../constants/fiscalScope";
+import { appendP01bSignedZipEntries } from "../utils/fiscalP01bDailyPackage";
+import { appendSprint3P03OptionalSignedZipEntries } from "../utils/fiscalSprint3IncidentRunbook";
+import { appendSprint4OptionalSignedZipEntries } from "../utils/fiscalSprint4RegressionMatrix";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -21,8 +24,9 @@ const OPS_HEALTH_PERSONA_PREF_KEY = "ops_health:persona";
 const OPS_HEALTH_COLLAPSE_PREF_KEY = "ops_health:collapse_state:v1";
 const OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY = "ops_health:line_chart_grid_mode:v1";
 const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
-const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.5-sprint5";
+const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.9-enablement-link";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
+const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const OPS_HEALTH_PERSONAS = [
   { value: "ops", label: "Ops" },
   { value: "dev", label: "Dev" },
@@ -326,6 +330,13 @@ async function buildSignedPayload(payload) {
       content_sha256: sha256,
     },
     payload,
+  };
+}
+
+function billingFiscalHeadersJson() {
+  return {
+    Accept: "application/json",
+    "X-Internal-Token": INTERNAL_TOKEN,
   };
 }
 
@@ -1943,14 +1954,84 @@ export default function OpsHealthPage() {
       const signedOpsPayload = await buildSignedPayload(opsPayload);
       const signedFiscalPayload = await buildSignedPayload(fiscalPayload);
       const signedApprovalPayload = await buildSignedPayload(approvalPayload);
-      const zipped = zipSync(
-        {
-          [`${DAILY_AUDIT_PREFIX}_${day}_OPS_HEALTH_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedOpsPayload, null, 2)),
-          [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_MANAGEMENT_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedFiscalPayload, null, 2)),
-          [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`]: strToU8(JSON.stringify(signedApprovalPayload, null, 2)),
-        },
-        { level: 6 }
-      );
+      const zipEntries = {
+        [`${DAILY_AUDIT_PREFIX}_${day}_OPS_HEALTH_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedOpsPayload, null, 2)),
+        [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_MANAGEMENT_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedFiscalPayload, null, 2)),
+        [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`]: strToU8(JSON.stringify(signedApprovalPayload, null, 2)),
+      };
+      if (INTERNAL_TOKEN) {
+        let d11Snapshot = null;
+        try {
+          const rawD11 = window.localStorage.getItem(FISCAL_D11_HANDOFF_KEY);
+          if (rawD11) {
+            const parsed = JSON.parse(rawD11);
+            d11Snapshot = parsed && typeof parsed === "object" ? parsed : null;
+          }
+        } catch {
+          d11Snapshot = null;
+        }
+        try {
+          await appendP01bSignedZipEntries({
+            billingBase: BILLING_BASE,
+            getHeaders: billingFiscalHeadersJson,
+            buildSignedPayload,
+            strToU8,
+            fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+            ts,
+            nowIso,
+            d11Handoff: d11Snapshot,
+            source: "ops/health",
+            zipEntries,
+          });
+        } catch (err) {
+          const signedErr = await buildSignedPayload({
+            scope: "SPRINT3_P0_1B_E2E_ATTACH_ERROR",
+            generated_at: nowIso,
+            source: "ops/health",
+            error: String(err?.message || err),
+          });
+          zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_P0_1B_E2E_AUDIT_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+        }
+      }
+      try {
+        await appendSprint4OptionalSignedZipEntries({
+          buildSignedPayload,
+          strToU8,
+          fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+          ts,
+          nowIso,
+          zipEntries,
+          source: "ops/health",
+        });
+      } catch (err) {
+        const signedErr = await buildSignedPayload({
+          scope: "SPRINT4_DAILY_ATTACH_ERROR",
+          generated_at: nowIso,
+          source: "ops/health",
+          error: String(err?.message || err),
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+      }
+      try {
+        await appendSprint3P03OptionalSignedZipEntries({
+          buildSignedPayload,
+          strToU8,
+          fileBasePrefix: `${DAILY_AUDIT_PREFIX}_${day}`,
+          ts,
+          nowIso,
+          zipEntries,
+          source: "ops/health",
+        });
+      } catch (err) {
+        const signedErr = await buildSignedPayload({
+          scope: "SPRINT3_P03_DAILY_ATTACH_ERROR",
+          generated_at: nowIso,
+          source: "ops/health",
+          error: String(err?.message || err),
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_P03_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
+      }
+      const zipped = zipSync(zipEntries, { level: 6 });
       const blob = new Blob([zipped], { type: "application/zip" });
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -1960,7 +2041,11 @@ export default function OpsHealthPage() {
       anchor.click();
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
-      setDailySlackStatus("Pacote diário (.zip) baixado com OPS + FISCAL + APPROVAL.");
+      setDailySlackStatus(
+        INTERNAL_TOKEN
+          ? "Pacote diário (.zip): OPS + FISCAL + APPROVAL + P0-1b + anexos Sprint 4 / P0-3 quando existirem no browser (localStorage)."
+          : "Pacote diário (.zip): OPS + FISCAL + APPROVAL + Sprint 4 / P0-3 opcionais (localStorage); P0-1b requer VITE_INTERNAL_TOKEN.",
+      );
       window.setTimeout(() => setDailySlackStatus(""), 2600);
     } catch (err) {
       setDailySlackStatus(`Falha ao baixar pacote diário .zip: ${String(err?.message || err)}`);
@@ -2528,6 +2613,12 @@ export default function OpsHealthPage() {
               </Link>
               <Link to="/fiscal/readiness-execution" style={buttonGhostLinkStyle}>
                 Abrir fiscal/readiness-execution
+              </Link>
+              <Link to="/fiscal/incident-response?from=ops-health" style={buttonGhostLinkStyle}>
+                Abrir fiscal/incident-response (runbook P0-3)
+              </Link>
+              <Link to="/ops/quick-enablement" style={buttonGhostLinkStyle}>
+                Abrir ops/quick-enablement (treinamento Sprint 3)
               </Link>
             </div>
           </div>

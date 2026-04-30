@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -165,7 +166,7 @@ export default function DevBaseCatalogPage() {
       if (!res.ok) {
         throw new Error(data?.detail ? JSON.stringify(data.detail) : JSON.stringify(data));
       }
-      setLastUpdatedAt(new Date().toLocaleString("pt-BR"));
+      setLastUpdatedAt(formatOpsDateTime(new Date()));
       return data;
     } catch (e) {
       const raw = String(e?.message || e || "").trim();
