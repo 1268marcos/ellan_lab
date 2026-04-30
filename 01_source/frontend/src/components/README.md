@@ -4,7 +4,7 @@ Guia curto para acelerar adoção dos componentes-base da camada OPS.
 
 ## Componentes base
 
-- `OpsActionButton.jsx`
+- `OpsActionButton.tsx`
   - Botão padrão OPS com variantes visuais:
     - `primary`
     - `secondary`

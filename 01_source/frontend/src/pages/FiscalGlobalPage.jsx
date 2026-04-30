@@ -6,7 +6,7 @@ import { buildFiscalSwaggerUrl, FISCAL_API_GROUPS } from "../constants/fiscalApi
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const FISCAL_PAGE_VERSION = "fiscal/global v1.3.0";
+const FISCAL_PAGE_VERSION = "fiscal/global v1.3.2-s3-hardening-strip";
 
 function headersJson() {
   return {
@@ -265,12 +265,66 @@ export default function FiscalGlobalPage() {
           <Link to="/fiscal/fg1-gate" style={shortcutLinkStyle}>
             Abrir fiscal/fg1-gate
           </Link>
+          <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+            Abrir fiscal/sprint2-finance-gate
+          </Link>
           <Link to="/fiscal/readiness-execution" style={shortcutLinkStyle}>
             Abrir fiscal/readiness-execution
           </Link>
           <Link to="/fiscal/updates" style={shortcutLinkStyle}>
             Abrir fiscal/updates
           </Link>
+        </div>
+
+        <div style={sprint2GateStripStyle}>
+          <div style={sprint2GateTitleStyle}>Sprint 2 — trilha fiscal / contábil (gate v2)</div>
+          <div style={sprint2GateLinksStyle}>
+            <Link to="/fiscal/management-daily" style={shortcutLinkStyle}>
+              fiscal/management-daily
+            </Link>
+            <Link to="/fiscal/accounting-close" style={shortcutLinkStyle}>
+              fiscal/accounting-close
+            </Link>
+            <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+              fiscal/sprint2-finance-gate
+            </Link>
+            <Link to="/fiscal/readiness-execution" style={shortcutLinkStyle}>
+              fiscal/readiness-execution
+            </Link>
+          </div>
+          <p style={sprint2GateNoteStyle}>
+            Alocação recomendada no plano: <b>~65–75%</b> da capacidade de codificação aqui até o PASS do gate v2 (Fiscal
+            ≥50%, Contábil ≥40%, consolidado Sprint 2 ≥55%, comprovação P0). Detalhe:{" "}
+            <code>docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md</code> — secções Sprint 2 e «Recomendacao atual — onde codar».
+            Runbook FG-0/FG-1: <code>docs/runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md</code>.
+          </p>
+        </div>
+
+        <div style={sprint3GateStripStyle}>
+          <div style={sprint3GateTitleStyle}>Sprint 3 — hardening (paralelo seguro até gate v2)</div>
+          <div style={sprint3GateLinksStyle}>
+            <Link to="/fiscal/slo-alerts" style={shortcutLinkStyle}>
+              fiscal/slo-alerts
+            </Link>
+            <Link to="/fiscal/incident-response" style={shortcutLinkStyle}>
+              fiscal/incident-response
+            </Link>
+            <Link to="/fiscal/sprint3-partner-audit" style={shortcutLinkStyle}>
+              fiscal/sprint3-partner-audit
+            </Link>
+            <Link to="/ops/quick-enablement" style={shortcutLinkStyle}>
+              ops/quick-enablement
+            </Link>
+            <Link to="/ops/reconciliation" style={shortcutLinkStyle}>
+              ops/reconciliation
+            </Link>
+          </div>
+          <p style={sprint3GateNoteStyle}>
+            Checklist Sprint 3 no plano: CSP, TS strict-core, <strong>auditoria E2E</strong>, SLO, P0-3 incidente, quick-enablement.
+            Sem <strong>net-new</strong> grande enquanto a <strong>fase A — pré-gate v2</strong> estiver ativa; usar estas rotas em fatias que{" "}
+            <b>não</b> roubem capacidade dos P0 financeiros da Sprint 2. Referência:{" "}
+            <code>docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md</code> (secção Sprint 3).
+          </p>
         </div>
 
         <OpsPageTitleHeader title="FISCAL - Catálogo Global" versionLabel={FISCAL_PAGE_VERSION} />
@@ -481,6 +535,48 @@ const shortcutLinkStyle = {
   textDecoration: "none",
   fontWeight: 700,
   fontSize: 13,
+};
+const sprint2GateStripStyle = {
+  marginTop: 10,
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(56,189,248,0.45)",
+  background: "rgba(14,116,144,0.14)",
+};
+const sprint2GateTitleStyle = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "var(--fiscal-accent-2)",
+  marginBottom: 8,
+};
+const sprint2GateLinksStyle = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 };
+const sprint2GateNoteStyle = {
+  margin: 0,
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "var(--fiscal-soft-text)",
+};
+const sprint3GateStripStyle = {
+  marginTop: 10,
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(167,139,250,0.45)",
+  background: "rgba(91,33,182,0.12)",
+};
+const sprint3GateTitleStyle = {
+  fontSize: 13,
+  fontWeight: 800,
+  color: "#ddd6fe",
+  marginBottom: 8,
+};
+const sprint3GateLinksStyle = { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 8 };
+const sprint3GateNoteStyle = {
+  margin: 0,
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "var(--fiscal-soft-text)",
 };
 const mutedTextStyle = { color: "var(--fiscal-soft-text)", marginTop: 8 };
 const toolbarStyle = { display: "flex", gap: 8, marginBottom: 10 };

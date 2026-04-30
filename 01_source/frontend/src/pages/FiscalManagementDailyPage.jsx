@@ -23,10 +23,16 @@ import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 import { appendP01bSignedZipEntries } from "../utils/fiscalP01bDailyPackage";
 import { appendSprint3P03OptionalSignedZipEntries } from "../utils/fiscalSprint3IncidentRunbook";
 import { appendSprint4OptionalSignedZipEntries } from "../utils/fiscalSprint4RegressionMatrix";
+import {
+  loadSprint2FinanceGateV2State,
+  summarizeSprint2FinanceGateV2,
+  SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+} from "../utils/fiscalSprint2FinanceGate";
+import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.7-s3p03-attach";
+const PAGE_VERSION = "fiscal/management-daily v1.0.9-s3-partner-audit-mirror-zip";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -124,9 +130,24 @@ export default function FiscalManagementDailyPage() {
   const [d18Certification, setD18Certification] = useState(null);
   const [d18CarimboBy, setD18CarimboBy] = useState("");
   const [d18CarimboNote, setD18CarimboNote] = useState("");
+  const [gateMirror, setGateMirror] = useState(() => summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
+  const [partnerAuditMirror, setPartnerAuditMirror] = useState(() => loadSprint3PartnerAuditMirrorForDaily());
 
   useEffect(() => {
     void loadData();
+  }, []);
+
+  useEffect(() => {
+    function refreshFiscalMirrorsFromStorage() {
+      setGateMirror(summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
+      setPartnerAuditMirror(loadSprint3PartnerAuditMirrorForDaily());
+    }
+    window.addEventListener("focus", refreshFiscalMirrorsFromStorage);
+    window.addEventListener("storage", refreshFiscalMirrorsFromStorage);
+    return () => {
+      window.removeEventListener("focus", refreshFiscalMirrorsFromStorage);
+      window.removeEventListener("storage", refreshFiscalMirrorsFromStorage);
+    };
   }, []);
 
   useEffect(() => {
@@ -864,9 +885,43 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // no-op: closeout D18 é opcional no pacote
     }
+    try {
+      const rawGate = loadSprint2FinanceGateV2State();
+      const mirror = summarizeSprint2FinanceGateV2(rawGate);
+      if (mirror) {
+        const signedGateMirror = await buildSignedPayload({
+          scope: "SPRINT2_GATE_V2_MIRROR_ATTACH",
+          generated_at: nowIso,
+          source: "fiscal/management-daily",
+          committee_reference: "2026-05-01",
+          thresholds: SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+          mirror,
+          raw_local_storage: rawGate,
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_GATE_V2_MIRROR_${ts}.json`] = strToU8(JSON.stringify(signedGateMirror, null, 2));
+      }
+    } catch {
+      // espelho gate opcional
+    }
+    try {
+      const rawPartner = loadSprint3PartnerAuditMirrorForDaily();
+      if (rawPartner) {
+        const signedPartnerMirror = await buildSignedPayload({
+          scope: "SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH",
+          generated_at: nowIso,
+          source: "fiscal/management-daily",
+          saved_snapshot: rawPartner,
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_PARTNER_AUDIT_MIRROR_${ts}.json`] = strToU8(
+          JSON.stringify(signedPartnerMirror, null, 2),
+        );
+      }
+    } catch {
+      // espelho Sprint 3 opcional
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + D16 + P0-1b + Sprint 4 (matriz + Go/No-Go resumo + pilotos, se houver) + carimbo P0-3 + D18 quando disponível.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + D16 + P0-1b + Sprint 4 (matriz + Go/No-Go resumo + pilotos, se houver) + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit (se gravados) quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -891,12 +946,97 @@ export default function FiscalManagementDailyPage() {
           <Link to="/fiscal" style={shortcutLinkStyle}>
             Abrir fiscal/global
           </Link>
+          <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+            Abrir fiscal/sprint2-finance-gate
+          </Link>
+          <Link to="/fiscal/sprint3-partner-audit" style={shortcutLinkStyle}>
+            Abrir fiscal/sprint3-partner-audit
+          </Link>
+          <Link to="/fiscal/accounting-close" style={shortcutLinkStyle}>
+            Abrir fiscal/accounting-close
+          </Link>
           <Link to="/ops/health" style={shortcutLinkStyle}>
             Abrir ops/health
           </Link>
         </div>
         <OpsPageTitleHeader title="FISCAL - Management Daily" versionLabel={PAGE_VERSION} />
         <p style={mutedTextStyle}>Cockpit diário do departamento contábil/fiscal para decisão, evidência e anexo operacional.</p>
+        <div style={sprint2GateMirrorBoxStyle}>
+          <h3 style={boxTitleStyle}>Sprint 2 — gate v2 (espelho)</h3>
+          <p style={mutedTextStyle}>
+            Os mesmos percentuais e a nota P0 do cockpit{" "}
+            <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+              fiscal/sprint2-finance-gate
+            </Link>{" "}
+            (<code>localStorage</code> partilhado). Atualiza ao focar esta aba ou ao gravar no outro separador. O pacote diário
+            (.zip) inclui <code>SPRINT2_GATE_V2_MIRROR_ATTACH</code> quando existir estado gravado.
+          </p>
+          {gateMirror ? (
+            <>
+              <div style={summaryRowStyle}>
+                <span style={chipStyle}>
+                  Fiscal {gateMirror.fiscal_percent}% {gateMirror.fiscal_ok ? "OK" : "FALTA"} (≥{SPRINT2_FINANCE_GATE_V2_THRESHOLDS.fiscal}%)
+                </span>
+                <span style={chipStyle}>
+                  Contábil {gateMirror.accounting_percent}% {gateMirror.accounting_ok ? "OK" : "FALTA"} (≥
+                  {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.accounting}%)
+                </span>
+                <span style={chipStyle}>
+                  Consolidado S2 {gateMirror.consolidated_percent}% {gateMirror.consolidated_ok ? "OK" : "FALTA"} (≥
+                  {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.consolidated}%)
+                </span>
+                <span style={chipStyle}>P0 texto {gateMirror.p0_evidence_ok ? "OK (≥24)" : "FALTA (<24 chars)"}</span>
+                {gateMirror.updated_at ? (
+                  <span style={chipStyle}>Atualizado: {formatOpsDateTime(gateMirror.updated_at)}</span>
+                ) : null}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <span style={badgeStyle(gateMirror.overall_pass ? "GO" : "NO_GO")}>
+                  {gateMirror.overall_pass ? "PASS cumulativo (AND)" : "NO_GO — limiares ou P0 incompletos"}
+                </span>
+              </div>
+              <p style={{ ...mutedTextStyle, marginTop: 10, fontSize: 12 }}>
+                Pré-visualização P0:{" "}
+                {gateMirror.p0_evidence_note.trim()
+                  ? `${gateMirror.p0_evidence_note.trim().slice(0, 200)}${gateMirror.p0_evidence_note.trim().length > 200 ? "…" : ""}`
+                  : "(vazio)"}
+              </p>
+            </>
+          ) : (
+            <small style={mutedTextStyle}>
+              Sem estado gravado. Abra <Link to="/fiscal/sprint2-finance-gate">fiscal/sprint2-finance-gate</Link>, preencha e use
+              «Gravar estado local».
+            </small>
+          )}
+        </div>
+        <div style={sprint2GateMirrorBoxStyle}>
+          <h3 style={boxTitleStyle}>Sprint 3 — auditoria por parceiro (espelho)</h3>
+          <p style={mutedTextStyle}>
+            Snapshot gravado em{" "}
+            <Link to="/fiscal/sprint3-partner-audit" style={shortcutLinkStyle}>
+              fiscal/sprint3-partner-audit
+            </Link>{" "}
+            («Gravar espelho para pacote diário»). O pacote (.zip) inclui <code>SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH</code> quando
+            existir.
+          </p>
+          {partnerAuditMirror ? (
+            <div style={summaryRowStyle}>
+              <span style={chipStyle}>
+                Parceiros na fatia:{" "}
+                {Array.isArray(partnerAuditMirror.slice?.partners) ? partnerAuditMirror.slice.partners.length : "—"}
+              </span>
+              <span style={chipStyle}>D11: {partnerAuditMirror.include_d11 ? "incluído" : "não"}</span>
+              {partnerAuditMirror.saved_at ? (
+                <span style={chipStyle}>Gravado: {formatOpsDateTime(partnerAuditMirror.saved_at)}</span>
+              ) : null}
+            </div>
+          ) : (
+            <small style={mutedTextStyle}>
+              Sem espelho. Abra <Link to="/fiscal/sprint3-partner-audit">fiscal/sprint3-partner-audit</Link>, atualize a trilha e
+              use «Gravar espelho para pacote diário».
+            </small>
+          )}
+        </div>
         <div style={toolbarStyle}>
           <button type="button" onClick={() => void loadData()} style={buttonStyle} disabled={loading}>
             {loading ? "Atualizando..." : "Atualizar"}
@@ -1449,6 +1589,14 @@ const shortcutLinkStyle = {
   textDecoration: "none",
   fontWeight: 700,
   fontSize: 13,
+};
+const sprint2GateMirrorBoxStyle = {
+  marginTop: 4,
+  marginBottom: 14,
+  padding: 14,
+  borderRadius: 12,
+  border: "1px solid rgba(34,197,94,0.4)",
+  background: "rgba(22,101,52,0.12)",
 };
 const toolbarStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 };
 const buttonStyle = {

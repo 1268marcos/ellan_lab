@@ -11,6 +11,11 @@ export type CurrentOrder = CheckoutCurrentOrder;
 export type PaymentResponse = CheckoutPaymentResponse;
 export type PickupResponse = CheckoutPickupResponse;
 
+/** Banner de sync de slots (locker dashboard) — formato consumido por `SyncStatusBar` / header. */
+export type CheckoutSlotsSyncBanner = { ok: boolean; msg: string };
+
+const defaultSlotsSyncBanner: CheckoutSlotsSyncBanner = { ok: true, msg: "—" };
+
 interface CheckoutState {
   currentOrder: CurrentOrder | null;
   orderError: string;
@@ -19,7 +24,7 @@ interface CheckoutState {
   ordersLoading: boolean;
   ordersError: string;
   ordersData: Array<Record<string, unknown>>;
-  syncStatus: "idle" | "syncing" | "stale";
+  syncStatus: CheckoutSlotsSyncBanner;
   setCurrentOrder: (
     order:
       | CurrentOrder
@@ -32,7 +37,7 @@ interface CheckoutState {
   setOrdersLoading: (value: boolean) => void;
   setOrdersError: (message: string) => void;
   setOrdersData: (data: Array<Record<string, unknown>>) => void;
-  setSyncStatus: (status: CheckoutState["syncStatus"]) => void;
+  setSyncStatus: (status: CheckoutSlotsSyncBanner) => void;
   resetFlow: () => void;
 }
 
@@ -44,7 +49,7 @@ export const useCheckoutStore = create<CheckoutState>((set) => ({
   ordersLoading: false,
   ordersError: "",
   ordersData: [],
-  syncStatus: "idle",
+  syncStatus: defaultSlotsSyncBanner,
   setCurrentOrder: (order) =>
     set((state) => ({
       currentOrder:
@@ -58,7 +63,13 @@ export const useCheckoutStore = create<CheckoutState>((set) => ({
   setOrdersLoading: (value) => set({ ordersLoading: Boolean(value) }),
   setOrdersError: (message) => set({ ordersError: String(message || "") }),
   setOrdersData: (data) => set({ ordersData: Array.isArray(data) ? data : [] }),
-  setSyncStatus: (status) => set({ syncStatus: status }),
+  setSyncStatus: (status) =>
+    set({
+      syncStatus: {
+        ok: Boolean(status.ok),
+        msg: String(status.msg ?? ""),
+      },
+    }),
   resetFlow: () =>
     set({
       currentOrder: null,
@@ -68,6 +79,6 @@ export const useCheckoutStore = create<CheckoutState>((set) => ({
       ordersLoading: false,
       ordersError: "",
       ordersData: [],
-      syncStatus: "idle",
+      syncStatus: defaultSlotsSyncBanner,
     }),
 }));

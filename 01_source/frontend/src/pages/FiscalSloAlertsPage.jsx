@@ -788,6 +788,7 @@ export default function FiscalSloAlertsPage() {
       <section style={cardStyle}>
         <div style={shortcutRowStyle}>
           <Link to="/fiscal/department-dashboards" style={shortcutLinkStyle}>Abrir fiscal/department-dashboards</Link>
+          <Link to="/fiscal/sprint3-partner-audit" style={shortcutLinkStyle}>Abrir fiscal/sprint3-partner-audit (P0-1)</Link>
           <Link to="/fiscal/sprint4-regression-matrix" style={shortcutLinkStyle}>Abrir fiscal/sprint4-regression-matrix (Sprint 4)</Link>
           <Link to="/ops/health" style={shortcutLinkStyle}>Abrir ops/health</Link>
           <Link to="/fiscal/incident-response" style={shortcutLinkStyle}>Abrir fiscal/incident-response (P0-3)</Link>

@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
+import PickupHealthPanel from "../components/PickupHealthPanel";
 import {
   clearRuntimeGeoScopeTenantOverride,
   listConfiguredGeoTenants,

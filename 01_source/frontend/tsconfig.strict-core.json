@@ -62,6 +62,7 @@
     "src/features/locker-dashboard/components/SyncStatusBar.tsx",
     "src/features/locker-dashboard/index.ts",
     "src/pages/LockerDashboard.tsx",
+    "src/components/PickupHealthPanel.tsx",
     "src/features/kiosk/types.ts",
     "src/features/ops/types.ts",
     "src/features/ops/triageGovernance.ts",
@@ -75,6 +76,9 @@
     "src/components/OpsTrendKpiCard.tsx",
     "src/components/OpsPageTitleHeader.tsx",
     "src/utils/opsDateTimeFormat.ts",
+    "src/hooks/useOpsWindowPreset.ts",
+    "src/components/OpsActionButton.tsx",
+    "src/pages/OpsKioskTouchModelsPage.tsx",
     "src/pages/OpsDevErrorsPageBody.tsx",
     "src/pages/OpsDevErrorsPage.tsx",
     "src/vite-env.d.ts"

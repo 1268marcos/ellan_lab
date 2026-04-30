@@ -2,10 +2,15 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
+import {
+  loadSprint2FinanceGateV2State,
+  summarizeSprint2FinanceGateV2,
+  SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+} from "../utils/fiscalSprint2FinanceGate";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/fg1-gate v1.9.0";
+const PAGE_VERSION = "fiscal/fg1-gate v1.10.0-s2-gate-bridge";
 
 function headersJson() {
   return {
@@ -36,6 +41,7 @@ export default function FiscalFg1GatePage() {
   const [envelopeCheck, setEnvelopeCheck] = useState(null);
   const [fixtureInventory, setFixtureInventory] = useState(null);
   const [stubWaveReadiness, setStubWaveReadiness] = useState(null);
+  const [gateMirror, setGateMirror] = useState(() => summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
 
   async function loadGate() {
     if (!INTERNAL_TOKEN) {
@@ -97,6 +103,18 @@ export default function FiscalFg1GatePage() {
     void loadGate();
   }, []);
 
+  useEffect(() => {
+    function refreshGateMirror() {
+      setGateMirror(summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
+    }
+    window.addEventListener("focus", refreshGateMirror);
+    window.addEventListener("storage", refreshGateMirror);
+    return () => {
+      window.removeEventListener("focus", refreshGateMirror);
+      window.removeEventListener("storage", refreshGateMirror);
+    };
+  }, []);
+
   const coverageCountries = Array.isArray(coverageGate?.countries) ? coverageGate.countries : [];
   const readinessCountries = Array.isArray(readinessGate?.countries) ? readinessGate.countries : [];
   const actionPlanItems = Array.isArray(actionPlan?.items) ? actionPlan.items : [];
@@ -134,12 +152,51 @@ export default function FiscalFg1GatePage() {
           <Link to={readinessOneClickUrl} style={shortcutLinkStyle}>
             Ação 1-clique: abrir readiness (pending_actions &gt; 0)
           </Link>
+          <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+            Abrir fiscal/sprint2-finance-gate
+          </Link>
+          <Link to="/fiscal/management-daily" style={shortcutLinkStyle}>
+            Abrir fiscal/management-daily
+          </Link>
         </div>
 
         <OpsPageTitleHeader title="FISCAL - FG-1 Gate (Coverage + Readiness)" versionLabel={PAGE_VERSION} />
         <p style={mutedTextStyle}>
           Gate macro da onda FG-1 para decisão objetiva GO/NO_GO com cobertura canônica e prontidão regulatória/operacional.
         </p>
+
+        <div style={sprint2GateMirrorBoxStyle}>
+          <strong style={{ fontSize: 14, color: "var(--fiscal-text)" }}>Sprint 2 — gate financeiro v2 (ponte FG-1)</strong>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            O gate <strong>FG-1</strong> (cobertura/readiness técnica) é distinto do <strong>gate v2</strong> do comité (Fiscal/Contábil/consolidado).
+            Espelho do cockpit{" "}
+            <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+              fiscal/sprint2-finance-gate
+            </Link>
+            ; o export <strong>decisão final FG-1 (JSON)</strong> inclui <code>sprint2_gate_v2_mirror</code> para handoff único.
+          </p>
+          {gateMirror ? (
+            <div style={summaryRowStyle}>
+              <span style={chipStyle}>
+                Fiscal {gateMirror.fiscal_percent}% {gateMirror.fiscal_ok ? "OK" : "FALTA"} (≥{SPRINT2_FINANCE_GATE_V2_THRESHOLDS.fiscal}%)
+              </span>
+              <span style={chipStyle}>
+                Contábil {gateMirror.accounting_percent}% {gateMirror.accounting_ok ? "OK" : "FALTA"} (≥
+                {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.accounting}%)
+              </span>
+              <span style={chipStyle}>
+                Consolidado {gateMirror.consolidated_percent}% {gateMirror.consolidated_ok ? "OK" : "FALTA"} (≥
+                {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.consolidated}%)
+              </span>
+              <span style={chipStyle}>P0 {gateMirror.p0_evidence_ok ? "OK" : "FALTA"}</span>
+              <span style={chipStyle}>{gateMirror.overall_pass ? "PASS v2" : "NO_GO v2"}</span>
+            </div>
+          ) : (
+            <small style={mutedTextStyle}>
+              Sem estado local do gate v2 — gravar em <Link to="/fiscal/sprint2-finance-gate">fiscal/sprint2-finance-gate</Link>.
+            </small>
+          )}
+        </div>
 
         <div style={toolbarStyle}>
           <button type="button" onClick={() => void loadGate()} style={buttonStyle} disabled={loading}>
@@ -428,6 +485,16 @@ export default function FiscalFg1GatePage() {
 }
 
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "var(--fiscal-text)", fontFamily: "system-ui, sans-serif" };
+const sprint2GateMirrorBoxStyle = {
+  marginTop: 4,
+  marginBottom: 14,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.4)",
+  background: "rgba(30,58,138,0.12)",
+  display: "grid",
+  gap: 4,
+};
 const cardStyle = { background: "var(--fiscal-card-bg)", border: "1px solid var(--fiscal-card-border)", borderRadius: 16, padding: 16 };
 const shortcutRowStyle = { display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 10 };
 const shortcutLinkStyle = {
@@ -536,11 +603,14 @@ function buildFinalDecisionRows(coverageCountries, readinessCountries, actionPla
 
 function exportFinalDecisionJson(rows, finalGlobalDecision) {
   const sessionSuffix = getStableSessionSuffix();
+  const gateMirror = summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State());
   const payload = {
     exported_at: new Date().toISOString(),
     scope: "FG-1-FINAL-DECISION",
     file_suffix: sessionSuffix,
     final_global_decision: finalGlobalDecision,
+    sprint2_gate_v2_mirror: gateMirror,
+    sprint2_gate_v2_thresholds: SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
     country_count: rows.length,
     countries: rows.map((row) => ({
       country_code: row.countryCode,

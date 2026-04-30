@@ -3,6 +3,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import type { NormalizedLockerItem } from "../utils/dashboardMappers";
 import {
   fetchCatalogSlots,
@@ -60,11 +61,13 @@ export default function useLockerSlotsSync({
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  const syncStatus = useCheckoutStore((s) => s.syncStatus);
+  const setSyncStatus = useCheckoutStore((s) => s.setSyncStatus);
+
   const totalSlots = Math.max(1, Number(selectedLocker?.slots) || 24);
 
   const [slots, setSlots] = useState<SlotsMap>(() => slotsListToMap([], totalSlots));
   const [cakes, setCakes] = useState(() => buildInitialCakes(totalSlots));
-  const [syncStatus, setSyncStatus] = useState({ ok: true, msg: "—" });
 
   useEffect(() => {
     setSlots(slotsListToMap([], totalSlots));

@@ -13,10 +13,16 @@ import {
   buildSprint4RegressionMatrixPayload,
   loadSprint4MatrixStateRaw,
 } from "../utils/fiscalSprint4RegressionMatrix";
+import {
+  loadSprint2FinanceGateV2State,
+  summarizeSprint2FinanceGateV2,
+  SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+} from "../utils/fiscalSprint2FinanceGate";
+import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.2.2-s4-gonogo";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.4-s3-partner-mirror-zip";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
@@ -451,9 +457,43 @@ export default function FiscalAccountingClosePage() {
       });
       zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_P03_EXEC_ATTACH_ERROR_${ts}.json`] = strToU8(JSON.stringify(signedErr, null, 2));
     }
+    try {
+      const rawGate = loadSprint2FinanceGateV2State();
+      const mirror = summarizeSprint2FinanceGateV2(rawGate);
+      if (mirror) {
+        const signedGateMirror = await buildSignedPayload({
+          scope: "SPRINT2_GATE_V2_MIRROR_ATTACH",
+          generated_at: nowIso,
+          source: "fiscal/accounting-close",
+          committee_reference: "2026-05-01",
+          thresholds: SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+          mirror,
+          raw_local_storage: rawGate,
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_GATE_V2_MIRROR_EXEC_${ts}.json`] = strToU8(JSON.stringify(signedGateMirror, null, 2));
+      }
+    } catch {
+      // espelho gate opcional
+    }
+    try {
+      const rawPartner = loadSprint3PartnerAuditMirrorForDaily();
+      if (rawPartner) {
+        const signedPartnerMirror = await buildSignedPayload({
+          scope: "SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH",
+          generated_at: nowIso,
+          source: "fiscal/accounting-close",
+          saved_snapshot: rawPartner,
+        });
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_PARTNER_AUDIT_MIRROR_EXEC_${ts}.json`] = strToU8(
+          JSON.stringify(signedPartnerMirror, null, 2),
+        );
+      }
+    } catch {
+      // espelho Sprint 3 opcional
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D18 + matriz Sprint 4 + resumo Go/No-Go Sprint 4 + pilotos + carimbo P0-3 (quando houver no browser).",
+      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D18 + matriz Sprint 4 + resumo Go/No-Go Sprint 4 + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit (se gravados) quando houver no browser.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -463,6 +503,8 @@ export default function FiscalAccountingClosePage() {
       <section style={cardStyle}>
         <div style={shortcutRowStyle}>
           <Link to="/fiscal/management-daily" style={shortcutLinkStyle}>Abrir fiscal/management-daily</Link>
+          <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>Abrir fiscal/sprint2-finance-gate</Link>
+          <Link to="/fiscal/sprint3-partner-audit" style={shortcutLinkStyle}>Abrir fiscal/sprint3-partner-audit</Link>
           <Link to="/fiscal/readiness-execution" style={shortcutLinkStyle}>Abrir fiscal/readiness-execution</Link>
           <Link to="/fiscal/sprint4-regression-matrix" style={shortcutLinkStyle}>Abrir fiscal/sprint4-regression-matrix</Link>
           <a href={buildFiscalSwaggerUrl(BILLING_BASE)} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>Abrir Swagger FISCAL</a>

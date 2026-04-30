@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
-import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
+import PickupHealthPanel from "../components/PickupHealthPanel";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 import { QRCodeCanvas } from "qrcode.react";
@@ -1016,7 +1016,8 @@ export default function LockerDashboard({ region = "PT" }) {
     : 0;
 
   const [syncEnabled, setSyncEnabled] = useState(true);
-  const [syncStatus, setSyncStatus] = useState({ ok: true, msg: "—" });
+  const syncStatus = useCheckoutStore((s) => s.syncStatus);
+  const setSyncStatus = useCheckoutStore((s) => s.setSyncStatus);
   const pollTimerRef = useRef(null);
   const abortRef = useRef(null);
 

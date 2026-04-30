@@ -2,10 +2,15 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
+import {
+  loadSprint2FinanceGateV2State,
+  summarizeSprint2FinanceGateV2,
+  SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
+} from "../utils/fiscalSprint2FinanceGate";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/readiness-execution v1.2.0";
+const PAGE_VERSION = "fiscal/readiness-execution v1.3.0-s2-gate-readiness";
 const STORAGE_KEY = "fiscal:readiness:execution:v1";
 /** Mesmo storage key do fg1-gate: um sufixo de sessão único para todos os artefatos de handoff FG-1. */
 const SESSION_SUFFIX_KEY = "fiscal:fg1:handoff:session_suffix";
@@ -25,6 +30,7 @@ export default function FiscalReadinessExecutionPage() {
   const [onlyBlocked, setOnlyBlocked] = useState(true);
   const [exportCopyStatus, setExportCopyStatus] = useState("");
   const [countryFocusFilter, setCountryFocusFilter] = useState(() => parseCountryFocusFilter(location.search));
+  const [gateMirror, setGateMirror] = useState(() => summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
 
   async function loadData() {
     if (!INTERNAL_TOKEN) {
@@ -62,6 +68,18 @@ export default function FiscalReadinessExecutionPage() {
   useEffect(() => {
     setCountryFocusFilter(parseCountryFocusFilter(location.search));
   }, [location.search]);
+
+  useEffect(() => {
+    function refreshGateMirror() {
+      setGateMirror(summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
+    }
+    window.addEventListener("focus", refreshGateMirror);
+    window.addEventListener("storage", refreshGateMirror);
+    return () => {
+      window.removeEventListener("focus", refreshGateMirror);
+      window.removeEventListener("storage", refreshGateMirror);
+    };
+  }, []);
 
   const items = Array.isArray(actionPlan?.items) ? actionPlan.items : [];
 
@@ -112,6 +130,11 @@ export default function FiscalReadinessExecutionPage() {
     const total = Number(rows.length || 0);
     const passed = Number(counts.DONE || 0);
     const failed = Number((counts.TODO || 0) + (counts.IN_PROGRESS || 0));
+    const gateLines = gateMirror
+      ? [
+          `[Sprint2 gate v2] fiscal=${gateMirror.fiscal_percent}%/${SPRINT2_FINANCE_GATE_V2_THRESHOLDS.fiscal} contabil=${gateMirror.accounting_percent}%/${SPRINT2_FINANCE_GATE_V2_THRESHOLDS.accounting} consolidado=${gateMirror.consolidated_percent}%/${SPRINT2_FINANCE_GATE_V2_THRESHOLDS.consolidated} p0_ok=${gateMirror.p0_evidence_ok} overall=${gateMirror.overall_pass ? "PASS" : "NO_GO"}`,
+        ]
+      : ["[Sprint2 gate v2] sem estado local — gravar em fiscal/sprint2-finance-gate"];
     const text = [
       `[FG-1 readiness execution] ${new Date().toISOString()}`,
       `Decisão consolidada: ${String(actionPlan?.decision || "-")}`,
@@ -121,6 +144,7 @@ export default function FiscalReadinessExecutionPage() {
       `status_counts TODO=${counts.TODO} IN_PROGRESS=${counts.IN_PROGRESS} DONE=${counts.DONE}`,
       `Trilha B: ${brLine}`,
       `Trilha B: ${ptLine}`,
+      ...gateLines,
       ...rows.slice(0, 10).map(
         (row) =>
           `${row.country_code} status=${row.execution_status} blocking=${Number(row.blocking_reasons_count || 0)} owner=${row.owner || "-"} eta=${row.eta || "-"}`
@@ -146,12 +170,49 @@ export default function FiscalReadinessExecutionPage() {
           <Link to="/fiscal/fg1-gate" style={shortcutLinkStyle}>
             Abrir fiscal/fg1-gate
           </Link>
+          <Link to="/fiscal/management-daily" style={shortcutLinkStyle}>
+            Abrir fiscal/management-daily
+          </Link>
+          <Link to="/fiscal/sprint2-finance-gate" style={shortcutLinkStyle}>
+            Abrir fiscal/sprint2-finance-gate
+          </Link>
+          <Link to="/fiscal/accounting-close" style={shortcutLinkStyle}>
+            Abrir fiscal/accounting-close
+          </Link>
           <Link to="/fiscal/updates" style={shortcutLinkStyle}>
             Abrir fiscal/updates
           </Link>
         </div>
         <OpsPageTitleHeader title="FISCAL - Readiness Execution Board" versionLabel={PAGE_VERSION} />
         <p style={mutedTextStyle}>Board de execução diária para fechamento dos bloqueios FG-1 com owner, ETA e status por país.</p>
+
+        <div style={sprint2GateMirrorBoxStyle}>
+          <strong style={{ fontSize: 14, color: "var(--fiscal-text)" }}>Sprint 2 — gate v2 (espelho na trilha FG-1)</strong>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            Mesmo estado que <Link to="/fiscal/sprint2-finance-gate">fiscal/sprint2-finance-gate</Link>; incluído no{" "}
+            <strong>export JSON</strong> desta página como <code>sprint2_gate_v2_mirror</code> e nas linhas extra do «Copiar resumo
+            handoff».
+          </p>
+          {gateMirror ? (
+            <div style={summaryRowStyle}>
+              <span style={chipStyle}>
+                Fiscal {gateMirror.fiscal_percent}% {gateMirror.fiscal_ok ? "OK" : "FALTA"} (≥{SPRINT2_FINANCE_GATE_V2_THRESHOLDS.fiscal}%)
+              </span>
+              <span style={chipStyle}>
+                Contábil {gateMirror.accounting_percent}% {gateMirror.accounting_ok ? "OK" : "FALTA"} (≥
+                {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.accounting}%)
+              </span>
+              <span style={chipStyle}>
+                Consolidado {gateMirror.consolidated_percent}% {gateMirror.consolidated_ok ? "OK" : "FALTA"} (≥
+                {SPRINT2_FINANCE_GATE_V2_THRESHOLDS.consolidated}%)
+              </span>
+              <span style={chipStyle}>P0 {gateMirror.p0_evidence_ok ? "OK" : "FALTA"}</span>
+              <span style={chipStyle}>{gateMirror.overall_pass ? "PASS cumulativo" : "NO_GO"}</span>
+            </div>
+          ) : (
+            <small style={mutedTextStyle}>Sem estado gravado no browser — abra o cockpit do gate e use «Gravar estado local».</small>
+          )}
+        </div>
 
         <div style={filtersRowStyle}>
           <button type="button" style={buttonStyle} onClick={() => void loadData()} disabled={loading}>
@@ -357,6 +418,8 @@ function rowHighlightStyle(row) {
 
 function exportReadinessExecutionJson(actionPlan, mergedAll, brPtSnapshot) {
   const sessionSuffix = getStableSessionSuffix();
+  const rawGate = loadSprint2FinanceGateV2State();
+  const gateMirror = summarizeSprint2FinanceGateV2(rawGate);
   const payload = {
     exported_at: new Date().toISOString(),
     scope: "FG-1-READINESS-EXECUTION",
@@ -364,6 +427,8 @@ function exportReadinessExecutionJson(actionPlan, mergedAll, brPtSnapshot) {
     wave: actionPlan?.wave ?? null,
     plan_version: actionPlan?.plan_version ?? null,
     decision: actionPlan?.decision ?? null,
+    sprint2_gate_v2_mirror: gateMirror,
+    sprint2_gate_v2_thresholds: SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
     trilha_b_br_pt: buildBrPtExportBlock(brPtSnapshot),
     country_count: mergedAll.length,
     countries: mergedAll.map((row) => ({
@@ -542,6 +607,16 @@ const cardStyle = { background: "var(--fiscal-card-bg)", border: "1px solid var(
 const shortcutRowStyle = { display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 10 };
 const shortcutLinkStyle = { padding: "8px 12px", borderRadius: 10, border: "1px solid var(--fiscal-link-border)", background: "var(--fiscal-link-bg)", color: "var(--fiscal-text)", textDecoration: "none", fontWeight: 700, fontSize: 13 };
 const mutedTextStyle = { color: "var(--fiscal-soft-text)", marginTop: 8 };
+const sprint2GateMirrorBoxStyle = {
+  marginTop: 4,
+  marginBottom: 12,
+  padding: 12,
+  borderRadius: 12,
+  border: "1px solid rgba(34,197,94,0.35)",
+  background: "rgba(22,101,52,0.1)",
+  display: "grid",
+  gap: 4,
+};
 const filtersRowStyle = { marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" };
 const labelStyle = { display: "grid", gap: 4, fontSize: 12, color: "var(--fiscal-soft-text)", fontWeight: 600 };
 const inputStyle = { width: "100%", minWidth: 140, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--fiscal-link-border)", background: "var(--fiscal-surface)", color: "var(--fiscal-text)" };

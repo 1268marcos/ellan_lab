@@ -95,6 +95,18 @@ run_route_check \
   "FISCAL - Countries Cockpit (FG-1/FG-2)" \
   "/tmp/fiscal_routes_smoke_countries.html"
 
+run_route_check \
+  "FISCAL sprint2 finance gate" \
+  "/fiscal/sprint2-finance-gate" \
+  "FISCAL - Gate financeiro Sprint 2" \
+  "/tmp/fiscal_routes_smoke_sprint2_gate.html"
+
+run_route_check \
+  "FISCAL sprint3 partner audit" \
+  "/fiscal/sprint3-partner-audit" \
+  "FISCAL - Sprint 3 auditoria por parceiro" \
+  "/tmp/fiscal_routes_smoke_sprint3_partner_audit.html"
+
 echo
 FINAL_RESULT="FISCAL_ROUTES_SMOKE_OK"
 if [[ ${fail} -eq 0 ]]; then

@@ -4,7 +4,7 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
-const FISCAL_UPDATES_PAGE_VERSION = "fiscal/updates v1.0.0";
+const FISCAL_UPDATES_PAGE_VERSION = "fiscal/updates v1.2.1";
 const TIMELINE_TEMPLATE_JSON = `{
   "date": "YYYY-MM-DD",
   "scope": "L-3 D4",
@@ -25,6 +25,56 @@ const TIMELINE_TEMPLATE_JSON = `{
 }`;
 
 const UPDATES = [
+  {
+    dateTime: "2026-04-30T23:45:00-03:00",
+    scope: "Sprint 3 (P0-1) — espelho no pacote diário / close",
+    title: "Gravar espelho partner-audit → ZIP management-daily e accounting-close",
+    description:
+      "Botão «Gravar espelho para pacote diário» em fiscal/sprint3-partner-audit persiste slice + metadados em localStorage; fiscal/management-daily e fiscal/accounting-close anexam JSON assinado com scope SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH quando existir. Pré-visualização no management-daily e atalhos adicionais.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/utils/fiscalSprint3PartnerAuditMirror.js",
+      "Frontend: 01_source/frontend/src/pages/FiscalSprint3PartnerAuditPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalAccountingClosePage.jsx",
+    ],
+    directLink: "/fiscal/sprint3-partner-audit",
+    directLinkLabel: "Abrir auditoria por parceiro (gravar espelho)",
+  },
+  {
+    dateTime: "2026-04-30T23:05:00-03:00",
+    scope: "Sprint 3 (P0-1) — auditoria por parceiro (próximo sprint em código)",
+    title: "Nova rota fiscal/sprint3-partner-audit (rollup partner_id + D11 opcional + export assinado)",
+    description:
+      "Cockpit dedicado à extensão P0-1 do plano Sprint 3: consome `GET /admin/fiscal/global/sprint3/e2e-audit-trail`, agrega por `partner_id` via `buildP01bPartnerReconciliationSlice` (mesmo contrato P0-1b), mostra cobertura materializada/raw, tabela ordenada por volume de gaps, cruzamento opcional com snapshot D11 (`ellan_ops_fiscal_d11_handoff_v1`) e export/cópia JSON com SHA-256. Atalhos para slo-alerts, sprint2-finance-gate e management-daily.",
+    uiRoutesNew: ["/fiscal/sprint3-partner-audit"],
+    apiRoutesNew: ["GET /admin/fiscal/global/sprint3/e2e-audit-trail"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalSprint3PartnerAuditPage.jsx",
+      "Frontend: 01_source/frontend/src/utils/fiscalP01bDailyPackage.js",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "DOC: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+    ],
+    directLink: "/fiscal/sprint3-partner-audit",
+    directLinkLabel: "Abrir auditoria por parceiro Sprint 3",
+  },
+  {
+    dateTime: "2026-04-30T22:15:00-03:00",
+    scope: "Sprint 2 — gate financeiro v2 + próximo sprint previsto (cockpit)",
+    title: "Nova rota fiscal/sprint2-finance-gate (PASS/NO_GO, export JSON assinado, sequência S2→S3→S4)",
+    description:
+      "Entrega operacional do próximo sprint previsto no plano global: cockpit para o gate financeiro Sprint 2 **v2** (comité 2026-05-01) com limiares Fiscal ≥50%, Contábil ≥40%, consolidado ≥55%, comprovação P0 mínima, persistência local e export/cópia JSON com SHA-256 (scope SPRINT2_FINANCE_GATE_V2). Texto orienta a sequência: Fase A = Sprint 2 dominante; após PASS = Fase B com Sprint 3 como sprint ideal; Sprint 4 na fase C. Atalhos para management-daily, accounting-close e fiscal/updates.",
+    uiRoutesNew: ["/fiscal/sprint2-finance-gate"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalSprint2FinanceGatePage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "DOC: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+    ],
+    directLink: "/fiscal/sprint2-finance-gate",
+    directLinkLabel: "Abrir gate financeiro Sprint 2 (v2)",
+  },
   {
     dateTime: "2026-04-30T20:58:00-03:00",
     scope: "Sprint 4 — UAT KIOSK + registro Go/No-Go mínimo",

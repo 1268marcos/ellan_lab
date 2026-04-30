@@ -43,6 +43,7 @@ const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPa
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsQuickEnablementPage = lazy(() => import("./pages/OpsQuickEnablementPage"));
+const OpsKioskTouchModelsPage = lazy(() => import("./pages/OpsKioskTouchModelsPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
 const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage.tsx"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
@@ -74,6 +75,8 @@ const FiscalPartnerPerformancePage = lazy(() => import("./pages/FiscalPartnerPer
 const FiscalAccountingClosePage = lazy(() => import("./pages/FiscalAccountingClosePage"));
 const FiscalSloAlertsPage = lazy(() => import("./pages/FiscalSloAlertsPage"));
 const FiscalSprint4RegressionMatrixPage = lazy(() => import("./pages/FiscalSprint4RegressionMatrixPage"));
+const FiscalSprint2FinanceGatePage = lazy(() => import("./pages/FiscalSprint2FinanceGatePage"));
+const FiscalSprint3PartnerAuditPage = lazy(() => import("./pages/FiscalSprint3PartnerAuditPage"));
 const FiscalIncidentResponsePage = lazy(() => import("./pages/FiscalIncidentResponsePage"));
 
 // Componente de loading otimizado
@@ -303,6 +306,13 @@ function TopNav() {
     { to: "/ops/pt", label: "ops /pt", aria: "Ferramentas operacionais Portugal", group: "Visão Geral" },
     { to: "/ops/sp/kiosk", label: "ops /sp/kiosk", aria: "Kiosk São Paulo", group: "Visão Geral" },
     { to: "/ops/pt/kiosk", label: "ops /pt/kiosk", aria: "Kiosk Portugal", group: "Visão Geral" },
+    {
+      to: "/ops/kiosk-touch-models",
+      label: "ops /kiosk-touch-models",
+      aria: "Protótipos navegáveis KIOSK touch v1 (Sprint 1)",
+      group: "Visão Geral",
+      isNew: true,
+    },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
     {
       to: "/ops/quick-enablement",
@@ -368,6 +378,18 @@ function TopNav() {
         { to: "/fiscal/fg1-gate", label: "fiscal /fg1-gate", aria: "Gate técnico FG-1 (GO/NO_GO)" },
         { to: "/fiscal/readiness-execution", label: "fiscal /readiness-execution", aria: "Execução operacional de readiness FG-1" },
         { to: "/fiscal/management-daily", label: "fiscal /management-daily", aria: "Gestão diária contábil/fiscal" },
+        {
+          to: "/fiscal/sprint2-finance-gate",
+          label: "fiscal /sprint2-finance-gate",
+          aria: "Gate financeiro Sprint 2 (comité v2) e sprint ideal na sequência",
+          isNew: true,
+        },
+        {
+          to: "/fiscal/sprint3-partner-audit",
+          label: "fiscal /sprint3-partner-audit",
+          aria: "Sprint 3 P0-1 — auditoria E2E rollup por parceiro",
+          isNew: true,
+        },
         { to: "/fiscal/department-dashboards", label: "fiscal /department-dashboards", aria: "Dashboards departamentais fiscal e contábil" },
         { to: "/fiscal/partner-performance", label: "fiscal /partner-performance", aria: "Desempenho operacional de parceiros fiscais" },
         { to: "/fiscal/accounting-close", label: "fiscal /accounting-close", aria: "Fechamento contábil e fiscal diário" },
@@ -868,6 +890,15 @@ function RecoverFiscalRoute() {
   if (normalizedPath.includes("fiscal/countries")) {
     return <Navigate to="/fiscal/countries" replace />;
   }
+  if (normalizedPath.includes("fiscal/sprint3-partner-audit")) {
+    return <Navigate to="/fiscal/sprint3-partner-audit" replace />;
+  }
+  if (normalizedPath.includes("fiscal/sprint2-finance-gate")) {
+    return <Navigate to="/fiscal/sprint2-finance-gate" replace />;
+  }
+  if (normalizedPath.includes("fiscal/sprint4-regression-matrix")) {
+    return <Navigate to="/fiscal/sprint4-regression-matrix" replace />;
+  }
   if (normalizedPath.includes("fiscal/updates")) {
     return <Navigate to="/fiscal/updates" replace />;
   }
@@ -1036,6 +1067,26 @@ function AppContent() {
                 <OpsRoute>
                   <FiscalPageLayout>
                     <FiscalManagementDailyPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/sprint2-finance-gate"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalSprint2FinanceGatePage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/sprint3-partner-audit"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalSprint3PartnerAuditPage />
                   </FiscalPageLayout>
                 </OpsRoute>
               }
@@ -1214,6 +1265,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsQuickEnablementPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/kiosk-touch-models"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsKioskTouchModelsPage />)}
                 </OpsRoute>
               }
             />

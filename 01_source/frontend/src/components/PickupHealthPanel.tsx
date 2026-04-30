@@ -1,7 +1,11 @@
-// 01_source/frontend/src/components/PickupHealthPanel.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-const severityMeta = {
+type SeverityKey = "normal" | "attention" | "critical" | "incident";
+
+const severityMeta: Record<
+  SeverityKey,
+  { label: string; color: string; bg: string; border: string }
+> = {
   normal: {
     label: "Normal",
     color: "#2e7d32",
@@ -34,12 +38,14 @@ const entityTypeOptions = [
   { value: "machine", label: "Máquinas" },
   { value: "site", label: "Sites" },
   { value: "region", label: "Regiões" },
-];
+] as const;
 
-function badgeStyle(meta) {
-  const m = meta || {
-    bg: "rgba(255,255,255,0.08)",
-    border: "rgba(255,255,255,0.18)",
+type BadgeMeta = { bg: string; border: string };
+
+function badgeStyle(meta?: Partial<BadgeMeta>): CSSProperties {
+  const m: BadgeMeta = {
+    bg: meta?.bg ?? "rgba(255,255,255,0.08)",
+    border: meta?.border ?? "rgba(255,255,255,0.18)",
   };
 
   return {
@@ -56,18 +62,53 @@ function badgeStyle(meta) {
   };
 }
 
-function formatScore(value) {
+type PickupHealthRankingItem = {
+  entity_type?: string;
+  entity_id?: string;
+  severity_bucket?: string;
+  priority_score?: number;
+  health_score?: number;
+  suggested_playbook?: string;
+  tenant_id?: string;
+  operator_id?: string;
+  region?: string;
+  locker_id?: string;
+  machine_id?: string;
+  site_id?: string;
+  alerts?: string[];
+  anomaly?: {
+    alerts?: string[];
+    predictive_risk?: boolean;
+    abrupt_drop?: boolean;
+    out_of_pattern?: boolean;
+  };
+  trend?: {
+    direction?: string;
+    delta?: number;
+    current_rate?: number;
+    previous_rate?: number;
+  };
+  signals?: { trend_direction?: string };
+  metrics?: {
+    total_terminal_pickups?: number;
+    expiration_rate?: number;
+    cancellation_rate?: number;
+    avg_minutes_ready_to_redeemed?: number;
+  };
+};
+
+function formatScore(value: unknown): string {
   const n = Number(value);
   if (!Number.isFinite(n)) return "-";
   return n.toFixed(2);
 }
 
-function formatSlotEquipmentLine(item) {
+function formatSlotEquipmentLine(item: PickupHealthRankingItem): string {
   if (String(item?.entity_type || "").toLowerCase() !== "slot") return "";
   const locker = item?.locker_id;
   const machine = item?.machine_id;
   const site = item?.site_id;
-  const bits = [];
+  const bits: string[] = [];
   if (locker) bits.push(`armário ${locker}`);
   if (machine) bits.push(`máquina ${machine}`);
   if (site) bits.push(`site ${site}`);
@@ -75,11 +116,33 @@ function formatSlotEquipmentLine(item) {
   return bits.join(" · ");
 }
 
-function buildInternalHeaders(internalToken) {
+function buildInternalHeaders(internalToken: string): HeadersInit {
   return {
     "Content-Type": "application/json",
     "X-Internal-Token": internalToken,
   };
+}
+
+export type PickupHealthPanelProps = {
+  lifecycleBaseUrl: string;
+  internalToken: string;
+  region?: string;
+  defaultEntityType?: string;
+};
+
+type PickupHealthPayload = {
+  ranking?: PickupHealthRankingItem[];
+  summary?: {
+    total_entities?: number;
+    healthy_count?: number;
+    attention_count?: number;
+    critical_count?: number;
+    collapsed_count?: number;
+  };
+};
+
+function isSeverityKey(s: string): s is SeverityKey {
+  return s in severityMeta;
 }
 
 export default function PickupHealthPanel({
@@ -87,14 +150,14 @@ export default function PickupHealthPanel({
   internalToken,
   region,
   defaultEntityType = "locker",
-}) {
+}: PickupHealthPanelProps) {
   const [entityType, setEntityType] = useState(defaultEntityType);
   const [trendDaysWindow, setTrendDaysWindow] = useState(7);
   const [rankingLimit, setRankingLimit] = useState(20);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [payload, setPayload] = useState(null);
+  const [payload, setPayload] = useState<PickupHealthPayload | null>(null);
 
   const apiBase = useMemo(() => String(lifecycleBaseUrl || "").replace(/\/+$/, ""), [lifecycleBaseUrl]);
 
@@ -136,10 +199,10 @@ export default function PickupHealthPanel({
         throw new Error(`HTTP ${res.status}: ${text}`);
       }
 
-      const json = text ? JSON.parse(text) : {};
+      const json = (text ? JSON.parse(text) : {}) as PickupHealthPayload;
       setPayload(json);
-    } catch (err) {
-      setError(String(err?.message || err));
+    } catch (err: unknown) {
+      setError(String(err instanceof Error ? err.message : err));
       setPayload(null);
     } finally {
       setLoading(false);
@@ -147,11 +210,12 @@ export default function PickupHealthPanel({
   }
 
   useEffect(() => {
-    load();
-  }, [apiBase, internalToken, region, entityType, rankingLimit, trendDaysWindow]); // eslint-disable-line
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when query inputs change
+  }, [apiBase, internalToken, region, entityType, rankingLimit, trendDaysWindow]);
 
   const ranking = Array.isArray(payload?.ranking) ? payload.ranking : [];
-  const summary = payload?.summary || {};
+  const summary = payload?.summary ?? {};
 
   return (
     <section
@@ -174,7 +238,8 @@ export default function PickupHealthPanel({
         </div>
 
         <button
-          onClick={load}
+          type="button"
+          onClick={() => void load()}
           disabled={loading}
           style={{
             padding: "8px 12px",
@@ -300,8 +365,8 @@ export default function PickupHealthPanel({
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
           {ranking.map((item, idx) => {
-            const severity = item?.severity_bucket || "normal";
-            const meta = severityMeta[severity] || severityMeta.normal;
+            const severityRaw = item?.severity_bucket || "normal";
+            const meta = isSeverityKey(severityRaw) ? severityMeta[severityRaw] : severityMeta.normal;
             const alerts = Array.isArray(item?.alerts) ? item.alerts : [];
             const anomalyAlerts = Array.isArray(item?.anomaly?.alerts) ? item.anomaly.alerts : [];
 
@@ -330,7 +395,8 @@ export default function PickupHealthPanel({
                       </div>
                     ) : null}
                     <div style={{ fontSize: 12, opacity: 0.74 }}>
-                      tenant: <b>{item.tenant_id || "-"}</b> • operator: <b>{item.operator_id || "-"}</b> • region: <b>{item.region || "-"}</b>
+                      tenant: <b>{item.tenant_id || "-"}</b> • operator: <b>{item.operator_id || "-"}</b> • region:{" "}
+                      <b>{item.region || "-"}</b>
                     </div>
                   </div>
 
@@ -403,19 +469,19 @@ export default function PickupHealthPanel({
   );
 }
 
-const summaryCardStyle = {
+const summaryCardStyle: CSSProperties = {
   padding: 12,
   borderRadius: 12,
   border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(255,255,255,0.04)",
 };
 
-const summaryTitleStyle = {
+const summaryTitleStyle: CSSProperties = {
   fontSize: 12,
   opacity: 0.72,
 };
 
-const summaryValueStyle = {
+const summaryValueStyle: CSSProperties = {
   fontSize: 22,
   fontWeight: 800,
   marginTop: 4,
