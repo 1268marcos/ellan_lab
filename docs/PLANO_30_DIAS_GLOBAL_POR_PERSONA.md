@@ -488,6 +488,27 @@ Riscos imediatos:
 Proximo checkpoint:
 - Rodar novamente a pipeline no remoto e registrar resultado final (run id + status) nesta secao.
 
+### 2026-04-30 - Correcao raiz da falha remota (arquivo ignorado)
+Status geral: `[x]` Concluido
+
+Resumo:
+- Nova analise da falha remota (`run_id: 25166200126`) confirmou que o `requirements.txt` nao estava disponivel no runner.
+- Causa raiz identificada no repositorio:
+  - regra global `*.txt` em `.gitignore` estava ignorando `01_source/order_pickup_service/requirements.txt`.
+- Correcao aplicada:
+  - adicionadas excecoes no `.gitignore`: `!**/requirements.txt` e `!**/requirements-*.txt`.
+  - `requirements.txt` do `order_pickup_service` passou a ficar elegivel para versionamento.
+
+Decisao executiva do checkpoint:
+- Padrao de ignorar `*.txt` foi mantido, mas com excecoes explicitas para requisitos de build.
+- Workflow remoto deve ser rerodado apos push dessa correcao para confirmar fechamento do gate.
+
+Riscos imediatos:
+- `[!]` Enquanto nao houver novo push com `requirements.txt` versionado, o workflow pode continuar falhando no mesmo ponto.
+
+Proximo checkpoint:
+- Commit/push de `.gitignore` + `01_source/order_pickup_service/requirements.txt` e nova execucao da Action.
+
 ## Snapshot para o daily de hoje (Sprint 0)
 - Progresso medio Sprint 0: **70%**
 - Itens concluidos: **1/4**
@@ -525,6 +546,7 @@ Use esta estrutura para manter historico objetivo das entregas:
 | 2026-04-30 | Sprint 1 | Estabilizacao do typecheck no CI (Node 22 + gate) | `[x]` | `.github/workflows/sprint5-item5-regression.yml` | Validar execucao remota do workflow |
 | 2026-04-30 | Sprint 1 | Validacao remota do workflow no GitHub Actions | `[~]` | `gh run list` + `gh run view 25164702339 --log-failed` | Corrigir falha do step backend (`requirements.txt`) e rerodar |
 | 2026-04-30 | Sprint 1 | Correcao de resiliencia no install backend do workflow | `[x]` | `.github/workflows/sprint5-item5-regression.yml` | Executar nova run remota e coletar evidencia final |
+| 2026-04-30 | Sprint 1 | Correcao raiz de arquivo ignorado no CI (`requirements.txt`) | `[x]` | `.gitignore`, `01_source/order_pickup_service/requirements.txt` | Push + rerun para confirmar fechamento do gate |
 | 2026-04-30 | Sprint 1 | Error Boundary por dominio no roteamento | `[~]` | `01_source/frontend/src/components/DomainErrorBoundary.tsx`, `01_source/frontend/src/App.jsx` | Expandir boundaries por feature critica |
 
 ### Modelo de lancamento diario (copiar e preencher)

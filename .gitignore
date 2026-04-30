@@ -8,6 +8,8 @@
 # [0] ARQUIVOS TXT E MD NÃO ESSENCIAIS
 # ==============================================================
 *.txt
+!**/requirements.txt
+!**/requirements-*.txt
 logs/*.md
 temp/*.md
 backup/*.md
