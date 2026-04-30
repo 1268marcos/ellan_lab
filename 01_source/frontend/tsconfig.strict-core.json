@@ -60,6 +60,8 @@
     "src/features/locker-dashboard/components/SlotCard.tsx",
     "src/features/locker-dashboard/components/SlotSelectionBanner.tsx",
     "src/features/locker-dashboard/components/SyncStatusBar.tsx",
+    "src/features/locker-dashboard/index.ts",
+    "src/pages/LockerDashboard.tsx",
     "src/features/kiosk/types.ts",
     "src/features/ops/types.ts",
     "src/features/ops/triageGovernance.ts",

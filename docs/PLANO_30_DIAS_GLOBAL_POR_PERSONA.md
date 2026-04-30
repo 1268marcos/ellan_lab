@@ -285,10 +285,15 @@ Checklist:
 - [ ] Produto/UX: prototipos navegaveis dos 4 modelos de tela KIOSK touch.
 - [ ] Eng/UX: validar fluxo KIOSK E2E assistido (compra -> pagamento -> abertura -> retirada/alocacao).
 
+**Prioridade executiva (comité, 2026-04-30): Sprint 1 = `#1` em alocação de capacidade de engenharia de produto/FE**  
+- **Objetivo:** subir a média conservadora dos 6 itens (**~46%** hoje) para **≥60%** em dois ciclos de daily, atacando primeiro o que está em **`[ ]`** e fechando **`[~]`** (store, TS).  
+- **Coexistência:** Sprint 2 mantém **prioridade #1 de negócio** (Fiscal + Contábil / D10–D18); Sprint 1 não “apaga” o financeiro — exige **throughput mínimo acordado** (ex.: 20–30% da capacidade) para P0 financeiro até o comité rever.  
+- **Ordem sugerida de ataque:** (1) **Store a 100%** → (2) **TS incremental ≥90%** (CI remoto + 1 módulo/ciclo) → (3) **Protótipos navegáveis dos 4 modelos KIOSK** (mínimo clicável) → (4) **E2E KIOSK assistido** (depende de 3 + ambiente) → (5) **Migração de estilos** incremental (domínio **checkout** primeiro).
+
 ## Sprint 2 (Dias 10-18) - P0 por persona em producao assistida + Fiscal/Contabil
 Objetivo: colocar os P0 centrais para rodar com controle e incorporar trilhas financeiras operacionais (ELLAN LAB + partners).
 
-**Diretriz executiva (comité):** **fechar o macro financeiro desta sprint (Fiscal + Contábil, P0 e trilha D10–D18 com evidência)** antes de **ampliar escopo** nas Sprints 3 e 4. OPS/Suporte já puxam percentuais altos; Fiscal (~26%) e Contábil (~15%) continuam o gargalo para **Go/No-Go** — absorver net-new em S3/S4 sem isso mantém o risco de aceite.
+**Diretriz executiva (comité):** **fechar o macro financeiro desta sprint (Fiscal + Contábil, P0 e trilha D10–D18 com evidência)** antes de **ampliar escopo** nas Sprints 3 e 4. OPS/Suporte já puxam percentuais altos; Fiscal (~26%) e Contábil (~15%) continuam o gargalo para **Go/No-Go** — absorver net-new em S3/S4 sem isso mantém o risco de aceite. **Critério numérico exato** e **sprint ideal na sequência** após o gate: ver subsecção **«Critério numérico “financeiro suficiente”»** abaixo. **Coexistência (2026-04-30):** com **Sprint 1** como `#1` de **capacidade FE**, reservar **throughput mínimo explícito** para P0 financeiro (não zero) até o comité rever a prioridade.
 
 Checklist:
 - [ ] Comprador ONLINE: checkout resiliente + jornada de pedido transparente.
@@ -306,6 +311,29 @@ Checklist:
 Evolucao consolidada Sprint 2 (apos ampliacao de escopo):
 - **Antes da ampliacao (somente OPS/Suporte centrais): ~83% nas frentes ativas**
 - **Agora (com Fiscal + Contabil no mesmo sprint): ~52% no consolidado do sprint**
+
+#### Critério numérico «financeiro suficiente» — Sprint 2 (comité **v1**, 2026-04-30)
+
+Gate objetivo para **liberar expansão de escopo** nas Sprints 3 e 4 (substitui exemplos vagos anteriores). Percentuais = mesmas faixas já reportadas na checklist Sprint 2 e no bloco **«Recalculo de evolucao Sprint 2»** deste documento (atualizar o número no checkpoint quando o comité revisar o progresso).
+
+| Trilha | Limiar (simultâneo) | Estado de referência (snapshot comité) |
+| --- | ---: | --- |
+| **Fiscal** (ELLAN LAB + partners) | **≥ 40%** | ~26% — *abaixo do gate* |
+| **Contábil** (ELLAN LAB + partners) | **≥ 30%** | ~15% — *abaixo do gate* |
+
+**Comprovação obrigatória (AND com os limiares):** pelo menos **um** artefato anexável ao **daily** ou ao pacote ZIP equivalente (`fiscal/management-daily`, `fiscal/accounting-close`, ou export assinado já previsto no sprint) demonstrando avanço **P0** da trilha em foco no ciclo (ex.: conciliação pedido→documento / repasse ou fechamento D+0 com owner+ETA), na mesma janela de datas em que o comité declara o gate **PASS**.
+
+**Revisão de limiares:** alteração só com nova versão explícita (**v2**, data, motivo) neste `.md`.
+
+#### Sprint ideal na sequência (após o gate «financeiro suficiente»)
+
+| Fase | Condição | Sprint **ideal** dominante | O que muda na execução |
+| --- | --- | --- | --- |
+| **A — Pré-gate** | Fiscal **inferior a 40%** **ou** Contábil **inferior a 30%** **ou** comprovação P0 em falta | **Sprint 2** (macro financeiro) | S3/S4: **sem net-new**; apenas paralelo seguro já definido na diretriz |
+| **B — Pós-gate** | Ambos **≥** limiares **e** comprovação **PASS** | **Sprint 3** (hardening / confiabilidade) | **Próximo sprint ideal** para absorver **expansão de escopo** da própria Sprint 3 (itens `[ ]` / `[~]` do checklist S3 que estavam congelados por gating) |
+| **C — Linha do plano 30 dias** | Sprint 3 em bom rumo após gate | **Sprint 4** (Go/No-Go global) | Sprint ideal para **matriz + UAT KIOSK + registo** com risco residual documentado; pressupõe trilha financeira já acima do mínimo |
+
+**Regra de ouro:** **Sprint 4** não é sprint ideal dominante para **novo** esforço de produto enquanto **B** não estiver declarado; caso contrário Go/No-Go permanece cosmeticamente avançado com base financeira fraca.
 
 ### Backlog detalhado Sprint 2 - Fiscal e Contabil (execucao imediata)
 
@@ -355,7 +383,7 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 | --- | --- | --- | --- |
 | Sprint 0 (lab) | Dias 1-2 | **`[x]` ~100%** | Encerrado (lab): baseline KPI v0 + board neste doc + contratos referenciais v0 |
 | **Sprint 0b (produção)** | Contínuo | **`[ ]` ~0%** | Ver secao **Sprint 0b produção**; separado do fecho lab |
-| Sprint 1 | Dias 3-9 | **~46%** | Média conservadora dos 6 itens (3 em `[ ]` a 0%); fundação FE (store+boundary+TS) ~**92%** se isolada |
+| Sprint 1 | Dias 3-9 | **~46%** | **`#1` capacidade FE/KIOSK v1** — média 6 itens; fundação (store+boundary+TS) ~**92%** se isolada |
 | Sprint 2 | Dias 10-18 | **~52%** consolidado; Fiscal **~26%**; Contabil **~15%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
 | Sprint 3 | Dias 19-24 | **~65%** | Média das seis frentes do checklist Sprint 3 (CSP 68, TS 93, auditoria 42, SLO 65, quick-enablement 100, P0-3 incidente 22) |
 | Sprint 4 | Dias 25-30 | **~32%** | Média dos 4 itens do checklist Sprint 4 (24, 40, 28, 35) |
@@ -367,10 +395,10 @@ Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão ch
 | --- | ---: | --- | --- |
 | Sprint 0 lab | **100%** | `[x]` Fechado | Setup de governanca; **não** cobre KPI numerico nem contrato publicado externo |
 | **Sprint 0b produção** | **0%** | `[ ]` Não iniciado | Próximo passo quando prioridade for “produção real” vs lab |
-| Sprint 1 | **~46%** | `[~]` | Média 6 itens; **indicador alternativo** só fundação (store+boundary+TS) ~**92%** — não confundir com “sprint quase fechado” |
-| Sprint 2 | **~52%** | `[~]` | **Prioridade #1:** fechar Fiscal + Contábil (P0 / D10–D18); sem isso Go/No-Go arriscado |
-| Sprint 3 | **~65%** | `[~]` | Manter itens já em curso; **congelar expansão de escopo** até o financeiro S2 subir (ver diretriz na secção Sprint 2) |
-| Sprint 4 | **~32%** | `[~]` | Idem: matriz/UAT sem net-new além do já planeado até evidência financeira S2 |
+| Sprint 1 | **~46%** | `[~]` | **Prioridade `#1` capacidade** (FE/KIOSK v1); média 6 itens — fundação ~**92%** se isolada |
+| Sprint 2 | **~52%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18); **coexiste** com S1 — throughput mínimo acordado |
+| Sprint 3 | **~65%** | `[~]` | **Congelar net-new** até gate **Fiscal ≥40%** e **Contábil ≥30%** + comprovação P0 (secção Sprint 2); depois disso S3 = **sprint ideal** para expansão |
+| Sprint 4 | **~32%** | `[~]` | **Sprint ideal** só na **fase C** da sequência pós-gate; até lá matriz/UAT sem expansão além do planeado |
 
 #### Sequencia diaria Sprint 2 (D10-D18) - ordem de execucao e dependencias criticas
 | Dia | Foco principal | Entregas alvo (P0 primeiro) | Dependencias criticas | Saida do dia |
@@ -395,7 +423,7 @@ Dependencias criticas transversais (Sprint 2 financeiro):
 ## Sprint 3 (Dias 19-24) - Hardening e confiabilidade global
 Objetivo: reduzir fragilidade operacional e risco de escala.
 
-**Gating com Sprint 2:** novas frentes ou aumento de escopo nesta sprint ficam **atrás** do fecho do macro **Fiscal + Contábil** da Sprint 2 (diretriz na secção Sprint 2). Hardening já iniciado (CSP, TS, SLO, P0-1/P0-2/P0-3) segue em paralelo quando **não** roubar capacidade dos P0 financeiros.
+**Gating com Sprint 2:** novas frentes ou aumento de escopo nesta sprint ficam **atrás** do **gate v1** (**Fiscal ≥40%**, **Contábil ≥30%**, comprovação P0 — subsecção na Sprint 2). Hardening já iniciado (CSP, TS, SLO, P0-1/P0-2/P0-3) segue em paralelo quando **não** roubar capacidade dos P0 financeiros.
 
 Checklist:
 - [~] Endurecer CSP e politicas de seguranca frontend.
@@ -412,7 +440,7 @@ Checklist:
 ## Sprint 4 (Dias 25-30) - Go/No-Go global
 Objetivo: consolidar aceite e readiness de rollout.
 
-**Gating com Sprint 2:** decisão **Go/No-Go** só ganha credibilidade com trilha **Fiscal + Contábil** da Sprint 2 com evidência (diretriz na secção Sprint 2). Evitar UAT/regressão “larga” sem fecho dos P0 financeiros em curso.
+**Gating com Sprint 2:** decisão **Go/No-Go** só ganha credibilidade com **gate v1** cumprido (**Fiscal ≥40%**, **Contábil ≥30%**, comprovação P0) e, na sequência do plano, **Sprint 3** estável como sprint ideal pós-gate. Evitar UAT/regressão “larga” como substituto do gate numérico.
 
 Checklist:
 - [~] Executar regressao funcional por persona.
@@ -710,6 +738,7 @@ Use esta estrutura para manter historico objetivo das entregas:
 | 2026-04-30 | Sprint 0 | Contratos globais minimos por dominio | `[x]` | Carimbo Sprint 0 — tabela Contratos v0 | Evoluir OpenAPI/publicacao por sprint |
 | 2026-04-30 | Sprint 0 | Baseline de KPI por persona | `[x]` | Carimbo Sprint 0 — tabela Baseline KPI v0 | Preencher valores quando fontes estiverem prontas |
 | 2026-04-30 | Sprint 0b produção | Trilha formal separada do Sprint 0 lab | `[ ]` | Secao **Sprint 0b produção** no plano | Executar checklist 0b com DoD de produto |
+| 2026-04-30 | Sprint 1 | Prioridade `#1` capacidade (FE/KIOSK v1) | `[~]` | Secao Sprint 1 — bloco **Prioridade executiva** | Executar ordem: store 100% → TS ≥90% → prototipos → E2E → estilos checkout |
 | 2026-04-30 | Sprint 1 | Setup TypeScript incremental no frontend | `[~]` | `01_source/frontend/tsconfig.json`, `01_source/frontend/package.json` | Estabilizar typecheck no CI |
 | 2026-04-30 | Sprint 1 | Gate tecnico controlado para typecheck incremental | `[x]` | `01_source/frontend/tsconfig.json`, `01_source/frontend/src/vite-env.d.ts` | Expandir escopo TS por dominio (checkout -> kiosk -> ops) |
 | 2026-04-30 | Sprint 1 | Contratos TS por dominio (checkout, kiosk, ops) | `[x]` | `01_source/frontend/src/features/checkout/types.ts`, `01_source/frontend/src/features/kiosk/types.ts`, `01_source/frontend/src/features/ops/types.ts` | Tipar/adaptar hooks de fluxo com esses contratos |
@@ -1442,7 +1471,7 @@ Checklist mínimo (espelho do código):
 | d15 | Histórico D15: amostra de compare validada para turno ou justificativa registrada |
 | d16 | Export D16 / ZIP diário ou executivo exercido ou motivo de não-exercício anotado |
 | d17 | D17: dry-run de retenção ou justificativa de volume; divergência prolongada tratada ou escalada |
-| transition | Comunicação do próximo foco (Sprint 3 / hardening) acordada com o time |
+| transition | Comunicação do próximo foco acordada com o time: se gate financeiro **não** PASS → manter S2 dominante + S3 paralelo; se PASS → **Sprint 3** como sprint ideal (hardening), depois **Sprint 4** (Go/No-Go) |
 
 Template P1 (cinco linhas no UI): colunas **Risco/tema**, **Owner**, **ETA**, **Impacto se não tratar** — exportadas em `p1_risks_remaining` no JSON D18.
 
@@ -1450,14 +1479,14 @@ Decisao executiva do checkpoint:
 - D18 desbloqueia “aceite assistido” com artefato único reutilizável em comitê e handoff, sem depender de documento externo obrigatório nesta fase.
 
 Proximo checkpoint:
-- ~~Marcar D18 como concluído após revisão humana do JSON/ZIP~~ **Feito:** carimbo operacional na UI + `closeout_certification` nos artefatos. **Próximo foco (diretriz comité):** subir **P0 Fiscal + P0 Contábil** da Sprint 2 com evidência no daily; hardening Sprint 3 apenas em **paralelo seguro** e **sem net-new** até critério financeiro acordado.
+- ~~Marcar D18 como concluído após revisão humana do JSON/ZIP~~ **Feito:** carimbo operacional na UI + `closeout_certification` nos artefatos. **Próximo foco (diretriz comité):** subir **P0 Fiscal + P0 Contábil** até **gate v1: Fiscal ≥40% e Contábil ≥30%** + comprovação P0 no daily/ZIP (ver subsecção na Sprint 2); até lá Sprint 3 só **paralelo seguro**, **sem net-new**; após gate, **Sprint 3** = sprint ideal dominante para expansão de hardening.
 
 #### Recomendação de priorização (pós-D17) — **atualizada (comité)**
 
 - **D18 (carimbo + artefatos)** permanece a evidência formal de closeout da trilha D10–D18; não substitui **P0 Fiscal / P0 Contábil** ainda em aberto nas tabelas da Sprint 2.
 - **Prioridade #1:** **fechar o macro financeiro da Sprint 2** (Fiscal + Contábil: conciliação pedido→documento, repasses, evidências no daily/ZIP) **antes** de empurrar **net-new** nas Sprints 3 e 4. Sem isso, **Go/No-Go fica arriscado** (OPS/Suporte já altos; financeiro puxa a média para baixo).
-- **Sprint 3:** manter **hardening já em curso** (CSP, TS, SLO, P0-1/P0-2/P0-3, quick-enablement) em **paralelo seguro** — desde que **não** consuma a capacidade dos P0 financeiros; **congelar expansão de escopo** novo até o time acordar critério explícito de “financeiro S2 suficiente” (ex.: evidência de P0 conciliação + anexos ao daily).
-- **Sprint 4:** matriz de regressão / UAT KIOSK / registo Go-No-Go **sem ampliar** além do planeado até o mesmo critério.
+- **Sprint 3:** manter **hardening já em curso** (CSP, TS, SLO, P0-1/P0-2/P0-3, quick-enablement) em **paralelo seguro** — desde que **não** consuma a capacidade dos P0 financeiros; **congelar net-new** até **gate v1** (**Fiscal ≥40%**, **Contábil ≥30%**, comprovação P0 — subsecção na Sprint 2). **Após o gate:** Sprint 3 torna-se o **sprint ideal** para expansão de escopo de hardening.
+- **Sprint 4:** **sem ampliar** além do planeado até o mesmo gate; **sprint ideal** para Go/No-Go pleno na **fase C** (após S3 estável pós-gate), não antes.
 - **Integração macro fiscal+contábil por parceiro** (longo prazo): continuar **P1/P2 pós–Go/No-Go** ou fatiar quando o throughput da Onda 2 estiver no limite; não competir com os P0 financeiros na mesma janela curta.
 
 ### 2026-04-30 - Direcionamento executivo: hardening (Sprint 3) **com gating financeiro Sprint 2**
@@ -1470,8 +1499,8 @@ Resumo:
 
 Atualização de progresso:
 - **Sprint 2:** **~52%** consolidado (Fiscal **~26%**, Contábil **~15%**) — **foco comité até subir**.
-- **Sprint 3:** **~65%** (média checklist; ver painel) — **sem net-new** até critério financeiro S2.
-- **Sprint 4:** **~32%** — idem para expansão além do já planeado.
+- **Sprint 3:** **~65%** (média checklist; ver painel) — **sem net-new** até **gate v1** (Fiscal ≥40%, Contábil ≥30% + comprovação); depois **sprint ideal** para expansão.
+- **Sprint 4:** **~32%** — sprint ideal **dominante** só na **fase C** da sequência pós-gate (ver Sprint 2).
 - **Sprint 0b produção:** **~0%** (`[ ]` — ver secao dedicada; separado do Sprint 0 lab).
 
 Foco imediato **compatível** com a diretriz (paralelo seguro):
@@ -1563,4 +1592,15 @@ Resumo:
 - Integracao leve: atalho em `ops/health` (FG-1) e link no runbook P0-3 (`fiscalSprint3IncidentRunbook.js`).
 
 Decisao executiva:
-- Tratar treinamento rapido como **habilitacao minima** antes de ampliar UAT KIOSK (Sprint 4); proximo melhor sprint operacional: **Sprint 4 — UAT KIOSK 4 modelos** ou **registro Go/No-Go** conforme capacidade.
+- Tratar treinamento rapido como **habilitacao minima** antes de ampliar UAT KIOSK (Sprint 4). **Revisão comité (2026-04-30):** prioridade global de **capacidade** passa a **Sprint 1** (fundação + KIOSK v1); **Sprint 4** (UAT / Go-No-Go) fica em **paralelo seguro** sem roubar o plano de ataque da Sprint 1.
+
+### 2026-04-30 - Comité: prioridade Sprint 1 (capacidade FE / KIOSK v1)
+Status geral: `[~]` Em execucao (decisao de alocacao)
+
+Resumo:
+- Sprint 1 declarada **`#1` em capacidade** de engenharia de produto/FE: ver bloco **Prioridade executiva** na secao Sprint 1 (meta ~46% → ≥60% em dois dailies; ordem store → TS → prototipos → E2E → estilos checkout).
+- Painel de decisao e tabela de sprints atualizados: Sprint 1 vs Sprint 2 (**`#1` negócio** financeiro) passam a distinguir-se explicitamente.
+- Registro de entregas: linha dedicada à decisao de prioridade Sprint 1.
+
+Decisao executiva:
+- **Nao** suspender Sprint 2 fiscal/contabil; **garantir throughput minimo** ao macro financeiro enquanto a Sprint 1 consome a maior fatia da capacidade.

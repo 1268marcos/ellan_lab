@@ -11,7 +11,7 @@ import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
 
 import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
 
-import { extractGatewayDebugInfo } from "../features/locker-dashboard/utils/dashboardPaymentUtils.js";
+import { extractGatewayDebugInfo } from "../features/locker-dashboard/utils/dashboardPaymentUtils";
 
 import {
   buildGatewayPaymentPayload,

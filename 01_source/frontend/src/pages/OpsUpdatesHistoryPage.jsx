@@ -809,14 +809,14 @@ const UPDATES = [
   {
     date: "2026-04-29",
     scope: "OPS Gate UX - constantes centralizadas de escopo",
-    title: "Textos de escopo extraídos para src/constants/fiscalScope.js",
+    title: "Textos de escopo extraídos para src/constants/fiscalScope.ts",
     description:
       "Microajuste de manutenção aplicado: os textos de escopo dos gates fiscais foram centralizados em constantes compartilhadas, reduzindo risco de divergência entre ops/health, ops/fiscal/providers e util de summary.",
     uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
     apiRoutesNew: [],
     routes: [
-      "Frontend: 01_source/frontend/src/constants/fiscalScope.js",
-      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.js",
+      "Frontend: 01_source/frontend/src/constants/fiscalScope.ts",
+      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.ts",
       "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
       "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
       "UI /ops/updates",
@@ -833,7 +833,7 @@ const UPDATES = [
     uiRoutesNew: ["/ops/health", "/ops/fiscal/providers"],
     apiRoutesNew: [],
     routes: [
-      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.js",
+      "Frontend: 01_source/frontend/src/utils/fiscalScopeSummary.ts",
       "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
       "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
       "UI /ops/updates",

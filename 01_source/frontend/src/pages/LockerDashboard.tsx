@@ -1,5 +1,4 @@
-// 01_source/frontend/src/pages/LockerDashboard.jsx
-
+import type { CSSProperties } from "react";
 import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import PickupHealthPanel from "../components/PickupHealthPanel.jsx";
@@ -25,7 +24,11 @@ import PickupOperationsPanel from "../features/locker-dashboard/components/Picku
 import SlotSelectionBanner from "../features/locker-dashboard/components/SlotSelectionBanner";
 import SyncStatusBar from "../features/locker-dashboard/components/SyncStatusBar";
 
-export default function LockerDashboard({ region = "PT" }) {
+export type LockerDashboardPageProps = {
+  region?: string;
+};
+
+export default function LockerDashboard({ region = "PT" }: LockerDashboardPageProps) {
   const { token } = useAuth();
   const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const tenantOptions = useMemo(() => listConfiguredGeoTenants(), []);
@@ -36,10 +39,12 @@ export default function LockerDashboard({ region = "PT" }) {
   const RUNTIME_BASE = import.meta.env.VITE_RUNTIME_BASE_URL || "http://localhost:8200";
   const GATEWAY_BASE = import.meta.env.VITE_GATEWAY_BASE_URL || "http://localhost:8000";
   const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+  const ORDER_LIFECYCLE_BASE =
+    import.meta.env.VITE_ORDER_LIFECYCLE_BASE_URL || "http://localhost:8010";
   const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
 
   const controller = useLockerDashboardController({
-    token,
+    token: token ?? "",
     region,
     backendSp: BACKEND_SP,
     backendPt: BACKEND_PT,
@@ -49,8 +54,8 @@ export default function LockerDashboard({ region = "PT" }) {
     internalToken: INTERNAL_TOKEN,
   });
 
-  const handleFlowStepClick = (stepKey) => {
-    const targetByStep = {
+  const handleFlowStepClick = (stepKey: string) => {
+    const targetByStep: Record<string, string> = {
       slot: "locker-slots-panel",
       order: "payment-panel",
       payment: "payment-panel",
@@ -114,10 +119,18 @@ export default function LockerDashboard({ region = "PT" }) {
               ))}
             </datalist>
           </label>
-          <button onClick={applyTenantOverride} style={buttonSecondaryStyle} disabled={controller.registry.lockersLoading}>
+          <button
+            onClick={applyTenantOverride}
+            style={buttonSecondaryStyle}
+            disabled={controller.registry.lockersLoading}
+          >
             Aplicar tenant
           </button>
-          <button onClick={clearTenantOverride} style={buttonSecondaryStyle} disabled={controller.registry.lockersLoading}>
+          <button
+            onClick={clearTenantOverride}
+            style={buttonSecondaryStyle}
+            disabled={controller.registry.lockersLoading}
+          >
             Limpar override
           </button>
           <span style={{ fontSize: 12, opacity: 0.78 }}>
@@ -178,14 +191,19 @@ export default function LockerDashboard({ region = "PT" }) {
         <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.86 }}>Monitoramento e Referencias</div>
         <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
           <DashboardLegend />
-          <PickupHealthPanel />
+          <PickupHealthPanel
+            lifecycleBaseUrl={ORDER_LIFECYCLE_BASE}
+            internalToken={INTERNAL_TOKEN}
+            region={region}
+            defaultEntityType="locker"
+          />
         </div>
       </section>
     </LockerDashboardLayout>
   );
 }
 
-const buttonSecondaryStyle = {
+const buttonSecondaryStyle: CSSProperties = {
   padding: "10px 14px",
   cursor: "pointer",
   borderRadius: 10,
