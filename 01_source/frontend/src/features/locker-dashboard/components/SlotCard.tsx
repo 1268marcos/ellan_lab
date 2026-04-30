@@ -1,8 +1,9 @@
-// 01_source/frontend/src/features/locker-dashboard/components/SlotCard.jsx
-
 import React from "react";
 import { STATE_STYLE } from "../utils/dashboardConstants";
 import { formatPlainMoney } from "../utils/dashboardFormatters";
+import type { SlotCardProps } from "./lockerDashboardPanelProps";
+
+const stateStyles = STATE_STYLE as Record<string, { bg: string; fg: string; label: string }>;
 
 export default function SlotCard({
   slot,
@@ -15,8 +16,9 @@ export default function SlotCard({
   selected,
   disabled,
   onClick,
-}) {
-  const meta = STATE_STYLE[state] || { bg: "#333", fg: "white", label: state };
+}: SlotCardProps) {
+  const rowState = String(state);
+  const meta = stateStyles[rowState] || { bg: "#333", fg: "white", label: rowState };
 
   return (
     <button

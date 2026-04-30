@@ -1,11 +1,11 @@
-// 01_source/frontend/src/features/locker-dashboard/components/CurrentOrderCard.jsx
-
 import React from "react";
 import {
   genericBadgeStyle,
 } from "../utils/dashboardOrderUtils";
 import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
 import { errorBannerStyle, panelStyle } from "../utils/dashboardUiStyles";
+import type { CheckoutCurrentOrder } from "../../checkout/types";
+import type { CurrentOrderCardProps } from "./lockerDashboardPanelProps";
 
 export default function CurrentOrderCard({
   currentOrder,
@@ -14,7 +14,12 @@ export default function CurrentOrderCard({
   currentAllocationMeta,
   currentOrderWarning,
   orderError,
-}) {
+}: CurrentOrderCardProps) {
+  const orderRow =
+    currentOrder == null
+      ? null
+      : (currentOrder as CheckoutCurrentOrder & Record<string, unknown>);
+
   return (
     <section style={panelStyle}>
       <div>
@@ -30,7 +35,7 @@ export default function CurrentOrderCard({
         </div>
       ) : null}
 
-      {!currentOrder ? (
+      {!orderRow ? (
         <div
           style={{
             fontSize: 13,
@@ -55,10 +60,10 @@ export default function CurrentOrderCard({
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-            <div style={{ fontWeight: 800 }}>{currentOrder.order_id}</div>
+            <div style={{ fontWeight: 800 }}>{orderRow.order_id}</div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <span style={genericBadgeStyle(currentOrderMeta)}>
-                {currentOrderMeta?.label || currentOrder.status}
+                {currentOrderMeta?.label || orderRow.status}
               </span>
 
               {currentPickupMeta ? (
@@ -76,34 +81,36 @@ export default function CurrentOrderCard({
           </div>
 
           <div style={{ fontSize: 13 }}>
-            <b>Locker:</b> {currentOrder.totem_id || "-"} • <b>Canal:</b>{" "}
-            {currentOrder.channel || "-"}
+            <b>Locker:</b> {String(orderRow.totem_id ?? "-")} • <b>Canal:</b>{" "}
+            {orderRow.channel || "-"}
           </div>
 
           <div style={{ fontSize: 13 }}>
-            <b>Valor:</b> {formatPlainMoney(currentOrder.amount_cents)} • <b>Método:</b>{" "}
-            {currentOrder.payment_method || "-"}
+            <b>Valor:</b> {formatPlainMoney(orderRow.amount_cents as number)} • <b>Método:</b>{" "}
+            {String(orderRow.payment_method ?? "-")}
           </div>
 
           <div style={{ fontSize: 13 }}>
-            <b>Pickup:</b> {currentOrder.pickup_id || "-"} • <b>Código manual:</b>{" "}
-            {currentOrder.manual_code || "-"}
+            <b>Pickup:</b> {orderRow.pickup_id || "-"} • <b>Código manual:</b>{" "}
+            {orderRow.manual_code || "-"}
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.8 }}>
-            Criado: {formatDateTime(currentOrder.created_at, currentOrder.region || "PT")}
+            Criado:{" "}
+            {formatDateTime(String(orderRow.created_at ?? ""), String(orderRow.region || "PT"))}
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.8 }}>
-            Pago: {formatDateTime(currentOrder.paid_at, currentOrder.region || "PT")} •
-            Retirado: {formatDateTime(currentOrder.picked_up_at, currentOrder.region || "PT")}
+            Pago: {formatDateTime(String(orderRow.paid_at ?? ""), String(orderRow.region || "PT"))}{" "}
+            • Retirado:{" "}
+            {formatDateTime(String(orderRow.picked_up_at ?? ""), String(orderRow.region || "PT"))}
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.8 }}>
             Expira em:{" "}
             {formatDateTime(
-              currentOrder.expires_at || currentOrder.pickup_deadline_at,
-              currentOrder.region || "PT"
+              String(orderRow.expires_at || orderRow.pickup_deadline_at || ""),
+              String(orderRow.region || "PT")
             )}
           </div>
 

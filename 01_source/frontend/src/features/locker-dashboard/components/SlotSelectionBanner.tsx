@@ -1,6 +1,5 @@
-// 01_source/frontend/src/features/locker-dashboard/components/SlotSelectionBanner.jsx
-
 import React from "react";
+import type { SlotSelectionBannerProps } from "./lockerDashboardPanelProps";
 
 export default function SlotSelectionBanner({
   selectedLocker,
@@ -8,7 +7,7 @@ export default function SlotSelectionBanner({
   hasActiveSlotSelection,
   slotSelectionRemainingSec,
   onClear,
-}) {
+}: SlotSelectionBannerProps) {
   if (!hasActiveSlotSelection || !selectedSlot) return null;
 
   return (

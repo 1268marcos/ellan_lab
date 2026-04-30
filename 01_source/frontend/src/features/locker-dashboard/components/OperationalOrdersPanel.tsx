@@ -1,8 +1,6 @@
-// 01_source/frontend/src/features/locker-dashboard/components/OperationalOrdersPanel.jsx
-
 import React from "react";
-import OrdersCardList from "./OrdersCardList.jsx";
-import OrdersTable from "./OrdersTable.jsx";
+import OrdersCardList from "./OrdersCardList";
+import OrdersTable from "./OrdersTable";
 import {
   actionButtonStyle,
   errorBannerStyle,
@@ -10,6 +8,7 @@ import {
   infoBannerStyle,
   panelStyle,
 } from "../utils/dashboardUiStyles";
+import type { OperationalOrdersPanelProps } from "./lockerDashboardPanelProps";
 
 export default function OperationalOrdersPanel({
   showOrdersPanel,
@@ -36,7 +35,7 @@ export default function OperationalOrdersPanel({
   syncEnabled,
   useTable = false,
   ordersTableHeight = 484,
-}) {
+}: OperationalOrdersPanelProps) {
   const formattedUpdatedAt = ordersLastUpdatedAt
     ? new Date(ordersLastUpdatedAt).toLocaleTimeString()
     : null;

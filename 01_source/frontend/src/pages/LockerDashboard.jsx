@@ -11,19 +11,19 @@ import {
 } from "../utils/lockerGeoFilter";
 
 import useLockerDashboardController from "../features/locker-dashboard/hooks/useLockerDashboardController";
-import CurrentOrderCard from "../features/locker-dashboard/components/CurrentOrderCard.jsx";
-import DashboardLegend from "../features/locker-dashboard/components/DashboardLegend.jsx";
-import FlowProgressPanel from "../features/locker-dashboard/components/FlowProgressPanel.jsx";
-import LockerDashboardHeader from "../features/locker-dashboard/components/LockerDashboardHeader.jsx";
-import LockerDashboardLayout from "../features/locker-dashboard/components/LockerDashboardLayout.jsx";
-import LockerSelectorCard from "../features/locker-dashboard/components/LockerSelectorCard.jsx";
-import LockerSlotsPanel from "../features/locker-dashboard/components/LockerSlotsPanel.jsx";
-import OperationalOrdersPanel from "../features/locker-dashboard/components/OperationalOrdersPanel.jsx";
-import PaymentPanel from "../features/locker-dashboard/components/PaymentPanel.jsx";
-import PaymentPendingPanel from "../features/locker-dashboard/components/PaymentPendingPanel.jsx";
-import PickupOperationsPanel from "../features/locker-dashboard/components/PickupOperationsPanel.jsx";
-import SlotSelectionBanner from "../features/locker-dashboard/components/SlotSelectionBanner.jsx";
-import SyncStatusBar from "../features/locker-dashboard/components/SyncStatusBar.jsx";
+import CurrentOrderCard from "../features/locker-dashboard/components/CurrentOrderCard";
+import DashboardLegend from "../features/locker-dashboard/components/DashboardLegend";
+import FlowProgressPanel from "../features/locker-dashboard/components/FlowProgressPanel";
+import LockerDashboardHeader from "../features/locker-dashboard/components/LockerDashboardHeader";
+import LockerDashboardLayout from "../features/locker-dashboard/components/LockerDashboardLayout";
+import LockerSelectorCard from "../features/locker-dashboard/components/LockerSelectorCard";
+import LockerSlotsPanel from "../features/locker-dashboard/components/LockerSlotsPanel";
+import OperationalOrdersPanel from "../features/locker-dashboard/components/OperationalOrdersPanel";
+import PaymentPanel from "../features/locker-dashboard/components/PaymentPanel";
+import PaymentPendingPanel from "../features/locker-dashboard/components/PaymentPendingPanel";
+import PickupOperationsPanel from "../features/locker-dashboard/components/PickupOperationsPanel";
+import SlotSelectionBanner from "../features/locker-dashboard/components/SlotSelectionBanner";
+import SyncStatusBar from "../features/locker-dashboard/components/SyncStatusBar";
 
 export default function LockerDashboard({ region = "PT" }) {
   const { token } = useAuth();

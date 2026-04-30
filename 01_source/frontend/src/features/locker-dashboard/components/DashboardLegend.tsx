@@ -1,5 +1,3 @@
-// 01_source/frontend/src/features/locker-dashboard/components/DashboardLegend.jsx
-
 import React from "react";
 import {
   OPERATIONAL_HIGHLIGHT_LEGEND,

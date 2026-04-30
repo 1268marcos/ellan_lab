@@ -1,8 +1,7 @@
-// 01_source/frontend/src/features/locker-dashboard/components/LockerSelectorCard.jsx
-
 import React from "react";
 import { formatLockerAddress } from "../utils/dashboardFormatters";
 import { errorBannerStyle, fieldStyle, panelStyle } from "../utils/dashboardUiStyles";
+import type { LockerSelectorCardProps } from "./lockerDashboardPanelProps";
 
 export default function LockerSelectorCard({
   region,
@@ -13,7 +12,7 @@ export default function LockerSelectorCard({
   selectedLockerId,
   setSelectedLockerId,
   selectedLocker,
-}) {
+}: LockerSelectorCardProps) {
   return (
     <section style={panelStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>

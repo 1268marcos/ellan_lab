@@ -1,9 +1,9 @@
-// 01_source/frontend/src/features/locker-dashboard/components/PickupOperationsPanel.jsx
-
 import React from "react";
+import type { CheckoutCurrentOrder } from "../../checkout/types";
 import PickupQRCodePanel from "../../../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../../../components/ManualPickupPanel.jsx";
 import { actionButtonStyle, panelStyle } from "../utils/dashboardUiStyles";
+import type { PickupOperationsPanelProps } from "./lockerDashboardPanelProps";
 
 export default function PickupOperationsPanel({
   currentOrder,
@@ -12,9 +12,11 @@ export default function PickupOperationsPanel({
   onRegenerateManualCode,
   pickupResp,
   onManualRedeemSuccess,
-  onQrRedeemSuccess,
-  token,
-}) {
+  onQrRedeemSuccess: _onQrRedeemSuccess,
+}: PickupOperationsPanelProps) {
+  void _onQrRedeemSuccess;
+  const ord = currentOrder as (CheckoutCurrentOrder & Record<string, unknown>) | null;
+
   return (
     <section style={{ ...panelStyle, gap: 16 }}>
       <div>
@@ -38,16 +40,19 @@ export default function PickupOperationsPanel({
       </div>
 
       <PickupQRCodePanel
-        orderId={currentOrder?.order_id || ""}
-        token={token}
-        onRedeemSuccess={onQrRedeemSuccess}
+        region={String(ord?.region ?? "PT")}
+        lockerId={String(ord?.totem_id ?? "")}
+        pickupId={String(ord?.pickup_id ?? "")}
+        orderId={ord?.order_id ?? ""}
       />
 
       <ManualPickupPanel
-        orderId={currentOrder?.order_id || ""}
-        initialCode={currentOrder?.manual_code || ""}
-        token={token}
-        onRedeemSuccess={onManualRedeemSuccess}
+        region={String(ord?.region ?? "PT")}
+        lockerId={String(ord?.totem_id ?? "")}
+        apiBase="/api/op"
+        onRedeemed={(data: unknown) => {
+          void onManualRedeemSuccess(data as Record<string, unknown>);
+        }}
       />
 
       {pickupResp ? (

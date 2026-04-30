@@ -1,8 +1,7 @@
-// 01_source/frontend/src/features/locker-dashboard/components/LockerDashboardLayout.jsx
-
 import React from "react";
+import type { LockerDashboardLayoutProps } from "./lockerDashboardPanelProps";
 
-export default function LockerDashboardLayout({ children }) {
+export default function LockerDashboardLayout({ children }: LockerDashboardLayoutProps) {
   return (
     <main
       style={{

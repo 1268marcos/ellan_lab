@@ -420,7 +420,6 @@ export default function useLockerDashboardController({
       pickupResp: pickup.pickupResp,
       onManualRedeemSuccess: handleManualRedeemSuccess,
       onQrRedeemSuccess: handleQrRedeemSuccess,
-      token,
     }),
     [
       currentOrder,
@@ -430,7 +429,6 @@ export default function useLockerDashboardController({
       pickup.pickupResp,
       pickup.regenCodeLoading,
       pickup.regenerateManualCode,
-      token,
     ]
   );
 

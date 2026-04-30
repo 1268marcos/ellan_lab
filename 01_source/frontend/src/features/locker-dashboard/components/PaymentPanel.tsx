@@ -1,16 +1,13 @@
-// 01_source/frontend/src/features/locker-dashboard/components/PaymentPanel.jsx
-// 05/04/2026
-
 import React from "react";
 import {
   actionButtonStyle,
   fieldStyle,
   panelStyle,
 } from "../utils/dashboardUiStyles";
+import type { PaymentPanelProps } from "./lockerDashboardPanelProps";
 
-function paymentMethodLabel(method) {
-  // Mapeamento baseado nos codes do banco
-  const labels = {
+function paymentMethodLabel(method: string) {
+  const labels: Record<string, string> = {
     PIX: "PIX",
     CARTAO: "Cartão",
     CREDIT_CARD: "Cartão de Crédito",
@@ -30,13 +27,13 @@ function paymentMethodLabel(method) {
   return labels[method] || method || "-";
 }
 
-function isWalletPayment(paymentMethod) {
+function isWalletPayment(paymentMethod: string) {
   // Verifica se é wallet (is_wallet = true no banco)
   const walletMethods = ["MERCADO_PAGO_WALLET", "PAYPAL", "APPLE_PAY", "GOOGLE_PAY"];
   return walletMethods.includes(paymentMethod);
 }
 
-function isMBWayPayment(paymentMethod) {
+function isMBWayPayment(paymentMethod: string) {
   return paymentMethod === "MBWAY";
 }
 
@@ -68,7 +65,7 @@ export default function PaymentPanel({
   onConfirmPendingCustomerAction,
   pendingPaymentContext,
   currentOrder,
-}) {
+}: PaymentPanelProps) {
   const slotPriceText =
     Number.isFinite(Number(selectedSlotPriceCents)) && Number(selectedSlotPriceCents) > 0
       ? (Number(selectedSlotPriceCents) / 100).toFixed(2)
@@ -91,15 +88,14 @@ export default function PaymentPanel({
             onChange={(e) => setPayMethod(e.target.value)}
             style={selectStyle}
           >
-            {(availablePaymentMethods || []).map((method) => (
-              <option
-                key={method.code || method}
-                value={method.code || method}
-                style={optionStyle}
-              >
-                {paymentMethodLabel(method.code || method)}
-              </option>
-            ))}
+            {(availablePaymentMethods || []).map((method: string | { code: string }) => {
+              const code = typeof method === "string" ? method : method.code;
+              return (
+                <option key={code} value={code} style={optionStyle}>
+                  {paymentMethodLabel(code)}
+                </option>
+              );
+            })}
           </select>
         </label>
 
@@ -189,10 +185,10 @@ export default function PaymentPanel({
           }}
         >
           <b>Pagamento pendente de ação do cliente</b>
-          {"\n"}Método: {pendingPaymentContext.payment_method || "-"}
-          {"\n"}Instruction type: {pendingPaymentContext.instructionType || "-"}
-          {"\n"}Instruction: {pendingPaymentContext.instruction || "-"}
-          {"\n"}Transaction ID: {pendingPaymentContext.transaction_id || "-"}
+          {"\n"}Método: {String(pendingPaymentContext.payment_method ?? "-")}
+          {"\n"}Instruction type: {String(pendingPaymentContext.instructionType ?? "-")}
+          {"\n"}Instruction: {String(pendingPaymentContext.instruction ?? "-")}
+          {"\n"}Transaction ID: {String(pendingPaymentContext.transaction_id ?? "-")}
         </div>
       ) : null}
 

@@ -1,4 +1,4 @@
-// Barrel ESM: extensões explícitas (.ts hooks, .jsx componentes) — evita falha de resolução com lazy() / Vite.
+// Barrel ESM: extensões explícitas (.ts hooks, .tsx componentes) — evita falha de resolução com lazy() / Vite.
 
 export { default as useLockerRegistry } from "./hooks/useLockerRegistry.ts";
 export { default as useLockerSlotsSync } from "./hooks/useLockerSlotsSync.ts";
@@ -9,24 +9,24 @@ export { default as useOperationalPayment } from "./hooks/useOperationalPayment.
 export { default as useOperationalPickup } from "./hooks/useOperationalPickup.ts";
 export { default as useLockerDashboardController } from "./hooks/useLockerDashboardController.ts";
 
-export { default as SlotCard } from "./components/SlotCard.jsx";
-export { default as OrdersCardList } from "./components/OrdersCardList.jsx";
-export { default as OrdersTable } from "./components/OrdersTable.jsx";
-export { default as InfoRow } from "./components/InfoRow.jsx";
-export { default as Carousel } from "./components/Carousel.jsx";
-export { default as LockerSelectorCard } from "./components/LockerSelectorCard.jsx";
-export { default as LockerSlotsPanel } from "./components/LockerSlotsPanel.jsx";
-export { default as CurrentOrderCard } from "./components/CurrentOrderCard.jsx";
-export { default as PaymentPanel } from "./components/PaymentPanel.jsx";
-export { default as PaymentPendingPanel } from "./components/PaymentPendingPanel.jsx";
-export { default as PickupOperationsPanel } from "./components/PickupOperationsPanel.jsx";
-export { default as OperationalOrdersPanel } from "./components/OperationalOrdersPanel.jsx";
-export { default as LockerDashboardHeader } from "./components/LockerDashboardHeader.jsx";
-export { default as DashboardLegend } from "./components/DashboardLegend.jsx";
-export { default as SyncStatusBar } from "./components/SyncStatusBar.jsx";
-export { default as SlotSelectionBanner } from "./components/SlotSelectionBanner.jsx";
-export { default as FlowProgressPanel } from "./components/FlowProgressPanel.jsx";
-export { default as LockerDashboardLayout } from "./components/LockerDashboardLayout.jsx";
+export { default as SlotCard } from "./components/SlotCard.tsx";
+export { default as OrdersCardList } from "./components/OrdersCardList.tsx";
+export { default as OrdersTable } from "./components/OrdersTable.tsx";
+export { default as InfoRow } from "./components/InfoRow.tsx";
+export { default as Carousel } from "./components/Carousel.tsx";
+export { default as LockerSelectorCard } from "./components/LockerSelectorCard.tsx";
+export { default as LockerSlotsPanel } from "./components/LockerSlotsPanel.tsx";
+export { default as CurrentOrderCard } from "./components/CurrentOrderCard.tsx";
+export { default as PaymentPanel } from "./components/PaymentPanel.tsx";
+export { default as PaymentPendingPanel } from "./components/PaymentPendingPanel.tsx";
+export { default as PickupOperationsPanel } from "./components/PickupOperationsPanel.tsx";
+export { default as OperationalOrdersPanel } from "./components/OperationalOrdersPanel.tsx";
+export { default as LockerDashboardHeader } from "./components/LockerDashboardHeader.tsx";
+export { default as DashboardLegend } from "./components/DashboardLegend.tsx";
+export { default as SyncStatusBar } from "./components/SyncStatusBar.tsx";
+export { default as SlotSelectionBanner } from "./components/SlotSelectionBanner.tsx";
+export { default as FlowProgressPanel } from "./components/FlowProgressPanel.tsx";
+export { default as LockerDashboardLayout } from "./components/LockerDashboardLayout.tsx";
 
 export * from "./utils/dashboardConstants";
 export * from "./utils/dashboardFormatters";

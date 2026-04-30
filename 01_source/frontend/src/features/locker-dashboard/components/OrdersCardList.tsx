@@ -1,5 +1,3 @@
-// 01_source/frontend/src/features/locker-dashboard/components/OrdersCardList.jsx
-
 import React from "react";
 import {
   CHANNEL_META,
@@ -10,13 +8,14 @@ import {
   statusBadgeStyle,
 } from "../utils/dashboardOrderUtils";
 import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
+import type { OrdersCardListProps, OrdersRow } from "./lockerDashboardPanelProps";
 
 export default function OrdersCardList({
   ordersData,
   ordersLoading,
   currentOrder,
   onSelectOrder,
-}) {
+}: OrdersCardListProps) {
   if (ordersLoading) {
     return <div style={{ fontSize: 12, opacity: 0.75 }}>Carregando pedidos...</div>;
   }
@@ -27,24 +26,29 @@ export default function OrdersCardList({
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      {ordersData.map((item) => {
+      {ordersData.map((item: OrdersRow) => {
         const highlight = getOperationalRowHighlight(item);
+        const orderId = String(item.order_id ?? "");
+        const channelKey = String(item.channel ?? "");
+        const pickupKey = String(item.pickup_status ?? "");
+        const allocKey = String(item.allocation_state ?? "");
+        const statusStr = String(item.status ?? "");
 
         return (
           <button
-            key={item.order_id}
+            key={orderId}
             onClick={() => onSelectOrder(item)}
             style={{
               textAlign: "left",
               padding: 10,
               borderRadius: 12,
               border:
-                currentOrder?.order_id === item.order_id
+                currentOrder?.order_id === orderId
                   ? "1px solid rgba(255,255,255,0.38)"
                   : "1px solid rgba(255,255,255,0.12)",
               borderLeft: highlight.borderLeft,
               background:
-                currentOrder?.order_id === item.order_id
+                currentOrder?.order_id === orderId
                   ? "rgba(27,88,131,0.28)"
                   : item.status === "EXPIRED" || item.status === "EXPIRED_CREDIT_50"
                     ? "rgba(179,38,30,0.10)"
@@ -65,7 +69,7 @@ export default function OrdersCardList({
                 flexWrap: "wrap",
               }}
             >
-              <div style={{ fontWeight: 700 }}>{item.order_id}</div>
+              <div style={{ fontWeight: 700 }}>{orderId}</div>
 
               <div
                 style={{
@@ -75,19 +79,24 @@ export default function OrdersCardList({
                   alignItems: "center",
                 }}
               >
-                {item.channel ? (
-                  <span style={genericBadgeStyle(CHANNEL_META[item.channel])}>
-                    {CHANNEL_META[item.channel]?.label || item.channel}
+                {channelKey ? (
+                  <span
+                    style={genericBadgeStyle(
+                      CHANNEL_META[channelKey as keyof typeof CHANNEL_META]
+                    )}
+                  >
+                    {CHANNEL_META[channelKey as keyof typeof CHANNEL_META]?.label || channelKey}
                   </span>
                 ) : null}
 
-                <span style={statusBadgeStyle(item.status)}>{item.status}</span>
+                <span style={statusBadgeStyle(statusStr)}>{statusStr}</span>
               </div>
             </div>
 
             <div style={{ fontSize: 12, opacity: 0.85 }}>
-              Locker: <b>{item.locker_id || item.totem_id || "-"}</b> • Slot:{" "}
-              <b>{item.slot ?? "-"}</b> • Valor: <b>{formatPlainMoney(item.amount_cents)}</b>
+              Locker: <b>{String(item.locker_id ?? item.totem_id ?? "-")}</b> • Slot:{" "}
+              <b>{item.slot != null ? String(item.slot) : "-"}</b> • Valor:{" "}
+              <b>{formatPlainMoney(Number(item.amount_cents))}</b>
             </div>
 
             <div
@@ -99,33 +108,49 @@ export default function OrdersCardList({
               }}
             >
               <div style={{ fontSize: 12, opacity: 0.72 }}>
-                Método: <b>{item.payment_method || "-"}</b> • Pickup: <b>{item.pickup_id || "-"}</b>
+                Método: <b>{String(item.payment_method ?? "-")}</b> • Pickup:{" "}
+                <b>{String(item.pickup_id ?? "-")}</b>
               </div>
 
-              {item.pickup_status ? (
-                <span style={genericBadgeStyle(PICKUP_STATUS_META[item.pickup_status])}>
-                  {PICKUP_STATUS_META[item.pickup_status]?.label || item.pickup_status}
+              {pickupKey ? (
+                <span
+                  style={genericBadgeStyle(
+                    PICKUP_STATUS_META[pickupKey as keyof typeof PICKUP_STATUS_META]
+                  )}
+                >
+                  {PICKUP_STATUS_META[pickupKey as keyof typeof PICKUP_STATUS_META]?.label ||
+                    pickupKey}
                 </span>
               ) : null}
 
-              {item.allocation_state ? (
-                <span style={genericBadgeStyle(ALLOCATION_STATUS_META[item.allocation_state])}>
-                  {ALLOCATION_STATUS_META[item.allocation_state]?.label || item.allocation_state}
+              {allocKey ? (
+                <span
+                  style={genericBadgeStyle(
+                    ALLOCATION_STATUS_META[allocKey as keyof typeof ALLOCATION_STATUS_META]
+                  )}
+                >
+                  {ALLOCATION_STATUS_META[allocKey as keyof typeof ALLOCATION_STATUS_META]?.label ||
+                    allocKey}
                 </span>
               ) : null}
             </div>
 
             <div style={{ fontSize: 11, opacity: 0.62 }}>
-              Criado: {formatDateTime(item.created_at, item.region)}
+              Criado: {formatDateTime(String(item.created_at ?? ""), String(item.region ?? "PT"))}
             </div>
 
             <div style={{ fontSize: 11, opacity: 0.62 }}>
-              Pago: {formatDateTime(item.paid_at, item.region)} • Retirado:{" "}
-              {formatDateTime(item.picked_up_at, item.region)}
+              Pago: {formatDateTime(String(item.paid_at ?? ""), String(item.region ?? "PT"))} •
+              Retirado:{" "}
+              {formatDateTime(String(item.picked_up_at ?? ""), String(item.region ?? "PT"))}
             </div>
 
             <div style={{ fontSize: 11, opacity: 0.62 }}>
-              Expira em: {formatDateTime(item.expires_at || item.pickup_deadline_at, item.region)}
+              Expira em:{" "}
+              {formatDateTime(
+                String(item.expires_at || item.pickup_deadline_at || ""),
+                String(item.region ?? "PT")
+              )}
             </div>
           </button>
         );

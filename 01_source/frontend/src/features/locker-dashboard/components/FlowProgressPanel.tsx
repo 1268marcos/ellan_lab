@@ -1,7 +1,6 @@
-// 01_source/frontend/src/features/locker-dashboard/components/FlowProgressPanel.jsx
-
 import React from "react";
 import { panelStyle } from "../utils/dashboardUiStyles";
+import type { FlowProgressPanelProps } from "./lockerDashboardPanelProps";
 
 const stepBaseStyle = {
   borderRadius: 10,
@@ -10,7 +9,7 @@ const stepBaseStyle = {
   fontSize: 12,
 };
 
-function getStepStyle(state) {
+function getStepStyle(state: string) {
   if (state === "done") {
     return {
       ...stepBaseStyle,
@@ -38,7 +37,7 @@ export default function FlowProgressPanel({
   steps = [],
   actionHint = "",
   onStepClick,
-}) {
+}: FlowProgressPanelProps) {
   if (!steps.length) return null;
 
   return (

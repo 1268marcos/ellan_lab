@@ -1,13 +1,12 @@
-// 01_source/frontend/src/features/locker-dashboard/components/SyncStatusBar.jsx
-
 import React from "react";
+import type { SyncStatusBarProps } from "./lockerDashboardPanelProps";
 
 export default function SyncStatusBar({
   selectedLocker,
   syncStatus,
   syncEnabled,
   onToggleSync,
-}) {
+}: SyncStatusBarProps) {
   return (
     <section
       style={{

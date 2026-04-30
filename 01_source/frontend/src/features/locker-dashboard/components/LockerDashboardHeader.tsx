@@ -1,6 +1,5 @@
-// 01_source/frontend/src/features/locker-dashboard/components/LockerDashboardHeader.jsx
-
 import React from "react";
+import type { LockerDashboardHeaderProps } from "./lockerDashboardPanelProps";
 import OpsPageTitleHeader from "../../../components/OpsPageTitleHeader";
 
 export default function LockerDashboardHeader({
@@ -10,7 +9,7 @@ export default function LockerDashboardHeader({
   syncEnabled,
   setSyncEnabled,
   syncStatus,
-}) {
+}: LockerDashboardHeaderProps) {
   return (
     <section
       style={{

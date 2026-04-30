@@ -1,14 +1,13 @@
-// 01_source/frontend/src/features/locker-dashboard/components/PaymentPendingPanel.jsx
-
 import React from "react";
 import { formatEpochDateTime } from "../utils/dashboardFormatters";
+import type { PaymentPendingPanelProps } from "./lockerDashboardPanelProps";
 
 export default function PaymentPendingPanel({
   pendingPaymentContext,
   region = "PT",
   onConfirm,
   loading = false,
-}) {
+}: PaymentPendingPanelProps) {
   if (!pendingPaymentContext) return null;
 
   return (
@@ -31,22 +30,22 @@ export default function PaymentPendingPanel({
 
       <div style={{ display: "grid", gap: 8, fontSize: 13 }}>
         <div>
-          <b>Pedido:</b> {pendingPaymentContext.order_id || "-"}
+          <b>Pedido:</b> {String(pendingPaymentContext.order_id ?? "-")}
         </div>
         <div>
-          <b>Locker:</b> {pendingPaymentContext.locker_id || "-"}
+          <b>Locker:</b> {String(pendingPaymentContext.locker_id ?? "-")}
         </div>
         <div>
-          <b>Método:</b> {pendingPaymentContext.payment_method || "-"}
+          <b>Método:</b> {String(pendingPaymentContext.payment_method ?? "-")}
         </div>
         <div>
-          <b>Instruction type:</b> {pendingPaymentContext.instructionType || "-"}
+          <b>Instruction type:</b> {String(pendingPaymentContext.instructionType ?? "-")}
         </div>
         <div>
-          <b>Instruction:</b> {pendingPaymentContext.instruction || "-"}
+          <b>Instruction:</b> {String(pendingPaymentContext.instruction ?? "-")}
         </div>
         <div>
-          <b>Transaction ID:</b> {pendingPaymentContext.transaction_id || "-"}
+          <b>Transaction ID:</b> {String(pendingPaymentContext.transaction_id ?? "-")}
         </div>
         <div>
           <b>Expira em:</b>{" "}
@@ -67,7 +66,7 @@ export default function PaymentPendingPanel({
           >
             <b>Código copia e cola:</b>
             <div style={{ marginTop: 6, fontFamily: "monospace", fontSize: 12 }}>
-              {pendingPaymentContext.copyPasteCode}
+              {String(pendingPaymentContext.copyPasteCode)}
             </div>
           </div>
         ) : null}

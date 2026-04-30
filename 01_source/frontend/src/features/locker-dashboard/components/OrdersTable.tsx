@@ -1,14 +1,14 @@
-// 01_source/frontend/src/features/locker-dashboard/components/OrdersTable.jsx
-
+import type { CSSProperties } from "react";
 import React from "react";
 import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
+import type { OrdersRow, OrdersTableProps } from "./lockerDashboardPanelProps";
 
 export default function OrdersTable({
   ordersData,
   currentOrder,
   onSelectOrder,
   maxHeight = 484,
-}) {
+}: OrdersTableProps) {
   if (!ordersData?.length) {
     return (
       <div style={{ fontSize: 12, opacity: 0.75 }}>
@@ -47,26 +47,29 @@ export default function OrdersTable({
           </tr>
         </thead>
         <tbody>
-          {ordersData.map((item) => {
-            const selected = currentOrder?.order_id === item.order_id;
+          {ordersData.map((item: OrdersRow) => {
+            const oid = String(item.order_id ?? "");
+            const selected = currentOrder?.order_id === oid;
 
             return (
               <tr
-                key={item.order_id}
+                key={oid}
                 onClick={() => onSelectOrder?.(item)}
                 style={{
                   cursor: "pointer",
                   background: selected ? "rgba(27,88,131,0.22)" : "transparent",
                 }}
               >
-                <td style={tdStyle}>{item.order_id}</td>
-                <td style={tdStyle}>{item.channel || "-"}</td>
-                <td style={tdStyle}>{item.locker_id || item.totem_id || "-"}</td>
-                <td style={tdStyle}>{item.slot ?? "-"}</td>
-                <td style={tdStyle}>{item.status || "-"}</td>
-                <td style={tdStyle}>{formatPlainMoney(item.amount_cents)}</td>
-                <td style={tdStyle}>{item.payment_method || "-"}</td>
-                <td style={tdStyle}>{formatDateTime(item.created_at, item.region)}</td>
+                <td style={tdStyle}>{oid}</td>
+                <td style={tdStyle}>{String(item.channel ?? "-")}</td>
+                <td style={tdStyle}>{String(item.locker_id ?? item.totem_id ?? "-")}</td>
+                <td style={tdStyle}>{item.slot != null ? String(item.slot) : "-"}</td>
+                <td style={tdStyle}>{String(item.status ?? "-")}</td>
+                <td style={tdStyle}>{formatPlainMoney(Number(item.amount_cents))}</td>
+                <td style={tdStyle}>{String(item.payment_method ?? "-")}</td>
+                <td style={tdStyle}>
+                  {formatDateTime(String(item.created_at ?? ""), String(item.region ?? "PT"))}
+                </td>
               </tr>
             );
           })}
@@ -76,7 +79,7 @@ export default function OrdersTable({
   );
 }
 
-const thStyle = {
+const thStyle: CSSProperties = {
   textAlign: "left",
   padding: "10px 12px",
   borderBottom: "1px solid rgba(255,255,255,0.12)",
@@ -84,7 +87,7 @@ const thStyle = {
   whiteSpace: "nowrap",
 };
 
-const tdStyle = {
+const tdStyle: CSSProperties = {
   padding: "10px 12px",
   borderBottom: "1px solid rgba(255,255,255,0.08)",
   whiteSpace: "nowrap",

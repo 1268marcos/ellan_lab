@@ -1,8 +1,9 @@
-// 01_source/frontend/src/features/locker-dashboard/components/LockerSlotsPanel.jsx
-
 import React from "react";
-import Carousel from "./Carousel.jsx";
-import SlotCard from "./SlotCard.jsx";
+import { DEFAULT_SLOT_STATE } from "../utils/dashboardConstants";
+import type { SlotRowState } from "../utils/dashboardSlotUtils";
+import Carousel from "./Carousel";
+import SlotCard from "./SlotCard";
+import type { LockerSlotsPanelProps } from "./lockerDashboardPanelProps";
 
 export default function LockerSlotsPanel({
   totalSlots,
@@ -14,7 +15,7 @@ export default function LockerSlotsPanel({
   onSelectSlot,
   hasActiveSlotSelection,
   slotSelectionRemainingSec,
-}) {
+}: LockerSlotsPanelProps) {
   const totalGroups = Math.max(1, Math.ceil(Number(totalSlots || 0) / 4));
 
   return (
@@ -66,7 +67,10 @@ export default function LockerSlotsPanel({
         }}
       >
         {groupSlotsList.map((slot) => {
-          const slotData = slots[slot] || { state: "AVAILABLE" };
+          const slotData: SlotRowState = slots[slot] ?? {
+            slot,
+            ...DEFAULT_SLOT_STATE,
+          };
           const existsInLocker = slot <= totalSlots;
 
           return (

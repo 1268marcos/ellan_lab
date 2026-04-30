@@ -1,6 +1,5 @@
-// 01_source/frontend/src/features/locker-dashboard/components/Carousel.jsx
-
 import React from "react";
+import type { CarouselProps } from "./lockerDashboardPanelProps";
 
 const btnSmall = {
   padding: "7px 10px",
@@ -11,7 +10,7 @@ const btnSmall = {
   cursor: "pointer",
 };
 
-export default function Carousel({ pages, activeIndex, onPrev, onNext, onGo }) {
+export default function Carousel({ pages, activeIndex, onPrev, onNext, onGo }: CarouselProps) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
