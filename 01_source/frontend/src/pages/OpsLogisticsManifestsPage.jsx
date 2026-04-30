@@ -3,6 +3,7 @@ import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
+import { formatOpsTimeShort } from "../utils/opsDateTimeFormat";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const ACTION_STATUS_STORAGE_KEY = "ops_logistics_manifests:action_status_v1";
@@ -74,7 +75,7 @@ export default function OpsLogisticsManifestsPage() {
       ...prev,
       [actionKey]: {
         status,
-        at: new Date().toLocaleTimeString("pt-BR"),
+        at: formatOpsTimeShort(new Date()),
         note,
       },
     }));

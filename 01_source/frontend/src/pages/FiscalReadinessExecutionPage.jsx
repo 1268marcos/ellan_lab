@@ -109,9 +109,15 @@ export default function FiscalReadinessExecutionPage() {
   async function copyExecutionHandoff() {
     const brLine = formatBrPtHandoffLine("BR", brPtSnapshot.BR);
     const ptLine = formatBrPtHandoffLine("PT", brPtSnapshot.PT);
+    const total = Number(rows.length || 0);
+    const passed = Number(counts.DONE || 0);
+    const failed = Number((counts.TODO || 0) + (counts.IN_PROGRESS || 0));
     const text = [
       `[FG-1 readiness execution] ${new Date().toISOString()}`,
-      `decision=${String(actionPlan?.decision || "-")}`,
+      `Decisão consolidada: ${String(actionPlan?.decision || "-")}`,
+      `Checks PASS: ${passed}/${total}`,
+      `Checks com falha: ${failed} / ${total}`,
+      `Referência: plan_version=${String(actionPlan?.plan_version || "-")}`,
       `status_counts TODO=${counts.TODO} IN_PROGRESS=${counts.IN_PROGRESS} DONE=${counts.DONE}`,
       `Trilha B: ${brLine}`,
       `Trilha B: ${ptLine}`,

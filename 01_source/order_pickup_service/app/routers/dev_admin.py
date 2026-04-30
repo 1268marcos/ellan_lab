@@ -21,6 +21,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -37,6 +38,10 @@ from app.schemas.dev_admin import (
     DevOrderStatusAuditPagedOut,
     DevOpsAuditItemOut,
     DevOpsAuditListOut,
+    DevUiErrorItemOut,
+    DevUiErrorPagedOut,
+    DevUiErrorSummaryBucketOut,
+    DevUiErrorSummaryOut,
     DevOpsMetricsOut,
     DevOpsPredictiveSnapshotIn,
     DevOpsPredictiveSnapshotOut,
@@ -331,6 +336,141 @@ def _collect_orders_status_audit(
         )
 
     return items[:limit], len(candidate_orders)
+
+
+@router.get("/ui-errors", response_model=DevUiErrorPagedOut)
+def list_ui_errors(
+    domain: str | None = Query(default=None, description="Filtro opcional por domínio"),
+    path: str | None = Query(default=None, description="Filtro opcional por path exato"),
+    limit: int = Query(default=50, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    where_clauses: list[str] = []
+    params: dict[str, Any] = {}
+
+    if domain:
+        where_clauses.append("domain = :domain")
+        params["domain"] = domain
+    if path:
+        where_clauses.append("path = :path")
+        params["path"] = path
+
+    where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+    count_sql = f"SELECT COUNT(*) AS total FROM ui_error_events {where_sql}"
+    rows_sql = (
+        "SELECT id, event_id, domain, path, message, trace_id, source_ip, event_created_at, created_at "
+        f"FROM ui_error_events {where_sql} "
+        "ORDER BY created_at DESC, id DESC "
+        "LIMIT :limit OFFSET :offset"
+    )
+
+    count_row = db.execute(text(count_sql), params).mappings().first()
+    total = int(count_row["total"] or 0) if count_row else 0
+
+    rows_params = {**params, "limit": limit, "offset": offset}
+    rows = db.execute(text(rows_sql), rows_params).mappings().all()
+
+    items = [
+        DevUiErrorItemOut(
+            id=str(row.get("id") or ""),
+            event_id=str(row.get("event_id") or ""),
+            domain=str(row.get("domain") or ""),
+            path=str(row.get("path") or ""),
+            message=str(row.get("message") or ""),
+            trace_id=str(row.get("trace_id")) if row.get("trace_id") is not None else None,
+            source_ip=str(row.get("source_ip")) if row.get("source_ip") is not None else None,
+            event_created_at=to_iso_utc(row.get("event_created_at")),
+            created_at=to_iso_utc(row.get("created_at")),
+        )
+        for row in rows
+    ]
+
+    return DevUiErrorPagedOut(
+        ok=True,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=(offset + limit) < total,
+        items=items,
+    )
+
+
+@router.get("/ui-errors/summary", response_model=DevUiErrorSummaryOut)
+def get_ui_errors_summary(
+    lookback_hours: int = Query(default=24, ge=1, le=24 * 30),
+    top_n: int = Query(default=5, ge=1, le=20),
+    db: Session = Depends(get_db),
+):
+    total_row = db.execute(
+        text(
+            """
+            SELECT COUNT(*) AS total
+            FROM ui_error_events
+            WHERE created_at >= (NOW() - (:lookback_hours * INTERVAL '1 hour'))
+            """
+        ),
+        {"lookback_hours": lookback_hours},
+    ).mappings().first()
+    total_events = int(total_row["total"] or 0) if total_row else 0
+
+    domain_rows = db.execute(
+        text(
+            """
+            SELECT COALESCE(NULLIF(domain, ''), 'unknown') AS key, COUNT(*) AS count
+            FROM ui_error_events
+            WHERE created_at >= (NOW() - (:lookback_hours * INTERVAL '1 hour'))
+            GROUP BY 1
+            ORDER BY count DESC, key ASC
+            LIMIT :top_n
+            """
+        ),
+        {"lookback_hours": lookback_hours, "top_n": top_n},
+    ).mappings().all()
+    path_rows = db.execute(
+        text(
+            """
+            SELECT COALESCE(NULLIF(path, ''), 'unknown') AS key, COUNT(*) AS count
+            FROM ui_error_events
+            WHERE created_at >= (NOW() - (:lookback_hours * INTERVAL '1 hour'))
+            GROUP BY 1
+            ORDER BY count DESC, key ASC
+            LIMIT :top_n
+            """
+        ),
+        {"lookback_hours": lookback_hours, "top_n": top_n},
+    ).mappings().all()
+    message_rows = db.execute(
+        text(
+            """
+            SELECT COALESCE(NULLIF(message, ''), 'unknown') AS key, COUNT(*) AS count
+            FROM ui_error_events
+            WHERE created_at >= (NOW() - (:lookback_hours * INTERVAL '1 hour'))
+            GROUP BY 1
+            ORDER BY count DESC, key ASC
+            LIMIT :top_n
+            """
+        ),
+        {"lookback_hours": lookback_hours, "top_n": top_n},
+    ).mappings().all()
+
+    return DevUiErrorSummaryOut(
+        ok=True,
+        lookback_hours=lookback_hours,
+        total_events=total_events,
+        by_domain=[
+            DevUiErrorSummaryBucketOut(key=str(row.get("key") or "unknown"), count=int(row.get("count") or 0))
+            for row in domain_rows
+        ],
+        by_path=[
+            DevUiErrorSummaryBucketOut(key=str(row.get("key") or "unknown"), count=int(row.get("count") or 0))
+            for row in path_rows
+        ],
+        by_message=[
+            DevUiErrorSummaryBucketOut(key=str(row.get("key") or "unknown"), count=int(row.get("count") or 0))
+            for row in message_rows
+        ],
+    )
 
 
 def _safe_record_ops_audit(

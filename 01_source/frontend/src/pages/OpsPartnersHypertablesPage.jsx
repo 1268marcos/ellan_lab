@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -102,7 +103,7 @@ Referencia completa:
         throw new Error(parseApiError(data, "Falha ao carregar status de hypertables."));
       }
       setPayload(data || null);
-      setLastUpdatedAt(new Date().toLocaleString("pt-BR"));
+      setLastUpdatedAt(formatOpsDateTime(new Date()));
     } catch (err) {
       const raw = String(err?.message || err || "Erro desconhecido");
       if (lastHttpStatus === null) {

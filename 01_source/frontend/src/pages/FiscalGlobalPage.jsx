@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { strToU8, zipSync } from "fflate";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl, FISCAL_API_GROUPS } from "../constants/fiscalApiCatalog";
 
@@ -26,6 +27,31 @@ function getStubReadinessStats(report) {
   };
 }
 
+function downloadJsonFile(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
+function downloadZipFile(filename, filesMap) {
+  const zipped = zipSync(filesMap, { level: 6 });
+  const blob = new Blob([zipped], { type: "application/zip" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
 export default function FiscalGlobalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -37,6 +63,7 @@ export default function FiscalGlobalPage() {
   const [fg1StubReadiness, setFg1StubReadiness] = useState(null);
   const [apiMethodFilter, setApiMethodFilter] = useState("ALL");
   const [apiGroupFilter, setApiGroupFilter] = useState("ALL");
+  const [managementCopyStatus, setManagementCopyStatus] = useState("");
 
   async function loadGlobalFiscalData() {
     if (!INTERNAL_TOKEN) {
@@ -112,6 +139,116 @@ export default function FiscalGlobalPage() {
     return { ...group, endpoints };
   }).filter(Boolean);
 
+  async function copyFiscalManagementPayloadJson() {
+    try {
+      const readinessStats = getStubReadinessStats(fg1StubReadiness);
+      const countriesNotReady = Number(fg1StubReadiness?.countries_not_ready || 0);
+      const decision = String(fg1StubReadiness?.decision || "NO_GO").toUpperCase();
+      const riskLevel = decision === "GO" ? "LOW" : countriesNotReady >= 2 ? "HIGH" : "MEDIUM";
+      const actions = [];
+      if (decision !== "GO") {
+        actions.push("priorizar_paises_bloqueados_no_readiness_execution");
+        actions.push("executar_handoff_orchestrator_e_revalidar_gates");
+      } else {
+        actions.push("manter_ritmo_diario_de_orquestrador");
+        actions.push("monitorar_desvio_de_checks_no_turno");
+      }
+      const nowIso = new Date().toISOString();
+      const payload = {
+        scope: "FISCAL_MANAGEMENT_DAILY",
+        generated_at: nowIso,
+        decision_consolidated: decision,
+        risk_level: riskLevel,
+        checks_pass: `${readinessStats.passed}/${readinessStats.total}`,
+        checks_failed: readinessStats.failed,
+        reference: {
+          readiness_version: String(fg1StubReadiness?.readiness_version || "-"),
+          catalog_count: Number(catalog?.count || 0),
+          scenario_matrix_count: Number(matrix?.count || 0),
+          fixture_matrix_count: Number(fg1Fixtures?.count || 0),
+          adapter_count: Number(fg1Adapters?.count || 0),
+          countries_not_ready: countriesNotReady,
+        },
+        practical_actions: actions,
+      };
+      const text = JSON.stringify(payload, null, 2);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      const ts = nowIso.replace(/[:.]/g, "-");
+      downloadJsonFile(`fiscal_management_daily_payload_${ts}.json`, payload);
+      setManagementCopyStatus("Payload executivo FISCAL (JSON) copiado e baixado.");
+      window.setTimeout(() => setManagementCopyStatus(""), 2500);
+    } catch (err) {
+      setManagementCopyStatus(`Falha ao copiar payload executivo: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function downloadDailyPackageZipFromFiscalGlobal() {
+    try {
+      if (!fg1StubReadiness) {
+        setManagementCopyStatus("Readiness FG-1 indisponível para gerar pacote diário.");
+        window.setTimeout(() => setManagementCopyStatus(""), 2500);
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const readinessStats = getStubReadinessStats(fg1StubReadiness);
+      const countriesNotReady = Number(fg1StubReadiness?.countries_not_ready || 0);
+      const decision = String(fg1StubReadiness?.decision || "NO_GO").toUpperCase();
+      const riskLevel = decision === "GO" ? "LOW" : countriesNotReady >= 2 ? "HIGH" : "MEDIUM";
+      const fiscalPayload = {
+        scope: "FISCAL_MANAGEMENT_DAILY",
+        generated_at: nowIso,
+        decision_consolidated: decision,
+        risk_level: riskLevel,
+        checks_pass: `${readinessStats.passed}/${readinessStats.total}`,
+        checks_failed: readinessStats.failed,
+        reference: {
+          readiness_version: String(fg1StubReadiness?.readiness_version || "-"),
+          catalog_count: Number(catalog?.count || 0),
+          scenario_matrix_count: Number(matrix?.count || 0),
+          fixture_matrix_count: Number(fg1Fixtures?.count || 0),
+          adapter_count: Number(fg1Adapters?.count || 0),
+          countries_not_ready: countriesNotReady,
+        },
+      };
+      const opsPayload = {
+        scope: "OPS_HEALTH_DAILY",
+        generated_at: nowIso,
+        decision,
+        checks_pass: `${readinessStats.passed}/${readinessStats.total}`,
+        checks_failed: readinessStats.failed,
+        source: "fiscal/global",
+        note: "Pacote diário gerado a partir do contexto fiscal consolidado.",
+        failed_checks: (readinessStats.checks || [])
+          .filter((check) => String(check?.status || "").toUpperCase() !== "PASS")
+          .map((check) => ({
+            code: String(check?.name || "-"),
+            detail: String(check?.status || "-"),
+          })),
+      };
+      const ts = nowIso.replace(/[:.]/g, "-");
+      downloadZipFile(`daily_management_package_${ts}.zip`, {
+        [`ops_health_daily_payload_${ts}.json`]: strToU8(JSON.stringify(opsPayload, null, 2)),
+        [`fiscal_management_daily_payload_${ts}.json`]: strToU8(JSON.stringify(fiscalPayload, null, 2)),
+      });
+      setManagementCopyStatus("Pacote diário (.zip) baixado com payload OPS + FISCAL.");
+      window.setTimeout(() => setManagementCopyStatus(""), 2500);
+    } catch (err) {
+      setManagementCopyStatus(`Falha ao baixar pacote diário: ${String(err?.message || err)}`);
+    }
+  }
+
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
@@ -145,7 +282,14 @@ export default function FiscalGlobalPage() {
           <button type="button" onClick={() => void loadGlobalFiscalData()} style={buttonStyle} disabled={loading}>
             {loading ? "Atualizando..." : "Atualizar"}
           </button>
+          <button type="button" onClick={() => void copyFiscalManagementPayloadJson()} style={buttonStyle} disabled={!fg1StubReadiness}>
+            Copiar payload executivo FISCAL (JSON)
+          </button>
+          <button type="button" onClick={() => void downloadDailyPackageZipFromFiscalGlobal()} style={buttonStyle} disabled={!fg1StubReadiness}>
+            Baixar pacote diário (.zip)
+          </button>
         </div>
+        {managementCopyStatus ? <small style={mutedTextStyle}>{managementCopyStatus}</small> : null}
 
         {error ? <div style={errorStyle}>{error}</div> : null}
         {!error && fg1Warning ? <div style={warningStyle}>{fg1Warning}</div> : null}

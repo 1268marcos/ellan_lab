@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
@@ -190,7 +191,7 @@ export default function OpsPartnersBillingMonitoringPage() {
       setAuditRows(nextAudit);
       setKpiDailyRows(Array.isArray(nextKpiDaily?.items) ? nextKpiDaily.items : []);
       setRevRecRows(Array.isArray(nextRevRec?.items) ? nextRevRec.items : []);
-      setLastUpdatedAt(new Date().toLocaleString("pt-BR"));
+      setLastUpdatedAt(formatOpsDateTime(new Date()));
     } catch (err) {
       setError(String(err?.message || err || "Erro desconhecido"));
     } finally {

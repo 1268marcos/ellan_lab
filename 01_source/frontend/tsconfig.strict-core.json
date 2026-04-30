@@ -1,0 +1,33 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "allowJs": false,
+    "checkJs": false
+  },
+  "include": [
+    "src/components/DomainErrorBoundary.tsx",
+    "src/services/errorTelemetry.ts",
+    "src/store/useCheckoutStore.ts",
+    "src/features/checkout/types.ts",
+    "src/features/kiosk/types.ts",
+    "src/features/ops/types.ts",
+    "src/features/ops/triageGovernance.ts",
+    "src/features/ops/ticketLookup.ts",
+    "src/features/ops/macroHistory.ts",
+    "src/features/ops/triageDraft.ts",
+    "src/types/opsLegacyModules.d.ts",
+    "src/context/AuthContext.tsx",
+    "src/components/opsVisualTokens.ts",
+    "src/components/OpsRouteHelpButton.tsx",
+    "src/components/OpsTrendKpiCard.tsx",
+    "src/components/OpsPageTitleHeader.tsx",
+    "src/utils/opsDateTimeFormat.ts",
+    "src/pages/OpsDevErrorsPageBody.tsx",
+    "src/pages/OpsDevErrorsPage.tsx",
+    "src/vite-env.d.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

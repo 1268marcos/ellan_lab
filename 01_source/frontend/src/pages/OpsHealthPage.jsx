@@ -1,11 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { strToU8, zipSync } from "fflate";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getDataQualityFlagStyle, getSeverityBadgeStyle, getConfidenceBadgeStyle } from "../components/opsVisualTokens";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
+import { formatOpsDateTime, formatOpsTimeShort } from "../utils/opsDateTimeFormat";
 import { FISCAL_SCOPE_GATE_PANEL_TITLE, FISCAL_SCOPE_QUICK_ACTIONS_TITLE } from "../constants/fiscalScope";
 
 const ORDER_PICKUP_BASE =
@@ -20,6 +22,7 @@ const OPS_HEALTH_COLLAPSE_PREF_KEY = "ops_health:collapse_state:v1";
 const OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY = "ops_health:line_chart_grid_mode:v1";
 const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
 const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.5-sprint5";
+const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
 const OPS_HEALTH_PERSONAS = [
   { value: "ops", label: "Ops" },
   { value: "dev", label: "Dev" },
@@ -287,6 +290,45 @@ function appendWindowParamsToPath(path, metrics, lookbackHours) {
   return encoded ? `${basePath}?${encoded}` : basePath;
 }
 
+function downloadJsonFile(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = window.URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  window.URL.revokeObjectURL(url);
+}
+
+function toAuditDayStamp(isoString) {
+  return String(isoString || "").slice(0, 10).replaceAll("-", "");
+}
+
+async function computeSha256Hex(content) {
+  const input = String(content || "");
+  if (!window?.crypto?.subtle) return "UNAVAILABLE";
+  const bytes = new TextEncoder().encode(input);
+  const digest = await window.crypto.subtle.digest("SHA-256", bytes);
+  const hex = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  return hex;
+}
+
+async function buildSignedPayload(payload) {
+  const payloadJson = JSON.stringify(payload, null, 2);
+  const sha256 = await computeSha256Hex(payloadJson);
+  return {
+    integrity: {
+      algorithm: "SHA-256",
+      content_sha256: sha256,
+    },
+    payload,
+  };
+}
+
 function resolveAlertInvestigateLink(alert, metrics, lookbackHours) {
   const raw = String(alert?.investigate_url || "").trim();
   if (raw.startsWith("/")) return appendWindowParamsToPath(raw, metrics, lookbackHours);
@@ -364,7 +406,7 @@ function toBrDateTime(value) {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return String(value);
-  return parsed.toLocaleString("pt-BR");
+  return formatOpsDateTime(parsed);
 }
 
 function buildRunbookClipboardText(alert, metrics) {
@@ -377,7 +419,7 @@ function buildRunbookClipboardText(alert, metrics) {
   const value = alert?.value ?? "-";
   const threshold = alert?.threshold ?? "-";
   const source = "ELLAN LAB > Contexto Ops > OPS - Saúde Operacional";
-  const generatedAt = new Date().toLocaleString("pt-BR");
+  const generatedAt = formatOpsDateTime(new Date());
   const alertCode = code || "ALERTA_OPERACIONAL";
   const alertMessage = alert?.message || "Alerta operacional detectado.";
   const impact = alert?.impact || "Impacto ainda não detalhado.";
@@ -426,7 +468,7 @@ function buildRunbookPlainClipboardText(alert, metrics) {
   const value = alert?.value ?? "-";
   const threshold = alert?.threshold ?? "-";
   const source = "ELLAN LAB > Contexto Ops > OPS - Saúde Operacional";
-  const generatedAt = new Date().toLocaleString("pt-BR");
+  const generatedAt = formatOpsDateTime(new Date());
   const alertCode = code || "ALERTA_OPERACIONAL";
   const alertMessage = alert?.message || "Alerta operacional detectado.";
   const impact = alert?.impact || "Impacto ainda não detalhado.";
@@ -577,9 +619,7 @@ function OpsLineChart({ title, points, valueKey, stroke = "#93C5FD", formatter =
               .map((idx) => {
                 const x = chartLeft + (idx * chartWidth) / Math.max(values.length - 1, 1);
                 const raw = labels[idx] ? new Date(labels[idx]) : null;
-                const label = raw && !Number.isNaN(raw.getTime())
-                  ? raw.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-                  : "-";
+                const label = raw && !Number.isNaN(raw.getTime()) ? formatOpsTimeShort(raw) : "-";
                 return (
                   <g key={`x-tick-${idx}`}>
                     <line x1={x} y1={chartTop} x2={x} y2={chartBottom} stroke="rgba(148,163,184,0.15)" />
@@ -604,12 +644,8 @@ function OpsLineChart({ title, points, valueKey, stroke = "#93C5FD", formatter =
         <small style={lineChartValueStyle}>Delta 24h: {formatter(delta)}</small>
       </div>
       <div style={lineChartLabelsStyle}>
-        <small>{labels[0] ? new Date(labels[0]).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "-"}</small>
-        <small>
-          {labels[labels.length - 1]
-            ? new Date(labels[labels.length - 1]).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
-            : "-"}
-        </small>
+        <small>{labels[0] ? formatOpsTimeShort(labels[0]) : "-"}</small>
+        <small>{labels[labels.length - 1] ? formatOpsTimeShort(labels[labels.length - 1]) : "-"}</small>
       </div>
     </article>
   );
@@ -1225,7 +1261,7 @@ export default function OpsHealthPage() {
     const env = String(source?.environment || thresholdProfile || "hml").toUpperCase();
     const decision = String(source?.decision || snapshotDecision || "KEEP").toUpperCase();
     const rationale = String(source?.rationale || snapshotRationale || "Sem observação adicional.");
-    const createdAt = source?.created_at ? new Date(source.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR");
+    const createdAt = source?.created_at ? formatOpsDateTime(source.created_at) : formatOpsDateTime(new Date());
 
     return [
       "## 18) US-OPS-011 - Execucao semanal #1 (auditavel)",
@@ -1275,7 +1311,7 @@ export default function OpsHealthPage() {
     const env = String(source?.environment || thresholdProfile || "hml").toUpperCase();
     const decision = String(source?.decision || snapshotDecision || "KEEP").toUpperCase();
     const rationale = String(source?.rationale || snapshotRationale || "Sem observação adicional.");
-    const createdAt = source?.created_at ? new Date(source.created_at).toLocaleString("pt-BR") : new Date().toLocaleString("pt-BR");
+    const createdAt = source?.created_at ? formatOpsDateTime(source.created_at) : formatOpsDateTime(new Date());
 
     return [
       "US-OPS-011 - EXECUCAO SEMANAL #1",
@@ -1439,7 +1475,7 @@ export default function OpsHealthPage() {
     return [
       "## US-OPS-002 - Evidencia auditavel de severidade (ops/health)",
       "",
-      `- Data/hora da coleta: ${new Date().toLocaleString("pt-BR")}`,
+      `- Data/hora da coleta: ${formatOpsDateTime(new Date())}`,
       `- Janela monitorada: ${Math.max(Number(lookbackWindowHours || 24), 1)}h`,
       `- Faixa from/to: ${from || "-"} -> ${to || "-"}`,
       `- Total de alertas ativos: ${activeAlerts.length}`,
@@ -1717,18 +1753,34 @@ export default function OpsHealthPage() {
     try {
       const nowIso = new Date().toISOString();
       const dominantSeverity = resolveSeverityFromRate(currentErrorRate);
-      const dominantEmoji = severityEmoji(dominantSeverity);
       const topCauses = topInvestigatedCauses
         .slice(0, 3)
         .map((item) => `${String(item?.category || "OUTROS").toUpperCase()}:${Number(item?.count || 0)}`)
         .join(" | ") || "-";
       const predictiveRate = Number(metrics?.predictive_monitoring?.false_positive_rate || 0);
+      const criticalAlerts = Number(alertCountBySeverity.CRITICAL || 0);
+      const checks = [
+        { name: "coleta_ativa", pass: !error && totalActions > 0, detail: error ? `erro=${error}` : `acoes=${totalActions}` },
+        { name: "erro_controlado", pass: currentErrorRate < 0.05, detail: `error_rate=${(currentErrorRate * 100).toFixed(1)}%` },
+        { name: "latencia_p95_controlada", pass: currentP95 > 0 && currentP95 <= 250, detail: `p95_ms=${currentP95.toFixed(1)}` },
+        { name: "sem_alerta_critico", pass: criticalAlerts === 0, detail: `critical_alerts=${criticalAlerts}` },
+      ];
+      const passed = checks.filter((check) => check.pass).length;
+      const failed = checks.length - passed;
+      const decision = failed === 0 ? "GO" : "NO_GO";
+      const practicalAction =
+        decision === "GO"
+          ? "Ação prática: manter operação e monitorar janelas de 1h."
+          : `Ação prática: abrir triagem imediata dos checks com falha (${checks.filter((check) => !check.pass).map((check) => check.name).join(", ")}).`;
       const text = [
-        `${dominantEmoji} *OPS Daily (Health) | ${nowIso}*`,
-        `Hoje: erro=${(currentErrorRate * 100).toFixed(1)}% (${errorActions}/${totalActions}) | severidade=${dominantSeverity} ${dominantEmoji} | alertas_ativos=${activeAlerts.length}`,
-        `Bloqueios: ${error ? `falha_coleta=${error}` : "sem bloqueios técnicos de coleta"}`,
-        `Decisão: manter foco em mitigação de severidade ${dominantSeverity} e seguir triagem das top causas`,
-        `Sinais: top_causas=${topCauses} | preditivo_fp_7d=${(predictiveRate * 100).toFixed(1)}% | coletor=${collectorHealth.label}`,
+        `🧭 *OPS Daily (Health) | ${nowIso}*`,
+        `Decisão consolidada: ${decision} (severidade=${dominantSeverity})`,
+        `Checks PASS: ${passed}/${checks.length}`,
+        `Checks com falha: ${failed} / ${checks.length}`,
+        `Referência: UTC=${nowIso} | error_rate=${(currentErrorRate * 100).toFixed(1)}% (${errorActions}/${totalActions}) | p95_ms=${currentP95.toFixed(1)} | alertas_ativos=${activeAlerts.length} | coletor=${collectorHealth.label}`,
+        practicalAction,
+        `Sinais de apoio: top_causas=${topCauses} | preditivo_fp_7d=${(predictiveRate * 100).toFixed(1)}%`,
+        ...checks.filter((check) => !check.pass).map((check) => `- ${check.name}: ${check.detail}`),
       ].join("\n");
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -1750,6 +1802,171 @@ export default function OpsHealthPage() {
     }
   }
 
+  async function copyOpsHealthDailyJson() {
+    try {
+      const nowIso = new Date().toISOString();
+      const criticalAlerts = Number(alertCountBySeverity.CRITICAL || 0);
+      const checks = [
+        { code: "coleta_ativa", pass: !error && totalActions > 0, detail: error ? `erro=${error}` : `acoes=${totalActions}` },
+        { code: "erro_controlado", pass: currentErrorRate < 0.05, detail: `error_rate=${(currentErrorRate * 100).toFixed(1)}%` },
+        { code: "latencia_p95_controlada", pass: currentP95 > 0 && currentP95 <= 250, detail: `p95_ms=${currentP95.toFixed(1)}` },
+        { code: "sem_alerta_critico", pass: criticalAlerts === 0, detail: `critical_alerts=${criticalAlerts}` },
+      ];
+      const passed = checks.filter((check) => check.pass).length;
+      const failed = checks.length - passed;
+      const decision = failed === 0 ? "GO" : "NO_GO";
+      const practicalAction =
+        decision === "GO"
+          ? "manter_monitoramento_1h"
+          : "abrir_triagem_imediata_checks_falhos";
+      const payload = {
+        scope: "OPS_HEALTH_DAILY",
+        generated_at: nowIso,
+        decision,
+        checks_pass: `${passed}/${checks.length}`,
+        checks_failed: failed,
+        metrics: {
+          error_rate: Number(currentErrorRate || 0),
+          error_actions: Number(errorActions || 0),
+          total_actions: Number(totalActions || 0),
+          latency_p95_ms: Number(currentP95 || 0),
+          active_alerts: Number(activeAlerts.length || 0),
+          collector_health: String(collectorHealth.label || "-"),
+        },
+        practical_action: practicalAction,
+        failed_checks: checks.filter((check) => !check.pass).map((check) => ({ code: check.code, detail: check.detail })),
+      };
+      const text = JSON.stringify(payload, null, 2);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      const ts = nowIso.replace(/[:.]/g, "-");
+      const day = toAuditDayStamp(nowIso);
+      downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_OPS_HEALTH_PAYLOAD_${ts}.json`, payload);
+      setDailySlackStatus("Payload diário padronizado (JSON) copiado e baixado.");
+      window.setTimeout(() => setDailySlackStatus(""), 2500);
+    } catch (err) {
+      setDailySlackStatus(`Falha ao copiar payload diário JSON: ${String(err?.message || err)}`);
+    }
+  }
+
+  function buildFiscalManagementPayloadFromHandoff(baseIso) {
+    const report = fg1HandoffReport || {};
+    const stats = getCheckStats(report);
+    const decision = String(report?.decision || "NO_GO").toUpperCase();
+    const failedChecks = stats.checks
+      .filter((check) => Number(check?.exit_code || 1) !== 0)
+      .map((check) => ({ name: String(check?.name || "-"), exit_code: Number(check?.exit_code || 0) }));
+    return {
+      scope: "FISCAL_MANAGEMENT_DAILY",
+      generated_at: baseIso,
+      decision_consolidated: decision,
+      risk_level: decision === "GO" ? "LOW" : failedChecks.length >= 2 ? "HIGH" : "MEDIUM",
+      checks_pass: `${stats.passed}/${stats.total}`,
+      checks_failed: stats.failed,
+      reference: {
+        handoff_result: String(report?.result || "-"),
+        handoff_generated_at: String(report?.generated_at || "-"),
+      },
+      practical_actions:
+        decision === "GO"
+          ? ["manter_ritmo_diario_de_orquestrador", "monitorar_desvio_de_checks_no_turno"]
+          : ["priorizar_checks_fiscal_com_falha", "executar_handoff_orchestrator_e_revalidar_gates"],
+      failed_checks: failedChecks,
+    };
+  }
+
+  async function downloadDailyPackageZip() {
+    try {
+      if (!fg1HandoffReport) {
+        setDailySlackStatus("Handoff FG-1 indisponível. Atualize o card consolidado antes de gerar o pacote.");
+        window.setTimeout(() => setDailySlackStatus(""), 2600);
+        return;
+      }
+      const nowIso = new Date().toISOString();
+      const criticalAlerts = Number(alertCountBySeverity.CRITICAL || 0);
+      const checks = [
+        { code: "coleta_ativa", pass: !error && totalActions > 0, detail: error ? `erro=${error}` : `acoes=${totalActions}` },
+        { code: "erro_controlado", pass: currentErrorRate < 0.05, detail: `error_rate=${(currentErrorRate * 100).toFixed(1)}%` },
+        { code: "latencia_p95_controlada", pass: currentP95 > 0 && currentP95 <= 250, detail: `p95_ms=${currentP95.toFixed(1)}` },
+        { code: "sem_alerta_critico", pass: criticalAlerts === 0, detail: `critical_alerts=${criticalAlerts}` },
+      ];
+      const passed = checks.filter((check) => check.pass).length;
+      const failed = checks.length - passed;
+      const opsPayload = {
+        scope: "OPS_HEALTH_DAILY",
+        generated_at: nowIso,
+        decision: failed === 0 ? "GO" : "NO_GO",
+        checks_pass: `${passed}/${checks.length}`,
+        checks_failed: failed,
+        metrics: {
+          error_rate: Number(currentErrorRate || 0),
+          error_actions: Number(errorActions || 0),
+          total_actions: Number(totalActions || 0),
+          latency_p95_ms: Number(currentP95 || 0),
+          active_alerts: Number(activeAlerts.length || 0),
+          collector_health: String(collectorHealth.label || "-"),
+        },
+        practical_action: failed === 0 ? "manter_monitoramento_1h" : "abrir_triagem_imediata_checks_falhos",
+        failed_checks: checks.filter((check) => !check.pass).map((check) => ({ code: check.code, detail: check.detail })),
+      };
+      const fiscalPayload = buildFiscalManagementPayloadFromHandoff(nowIso);
+      const approvalPayload = {
+        scope: "FISCAL_ACCOUNTING_DAILY_APPROVAL",
+        generated_at: nowIso,
+        approval: {
+          owner: "AUTO_FROM_OPS_HEALTH",
+          status: "PENDING_REVIEW",
+          notes: "Objeto de aprovação gerado automaticamente no pacote OPS. Validar e substituir na página fiscal/management-daily.",
+          timestamp: nowIso,
+        },
+        context: {
+          decision_consolidated: String(fiscalPayload?.decision_consolidated || "NO_GO"),
+          risk_level: String(fiscalPayload?.risk_level || "MEDIUM"),
+          checks_pass: String(fiscalPayload?.checks_pass || "0/0"),
+          checks_failed: Number(fiscalPayload?.checks_failed || 0),
+          source: "ops/health",
+        },
+      };
+      const ts = nowIso.replace(/[:.]/g, "-");
+      const day = toAuditDayStamp(nowIso);
+      const signedOpsPayload = await buildSignedPayload(opsPayload);
+      const signedFiscalPayload = await buildSignedPayload(fiscalPayload);
+      const signedApprovalPayload = await buildSignedPayload(approvalPayload);
+      const zipped = zipSync(
+        {
+          [`${DAILY_AUDIT_PREFIX}_${day}_OPS_HEALTH_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedOpsPayload, null, 2)),
+          [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_MANAGEMENT_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedFiscalPayload, null, 2)),
+          [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`]: strToU8(JSON.stringify(signedApprovalPayload, null, 2)),
+        },
+        { level: 6 }
+      );
+      const blob = new Blob([zipped], { type: "application/zip" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+      setDailySlackStatus("Pacote diário (.zip) baixado com OPS + FISCAL + APPROVAL.");
+      window.setTimeout(() => setDailySlackStatus(""), 2600);
+    } catch (err) {
+      setDailySlackStatus(`Falha ao baixar pacote diário .zip: ${String(err?.message || err)}`);
+    }
+  }
+
   async function copyFg1FinalDecisionSlack() {
     if (!fg1FinalDecisionReport) {
       setFg1FinalDecisionCopyStatus("Snapshot FG-1 indisponível para cópia.");
@@ -1758,12 +1975,15 @@ export default function OpsHealthPage() {
     }
     try {
       const nowIso = new Date().toISOString();
+      const ready = Number(fg1FinalDecisionReport.countries_ready || 0);
+      const total = Number(fg1FinalDecisionReport.country_count || 0);
+      const blocked = Number(fg1FinalDecisionReport.countries_blocked || 0);
       const text = [
         `📌 *FG-1 Handoff Final | ${nowIso}*`,
-        `Decisão global: ${String(fg1FinalDecisionReport.final_global_decision || "-")}`,
-        `Países aptos: ${Number(fg1FinalDecisionReport.countries_ready || 0)} | Países bloqueados: ${Number(fg1FinalDecisionReport.countries_blocked || 0)} | Total: ${Number(fg1FinalDecisionReport.country_count || 0)}`,
-        `Versões: coverage=${String(fg1FinalDecisionReport?.sources?.coverage_gate_version || "-")} | readiness=${String(fg1FinalDecisionReport?.sources?.readiness_gate_version || "-")} | action_plan=${String(fg1FinalDecisionReport?.sources?.action_plan_version || "-")}`,
-        `Gerado em UTC: ${String(fg1FinalDecisionReport.generated_at || "-")}`,
+        `Decisão consolidada: ${String(fg1FinalDecisionReport.final_global_decision || "-")}`,
+        `Checks PASS: ${ready}/${total}`,
+        `Checks com falha: ${blocked} / ${total}`,
+        `Referência: UTC=${String(fg1FinalDecisionReport.generated_at || "-")} | versions coverage=${String(fg1FinalDecisionReport?.sources?.coverage_gate_version || "-")} readiness=${String(fg1FinalDecisionReport?.sources?.readiness_gate_version || "-")} action_plan=${String(fg1FinalDecisionReport?.sources?.action_plan_version || "-")}`,
       ].join("\n");
       if (navigator?.clipboard?.writeText) {
         await navigator.clipboard.writeText(text);
@@ -2222,6 +2442,12 @@ export default function OpsHealthPage() {
             <button type="button" onClick={() => void copyOpsHealthDailySlack()} style={buttonGhostStyle}>
               Copiar daily Slack/Teams
             </button>
+            <button type="button" onClick={() => void copyOpsHealthDailyJson()} style={buttonGhostStyle}>
+              Copiar payload diário padronizado (JSON)
+            </button>
+            <button type="button" onClick={() => void downloadDailyPackageZip()} style={buttonGhostStyle}>
+              Baixar pacote diário (.zip)
+            </button>
           </div>
         </div>
         {dailySlackStatus ? <small style={predictiveReviewStatusStyle}>{dailySlackStatus}</small> : null}
@@ -2598,8 +2824,8 @@ export default function OpsHealthPage() {
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(245,247,250,0.78)", fontSize: 13 }}>
-              Janela: {metrics?.window?.from ? new Date(metrics.window.from).toLocaleString("pt-BR") : "-"} até{" "}
-              {metrics?.window?.to ? new Date(metrics.window.to).toLocaleString("pt-BR") : "-"}
+              Janela: {metrics?.window?.from ? formatOpsDateTime(metrics.window.from) : "-"} até{" "}
+              {metrics?.window?.to ? formatOpsDateTime(metrics.window.to) : "-"}
             </div>
 
             {(isOpsPersona || isDevPersona) ? (
@@ -2634,7 +2860,7 @@ export default function OpsHealthPage() {
                         {String(item.environment || "unknown").toUpperCase()} · {String(item.decision || "KEEP")}
                       </strong>
                       <small style={snapshotHistoryMetaStyle}>
-                        {item.created_at ? new Date(item.created_at).toLocaleString("pt-BR") : "-"}
+                        {item.created_at ? formatOpsDateTime(item.created_at) : "-"}
                       </small>
                       <small style={snapshotHistoryMetaStyle}>
                         FP: {(Number(item.false_positive_rate || 0) * 100).toFixed(1)}% · emitidos:{Number(item.emitted_alerts || 0)} · confirmados:

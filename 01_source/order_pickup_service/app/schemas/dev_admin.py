@@ -102,6 +102,41 @@ class DevOpsAuditListOut(BaseModel):
     items: list[DevOpsAuditItemOut]
 
 
+class DevUiErrorItemOut(BaseModel):
+    id: str
+    event_id: str
+    domain: str
+    path: str
+    message: str
+    trace_id: str | None = None
+    source_ip: str | None = None
+    event_created_at: str | None = None
+    created_at: str | None = None
+
+
+class DevUiErrorPagedOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    items: list[DevUiErrorItemOut]
+
+
+class DevUiErrorSummaryBucketOut(BaseModel):
+    key: str
+    count: int
+
+
+class DevUiErrorSummaryOut(BaseModel):
+    ok: bool
+    lookback_hours: int
+    total_events: int
+    by_domain: list[DevUiErrorSummaryBucketOut] = Field(default_factory=list)
+    by_path: list[DevUiErrorSummaryBucketOut] = Field(default_factory=list)
+    by_message: list[DevUiErrorSummaryBucketOut] = Field(default_factory=list)
+
+
 class DevOpsMetricAlertOut(BaseModel):
     severity: str
     code: str

@@ -1,4 +1,6 @@
-const BADGE_BASE = {
+import type { CSSProperties } from "react";
+
+const BADGE_BASE: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   borderRadius: 999,
@@ -8,7 +10,18 @@ const BADGE_BASE = {
   lineHeight: 1.2,
 };
 
-export function getTrendToken(trend) {
+export type TrendDirection = "up" | "down" | "stable";
+
+export interface TrendToken {
+  key: TrendDirection;
+  symbol: string;
+  label: string;
+  valueColor: string;
+  accentBg: string;
+  accentBorder: string;
+}
+
+export function getTrendToken(trend: string | TrendDirection | null | undefined): TrendToken {
   const normalized = String(trend || "stable").toLowerCase();
   if (normalized === "up") {
     return {
@@ -40,7 +53,7 @@ export function getTrendToken(trend) {
   };
 }
 
-export function getTrendBadgeStyle(trend) {
+export function getTrendBadgeStyle(trend: string | TrendDirection | null | undefined): CSSProperties {
   const token = getTrendToken(trend);
   return {
     ...BADGE_BASE,
@@ -52,60 +65,31 @@ export function getTrendBadgeStyle(trend) {
   };
 }
 
-export function getSeverityBadgeStyle(severity) {
+export function getSeverityBadgeStyle(severity: string | null | undefined): CSSProperties {
   const normalized = String(severity || "OK").toUpperCase();
   if (normalized === "CRITICAL") {
-    return {
-      ...BADGE_BASE,
-      border: "1px solid #FECACA",
-      background: "#7F1D1D",
-      color: "#FFFFFF",
-    };
+    return { ...BADGE_BASE, border: "1px solid #FECACA", background: "#7F1D1D", color: "#FFFFFF" };
   }
   if (normalized === "HIGH" || normalized === "ERROR") {
-    return {
-      ...BADGE_BASE,
-      border: "1px solid #FDBA74",
-      background: "#9A3412",
-      color: "#FFFFFF",
-    };
+    return { ...BADGE_BASE, border: "1px solid #FDBA74", background: "#9A3412", color: "#FFFFFF" };
   }
   if (normalized === "MEDIUM" || normalized === "WARN") {
-    return {
-      ...BADGE_BASE,
-      border: "1px solid #FCD34D",
-      background: "#78350F",
-      color: "#FFFFFF",
-    };
+    return { ...BADGE_BASE, border: "1px solid #FCD34D", background: "#78350F", color: "#FFFFFF" };
   }
   if (normalized === "LOW") {
-    return {
-      ...BADGE_BASE,
-      border: "1px solid #93C5FD",
-      background: "#1E3A8A",
-      color: "#FFFFFF",
-    };
+    return { ...BADGE_BASE, border: "1px solid #93C5FD", background: "#1E3A8A", color: "#FFFFFF" };
   }
-  return {
-    ...BADGE_BASE,
-    border: "1px solid #86EFAC",
-    background: "#14532D",
-    color: "#FFFFFF",
-  };
+  return { ...BADGE_BASE, border: "1px solid #86EFAC", background: "#14532D", color: "#FFFFFF" };
 }
 
-export function getConfidenceBadgeStyle(confidenceLevel) {
+export function getConfidenceBadgeStyle(confidenceLevel: string | null | undefined): CSSProperties {
   const normalized = String(confidenceLevel || "MEDIUM").toUpperCase();
-  if (normalized === "LOW") {
-    return getSeverityBadgeStyle("ERROR");
-  }
-  if (normalized === "HIGH") {
-    return getSeverityBadgeStyle("OK");
-  }
+  if (normalized === "LOW") return getSeverityBadgeStyle("ERROR");
+  if (normalized === "HIGH") return getSeverityBadgeStyle("OK");
   return getSeverityBadgeStyle("WARN");
 }
 
-export function getDataQualityFlagStyle(flag) {
+export function getDataQualityFlagStyle(flag: string | null | undefined): CSSProperties {
   const normalized = String(flag || "").toUpperCase();
   if (normalized.includes("NO_EVENTS")) return getSeverityBadgeStyle("ERROR");
   if (normalized.includes("LOW_VOLUME")) return getSeverityBadgeStyle("WARN");
@@ -117,3 +101,4 @@ export function getDataQualityFlagStyle(flag) {
     color: "#DBEAFE",
   };
 }
+

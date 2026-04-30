@@ -9,9 +9,11 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:strict-core": "tsc -p tsconfig.strict-core.json --noEmit"
   },
   "dependencies": {
+    "fflate": "^0.8.2",
     "qrcode.react": "^4.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

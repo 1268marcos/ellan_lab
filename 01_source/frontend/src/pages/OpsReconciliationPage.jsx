@@ -6,6 +6,7 @@ import OpsTrendKpiCard from "../components/OpsTrendKpiCard";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
@@ -303,8 +304,8 @@ export default function OpsReconciliationPage() {
             </div>
 
             <div style={{ marginTop: 10, color: "rgba(245, 247, 250, 0.78)", fontSize: 13 }}>
-              Janela: {health?.window?.from ? new Date(health.window.from).toLocaleString("pt-BR") : "-"} até{" "}
-              {health?.window?.to ? new Date(health.window.to).toLocaleString("pt-BR") : "-"}
+              Janela: {health?.window?.from ? formatOpsDateTime(health.window.from) : "-"} até{" "}
+              {health?.window?.to ? formatOpsDateTime(health.window.to) : "-"}
             </div>
 
             <div style={alertsWrapStyle}>
@@ -435,7 +436,7 @@ export default function OpsReconciliationPage() {
                     <b>Status:</b> {item.status}
                   </span>
                   <span>
-                    <b>Executado em:</b> {new Date(item.executedAt).toLocaleString("pt-BR")}
+                    <b>Executado em:</b> {formatOpsDateTime(item.executedAt)}
                   </span>
                 </div>
                 <div style={historyActionsStyle}>

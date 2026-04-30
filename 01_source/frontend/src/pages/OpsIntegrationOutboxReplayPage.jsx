@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
 const FILTERS_PREF_KEY = "ops_integration_outbox_replay:last_filters";
@@ -268,7 +269,7 @@ export default function OpsIntegrationOutboxReplayPage() {
       if (!response.ok) throw new Error(parseError(data));
 
       setResult(data || null);
-      setLastEvidenceAt(new Date().toLocaleString("pt-BR"));
+      setLastEvidenceAt(formatOpsDateTime(new Date()));
       setLastRequestSnapshot({
         dry_run: dryRun,
         run_after_replay: runAfterReplay,

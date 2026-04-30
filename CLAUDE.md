@@ -17,6 +17,14 @@ claude "gere documentação básica para as funções neste arquivo"
 /remember "Sempre usar a biblioteca X para validação neste projeto"
 O Claude guarda isso para TODAS as sessões futuras.
 
+# Backend `billing_fiscal_service` — pytest (path correto)
+O binário **não** está no `PATH` global; use o venv do serviço e `PYTHONPATH` para o pacote `app`:
+```bash
+cd 01_source/backend/billing_fiscal_service
+PYTHONPATH=. .venv/bin/pytest tests/ -q
+```
+Alternativa: `/home/marcos/ellan_lab/.venv/bin/pytest` com o mesmo `cd` e `PYTHONPATH=.` .
+
 # Dicas de ouro para sua produtividade
     - Desafio do TDAH	        Solução com Claude Code
     - Dificuldade de começar    Comece com claude "explique este código"

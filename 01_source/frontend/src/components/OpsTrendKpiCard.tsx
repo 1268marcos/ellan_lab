@@ -1,12 +1,23 @@
-import React from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { getTrendToken } from "./opsVisualTokens";
 
-/**
- * Resolve direção da tendência baseada no delta numérico.
- * Retornos possíveis: `up`, `down`, `stable`.
- */
-export function resolveTrendByDelta(delta) {
+export type TrendDirection = "up" | "down" | "stable";
+
+export interface OpsTrendKpiCardProps {
+  label: ReactNode;
+  value: ReactNode;
+  previousValue?: ReactNode;
+  trend?: TrendDirection | null;
+  deltaLabel?: ReactNode;
+  auxiliaryLabel?: ReactNode;
+  linkTo?: string | null;
+  linkTitle?: string;
+  baseStyle?: CSSProperties;
+  showTrend?: boolean;
+}
+
+export function resolveTrendByDelta(delta: unknown): TrendDirection {
   const value = Number(delta ?? 0);
   if (Number.isNaN(value)) return "stable";
   if (value > 0) return "up";
@@ -14,18 +25,6 @@ export function resolveTrendByDelta(delta) {
   return "stable";
 }
 
-/**
- * Card KPI com realce de tendência para páginas OPS.
- *
- * Props principais:
- * - `label`: rótulo do indicador
- * - `value`: valor atual
- * - `previousValue`: valor anterior (opcional)
- * - `trend`: `up | down | stable` (opcional)
- * - `deltaLabel`: texto auxiliar de variação (opcional)
- * - `baseStyle`: estilo base do card
- * - `showTrend`: habilita/desabilita destaque de tendência
- */
 export default function OpsTrendKpiCard({
   label,
   value,
@@ -37,13 +36,12 @@ export default function OpsTrendKpiCard({
   linkTitle = "Abrir drill-down",
   baseStyle = {},
   showTrend = true,
-}) {
-  const normalizedTrend = trend ? String(trend).toLowerCase() : "stable";
-  const hasTrend =
-    showTrend && (normalizedTrend === "up" || normalizedTrend === "down" || normalizedTrend === "stable");
+}: OpsTrendKpiCardProps) {
+  const normalizedTrend: TrendDirection = trend ? String(trend).toLowerCase() as TrendDirection : "stable";
+  const hasTrend = showTrend && (normalizedTrend === "up" || normalizedTrend === "down" || normalizedTrend === "stable");
   const trendStyle = getTrendToken(normalizedTrend);
 
-  const resolvedCardStyle = {
+  const resolvedCardStyle: CSSProperties = {
     ...baseStyle,
     ...(hasTrend
       ? {
@@ -142,3 +140,4 @@ export default function OpsTrendKpiCard({
 
   return <article style={resolvedCardStyle}>{content}</article>;
 }
+

@@ -2,8 +2,10 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const TIMELINE_TEMPLATE_JSON = `{
+  "dateTime": "YYYY-MM-DDTHH:mm:ss-03:00",
   "date": "YYYY-MM-DD",
   "scope": "L-3 D4",
   "title": "Resumo curto da entrega",
@@ -23,6 +25,623 @@ const TIMELINE_TEMPLATE_JSON = `{
 }`;
 
 const UPDATES = [
+  {
+    dateTime: "2026-04-30T18:05:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 — OPS data/hora auditável (Brasil)",
+    title: "formatOpsDateTime (pt-BR + America/Sao_Paulo) na timeline de ops/updates",
+    description:
+      "Novo utilitário tipado `opsDateTimeFormat.ts` no strict-core; `OpsUpdatesHistoryPage` usa `formatOpsDateTime` para exibir datas da timeline no fuso de Brasília, alinhado a operação no Brasil.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/utils/opsDateTimeFormat.ts",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "Frontend: 01_source/frontend/src/pages/OpsUpdatesHistoryPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir ops/updates",
+  },
+  {
+    dateTime: "2026-04-30T17:40:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Hardening — CSP canónica + preview com header",
+    title: "ellan-frontend-csp.mjs como fonte única; vite preview envia Content-Security-Policy",
+    description:
+      "Política centralizada em `ellan-frontend-csp.mjs`; `index.html` usa placeholder substituído em dev; `vite preview` aplica o mesmo valor como header HTTP. Exemplo Nginx atualizado com `map` alinhado ao ficheiro.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/ellan-frontend-csp.mjs",
+      "Frontend: 01_source/frontend/vite.config.js",
+      "Frontend: 01_source/frontend/index.html",
+      "Infra: 02_docker/nginx/csp-frontend.example.conf",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/",
+    directLinkLabel: "Abrir app",
+  },
+  {
+    dateTime: "2026-04-30T17:15:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Hardening — CSP só no gateway (meta removida no build)",
+    title: "Plugin ellanCspIndexHtml remove meta CSP do dist; exemplo Nginx em 02_docker/nginx",
+    description:
+      "Em produção o HTML gerado não inclui meta CSP — o gateway deve enviar Content-Security-Policy. Em dev a meta permanece e o plugin reabre unsafe-inline em script-src para HMR. Ficheiro de referência `02_docker/nginx/csp-frontend.example.conf`.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/vite.config.js",
+      "Infra: 02_docker/nginx/csp-frontend.example.conf",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/",
+    directLinkLabel: "Abrir app",
+  },
+  {
+    dateTime: "2026-04-30T16:45:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Hardening — CSP script-src estrito em build",
+    title: "JSON-LD externo + script-src 'self' em produção; dev mantém unsafe-inline via Vite",
+    description:
+      "Ficheiro `public/seo/local-business.json` e script por `src`; CSP sem `unsafe-inline` em `script-src` no artefacto `dist`. Plugin `ellan-csp-unsafe-inline-dev-only` em `vite.config.js` restaura `unsafe-inline` só no `vite dev` para HMR/overlay.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/index.html",
+      "Frontend: 01_source/frontend/vite.config.js",
+      "Frontend: 01_source/frontend/public/seo/local-business.json",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/",
+    directLinkLabel: "Abrir app",
+  },
+  {
+    dateTime: "2026-04-30T16:20:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Hardening — CSP frontend (reforço)",
+    title: "CSP: connect-src com fiscal 8020, lifecycle, runtime, WS Vite e Permissions-Policy",
+    description:
+      "Atualização incremental do `index.html`: diretivas `frame-src`, `worker-src`, `manifest-src`, `media-src`; `connect-src` com portas usadas pelo monorepo local e GitHub API; WebSockets para HMR; meta `Permissions-Policy` restritiva; preconnect para billing 8020.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: ["Frontend: 01_source/frontend/index.html", "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md", "UI /ops/updates"],
+    directLink: "/",
+    directLinkLabel: "Abrir app (CSP no documento)",
+  },
+  {
+    dateTime: "2026-04-30T15:05:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D18 (checklist + template P1)",
+    title: "D18 — fechamento Sprint 2 com checklist e riscos P1 no management-daily",
+    description:
+      "Novo utilitário `fiscalSprint2D18Content` com checklist mínimo D10–transição e cinco linhas template para P1; card em `fiscal/management-daily` com persistência local, cópia/download JSON (`SPRINT2_D18_FINANCE_CLOSEOUT`) e anexo assinado no ZIP diário. O ZIP de `fiscal/accounting-close` inclui o mesmo estado com `SPRINT2_D18_EXEC_FINANCE_CLOSEOUT` (ficheiro `D18_EXEC_SPRINT2_CLOSEOUT`).",
+    uiRoutesNew: ["/fiscal/management-daily", "/fiscal/accounting-close", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/utils/fiscalSprint2D18Content.js",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalAccountingClosePage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir D18 (fechamento Sprint 2)",
+  },
+  {
+    dateTime: "2026-04-30T14:10:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D17 (retenção + divergência prolongada)",
+    title: "D17 adiciona poda controlada do histórico de aceites e alerta de diff repetido",
+    description:
+      "Novos endpoints `GET /admin/fiscal/accounting-approvals/divergence-health` e `POST /admin/fiscal/accounting-approvals/retention` (com dry_run) no billing fiscal; card operacional em `fiscal/management-daily` para dry-run/execução e alerta quando o mesmo diff persiste em vários snapshots seguidos.",
+    uiRoutesNew: ["/fiscal/management-daily", "/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/accounting-approvals/divergence-health",
+      "POST /admin/fiscal/accounting-approvals/retention",
+    ],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/utils/fiscalAccountingApprovalsHistory.js",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Tests: 01_source/backend/billing_fiscal_service/tests/test_accounting_approvals_d17.py",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir gestão diária (D17)",
+  },
+  {
+    dateTime: "2026-04-30T12:45:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D16 (export consolidado + diff no handoff executivo)",
+    title: "D16 exporta histórico filtrado e anexa diff ao ZIP executivo",
+    description:
+      "Novo utilitário `fiscalAccountingApprovalsHistory` consolida páginas do histórico D15 para export CSV/JSON com os filtros atuais. O pacote ZIP diário e o ZIP de `fiscal/accounting-close` passam a incluir automaticamente histórico consolidado e payload de comparação (`compare`) assinados (D16).",
+    uiRoutesNew: ["/fiscal/management-daily", "/fiscal/accounting-close", "/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/accounting-approvals",
+      "GET /admin/fiscal/accounting-approvals/compare",
+    ],
+    routes: [
+      "Frontend: 01_source/frontend/src/utils/fiscalAccountingApprovalsHistory.js",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalAccountingClosePage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/accounting-close",
+    directLinkLabel: "Abrir handoff executivo (accounting-close)",
+  },
+  {
+    dateTime: "2026-04-30T12:36:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D15 (histórico paginado + comparação de snapshots)",
+    title: "D15 adiciona trilha histórica filtrável e diff de aceite",
+    description:
+      "Evolução operacional do aceite D13/D14: backend com listagem paginada por `owner/status/período` e endpoint de comparação entre snapshots, além de painel em `fiscal/management-daily` para navegação histórica e análise de mudanças.",
+    uiRoutesNew: ["/fiscal/management-daily", "/ops/updates"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/accounting-approvals",
+      "GET /admin/fiscal/accounting-approvals/compare",
+    ],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir histórico D15 de aceites",
+  },
+  {
+    dateTime: "2026-04-30T12:27:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D14 (consolidação central multiusuário)",
+    title: "Aceite D13 persistido no backend com leitura central",
+    description:
+      "Implementados endpoints centrais de aceite contábil (`POST/GET latest /admin/fiscal/accounting-approvals`) e integração em `fiscal/management-daily` para salvar/carregar owner/ETA/checklist D13 no backend, habilitando operação multiusuário.",
+    uiRoutesNew: ["/fiscal/management-daily", "/ops/updates"],
+    apiRoutesNew: ["POST /admin/fiscal/accounting-approvals", "GET /admin/fiscal/accounting-approvals/latest"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir aceite central D14",
+  },
+  {
+    dateTime: "2026-04-30T12:16:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D13 (aceite por owner/ETA + checklist crítico automático)",
+    title: "D13 automatiza checklist crítico do aceite contábil",
+    description:
+      "O handoff contábil diário agora inclui `owner` e `ETA` no aceite e gera checklist crítico automático (ERROR/WARN) a partir do snapshot D11, com progresso por item e inclusão no payload/export de aprovação.",
+    uiRoutesNew: ["/fiscal/management-daily", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir aceite contábil diário (D13)",
+  },
+  {
+    dateTime: "2026-04-30T12:07:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal/Contábil - execução D12 (handoff diário conectado ao lote D11)",
+    title: "D12 conecta lote D11 fiscal ao handoff contábil diário",
+    description:
+      "O lote D11 publicado em `ops/fiscal/providers` agora é consumido por `fiscal/management-daily` e incorporado aos payloads de handoff diário (JSON/ZIP), com resumo de severidade, parceiros e batches para o fechamento contábil operacional.",
+    uiRoutesNew: ["/ops/fiscal/providers", "/fiscal/management-daily", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir handoff contábil diário (D12)",
+  },
+  {
+    dateTime: "2026-04-30T11:58:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal - execução D11 (divergências + export por lote)",
+    title: "Trilha D11 em ops/fiscal/providers com seed operacional",
+    description:
+      "Implementada trilha de divergências fiscais por `order_id`/`partner_id` com filtro por `batch_id`, export CSV/JSON por lote e endpoint de seed em `/admin/fiscal/gaps/seed` para acelerar validação operacional em ambiente local.",
+    uiRoutesNew: ["/ops/fiscal/providers", "/ops/updates"],
+    apiRoutesNew: ["POST /admin/fiscal/gaps/seed"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir execução D11 fiscal",
+  },
+  {
+    dateTime: "2026-04-30T11:34:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Fiscal - início de execução diária D10",
+    title: "Tracker operacional D10 em ops/fiscal/providers",
+    description:
+      "Após o replanejamento Sprint 2 (Fiscal/Contábil), a execução foi iniciada com checklist D10 persistente em `ops/fiscal/providers` e cópia de resumo para handoff diário.",
+    uiRoutesNew: ["/ops/fiscal/providers", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsFiscalProvidersPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/fiscal/providers",
+    directLinkLabel: "Abrir execução D10 fiscal",
+  },
+  {
+    dateTime: "2026-04-30T11:11:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - tokens visuais e botão de ajuda em TS/TSX",
+    title: "opsVisualTokens e OpsRouteHelpButton migrados para TS/TSX",
+    description:
+      "Continuidade do strict-core incremental: `opsVisualTokens.js` foi migrado para `opsVisualTokens.ts` e `OpsRouteHelpButton.jsx` para `OpsRouteHelpButton.tsx`, com atualização de tipos e redução de declarations de compatibilidade específicas desses módulos.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/components/opsVisualTokens.ts",
+      "Frontend: 01_source/frontend/src/components/OpsRouteHelpButton.tsx",
+      "Frontend: 01_source/frontend/src/types/opsLegacyModules.d.ts",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir OpsDevErrors com stack TS/TSX ampliado",
+  },
+  {
+    dateTime: "2026-04-30T11:07:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - AuthContext em TSX nativo",
+    title: "AuthContext migrado para TSX e camada useAuthTyped removida",
+    description:
+      "Última camada de compatibilidade do fluxo OPS removida: `AuthContext` foi migrado para `AuthContext.tsx`, `OpsDevErrorsPageBody` voltou a consumir `useAuth` diretamente e o wrapper `useAuthTyped` foi aposentado.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/context/AuthContext.tsx",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPageBody.tsx",
+      "Frontend: 01_source/frontend/src/types/opsLegacyModules.d.ts",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir OpsDevErrors com AuthContext em TSX",
+  },
+  {
+    dateTime: "2026-04-30T11:03:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - migração nativa de componentes OPS",
+    title: "OpsPageTitleHeader e OpsTrendKpiCard migrados para TSX",
+    description:
+      "Evolução do strict-core: `OpsPageTitleHeader` e `OpsTrendKpiCard` foram migrados para TSX nativo, imports do `OpsDevErrorsPageBody` foram simplificados para os componentes finais e wrappers temporários com `@ts-ignore` foram removidos.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/components/OpsPageTitleHeader.tsx",
+      "Frontend: 01_source/frontend/src/components/OpsTrendKpiCard.tsx",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPageBody.tsx",
+      "Frontend: 01_source/frontend/src/context/AuthContext.tsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir OpsDevErrors com componentes TSX nativos",
+  },
+  {
+    dateTime: "2026-04-30T10:56:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - contratos mínimos de componentes/contexto",
+    title: "AuthContext, OpsTrendKpiCard e OpsPageTitleHeader com tipagem mínima explícita",
+    description:
+      "Redução de superfície de compatibilidade no strict-core: criadas camadas tipadas (`useAuthTyped`, `OpsTrendKpiCardTyped`, `OpsPageTitleHeaderTyped`) para encapsular imports legados JSX e manter contratos mínimos explícitos no fluxo OPS. (Substituídas no checkpoint seguinte por componentes TSX nativos.)",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/context/useAuthTyped.ts",
+      "Frontend: 01_source/frontend/src/components/OpsTrendKpiCard.tsx",
+      "Frontend: 01_source/frontend/src/components/OpsPageTitleHeader.tsx",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPageBody.tsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir OpsDevErrors com contratos mínimos tipados",
+  },
+  {
+    dateTime: "2026-04-30T10:52:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - contratos de erro backend",
+    title: "Detail variants tipados com union estrito em OpsDevErrors",
+    description:
+      "Endurecimento de parsing de erro: `detail` agora é tratado por union tipado (string, objeto com message/msg/error e lista de itens), reduzindo fallback genérico e removendo parsing amplo com casts.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPageBody.tsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir painel com parse de erro tipado",
+  },
+  {
+    dateTime: "2026-04-30T10:41:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - corpo migrado para TSX",
+    title: "Corpo de OpsDevErrors migrado para OpsDevErrorsPageBody.tsx",
+    description:
+      "Fatia de migração executada: corpo da tela foi movido para `OpsDevErrorsPageBody.tsx` com tipagem de estado/handlers críticos, o entrypoint TSX foi mantido e a ponte `.jsx` foi aposentada.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPageBody.tsx",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.tsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir OpsDevErrors já em TSX",
+  },
+  {
+    dateTime: "2026-04-30T10:37:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - entrada TSX da página OPS",
+    title: "OpsDevErrorsPage com entrypoint TSX para migração gradual",
+    description:
+      "Primeira fatia da migração controlada para TSX: criada entrada `OpsDevErrorsPage.tsx` e rota do App atualizada para consumir a versão TSX, mantendo o corpo atual estável enquanto a tipagem é evoluída por blocos.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.tsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir rota OPS via entrypoint TSX",
+  },
+  {
+    dateTime: "2026-04-30T10:32:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - triage draft module",
+    title: "Persistência de draft de triagem extraída para módulo TS dedicado",
+    description:
+      "Preparação para migração gradual de `OpsDevErrorsPage` para TSX: a persistência local de draft (load/save e estado inicial) foi extraída para `triageDraft.ts` e adicionada ao strict-core, reduzindo acoplamento da página.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/features/ops/triageDraft.ts",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir fluxo com triageDraft em TS",
+  },
+  {
+    dateTime: "2026-04-30T10:29:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - extração lookup/histórico",
+    title: "Lookup de ticket e histórico/export extraídos para módulos TS dedicados",
+    description:
+      "Continuidade do strict-core sem big bang: a lógica de lookup de ticket e de histórico/export de macros foi extraída para módulos TypeScript dedicados, mantendo `OpsDevErrorsPage` como orquestrador e ampliando cobertura estrita incremental.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/features/ops/ticketLookup.ts",
+      "Frontend: 01_source/frontend/src/features/ops/macroHistory.ts",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir fluxo OPS com módulos TS dedicados",
+  },
+  {
+    dateTime: "2026-04-30T10:27:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - expansão strict-core OPS",
+    title: "Extração de governança de triagem para módulo TS estrito",
+    description:
+      "Expansão incremental do strict-core sem big bang: regras de normalização/validação de incident_id e geração de macro de triagem foram extraídas para módulo TypeScript dedicado (`triageGovernance.ts`) e adicionadas ao gate estrito.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/features/ops/triageGovernance.ts",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir fluxo de triagem com módulo TS estrito",
+  },
+  {
+    dateTime: "2026-04-30T10:24:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Type Safety - strict core gate",
+    title: "Novo gate typecheck:strict-core com noImplicitAny em módulos críticos",
+    description:
+      "Evolução de confiabilidade no Sprint 3: criado tsconfig estrito para módulos críticos (error telemetry, store, boundary e tipos de domínio) com `noImplicitAny` e `strictNullChecks`, além de integração no workflow CI como gate técnico incremental.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/tsconfig.strict-core.json",
+      "Frontend: 01_source/frontend/package.json",
+      "CI: .github/workflows/sprint5-item5-regression.yml",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de gate strict-core",
+  },
+  {
+    dateTime: "2026-04-30T10:22:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 3 Hardening - CSP frontend",
+    title: "CSP base no frontend com connect-src controlado para OPS e tracker",
+    description:
+      "Início do hardening de segurança do Sprint 3: inclusão de Content-Security-Policy base no `index.html` com restrições de origem e `connect-src` explícito para APIs internas e lookup de ticket no tracker, além de políticas de referrer e content-type.",
+    uiRoutesNew: ["/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/index.html",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/updates",
+    directLinkLabel: "Abrir atualização de CSP frontend",
+  },
+  {
+    dateTime: "2026-04-30T10:19:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Governança - lookup opcional de ticket",
+    title: "Lookup de ticket antes da cópia da macro com status/owner do tracker",
+    description:
+      "Macro de triagem agora executa lookup opcional no tracker antes da cópia, preenchendo status/owner/checked_at no payload e no histórico/export (CSV/JSON), para validar consistência automática de governança.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir lookup de ticket no ops/dev/errors",
+  },
+  {
+    dateTime: "2026-04-30T10:17:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Governança - ticket linkage",
+    title: "incident_id com validação regex e link rápido para tracker no ops/dev/errors",
+    description:
+      "A governança de triagem evoluiu com validação de `incident_id` por regex, geração de link rápido para tracker e inclusão de `ticket_url` nas macros/exportações (texto e CSV/JSON), facilitando rastreabilidade ponta a ponta no handoff.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir validação de ticket e link rápido",
+  },
+  {
+    dateTime: "2026-04-30T10:15:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Handoff - export de histórico",
+    title: "Export rápido CSV/JSON do histórico de macros no ops/dev/errors",
+    description:
+      "Bloco de handoff diário concluído: o histórico local de macros agora possui exportação rápida em CSV e JSON (download) e ação de cópia JSON, facilitando anexar evidências no fechamento operacional do turno.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir export de histórico no ops/dev/errors",
+  },
+  {
+    dateTime: "2026-04-30T10:13:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Governança - histórico por turno",
+    title: "Histórico local de macros no ops/dev/errors com owner e turno",
+    description:
+      "Continuidade da trilha de governança operacional: cada macro copiada agora é registrada localmente (últimos 20 itens) com incident_id, owner, turno, ETA e severidade, com ação de recópia rápida para handoff de plantão.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir histórico local de macros por turno",
+  },
+  {
+    dateTime: "2026-04-30T10:09:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Governança de triagem",
+    title: "Macros de suporte com incident_id, owner, ETA e severidade no ops/dev/errors",
+    description:
+      "Evolução de governança operacional: as macros copiáveis de triagem passaram a incluir campos explícitos de controle de incidente (`incident_id`, `owner`, `ETA`, `severidade`), padronizando handoff e escalacao com responsabilidade e prazo.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir macros de governança no ops/dev/errors",
+  },
+  {
+    dateTime: "2026-04-30T10:07:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 Suporte - macros de triagem",
+    title: "Macros copiáveis de triagem no ops/dev/errors para handoff e escalacao",
+    description:
+      "Fechamento do próximo bloco de suporte no Sprint 2: o ops/dev/errors agora possui macros copiáveis (INCIDENTE, MONITORAMENTO e ESCALACAO) já preenchidas com janela, filtros ativos e top sinais de erro para reduzir tempo de triagem e padronizar comunicação operacional.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir macros de triagem no ops/dev/errors",
+  },
+  {
+    dateTime: "2026-04-30T10:04:00-03:00",
+    date: "2026-04-30",
+    scope: "Sprint 2 OPS - painel unificado e runbooks",
+    title: "Top incidentes de UI errors com resumo por janela e atalhos de runbook",
+    description:
+      "Evolução prática para operação assistida: o painel ops/dev/errors agora consome um summary paginado dos eventos de erro de UI por domínio/rota/mensagem, com janela configurável e links rápidos de runbook para investigação imediata em ops/health, ops/audit e ops/reconciliation.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: ["GET /dev-admin/ui-errors/summary?lookback_hours=&top_n="],
+    routes: [
+      "Backend: 01_source/order_pickup_service/app/routers/dev_admin.py",
+      "Backend: 01_source/order_pickup_service/app/schemas/dev_admin.py",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir top incidentes com runbooks",
+  },
+  {
+    dateTime: "2026-04-30T10:00:00-03:00",
+    date: "2026-04-30",
+    scope: "Observability OPS - UI errors duráveis + paginação",
+    title: "Persistência em tabela para UI errors e consulta paginada no painel OPS",
+    description:
+      "Evolução do trilho de telemetria de frontend: os eventos de erro de UI agora são persistidos de forma durável em `ui_error_events` no order_pickup_service e consultados via endpoint paginado para uso direto no painel OPS, reduzindo dependência de buffer em memória.",
+    uiRoutesNew: ["/ops/dev/errors", "/ops/updates"],
+    apiRoutesNew: [
+      "POST /internal/ui-errors (persistência durável + fallback memória)",
+      "GET /dev-admin/ui-errors?limit=&offset=&domain=&path=",
+    ],
+    routes: [
+      "Backend: 01_source/order_pickup_service/app/main.py",
+      "Backend: 01_source/order_pickup_service/app/core/db_migrations.py",
+      "Backend: 01_source/order_pickup_service/app/routers/dev_admin.py",
+      "Frontend: 01_source/frontend/src/pages/OpsDevErrorsPage.jsx",
+      "UI /ops/updates",
+    ],
+    directLink: "/ops/dev/errors",
+    directLinkLabel: "Abrir painel de UI errors paginados",
+  },
   {
     date: "2026-04-29",
     scope: "Fiscal UX - integração com FG-1 wave scope",
@@ -1400,10 +2019,7 @@ export default function OpsUpdatesHistoryPage() {
     const normalized = isDateOnly ? `${raw}T00:00:00-03:00` : raw;
     const parsed = new Date(normalized);
     if (Number.isNaN(parsed.getTime())) return raw;
-    return new Intl.DateTimeFormat("pt-BR", {
-      dateStyle: "short",
-      timeStyle: "short",
-    }).format(parsed);
+    return formatOpsDateTime(parsed, { dateStyle: "short", timeStyle: "short" });
   }
 
   return (
@@ -1421,7 +2037,7 @@ export default function OpsUpdatesHistoryPage() {
         <details style={templateBoxStyle}>
           <summary style={templateSummaryStyle}>Mini-template JSON (novos itens da timeline)</summary>
           <p style={{ ...mutedStyle, marginTop: 8 }}>
-            Campos obrigatórios: <b>scope</b>, <b>description</b>, <b>directLink</b>. Convenção NEW:
+            Campos obrigatórios: <b>dateTime</b> (com horário), <b>scope</b>, <b>description</b>, <b>directLink</b>. Convenção NEW:
             use <b>uiRoutesNew</b> e <b>apiRoutesNew</b> para destacar novidades do sprint.
           </p>
           <button type="button" style={copyButtonStyle} onClick={() => void handleCopyTemplate()}>

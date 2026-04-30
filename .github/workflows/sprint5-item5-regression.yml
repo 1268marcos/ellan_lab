@@ -60,6 +60,10 @@ jobs:
         run: npm run typecheck
         working-directory: 01_source/frontend
 
+      - name: Frontend strict typecheck (core modules)
+        run: npm run typecheck:strict-core
+        working-directory: 01_source/frontend
+
       - name: Run Sprint 5 Item 5 smoke script
         run: ./07_tests/run_sprint5_item5_smoke.sh
 
@@ -124,6 +128,10 @@ jobs:
 
       - name: Frontend incremental typecheck
         run: npm run typecheck
+        working-directory: 01_source/frontend
+
+      - name: Frontend strict typecheck (core modules)
+        run: npm run typecheck:strict-core
         working-directory: 01_source/frontend
 
       - name: Run Sprint 5 Item 5 regression script

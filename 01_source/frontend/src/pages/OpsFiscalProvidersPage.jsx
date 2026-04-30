@@ -11,6 +11,15 @@ const BILLING_BASE =
 const INTERNAL_TOKEN =
   import.meta.env.VITE_INTERNAL_TOKEN || "";
 const LATENCY_ALERT_MS = 1500;
+const FISCAL_D10_TRACKER_KEY = "ellan_ops_fiscal_d10_tracker_v1";
+const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
+const FISCAL_D10_TASKS = [
+  { id: "matrix", label: "Matriz pais/tenant/emissor revisada" },
+  { id: "go_no_go_br", label: "GO/NO-GO BR validado com evidência" },
+  { id: "go_no_go_pt", label: "GO/NO-GO PT validado com evidência" },
+  { id: "fallback", label: "Fallback operacional fiscal confirmado" },
+  { id: "handoff", label: "Resumo D10 pronto para handoff" },
+];
 
 function headersJson() {
   return {
@@ -53,8 +62,26 @@ export default function OpsFiscalProvidersPage() {
   const [goNoGoBusy, setGoNoGoBusy] = useState(false);
   const [ptGoNoGoBusy, setPtGoNoGoBusy] = useState(false);
   const [highlightedAnchor, setHighlightedAnchor] = useState("");
+  const [d10Tracker, setD10Tracker] = useState(() =>
+    FISCAL_D10_TASKS.reduce((acc, item) => {
+      acc[item.id] = false;
+      return acc;
+    }, {})
+  );
+  const [d10TrackerStatus, setD10TrackerStatus] = useState("");
+  const [gapItems, setGapItems] = useState([]);
+  const [gapLoading, setGapLoading] = useState(false);
+  const [gapError, setGapError] = useState("");
+  const [gapOrderFilter, setGapOrderFilter] = useState("");
+  const [gapPartnerFilter, setGapPartnerFilter] = useState("");
+  const [gapBatchFilter, setGapBatchFilter] = useState("");
+  const [gapStatusFilter, setGapStatusFilter] = useState("OPEN");
+  const [gapExportStatus, setGapExportStatus] = useState("");
   const brScopedSummary = withScopePrefixIfGenericSummary(brGoNoGo?.summary, "BR");
   const ptScopedSummary = withScopePrefixIfGenericSummary(ptGoNoGo?.summary, "PT");
+
+  const d10CompletedCount = FISCAL_D10_TASKS.filter((item) => Boolean(d10Tracker[item.id])).length;
+  const d10ProgressPct = Math.round((d10CompletedCount / FISCAL_D10_TASKS.length) * 100);
 
   async function loadStatus() {
     setLoading(true);
@@ -350,7 +377,12 @@ export default function OpsFiscalProvidersPage() {
     void loadStatus();
     void loadBrGoNoGo(false);
     void loadPtGoNoGo(false);
+    void loadFiscalGaps(false);
   }, []);
+
+  useEffect(() => {
+    void loadFiscalGaps(false);
+  }, [gapStatusFilter]);
 
   useEffect(() => {
     const rawHash = String(location.hash || "");
@@ -366,6 +398,235 @@ export default function OpsFiscalProvidersPage() {
     }, 2200);
     return () => window.clearTimeout(timer);
   }, [location.hash]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(FISCAL_D10_TRACKER_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      setD10Tracker((prev) => ({ ...prev, ...parsed }));
+    } catch (_) {
+      // no-op
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(FISCAL_D10_TRACKER_KEY, JSON.stringify(d10Tracker));
+    } catch (_) {
+      // no-op
+    }
+  }, [d10Tracker]);
+
+  function toggleD10Task(taskId) {
+    setD10Tracker((prev) => ({ ...prev, [taskId]: !prev[taskId] }));
+  }
+
+  async function copyD10HandoffSummary() {
+    const lines = [
+      "Sprint 2 - Fiscal D10 Handoff",
+      `timestamp: ${new Date().toISOString()}`,
+      `progresso_d10: ${d10ProgressPct}% (${d10CompletedCount}/${FISCAL_D10_TASKS.length})`,
+      `go_no_go_br: ${brGoNoGo?.go_no_go || "NO_GO"}`,
+      `go_no_go_pt: ${ptGoNoGo?.go_no_go || "NO_GO"}`,
+      "checklist:",
+      ...FISCAL_D10_TASKS.map((item) => `- [${d10Tracker[item.id] ? "x" : " "}] ${item.label}`),
+    ];
+    try {
+      await navigator.clipboard.writeText(lines.join("\n"));
+      setD10TrackerStatus("Resumo D10 copiado para handoff.");
+      window.setTimeout(() => setD10TrackerStatus(""), 2200);
+    } catch (_) {
+      setD10TrackerStatus("Falha ao copiar resumo D10.");
+      window.setTimeout(() => setD10TrackerStatus(""), 2200);
+    }
+  }
+
+  async function loadFiscalGaps(refresh = false) {
+    setGapLoading(true);
+    setGapError("");
+    try {
+      const qs = new URLSearchParams({
+        status: gapStatusFilter || "OPEN",
+        limit: "500",
+        refresh: refresh ? "true" : "false",
+      }).toString();
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/gaps?${qs}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao carregar divergências fiscais.");
+      setGapItems(Array.isArray(payload?.items) ? payload.items : []);
+    } catch (err) {
+      setGapError(String(err?.message || err || "erro desconhecido"));
+      setGapItems([]);
+    } finally {
+      setGapLoading(false);
+    }
+  }
+
+  async function seedFiscalGaps() {
+    setGapLoading(true);
+    setGapError("");
+    try {
+      const batch = String(gapBatchFilter || "").trim() || "batch_ops_d11_001";
+      const partner = String(gapPartnerFilter || "").trim() || "partner_demo_001";
+      const qs = new URLSearchParams({
+        batch_id: batch,
+        partner_id: partner,
+        keep_existing_open: "true",
+      }).toString();
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/gaps/seed?${qs}`, {
+        method: "POST",
+        headers: headersJson(),
+      });
+      const payload = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(payload?.detail || "Falha ao gerar seed fiscal.");
+      await loadFiscalGaps(false);
+      setGapExportStatus(`Seed aplicada (${payload?.created_or_updated || 0} registros).`);
+      window.setTimeout(() => setGapExportStatus(""), 2200);
+    } catch (err) {
+      setGapError(String(err?.message || err || "erro desconhecido"));
+    } finally {
+      setGapLoading(false);
+    }
+  }
+
+  const filteredGapItems = gapItems.filter((item) => {
+    const order = String(item?.order_id || "").toLowerCase();
+    const details = item?.details_json && typeof item.details_json === "object" ? item.details_json : {};
+    const partner = String(details?.partner_id || "").toLowerCase();
+    const batch = String(details?.batch_id || "").toLowerCase();
+    const status = String(item?.status || "").toUpperCase();
+    const matchOrder = gapOrderFilter.trim() ? order.includes(gapOrderFilter.trim().toLowerCase()) : true;
+    const matchPartner = gapPartnerFilter.trim() ? partner.includes(gapPartnerFilter.trim().toLowerCase()) : true;
+    const matchBatch = gapBatchFilter.trim() ? batch.includes(gapBatchFilter.trim().toLowerCase()) : true;
+    const matchStatus = gapStatusFilter ? status === String(gapStatusFilter).toUpperCase() : true;
+    return matchOrder && matchPartner && matchBatch && matchStatus;
+  });
+
+  function buildGapExportRows(rows) {
+    return rows.map((item) => {
+      const details = item?.details_json && typeof item.details_json === "object" ? item.details_json : {};
+      return {
+        id: item?.id || "",
+        gap_type: item?.gap_type || "",
+        severity: item?.severity || "",
+        status: item?.status || "",
+        order_id: item?.order_id || "",
+        invoice_id: item?.invoice_id || "",
+        partner_id: details?.partner_id || "",
+        batch_id: details?.batch_id || "",
+        amount_delta_cents: details?.amount_delta_cents || "",
+        message: details?.message || "",
+        last_detected_at: item?.last_detected_at || "",
+      };
+    });
+  }
+
+  function downloadTextFile(filename, mimeType, content) {
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+  }
+
+  function exportGapsJson() {
+    const rows = buildGapExportRows(filteredGapItems);
+    const content = JSON.stringify(
+      {
+        exported_at: new Date().toISOString(),
+        total: rows.length,
+        filters: {
+          order: gapOrderFilter,
+          partner: gapPartnerFilter,
+          batch: gapBatchFilter,
+          status: gapStatusFilter,
+        },
+        items: rows,
+      },
+      null,
+      2
+    );
+    downloadTextFile(`fiscal-gaps-${new Date().toISOString().replaceAll(":", "-")}.json`, "application/json;charset=utf-8", content);
+    setGapExportStatus("Export JSON por lote gerado.");
+    window.setTimeout(() => setGapExportStatus(""), 2200);
+  }
+
+  function exportGapsCsv() {
+    const rows = buildGapExportRows(filteredGapItems);
+    const headers = [
+      "id",
+      "gap_type",
+      "severity",
+      "status",
+      "order_id",
+      "invoice_id",
+      "partner_id",
+      "batch_id",
+      "amount_delta_cents",
+      "message",
+      "last_detected_at",
+    ];
+    const csv = [
+      headers.join(","),
+      ...rows.map((row) =>
+        headers
+          .map((key) => {
+            const value = String(row[key] ?? "");
+            return `"${value.replaceAll("\"", "\"\"")}"`;
+          })
+          .join(",")
+      ),
+    ].join("\n");
+    downloadTextFile(`fiscal-gaps-${new Date().toISOString().replaceAll(":", "-")}.csv`, "text/csv;charset=utf-8", csv);
+    setGapExportStatus("Export CSV por lote gerado.");
+    window.setTimeout(() => setGapExportStatus(""), 2200);
+  }
+
+  function publishD11HandoffToAccounting() {
+    const rows = buildGapExportRows(filteredGapItems);
+    const severityCount = rows.reduce(
+      (acc, row) => {
+        const sev = String(row?.severity || "UNKNOWN").toUpperCase();
+        acc[sev] = (acc[sev] || 0) + 1;
+        return acc;
+      },
+      { ERROR: 0, WARN: 0, INFO: 0, UNKNOWN: 0 }
+    );
+    const payload = {
+      scope: "SPRINT2_D11_FISCAL_GAPS_HANDOFF",
+      generated_at: new Date().toISOString(),
+      source: "/ops/fiscal/providers",
+      filters: {
+        order: gapOrderFilter,
+        partner: gapPartnerFilter,
+        batch: gapBatchFilter,
+        status: gapStatusFilter,
+      },
+      summary: {
+        total_items: rows.length,
+        severity: severityCount,
+        unique_partners: Array.from(new Set(rows.map((row) => String(row.partner_id || "").trim()).filter(Boolean))).length,
+        unique_batches: Array.from(new Set(rows.map((row) => String(row.batch_id || "").trim()).filter(Boolean))).length,
+      },
+      items: rows,
+    };
+    try {
+      window.localStorage.setItem(FISCAL_D11_HANDOFF_KEY, JSON.stringify(payload));
+      setGapExportStatus(`Lote D11 publicado para handoff contábil (${rows.length} itens).`);
+      window.setTimeout(() => setGapExportStatus(""), 2600);
+    } catch (err) {
+      setGapError(`Falha ao publicar handoff D11: ${String(err?.message || err)}`);
+    }
+  }
 
   const smokeInvoice = danfeResult?.payload?.invoice || null;
   const smokeProviderNamespace =
@@ -400,6 +661,120 @@ export default function OpsFiscalProvidersPage() {
             </button>
           </div>
         </div>
+
+        <section style={trackerCardStyle}>
+          <div style={trackerHeaderStyle}>
+            <h3 style={{ margin: 0 }}>Sprint 2 Fiscal - Execução D10</h3>
+            <span style={trackerBadgeStyle}>{d10ProgressPct}%</span>
+          </div>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            Checklist operacional do primeiro dia da trilha fiscal (ELLAN LAB + partners).
+          </p>
+          <div style={trackerListStyle}>
+            {FISCAL_D10_TASKS.map((task) => (
+              <label key={task.id} style={trackerItemStyle}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(d10Tracker[task.id])}
+                  onChange={() => toggleD10Task(task.id)}
+                />
+                <span>{task.label}</span>
+              </label>
+            ))}
+          </div>
+          <div style={toolbarStyle}>
+            <button type="button" onClick={() => void copyD10HandoffSummary()} style={buttonGhostStyle}>
+              Copiar resumo D10
+            </button>
+            <small style={smallStyle}>
+              {d10CompletedCount}/{FISCAL_D10_TASKS.length} concluídos
+            </small>
+          </div>
+          {d10TrackerStatus ? <small style={{ ...smallStyle, color: "#93c5fd" }}>{d10TrackerStatus}</small> : null}
+        </section>
+
+        <section style={trackerCardStyle}>
+          <div style={trackerHeaderStyle}>
+            <h3 style={{ margin: 0 }}>Sprint 2 Fiscal D11 - Divergências por pedido/parceiro</h3>
+            <span style={trackerBadgeStyle}>{filteredGapItems.length} itens</span>
+          </div>
+          <p style={{ ...mutedTextStyle, marginTop: 6 }}>
+            Trilha operacional com filtro por lote (`batch_id`) e export rápido CSV/JSON.
+          </p>
+          <div style={filtersGridStyle}>
+            <input value={gapOrderFilter} onChange={(e) => setGapOrderFilter(e.target.value)} style={inputStyle} placeholder="Filtro order_id" />
+            <input value={gapPartnerFilter} onChange={(e) => setGapPartnerFilter(e.target.value)} style={inputStyle} placeholder="Filtro partner_id" />
+            <input value={gapBatchFilter} onChange={(e) => setGapBatchFilter(e.target.value)} style={inputStyle} placeholder="Filtro batch_id" />
+            <select value={gapStatusFilter} onChange={(e) => setGapStatusFilter(e.target.value)} style={inputStyle}>
+              <option value="OPEN">OPEN</option>
+              <option value="RESOLVED">RESOLVED</option>
+            </select>
+          </div>
+          <div style={toolbarStyle}>
+            <button type="button" onClick={() => void loadFiscalGaps(true)} style={buttonPrimaryStyle} disabled={gapLoading}>
+              {gapLoading ? "Atualizando..." : "Atualizar gaps"}
+            </button>
+            <button type="button" onClick={() => void seedFiscalGaps()} style={buttonWarnStyle} disabled={gapLoading}>
+              {gapLoading ? "Gerando..." : "Gerar seed D11"}
+            </button>
+            <button type="button" onClick={exportGapsCsv} style={buttonGhostStyle} disabled={!filteredGapItems.length}>
+              Exportar CSV (lote)
+            </button>
+            <button type="button" onClick={exportGapsJson} style={buttonGhostStyle} disabled={!filteredGapItems.length}>
+              Exportar JSON (lote)
+            </button>
+            <button
+              type="button"
+              onClick={publishD11HandoffToAccounting}
+              style={buttonWarnStyle}
+              disabled={!filteredGapItems.length}
+            >
+              Publicar lote D11 no handoff contábil diário
+            </button>
+            <Link to="/fiscal/management-daily" style={crossShortcutLinkStyle}>
+              Abrir fiscal/management-daily
+            </Link>
+          </div>
+          {gapError ? <pre style={errorStyle}>{gapError}</pre> : null}
+          {gapExportStatus ? <small style={{ ...smallStyle, color: "#93c5fd" }}>{gapExportStatus}</small> : null}
+          <div style={tableWrapStyle}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Gap</th>
+                  <th style={thStyle}>Sev.</th>
+                  <th style={thStyle}>order_id</th>
+                  <th style={thStyle}>partner_id</th>
+                  <th style={thStyle}>batch_id</th>
+                  <th style={thStyle}>invoice_id</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredGapItems.length ? (
+                  filteredGapItems.slice(0, 80).map((item) => {
+                    const details = item?.details_json && typeof item.details_json === "object" ? item.details_json : {};
+                    return (
+                      <tr key={item?.id || `${item?.dedupe_key}-${item?.order_id}`}>
+                        <td style={tdStyle}>{item?.gap_type || "-"}</td>
+                        <td style={tdStyle}>{item?.severity || "-"}</td>
+                        <td style={tdStyle}>{item?.order_id || "-"}</td>
+                        <td style={tdStyle}>{details?.partner_id || "-"}</td>
+                        <td style={tdStyle}>{details?.batch_id || "-"}</td>
+                        <td style={tdStyle}>{item?.invoice_id || "-"}</td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td style={tdStyle} colSpan={6}>
+                      Nenhuma divergência encontrada para os filtros atuais.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <div style={danfeBoxStyle}>
           <h3 style={{ marginTop: 0, marginBottom: 8 }}>Gerar DANFE PDF (stub)</h3>
@@ -894,6 +1269,50 @@ const sectionTargetBadgeStyle = {
   color: "#bfdbfe",
   fontSize: 11,
   fontWeight: 700,
+};
+const trackerCardStyle = {
+  marginTop: 14,
+  marginBottom: 10,
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 12,
+  background: "rgba(255,255,255,0.03)",
+  padding: 12,
+  display: "grid",
+  gap: 8,
+};
+const trackerHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+};
+const trackerBadgeStyle = {
+  display: "inline-flex",
+  borderRadius: 999,
+  padding: "3px 10px",
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(30,58,138,0.28)",
+  color: "#bfdbfe",
+  fontWeight: 700,
+  fontSize: 12,
+};
+const trackerListStyle = {
+  display: "grid",
+  gap: 6,
+};
+const trackerItemStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 13,
+  color: "#e2e8f0",
+};
+const filtersGridStyle = {
+  marginTop: 8,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
 };
 const opsListStyle = {
   margin: "6px 0 0",

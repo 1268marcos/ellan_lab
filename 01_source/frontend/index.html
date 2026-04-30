@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- CSP: placeholder substituído em dev por vite.config (ellan-frontend-csp.mjs); removido no build; gateway/produção: mesmo valor em header (ver 02_docker/nginx). -->
+    <meta http-equiv="Content-Security-Policy" content="ELLAN_FRONTEND_CSP_PLACEHOLDER" />
+    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" />
     <meta name="description" content="Compre online e retire em locker. ELLAN Lab Locker - Reserva de gavetas, pagamento seguro e retirada rápida em SP e Portugal." />
     <meta name="keywords" content="locker, retirada, e-commerce, SP, Portugal, compra online" />
     <meta name="author" content="ELLAN Lab" />
@@ -26,19 +31,11 @@
     
     <!-- Preconnect para performance -->
     <link rel="preconnect" href="http://localhost:8003" />
+    <link rel="preconnect" href="http://localhost:8020" />
     <link rel="preconnect" href="http://localhost:8201" />
     
-    <!-- Schema.org para LocalBusiness -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "LocalBusiness",
-      "name": "ELLAN Lab Locker",
-      "description": "Sistema de lockers para retirada de produtos",
-      "areaServed": ["BR", "PT"],
-      "availableLanguage": ["pt-BR", "pt-PT"]
-    }
-    </script>
+    <!-- Schema.org LocalBusiness (ficheiro estático — compatível com script-src 'self' sem hash) -->
+    <script type="application/ld+json" src="/seo/local-business.json"></script>
     
     <title>ELLAN Lab Locker - Compre Online e Retire no Locker</title>
   </head>

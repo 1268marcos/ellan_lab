@@ -1,6 +1,15 @@
-import React from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import OpsRouteHelpButton from "./OpsRouteHelpButton";
+
+interface OpsPageTitleHeaderProps {
+  title: ReactNode;
+  versionLabel?: string;
+  versionTo?: string;
+  versionTitle?: string;
+  titleStyle?: CSSProperties;
+  containerStyle?: CSSProperties;
+}
 
 export default function OpsPageTitleHeader({
   title,
@@ -9,7 +18,7 @@ export default function OpsPageTitleHeader({
   versionTitle = "",
   titleStyle = {},
   containerStyle = {},
-}) {
+}: OpsPageTitleHeaderProps) {
   return (
     <div style={{ ...baseContainerStyle, ...containerStyle }}>
       <h1 style={{ ...baseTitleStyle, ...titleStyle }}>{title}</h1>
@@ -27,7 +36,7 @@ export default function OpsPageTitleHeader({
   );
 }
 
-const baseContainerStyle = {
+const baseContainerStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 8,
@@ -35,12 +44,12 @@ const baseContainerStyle = {
   marginBottom: 8,
 };
 
-const baseTitleStyle = {
+const baseTitleStyle: CSSProperties = {
   marginTop: 0,
   marginBottom: 0,
 };
 
-const versionBadgeStyle = {
+const versionBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   padding: "3px 8px",
@@ -52,3 +61,4 @@ const versionBadgeStyle = {
   fontSize: 11,
   fontWeight: 700,
 };
+

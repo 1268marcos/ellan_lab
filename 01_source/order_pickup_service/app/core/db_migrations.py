@@ -3135,6 +3135,47 @@ def _create_ops_action_audit(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_ui_error_events(conn, applied: list[str]) -> None:
+    name = "ui_error_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ui_error_events (
+            id                VARCHAR(40) PRIMARY KEY,
+            event_id          VARCHAR(80) NOT NULL,
+            domain            VARCHAR(40) NOT NULL,
+            path              VARCHAR(200) NOT NULL,
+            message           TEXT NOT NULL,
+            stack             TEXT,
+            component_stack   TEXT,
+            trace_id          VARCHAR(80),
+            source_ip         VARCHAR(80),
+            event_created_at  TIMESTAMPTZ,
+            created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ui_error_events_created_at "
+            "ON ui_error_events (created_at)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ui_error_events_domain_created "
+            "ON ui_error_events (domain, created_at)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ui_error_events_path_created "
+            "ON ui_error_events (path, created_at)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ---------------------------------------------------------------------------
 # ══════════════════════════════════════════════════════════════════════════
 # BLOCO 11 — LGPD / GDPR
@@ -4154,6 +4195,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_domain_event_outbox,
     _create_reconciliation_pending,
     _create_ops_action_audit,
+    _create_ui_error_events,
     _create_privacy_consents,
     _create_data_deletion_requests,
 

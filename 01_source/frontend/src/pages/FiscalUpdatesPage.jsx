@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 
 const FISCAL_UPDATES_PAGE_VERSION = "fiscal/updates v1.0.0";
 const TIMELINE_TEMPLATE_JSON = `{
@@ -24,6 +25,226 @@ const TIMELINE_TEMPLATE_JSON = `{
 }`;
 
 const UPDATES = [
+  {
+    dateTime: "2026-04-30T11:27:00-03:00",
+    scope: "Sprint prático — dashboards operacionais Fiscal/Contábil",
+    title: "Novas páginas fiscal/partner-performance e fiscal/accounting-close com filtros + export auditável",
+    description:
+      "Entregues duas páginas novas para operação diária do departamento Fiscal/Contábil e parceiros, com gráficos operacionais reais baseados em endpoints de providers/readiness, filtros por país/parceiro/período e exportação JSON/ZIP com assinatura SHA-256 no padrão auditável.",
+    uiRoutesNew: ["/fiscal/partner-performance", "/fiscal/accounting-close"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalPartnerPerformancePage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalAccountingClosePage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/partner-performance",
+    directLinkLabel: "Abrir dashboards de performance e fechamento contábil",
+  },
+  {
+    dateTime: "2026-04-30T11:18:00-03:00",
+    scope: "Próximo sprint — dashboards para Fiscal/Contábil + parceiros",
+    title: "Nova rota fiscal/department-dashboards com visão operacional ELLAN e BR/PT",
+    description:
+      "Entrega prática de dashboard para os departamentos Fiscal e Contábil: página dedicada com decisão consolidada, checks PASS/FAIL, top pendências por país em gráfico de barras, status de aprovação contábil e visão de parceiros BR/PT, com export de snapshot JSON.",
+    uiRoutesNew: ["/fiscal/department-dashboards"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalDepartmentDashboardsPage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/department-dashboards",
+    directLinkLabel: "Abrir dashboards departamentais Fiscal/Contábil",
+  },
+  {
+    dateTime: "2026-04-30T11:05:00-03:00",
+    scope: "Auditoria — assinatura de integridade dos anexos",
+    title: "Pacotes diários com hash SHA-256 em cada JSON (ops + fiscal + approval)",
+    description:
+      "Reforço da trilha auditável: cada JSON dentro do pacote diário .zip agora inclui bloco de integridade com algoritmo SHA-256 e hash do conteúdo, aplicado nas telas ops/health e fiscal/management-daily.",
+    uiRoutesNew: ["/ops/health", "/fiscal/management-daily"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Baixar pacote com assinatura SHA-256",
+  },
+  {
+    dateTime: "2026-04-30T10:59:00-03:00",
+    scope: "Simetria total do pacote diário entre telas",
+    title: "ops/health pacote .zip alinhado com 3 arquivos (OPS + FISCAL + APPROVAL)",
+    description:
+      "Aplicada simetria completa com fiscal/management-daily: o botão de pacote diário em ops/health agora também exporta três JSONs (operacional, gestão fiscal e aprovação contábil), mantendo padrão único de anexação para auditoria.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Baixar pacote diário com 3 arquivos no ops/health",
+  },
+  {
+    dateTime: "2026-04-30T10:44:00-03:00",
+    scope: "Rastreabilidade de auditoria — naming padronizado",
+    title: "Prefixo ELLAN_FISCAL_DAILY_YYYYMMDD aplicado nos arquivos JSON/ZIP diários",
+    description:
+      "Padronizado o nome interno dos artefatos diários com prefixo auditável (ELLAN_FISCAL_DAILY_YYYYMMDD_...) nos downloads JSON e no pacote .zip das telas ops/health e fiscal/management-daily, facilitando trilha e organização de evidências.",
+    uiRoutesNew: ["/ops/health", "/fiscal/management-daily"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Baixar artefatos com naming auditável",
+  },
+  {
+    dateTime: "2026-04-30T10:42:00-03:00",
+    scope: "Pacote diário auditável — 3 arquivos",
+    title: "ZIP diário da fiscal/management-daily agora inclui OPS + FISCAL + APPROVAL",
+    description:
+      "O pacote diário (.zip) da página fiscal/management-daily foi ampliado para conter três JSONs: payload operacional OPS, payload de gestão fiscal e aprovação contábil do dia, consolidando a trilha auditável formal em um único anexo.",
+    uiRoutesNew: ["/fiscal/management-daily"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Baixar pacote diário com 3 JSONs",
+  },
+  {
+    dateTime: "2026-04-30T10:39:00-03:00",
+    scope: "Trilha auditável formal — aprovação contábil diária",
+    title: "Bloco 'Aprovação Contábil do Dia' com export JSON na fiscal/management-daily",
+    description:
+      "Nova seção formal para o Departamento Contábil/Fiscal com responsável, status, observações e timestamp, incluindo salvamento de rascunho local e export JSON da aprovação diária para trilha auditável.",
+    uiRoutesNew: ["/fiscal/management-daily"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir aprovação contábil do dia",
+  },
+  {
+    dateTime: "2026-04-30T10:36:00-03:00",
+    scope: "Departamento Contábil/Fiscal — página dedicada",
+    title: "Nova rota fiscal/management-daily plugada no menu FISCAL",
+    description:
+      "Criada página dedicada de interação para o time Contábil/Fiscal com foco em gestão diária: decisão consolidada, risco, ações recomendadas e atalhos de evidência (copiar/baixar JSON e pacote diário .zip). A rota foi integrada ao menu FISCAL.",
+    uiRoutesNew: ["/fiscal/management-daily"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalManagementDailyPage.jsx",
+      "Frontend: 01_source/frontend/src/App.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/management-daily",
+    directLinkLabel: "Abrir página de gestão diária contábil/fiscal",
+  },
+  {
+    dateTime: "2026-04-30T10:34:00-03:00",
+    scope: "Gestão FISCAL — autonomia do pacote diário",
+    title: "fiscal/global agora gera pacote diário (.zip) com payload OPS + FISCAL",
+    description:
+      "Adicionado botão de pacote diário no fiscal/global para eliminar dependência da tela ops/health: download único (.zip) com os dois JSONs de handoff (ops_health_daily_payload e fiscal_management_daily_payload) para anexação direta no rito de gestão.",
+    uiRoutesNew: ["/fiscal/global"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/global",
+    directLinkLabel: "Baixar pacote diário no fiscal/global",
+  },
+  {
+    dateTime: "2026-04-30T10:30:00-03:00",
+    scope: "Gestão diária — pacote único de anexos",
+    title: "Novo botão: baixar pacote diário (.zip) com JSON OPS + FISCAL",
+    description:
+      "Entrega prática para o rito de gestão: ops/health agora gera um pacote .zip com dois payloads JSON (ops_health_daily_payload e fiscal_management_daily_payload) para anexar em lote sem montagem manual.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/package.json",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Baixar pacote diário OPS+FISCAL (.zip)",
+  },
+  {
+    dateTime: "2026-04-30T10:28:00-03:00",
+    scope: "Automação de rito diário — copy + download JSON",
+    title: "Payloads diários agora copiam para clipboard e baixam arquivo .json automaticamente",
+    description:
+      "Evolução prática para o rito de gestão: os botões de payload JSON em ops/health e fiscal/global passaram a executar cópia para clipboard e download automático de arquivo .json com timestamp, facilitando anexos e automação sem parsing manual.",
+    uiRoutesNew: ["/ops/health", "/fiscal/global"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir payload JSON com download automático",
+  },
+  {
+    dateTime: "2026-04-30T10:25:00-03:00",
+    scope: "Entregas práticas — automação de handoff + gestão FISCAL",
+    title: "Payload diário JSON no ops/health e payload executivo JSON no fiscal/global",
+    description:
+      "Implementados dois artefatos práticos para operação e gestão: botão de cópia do payload diário padronizado em JSON no ops/health (sem parsing manual) e botão de cópia do payload executivo FISCAL em JSON no fiscal/global com decisão, nível de risco e ações recomendadas para rotina gerencial.",
+    uiRoutesNew: ["/ops/health", "/fiscal/global"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/global",
+    directLinkLabel: "Abrir payloads JSON de operação e gestão",
+  },
+  {
+    dateTime: "2026-04-30T10:23:00-03:00",
+    scope: "Ops/health — daily geral com formato operacional",
+    title: "copyOpsHealthDailySlack padronizado com decisão/checks/referência + ação prática",
+    description:
+      "O payload do daily geral em ops/health deixou o formato narrativo e passou a seguir o padrão operacional de handoff (Decisão consolidada, Checks PASS, Checks com falha, Referência), incluindo ação prática explícita para o plantão.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir daily geral padronizado",
+  },
+  {
+    dateTime: "2026-04-30T10:21:00-03:00",
+    scope: "Handoff escrito — payloads Slack/Teams padronizados",
+    title: "Estrutura textual unificada nos payloads de cópia das telas FG-1",
+    description:
+      "Padronização aplicada nos payloads de cópia para handoff diário com a mesma semântica base (Decisão consolidada, Checks PASS, Checks com falha, Referência), alinhando escrita e visual entre ops/health e readiness-execution.",
+    uiRoutesNew: ["/ops/health", "/fiscal/readiness-execution"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalReadinessExecutionPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir payloads padronizados de handoff",
+  },
   {
     dateTime: "2026-04-30T09:03:00-03:00",
     scope: "Handoff visual diário — padronização cross-page",
@@ -802,10 +1023,7 @@ function formatFiscalUpdateDateTime(item) {
   if (!raw) return "-";
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return raw;
-  return new Intl.DateTimeFormat("pt-BR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(parsed);
+  return formatOpsDateTime(parsed, { dateStyle: "short", timeStyle: "short" });
 }
 
 const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "var(--fiscal-text)", fontFamily: "system-ui, sans-serif" };

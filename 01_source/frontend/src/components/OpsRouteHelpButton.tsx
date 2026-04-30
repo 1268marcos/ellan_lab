@@ -1,8 +1,18 @@
-import React from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsHelpTutorialModal from "./OpsHelpTutorialModal";
 import { resolveOpsTutorial } from "../constants/opsTutorialContent";
+
+interface TutorialSection {
+  title: string;
+  items: string[];
+}
+
+interface ResolvedTutorial {
+  title: string;
+  subtitle?: string;
+  sections: TutorialSection[];
+}
 
 export default function OpsRouteHelpButton() {
   const location = useLocation();
@@ -10,7 +20,12 @@ export default function OpsRouteHelpButton() {
   const routePath = String(location.pathname || "");
   if (!routePath.startsWith("/ops/")) return null;
 
-  const tutorial = resolveOpsTutorial(routePath, null);
+  const tutorial = resolveOpsTutorial(routePath, null) as ResolvedTutorial;
+  const userEmail =
+    user && typeof user === "object" && "email" in user && typeof (user as { email?: unknown }).email === "string"
+      ? (user as { email: string }).email
+      : "anonymous";
+
   return (
     <OpsHelpTutorialModal
       title={tutorial.title}
@@ -19,7 +34,8 @@ export default function OpsRouteHelpButton() {
       ctaLabel="Abrir registro de atualizações OPS"
       ctaHref="/ops/updates"
       storageKey={routePath.replaceAll("/", "-").replace(/^-+/, "") || "ops"}
-      userKey={token ? token.slice(0, 16) : user?.email || "anonymous"}
+      userKey={token ? token.slice(0, 16) : userEmail}
     />
   );
 }
+

@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
 from app.core.config import settings
@@ -51,6 +52,7 @@ from app.routers.payment_capabilities import router as payment_capabilities_rout
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("order_pickup_service")
 _dev_error_events: deque[dict] = deque(maxlen=300)
+_ui_error_events: deque[dict] = deque(maxlen=500)
 
 
 def _is_dev_env() -> bool:
@@ -79,6 +81,22 @@ def _record_dev_error_event(*, level: str, status_code: int, path: str, method: 
             "trace_id": trace_id,
             "error_type": error_type,
             "message": message,
+        }
+    )
+
+
+def _record_ui_error_event(
+    *,
+    trace_id: str,
+    source_ip: str | None,
+    payload: dict,
+) -> None:
+    _ui_error_events.appendleft(
+        {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "trace_id": trace_id,
+            "source_ip": source_ip,
+            "payload": payload,
         }
     )
 
@@ -193,7 +211,94 @@ async def internal_dev_errors(request: Request):
     token = request.headers.get("X-Internal-Token")
     if token != settings.internal_token:
         return JSONResponse(status_code=403, content={"ok": False, "message": "forbidden"})
-    return {"ok": True, "count": len(_dev_error_events), "items": list(_dev_error_events)}
+    return {
+        "ok": True,
+        "count": len(_dev_error_events),
+        "items": list(_dev_error_events),
+        "ui_count": len(_ui_error_events),
+        "ui_items": list(_ui_error_events),
+    }
+
+
+@app.post("/internal/ui-errors")
+async def internal_ui_errors_ingest(request: Request):
+    token = request.headers.get("X-Internal-Token")
+    if token != settings.internal_token:
+        return JSONResponse(status_code=403, content={"ok": False, "message": "forbidden"})
+
+    trace_id = getattr(request.state, "trace_id", None) or str(uuid.uuid4())
+    body = await request.json()
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"ok": False, "message": "payload must be object"})
+
+    event_id = str(body.get("eventId") or "").strip()
+    domain = str(body.get("domain") or "").strip()
+    path = str(body.get("path") or "").strip()
+    message = str(body.get("message") or "").strip()
+    created_at = str(body.get("createdAt") or "").strip()
+
+    if not event_id or not domain or not path or not message:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "ok": False,
+                "message": "eventId, domain, path and message are required",
+            },
+        )
+
+    payload = {
+        "eventId": event_id[:80],
+        "domain": domain[:40],
+        "path": path[:200],
+        "message": message[:500],
+        "stack": str(body.get("stack") or "")[:4000],
+        "componentStack": str(body.get("componentStack") or "")[:4000],
+        "createdAt": created_at[:80],
+    }
+
+    source_ip = request.client.host if request.client else None
+    _record_ui_error_event(trace_id=trace_id, source_ip=source_ip, payload=payload)
+
+    stored_in_db = False
+    db = SessionLocal()
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO ui_error_events
+                (id, event_id, domain, path, message, stack, component_stack, trace_id, source_ip, event_created_at, created_at)
+                VALUES
+                (:id, :event_id, :domain, :path, :message, :stack, :component_stack, :trace_id, :source_ip, :event_created_at, NOW())
+                """
+            ),
+            {
+                "id": str(uuid.uuid4())[:40],
+                "event_id": payload["eventId"],
+                "domain": payload["domain"],
+                "path": payload["path"],
+                "message": payload["message"],
+                "stack": payload["stack"] or None,
+                "component_stack": payload["componentStack"] or None,
+                "trace_id": trace_id,
+                "source_ip": source_ip,
+                "event_created_at": payload["createdAt"] or None,
+            },
+        )
+        db.commit()
+        stored_in_db = True
+    except Exception:
+        logger.exception("ui_error_ingest_db_failed trace_id=%s event_id=%s", trace_id, payload["eventId"])
+        db.rollback()
+    finally:
+        db.close()
+
+    return {
+        "ok": True,
+        "stored": True,
+        "stored_in_db": stored_in_db,
+        "trace_id": trace_id,
+        "ui_count": len(_ui_error_events),
+    }
 
 
 @app.post("/internal/mock/webhook-ok")

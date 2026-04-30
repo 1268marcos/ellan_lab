@@ -46,17 +46,18 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 - Definir modelos de tela KIOSK touch v1.
 - Instrumentar erro/telemetria minima em fluxos criticos.
 
-### Onda 2 (Dias 8-15) - P0 de jornada do usuario
+### Onda 2 (Dias 8-18) - P0 de jornada do usuario + trilhas fiscal/contabil
 - Entregar fluxos P0 de comprador online e comprador KIOSK.
 - Entregar P0 de OPS e suporte para incidentes recorrentes.
 - Estabilizar E2E principal de compra -> pagamento -> retirada/alocacao.
+- Incluir trilha Fiscal e trilha Contabil (ELLAN LAB + partners) no escopo operacional de Sprint 2.
 
-### Onda 3 (Dias 16-23) - Hardening e escala de parceiros
+### Onda 3 (Dias 19-24) - Hardening e escala de parceiros
 - Fechar P0 de parceiros e reconciliacao operacional.
 - Endurecer seguranca, auditoria e recuperacao de falhas.
 - Consolidar playbooks e treinamento curto para operacao.
 
-### Onda 4 (Dias 24-30) - Readiness global e Go/No-Go
+### Onda 4 (Dias 25-30) - Readiness global e Go/No-Go
 - Fechar P1 prioritarios por persona.
 - Rodar regressao final, UAT de personas e checklist de rollout.
 - Aprovar gate de producao por KPI e risco residual.
@@ -233,34 +234,116 @@ Checklist:
 - [ ] Frontend: iniciar migracao de estilos (dominios checkout, kiosk, ops).
 - [~] Frontend: criar store central para `currentOrder`, `payResp`, `pickupResp`, `syncStatus`.
   - Progresso: **94%** (store integrado nos hooks criticos + hardening no controller; resta limpeza final de duplicidade residual)
-- [~] Frontend: aplicar Error Boundaries por dominio critico.
-  - Progresso: **55%** (boundary migrado para TSX e aplicado no roteamento principal; falta cobertura por feature critica)
+- [x] Frontend: aplicar Error Boundaries por dominio critico.
+  - Progresso: **100% no escopo Sprint 1** (boundaries por rota/feature critica + telemetria estruturada local com hook para Sentry)
 - [~] Frontend: setup TS incremental (`allowJs`, `checkJs`, CI `tsc --noEmit`).
   - Progresso: **82%** (typecheck/build estáveis e gate de typecheck adicionado no workflow; falta observar execucao no remoto)
 - [ ] Produto/UX: prototipos navegaveis dos 4 modelos de tela KIOSK touch.
 - [ ] Eng/UX: validar fluxo KIOSK E2E assistido (compra -> pagamento -> abertura -> retirada/alocacao).
 
-## Sprint 2 (Dias 10-16) - P0 por persona em producao assistida
-Objetivo: colocar os P0 centrais para rodar com controle.
+## Sprint 2 (Dias 10-18) - P0 por persona em producao assistida + Fiscal/Contabil
+Objetivo: colocar os P0 centrais para rodar com controle e incorporar trilhas financeiras operacionais (ELLAN LAB + partners).
 
 Checklist:
 - [ ] Comprador ONLINE: checkout resiliente + jornada de pedido transparente.
 - [ ] Comprador KIOSK: fluxo proprio operacional com recuperacao de erro.
-- [ ] OPS: painel unificado + runbooks top incidentes.
+- [~] OPS: painel unificado + runbooks top incidentes.
+  - Progresso: **88%** (lookup opcional no tracker antes da copia com `ticket_status`/`ticket_owner_lookup` no macro e export)
 - [ ] Parceiros: contrato global versionado + portal parceiro v1.
-- [ ] Suporte: console por jornada + macros de triagem.
+- [~] Suporte: console por jornada + macros de triagem.
+  - Progresso: **78%** (macros com validacao automatica de consistencia via lookup de ticket)
+- [~] Fiscal (ELLAN LAB + partners): operacao fiscal assistida + governanca de emissores e conformidade.
+  - Progresso: **22%** (trilha D10-D12 + gaps; P0 conciliacao por parceiro e aceite macro ainda em aberto)
+- [~] Contabil (ELLAN LAB + partners): consolidacao contabil operacional + trilha de fechamento e evidencias.
+  - Progresso: **15%** (aceite central D13-D18, exports, ZIP executivo; P0 reconciliacao receita/repasse ainda majoritariamente em backlog)
 
-## Sprint 3 (Dias 17-23) - Hardening e confiabilidade global
+Evolucao consolidada Sprint 2 (apos ampliacao de escopo):
+- **Antes da ampliacao (somente OPS/Suporte centrais): ~83% nas frentes ativas**
+- **Agora (com Fiscal + Contabil no mesmo sprint): ~50% no consolidado do sprint**
+
+### Backlog detalhado Sprint 2 - Fiscal e Contabil (execucao imediata)
+
+#### Fiscal - ELLAN LAB
+| Prioridade | Item | Dono | Esforco | Criterio de aceite |
+|---|---|---|---|---|
+| P0 | Fechamento de governanca de emissores fiscais por pais/tenant | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 5 pts | Matriz de emissores ativa por jurisdicao critica; fallback fiscal definido; auditoria de alteracao habilitada |
+| P0 | Conciliação fiscal operacional de pedidos (pedido -> emissao -> status fiscal) | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 8 pts | 100% dos pedidos de teste com trilha fiscal consultavel; divergencia sem status reduzida para <2% na janela de sprint |
+| P1 | Painel de monitoramento fiscal com alertas de degradacao por provider | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 3 pts | Alertas por severidade ativos; evidencias de health check por provider no dashboard OPS |
+| P1 | Playbook fiscal de contingencia por incidente recorrente | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 2 pts | Top incidentes fiscais com runbook publicado e validado em simulacao operacional |
+
+#### Fiscal - Partners
+| Prioridade | Item | Dono | Esforco | Criterio de aceite |
+|---|---|---|---|---|
+| P0 | Contrato fiscal padrao para parceiros (campos obrigatorios + validacoes) | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 5 pts | Contrato fiscal versionado aplicado no onboarding parceiro sem bypass manual recorrente |
+| P0 | Trilha de conciliacao fiscal por parceiro (settlement x documento fiscal) | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 8 pts | Divergencias fiscais por parceiro com classificacao e owner; SLA de tratativa definido |
+| P1 | Score de conformidade fiscal por parceiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 3 pts | Scorecard com ranking de risco fiscal e filtro por periodo |
+| P1 | Rotina de evidencias para dispute fiscal de parceiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 2 pts | Pacote de evidencias exportavel por caso de divergencia fiscal |
+
+#### Contabil - ELLAN LAB
+| Prioridade | Item | Dono | Esforco | Criterio de aceite |
+|---|---|---|---|---|
+| P0 | Fechamento contabil operacional diario (D+0/D+1) com trilha auditavel | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 8 pts | Relatorio de fechamento diario gerado sem lacunas de evento critico; trilha por lote e responsavel |
+| P0 | Reconciliacao contabil de receitas, estornos e creditos | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 8 pts | Divergencia contabil residual <2% na janela de validacao do sprint |
+| P1 | Painel contabil de pendencias por severidade e aging | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 3 pts | Pendencias classificadas por aging com owner e ETA |
+| P1 | Checklist de fechamento mensal pronto para handoff | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 2 pts | Checklist publicado e executado em simulacao de fechamento |
+
+#### Contabil - Partners
+| Prioridade | Item | Dono | Esforco | Criterio de aceite |
+|---|---|---|---|---|
+| P0 | Conciliação contabil de repasses por parceiro (pedido -> settlement -> lancamento) | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 8 pts | 100% dos parceiros prioritarios com trilha de repasse reconciliada no periodo |
+| P0 | Governanca de provisoes e ajustes contabilizados por parceiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 5 pts | Ajustes com classificacao padronizada e aprovacao registrada por fluxo |
+| P1 | Relatorio contabil por parceiro para handoff financeiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 3 pts | Export consolidado por parceiro com totais e divergencias |
+| P1 | Regra de priorizacao de divergencia contabil por impacto financeiro | Marcos - Engenheiro de Software (Full Stack) e Responsavel por Produto/UX Operacional | 2 pts | Fila contabil com ordenacao por impacto + SLA de tratativa |
+
+Recalculo de evolucao Sprint 2 (apos detalhamento P0/P1 Fiscal+Contabil):
+- **Consolidado Sprint 2 ajustado: ~50%** (D17 de governanca de aceites central concluido; escopo macro ainda inclui integracao ampliada)
+- **Fiscal (ELLAN LAB + partners): 22%** (endpoints admin fiscais + trilhas operacionais em curso)
+- **Contabil (ELLAN LAB + partners): 15%** (trilha de aceite D13-D17 com API de retencao e alertas de divergencia prolongada)
+
+#### Evolucao percentual dos sprints (snapshot consolidado)
+Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendario real.
+
+| Sprint | Janela (plano 30 dias) | Progresso indicativo | Nota breve |
+| --- | --- | --- | --- |
+| Sprint 0 | Dias 1-2 | **~70%** | Baseline KPI, board, contratos minimos em curso |
+| Sprint 1 | Dias 3-9 | **~88%** | TS incremental, boundaries, telemetria, store em consolidacao |
+| Sprint 2 | Dias 10-18 | **~50%** consolidado; Fiscal **~22%**; Contabil **~15%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
+| Sprint 3 | Dias 19-24 | **~45%** | Hardening (CSP + gateway; strict-core com util OPS data/hora BR; migracoes incrementais) |
+| Sprint 4 | Dias 25-30 | **~10%** | Readiness Go/No-Go e UAT; ainda nao priorizado frente ao fecho Sprint 2 |
+
+#### Sequencia diaria Sprint 2 (D10-D18) - ordem de execucao e dependencias criticas
+| Dia | Foco principal | Entregas alvo (P0 primeiro) | Dependencias criticas | Saida do dia |
+|---|---|---|---|---|
+| D10 | Fiscal ELLAN LAB - governanca de emissores | Fechar matriz pais/tenant/emissor e checklist GO/NO-GO operacional | Providers fiscais acessiveis; token interno; ambientes BR/PT validos | Matriz aprovada + evidencias de health e fallback |
+| D11 | Fiscal ELLAN LAB - conciliacao fiscal pedido->documento | Validar trilha de emissao por pedido e classificar divergencias | Endpoint de consulta fiscal estavel; correlacao por `order_id` | Relatorio de divergencias fiscais com owner/ETA |
+| D12 | Fiscal Partners - contrato fiscal e onboarding | Aplicar contrato fiscal padrao no onboarding de parceiros | Campos obrigatorios mapeados; regras por jurisdicao definidas | Contrato versionado + checklist de onboarding fiscal |
+| D13 | Fiscal Partners - conciliacao por parceiro | Fechar reconciliacao settlement x documento fiscal por parceiro prioritario | Dados de settlement disponiveis; IDs de parceiro consistentes | Painel de divergencia fiscal por parceiro |
+| D14 | Contabil ELLAN LAB - fechamento operacional diario | Executar ciclo D+0/D+1 com trilha auditavel e evidencias | Janela de fechamento definida; eventos financeiros completos | Fechamento diario publicado com pendencias classificadas |
+| D15 | Contabil ELLAN LAB - reconciliacao receita/estorno/credito | Consolidar divergencia contabil residual com plano de tratativa | Dados de pagamentos e estornos consolidados | Snapshot contabil com delta e plano de acao |
+| D16 | Contabil Partners - repasses e provisoes | Reconciliar repasses por parceiro e classificar ajustes/provisoes | Lotes de repasse disponiveis; regras de aprovacao definidas | Fila contabil por parceiro com impacto e prioridade |
+| D17 | Contabil ELLAN LAB - governanca do historico de aceites | Retencao/compactacao (poda) + alertas de divergencia prolongada entre snapshots | Historico D15 + compare estaveis; token interno | API `retention` + `divergence-health` + card em `fiscal/management-daily` |
+| D18 | Aceite assistido Sprint 2 financeiro | Executar checklist final P0 e registrar riscos remanescentes P1 | Evidencias de D10-D17 completas; owners e ETAs atualizados | Sprint 2 financeiro pronto para transicao ao hardening |
+
+Dependencias criticas transversais (Sprint 2 financeiro):
+- Integridade de chaves de correlacao (`order_id`, `invoice_id`, `partner_id`, `batch_id`).
+- Disponibilidade de endpoints fiscais/contabeis sem bloqueio de CORS/rede.
+- Token interno e permissao operacional para rotas admin (`X-Internal-Token`).
+- Rastreabilidade de ownership (owner + ETA + severidade) em toda divergencia.
+- Rotina diaria de evidencia para handoff (texto + export estruturado).
+
+## Sprint 3 (Dias 19-24) - Hardening e confiabilidade global
 Objetivo: reduzir fragilidade operacional e risco de escala.
 
 Checklist:
-- [ ] Endurecer CSP e politicas de seguranca frontend.
-- [ ] Evoluir tipagem TS em modulos criticos (`noImplicitAny` nesses modulos).
+- [~] Endurecer CSP e politicas de seguranca frontend.
+  - Progresso: **68%** (meta CSP removida do `dist` no build — política só no gateway; exemplo Nginx em `02_docker/nginx/csp-frontend.example.conf`; JSON-LD externo; dev: plugin reabre `unsafe-inline` em `script-src`; `style-src` ainda com `unsafe-inline` no gateway até migração de estilos)
+- [~] Evoluir tipagem TS em modulos criticos (`noImplicitAny` nesses modulos).
+  - Progresso: **92%** (`opsDateTimeFormat.ts` no strict-core + timeline `ops/updates` com fuso America/Sao_Paulo para leitura auditável no Brasil)
 - [ ] Completar auditoria ponta a ponta em fluxos de alto impacto.
 - [ ] Consolidar scorecards de parceiros e alertas por SLO.
 - [ ] Fechar treinamento rapido operacional (OPS/Suporte).
 
-## Sprint 4 (Dias 24-30) - Go/No-Go global
+## Sprint 4 (Dias 25-30) - Go/No-Go global
 Objetivo: consolidar aceite e readiness de rollout.
 
 Checklist:
@@ -509,6 +592,29 @@ Riscos imediatos:
 Proximo checkpoint:
 - Commit/push de `.gitignore` + `01_source/order_pickup_service/requirements.txt` e nova execucao da Action.
 
+### 2026-04-30 - Evidencia final de fechamento do gate remoto (sucesso)
+Status geral: `[x]` Concluido
+
+Resumo:
+- Push aplicado com a correcao de rastreamento do `requirements.txt` (commit `da67fd1`).
+- Workflow remoto executado com sucesso no GitHub Actions:
+  - Workflow: `Sprint5 Item5 Regression`
+  - Run ID: `25166340402`
+  - Conclusao: `success`
+  - URL: `https://github.com/1268marcos/ellan_lab/actions/runs/25166340402`
+  - Commit (headSha): `da67fd1c341bc72e62fb01228f166db58e74717d`
+  - Inicio/Fim (UTC): `2026-04-30T12:50:50Z` -> `2026-04-30T12:53:05Z`
+
+Decisao executiva do checkpoint:
+- Frente de estabilizacao do `typecheck` no CI e validacao remota do gate considerada **fechada com seguranca**.
+- Prosseguir para as proximas prioridades de sprint sem bloqueio de pipeline nesta trilha.
+
+Riscos imediatos:
+- Sem riscos bloqueadores nesta frente.
+
+Proximo checkpoint:
+- Manter monitoramento passivo das proximas runs e abrir incidente apenas em regressao real.
+
 ## Snapshot para o daily de hoje (Sprint 0)
 - Progresso medio Sprint 0: **70%**
 - Itens concluidos: **1/4**
@@ -547,7 +653,736 @@ Use esta estrutura para manter historico objetivo das entregas:
 | 2026-04-30 | Sprint 1 | Validacao remota do workflow no GitHub Actions | `[~]` | `gh run list` + `gh run view 25164702339 --log-failed` | Corrigir falha do step backend (`requirements.txt`) e rerodar |
 | 2026-04-30 | Sprint 1 | Correcao de resiliencia no install backend do workflow | `[x]` | `.github/workflows/sprint5-item5-regression.yml` | Executar nova run remota e coletar evidencia final |
 | 2026-04-30 | Sprint 1 | Correcao raiz de arquivo ignorado no CI (`requirements.txt`) | `[x]` | `.gitignore`, `01_source/order_pickup_service/requirements.txt` | Push + rerun para confirmar fechamento do gate |
-| 2026-04-30 | Sprint 1 | Error Boundary por dominio no roteamento | `[~]` | `01_source/frontend/src/components/DomainErrorBoundary.tsx`, `01_source/frontend/src/App.jsx` | Expandir boundaries por feature critica |
+| 2026-04-30 | Sprint 1 | Evidencia final do gate remoto (GitHub Actions) | `[x]` | Run `25166340402` (`success`) - https://github.com/1268marcos/ellan_lab/actions/runs/25166340402 | Monitoramento passivo nas proximas runs |
+| 2026-04-30 | Sprint 1 | Error Boundary por dominio no roteamento | `[x]` | `01_source/frontend/src/components/DomainErrorBoundary.tsx`, `01_source/frontend/src/App.jsx` | Hardening incremental em rotas secundarias conforme necessidade |
+| 2026-04-30 | Sprint 1 | Endpoint interno de ingestao de erro UI + envio frontend com fallback | `[x]` | `01_source/order_pickup_service/app/main.py`, `01_source/frontend/src/services/errorTelemetry.ts`, `01_source/frontend/src/App.jsx` | Evoluir armazenamento de UI errors para persistencia duravel |
+
+### 2026-04-30 - Expansao de Error Boundaries por feature critica
+Status geral: `[x]` Concluido
+
+Resumo:
+- `App.jsx` evoluido de boundary global unico para boundaries por feature critica via helper `withBoundary`.
+- Cobertura aplicada em rotas de maior risco operacional:
+  - Checkout (`/checkout`);
+  - Pedidos (`/meus-pedidos`, `/meus-pedidos/:orderId`);
+  - OPS criticas (`/ops/sp`, `/ops/pt`, `/ops/sp/kiosk`, `/ops/pt/kiosk`, `/ops/reconciliation`, `/ops/audit`, `/ops/health`).
+- Adicionado `onError` por dominio com log contextual (`domain` + `path`) para facilitar observabilidade.
+- Chave por rota no boundary para reset seguro ao navegar entre telas.
+- Validacao tecnica concluida: `typecheck` e `build` verdes.
+
+Decisao executiva do checkpoint:
+- Considerar o item de boundaries por feature critica concluido para Sprint 1.
+- Manter evolucao futura como hardening opcional (estender para rotas OPS/fiscal restantes + envio de telemetria externa).
+
+Riscos imediatos:
+- `[!]` Observabilidade de erro ainda em `console.error` local; falta envio para Sentry/OTel para fechar ciclo de incidentes.
+
+Proximo checkpoint:
+- Integrar callback `onError` com pipeline real de telemetria e ampliar cobertura para rotas OPS/fiscal restantes conforme prioridade.
+
+### 2026-04-30 - Evolucao da telemetria dos boundaries
+Status geral: `[x]` Concluido
+
+Resumo:
+- Criado serviço `src/services/errorTelemetry.ts` para reporte estruturado de erro de UI.
+- Evento de erro agora inclui: `eventId`, `domain`, `path`, `message`, `stack`, `componentStack`, `createdAt`.
+- Persistencia local dos ultimos eventos em `localStorage` (`ellan_ui_error_events_v1`) para apoio operacional.
+- Hook opcional de integracao com Sentry habilitado quando `window.Sentry` estiver presente.
+- `App.jsx` passou a enviar erros dos boundaries para `reportUiErrorTelemetry` (em vez de `console.error` direto).
+
+Decisao executiva do checkpoint:
+- Sprint 1 encerra com boundaries por feature critica + telemetria padronizada no frontend.
+- Evolucao futura fica focada em envio para backend/OTel e dashboards de erro por dominio.
+
+Riscos imediatos:
+- `[!]` Telemetria ainda sem envio ativo para backend central (apenas persistencia local + opcional Sentry).
+
+Proximo checkpoint:
+- Definir endpoint interno para ingestao de erro de UI e ligar pipeline observavel ponta a ponta.
+
+### 2026-04-30 - Endpoint interno de ingestao + envio frontend com fallback
+Status geral: `[x]` Concluido
+
+Resumo:
+- Backend (`order_pickup_service`) recebeu endpoint interno de ingestao:
+  - `POST /internal/ui-errors` (protegido por `X-Internal-Token`);
+  - validacao de payload e persistencia em buffer in-memory (`_ui_error_events`);
+  - enriquecimento do endpoint `GET /internal/dev/errors` com `ui_count` e `ui_items`.
+- Frontend passou a enviar evento de erro de UI para o endpoint interno via `errorTelemetry`:
+  - envio best-effort para `${VITE_ORDER_PICKUP_BASE_URL}/internal/ui-errors`;
+  - fallback preservado (persistencia local + `console` + opcional Sentry);
+  - sem bloquear renderizacao em falha de rede/autorizacao.
+- Validacao tecnica concluida: `typecheck` e `build` verdes.
+
+Decisao executiva do checkpoint:
+- Pipeline de telemetria de erro UI fechado no escopo Sprint 1 (ingestao interna + envio com fallback).
+- Evolucao futura pode migrar de buffer in-memory para persistencia estruturada e dashboards operacionais.
+
+Riscos imediatos:
+- `[!]` Endpoint atual usa armazenamento em memoria (volatil em restart).
+- `[!]` Envio depende de `VITE_INTERNAL_TOKEN` no frontend para autenticacao interna.
+
+Proximo checkpoint:
+- Evoluir para persistencia duravel de UI errors e visualizacao dedicada em painel OPS.
+
+### 2026-04-30 - Sprint 2 (OPS) bloco inicial: painel unificado + runbook
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Entregue persistencia duravel de UI errors na tabela `ui_error_events` com fallback em memoria.
+- Entregue endpoint paginado de consulta (`GET /dev-admin/ui-errors`) para consumo no painel.
+- Entregue endpoint de resumo operacional (`GET /dev-admin/ui-errors/summary`) com top dominios/rotas/mensagens por janela.
+- `ops/dev/errors` atualizado com secao de top incidentes e atalhos de runbook rapido por dominio.
+- Registro publicado em `ops/updates`.
+
+Decisao executiva do checkpoint:
+- Sprint 2 (frente OPS) segue com foco em reduzir tempo de resposta a incidente via triagem guiada no proprio painel.
+
+Riscos imediatos:
+- `[!]` Mapeamento de runbook por dominio ainda inicial (checkout/kiosk/ops/global), pode exigir refinamento por rota real.
+- `[!]` Suporte ainda sem macros de triagem copiaveis integradas ao painel.
+
+Proximo checkpoint:
+- Conectar runbooks a macros de triagem do suporte e gerar payload copiavel de incidente para handoff.
+
+### 2026-04-30 - Sprint 2 (Suporte) macros de triagem copiaveis no OPS
+Status geral: `[x]` Concluido
+
+Resumo:
+- `ops/dev/errors` recebeu bloco de **macros copiaveis** para suporte com 3 perfis:
+  - INCIDENTE
+  - MONITORAMENTO
+  - ESCALACAO
+- Cada macro sai preenchida com contexto operacional atual:
+  - janela ativa (h),
+  - total de eventos,
+  - filtros aplicados (status/rota),
+  - faixa paginada visivel,
+  - top dominio/rota/mensagem quando disponivel.
+- Copia com fallback para navegadores sem `navigator.clipboard`.
+- Registro da evolucao publicado em `ops/updates`.
+
+Decisao executiva do checkpoint:
+- Fechada mais uma frente do Sprint 2 para suporte com padronizacao de handoff e triagem.
+
+Riscos imediatos:
+- `[!]` Macros ainda em formato texto unico (proximo passo pode incluir versoes por canal: Slack, ticket, incidente formal).
+
+Proximo checkpoint:
+- Integrar macros com IDs de incidente e owner/ETA para fechar ciclo de governanca operacional.
+
+### 2026-04-30 - Sprint 2 (Governanca) macros com campos operacionais
+Status geral: `[x]` Concluido
+
+Resumo:
+- Macros de triagem do `ops/dev/errors` evoluidas com campos operacionais obrigatorios:
+  - `incident_id`
+  - `owner`
+  - `ETA`
+  - `severidade` (CRITICAL/HIGH/MEDIUM/LOW)
+- Os campos passam a compor automaticamente os 3 formatos de macro (INCIDENTE, MONITORAMENTO, ESCALACAO).
+- Resultado: handoff mais auditavel com responsabilidade nominal e previsao de resolucao.
+- Registro publicado em `ops/updates`.
+
+Decisao executiva do checkpoint:
+- Considerar trilha de governanca de triagem do Sprint 2 fechada no escopo de UI operacional.
+
+Riscos imediatos:
+- `[!]` Campos ainda manuais; proxima evolucao pode integrar preenchimento automatico por ticket externo.
+
+Proximo checkpoint:
+- Integrar `incident_id` com provedor de tickets e persistir historico de macros por usuario/turno.
+
+### 2026-04-30 - Sprint 2 (Governanca) historico local de macros por turno
+Status geral: `[x]` Concluido
+
+Resumo:
+- `ops/dev/errors` passou a registrar historico local dos ultimos 20 macros copiados.
+- Cada item do historico guarda: `incident_id`, `owner`, `turno`, `ETA`, `severidade` e timestamp.
+- Inclusa acao de **recopiar macro** para acelerar handoff e escalacao recorrente no plantao.
+- `ops/updates` atualizado com `dateTime` (data + horario) nos novos lancamentos.
+
+Decisao executiva do checkpoint:
+- Governanca operacional de triagem avancou para trilha auditavel por turno sem depender de backend adicional.
+
+Riscos imediatos:
+- `[!]` Historico permanece local ao navegador; nao ha consolidacao central multiusuario.
+
+Proximo checkpoint:
+- Integrar `incident_id` com provedor de tickets e publicar sincronizacao opcional do historico.
+
+### 2026-04-30 - Sprint 2 (Handoff) export rapido CSV/JSON
+Status geral: `[x]` Concluido
+
+Resumo:
+- Historico local de macros no `ops/dev/errors` conectado com export rapido:
+  - download CSV
+  - download JSON
+  - copia JSON para area de transferencia
+- Entrega focada em anexar evidencias no handoff diario sem atrito.
+- Registro publicado em `ops/updates` com data e horario.
+
+Decisao executiva do checkpoint:
+- Trilha operacional de handoff no Sprint 2 avancou para pacote pronto de evidencia (texto + arquivo).
+
+Riscos imediatos:
+- `[!]` Export permanece local e manual; ainda sem upload automatico para sistema externo.
+
+Proximo checkpoint:
+- Integrar `incident_id` com provedor de tickets e gerar link de referencia cruzada no proprio macro.
+
+### 2026-04-30 - Sprint 2 (Governanca) validacao de ticket + link no macro
+Status geral: `[x]` Concluido
+
+Resumo:
+- `incident_id` no `ops/dev/errors` passou a ter validacao por regex de padrao operacional.
+- Quando valido, a tela mostra link rapido para abrir o ticket no tracker.
+- `ticket_url` agora passa a integrar:
+  - macro textual copiavel,
+  - historico local de macros,
+  - exportacoes CSV/JSON.
+- Registro publicado em `ops/updates` com horario.
+
+Decisao executiva do checkpoint:
+- Trilha de governanca do Sprint 2 avancou com rastreabilidade direta incidente -> ticket.
+
+Riscos imediatos:
+- `[!]` Link de tracker usa base configuravel por ENV; ambientes sem configuracao padrao devem ajustar `VITE_INCIDENT_TRACKER_BASE_URL`.
+
+Proximo checkpoint:
+- Integrar lookup do ticket no tracker (status/owner) para validacao automatica antes da copia da macro.
+
+### 2026-04-30 - Sprint 2 (Governanca) lookup opcional antes da copia
+Status geral: `[x]` Concluido
+
+Resumo:
+- `ops/dev/errors` agora pode consultar o tracker (lookup opcional) para obter status e owner do ticket.
+- A cópia de macro passou a executar esse lookup e incluir:
+  - `ticket_status`
+  - `ticket_owner_lookup`
+  - `ticket_checked_at`
+- Campos também entram no histórico local e nos exports CSV/JSON.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Governanca operacional ganhou validação semiautomática de consistência incidente-ticket no ato da triagem.
+
+Riscos imediatos:
+- `[!]` Lookup depende de disponibilidade e limites do tracker externo.
+
+Proximo checkpoint:
+- Adicionar fallback configurável de autenticação para tracker (token) em ambiente de produção.
+
+### 2026-04-30 - Sprint 3 (Hardening) CSP frontend base
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Aplicada política CSP base no `frontend/index.html` com restrições de origem e `connect-src` explícito.
+- Incluídas políticas adicionais de segurança no documento:
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `X-Content-Type-Options: nosniff`
+- Atualização registrada em `ops/updates` com data e horário.
+
+Decisao executiva do checkpoint:
+- Sprint 3 iniciado com hardening incremental sem bloquear os fluxos atuais de operação.
+
+Riscos imediatos:
+- `[!]` CSP ainda permite `unsafe-inline` em script/style para compatibilidade atual; reduzir permissões exige migração adicional.
+
+Proximo checkpoint:
+- Evoluir CSP para reduzir `unsafe-inline` e mover para headers no backend/gateway por ambiente.
+
+### 2026-04-30 - Sprint 3 (Hardening) CSP reforçada — serviços locais + HMR + Permissions-Policy
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `connect-src` ampliado para billing fiscal **8020**, lifecycle **8010**, runtime **8200**, espelhos **127.0.0.1** e WebSockets **Vite** (5173/5174/4173) para não quebrar HMR em dev.
+- Novas diretivas: `frame-src 'none'`, `worker-src 'self'`, `manifest-src 'self'`, `media-src` alinhado a imagens.
+- `Permissions-Policy` restritiva (câmera, micro, geolocalização, payment, USB, FLoC).
+- `preconnect` para `localhost:8020` no `index.html`.
+
+Decisao executiva do checkpoint:
+- Sprint 3 avança no primeiro eixo do checklist (CSP) sem exigir nonce/sha imediato; produção futura continua recomendada via gateway com CSP por ambiente.
+
+Proximo checkpoint:
+- Servir CSP por **header** no reverse proxy em produção (remover ou alinhar meta CSP) e planear redução de `unsafe-inline` em `style-src` (tokens/CSS modules).
+
+### 2026-04-30 - Sprint 3 (Hardening) script-src sem unsafe-inline no artefacto de build
+Status geral: `[~]` Em andamento
+
+Resumo:
+- JSON-LD movido para `public/seo/local-business.json` e referenciado com `<script type="application/ld+json" src="...">`.
+- Meta CSP no `index.html` com `script-src 'self'` (sem `unsafe-inline`) no bundle de produção.
+- Plugin `ellanCspIndexHtml` em `vite.config.js` reintroduz `unsafe-inline` em `script-src` no **serve** e **remove a meta CSP inteira** no **build** (política só no gateway).
+
+Decisao executiva do checkpoint:
+- Produção ganha superfície de ataque menor em scripts inline; desenvolvimento local permanece fluido.
+
+Proximo checkpoint:
+- Header CSP por ambiente no gateway e estratégia para `style-src` (design tokens + menos `style={{}}`).
+
+### 2026-04-30 - Sprint 3 (Hardening) CSP só no gateway — meta removida do dist
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Build do frontend emite `dist/index.html` **sem** meta `Content-Security-Policy`; política canónica em `01_source/frontend/ellan-frontend-csp.mjs` (reutilizada na meta em dev, no header de `vite preview` e no exemplo Nginx `02_docker/nginx/csp-frontend.example.conf` com `map` + `add_header`).
+
+#### Avaliacao critica da proposta (meta vs gateway + plano de estilos)
+- **Acerto central**: CSP por **header** em produção é mais auditável e evita duplicar política com meta; retirar a meta do artefacto `dist` alinha com essa arquitetura.
+- **Ajuste ao snippet genérico**: injetar no dev só `default-src 'self'; script-src 'self' 'unsafe-inline'` **apagaria** `connect-src` e outras diretivas úteis. Neste repo a meta completa vive no `index.html`; o plugin só acrescenta `unsafe-inline` em `script-src` no serve e remove a meta no build.
+- **`vite preview`**: serve `dist` sem meta até existir gateway com header — tratar como pré-produção ou proxy local com a mesma CSP.
+- **Relatórios de violação**: preferir **Reporting API** moderna em vez de depender só de `report-uri` legado.
+- **CSS-in-JS**: Styled/Emotion podem injetar `<style>` dinâmico — podem manter exigência de `unsafe-inline` ou exigir nonces/hashes dedicados; o plano por **variáveis CSS + classes** continua adequado ao código atual com `style={{}}`.
+- **ESLint `react/no-inline-styles`**: requer `eslint-plugin-react`; convém introduzir como **warn** por etapa para não bloquear o CI num único PR.
+
+### 2026-04-30 - Sprint 3 (Type Safety) util OPS data/hora Brasil no strict-core
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Novo `src/utils/opsDateTimeFormat.ts` (`pt-BR` + `America/Sao_Paulo`) incluído no gate `typecheck:strict-core`.
+- `ops/updates` passa a formatar entradas da timeline com esse util para consistência auditável para operadores no Brasil (sem depender só do fuso do SO).
+
+### 2026-04-30 - Sprint 3 (Type Safety) gate strict-core incremental
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Criado `tsconfig.strict-core.json` com regras estritas para módulos críticos:
+  - `strict: true`
+  - `noImplicitAny: true`
+  - `strictNullChecks: true`
+- Novo script: `npm run typecheck:strict-core`.
+- CI atualizado para executar o gate estrito junto do typecheck incremental.
+- Registro publicado em `ops/updates` com data e horário.
+
+Decisao executiva do checkpoint:
+- Evolução de tipagem avançada de forma incremental e controlada, sem big bang no legado JS.
+
+Riscos imediatos:
+- `[!]` Cobertura estrita ainda limitada a núcleo crítico; expansão gradual continua necessária.
+
+Proximo checkpoint:
+- Expandir strict-core para mais módulos OPS críticos de leitura/triagem sem quebrar fluxo atual.
+
+### 2026-04-30 - Sprint 3 (Type Safety) expansão para OPS triage governance
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Extraído módulo TS dedicado `features/ops/triageGovernance.ts` com:
+  - normalização/validação de `incident_id`,
+  - contrato tipado para contexto de macro,
+  - builder de macro de triagem.
+- `OpsDevErrorsPage` passou a consumir o módulo tipado.
+- Gate `strict-core` expandido para incluir o novo módulo OPS crítico.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Sprint 3 segue com expansão controlada da tipagem em camadas de governança operacional, sem migração em massa de páginas JSX.
+
+Riscos imediatos:
+- `[!]` Página OPS principal ainda em JSX; tipagem total da view continua como etapa posterior.
+
+Proximo checkpoint:
+- Extrair mais blocos críticos de `ops/dev/errors` para módulos TS (lookup e histórico/export) e manter a página como orquestradora.
+
+### 2026-04-30 - Sprint 3 (Type Safety) lookup + histórico/export em módulos TS
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Criados módulos TS dedicados:
+  - `features/ops/ticketLookup.ts`
+  - `features/ops/macroHistory.ts`
+- `OpsDevErrorsPage` passou a consumir os módulos e ficou mais orquestradora.
+- `strict-core` expandido para cobrir ambos os novos módulos.
+- Registro publicado em `ops/updates` com data e horário.
+
+Decisao executiva do checkpoint:
+- A expansão de tipagem segue por fatias de risco operacional, mantendo estabilidade da UI e do fluxo de sprint.
+
+Riscos imediatos:
+- `[!]` UI principal ainda em JSX; próxima etapa pode migrar para TSX quando o núcleo estiver consolidado.
+
+Proximo checkpoint:
+- Extrair camada de persistência de draft/estado de triagem para módulo TS reutilizável e preparar migração gradual para TSX.
+
+### 2026-04-30 - Sprint 3 (Type Safety) draft de triagem em módulo TS
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Extraída persistência de draft para `features/ops/triageDraft.ts` com:
+  - `INITIAL_TRIAGE_DRAFT`
+  - `loadTriageDraftFromStorage`
+  - `saveTriageDraftToStorage`
+- `OpsDevErrorsPage` atualizado para consumir o módulo e reduzir lógica inline de armazenamento.
+- `strict-core` expandido para cobrir o novo módulo TS.
+- Registro publicado em `ops/updates` com data e horário.
+
+Decisao executiva do checkpoint:
+- Migração gradual para TSX foi preparada por desacoplamento de estado/persistência sem alterar o fluxo operacional da página.
+
+Riscos imediatos:
+- `[~]` Tipagem TSX do corpo principal em andamento; ainda há espaço para endurecer tipos de payloads remotos e estilos inline em próximas fatias.
+
+Proximo checkpoint:
+- Migrar o corpo principal para TSX e remover ponte `.jsx`.
+
+### 2026-04-30 - Sprint 3 (Type Safety) entrada TSX da OpsDevErrorsPage
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Criado `OpsDevErrorsPage.tsx` como entrypoint TSX da página.
+- `App.jsx` atualizado para resolver explicitamente a rota via arquivo TSX.
+- Gate `strict-core` atualizado para incluir o entrypoint TSX.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Migração para TSX segue sem ruptura, preservando fluxo operacional enquanto a tipagem avança por blocos.
+
+Riscos imediatos:
+- `[x]` Ponte `.jsx` aposentada após migração do corpo para `OpsDevErrorsPageBody.tsx`.
+
+Proximo checkpoint:
+- Endurecer tipos de integração (payloads de APIs e estruturas de estilos) para reduzir casts e preparar inclusão total no gate estrito.
+
+### 2026-04-30 - Sprint 3 (Type Safety) corpo TSX da OpsDevErrorsPage + aposentadoria da ponte .jsx
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Corpo de `OpsDevErrorsPage.jsx` migrado para `OpsDevErrorsPageBody.tsx` com tipagem incremental de estado e handlers críticos.
+- `OpsDevErrorsPage.tsx` passou a exportar diretamente o corpo TSX.
+- Arquivos de ponte `.jsx` removidos para eliminar a dependência transitória.
+- Gate `strict-core` expandido para incluir `OpsDevErrorsPageBody.tsx` e `OpsDevErrorsPage.tsx`.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Conversão para TSX foi concluída em fatia controlada, preservando comportamento operacional e abrindo espaço para endurecimento de tipos finos sem big bang.
+
+Riscos imediatos:
+- `[~]` Ainda há espaço para tipar alguns contratos de componentes JSX legados fora do escopo do bloco atual.
+
+Proximo checkpoint:
+- Endurecer tipagem de contratos legados (componentes JSX compartilhados) para reduzir necessidade de shims no strict-core.
+
+### 2026-04-30 - Sprint 3 (Type Safety) unions estritas para erros backend (detail variants)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `OpsDevErrorsPageBody.tsx` atualizado com union tipado para payloads de erro backend (`detail` em string, objeto e lista de itens).
+- Parsing de erro consolidado em funções tipadas (`readBackendDetailMessage` + `parseError`) para reduzir fallback genérico.
+- Tratamento de mensagens `message`/`error` normalizado sem casts amplos no fluxo principal.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Endurecimento focado em contratos de erro críticos, mantendo compatibilidade com variantes reais do backend sem aumentar acoplamento.
+
+Riscos imediatos:
+- `[~]` Parte da superfície legada JSX ainda requer contratos progressivos para reduzir acoplamento a declarations de compatibilidade.
+
+Proximo checkpoint:
+- Avançar na substituição gradual de declarations por módulos TS/TSX nativos nos componentes mais usados em OPS.
+
+### 2026-04-30 - Sprint 3 (Type Safety) tipagem mínima de AuthContext + cartões/título OPS
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Criadas camadas tipadas para encapsular legado JSX sem ampliar superfície no page body:
+  - `useAuthTyped` com contrato mínimo de contexto (`token`/`user`/`loading`);
+  - `OpsTrendKpiCardTyped` com props mínimas (`label`, `value`, `trend`, `showTrend`, `baseStyle`);
+  - `OpsPageTitleHeaderTyped` com props mínimas (`title`, `subtitle`, `children`).
+- `OpsDevErrorsPageBody.tsx` passou a consumir wrappers tipados em vez de importar módulos JSX diretamente.
+- `tsconfig.strict-core.json` atualizado para incluir wrappers tipados e remover dependência do arquivo de shim dedicado.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Endurecer primeiro os contratos realmente usados no fluxo OPS permite subir qualidade de tipo sem ruptura e sem big bang em componentes legados.
+
+Riscos imediatos:
+- `[~]` `AuthContext` ainda legado em JSX e consumido via camada tipada; demais componentes críticos desse bloco já migrados para TSX.
+
+Proximo checkpoint:
+- Avaliar migração incremental de `AuthContext` para TSX ou typing nativo do módulo para remover camada de compatibilidade restante.
+
+### 2026-04-30 - Sprint 3 (Type Safety) migração nativa de OpsPageTitleHeader e OpsTrendKpiCard
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `OpsPageTitleHeader.jsx` migrado para `OpsPageTitleHeader.tsx` com tipagem de props e estilos.
+- `OpsTrendKpiCard.jsx` migrado para `OpsTrendKpiCard.tsx` com tipos de props (`TrendDirection`, `OpsTrendKpiCardProps`) e utilitário tipado.
+- `OpsDevErrorsPageBody.tsx` atualizado para consumir os componentes TSX nativos diretamente.
+- Wrappers temporários `OpsPageTitleHeaderTyped.tsx` e `OpsTrendKpiCardTyped.tsx` removidos (eliminando `@ts-ignore` residuais desse bloco).
+- `strict-core` atualizado para os arquivos TSX finais e registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Migração dos componentes-base mais usados em OPS foi priorizada para reduzir dívida de tipagem sem interromper o fluxo de entrega incremental.
+
+Riscos imediatos:
+- `[~]` Restam módulos legados JS/JSX fora do núcleo OPS crítico imediato (tokens utilitários e botões auxiliares) a serem migrados por prioridade.
+
+Proximo checkpoint:
+- Expandir migração incremental de módulos utilitários JS/JSX com maior reuso no fluxo OPS.
+
+### 2026-04-30 - Sprint 3 (Type Safety) AuthContext migrado para TSX e remoção da última camada OPS
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `AuthContext.jsx` migrado para `AuthContext.tsx` com contratos tipados de contexto, roles e respostas de autenticação.
+- `OpsDevErrorsPageBody.tsx` voltou a consumir `useAuth` diretamente do contexto tipado.
+- Wrapper `useAuthTyped` removido, eliminando a última camada de compatibilidade específica do fluxo OPS.
+- `strict-core` atualizado para incluir `AuthContext.tsx` e manter declarations apenas para módulos legados ainda não migrados.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- Encerrar a compatibilidade transitória do contexto no fluxo OPS aumenta previsibilidade de tipos sem bloquear evolução gradual do restante do frontend legado.
+
+Riscos imediatos:
+- `[~]` Ainda há módulos legados compartilhados no frontend geral, mas os utilitários críticos do fluxo OPS já avançaram para TS/TSX.
+
+Proximo checkpoint:
+- Continuar remoção incremental de declarations de compatibilidade restantes com migração dos módulos compartilhados de maior reuso.
+
+### 2026-04-30 - Sprint 3 (Type Safety) migração de opsVisualTokens + OpsRouteHelpButton
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `opsVisualTokens.js` migrado para `opsVisualTokens.ts` com tipagem explícita de `TrendDirection`, `TrendToken` e retornos de estilos.
+- `OpsRouteHelpButton.jsx` migrado para `OpsRouteHelpButton.tsx` com tipagem do fluxo de tutorial e chave de usuário.
+- `strict-core` atualizado para incluir os novos módulos TS/TSX.
+- `opsLegacyModules.d.ts` reduzido removendo declarations de compatibilidade para `opsVisualTokens` e `OpsRouteHelpButton`.
+- Registro publicado em `ops/updates` com horário.
+
+Decisao executiva do checkpoint:
+- A migração dos utilitários de suporte visual e ajuda operacional reduz dívida de tipagem sem impactar o fluxo funcional das páginas OPS.
+
+Riscos imediatos:
+- `[~]` Declarations ainda permanecem para alguns módulos JS legados (ex.: `services/authApi`, `opsTutorialContent`, `OpsHelpTutorialModal`) e devem cair por fatias.
+
+Proximo checkpoint:
+- Tipar/migrar `opsTutorialContent` e `OpsHelpTutorialModal` para reduzir mais a camada de compatibilidade no strict-core.
+
+### 2026-04-30 - Replanejamento executivo: Sprint 2 com Fiscal + Contabil (ELLAN LAB + partners)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Sprint 2 ampliado para incluir duas frentes explícitas:
+  - **Fiscal** (ELLAN LAB + partners);
+  - **Contabil** (ELLAN LAB + partners).
+- Cronograma recalibrado para acomodar escopo sem romper os 30 dias:
+  - Onda 2: dias 8-18;
+  - Onda 3: dias 19-24;
+  - Onda 4: dias 25-30.
+- Sprint 2 atualizado para dias **10-18** com objetivo revisado.
+
+Recalculo de evolucao:
+- Consolidado Sprint 2 antes da ampliacao (frentes ativas OPS/Suporte): **~83%**.
+- Consolidado Sprint 2 apos incluir Fiscal + Contabil: **~50%** (referencia macro; ver atualizacao pos-D17 abaixo).
+- Trilhas adicionadas:
+  - Fiscal: **22%**;
+  - Contabil: **10%**.
+
+Decisao executiva do checkpoint:
+- Priorizar fechamento operacional de Fiscal e Contabil dentro do Sprint 2 para reduzir risco de Go/No-Go financeiro.
+
+Riscos imediatos:
+- `[!]` Inclusao de novas trilhas reduz throughput disponivel para hardening de Sprint 3 caso nao haja fatiamento rigoroso.
+
+Proximo checkpoint:
+- Detalhar backlog P0/P1 de Fiscal e Contabil por persona operacional (ELLAN LAB e partners) com aceite mensuravel.
+
+### 2026-04-30 - Sprint 2 detalhado: backlog P0/P1 Fiscal e Contabil por persona operacional
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Backlog Sprint 2 detalhado para quatro frentes:
+  - Fiscal ELLAN LAB
+  - Fiscal Partners
+  - Contabil ELLAN LAB
+  - Contabil Partners
+- Cada item agora possui dono nominal, esforço em pontos e critério de aceite mensurável.
+- Estrutura pronta para execução imediata e acompanhamento diário.
+
+Recalculo de evolucao:
+- Consolidado Sprint 2 recalculado de **~50%** para **~46%** apos granularizacao completa de escopo (baseline historica).
+- Fiscal (ELLAN LAB + partners): **20%**.
+- Contabil (ELLAN LAB + partners): **9%**.
+- Atualizacao pos-D17 (governanca de aceites): consolidado **~50%**, Fiscal **22%**, Contabil **15%** (ver secao Sprint 2 no topo deste documento).
+
+Decisao executiva do checkpoint:
+- Sprint 2 passa a operar com trilha financeira completa (fiscal + contabil) com governança explícita para ELLAN LAB e partners.
+
+Riscos imediatos:
+- `[!]` Escopo financeiro detalhado aumenta carga de execução no sprint e exige priorização rígida de P0.
+
+Proximo checkpoint:
+- Iniciar execução dos P0 financeiros com evidência diária (conciliação fiscal e fechamento contábil operacional).
+
+### 2026-04-30 - Sprint 2 execução iniciada (D10) com tracker operacional fiscal
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Sequência diária D10-D18 publicada no plano com ordem de execução e dependências críticas.
+- Iniciada codificação do D10 na tela `ops/fiscal/providers` com checklist persistente (localStorage) para governança de execução.
+- Adicionada ação de cópia de resumo D10 para handoff operacional com progresso, status BR/PT e checklist.
+
+Decisao executiva do checkpoint:
+- Execução financeira do Sprint 2 passa a operar com cadência diária explícita e evidência padronizada por dia.
+
+Riscos imediatos:
+- `[~]` Tracker D10 é local ao navegador; consolidação multiusuário ainda depende de etapa posterior.
+
+Proximo checkpoint:
+- Implementar D11 com trilha de divergências fiscais por pedido/parceiro e export de evidências por lote.
+
+### 2026-04-30 - Sprint 2 execução D11 iniciada (trilha de divergências fiscais + export por lote)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Implementada trilha D11 em `ops/fiscal/providers` com consulta de divergências fiscais (`/admin/fiscal/gaps`) e filtros operacionais por `order_id`, `partner_id`, `batch_id` e status.
+- Adicionado export rápido por lote em CSV/JSON para handoff diário e rastreabilidade operacional.
+- Criado endpoint de seed controlado `POST /admin/fiscal/gaps/seed` para geração de massa de teste com metadados de `partner_id` e `batch_id`.
+
+Decisao executiva do checkpoint:
+- D11 passa a operar com evidência exportável por lote, reduzindo tempo de triagem e bloqueios por falta de massa de teste.
+
+Riscos imediatos:
+- `[~]` Seed atual é voltado a ambiente de operação/teste e deve permanecer protegido por token interno.
+
+Proximo checkpoint:
+- Evoluir D12 com handoff contábil diário e reconciliação de fechamento com dependências fiscais consumindo o lote D11.
+
+### 2026-04-30 - Sprint 2 execução D12 iniciada (handoff contábil diário conectado ao lote D11)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Publicação operacional do lote D11 adicionada em `ops/fiscal/providers` via persistência local (`ellan_ops_fiscal_d11_handoff_v1`) com resumo por severidade, parceiros e batches.
+- `fiscal/management-daily` passou a consumir esse lote D11 e exibir card de handoff contábil diário com recarga manual do snapshot.
+- Payloads de handoff diário (`JSON` e `ZIP`) agora incluem bloco `d11_fiscal_gap_handoff` para rastreabilidade de fechamento contábil.
+
+Decisao executiva do checkpoint:
+- D12 reduz fricção entre triagem fiscal e fechamento contábil, conectando evidência operacional D11 diretamente no pacote diário de governança.
+
+Riscos imediatos:
+- `[~]` Integração baseada em localStorage é adequada para operação assistida local, porém consolidação multiusuário requer backend compartilhado em etapa posterior.
+
+Proximo checkpoint:
+- Evoluir D13 com trilha de aceite contábil por owner/ETA e checklist de pendências críticas alimentado automaticamente pelos gaps D11.
+
+### 2026-04-30 - Sprint 2 execução D13 iniciada (aceite contábil por owner/ETA + checklist crítico automático)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Fluxo de aceite contábil diário em `fiscal/management-daily` evoluído com campo explícito de `ETA` além do `owner` já existente.
+- Checklist crítico D13 agora é gerado automaticamente a partir do snapshot D11 (itens com severidade `ERROR/WARN`), com marcação de progresso por item.
+- Export de aprovação/pacote diário passa a incluir bloco estruturado `d13_critical_checklist` (owner, ETA, total, concluídos e itens).
+
+Decisao executiva do checkpoint:
+- D13 fecha a governança operacional entre fiscal e contábil com trilha objetiva de responsabilização (`owner`) e compromisso temporal (`ETA`) baseada em risco real do lote D11.
+
+Riscos imediatos:
+- `[~]` Como o checklist D13 é persistido localmente por navegador, o uso distribuído por múltiplos analistas ainda exige sincronização central no backend.
+
+Proximo checkpoint:
+- Evoluir D14 com consolidação centralizada do aceite D13 (owner/ETA/checklist) para visão multiusuário e trilha auditável compartilhada.
+
+### 2026-04-30 - Sprint 2 execução D14 iniciada (consolidação central multiusuário do aceite D13)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Backend fiscal agora expõe consolidação central do aceite contábil com `POST /admin/fiscal/accounting-approvals` e `GET /admin/fiscal/accounting-approvals/latest`.
+- `fiscal/management-daily` passou a salvar o aceite D13 no backend (owner/ETA/checklist crítico) e também carregar o último snapshot central para operação multiusuário.
+- Modelo D14 mantém fallback local, mas prioriza trilha central para governança compartilhada e continuidade entre analistas/turnos.
+
+Decisao executiva do checkpoint:
+- D14 eleva o fluxo de aceite de modo single-browser para modo colaborativo, reduzindo perda de contexto e melhorando auditoria operacional entre fiscal e contábil.
+
+Riscos imediatos:
+- `[~]` Estrutura central atual é minimalista (snapshot latest + histórico simples); políticas avançadas de conflito/versionamento ficam para etapa posterior.
+
+Proximo checkpoint:
+- Evoluir D15 com trilha de histórico paginada por período/owner/status e comparação entre snapshots de aceite.
+
+### 2026-04-30 - Sprint 2 execução D15 iniciada (histórico paginado + comparação de snapshots de aceite)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- Backend D15 adiciona listagem paginada de aceites centrais com filtros por `owner`, `status` e `período` (`date_from/date_to`) em `GET /admin/fiscal/accounting-approvals`.
+- Backend D15 inclui comparação entre snapshots (`GET /admin/fiscal/accounting-approvals/compare`) com diff objetivo de campos críticos (owner/status/eta/progresso checklist).
+- `fiscal/management-daily` agora exibe painel histórico paginado, aplicação de filtros operacionais e bloco visual de comparação entre snapshots para governança diária.
+
+Decisao executiva do checkpoint:
+- D15 transforma o aceite central em trilha auditável consultável, reduzindo análise manual e acelerando revisão de mudanças entre turnos.
+
+Riscos imediatos:
+- `[~]` Diff atual cobre campos essenciais de governança; comparação semântica avançada de checklist permanece como evolução incremental.
+
+Proximo checkpoint:
+- Evoluir D16 com export consolidado do histórico filtrado (CSV/JSON) e evidência comparativa anexável no handoff executivo.
+
+### 2026-04-30 - Sprint 2 execução D16 concluída (export consolidado + diff no handoff executivo)
+Status geral: `[x]` Concluído no escopo D16
+
+Resumo:
+- Utilitário frontend `fiscalAccountingApprovalsHistory` consolida todas as páginas do endpoint `GET /admin/fiscal/accounting-approvals` respeitando filtros (`owner`, `status`, `date_from`, `date_to`) para export único em JSON ou CSV.
+- `fiscal/management-daily` ganhou botões de export D16 e o pacote ZIP diário inclui automaticamente histórico consolidado (filtros da tela) + diff assinado (`compare` mais recente vs anterior).
+- `fiscal/accounting-close` (handoff executivo) anexa ao ZIP auditável histórico consolidado dos últimos 30 dias e o mesmo diff D16, com fallback de erro documentado se o billing não estiver acessível.
+
+Decisao executiva do checkpoint:
+- D16 fecha o ciclo evidência → export → anexo executivo sem passos manuais adicionais, alinhando operação diária e comitê de fechamento.
+
+Riscos imediatos:
+- `[~]` Consolidação paginada assume limite máximo de 200 por página no backend; volumes muito grandes exigem janela de datas mais estreita ou evolução server-side dedicada.
+
+Proximo checkpoint:
+- D17: retenção/compactação e alertas de divergência prolongada (entregue na sequência).
+
+### 2026-04-30 - Sprint 2 execução D17 concluída (retenção/compactação + alertas de divergência prolongada)
+Status geral: `[x]` Concluído no escopo D17 (trilha de aceite central)
+
+Resumo:
+- Backend fiscal: `GET /admin/fiscal/accounting-approvals/divergence-health` analisa uma janela de snapshots recentes e sinaliza quando o mesmo diff de governança se repete em várias bordas consecutivas (divergência prolongada).
+- Backend fiscal: `POST /admin/fiscal/accounting-approvals/retention` com `dry_run` remove snapshots mais antigos que um cutoff em dias, respeitando `keep_minimum` de linhas na tabela (compactação por poda controlada).
+- `fiscal/management-daily` exibe card D17 com alerta visual, resumo de bordas e ações de dry-run / execução de retenção.
+- Progresso Sprint 2 atualizado no topo deste documento: consolidado **~50%**, Fiscal **22%**, Contabil **15%**.
+
+Decisao executiva do checkpoint:
+- D17 reduz risco de crescimento desordenado do histórico e chama atenção para estagnação de divergências entre snapshots antes que virem surpresa em fechamento.
+
+Riscos imediatos:
+- `[~]` Retenção é irreversível na poda executada; operação deve usar sempre dry-run em produção assistida até playbook formal.
+
+Proximo checkpoint:
+- D18: checklist final Sprint 2 financeiro e registro de riscos P1 remanescentes; evoluir integração macro fiscal+contábil por parceiro conforme capacidade da sprint.
+
+### 2026-04-30 - Sprint 2 execução D18 iniciada (checklist mínimo + template P1 no cockpit)
+Status geral: `[~]` Em andamento (MVP operacional)
+
+Resumo:
+- Conteúdo D18 versionado em `01_source/frontend/src/utils/fiscalSprint2D18Content.js` (itens de checklist alinhados a D10–D17 + transição; payload reutilizável por rota).
+- `fiscal/management-daily` ganhou card **D18** com checkboxes, tabela de 5 linhas para riscos P1, persistência local (`fiscal_management_daily:sprint2_d18_closeout_v1`), export/cópia JSON com `scope: SPRINT2_D18_FINANCE_CLOSEOUT` e inclusão assinada no **pacote diário .zip**.
+- `fiscal/accounting-close` anexa o mesmo closeout ao **ZIP executivo** (`D18_EXEC_SPRINT2_CLOSEOUT`, `scope: SPRINT2_D18_EXEC_FINANCE_CLOSEOUT`), lendo o estado gravado em management-daily.
+
+Checklist mínimo (espelho do código):
+| id | Item |
+|---|---|
+| d10 | Governança D10 (matriz/providers): evidência revisada ou N/A documentado |
+| d11 | Lote D11 publicado em ops/fiscal/providers e refletido no handoff diário |
+| d12 | Handoff D12 contábil conectado ao snapshot D11 no pacote diário |
+| d13_d14 | Aceite D13/D14: owner/ETA/checklist e persistência central quando em uso |
+| d15 | Histórico D15: amostra de compare validada para turno ou justificativa registrada |
+| d16 | Export D16 / ZIP diário ou executivo exercido ou motivo de não-exercício anotado |
+| d17 | D17: dry-run de retenção ou justificativa de volume; divergência prolongada tratada ou escalada |
+| transition | Comunicação do próximo foco (Sprint 3 / hardening) acordada com o time |
+
+Template P1 (cinco linhas no UI): colunas **Risco/tema**, **Owner**, **ETA**, **Impacto se não tratar** — exportadas em `p1_risks_remaining` no JSON D18.
+
+Decisao executiva do checkpoint:
+- D18 desbloqueia “aceite assistido” com artefato único reutilizável em comitê e handoff, sem depender de documento externo obrigatório nesta fase.
+
+Proximo checkpoint:
+- Marcar D18 como concluído após revisão humana do JSON/ZIP; iniciar Sprint 3 conforme recomendação pós-D17.
+
+#### Recomendação de priorização (pós-D17)
+- **Melhor sprint a priorizar agora: fechar Sprint 2 (D18)** antes de abrir frente larga da Sprint 3 (hardening dias 19–24). A trilha D10–D17 já concentra evidência operacional; D18 formaliza aceite, riscos P1 e critério de transição — reduz dívida de governança e evita duas ondas paralelas (fechamento financeiro + hardening) sem checkpoint explícito.
+- **Sprint 3** permanece o melhor *seguinte* alvo depois de D18: endurecimento e confiabilidade ganham com baseline de riscos registrados e escopo financeiro “congelado” para regressão.
+- **Integração macro fiscal+contábil por parceiro** (meta de longo prazo na tabela D10–D18) deve ser fatiada em P1/P2 pós–Go/No-Go se o throughput da Onda 2 estiver no limite; não competir com D18 na mesma janela curta.
 
 ### Modelo de lancamento diario (copiar e preencher)
 | Data | Sprint | Entrega | Status | Evidencia/Artefato | Proximo passo |

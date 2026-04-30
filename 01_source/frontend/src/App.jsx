@@ -4,6 +4,7 @@ import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-r
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import FiscalPageLayout from "./components/FiscalPageLayout";
 import DomainErrorBoundary from "./components/DomainErrorBoundary.tsx";
+import { reportUiErrorTelemetry } from "./services/errorTelemetry.ts";
 import {
   clearRuntimeGeoScopeTenantOverride,
   getRuntimeGeoScopeTenantOverride,
@@ -42,7 +43,7 @@ const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPa
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
-const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage"));
+const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage.tsx"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
@@ -66,6 +67,10 @@ const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
 const FiscalUpdatesPage = lazy(() => import("./pages/FiscalUpdatesPage"));
 const FiscalFg1GatePage = lazy(() => import("./pages/FiscalFg1GatePage"));
 const FiscalReadinessExecutionPage = lazy(() => import("./pages/FiscalReadinessExecutionPage"));
+const FiscalManagementDailyPage = lazy(() => import("./pages/FiscalManagementDailyPage"));
+const FiscalDepartmentDashboardsPage = lazy(() => import("./pages/FiscalDepartmentDashboardsPage"));
+const FiscalPartnerPerformancePage = lazy(() => import("./pages/FiscalPartnerPerformancePage"));
+const FiscalAccountingClosePage = lazy(() => import("./pages/FiscalAccountingClosePage"));
 
 // Componente de loading otimizado
 function PageLoader() {
@@ -351,6 +356,10 @@ function TopNav() {
         { to: "/fiscal/countries", label: "fiscal /countries", aria: "Cockpit FG-1/FG-2 por país" },
         { to: "/fiscal/fg1-gate", label: "fiscal /fg1-gate", aria: "Gate técnico FG-1 (GO/NO_GO)" },
         { to: "/fiscal/readiness-execution", label: "fiscal /readiness-execution", aria: "Execução operacional de readiness FG-1", isNew: true },
+        { to: "/fiscal/management-daily", label: "fiscal /management-daily", aria: "Gestão diária contábil/fiscal", isNew: true },
+        { to: "/fiscal/department-dashboards", label: "fiscal /department-dashboards", aria: "Dashboards departamentais fiscal e contábil", isNew: true },
+        { to: "/fiscal/partner-performance", label: "fiscal /partner-performance", aria: "Desempenho operacional de parceiros fiscais", isNew: true },
+        { to: "/fiscal/accounting-close", label: "fiscal /accounting-close", aria: "Fechamento contábil e fiscal diário", isNew: true },
         { to: "/fiscal/updates", label: "fiscal /updates", aria: "Histórico da trilha fiscal global" },
       ]
     : [];
@@ -844,6 +853,18 @@ function RecoverFiscalRoute() {
   if (normalizedPath.includes("fiscal/readiness-execution")) {
     return <Navigate to="/fiscal/readiness-execution" replace />;
   }
+  if (normalizedPath.includes("fiscal/management-daily")) {
+    return <Navigate to="/fiscal/management-daily" replace />;
+  }
+  if (normalizedPath.includes("fiscal/department-dashboards")) {
+    return <Navigate to="/fiscal/department-dashboards" replace />;
+  }
+  if (normalizedPath.includes("fiscal/partner-performance")) {
+    return <Navigate to="/fiscal/partner-performance" replace />;
+  }
+  if (normalizedPath.includes("fiscal/accounting-close")) {
+    return <Navigate to="/fiscal/accounting-close" replace />;
+  }
   if (normalizedPath.includes("fiscal/global") || normalizedPath.includes("/fiscal")) {
     return <Navigate to="/fiscal" replace />;
   }
@@ -853,29 +874,34 @@ function RecoverFiscalRoute() {
 function AppContent() {
   const location = useLocation();
   const path = String(location.pathname || "").toLowerCase();
-  const boundaryDomain = path.startsWith("/ops")
-    ? "ops"
-    : path.startsWith("/checkout") || path.startsWith("/comprar")
-      ? "checkout"
-      : path.startsWith("/meus-pedidos")
-        ? "orders"
-        : path.startsWith("/fiscal")
-          ? "fiscal"
-          : "global";
+
+  const logBoundaryError = (domain) => (error, errorInfo) => {
+    reportUiErrorTelemetry({
+      domain,
+      path: location.pathname,
+      error,
+      errorInfo,
+    });
+  };
+
+  const withBoundary = (domain, element) => (
+    <DomainErrorBoundary key={`${domain}:${location.pathname}`} domain={domain} onError={logBoundaryError(domain)}>
+      {element}
+    </DomainErrorBoundary>
+  );
 
   return (
     <div className="app-container">
       <TopNav />
       <div id="main-content">
-        <DomainErrorBoundary domain={boundaryDomain}>
-          <Suspense fallback={<PageLoader />}>
-            <Routes>
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
             <Route path="/" element={<PublicLandingPage />} />
             <Route path="/login" element={<PublicLoginPage />} />
             <Route path="/recuperar-senha" element={<PublicForgotPasswordPage />} />
             <Route path="/cadastro" element={<PublicRegisterPage />} />
             <Route path="/comprar" element={<PublicCatalogPage />} />
-            <Route path="/checkout" element={<PublicCheckoutPage />} />
+            <Route path="/checkout" element={withBoundary("checkout", <PublicCheckoutPage />)} />
             <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
             <Route path="/suporte" element={<PublicSupportPage />} /> {/* NOVA ROTA */}
             <Route path="/privacidade" element={<PublicPrivacyPolicyPage />} />
@@ -886,7 +912,7 @@ function AppContent() {
               path="/meus-pedidos"
               element={
                 <PrivateRoute>
-                  <PublicMyOrdersPage />
+                  {withBoundary("orders", <PublicMyOrdersPage />)}
                 </PrivateRoute>
               }
             />
@@ -918,7 +944,7 @@ function AppContent() {
               path="/meus-pedidos/:orderId"
               element={
                 <PrivateRoute>
-                  <PublicOrderDetailPage />
+                  {withBoundary("orders", <PublicOrderDetailPage />)}
                 </PrivateRoute>
               }
             />
@@ -975,10 +1001,50 @@ function AppContent() {
               }
             />
             <Route
+              path="/fiscal/management-daily"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalManagementDailyPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/department-dashboards"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalDepartmentDashboardsPage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/partner-performance"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalPartnerPerformancePage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/fiscal/accounting-close"
+              element={
+                <OpsRoute>
+                  <FiscalPageLayout>
+                    <FiscalAccountingClosePage />
+                  </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/sp"
               element={
                 <OpsRoute>
-                  <LockerDashboard region="SP" />
+                  {withBoundary("ops", <LockerDashboard region="SP" />)}
                 </OpsRoute>
               }
             />
@@ -986,7 +1052,7 @@ function AppContent() {
               path="/ops/pt"
               element={
                 <OpsRoute>
-                  <LockerDashboard region="PT" />
+                  {withBoundary("ops", <LockerDashboard region="PT" />)}
                 </OpsRoute>
               }
             />
@@ -1006,7 +1072,7 @@ function AppContent() {
               path="/ops/sp/kiosk"
               element={
                 <OpsRoute>
-                  <RegionPage region="SP" mode="kiosk" />
+                  {withBoundary("ops", <RegionPage region="SP" mode="kiosk" />)}
                 </OpsRoute>
               }
             />
@@ -1014,7 +1080,7 @@ function AppContent() {
               path="/ops/pt/kiosk"
               element={
                 <OpsRoute>
-                  <RegionPage region="PT" mode="kiosk" />
+                  {withBoundary("ops", <RegionPage region="PT" mode="kiosk" />)}
                 </OpsRoute>
               }
             />
@@ -1063,7 +1129,7 @@ function AppContent() {
               path="/ops/reconciliation"
               element={
                 <OpsRoute>
-                  <OpsReconciliationPage />
+                  {withBoundary("ops", <OpsReconciliationPage />)}
                 </OpsRoute>
               }
             />
@@ -1071,7 +1137,7 @@ function AppContent() {
               path="/ops/audit"
               element={
                 <OpsRoute>
-                  <OpsAuditPage />
+                  {withBoundary("ops", <OpsAuditPage />)}
                 </OpsRoute>
               }
             />
@@ -1079,7 +1145,7 @@ function AppContent() {
               path="/ops/health"
               element={
                 <OpsRoute>
-                  <OpsHealthPage />
+                  {withBoundary("ops", <OpsHealthPage />)}
                 </OpsRoute>
               }
             />
@@ -1261,10 +1327,9 @@ function AppContent() {
             />
 
             {/* Rota 404 - Página não encontrada */}
-              <Route path="*" element={<RecoverFiscalRoute />} />
-            </Routes>
-          </Suspense>
-        </DomainErrorBoundary>
+            <Route path="*" element={<RecoverFiscalRoute />} />
+          </Routes>
+        </Suspense>
       </div>
       {/* <footer className="app-footer" role="contentinfo">
         <p>&copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.</p>

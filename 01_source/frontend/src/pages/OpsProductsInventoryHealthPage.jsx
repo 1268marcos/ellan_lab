@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { formatOpsDateTime } from "../utils/opsDateTimeFormat";
 import { getTrendBadgeStyle, getTrendToken } from "../components/opsVisualTokens";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
@@ -180,7 +181,7 @@ export default function OpsProductsInventoryHealthPage() {
       if (!response.ok) throw new Error(parseError(data));
       setPayload(data || null);
       storeCurrent({ from: fromOverride || from, to: toOverride || to });
-      setLastRefreshAt(new Date().toLocaleString("pt-BR"));
+      setLastRefreshAt(formatOpsDateTime(new Date()));
       setLastRefreshMode(source === "auto" ? "automatica" : "manual");
     } catch (err) {
       const endpoint = `${ORDER_PICKUP_BASE}/ops/inventory/reservation-health`;
