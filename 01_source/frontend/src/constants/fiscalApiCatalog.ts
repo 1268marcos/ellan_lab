@@ -1,4 +1,10 @@
-export const FISCAL_API_GROUPS = [
+export interface FiscalApiGroup {
+  key: string;
+  label: string;
+  endpoints: readonly string[];
+}
+
+export const FISCAL_API_GROUPS: readonly FiscalApiGroup[] = [
   {
     key: "global",
     label: "Global Catalog & FG-1",
@@ -89,7 +95,7 @@ export const FISCAL_API_GROUPS = [
   },
 ];
 
-export function buildFiscalSwaggerUrl(baseUrl) {
+export function buildFiscalSwaggerUrl(baseUrl: unknown) {
   const root = String(baseUrl || "").replace(/\/+$/, "");
   return `${root}/docs#/`;
 }

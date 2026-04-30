@@ -1,44 +1,47 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPayment.js
 /**
- * * Responsável por:
- * createOnlineOrder
- * simulatePayment
- * confirmPaymentInternally
- * payMethod, setPayMethod
- * payValue, setPayValue
- * cardType, customerPhone, walletProvider
- * payResp, payLoading
- * pendingPaymentContext
- * 
- * E aqui fica a regra crítica de não espalhar lógica de pagamento em UI.
- * 
- * Também é aqui que eu recomendo corrigir o envio de amount_cents no 
- * dashboard operacional, porque hoje ele ainda envia valor do frontend.
+ * Responsável por: createOnlineOrder, simulatePayment, confirmPaymentInternally,
+ * estado de pagamento e pendingPaymentContext
  */
 
-// 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPayment.js
-
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { CheckoutCurrentOrder } from "../../checkout/types";
+import type { NormalizedLockerItem } from "../utils/dashboardMappers";
 import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   createOperationalOrder,
   executeGatewayPayment,
   confirmOperationalPayment,
-} from "../services/operationalPaymentService.js";
+} from "../services/operationalPaymentService";
 import {
   extractPendingPaymentData,
   generateClientTransactionId,
   getWalletProviderForMethod,
   isDigitalWalletMethod,
   pickGatewayTransactionId,
-} from "../utils/dashboardPaymentUtils.js";
+} from "../utils/dashboardPaymentUtils";
 import {
   buildPaymentSummary,
   extractOperationalErrorMessage,
   extractOperationalErrorType,
   isStaleCurrentOrderErrorType,
-} from "../utils/dashboardOrderUtils.js";
-import { groupIndexFromSlot } from "../utils/dashboardSlotUtils.js";
+} from "../utils/dashboardOrderUtils";
+import { groupIndexFromSlot, type SlotsMap } from "../utils/dashboardSlotUtils";
+
+type PendingPaymentContext = Record<string, unknown>;
+
+export type UseOperationalPaymentParams = {
+  token: string;
+  region: string;
+  gatewayUrl: string;
+  internalToken: string;
+  orderPickupBase: string;
+  selectedLocker: NormalizedLockerItem | null;
+  currentOrder: CheckoutCurrentOrder | null;
+  slots: SlotsMap;
+  selectedSlot: number | null;
+  slotSelectionRemainingSec: number;
+  fetchOrdersOnce?: (targetPage?: number, targetPageSize?: number) => Promise<void>;
+};
 
 const CARD_METHODS = new Set([
   "CARTAO",
@@ -48,18 +51,18 @@ const CARD_METHODS = new Set([
   "debitCard",
 ]);
 
-function isCardMethod(method) {
+function isCardMethod(method: unknown) {
   return CARD_METHODS.has(String(method || "").trim());
 }
 
-function resolveCardType(method, fallbackType) {
+function resolveCardType(method: unknown, fallbackType: string) {
   const normalized = String(method || "").trim();
   if (normalized === "CREDIT_CARD" || normalized === "creditCard") return "creditCard";
   if (normalized === "DEBIT_CARD" || normalized === "debitCard") return "debitCard";
   return fallbackType;
 }
 
-function resolveInternalProvider(method) {
+function resolveInternalProvider(method: unknown) {
   const normalized = String(method || "").trim();
   const upper = normalized.toUpperCase();
 
@@ -82,12 +85,12 @@ function resolveInternalProvider(method) {
   return normalized;
 }
 
-function resolveAmountCentsFromSlot(slots, slotNum) {
+function resolveAmountCentsFromSlot(slots: SlotsMap | undefined, slotNum: number) {
   const slotAmount = Number(slots?.[slotNum]?.price_cents);
   return Number.isFinite(slotAmount) && slotAmount > 0 ? slotAmount : null;
 }
 
-function buildDefaultSkuId(region, slot, lockerId) {
+function buildDefaultSkuId(region: string, slot: number, lockerId: string) {
   const safeLocker = String(lockerId || "LOCKER").replace(/[^A-Z0-9_-]/gi, "_");
   return `${safeLocker}_SLOT_${slot}_${region}`;
 }
@@ -104,7 +107,7 @@ export default function useOperationalPayment({
   selectedSlot,
   slotSelectionRemainingSec,
   fetchOrdersOnce,
-}) {
+}: UseOperationalPaymentParams) {
   const storeCurrentOrder = useCheckoutStore((state) => state.currentOrder);
   const setStoreCurrentOrder = useCheckoutStore((state) => state.setCurrentOrder);
   const setStorePayResp = useCheckoutStore((state) => state.setPayResp);
@@ -117,13 +120,15 @@ export default function useOperationalPayment({
   const [paySlot, setPaySlot] = useState(1);
   const [payLoading, setPayLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
-  const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
+  const [pendingPaymentContext, setPendingPaymentContext] = useState<PendingPaymentContext | null>(
+    null
+  );
   const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
   const [walletProvider, setWalletProvider] = useState("");
 
   const setPayResp = useCallback(
-    (message) => {
+    (message: string) => {
       const normalized = String(message || "");
       if (!normalized) {
         setStorePayResp(null);
@@ -170,7 +175,7 @@ export default function useOperationalPayment({
   }, [availablePaymentMethods, selectedLocker]);
 
   const confirmPaymentInternally = useCallback(
-    async (orderId, transactionId) => {
+    async (orderId: string, transactionId: string) => {
       if (!internalToken) {
         throw new Error("VITE_INTERNAL_TOKEN não configurado no frontend.");
       }
@@ -179,7 +184,8 @@ export default function useOperationalPayment({
         throw new Error("Nenhum pedido atual carregado para confirmação interna.");
       }
 
-      const totemId = effectiveCurrentOrder?.totem_id || selectedLocker?.locker_id;
+      const orderRow = effectiveCurrentOrder as CheckoutCurrentOrder & Record<string, unknown>;
+      const totemId = String(orderRow.totem_id ?? selectedLocker?.locker_id ?? "");
       const amountCents =
         typeof effectiveCurrentOrder.amount_cents === "number"
           ? effectiveCurrentOrder.amount_cents
@@ -247,7 +253,7 @@ export default function useOperationalPayment({
     setPendingPaymentContext(null);
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         region,
         sku_id: skuId,
         totem_id: totemId,
@@ -270,27 +276,28 @@ export default function useOperationalPayment({
         payload.wallet_provider = wallet;
       }
 
-      const data = await createOperationalOrder({
+      const data = (await createOperationalOrder({
         orderPickupBase,
         token,
         payload,
-      });
+      })) as Record<string, unknown>;
 
       if (typeof data?.amount_cents === "number") {
         setPayValue(Number(data.amount_cents) / 100);
       }
 
       if (data?.payment_method) {
-        setPayMethod(data.payment_method);
-        setWalletProvider(getWalletProviderForMethod(data.payment_method));
+        setPayMethod(String(data.payment_method));
+        setWalletProvider(getWalletProviderForMethod(String(data.payment_method)));
       }
 
       setPayResp(JSON.stringify({ step: "order_created", response: data }, null, 2));
       await fetchOrdersOnce?.(1);
 
-      const allocatedSlot = data?.allocation?.slot ? Number(data.allocation.slot) : slotNum;
+      const allocation = data?.allocation as Record<string, unknown> | undefined;
+      const allocatedSlot = allocation?.slot ? Number(allocation.slot) : slotNum;
 
-      const nextCurrentOrder = { ...data, totem_id: totemId };
+      const nextCurrentOrder = { ...data, totem_id: totemId } as unknown as CheckoutCurrentOrder;
       setStoreCurrentOrder(nextCurrentOrder);
 
       return {
@@ -303,8 +310,8 @@ export default function useOperationalPayment({
         orderError: "",
         pickupResp: "",
       };
-    } catch (error) {
-      return { ok: false, orderError: String(error?.message || error) };
+    } catch (error: unknown) {
+      return { ok: false, orderError: String(error instanceof Error ? error.message : error) };
     } finally {
       setOrderLoading(false);
     }
@@ -365,18 +372,22 @@ export default function useOperationalPayment({
     setPendingPaymentContext(null);
 
     try {
-      const totemId = effectiveCurrentOrder?.totem_id || selectedLocker.locker_id;
+      const simOrder = effectiveCurrentOrder as CheckoutCurrentOrder & Record<string, unknown>;
+      const totemId = String(simOrder.totem_id ?? selectedLocker.locker_id);
       const transactionId = generateClientTransactionId();
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         regiao: region,
         canal: "ONLINE",
         metodo: payMethod,
         valor:
-          typeof currentOrder.amount_cents === "number"
+          typeof effectiveCurrentOrder.amount_cents === "number"
             ? Number(effectiveCurrentOrder.amount_cents) / 100
             : Number(payValue),
-        porta: Number(effectiveCurrentOrder?.allocation?.slot || selectedSlot || paySlot || 0),
+        porta: Number(
+          (effectiveCurrentOrder as CheckoutCurrentOrder & { allocation?: { slot?: number } })
+            ?.allocation?.slot || selectedSlot || paySlot || 0
+        ),
         locker_id: totemId,
         order_id: effectiveCurrentOrder.order_id,
       };
@@ -408,7 +419,7 @@ export default function useOperationalPayment({
         pending.instructionType === "DISPLAY_QR" ||
         pending.instructionType === "SHOW_INSTRUCTIONS"
       ) {
-        const context = {
+        const context: PendingPaymentContext = {
           ...pending,
           order_id: effectiveCurrentOrder.order_id,
           locker_id: totemId,
@@ -443,25 +454,29 @@ export default function useOperationalPayment({
         lockerId: totemId,
       });
 
+      const extOrder = effectiveCurrentOrder as CheckoutCurrentOrder & Record<string, unknown>;
+      const confirm = confirmData as Record<string, unknown> | null | undefined;
+      const priorAlloc = (extOrder as Record<string, unknown>).allocation as
+        | Record<string, unknown>
+        | undefined;
       const nextCurrentOrder = {
-        ...effectiveCurrentOrder,
+        ...extOrder,
         status: "PAID_PENDING_PICKUP",
-        paid_at: confirmData?.paid_at || effectiveCurrentOrder?.paid_at,
-        pickup_id: confirmData?.pickup_id || effectiveCurrentOrder?.pickup_id,
-        manual_code: confirmData?.manual_code || effectiveCurrentOrder?.manual_code,
-        token_id: confirmData?.token_id || effectiveCurrentOrder?.token_id,
-        pickup_status: confirmData?.pickup_status || effectiveCurrentOrder?.pickup_status,
+        paid_at: confirm?.paid_at || extOrder?.paid_at,
+        pickup_id: confirm?.pickup_id || extOrder?.pickup_id,
+        manual_code: confirm?.manual_code || extOrder?.manual_code,
+        token_id: confirm?.token_id || extOrder?.token_id,
+        pickup_status: confirm?.pickup_status || extOrder?.pickup_status,
         pickup_deadline_at:
-          confirmData?.pickup_deadline_at ||
-          confirmData?.pickup_expires_at ||
-          effectiveCurrentOrder?.pickup_deadline_at,
+          confirm?.pickup_deadline_at ||
+          confirm?.pickup_expires_at ||
+          extOrder?.pickup_deadline_at,
         allocation: {
-          allocation_id:
-            confirmData?.allocation_id || effectiveCurrentOrder?.allocation?.allocation_id,
-          slot: confirmData?.slot || effectiveCurrentOrder?.allocation?.slot,
-          state: confirmData?.allocation_state || effectiveCurrentOrder?.allocation?.state,
+          allocation_id: confirm?.allocation_id || priorAlloc?.allocation_id,
+          slot: confirm?.slot || priorAlloc?.slot,
+          state: confirm?.allocation_state || priorAlloc?.state,
         },
-      };
+      } as CheckoutCurrentOrder;
 
       setStoreCurrentOrder(nextCurrentOrder);
       setPendingPaymentContext(null);
@@ -496,7 +511,9 @@ export default function useOperationalPayment({
         };
       }
 
-      setPayResp(`❌ Erro ao simular/confirmar pagamento\n${String(error?.message || error)}`);
+      setPayResp(
+        `❌ Erro ao simular/confirmar pagamento\n${String(error instanceof Error ? error.message : error)}`
+      );
       return { ok: false };
     } finally {
       setPayLoading(false);
@@ -518,7 +535,8 @@ export default function useOperationalPayment({
   ]);
 
   const confirmPendingCustomerAction = useCallback(async () => {
-    if (!pendingPaymentContext?.order_id) {
+    const pendingOid = pendingPaymentContext?.order_id;
+    if (typeof pendingOid !== "string" || !pendingOid) {
       setPayResp("❌ Não há pagamento pendente aguardando confirmação.");
       return { ok: false };
     }
@@ -526,39 +544,51 @@ export default function useOperationalPayment({
     setPayLoading(true);
 
     try {
+      const txRaw = pendingPaymentContext.transaction_id;
       const confirmData = await confirmPaymentInternally(
-        pendingPaymentContext.order_id,
-        pendingPaymentContext.transaction_id || generateClientTransactionId()
+        pendingOid,
+        (typeof txRaw === "string" && txRaw) || generateClientTransactionId()
       );
 
+      const confirmRec = confirmData as Record<string, unknown>;
       const summary = buildPaymentSummary({
-        gatewayData: { payment: { currency: pendingPaymentContext.currency } },
-        confirmData,
+        gatewayData: {
+          payment: { currency: pendingPaymentContext.currency },
+        } as Record<string, unknown>,
+        confirmData: confirmRec,
         region,
-        currentOrderId: pendingPaymentContext.order_id,
-        lockerId: pendingPaymentContext.locker_id,
+        currentOrderId: pendingOid,
+        lockerId:
+          typeof pendingPaymentContext.locker_id === "string"
+            ? pendingPaymentContext.locker_id
+            : String(pendingPaymentContext.locker_id ?? ""),
       });
 
-      const nextCurrentOrder = effectiveCurrentOrder
-        ? {
-            ...effectiveCurrentOrder,
+      const extEff = effectiveCurrentOrder as
+        | (CheckoutCurrentOrder & Record<string, unknown>)
+        | null;
+      const pendingPriorAlloc = extEff
+        ? ((extEff as Record<string, unknown>).allocation as Record<string, unknown> | undefined)
+        : undefined;
+      const nextCurrentOrder = extEff
+        ? ({
+            ...extEff,
             status: "PAID_PENDING_PICKUP",
-            paid_at: confirmData?.paid_at || effectiveCurrentOrder?.paid_at,
-            pickup_id: confirmData?.pickup_id || effectiveCurrentOrder?.pickup_id,
-            manual_code: confirmData?.manual_code || effectiveCurrentOrder?.manual_code,
-            token_id: confirmData?.token_id || effectiveCurrentOrder?.token_id,
-            pickup_status: confirmData?.pickup_status || effectiveCurrentOrder?.pickup_status,
+            paid_at: confirmRec?.paid_at || extEff?.paid_at,
+            pickup_id: confirmRec?.pickup_id || extEff?.pickup_id,
+            manual_code: confirmRec?.manual_code || extEff?.manual_code,
+            token_id: confirmRec?.token_id || extEff?.token_id,
+            pickup_status: confirmRec?.pickup_status || extEff?.pickup_status,
             pickup_deadline_at:
-              confirmData?.pickup_deadline_at ||
-              confirmData?.pickup_expires_at ||
-              effectiveCurrentOrder?.pickup_deadline_at,
+              confirmRec?.pickup_deadline_at ||
+              confirmRec?.pickup_expires_at ||
+              extEff?.pickup_deadline_at,
             allocation: {
-              allocation_id:
-                confirmData?.allocation_id || effectiveCurrentOrder?.allocation?.allocation_id,
-              slot: confirmData?.slot || effectiveCurrentOrder?.allocation?.slot,
-              state: confirmData?.allocation_state || effectiveCurrentOrder?.allocation?.state,
+              allocation_id: confirmRec?.allocation_id || pendingPriorAlloc?.allocation_id,
+              slot: confirmRec?.slot || pendingPriorAlloc?.slot,
+              state: confirmRec?.allocation_state || pendingPriorAlloc?.state,
             },
-          }
+          } as CheckoutCurrentOrder)
         : null;
 
       setStoreCurrentOrder(nextCurrentOrder);
@@ -581,8 +611,10 @@ export default function useOperationalPayment({
         currentOrder: nextCurrentOrder,
         pendingPaymentContext: null,
       };
-    } catch (error) {
-      setPayResp(`❌ Falha ao confirmar pagamento pendente\n${String(error?.message || error)}`);
+    } catch (error: unknown) {
+      setPayResp(
+        `❌ Falha ao confirmar pagamento pendente\n${String(error instanceof Error ? error.message : error)}`
+      );
       return { ok: false };
     } finally {
       setPayLoading(false);

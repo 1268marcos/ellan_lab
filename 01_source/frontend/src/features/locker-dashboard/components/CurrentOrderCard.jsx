@@ -3,9 +3,9 @@
 import React from "react";
 import {
   genericBadgeStyle,
-} from "../utils/dashboardOrderUtils.js";
-import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters.js";
-import { errorBannerStyle, panelStyle } from "../utils/dashboardUiStyles.js";
+} from "../utils/dashboardOrderUtils";
+import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
+import { errorBannerStyle, panelStyle } from "../utils/dashboardUiStyles";
 
 export default function CurrentOrderCard({
   currentOrder,

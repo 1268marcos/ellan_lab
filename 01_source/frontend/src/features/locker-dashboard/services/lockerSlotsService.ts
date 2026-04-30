@@ -1,9 +1,13 @@
-// 01_source/frontend/src/features/locker-dashboard/services/lockerSlotsService.js
+type UnknownRecord = Record<string, unknown>;
 
 export async function fetchLockerSlots({
   backendBase,
   lockerId,
   signal,
+}: {
+  backendBase: string;
+  lockerId: string;
+  signal?: AbortSignal;
 }) {
   const res = await fetch(`${backendBase}/locker/slots`, {
     signal,
@@ -15,13 +19,17 @@ export async function fetchLockerSlots({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  return res.json();
+  return res.json() as Promise<unknown>;
 }
 
 export async function fetchCatalogSlots({
   backendBase,
   lockerId,
   signal,
+}: {
+  backendBase: string;
+  lockerId: string;
+  signal?: AbortSignal;
 }) {
   const res = await fetch(`${backendBase}/catalog/slots`, {
     signal,
@@ -33,7 +41,7 @@ export async function fetchCatalogSlots({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  return res.json();
+  return res.json() as Promise<unknown>;
 }
 
 export async function setLockerSlotState({
@@ -41,6 +49,11 @@ export async function setLockerSlotState({
   lockerId,
   slot,
   payload,
+}: {
+  backendBase: string;
+  lockerId: string;
+  slot: number | string;
+  payload: UnknownRecord;
 }) {
   const res = await fetch(`${backendBase}/locker/slots/${slot}/set-state`, {
     method: "POST",
@@ -57,5 +70,5 @@ export async function setLockerSlotState({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  return text ? JSON.parse(text) : { ok: true };
+  return text ? (JSON.parse(text) as UnknownRecord) : { ok: true as const };
 }

@@ -1,13 +1,13 @@
-// 01_source/frontend/src/features/locker-dashboard/index.js
+// Barrel ESM: extensões explícitas (.ts hooks, .jsx componentes) — evita falha de resolução com lazy() / Vite.
 
-export { default as useLockerRegistry } from "./hooks/useLockerRegistry.js";
-export { default as useLockerSlotsSync } from "./hooks/useLockerSlotsSync.js";
-export { default as useOperationalOrders } from "./hooks/useOperationalOrders.js";
-export { default as useSlotSelection } from "./hooks/useSlotSelection.js";
-export { default as useCurrentOrder } from "./hooks/useCurrentOrder.js";
-export { default as useOperationalPayment } from "./hooks/useOperationalPayment.js";
-export { default as useOperationalPickup } from "./hooks/useOperationalPickup.js";
-export { default as useLockerDashboardController } from "./hooks/useLockerDashboardController.js";
+export { default as useLockerRegistry } from "./hooks/useLockerRegistry.ts";
+export { default as useLockerSlotsSync } from "./hooks/useLockerSlotsSync.ts";
+export { default as useOperationalOrders } from "./hooks/useOperationalOrders.ts";
+export { default as useSlotSelection } from "./hooks/useSlotSelection.ts";
+export { default as useCurrentOrder } from "./hooks/useCurrentOrder.ts";
+export { default as useOperationalPayment } from "./hooks/useOperationalPayment.ts";
+export { default as useOperationalPickup } from "./hooks/useOperationalPickup.ts";
+export { default as useLockerDashboardController } from "./hooks/useLockerDashboardController.ts";
 
 export { default as SlotCard } from "./components/SlotCard.jsx";
 export { default as OrdersCardList } from "./components/OrdersCardList.jsx";
@@ -28,15 +28,15 @@ export { default as SlotSelectionBanner } from "./components/SlotSelectionBanner
 export { default as FlowProgressPanel } from "./components/FlowProgressPanel.jsx";
 export { default as LockerDashboardLayout } from "./components/LockerDashboardLayout.jsx";
 
-export * from "./utils/dashboardConstants.js";
-export * from "./utils/dashboardFormatters.js";
-export * from "./utils/dashboardSlotUtils.js";
-export * from "./utils/dashboardPaymentUtils.js";
-export * from "./utils/dashboardOrderUtils.js";
-export * from "./utils/dashboardMappers.js";
+export * from "./utils/dashboardConstants";
+export * from "./utils/dashboardFormatters";
+export * from "./utils/dashboardSlotUtils";
+export * from "./utils/dashboardPaymentUtils";
+export * from "./utils/dashboardOrderUtils";
+export * from "./utils/dashboardMappers";
 
-export * from "./services/lockerRegistryService.js";
-export * from "./services/lockerSlotsService.js";
-export * from "./services/operationalOrdersService.js";
-export * from "./services/operationalPaymentService.js";
-export * from "./services/operationalPickupService.js";
+export * from "./services/lockerRegistryService";
+export * from "./services/lockerSlotsService";
+export * from "./services/operationalOrdersService";
+export * from "./services/operationalPaymentService";
+export * from "./services/operationalPickupService";

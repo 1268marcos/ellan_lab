@@ -1,13 +1,23 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useLockerDashboardController.js
-
 import { useCallback, useEffect, useMemo, useState } from "react";
-import useLockerRegistry from "./useLockerRegistry.js";
-import useLockerSlotsSync from "./useLockerSlotsSync.js";
-import useOperationalOrders from "./useOperationalOrders.js";
-import useSlotSelection from "./useSlotSelection.js";
-import useCurrentOrder from "./useCurrentOrder.js";
-import useOperationalPayment from "./useOperationalPayment.js";
-import useOperationalPickup from "./useOperationalPickup.js";
+import type { CheckoutCurrentOrder } from "../../checkout/types";
+import useLockerRegistry from "./useLockerRegistry";
+import useLockerSlotsSync from "./useLockerSlotsSync";
+import useOperationalOrders from "./useOperationalOrders";
+import useSlotSelection from "./useSlotSelection";
+import useCurrentOrder from "./useCurrentOrder";
+import useOperationalPayment from "./useOperationalPayment";
+import useOperationalPickup from "./useOperationalPickup";
+
+export type UseLockerDashboardControllerParams = {
+  token: string;
+  region?: string;
+  backendSp: string;
+  backendPt: string;
+  runtimeBase: string;
+  gatewayBase: string;
+  orderPickupBase: string;
+  internalToken: string;
+};
 
 export default function useLockerDashboardController({
   token,
@@ -18,7 +28,7 @@ export default function useLockerDashboardController({
   gatewayBase,
   orderPickupBase,
   internalToken,
-}) {
+}: UseLockerDashboardControllerParams) {
   const geoScopeTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const [syncEnabled, setSyncEnabled] = useState(true);
 
@@ -124,38 +134,48 @@ export default function useLockerDashboardController({
   }, [resetTransientFlowState, selectedLocker?.locker_id, slotSelection]);
 
   const applyOrderSelectionPatch = useCallback(
-    (patch) => {
+    (patch: Record<string, unknown> | null | undefined) => {
       if (!patch) return;
 
-      if ("currentOrder" in patch) setCurrentOrder(patch.currentOrder);
-      if ("selectedSlot" in patch) slotSelection.setSelectedSlot(patch.selectedSlot);
-      if ("activeGroup" in patch) slotSelection.setActiveGroup(patch.activeGroup);
-      if ("slotSelectionExpiresAt" in patch) {
-        slotSelection.setSlotSelectionExpiresAt(patch.slotSelectionExpiresAt);
+      if ("currentOrder" in patch) {
+        setCurrentOrder(patch.currentOrder as CheckoutCurrentOrder | null);
       }
-      if ("orderError" in patch) setOrderError(patch.orderError);
-      if ("pickupResp" in patch) pickup.setPickupResp(patch.pickupResp);
-      if ("payResp" in patch) payment.setPayResp(patch.payResp);
+      if ("selectedSlot" in patch) {
+        slotSelection.setSelectedSlot(patch.selectedSlot as number | null);
+      }
+      if ("activeGroup" in patch) {
+        slotSelection.setActiveGroup(patch.activeGroup as number);
+      }
+      if ("slotSelectionExpiresAt" in patch) {
+        slotSelection.setSlotSelectionExpiresAt(patch.slotSelectionExpiresAt as number | null);
+      }
+      if ("orderError" in patch) setOrderError(String(patch.orderError ?? ""));
+      if ("pickupResp" in patch) pickup.setPickupResp(String(patch.pickupResp ?? ""));
+      if ("payResp" in patch) payment.setPayResp(String(patch.payResp ?? ""));
       if ("pendingPaymentContext" in patch) {
-        payment.setPendingPaymentContext(patch.pendingPaymentContext ?? null);
+        payment.setPendingPaymentContext(
+          (patch.pendingPaymentContext as Record<string, unknown> | null) ?? null
+        );
       }
       if ("selectedLockerId" in patch && patch.selectedLockerId) {
-        setSelectedLockerId(patch.selectedLockerId);
+        setSelectedLockerId(String(patch.selectedLockerId));
       }
-      if ("payMethod" in patch && patch.payMethod) payment.setPayMethod(patch.payMethod);
-      if ("payValue" in patch && Number.isFinite(patch.payValue)) {
-        payment.setPayValue(patch.payValue);
+      if ("payMethod" in patch && patch.payMethod) payment.setPayMethod(String(patch.payMethod));
+      if ("payValue" in patch && Number.isFinite(patch.payValue as number)) {
+        payment.setPayValue(patch.payValue as number);
       }
-      if ("walletProvider" in patch) payment.setWalletProvider(patch.walletProvider || "");
-      if ("paySlot" in patch && Number.isFinite(patch.paySlot)) {
-        payment.setPaySlot(patch.paySlot);
+      if ("walletProvider" in patch) {
+        payment.setWalletProvider(String(patch.walletProvider ?? ""));
+      }
+      if ("paySlot" in patch && Number.isFinite(patch.paySlot as number)) {
+        payment.setPaySlot(patch.paySlot as number);
       }
     },
     [payment, pickup, setCurrentOrder, setOrderError, setSelectedLockerId, slotSelection]
   );
 
   const handleSelectOrder = useCallback(
-    (item) => {
+    (item: Record<string, unknown>) => {
       const patch = buildOrderSelectionPatch(item);
       applyOrderSelectionPatch(patch);
     },
@@ -163,7 +183,7 @@ export default function useLockerDashboardController({
   );
 
   const handleSelectSlot = useCallback(
-    (slot) => {
+    (slot: number) => {
       const selected = slotSelection.selectSlot(slot);
       if (!selected) return;
 
@@ -214,14 +234,14 @@ export default function useLockerDashboardController({
   }, [applyOrderSelectionPatch, payment]);
 
   const handleManualRedeemSuccess = useCallback(
-    async (data) => {
+    async (data: Record<string, unknown>) => {
       await pickup.handleManualRedeemSuccess(data);
     },
     [pickup]
   );
 
   const handleQrRedeemSuccess = useCallback(
-    async (data) => {
+    async (data: Record<string, unknown>) => {
       await pickup.handleQrRedeemSuccess(data);
     },
     [pickup]
@@ -471,15 +491,12 @@ export default function useLockerDashboardController({
   const flowProgressProps = useMemo(() => {
     const hasSlotSelected = Boolean(slotSelection.selectedSlot);
     const hasOrder = Boolean(currentOrder?.order_id);
-    const isPaymentConfirmed = [
-      "PAID_PENDING_PICKUP",
-      "PICKED_UP",
-      "DISPENSED",
-    ].includes(currentOrder?.status);
-    const isPickedUp = [
-      "PICKED_UP",
-      "DISPENSED",
-    ].includes(currentOrder?.status);
+    const orderStatus = currentOrder?.status;
+    const isPaymentConfirmed =
+      orderStatus != null &&
+      ["PAID_PENDING_PICKUP", "PICKED_UP", "DISPENSED"].includes(orderStatus);
+    const isPickedUp =
+      orderStatus != null && ["PICKED_UP", "DISPENSED"].includes(orderStatus);
 
     const firstPendingKey = !hasSlotSelected
       ? "slot"
@@ -491,7 +508,7 @@ export default function useLockerDashboardController({
             ? "pickup"
             : null;
 
-    const stepState = (key, done) => {
+    const stepState = (key: string, done: boolean) => {
       if (done) return "done";
       if (firstPendingKey === key) return "active";
       return "pending";
@@ -510,7 +527,8 @@ export default function useLockerDashboardController({
         key: "order",
         label: "2. Criar Pedido Online",
         state: stepState("order", hasOrder),
-        detail: hasOrder ? `Pedido ${currentOrder.order_id}` : "Pedido ainda nao criado",
+        detail:
+          hasOrder && currentOrder ? `Pedido ${currentOrder.order_id}` : "Pedido ainda nao criado",
       },
       {
         key: "payment",

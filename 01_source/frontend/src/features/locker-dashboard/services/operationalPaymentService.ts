@@ -1,12 +1,15 @@
-// 01_source/frontend/src/features/locker-dashboard/services/operationalPaymentService.js
-// 08/04/2026
+import { buildAuthHeaders } from "../utils/dashboardPaymentUtils";
 
-import { buildAuthHeaders } from "../utils/dashboardPaymentUtils.js";
+type UnknownRecord = Record<string, unknown>;
 
 export async function createOperationalOrder({
   orderPickupBase,
   token,
   payload,
+}: {
+  orderPickupBase: string;
+  token: unknown;
+  payload: UnknownRecord;
 }) {
   const res = await fetch(`${orderPickupBase}/orders`, {
     method: "POST",
@@ -20,13 +23,17 @@ export async function createOperationalOrder({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  return text ? JSON.parse(text) : {};
+  return text ? (JSON.parse(text) as UnknownRecord) : {};
 }
 
 export async function executeGatewayPayment({
   gatewayUrl,
   token,
   payload,
+}: {
+  gatewayUrl: string;
+  token: unknown;
+  payload: UnknownRecord;
 }) {
   const res = await fetch(gatewayUrl, {
     method: "POST",
@@ -40,9 +47,10 @@ export async function executeGatewayPayment({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  const data = text ? JSON.parse(text) : {};
+  const data = (text ? JSON.parse(text) : {}) as UnknownRecord & {
+    result?: string;
+  };
 
-  // 🔴 PATCH AQUI
   if (data.result === "requires_confirmation") {
     return {
       ...data,
@@ -59,6 +67,11 @@ export async function confirmOperationalPayment({
   internalToken,
   orderId,
   payload,
+}: {
+  orderPickupBase: string;
+  internalToken: string;
+  orderId: string;
+  payload: UnknownRecord;
 }) {
   const res = await fetch(
     `${orderPickupBase}/internal/orders/${encodeURIComponent(orderId)}/payment-confirm`,
@@ -78,5 +91,5 @@ export async function confirmOperationalPayment({
     throw new Error(`payment-confirm HTTP ${res.status}: ${text}`);
   }
 
-  return text ? JSON.parse(text) : {};
+  return text ? (JSON.parse(text) as UnknownRecord) : {};
 }

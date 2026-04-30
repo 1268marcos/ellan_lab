@@ -1,8 +1,9 @@
-// 01_source/frontend/src/services/publicApi.js
 const API_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
 
-async function parseJson(response) {
-  const data = await response.json().catch(() => ({}));
+type UnknownRecord = Record<string, unknown>;
+
+async function parseJson(response: Response): Promise<unknown> {
+  const data = (await response.json().catch(() => ({}))) as UnknownRecord;
 
   if (response.ok) {
     return data;
@@ -11,7 +12,7 @@ async function parseJson(response) {
   throw new Error(resolveApiErrorMessage(response, data));
 }
 
-function resolveApiErrorMessage(response, data) {
+function resolveApiErrorMessage(response: Response, data: UnknownRecord) {
   const detail = extractDetail(data);
 
   if (response.status === 401) {
@@ -47,7 +48,7 @@ function resolveApiErrorMessage(response, data) {
   return "Não foi possível concluir a solicitação.";
 }
 
-function extractDetail(data) {
+function extractDetail(data: UnknownRecord) {
   if (!data) return "";
 
   if (typeof data.detail === "string") {
@@ -55,19 +56,21 @@ function extractDetail(data) {
   }
 
   if (data.detail && typeof data.detail === "object") {
-    if (typeof data.detail.message === "string") {
-      return data.detail.message;
+    const d = data.detail as UnknownRecord;
+    if (typeof d.message === "string") {
+      return d.message;
     }
-    if (typeof data.detail.type === "string") {
-      return data.detail.type;
+    if (typeof d.type === "string") {
+      return d.type;
     }
   }
 
   if (Array.isArray(data.detail)) {
     return data.detail
-      .map((item) => {
+      .map((item: unknown) => {
         if (typeof item === "string") return item;
-        if (item?.msg) return item.msg;
+        const row = item as UnknownRecord;
+        if (row?.msg) return String(row.msg);
         return "";
       })
       .filter(Boolean)
@@ -81,14 +84,14 @@ function extractDetail(data) {
   return "";
 }
 
-function buildAuthHeaders(token) {
+function buildAuthHeaders(token: string | null) {
   return {
     Authorization: `Bearer ${token}`,
     Accept: "application/json",
   };
 }
 
-export async function fetchMyOrders(token) {
+export async function fetchMyOrders(token: string | null) {
   const response = await fetch(`${API_BASE}/public/orders/`, {
     method: "GET",
     headers: buildAuthHeaders(token),
@@ -97,7 +100,7 @@ export async function fetchMyOrders(token) {
   return parseJson(response);
 }
 
-export async function fetchOrderDetail(token, orderId) {
+export async function fetchOrderDetail(token: string | null, orderId: string) {
   const response = await fetch(`${API_BASE}/public/orders/${orderId}`, {
     method: "GET",
     headers: buildAuthHeaders(token),
@@ -106,7 +109,7 @@ export async function fetchOrderDetail(token, orderId) {
   return parseJson(response);
 }
 
-export async function fetchOrderPickup(token, orderId) {
+export async function fetchOrderPickup(token: string | null, orderId: string) {
   const response = await fetch(`${API_BASE}/public/orders/${orderId}/pickup`, {
     method: "GET",
     headers: buildAuthHeaders(token),
@@ -115,7 +118,7 @@ export async function fetchOrderPickup(token, orderId) {
   return parseJson(response);
 }
 
-export async function resendOrderInvoiceEmail(token, orderId) {
+export async function resendOrderInvoiceEmail(token: string | null, orderId: string) {
   const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-resend-email`, {
     method: "POST",
     headers: {
@@ -126,7 +129,7 @@ export async function resendOrderInvoiceEmail(token, orderId) {
   return parseJson(response);
 }
 
-export async function fetchOrderInvoicePdf(token, orderId) {
+export async function fetchOrderInvoicePdf(token: string | null, orderId: string) {
   const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-pdf`, {
     method: "GET",
     headers: buildAuthHeaders(token),
@@ -134,7 +137,7 @@ export async function fetchOrderInvoicePdf(token, orderId) {
   return parseJson(response);
 }
 
-export async function generateOrderInvoiceNow(token, orderId) {
+export async function generateOrderInvoiceNow(token: string | null, orderId: string) {
   const response = await fetch(`${API_BASE}/public/orders/${orderId}/invoice-generate`, {
     method: "POST",
     headers: {
@@ -145,7 +148,7 @@ export async function generateOrderInvoiceNow(token, orderId) {
   return parseJson(response);
 }
 
-export async function fetchMyCredits(token) {
+export async function fetchMyCredits(token: string | null) {
   const response = await fetch(`${API_BASE}/public/me/credits`, {
     method: "GET",
     headers: buildAuthHeaders(token),
@@ -155,8 +158,18 @@ export async function fetchMyCredits(token) {
 }
 
 export async function previewCheckoutCredit(
-  token,
-  { amount_cents, use_credit = false, credit_id, region } = {}
+  token: string | null,
+  {
+    amount_cents,
+    use_credit = false,
+    credit_id,
+    region,
+  }: {
+    amount_cents?: number;
+    use_credit?: boolean;
+    credit_id?: string;
+    region?: string;
+  } = {}
 ) {
   const params = new URLSearchParams();
   params.set("amount_cents", String(Number(amount_cents || 0)));

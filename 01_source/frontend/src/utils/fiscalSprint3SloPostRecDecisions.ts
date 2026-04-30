@@ -5,34 +5,33 @@
 export const SPRINT3_SLO_POST_REC_DECISIONS_KEY = "ellan_fiscal_sprint3_slo_post_rec_decisions_v1";
 export const SPRINT3_SLO_POST_REC_VERSION = "sprint3-p02-decisions-v1";
 
-/** @returns {object[]} */
-export function loadSloPostRecommendationDecisions() {
+export type SloPostRecDecisionEntry = Record<string, unknown>;
+
+export function loadSloPostRecommendationDecisions(): SloPostRecDecisionEntry[] {
   try {
     const raw = window.localStorage.getItem(SPRINT3_SLO_POST_REC_DECISIONS_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed?.decisions) ? parsed.decisions : [];
+    const parsed = JSON.parse(raw) as { decisions?: unknown };
+    return Array.isArray(parsed?.decisions) ? (parsed.decisions as SloPostRecDecisionEntry[]) : [];
   } catch {
     return [];
   }
 }
 
-/**
- * @param {object[]} decisions
- */
-export function saveSloPostRecommendationDecisions(decisions) {
+export function saveSloPostRecommendationDecisions(decisions: SloPostRecDecisionEntry[]) {
   const capped = decisions.slice(-25);
   window.localStorage.setItem(
     SPRINT3_SLO_POST_REC_DECISIONS_KEY,
-    JSON.stringify({ version: SPRINT3_SLO_POST_REC_VERSION, updated_at: new Date().toISOString(), decisions: capped })
+    JSON.stringify({
+      version: SPRINT3_SLO_POST_REC_VERSION,
+      updated_at: new Date().toISOString(),
+      decisions: capped,
+    })
   );
   return capped;
 }
 
-/**
- * @param {object} entry
- */
-export function appendSloPostRecommendationDecision(entry) {
+export function appendSloPostRecommendationDecision(entry: SloPostRecDecisionEntry) {
   const next = [...loadSloPostRecommendationDecisions(), entry];
   return saveSloPostRecommendationDecisions(next);
 }
@@ -41,11 +40,12 @@ export function clearSloPostRecommendationDecisions() {
   window.localStorage.removeItem(SPRINT3_SLO_POST_REC_DECISIONS_KEY);
 }
 
-/**
- * Payload fonte (sem envelope SHA-256).
- * @param {string} sourcePage ex.: fiscal/slo-alerts
- */
-export function buildSloPostRecommendationDecisionsPayload(nowIso, decisions, sourcePage) {
+/** Payload fonte (sem envelope SHA-256). */
+export function buildSloPostRecommendationDecisionsPayload(
+  nowIso: string,
+  decisions: SloPostRecDecisionEntry[],
+  sourcePage: string
+) {
   const timeline = decisions.slice(-25);
   return {
     scope: "SPRINT3_P0_2_POST_RECOMMENDATION_DECISIONS",

@@ -8,8 +8,8 @@ import {
   genericBadgeStyle,
   getOperationalRowHighlight,
   statusBadgeStyle,
-} from "../utils/dashboardOrderUtils.js";
-import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters.js";
+} from "../utils/dashboardOrderUtils";
+import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
 
 export default function OrdersCardList({
   ordersData,

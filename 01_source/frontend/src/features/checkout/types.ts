@@ -22,6 +22,8 @@ export interface CheckoutPaymentResponse {
 
 export interface CheckoutPickupResponse {
   status: "success" | "failed" | "idle";
+  /** Texto agregado para painéis / export (paridade com `CheckoutPaymentResponse.message`). */
+  message?: string;
   pickup_id?: string;
   manual_code?: string;
   raw?: Record<string, unknown>;

@@ -1,29 +1,28 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js
 /**
- * * Responsável por:
- * fetchAllOperationalOrders
- * fetchOrdersOnce
- * filtros
- * paginação
- * ordersData, ordersLoading, ordersError
- * ordersPage, ordersPageSize, ordersTotal, ordersHasNext, ordersHasPrev
+ * Responsável por: fetchOrdersOnce, filtros, paginação, ordersData / loading / error
  */
 
-// 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js
-
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { NormalizedLockerItem } from "../utils/dashboardMappers";
 import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   fetchAllOperationalOrders,
   paginateOperationalOrders,
-} from "../services/operationalOrdersService.js";
+} from "../services/operationalOrdersService";
+
+export type UseOperationalOrdersParams = {
+  orderPickupBase: string;
+  token: string;
+  region: string;
+  selectedLocker: NormalizedLockerItem | null;
+};
 
 export default function useOperationalOrders({
   orderPickupBase,
   token,
   region,
   selectedLocker,
-}) {
+}: UseOperationalOrdersParams) {
   const ordersLoading = useCheckoutStore((state) => state.ordersLoading);
   const setOrdersLoading = useCheckoutStore((state) => state.setOrdersLoading);
   const ordersError = useCheckoutStore((state) => state.ordersError);
@@ -40,7 +39,7 @@ export default function useOperationalOrders({
   const [ordersHasNext, setOrdersHasNext] = useState(false);
   const [ordersHasPrev, setOrdersHasPrev] = useState(false);
   const [ordersTableDensity, setOrdersTableDensity] = useState("10");
-  const [ordersLastUpdatedAt, setOrdersLastUpdatedAt] = useState(null);
+  const [ordersLastUpdatedAt, setOrdersLastUpdatedAt] = useState<number | null>(null);
   const requestSeqRef = useRef(0);
 
   const fetchOrdersOnce = useCallback(
@@ -80,9 +79,9 @@ export default function useOperationalOrders({
         setOrdersPage(page.resolvedPage);
         setOrdersPageSize(targetPageSize);
         setOrdersLastUpdatedAt(Date.now());
-      } catch (error) {
+      } catch (error: unknown) {
         if (requestSeq !== requestSeqRef.current) return;
-        setOrdersError(String(error?.message || error));
+        setOrdersError(String(error instanceof Error ? error.message : error));
         setOrdersData([]);
         setOrdersTotal(0);
         setOrdersHasPrev(false);

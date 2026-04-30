@@ -9,7 +9,7 @@ import {
   fieldStyle,
   infoBannerStyle,
   panelStyle,
-} from "../utils/dashboardUiStyles.js";
+} from "../utils/dashboardUiStyles";
 
 export default function OperationalOrdersPanel({
   showOrdersPanel,

@@ -4,7 +4,7 @@ import React from "react";
 import {
   OPERATIONAL_HIGHLIGHT_LEGEND,
   STATE_STYLE,
-} from "../utils/dashboardConstants.js";
+} from "../utils/dashboardConstants";
 
 export default function DashboardLegend() {
   return (

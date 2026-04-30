@@ -1,8 +1,8 @@
 // 01_source/frontend/src/features/locker-dashboard/components/LockerSelectorCard.jsx
 
 import React from "react";
-import { formatLockerAddress } from "../utils/dashboardFormatters.js";
-import { errorBannerStyle, fieldStyle, panelStyle } from "../utils/dashboardUiStyles.js";
+import { formatLockerAddress } from "../utils/dashboardFormatters";
+import { errorBannerStyle, fieldStyle, panelStyle } from "../utils/dashboardUiStyles";
 
 export default function LockerSelectorCard({
   region,

@@ -1,31 +1,25 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useLockerSlotsSync.js
 /**
- * * Responsável por:
- * buscar slots de um locker
- * polling
- * abort controller
- * syncEnabled, syncStatus
- * slots, setStateOnBackend
- * fetchSlotsOnce
- * 
- * Esse é um domínio completo sozinho.
- */ 
-
-// 01_source/frontend/src/features/locker-dashboard/hooks/useLockerSlotsSync.js
+ * Responsável por: buscar slots, polling, abort, syncStatus, setStateOnBackend, fetchSlotsOnce
+ */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { NormalizedLockerItem } from "../utils/dashboardMappers";
 import {
   fetchCatalogSlots,
   fetchLockerSlots,
   setLockerSlotState,
-} from "../services/lockerSlotsService.js";
-import { buildInitialCakes, slotsListToMap } from "../utils/dashboardSlotUtils.js";
+} from "../services/lockerSlotsService";
+import { buildInitialCakes, slotsListToMap, type SlotsMap } from "../utils/dashboardSlotUtils";
 
 function mergeCatalogWithLockerStates({
   catalogRows,
   lockerRows,
   totalSlots,
-}) {
+}: {
+  catalogRows: Iterable<Record<string, unknown>> | null | undefined;
+  lockerRows: Iterable<Record<string, unknown>> | null | undefined;
+  totalSlots: number;
+}): SlotsMap {
   const merged = slotsListToMap(lockerRows, totalSlots);
   const safeCatalogRows = Array.isArray(catalogRows) ? catalogRows : [];
 
@@ -50,18 +44,25 @@ function mergeCatalogWithLockerStates({
   return merged;
 }
 
+export type UseLockerSlotsSyncParams = {
+  runtimeBase: string;
+  selectedLocker: NormalizedLockerItem | null;
+  syncEnabled?: boolean;
+  pollIntervalMs?: number;
+};
+
 export default function useLockerSlotsSync({
   runtimeBase,
   selectedLocker,
   syncEnabled = true,
   pollIntervalMs = 3000,
-}) {
-  const pollTimerRef = useRef(null);
-  const abortRef = useRef(null);
+}: UseLockerSlotsSyncParams) {
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const totalSlots = Math.max(1, Number(selectedLocker?.slots) || 24);
 
-  const [slots, setSlots] = useState(() => slotsListToMap([], totalSlots));
+  const [slots, setSlots] = useState<SlotsMap>(() => slotsListToMap([], totalSlots));
   const [cakes, setCakes] = useState(() => buildInitialCakes(totalSlots));
   const [syncStatus, setSyncStatus] = useState({ ok: true, msg: "—" });
 
@@ -105,8 +106,8 @@ export default function useLockerSlotsSync({
 
       setSlots(
         mergeCatalogWithLockerStates({
-          catalogRows: catalogData,
-          lockerRows: lockerData,
+          catalogRows: catalogData as Iterable<Record<string, unknown>>,
+          lockerRows: lockerData as Iterable<Record<string, unknown>>,
           totalSlots,
         })
       );
@@ -114,14 +115,21 @@ export default function useLockerSlotsSync({
         ok: true,
         msg: `Atualizado ${new Date().toLocaleTimeString()} • ${selectedLocker.locker_id}`,
       });
-    } catch (error) {
-      if (String(error?.name) === "AbortError") return;
-      setSyncStatus({ ok: false, msg: String(error?.message || error) });
+    } catch (error: unknown) {
+      if (String(error instanceof Error ? error.name : "") === "AbortError") return;
+      setSyncStatus({
+        ok: false,
+        msg: String(error instanceof Error ? error.message : error),
+      });
     }
   }, [runtimeBase, selectedLocker, totalSlots]);
 
   const setStateOnBackend = useCallback(
-    async (slot, nextState, onRefreshOrders) => {
+    async (
+      slot: number,
+      nextState: string,
+      onRefreshOrders?: (() => void) | null | undefined
+    ) => {
       if (!slot || !selectedLocker) return;
 
       const payload = {
@@ -153,20 +161,26 @@ export default function useLockerSlotsSync({
         ) {
           onRefreshOrders();
         }
-      } catch (error) {
-        setSyncStatus({ ok: false, msg: `set-state erro: ${String(error?.message || error)}` });
+      } catch (error: unknown) {
+        setSyncStatus({
+          ok: false,
+          msg: `set-state erro: ${String(error instanceof Error ? error.message : error)}`,
+        });
         await fetchSlotsOnce();
       }
     },
     [fetchSlotsOnce, runtimeBase, selectedLocker, slots]
   );
 
-  const updateCake = useCallback((slot, patch) => {
-    setCakes((prev) => ({
-      ...prev,
-      [slot]: { ...prev[slot], ...patch },
-    }));
-  }, []);
+  const updateCake = useCallback(
+    (slot: number, patch: Partial<{ name: string; notes: string; imageUrl: string }>) => {
+      setCakes((prev) => ({
+        ...prev,
+        [slot]: { ...prev[slot], ...patch },
+      }));
+    },
+    []
+  );
 
   useEffect(() => {
     fetchSlotsOnce();

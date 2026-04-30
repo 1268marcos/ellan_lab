@@ -1,6 +1,12 @@
-// 01_source/frontend/src/features/locker-dashboard/utils/dashboardFormatters.js
-
-export function formatMoney(cents, options = {}) {
+export function formatMoney(
+  cents: unknown,
+  options: {
+    currency?: string;
+    locale?: string;
+    minimumFractionDigits?: number;
+    maximumFractionDigits?: number;
+  } = {}
+) {
   const value = Number(cents);
   if (!Number.isFinite(value)) return "-";
 
@@ -35,17 +41,17 @@ export function formatMoney(cents, options = {}) {
   }
 }
 
-export function formatPlainMoney(cents) {
+export function formatPlainMoney(cents: unknown) {
   const value = Number(cents);
   if (!Number.isFinite(value)) return "-";
   return (value / 100).toFixed(2);
 }
 
-export function regionTimeZone(region) {
+export function regionTimeZone(region: string) {
   return region === "SP" ? "America/Sao_Paulo" : "Europe/Lisbon";
 }
 
-export function formatDateTime(value, region = "PT", locale = "pt-BR") {
+export function formatDateTime(value: unknown, region = "PT", locale = "pt-BR") {
   if (!value) return "-";
 
   try {
@@ -66,7 +72,7 @@ export function formatDateTime(value, region = "PT", locale = "pt-BR") {
   }
 }
 
-export function formatEpochDateTime(epochSec, region = "PT", locale = "pt-BR") {
+export function formatEpochDateTime(epochSec: unknown, region = "PT", locale = "pt-BR") {
   if (!epochSec) return "-";
 
   try {
@@ -82,10 +88,10 @@ export function formatEpochDateTime(epochSec, region = "PT", locale = "pt-BR") {
   }
 }
 
-export function formatLockerAddress(locker) {
+export function formatLockerAddress(locker: Record<string, unknown> | null | undefined) {
   if (!locker) return "-";
 
-  const address = locker.address || {};
+  const address = (locker.address as Record<string, unknown> | undefined) || {};
   return [
     [address.address, address.number].filter(Boolean).join(", "),
     address.additional_information || "",

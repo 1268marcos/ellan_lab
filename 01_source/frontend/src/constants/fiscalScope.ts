@@ -6,10 +6,10 @@ export const FISCAL_SCOPE_GATE_PANEL_TITLE = `Gates fiscais (${FISCAL_SCOPE_PREF
 export const FISCAL_SCOPE_QUICK_ACTIONS_TITLE = `Ações rápidas de plantão (${FISCAL_SCOPE_PREFIX_BASE.toLowerCase()} ${FISCAL_SCOPE_COUNTRIES_LABEL})`;
 export const FISCAL_SCOPE_PROVIDERS_INFO = `${FISCAL_SCOPE_GATE_PANEL_TITLE}. Novos gates poderão ser adicionados neste painel.`;
 
-export function buildFiscalScopePrefix(country) {
+export function buildFiscalScopePrefix(country: string) {
   return `[${FISCAL_SCOPE_PREFIX_BASE}: ${FISCAL_SCOPE_TRACK_LABEL} ${country}]`;
 }
 
-export function buildFiscalScopedGateTitle(country) {
+export function buildFiscalScopedGateTitle(country: string) {
   return `Gate fiscal (escopo atual) - ${country} real`;
 }

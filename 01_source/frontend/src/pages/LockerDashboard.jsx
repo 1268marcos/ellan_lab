@@ -10,22 +10,20 @@ import {
   setRuntimeGeoScopeTenantOverride,
 } from "../utils/lockerGeoFilter";
 
-import {
-  CurrentOrderCard,
-  DashboardLegend,
-  FlowProgressPanel,
-  LockerDashboardHeader,
-  LockerDashboardLayout,
-  LockerSelectorCard,
-  LockerSlotsPanel,
-  OperationalOrdersPanel,
-  PaymentPanel,
-  PaymentPendingPanel,
-  PickupOperationsPanel,
-  SlotSelectionBanner,
-  SyncStatusBar,
-  useLockerDashboardController,
-} from "../features/locker-dashboard";
+import useLockerDashboardController from "../features/locker-dashboard/hooks/useLockerDashboardController";
+import CurrentOrderCard from "../features/locker-dashboard/components/CurrentOrderCard.jsx";
+import DashboardLegend from "../features/locker-dashboard/components/DashboardLegend.jsx";
+import FlowProgressPanel from "../features/locker-dashboard/components/FlowProgressPanel.jsx";
+import LockerDashboardHeader from "../features/locker-dashboard/components/LockerDashboardHeader.jsx";
+import LockerDashboardLayout from "../features/locker-dashboard/components/LockerDashboardLayout.jsx";
+import LockerSelectorCard from "../features/locker-dashboard/components/LockerSelectorCard.jsx";
+import LockerSlotsPanel from "../features/locker-dashboard/components/LockerSlotsPanel.jsx";
+import OperationalOrdersPanel from "../features/locker-dashboard/components/OperationalOrdersPanel.jsx";
+import PaymentPanel from "../features/locker-dashboard/components/PaymentPanel.jsx";
+import PaymentPendingPanel from "../features/locker-dashboard/components/PaymentPendingPanel.jsx";
+import PickupOperationsPanel from "../features/locker-dashboard/components/PickupOperationsPanel.jsx";
+import SlotSelectionBanner from "../features/locker-dashboard/components/SlotSelectionBanner.jsx";
+import SyncStatusBar from "../features/locker-dashboard/components/SyncStatusBar.jsx";
 
 export default function LockerDashboard({ region = "PT" }) {
   const { token } = useAuth();

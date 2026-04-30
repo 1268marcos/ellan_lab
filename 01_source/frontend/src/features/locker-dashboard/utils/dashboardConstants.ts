@@ -1,5 +1,3 @@
-// 01_source/frontend/src/features/locker-dashboard/utils/dashboardConstants.js
-
 export const SLOT_STATES = [
   "AVAILABLE",
   "RESERVED",

@@ -3,7 +3,7 @@
 import React from "react";
 import PickupQRCodePanel from "../../../components/PickupQRCodePanel.jsx";
 import ManualPickupPanel from "../../../components/ManualPickupPanel.jsx";
-import { actionButtonStyle, panelStyle } from "../utils/dashboardUiStyles.js";
+import { actionButtonStyle, panelStyle } from "../utils/dashboardUiStyles";
 
 export default function PickupOperationsPanel({
   currentOrder,

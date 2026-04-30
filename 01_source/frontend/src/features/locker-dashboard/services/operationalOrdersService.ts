@@ -1,11 +1,15 @@
-// 01_source/frontend/src/features/locker-dashboard/services/operationalOrdersService.js
+import { buildAuthHeaders } from "../utils/dashboardPaymentUtils";
 
-import { buildAuthHeaders } from "../utils/dashboardPaymentUtils.js";
+type UnknownRecord = Record<string, unknown>;
 
 export async function fetchOperationalOrdersPage({
   orderPickupBase,
   token,
   params,
+}: {
+  orderPickupBase: string;
+  token: unknown;
+  params: Record<string, string>;
 }) {
   const search = new URLSearchParams(params);
   const res = await fetch(`${orderPickupBase}/orders?${search.toString()}`, {
@@ -18,10 +22,10 @@ export async function fetchOperationalOrdersPage({
     throw new Error(`HTTP ${res.status}: ${text}`);
   }
 
-  const data = JSON.parse(text);
+  const data = JSON.parse(text) as { items?: unknown; has_next?: unknown };
 
   return {
-    items: Array.isArray(data?.items) ? data.items : [],
+    items: Array.isArray(data?.items) ? (data.items as UnknownRecord[]) : [],
     hasNext: Boolean(data?.has_next),
     raw: data,
   };
@@ -33,13 +37,19 @@ export async function fetchAllOperationalOrders({
   region,
   status,
   channel,
+}: {
+  orderPickupBase: string;
+  token: unknown;
+  region: string;
+  status?: string;
+  channel?: string;
 }) {
-  const collected = [];
+  const collected: UnknownRecord[] = [];
   let page = 1;
   let hasNext = true;
 
   while (hasNext) {
-    const params = {
+    const params: Record<string, string> = {
       region,
       scope: "ops",
       page: String(page),
@@ -67,6 +77,10 @@ export function paginateOperationalOrders({
   items,
   page,
   pageSize,
+}: {
+  items: UnknownRecord[];
+  page: number;
+  pageSize: number;
 }) {
   const total = items.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));

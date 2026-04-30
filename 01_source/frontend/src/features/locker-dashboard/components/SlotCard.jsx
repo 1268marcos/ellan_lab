@@ -1,8 +1,8 @@
 // 01_source/frontend/src/features/locker-dashboard/components/SlotCard.jsx
 
 import React from "react";
-import { STATE_STYLE } from "../utils/dashboardConstants.js";
-import { formatPlainMoney } from "../utils/dashboardFormatters.js";
+import { STATE_STYLE } from "../utils/dashboardConstants";
+import { formatPlainMoney } from "../utils/dashboardFormatters";
 
 export default function SlotCard({
   slot,

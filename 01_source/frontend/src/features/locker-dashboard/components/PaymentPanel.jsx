@@ -6,7 +6,7 @@ import {
   actionButtonStyle,
   fieldStyle,
   panelStyle,
-} from "../utils/dashboardUiStyles.js";
+} from "../utils/dashboardUiStyles";
 
 function paymentMethodLabel(method) {
   // Mapeamento baseado nos codes do banco

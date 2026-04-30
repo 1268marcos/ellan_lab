@@ -1021,8 +1021,18 @@ export default function LockerDashboard({ region = "PT" }) {
   const abortRef = useRef(null);
 
   const [orderLoading, setOrderLoading] = useState(false);
-  const [orderError, setOrderError] = useState("");
-  const [currentOrder, setCurrentOrder] = useState(null);
+
+  const currentOrder = useCheckoutStore((s) => s.currentOrder);
+  const setCurrentOrder = useCheckoutStore((s) => s.setCurrentOrder);
+  const orderError = useCheckoutStore((s) => s.orderError);
+  const setOrderError = useCheckoutStore((s) => s.setOrderError);
+
+  const ordersLoading = useCheckoutStore((s) => s.ordersLoading);
+  const setOrdersLoading = useCheckoutStore((s) => s.setOrdersLoading);
+  const ordersError = useCheckoutStore((s) => s.ordersError);
+  const setOrdersError = useCheckoutStore((s) => s.setOrdersError);
+  const ordersData = useCheckoutStore((s) => s.ordersData);
+  const setOrdersData = useCheckoutStore((s) => s.setOrdersData);
 
   const [payMethod, setPayMethod] = useState("CARTAO");
   const [payValue, setPayValue] = useState(100);
@@ -1058,20 +1068,47 @@ export default function LockerDashboard({ region = "PT" }) {
     },
     [setStorePayResp],
   );
+  const setStorePickupResp = useCheckoutStore((s) => s.setPickupResp);
+  const pickupResp = useCheckoutStore((s) => s.pickupResp?.message ?? "");
+  const setPickupResp = useCallback(
+    (messageOrUpdater) => {
+      if (typeof messageOrUpdater === "function") {
+        const prev = useCheckoutStore.getState().pickupResp?.message ?? "";
+        const next = String(messageOrUpdater(prev) || "");
+        if (!next) {
+          setStorePickupResp(null);
+          return;
+        }
+        setStorePickupResp({
+          status: "idle",
+          message: next,
+          raw: { source: "LockerDashboardFirst" },
+        });
+        return;
+      }
+      const normalized = String(messageOrUpdater || "");
+      if (!normalized) {
+        setStorePickupResp(null);
+        return;
+      }
+      setStorePickupResp({
+        status: "idle",
+        message: normalized,
+        raw: { source: "LockerDashboardFirst" },
+      });
+    },
+    [setStorePickupResp],
+  );
   const [payLoading, setPayLoading] = useState(false);
   const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
   const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
   const [walletProvider, setWalletProvider] = useState("");
 
-  const [pickupResp, setPickupResp] = useState("");
   const [regenCodeLoading, setRegenCodeLoading] = useState(false);
 
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState("");
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
   const [ordersFilterChannel, setOrdersFilterChannel] = useState("");
-  const [ordersData, setOrdersData] = useState([]);
   const [showOrdersPanel, setShowOrdersPanel] = useState(true);
   const [ordersPage, setOrdersPage] = useState(1);
   const [ordersPageSize, setOrdersPageSize] = useState(10);

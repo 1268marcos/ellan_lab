@@ -1,7 +1,7 @@
 // 01_source/frontend/src/features/locker-dashboard/components/FlowProgressPanel.jsx
 
 import React from "react";
-import { panelStyle } from "../utils/dashboardUiStyles.js";
+import { panelStyle } from "../utils/dashboardUiStyles";
 
 const stepBaseStyle = {
   borderRadius: 10,

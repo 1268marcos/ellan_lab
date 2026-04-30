@@ -1,8 +1,4 @@
-// 01_source/frontend/src/utils/datetime.js
-// 19/04/2026 - novo arquivo
-// 19/04/2026 - datetime formato padrão ISO 8601
-
-const REGION_TIMEZONES = {
+const REGION_TIMEZONES: Record<string, string> = {
   SP: "America/Sao_Paulo",
   RJ: "America/Sao_Paulo",
   MG: "America/Sao_Paulo",
@@ -12,15 +8,15 @@ const REGION_TIMEZONES = {
   PT: "Europe/Lisbon",
 };
 
-export function regionToTimezone(region) {
+export function regionToTimezone(region: unknown) {
   const key = String(region || "").trim().toUpperCase();
   return REGION_TIMEZONES[key] || "UTC";
 }
 
-export function formatDateTimeByRegion(value, region) {
+export function formatDateTimeByRegion(value: unknown, region: unknown) {
   if (!value) return "-";
 
-  const date = new Date(value);
+  const date = new Date(value as string | number | Date);
   if (Number.isNaN(date.getTime())) return String(value);
 
   return new Intl.DateTimeFormat("pt-BR", {

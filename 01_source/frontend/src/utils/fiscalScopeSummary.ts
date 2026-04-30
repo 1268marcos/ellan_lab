@@ -1,6 +1,6 @@
 import { buildFiscalScopePrefix } from "../constants/fiscalScope";
 
-export function withScopePrefixIfGenericSummary(summaryValue, country) {
+export function withScopePrefixIfGenericSummary(summaryValue: unknown, country: string) {
   const summary = String(summaryValue || "").trim();
   const normalized = summary.toLowerCase();
   const genericSignals = [

@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { ELLAN_FRONTEND_CSP } from "./ellan-frontend-csp.mjs";
+import { ELLAN_FRONTEND_CSP, ELLAN_FRONTEND_CSP_META } from "./ellan-frontend-csp.mjs";
 
 /**
  * CSP (fonte: ./ellan-frontend-csp.mjs):
@@ -14,11 +14,11 @@ function ellanCspIndexHtml() {
     name: "ellan-csp-index-html",
     transformIndexHtml(html, ctx) {
       if (ctx.server) {
-        let out = html.replaceAll("ELLAN_FRONTEND_CSP_PLACEHOLDER", ELLAN_FRONTEND_CSP);
+        let out = html.replaceAll("ELLAN_FRONTEND_CSP_PLACEHOLDER", ELLAN_FRONTEND_CSP_META);
         if (!/http-equiv\s*=\s*["']Content-Security-Policy["']/i.test(out)) {
           out = out.replace(
             "<head>",
-            `<head>\n    <meta http-equiv="Content-Security-Policy" content="${ELLAN_FRONTEND_CSP.replaceAll('"', "&quot;")}" />`,
+            `<head>\n    <meta http-equiv="Content-Security-Policy" content="${ELLAN_FRONTEND_CSP_META.replaceAll('"', "&quot;")}" />`,
           );
         }
         return out.replace(/script-src 'self';/g, "script-src 'self' 'unsafe-inline';");

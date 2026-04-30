@@ -1,7 +1,7 @@
 // 01_source/frontend/src/features/locker-dashboard/components/PaymentPendingPanel.jsx
 
 import React from "react";
-import { formatEpochDateTime } from "../utils/dashboardFormatters.js";
+import { formatEpochDateTime } from "../utils/dashboardFormatters";
 
 export default function PaymentPendingPanel({
   pendingPaymentContext,

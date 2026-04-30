@@ -1,28 +1,17 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js
 /**
- * * Responsável por:
- * currentOrder
- * setCurrentOrder
- * currentOrderMeta
- * currentPickupMeta
- * currentAllocationMeta
- * currentOrderWarning
- * isOrderAlreadyPaid
- * canRegenerateManualCode
- * clearCurrentOrderForRecovery
- * handleSelectOrder
+ * Responsável por: currentOrder, setCurrentOrder, meta de suporte,
+ * clearCurrentOrderForRecovery, handleSelectOrder
  */
 
-// 01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js
-
 import { useCallback, useMemo, useState } from "react";
+import type { CheckoutCurrentOrder } from "../../checkout/types";
 import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   buildCurrentOrderFromListItem,
   getOrderSupportMeta,
-} from "../utils/dashboardOrderUtils.js";
-import { groupIndexFromSlot } from "../utils/dashboardSlotUtils.js";
-import { getWalletProviderForMethod } from "../utils/dashboardPaymentUtils.js";
+} from "../utils/dashboardOrderUtils";
+import { groupIndexFromSlot } from "../utils/dashboardSlotUtils";
+import { getWalletProviderForMethod } from "../utils/dashboardPaymentUtils";
 
 export default function useCurrentOrder() {
   const currentOrder = useCheckoutStore((state) => state.currentOrder);
@@ -32,14 +21,14 @@ export default function useCurrentOrder() {
   const [orderLoading, setOrderLoading] = useState(false);
 
   const setCurrentOrder = useCallback(
-    (next) => {
+    (next: CheckoutCurrentOrder | null | ((prev: CheckoutCurrentOrder | null) => CheckoutCurrentOrder | null)) => {
       setCurrentOrderInStore(next);
     },
     [setCurrentOrderInStore]
   );
 
   const setOrderError = useCallback(
-    (message) => {
+    (message: string) => {
       setOrderErrorInStore(String(message || ""));
     },
     [setOrderErrorInStore]
@@ -47,7 +36,7 @@ export default function useCurrentOrder() {
 
   const supportMeta = useMemo(() => getOrderSupportMeta(currentOrder), [currentOrder]);
 
-  const buildFocusPatch = useCallback((item) => {
+  const buildFocusPatch = useCallback((item: Record<string, unknown> | null) => {
     if (!item) {
       return {
         currentOrder: null,
@@ -66,7 +55,7 @@ export default function useCurrentOrder() {
       typeof item?.amount_cents === "number" ? Number(item.amount_cents) / 100 : 0;
 
     return {
-      currentOrder: buildCurrentOrderFromListItem(item),
+      currentOrder: buildCurrentOrderFromListItem(item) as unknown as CheckoutCurrentOrder,
       selectedSlot: slotNum || null,
       activeGroup: slotNum ? groupIndexFromSlot(slotNum) : 0,
       payMethod: paymentMethod,
@@ -77,7 +66,7 @@ export default function useCurrentOrder() {
   }, []);
 
   const handleSelectOrder = useCallback(
-    (item) => {
+    (item: Record<string, unknown>) => {
       return {
         ...buildFocusPatch(item),
         orderError: "",
@@ -89,7 +78,7 @@ export default function useCurrentOrder() {
     [buildFocusPatch]
   );
 
-  const clearCurrentOrderForRecovery = useCallback((message) => {
+  const clearCurrentOrderForRecovery = useCallback((message: string) => {
     return {
       currentOrder: null,
       selectedSlot: null,
@@ -102,8 +91,8 @@ export default function useCurrentOrder() {
     };
   }, []);
 
-  const setCurrentOrderFromRaw = useCallback((item) => {
-    setCurrentOrderInStore(buildCurrentOrderFromListItem(item));
+  const setCurrentOrderFromRaw = useCallback((item: Record<string, unknown>) => {
+    setCurrentOrderInStore(buildCurrentOrderFromListItem(item) as unknown as CheckoutCurrentOrder);
   }, [setCurrentOrderInStore]);
 
   const resetCurrentOrder = useCallback(() => {

@@ -1,19 +1,22 @@
-// 01_source/frontend/src/features/locker-dashboard/hooks/useLockerRegistry.js
 /**
- *  * Responsável por: 
+ * Responsável por:
  * - buscar lockers no gateway
- * - aplicar fallback contingencial 
+ * - aplicar fallback contingencial
  * - expor lockers, selectedLocker, selectedLockerId, setSelectedLockerId
  * - expor lockersLoading, lockersError, lockersSource
- * 
- * Isso isola a seleção de locker e remove esse bloco da página. Hoje isso 
- * está misturado no componente principal.
  */
 
-// 01_source/frontend/src/features/locker-dashboard/hooks/useLockerRegistry.js
-
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchLockersWithFallback } from "../services/lockerRegistryService.js";
+import type { NormalizedLockerItem } from "../utils/dashboardMappers";
+import { fetchLockersWithFallback } from "../services/lockerRegistryService";
+
+export type UseLockerRegistryParams = {
+  region: string;
+  gatewayBase: string;
+  orderPickupBase: string;
+  channel?: string;
+  tenant?: string;
+};
 
 export default function useLockerRegistry({
   region,
@@ -21,8 +24,8 @@ export default function useLockerRegistry({
   orderPickupBase,
   channel = "ONLINE",
   tenant = "",
-}) {
-  const [lockers, setLockers] = useState([]);
+}: UseLockerRegistryParams) {
+  const [lockers, setLockers] = useState<NormalizedLockerItem[]>([]);
   const [lockersLoading, setLockersLoading] = useState(false);
   const [lockersError, setLockersError] = useState("");
   const [lockersSource, setLockersSource] = useState("loading");

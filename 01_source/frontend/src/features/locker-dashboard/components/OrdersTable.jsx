@@ -1,7 +1,7 @@
 // 01_source/frontend/src/features/locker-dashboard/components/OrdersTable.jsx
 
 import React from "react";
-import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters.js";
+import { formatDateTime, formatPlainMoney } from "../utils/dashboardFormatters";
 
 export default function OrdersTable({
   ordersData,
