@@ -38,6 +38,8 @@ from app.services.fiscal_global_catalog_service import (
 )
 from app.services.fiscal_fg1_stub_service import (
     build_fg1_coverage_gate,
+    validate_fg1_envelope_contract,
+    build_fg1_stub_wave_readiness,
     build_fg1_fixture_inventory,
     build_fg1_fixtures_matrix,
     build_fg1_stub_adapters_catalog,
@@ -383,15 +385,30 @@ def get_fiscal_fg1_fixture_document(
         raise _safe_client_error("Invalid FG-1 fixture parameters.") from exc
 
 
+@router.get("/global/fg1/envelope-check")
+def get_fiscal_fg1_envelope_check(
+    _: None = Depends(validate_internal_token),
+):
+    return validate_fg1_envelope_contract()
+
+
+@router.get("/global/fg1/stub-wave-readiness")
+def get_fiscal_fg1_stub_wave_readiness(
+    _: None = Depends(validate_internal_token),
+):
+    return build_fg1_stub_wave_readiness()
+
+
 @router.post("/global/fg1/simulate")
 def post_fiscal_fg1_stub_simulate(
     country: str = Query(...),
     operation: str = Query(..., pattern="^(authorize|cancel|correct|status)$"),
     scenario: str | None = Query(default=None),
+    region: str | None = Query(default=None),
     _: None = Depends(validate_internal_token),
 ):
     try:
-        return simulate_fg1_stub(country=country, operation=operation, scenario=scenario)
+        return simulate_fg1_stub(country=country, operation=operation, scenario=scenario, region=region)
     except ValueError as exc:
         raise _safe_client_error("Invalid FG-1 simulation parameters.") from exc
 

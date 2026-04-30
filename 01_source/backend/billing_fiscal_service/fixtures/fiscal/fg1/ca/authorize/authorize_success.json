@@ -10,6 +10,7 @@
   "customer_tax_id": "TAX-STUB-001",
   "adapter_name": "cra_stub_adapter_v1",
   "authority": "CRA",
+  "region": "NA",
   "canonical_status": "SUCCESS",
   "authority_status": "AUTORIZADO",
   "fixture_relative_path": "fixtures/fiscal/fg1/ca/authorize/authorize_success.json"

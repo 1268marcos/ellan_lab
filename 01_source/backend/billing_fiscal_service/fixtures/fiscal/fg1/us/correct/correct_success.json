@@ -10,6 +10,7 @@
   "customer_tax_id": "TAX-STUB-001",
   "adapter_name": "irs_mef_stub_adapter_v1",
   "authority": "IRS",
+  "region": "NA",
   "canonical_status": "SUCCESS",
   "authority_status": "CARTA_CORRECAO_APLICADA",
   "fixture_relative_path": "fixtures/fiscal/fg1/us/correct/correct_success.json"

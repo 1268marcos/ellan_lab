@@ -10,6 +10,7 @@
   "customer_tax_id": "TAX-STUB-001",
   "adapter_name": "chorus_stub_adapter_v1",
   "authority": "DGFiP",
+  "region": "EU",
   "canonical_status": "VALIDATION_ERROR",
   "authority_status": "ERRO_VALIDACAO",
   "fixture_relative_path": "fixtures/fiscal/fg1/fr/authorize/authorize_schema_error.json"

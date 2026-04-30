@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/readiness-execution v1.1.0";
+const PAGE_VERSION = "fiscal/readiness-execution v1.2.0";
 const STORAGE_KEY = "fiscal:readiness:execution:v1";
 /** Mesmo storage key do fg1-gate: um sufixo de sessão único para todos os artefatos de handoff FG-1. */
 const SESSION_SUFFIX_KEY = "fiscal:fg1:handoff:session_suffix";
@@ -15,6 +15,7 @@ function headersJson() {
 }
 
 export default function FiscalReadinessExecutionPage() {
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
@@ -23,6 +24,7 @@ export default function FiscalReadinessExecutionPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [onlyBlocked, setOnlyBlocked] = useState(true);
   const [exportCopyStatus, setExportCopyStatus] = useState("");
+  const [countryFocusFilter, setCountryFocusFilter] = useState(() => parseCountryFocusFilter(location.search));
 
   async function loadData() {
     if (!INTERNAL_TOKEN) {
@@ -57,6 +59,10 @@ export default function FiscalReadinessExecutionPage() {
     persistExecutionMap(executionMap);
   }, [executionMap]);
 
+  useEffect(() => {
+    setCountryFocusFilter(parseCountryFocusFilter(location.search));
+  }, [location.search]);
+
   const items = Array.isArray(actionPlan?.items) ? actionPlan.items : [];
 
   const mergedAll = useMemo(() => {
@@ -82,8 +88,9 @@ export default function FiscalReadinessExecutionPage() {
   const rows = useMemo(() => {
     return mergedAll
       .filter((row) => (onlyBlocked ? Number(row.blocking_reasons_count || 0) > 0 : true))
-      .filter((row) => (statusFilter === "ALL" ? true : row.execution_status === statusFilter));
-  }, [mergedAll, statusFilter, onlyBlocked]);
+      .filter((row) => (statusFilter === "ALL" ? true : row.execution_status === statusFilter))
+      .filter((row) => (countryFocusFilter.length > 0 ? countryFocusFilter.includes(row.country_code) : true));
+  }, [mergedAll, statusFilter, onlyBlocked, countryFocusFilter]);
 
   const counts = useMemo(() => {
     const summary = { TODO: 0, IN_PROGRESS: 0, DONE: 0 };
@@ -159,7 +166,15 @@ export default function FiscalReadinessExecutionPage() {
           <button type="button" style={buttonStyle} onClick={() => void copyExecutionHandoff()}>
             Copiar resumo handoff
           </button>
+          {countryFocusFilter.length > 0 ? (
+            <button type="button" style={buttonStyle} onClick={() => setCountryFocusFilter([])}>
+              Limpar foco por países
+            </button>
+          ) : null}
         </div>
+        {countryFocusFilter.length > 0 ? (
+          <small style={mutedTextStyle}>Foco ativo do FG-1 Gate: {countryFocusFilter.join(", ")}</small>
+        ) : null}
         {copyStatus ? <small style={mutedTextStyle}>{copyStatus}</small> : null}
         {error ? <div style={errorStyle}>{error}</div> : null}
 
@@ -305,6 +320,17 @@ function persistExecutionMap(value) {
   } catch {
     // no-op
   }
+}
+
+function parseCountryFocusFilter(search) {
+  const params = new URLSearchParams(String(search || ""));
+  const raw = String(params.get("country_focus") || "");
+  if (!raw) return [];
+  const values = raw
+    .split(",")
+    .map((item) => String(item || "").trim().toUpperCase())
+    .filter(Boolean);
+  return Array.from(new Set(values));
 }
 
 function formatBrPtHandoffLine(code, row) {

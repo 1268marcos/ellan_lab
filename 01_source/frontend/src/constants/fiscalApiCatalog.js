@@ -10,6 +10,8 @@ export const FISCAL_API_GROUPS = [
       "GET /admin/fiscal/global/fg1/fixtures-matrix",
       "GET /admin/fiscal/global/fg1/fixture-inventory",
       "GET /admin/fiscal/global/fg1/fixture-document",
+      "GET /admin/fiscal/global/fg1/envelope-check",
+      "GET /admin/fiscal/global/fg1/stub-wave-readiness",
       "GET /admin/fiscal/global/fg1/coverage-gate",
       "GET /admin/fiscal/global/fg1/readiness-gate",
       "GET /admin/fiscal/global/fg1/readiness-action-plan",

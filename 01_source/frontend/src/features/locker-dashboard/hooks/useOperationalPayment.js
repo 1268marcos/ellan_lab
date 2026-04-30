@@ -19,6 +19,7 @@
 // 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPayment.js
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   createOperationalOrder,
   executeGatewayPayment,
@@ -104,16 +105,39 @@ export default function useOperationalPayment({
   slotSelectionRemainingSec,
   fetchOrdersOnce,
 }) {
+  const storeCurrentOrder = useCheckoutStore((state) => state.currentOrder);
+  const setStoreCurrentOrder = useCheckoutStore((state) => state.setCurrentOrder);
+  const setStorePayResp = useCheckoutStore((state) => state.setPayResp);
+
+  const effectiveCurrentOrder = currentOrder || storeCurrentOrder;
+
   const [payMethod, setPayMethod] = useState("CARTAO");
   const [payValue, setPayValue] = useState(100);
   const [paySlot, setPaySlot] = useState(1);
-  const [payResp, setPayResp] = useState("");
+  const [payResp, setPayRespLocal] = useState("");
   const [payLoading, setPayLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(false);
   const [pendingPaymentContext, setPendingPaymentContext] = useState(null);
   const [cardType, setCardType] = useState("creditCard");
   const [customerPhone, setCustomerPhone] = useState("");
   const [walletProvider, setWalletProvider] = useState("");
+
+  const setPayResp = useCallback(
+    (message) => {
+      const normalized = String(message || "");
+      setPayRespLocal(normalized);
+      if (!normalized) {
+        setStorePayResp(null);
+        return;
+      }
+      setStorePayResp({
+        status: "idle",
+        message: normalized,
+        raw: { source: "useOperationalPayment" },
+      });
+    },
+    [setStorePayResp]
+  );
 
   const availablePaymentMethods = useMemo(
     () => (Array.isArray(selectedLocker?.payment_methods) ? selectedLocker.payment_methods : []),
@@ -152,14 +176,14 @@ export default function useOperationalPayment({
         throw new Error("VITE_INTERNAL_TOKEN não configurado no frontend.");
       }
 
-      if (!currentOrder) {
+      if (!effectiveCurrentOrder) {
         throw new Error("Nenhum pedido atual carregado para confirmação interna.");
       }
 
-      const totemId = currentOrder?.totem_id || selectedLocker?.locker_id;
+      const totemId = effectiveCurrentOrder?.totem_id || selectedLocker?.locker_id;
       const amountCents =
-        typeof currentOrder.amount_cents === "number"
-          ? currentOrder.amount_cents
+        typeof effectiveCurrentOrder.amount_cents === "number"
+          ? effectiveCurrentOrder.amount_cents
           : Math.round(Number(payValue) * 100);
 
       const payload = {
@@ -182,6 +206,7 @@ export default function useOperationalPayment({
     },
     [
       currentOrder,
+      effectiveCurrentOrder,
       internalToken,
       orderPickupBase,
       payMethod,
@@ -266,9 +291,12 @@ export default function useOperationalPayment({
 
       const allocatedSlot = data?.allocation?.slot ? Number(data.allocation.slot) : slotNum;
 
+      const nextCurrentOrder = { ...data, totem_id: totemId };
+      setStoreCurrentOrder(nextCurrentOrder);
+
       return {
         ok: true,
-        currentOrder: { ...data, totem_id: totemId },
+        currentOrder: nextCurrentOrder,
         selectedSlot: allocatedSlot,
         paySlot: allocatedSlot,
         activeGroup: groupIndexFromSlot(allocatedSlot),
@@ -301,24 +329,24 @@ export default function useOperationalPayment({
       return { ok: false };
     }
 
-    if (!currentOrder?.order_id) {
+    if (!effectiveCurrentOrder?.order_id) {
       setPayResp(
         "❌ Nenhum pedido atual carregado.\n\nAção recomendada: selecione uma gaveta disponível e clique em “Criar pedido online”."
       );
       return { ok: false };
     }
 
-    if (currentOrder?.status === "PAID_PENDING_PICKUP") {
+    if (effectiveCurrentOrder?.status === "PAID_PENDING_PICKUP") {
       setPayResp("⚠️ Este pedido já está pago.");
       return { ok: false };
     }
 
-    if (currentOrder?.status === "PICKED_UP") { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
+    if (effectiveCurrentOrder?.status === "PICKED_UP") { // PICKED_UP, provalvemente bug - isso depende de sensor OU confirmação humana - correto: DISPENSED, máquina liberou - pickup.door_opened
       setPayResp("⚠️ Este pedido já foi retirado.");
       return { ok: false };
     }
 
-    if (currentOrder?.status === "DISPENSED") { // máquina liberou - pickup.door_opened
+    if (effectiveCurrentOrder?.status === "DISPENSED") { // máquina liberou - pickup.door_opened
       setPayResp("⚠️ Este pedido já foi retirado na máquina.");
       return { ok: false };
     }    
@@ -338,7 +366,7 @@ export default function useOperationalPayment({
     setPendingPaymentContext(null);
 
     try {
-      const totemId = currentOrder?.totem_id || selectedLocker.locker_id;
+      const totemId = effectiveCurrentOrder?.totem_id || selectedLocker.locker_id;
       const transactionId = generateClientTransactionId();
 
       const payload = {
@@ -347,11 +375,11 @@ export default function useOperationalPayment({
         metodo: payMethod,
         valor:
           typeof currentOrder.amount_cents === "number"
-            ? Number(currentOrder.amount_cents) / 100
+            ? Number(effectiveCurrentOrder.amount_cents) / 100
             : Number(payValue),
-        porta: Number(currentOrder?.allocation?.slot || selectedSlot || paySlot || 0),
+        porta: Number(effectiveCurrentOrder?.allocation?.slot || selectedSlot || paySlot || 0),
         locker_id: totemId,
-        order_id: currentOrder.order_id,
+        order_id: effectiveCurrentOrder.order_id,
       };
 
       if (isCardMethod(payMethod)) {
@@ -383,7 +411,7 @@ export default function useOperationalPayment({
       ) {
         const context = {
           ...pending,
-          order_id: currentOrder.order_id,
+          order_id: effectiveCurrentOrder.order_id,
           locker_id: totemId,
           payment_method: payMethod,
           transaction_id: effectiveTransactionId,
@@ -404,7 +432,7 @@ export default function useOperationalPayment({
       }
 
       const confirmData = await confirmPaymentInternally(
-        currentOrder.order_id,
+        effectiveCurrentOrder.order_id,
         effectiveTransactionId
       );
 
@@ -412,30 +440,31 @@ export default function useOperationalPayment({
         gatewayData,
         confirmData,
         region,
-        currentOrderId: currentOrder.order_id,
+        currentOrderId: effectiveCurrentOrder.order_id,
         lockerId: totemId,
       });
 
       const nextCurrentOrder = {
-        ...currentOrder,
+        ...effectiveCurrentOrder,
         status: "PAID_PENDING_PICKUP",
-        paid_at: confirmData?.paid_at || currentOrder?.paid_at,
-        pickup_id: confirmData?.pickup_id || currentOrder?.pickup_id,
-        manual_code: confirmData?.manual_code || currentOrder?.manual_code,
-        token_id: confirmData?.token_id || currentOrder?.token_id,
-        pickup_status: confirmData?.pickup_status || currentOrder?.pickup_status,
+        paid_at: confirmData?.paid_at || effectiveCurrentOrder?.paid_at,
+        pickup_id: confirmData?.pickup_id || effectiveCurrentOrder?.pickup_id,
+        manual_code: confirmData?.manual_code || effectiveCurrentOrder?.manual_code,
+        token_id: confirmData?.token_id || effectiveCurrentOrder?.token_id,
+        pickup_status: confirmData?.pickup_status || effectiveCurrentOrder?.pickup_status,
         pickup_deadline_at:
           confirmData?.pickup_deadline_at ||
           confirmData?.pickup_expires_at ||
-          currentOrder?.pickup_deadline_at,
+          effectiveCurrentOrder?.pickup_deadline_at,
         allocation: {
           allocation_id:
-            confirmData?.allocation_id || currentOrder?.allocation?.allocation_id,
-          slot: confirmData?.slot || currentOrder?.allocation?.slot,
-          state: confirmData?.allocation_state || currentOrder?.allocation?.state,
+            confirmData?.allocation_id || effectiveCurrentOrder?.allocation?.allocation_id,
+          slot: confirmData?.slot || effectiveCurrentOrder?.allocation?.slot,
+          state: confirmData?.allocation_state || effectiveCurrentOrder?.allocation?.state,
         },
       };
 
+      setStoreCurrentOrder(nextCurrentOrder);
       setPendingPaymentContext(null);
       setPayResp(
         `${summary}\n\n--- JSON bruto ---\n${JSON.stringify(
@@ -477,6 +506,7 @@ export default function useOperationalPayment({
     cardType,
     confirmPaymentInternally,
     currentOrder,
+    effectiveCurrentOrder,
     customerPhone,
     fetchOrdersOnce,
     gatewayUrl,
@@ -510,28 +540,29 @@ export default function useOperationalPayment({
         lockerId: pendingPaymentContext.locker_id,
       });
 
-      const nextCurrentOrder = currentOrder
+      const nextCurrentOrder = effectiveCurrentOrder
         ? {
-            ...currentOrder,
+            ...effectiveCurrentOrder,
             status: "PAID_PENDING_PICKUP",
-            paid_at: confirmData?.paid_at || currentOrder?.paid_at,
-            pickup_id: confirmData?.pickup_id || currentOrder?.pickup_id,
-            manual_code: confirmData?.manual_code || currentOrder?.manual_code,
-            token_id: confirmData?.token_id || currentOrder?.token_id,
-            pickup_status: confirmData?.pickup_status || currentOrder?.pickup_status,
+            paid_at: confirmData?.paid_at || effectiveCurrentOrder?.paid_at,
+            pickup_id: confirmData?.pickup_id || effectiveCurrentOrder?.pickup_id,
+            manual_code: confirmData?.manual_code || effectiveCurrentOrder?.manual_code,
+            token_id: confirmData?.token_id || effectiveCurrentOrder?.token_id,
+            pickup_status: confirmData?.pickup_status || effectiveCurrentOrder?.pickup_status,
             pickup_deadline_at:
               confirmData?.pickup_deadline_at ||
               confirmData?.pickup_expires_at ||
-              currentOrder?.pickup_deadline_at,
+              effectiveCurrentOrder?.pickup_deadline_at,
             allocation: {
               allocation_id:
-                confirmData?.allocation_id || currentOrder?.allocation?.allocation_id,
-              slot: confirmData?.slot || currentOrder?.allocation?.slot,
-              state: confirmData?.allocation_state || currentOrder?.allocation?.state,
+                confirmData?.allocation_id || effectiveCurrentOrder?.allocation?.allocation_id,
+              slot: confirmData?.slot || effectiveCurrentOrder?.allocation?.slot,
+              state: confirmData?.allocation_state || effectiveCurrentOrder?.allocation?.state,
             },
           }
         : null;
 
+      setStoreCurrentOrder(nextCurrentOrder);
       setPendingPaymentContext(null);
       setPayResp(
         `${summary}\n\n--- JSON bruto ---\n${JSON.stringify(
@@ -560,6 +591,7 @@ export default function useOperationalPayment({
   }, [
     confirmPaymentInternally,
     currentOrder,
+    effectiveCurrentOrder,
     fetchOrdersOnce,
     pendingPaymentContext,
     region,

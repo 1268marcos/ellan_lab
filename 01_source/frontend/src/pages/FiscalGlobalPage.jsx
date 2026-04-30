@@ -5,12 +5,24 @@ import { buildFiscalSwaggerUrl, FISCAL_API_GROUPS } from "../constants/fiscalApi
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const FISCAL_PAGE_VERSION = "fiscal/global v1.1.0";
+const FISCAL_PAGE_VERSION = "fiscal/global v1.3.0";
 
 function headersJson() {
   return {
     Accept: "application/json",
     "X-Internal-Token": INTERNAL_TOKEN,
+  };
+}
+
+function getStubReadinessStats(report) {
+  const checks = Array.isArray(report?.checks) ? report.checks : [];
+  const failed = checks.filter((check) => String(check?.status || "").toUpperCase() !== "PASS").length;
+  const passed = Math.max(checks.length - failed, 0);
+  return {
+    checks,
+    failed,
+    passed,
+    total: checks.length,
   };
 }
 
@@ -22,6 +34,7 @@ export default function FiscalGlobalPage() {
   const [matrix, setMatrix] = useState(null);
   const [fg1Adapters, setFg1Adapters] = useState(null);
   const [fg1Fixtures, setFg1Fixtures] = useState(null);
+  const [fg1StubReadiness, setFg1StubReadiness] = useState(null);
   const [apiMethodFilter, setApiMethodFilter] = useState("ALL");
   const [apiGroupFilter, setApiGroupFilter] = useState("ALL");
 
@@ -50,20 +63,24 @@ export default function FiscalGlobalPage() {
       setCatalog(catalogPayload || null);
       setMatrix(matrixPayload || null);
 
-      const [adaptersRes, fixturesRes] = await Promise.all([
+      const [adaptersRes, fixturesRes, stubReadinessRes] = await Promise.all([
         fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/stub-adapters`, { method: "GET", headers: headersJson() }),
         fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/fixtures-matrix`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/stub-wave-readiness`, { method: "GET", headers: headersJson() }),
       ]);
-      const [adaptersPayload, fixturesPayload] = await Promise.all([
+      const [adaptersPayload, fixturesPayload, stubReadinessPayload] = await Promise.all([
         adaptersRes.json().catch(() => ({})),
         fixturesRes.json().catch(() => ({})),
+        stubReadinessRes.json().catch(() => ({})),
       ]);
-      if (adaptersRes.ok && fixturesRes.ok) {
+      if (adaptersRes.ok && fixturesRes.ok && stubReadinessRes.ok) {
         setFg1Adapters(adaptersPayload || null);
         setFg1Fixtures(fixturesPayload || null);
+        setFg1StubReadiness(stubReadinessPayload || null);
       } else {
         setFg1Adapters(null);
         setFg1Fixtures(null);
+        setFg1StubReadiness(null);
         setFg1Warning("Bloco FG-1 indisponível no backend atual (catalog/matrix carregados normalmente).");
       }
     } catch (err) {
@@ -240,6 +257,27 @@ export default function FiscalGlobalPage() {
           </section>
         ) : null}
 
+        {!error && fg1StubReadiness ? (
+          <section style={boxStyle}>
+            <h3 style={boxTitleStyle}>FG-1 Stub Wave Readiness ({String(fg1StubReadiness?.readiness_version || "-")})</h3>
+            <div style={summaryRowStyle}>
+              <span style={badgeStyle(fg1StubReadiness?.decision)}>Decisão consolidada: {String(fg1StubReadiness?.decision || "-")}</span>
+              <span style={chipStyle}>{`${getStubReadinessStats(fg1StubReadiness).passed}/${getStubReadinessStats(fg1StubReadiness).total} checks PASS`}</span>
+              <span style={chipStyle}>Checks com falha: {Number(getStubReadinessStats(fg1StubReadiness).failed || 0)}</span>
+              <span style={chipStyle}>Referência: {String(fg1StubReadiness?.readiness_version || "-")}</span>
+              <span style={chipStyle}>Countries not ready: {Number(fg1StubReadiness?.countries_not_ready || 0)}</span>
+              <span style={chipStyle}>Country count: {Number(fg1StubReadiness?.country_count || 0)}</span>
+            </div>
+            <ul style={listStyle}>
+              {(fg1StubReadiness?.checks || []).map((check, idx) => (
+                <li key={`${String(check?.name || "check")}-${idx}`}>
+                  <b>{String(check?.name || "-")}</b>: {String(check?.status || "-")}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
         {!error ? (
           <section style={boxStyle}>
             <h3 style={boxTitleStyle}>Catálogo de APIs FISCAL (Swagger)</h3>
@@ -326,6 +364,42 @@ const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 740 };
 const thStyle = { textAlign: "left", borderBottom: "1px solid var(--fiscal-table-separator-strong)", padding: "8px 10px", fontSize: 13 };
 const tdStyle = { borderBottom: "1px solid var(--fiscal-table-separator-soft)", padding: "8px 10px", verticalAlign: "top", fontSize: 13 };
 const listStyle = { margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 4 };
+const summaryRowStyle = { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 8 };
+const chipStyle = {
+  display: "inline-flex",
+  padding: "4px 10px",
+  borderRadius: 999,
+  border: "1px solid var(--fiscal-link-border)",
+  background: "var(--fiscal-link-bg)",
+  color: "var(--fiscal-text)",
+  fontSize: 12,
+  fontWeight: 700,
+};
+const badgeStyle = (decision) => {
+  const normalized = String(decision || "").toUpperCase();
+  if (normalized === "GO" || normalized === "PASS" || normalized === "READY") {
+    return {
+      display: "inline-flex",
+      padding: "4px 10px",
+      borderRadius: 999,
+      border: "1px solid rgba(34,197,94,0.65)",
+      background: "rgba(34,197,94,0.18)",
+      color: "#bbf7d0",
+      fontSize: 12,
+      fontWeight: 700,
+    };
+  }
+  return {
+    display: "inline-flex",
+    padding: "4px 10px",
+    borderRadius: 999,
+    border: "1px solid rgba(239,68,68,0.65)",
+    background: "rgba(239,68,68,0.18)",
+    color: "#fecaca",
+    fontSize: 12,
+    fontWeight: 700,
+  };
+};
 const apiGroupsGridStyle = { display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" };
 const apiFiltersRowStyle = { marginTop: 8, marginBottom: 8, display: "flex", gap: 8, flexWrap: "wrap" };
 const apiFilterLabelStyle = { display: "grid", gap: 4, fontSize: 12, color: "var(--fiscal-soft-text)", fontWeight: 600 };

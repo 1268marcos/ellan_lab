@@ -10,6 +10,7 @@
   "customer_tax_id": "TAX-STUB-001",
   "adapter_name": "irs_mef_stub_adapter_v1",
   "authority": "IRS",
+  "region": "NA",
   "canonical_status": "AUTHORIZED",
   "authority_status": "AUTORIZADO",
   "fixture_relative_path": "fixtures/fiscal/fg1/us/status/status_authorized.json"

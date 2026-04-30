@@ -19,7 +19,7 @@ const OPS_HEALTH_PERSONA_PREF_KEY = "ops_health:persona";
 const OPS_HEALTH_COLLAPSE_PREF_KEY = "ops_health:collapse_state:v1";
 const OPS_HEALTH_LINE_CHART_GRID_MODE_PREF_KEY = "ops_health:line_chart_grid_mode:v1";
 const OPS_HEALTH_WINDOW_PRESETS = [1, 6, 12, 24, 48, 72, 168];
-const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.2-sprint2";
+const OPS_HEALTH_PAGE_VERSION = "ops/health v1.4.5-sprint5";
 const OPS_HEALTH_PERSONAS = [
   { value: "ops", label: "Ops" },
   { value: "dev", label: "Dev" },
@@ -230,6 +230,18 @@ function resolveGateBadgeStyle(decision) {
     border: "1px solid rgba(239,68,68,0.65)",
     background: "rgba(239,68,68,0.22)",
     color: "#fecaca",
+  };
+}
+
+function getCheckStats(report) {
+  const checks = Array.isArray(report?.checks) ? report.checks : [];
+  const failed = checks.filter((check) => Number(check?.exit_code || 1) !== 0).length;
+  const passed = Math.max(checks.length - failed, 0);
+  return {
+    checks,
+    failed,
+    passed,
+    total: checks.length,
   };
 }
 
@@ -660,6 +672,10 @@ export default function OpsHealthPage() {
   const [fg1FinalDecisionLoading, setFg1FinalDecisionLoading] = useState(false);
   const [fg1FinalDecisionError, setFg1FinalDecisionError] = useState("");
   const [fg1FinalDecisionCopyStatus, setFg1FinalDecisionCopyStatus] = useState("");
+  const [fg1HandoffReport, setFg1HandoffReport] = useState(null);
+  const [fg1HandoffLoading, setFg1HandoffLoading] = useState(false);
+  const [fg1HandoffError, setFg1HandoffError] = useState("");
+  const [fg1HandoffCopyStatus, setFg1HandoffCopyStatus] = useState("");
   const [fiscalGoNoGo, setFiscalGoNoGo] = useState({ br: null, pt: null });
   const [fiscalGoNoGoLoading, setFiscalGoNoGoLoading] = useState(false);
   const [fiscalGoNoGoError, setFiscalGoNoGoError] = useState("");
@@ -881,6 +897,92 @@ export default function OpsHealthPage() {
       setFg1FinalDecisionError(String(err?.message || err));
     } finally {
       if (!silent) setFg1FinalDecisionLoading(false);
+    }
+  }
+
+  async function loadFg1HandoffLatest({ silent = false } = {}) {
+    if (!token) return;
+    if (!silent) setFg1HandoffLoading(true);
+    setFg1HandoffError("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/dev-admin/fiscal-fg1-handoff/latest`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          ...authHeaders,
+        },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(extractErrorMessage(payload, "Não foi possível carregar handoff consolidado FG-1."));
+      }
+      setFg1HandoffReport(payload?.report || null);
+    } catch (err) {
+      setFg1HandoffReport(null);
+      setFg1HandoffError(String(err?.message || err));
+    } finally {
+      if (!silent) setFg1HandoffLoading(false);
+    }
+  }
+
+  async function copyFg1HandoffSlackSummary() {
+    if (!fg1HandoffReport) {
+      setFg1HandoffCopyStatus("Snapshot consolidado FG-1 indisponível para cópia.");
+      window.setTimeout(() => setFg1HandoffCopyStatus(""), 2200);
+      return;
+    }
+    const checkStats = getCheckStats(fg1HandoffReport);
+    const failedChecks = checkStats.checks.filter((check) => Number(check?.exit_code || 1) !== 0);
+    const lines = [
+      "🎯 [FG-1 Handoff consolidado]",
+      `Decisão: ${String(fg1HandoffReport.decision || "-")} | Resultado: ${String(fg1HandoffReport.result || "-")}`,
+      `Checks PASS: ${checkStats.passed}/${checkStats.total}`,
+      `Checks com falha: ${checkStats.failed} / ${checkStats.total}`,
+      ...failedChecks.slice(0, 3).map((check) => `- ${String(check?.name || "-")}: exit_code=${Number(check?.exit_code || 0)}`),
+      `Gerado UTC: ${String(fg1HandoffReport.generated_at || "-")}`,
+    ];
+    const payload = lines.join("\n");
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = payload;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setFg1HandoffCopyStatus("Payload consolidado FG-1 copiado para Slack/Teams.");
+      window.setTimeout(() => setFg1HandoffCopyStatus(""), 2400);
+    } catch (err) {
+      setFg1HandoffCopyStatus(`Falha ao copiar payload consolidado FG-1: ${String(err?.message || err)}`);
+    }
+  }
+
+  async function copyFg1HandoffCommand() {
+    const command = "02_docker/run_fg1_handoff_orchestrator.sh --json";
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(command);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = command;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setFg1HandoffCopyStatus("Comando do orquestrador FG-1 copiado.");
+      window.setTimeout(() => setFg1HandoffCopyStatus(""), 2200);
+    } catch (err) {
+      setFg1HandoffCopyStatus(`Falha ao copiar comando do orquestrador: ${String(err?.message || err)}`);
     }
   }
 
@@ -1484,6 +1586,7 @@ export default function OpsHealthPage() {
     void loadMetrics();
     void loadOpsSanityLatest({ silent: true });
     void loadFg1FinalDecisionLatest({ silent: true });
+    void loadFg1HandoffLatest({ silent: true });
     void loadFiscalGoNoGoSummary({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -2177,6 +2280,61 @@ export default function OpsHealthPage() {
           ) : (
             <small style={summary24hHintStyle}>
               Execute `02_docker/run_ops_sanity.sh --json` para gerar `ops_sanity_latest.json`.
+            </small>
+          )}
+        </section>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>FG-1 handoff consolidado (orchestrator latest)</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" onClick={() => void loadFg1HandoffLatest()} style={buttonGhostStyle} disabled={fg1HandoffLoading}>
+                {fg1HandoffLoading ? "Atualizando..." : "Atualizar handoff consolidado"}
+              </button>
+              <button type="button" onClick={() => void copyFg1HandoffSlackSummary()} style={buttonGhostStyle} disabled={!fg1HandoffReport}>
+                Copiar payload Slack/Teams
+              </button>
+              <button type="button" onClick={() => void copyFg1HandoffCommand()} style={buttonGhostStyle}>
+                Copiar comando orquestrador
+              </button>
+              <Link to="/fiscal/fg1-gate" style={buttonGhostLinkStyle}>
+                Abrir fiscal/fg1-gate
+              </Link>
+              <Link to="/fiscal/readiness-execution" style={buttonGhostLinkStyle}>
+                Abrir fiscal/readiness-execution
+              </Link>
+            </div>
+          </div>
+          {fg1HandoffError ? <small style={{ color: "#fecaca" }}>{fg1HandoffError}</small> : null}
+          {fg1HandoffCopyStatus ? <small style={summary24hHintStyle}>{fg1HandoffCopyStatus}</small> : null}
+          {fg1HandoffReport ? (
+            <div style={summary24hGridStyle}>
+              <article style={{ ...summary24hItemStyle, ...resolveGateBadgeStyle(fg1HandoffReport.decision) }}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(fg1HandoffReport.decision || "-")}</strong>
+                <small style={summary24hLabelStyle}>Decisão consolidada</small>
+              </article>
+              <article style={{ ...summary24hItemStyle, ...resolveGateBadgeStyle(getCheckStats(fg1HandoffReport).failed === 0 ? "GO" : "NO_GO") }}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>
+                  {`${getCheckStats(fg1HandoffReport).passed}/${getCheckStats(fg1HandoffReport).total} checks PASS`}
+                </strong>
+                <small style={{ ...summary24hLabelStyle, color: "inherit" }}>Checks PASS</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={summary24hValueStyle}>{getCheckStats(fg1HandoffReport).failed}</strong>
+                <small style={summary24hLabelStyle}>Checks com falha</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(fg1HandoffReport.generated_at || "-")}</strong>
+                <small style={summary24hLabelStyle}>Gerado em (UTC)</small>
+              </article>
+              <article style={summary24hItemStyle}>
+                <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{String(fg1HandoffReport.result || "-")}</strong>
+                <small style={summary24hLabelStyle}>Resultado técnico</small>
+              </article>
+            </div>
+          ) : (
+            <small style={summary24hHintStyle}>
+              Execute `02_docker/run_fg1_handoff_orchestrator.sh --json` para gerar `fg1_handoff_orchestrator_latest.json`.
             </small>
           )}
         </section>
@@ -3136,6 +3294,14 @@ const buttonGhostStyle = {
   background: "transparent",
   color: "#e2e8f0",
   fontWeight: 600,
+};
+
+const buttonGhostLinkStyle = {
+  ...buttonGhostStyle,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  textDecoration: "none",
 };
 
 const healthCollapsibleStyle = {

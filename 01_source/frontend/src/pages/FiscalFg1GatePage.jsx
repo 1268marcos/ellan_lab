@@ -5,12 +5,24 @@ import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/fg1-gate v1.5.0";
+const PAGE_VERSION = "fiscal/fg1-gate v1.9.0";
 
 function headersJson() {
   return {
     Accept: "application/json",
     "X-Internal-Token": INTERNAL_TOKEN,
+  };
+}
+
+function getStubReadinessStats(report) {
+  const checks = Array.isArray(report?.checks) ? report.checks : [];
+  const failed = checks.filter((check) => String(check?.status || "").toUpperCase() !== "PASS").length;
+  const passed = Math.max(checks.length - failed, 0);
+  return {
+    checks,
+    failed,
+    passed,
+    total: checks.length,
   };
 }
 
@@ -21,6 +33,9 @@ export default function FiscalFg1GatePage() {
   const [coverageGate, setCoverageGate] = useState(null);
   const [readinessGate, setReadinessGate] = useState(null);
   const [actionPlan, setActionPlan] = useState(null);
+  const [envelopeCheck, setEnvelopeCheck] = useState(null);
+  const [fixtureInventory, setFixtureInventory] = useState(null);
+  const [stubWaveReadiness, setStubWaveReadiness] = useState(null);
 
   async function loadGate() {
     if (!INTERNAL_TOKEN) {
@@ -31,22 +46,31 @@ export default function FiscalFg1GatePage() {
     setLoading(true);
     setError("");
     try {
-      const [coverageResponse, readinessResponse, actionPlanResponse] = await Promise.all([
+      const [coverageResponse, readinessResponse, actionPlanResponse, envelopeResponse, fixtureInventoryResponse, stubWaveReadinessResponse] = await Promise.all([
         fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/coverage-gate`, { method: "GET", headers: headersJson() }),
         fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/readiness-gate`, { method: "GET", headers: headersJson() }),
         fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/readiness-action-plan`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/envelope-check`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/fixture-inventory`, { method: "GET", headers: headersJson() }),
+        fetch(`${BILLING_BASE}/admin/fiscal/global/fg1/stub-wave-readiness`, { method: "GET", headers: headersJson() }),
       ]);
-      const [coveragePayload, readinessPayload, actionPlanPayload] = await Promise.all([
+      const [coveragePayload, readinessPayload, actionPlanPayload, envelopePayload, fixtureInventoryPayload, stubWaveReadinessPayload] = await Promise.all([
         coverageResponse.json().catch(() => ({})),
         readinessResponse.json().catch(() => ({})),
         actionPlanResponse.json().catch(() => ({})),
+        envelopeResponse.json().catch(() => ({})),
+        fixtureInventoryResponse.json().catch(() => ({})),
+        stubWaveReadinessResponse.json().catch(() => ({})),
       ]);
-      if (!coverageResponse.ok || !readinessResponse.ok || !actionPlanResponse.ok) {
+      if (!coverageResponse.ok || !readinessResponse.ok || !actionPlanResponse.ok || !envelopeResponse.ok || !fixtureInventoryResponse.ok || !stubWaveReadinessResponse.ok) {
         throw new Error(
           String(
             coveragePayload?.detail ||
               readinessPayload?.detail ||
               actionPlanPayload?.detail ||
+              envelopePayload?.detail ||
+              fixtureInventoryPayload?.detail ||
+              stubWaveReadinessPayload?.detail ||
               "Falha ao carregar gates FG-1 (coverage/readiness/action-plan)."
           )
         );
@@ -54,6 +78,9 @@ export default function FiscalFg1GatePage() {
       setCoverageGate(coveragePayload || null);
       setReadinessGate(readinessPayload || null);
       setActionPlan(actionPlanPayload || null);
+      setEnvelopeCheck(envelopePayload || null);
+      setFixtureInventory(fixtureInventoryPayload || null);
+      setStubWaveReadiness(stubWaveReadinessPayload || null);
     } catch (err) {
       const raw = String(err?.message || err);
       if (raw.toLowerCase().includes("failed to fetch")) {
@@ -77,6 +104,14 @@ export default function FiscalFg1GatePage() {
   const finalGlobalDecision = finalDecisionRows.every((row) => row.finalDecision === "GO") ? "GO" : "NO_GO";
   const countriesReady = finalDecisionRows.filter((row) => row.finalDecision === "GO").length;
   const countriesBlocked = finalDecisionRows.filter((row) => row.finalDecision !== "GO").length;
+  const blockedCountryCodes = finalDecisionRows
+    .filter((row) => Number(row.pendingActions || 0) > 0)
+    .map((row) => String(row.countryCode || "").toUpperCase())
+    .filter(Boolean);
+  const readinessOneClickUrl =
+    blockedCountryCodes.length > 0
+      ? `/fiscal/readiness-execution?country_focus=${encodeURIComponent(blockedCountryCodes.join(","))}`
+      : "/fiscal/readiness-execution";
   const consolidatedDecision =
     coverageGate?.decision === "GO" && readinessGate?.decision === "GO"
       ? "GO"
@@ -95,6 +130,9 @@ export default function FiscalFg1GatePage() {
           </Link>
           <Link to="/fiscal/countries" style={shortcutLinkStyle}>
             Abrir fiscal/countries
+          </Link>
+          <Link to={readinessOneClickUrl} style={shortcutLinkStyle}>
+            Ação 1-clique: abrir readiness (pending_actions &gt; 0)
           </Link>
         </div>
 
@@ -142,6 +180,47 @@ export default function FiscalFg1GatePage() {
           </div>
         ) : null}
 
+        {!error && (envelopeCheck || fixtureInventory || stubWaveReadiness) ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Observabilidade técnica FG-1 (envelope/fixtures)</h3>
+            <div style={summaryRowStyle}>
+              <span style={badgeStyle(stubWaveReadiness?.decision === "GO" ? "GO" : "NO_GO")}>
+                Decisão consolidada: {String(stubWaveReadiness?.decision || "-")}
+              </span>
+              <span style={chipStyle}>
+                {`${getStubReadinessStats(stubWaveReadiness).passed}/${getStubReadinessStats(stubWaveReadiness).total} checks PASS`}
+              </span>
+              <span style={chipStyle}>Checks com falha: {Number(getStubReadinessStats(stubWaveReadiness).failed || 0)}</span>
+              <span style={chipStyle}>Referência: {String(stubWaveReadiness?.readiness_version || "-")}</span>
+              <span style={badgeStyle(String(envelopeCheck?.status || "NO_GO").toUpperCase() === "OK" ? "GO" : "NO_GO")}>
+                Envelope-check: {String(envelopeCheck?.status || "-")}
+              </span>
+              <span style={chipStyle}>Erros envelope: {Number(envelopeCheck?.error_count || 0)}</span>
+              <span style={chipStyle}>Pares validados: {Number(envelopeCheck?.checked_pairs || 0)}</span>
+              <span style={badgeStyle(fixtureInventory?.complete ? "GO" : "NO_GO")}>
+                Fixture inventory: {fixtureInventory?.complete ? "COMPLETE" : "INCOMPLETE"}
+              </span>
+              <span style={chipStyle}>
+                Fixtures em disco: {Number(fixtureInventory?.count || 0)}/{Number(fixtureInventory?.expected_count || 0)}
+              </span>
+              <span style={chipStyle}>
+                Fixture source padrão: {fixtureInventory?.complete ? "disk" : "synthetic/disk"}
+              </span>
+            </div>
+            <div style={summaryRowStyle}>
+              <a href={`${BILLING_BASE}/docs#/admin-fiscal/get_fiscal_fg1_envelope_check_admin_fiscal_global_fg1_envelope_check_get`} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>
+                Abrir endpoint envelope-check (Swagger)
+              </a>
+              <a href={`${BILLING_BASE}/docs#/admin-fiscal/get_fiscal_fg1_fixture_inventory_admin_fiscal_global_fg1_fixture_inventory_get`} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>
+                Abrir endpoint fixture-inventory (Swagger)
+              </a>
+              <a href={`${BILLING_BASE}/docs#/admin-fiscal/get_fiscal_fg1_stub_wave_readiness_admin_fiscal_global_fg1_stub_wave_readiness_get`} target="_blank" rel="noreferrer" style={shortcutLinkStyle}>
+                Abrir endpoint stub-wave-readiness (Swagger)
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         {!error && finalDecisionRows.length > 0 ? (
           <div style={boxStyle}>
             <h3 style={boxTitleStyle}>Painel de decisão final FG-1</h3>
@@ -149,7 +228,13 @@ export default function FiscalFg1GatePage() {
               <span style={badgeStyle(finalGlobalDecision)}>Decisão final global: {finalGlobalDecision}</span>
               <span style={chipStyle}>Países aptos: {countriesReady}</span>
               <span style={chipStyle}>Países bloqueados: {countriesBlocked}</span>
+              <span style={chipStyle}>Países com pending_actions: {blockedCountryCodes.length}</span>
               <span style={chipStyle}>Critério de saída [x]: 100% países em GO</span>
+            </div>
+            <div style={summaryRowStyle}>
+              <Link to={readinessOneClickUrl} style={shortcutLinkStyle}>
+                Abrir fiscal/readiness-execution focado nos pendentes
+              </Link>
             </div>
             <div style={tableWrapStyle}>
               <table style={tableStyle}>

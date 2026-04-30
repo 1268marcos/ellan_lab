@@ -12,6 +12,7 @@
 // 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   fetchAllOperationalOrders,
   paginateOperationalOrders,
@@ -23,11 +24,14 @@ export default function useOperationalOrders({
   region,
   selectedLocker,
 }) {
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState("");
+  const ordersLoading = useCheckoutStore((state) => state.ordersLoading);
+  const setOrdersLoading = useCheckoutStore((state) => state.setOrdersLoading);
+  const ordersError = useCheckoutStore((state) => state.ordersError);
+  const setOrdersError = useCheckoutStore((state) => state.setOrdersError);
+  const ordersData = useCheckoutStore((state) => state.ordersData);
+  const setOrdersData = useCheckoutStore((state) => state.setOrdersData);
   const [ordersFilterStatus, setOrdersFilterStatus] = useState("");
   const [ordersFilterChannel, setOrdersFilterChannel] = useState("");
-  const [ordersData, setOrdersData] = useState([]);
   const [showOrdersPanel, setShowOrdersPanel] = useState(true);
 
   const [ordersPage, setOrdersPage] = useState(1);

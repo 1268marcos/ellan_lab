@@ -3,6 +3,7 @@ import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import FiscalPageLayout from "./components/FiscalPageLayout";
+import DomainErrorBoundary from "./components/DomainErrorBoundary.tsx";
 import {
   clearRuntimeGeoScopeTenantOverride,
   getRuntimeGeoScopeTenantOverride,
@@ -850,12 +851,25 @@ function RecoverFiscalRoute() {
 }
 
 function AppContent() {
+  const location = useLocation();
+  const path = String(location.pathname || "").toLowerCase();
+  const boundaryDomain = path.startsWith("/ops")
+    ? "ops"
+    : path.startsWith("/checkout") || path.startsWith("/comprar")
+      ? "checkout"
+      : path.startsWith("/meus-pedidos")
+        ? "orders"
+        : path.startsWith("/fiscal")
+          ? "fiscal"
+          : "global";
+
   return (
     <div className="app-container">
       <TopNav />
       <div id="main-content">
-        <Suspense fallback={<PageLoader />}>
-          <Routes>
+        <DomainErrorBoundary domain={boundaryDomain}>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
             <Route path="/" element={<PublicLandingPage />} />
             <Route path="/login" element={<PublicLoginPage />} />
             <Route path="/recuperar-senha" element={<PublicForgotPasswordPage />} />
@@ -1247,9 +1261,10 @@ function AppContent() {
             />
 
             {/* Rota 404 - Página não encontrada */}
-            <Route path="*" element={<RecoverFiscalRoute />} />
-          </Routes>
-        </Suspense>
+              <Route path="*" element={<RecoverFiscalRoute />} />
+            </Routes>
+          </Suspense>
+        </DomainErrorBoundary>
       </div>
       {/* <footer className="app-footer" role="contentinfo">
         <p>&copy; {new Date().getFullYear()} ELLAN Lab Locker. Todos os direitos reservados.</p>

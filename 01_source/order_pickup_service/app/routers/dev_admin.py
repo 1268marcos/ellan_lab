@@ -699,6 +699,58 @@ def dev_fiscal_fg1_final_latest(
     }
 
 
+@router.get("/fiscal-fg1-handoff/latest")
+def dev_fiscal_fg1_handoff_latest(
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    candidates = [
+        Path("/app/ops_logs/ops/fg1_handoff_orchestrator_latest.json"),
+        Path("/home/marcos/ellan_lab/04_logs/ops/fg1_handoff_orchestrator_latest.json"),
+    ]
+    latest_path = next((p for p in candidates if p.exists()), candidates[0])
+    if not latest_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "FG1_HANDOFF_ORCHESTRATOR_NOT_FOUND",
+                "message": "Snapshot consolidado FG-1 (orchestrator latest) ainda não foi gerado.",
+                "expected_paths": [str(p) for p in candidates],
+            },
+        )
+    try:
+        payload = json.loads(latest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "type": "FG1_HANDOFF_ORCHESTRATOR_INVALID",
+                "message": "Snapshot consolidado FG-1 inválido para leitura.",
+                "error_type": exc.__class__.__name__,
+            },
+        ) from exc
+
+    _safe_record_ops_audit(
+        action="FG1_HANDOFF_ORCHESTRATOR_LATEST_VIEW",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "source_path": str(latest_path),
+            "decision": payload.get("decision"),
+            "result": payload.get("result"),
+            "checks_count": len(payload.get("checks") or []),
+        },
+    )
+    return {
+        "ok": True,
+        "source_path": str(latest_path),
+        "report": payload,
+    }
+
+
 @router.get("/ops-metrics", response_model=DevOpsMetricsOut)
 def dev_ops_metrics(
     lookback_hours: int = Query(default=settings.ops_metrics_lookback_hours, ge=1, le=168),

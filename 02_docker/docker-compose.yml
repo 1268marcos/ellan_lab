@@ -764,6 +764,10 @@ services:
       MB_DB_PASS: admin123
       MB_SITE_URL: http://localhost:8301
       JAVA_TIMEZONE: UTC
+      
+      # ⚠️ Desabilita carregamento automático de plugins não essenciais
+      MB_PLUGINS_DIR: /dev/null
+    
     volumes:
       - ../03_data/metabase:/metabase-data
     depends_on:
@@ -771,6 +775,13 @@ services:
         condition: service_healthy
     networks:
       - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 
 
   # =========================

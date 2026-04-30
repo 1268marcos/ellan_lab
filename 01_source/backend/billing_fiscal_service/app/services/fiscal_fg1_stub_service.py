@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 FG1_WAVE_COUNTRIES = ("US", "AU", "PL", "CA", "FR")
@@ -35,6 +38,35 @@ _AUTHORITY_BY_COUNTRY = {
     "CA": "CRA",
     "FR": "DGFiP",
 }
+
+_REGION_BY_COUNTRY = {
+    "US": "NA",
+    "AU": "OCEANIA",
+    "PL": "EU",
+    "CA": "NA",
+    "FR": "EU",
+}
+
+_ALLOWED_REGIONS_BY_COUNTRY = {
+    "US": ("NA", "US-CA", "US-TX", "US-NY"),
+    "AU": ("OCEANIA",),
+    "PL": ("EU",),
+    "CA": ("NA", "CA-QC"),
+    "FR": ("EU",),
+}
+
+_FIXTURE_REQUIRED_FIELDS = (
+    "fixture_version",
+    "country_code",
+    "operation",
+    "scenario",
+    "adapter_name",
+    "authority",
+    "region",
+    "canonical_status",
+    "authority_status",
+    "fixture_relative_path",
+)
 
 
 def _scenario_map() -> dict[str, dict]:
@@ -88,6 +120,19 @@ def _validate_operation(operation: str) -> str:
     return normalized
 
 
+def _resolve_region(country: str, region: str | None = None) -> str:
+    normalized_country = _validate_country(country)
+    default_region = _REGION_BY_COUNTRY.get(normalized_country, "GLOBAL")
+    candidate = str(region or "").strip().upper()
+    if not candidate:
+        return default_region
+    allowed = _ALLOWED_REGIONS_BY_COUNTRY.get(normalized_country, (default_region,))
+    if candidate not in allowed:
+        allowed_str = ", ".join(allowed)
+        raise ValueError(f"region must be one of: {allowed_str}")
+    return candidate
+
+
 def fg1_fixtures_root() -> Path:
     """Raiz do serviço billing_fiscal_service: .../fixtures/fiscal/fg1."""
     return Path(__file__).resolve().parents[2] / "fixtures" / "fiscal" / "fg1"
@@ -113,6 +158,7 @@ def build_fg1_fixture_document(country: str, operation: str, scenario_code: str)
         **base,
         "adapter_name": _ADAPTER_BY_COUNTRY[normalized_country],
         "authority": _AUTHORITY_BY_COUNTRY.get(normalized_country, normalized_country),
+        "region": _resolve_region(normalized_country),
         "canonical_status": row["canonical_status"],
         "authority_status": row["authority_status"],
         "fixture_relative_path": (
@@ -183,12 +229,14 @@ def build_fg1_stub_adapters_catalog() -> dict:
                 "scenario_count": len(_SCENARIO_ROWS),
                 "telemetry_fields": [
                     "provider_adapter",
+                    "region",
                     "scenario",
                     "canonical_status",
                     "authority_status",
                     "operation",
                     "country_code",
                     "trace_id",
+                    "fixture_source",
                 ],
             }
         )
@@ -285,7 +333,79 @@ def build_fg1_coverage_gate() -> dict:
     }
 
 
-def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None) -> dict:
+def build_fg1_stub_wave_readiness() -> dict:
+    """Checkpoint executivo de prontidão stub da onda FG-1 (G+3)."""
+    fixtures = build_fg1_fixtures_matrix()
+    inventory = build_fg1_fixture_inventory()
+    envelope = validate_fg1_envelope_contract()
+    error_statuses_required = {"TIMEOUT", "BUSINESS_REJECTED", "NOT_FOUND"}
+    rows = fixtures.get("rows") or []
+
+    scenario_statuses: dict[str, set[str]] = {}
+    for row in rows:
+        country = str(row.get("country_code") or "").upper()
+        if not country:
+            continue
+        status = str(row.get("canonical_status") or "").upper()
+        if not status:
+            continue
+        scenario_statuses.setdefault(country, set()).add(status)
+
+    countries = []
+    countries_not_ready = 0
+    for country in FG1_WAVE_COUNTRIES:
+        statuses = scenario_statuses.get(country, set())
+        missing_error_statuses = sorted(error_statuses_required - statuses)
+        ready = len(missing_error_statuses) == 0
+        if not ready:
+            countries_not_ready += 1
+        countries.append(
+            {
+                "country_code": country,
+                "stub_adapter": _ADAPTER_BY_COUNTRY.get(country),
+                "missing_error_statuses": missing_error_statuses,
+                "status": "READY" if ready else "MISSING_ERROR_SCENARIOS",
+            }
+        )
+
+    checks = [
+        {
+            "name": "fixture_inventory_complete",
+            "status": "PASS" if bool(inventory.get("complete")) else "FAIL",
+            "details": {
+                "count": int(inventory.get("count") or 0),
+                "expected_count": int(inventory.get("expected_count") or 0),
+            },
+        },
+        {
+            "name": "envelope_contract_ok",
+            "status": "PASS" if str(envelope.get("status") or "").upper() == "OK" else "FAIL",
+            "details": {
+                "error_count": int(envelope.get("error_count") or 0),
+                "checked_pairs": int(envelope.get("checked_pairs") or 0),
+            },
+        },
+        {
+            "name": "required_error_scenarios_by_country",
+            "status": "PASS" if countries_not_ready == 0 else "FAIL",
+            "details": {
+                "countries_not_ready": countries_not_ready,
+            },
+        },
+    ]
+    decision = "GO" if all(str(c.get("status") or "").upper() == "PASS" for c in checks) else "NO_GO"
+    return {
+        "wave": "FG-1-WAVE-1",
+        "readiness_version": "fg1-stub-wave-readiness-v1",
+        "decision": decision,
+        "checks": checks,
+        "countries": countries,
+        "country_count": len(countries),
+        "countries_not_ready": countries_not_ready,
+    }
+
+
+def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None, region: str | None = None) -> dict:
     normalized_country = _validate_country(country)
     normalized_operation = _validate_operation(operation)
     scenario_code = str(scenario or "").strip().upper() or _default_scenario_for_operation(normalized_operation)
@@ -301,7 +421,8 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None)
     fixture = read_fg1_fixture_document(normalized_country, normalized_operation, scenario_code)
     fixture_source = fg1_fixture_source(normalized_country, normalized_operation, scenario_code)
     provider_adapter = _ADAPTER_BY_COUNTRY[normalized_country]
-    return {
+    resolved_region = _resolve_region(normalized_country, region)
+    response = {
         "wave": "FG-1-WAVE-1",
         "mode": "stub",
         "country_code": normalized_country,
@@ -312,6 +433,7 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None)
         "telemetry": {
             "trace_id": trace_id,
             "provider_adapter": provider_adapter,
+            "region": resolved_region,
             "fixture_source": fixture_source,
             "event_name": "fiscal_fg1_stub_simulated",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -324,8 +446,108 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None)
                 "operation": normalized_operation,
                 "authority_status": scenario_row["authority_status"],
                 "country_code": normalized_country,
+                "region": resolved_region,
                 "trace_id": trace_id,
             },
         },
         "fixture": fixture,
+    }
+    logger.info(
+        "fiscal_fg1_stub_simulated",
+        extra={
+            "trace_id": trace_id,
+            "country_code": normalized_country,
+            "operation": normalized_operation,
+            "scenario": scenario_code,
+            "provider_adapter": provider_adapter,
+            "region": resolved_region,
+            "fixture_source": fixture_source,
+            "canonical_status": scenario_row["canonical_status"],
+        },
+    )
+    return response
+
+
+def validate_fg1_envelope_contract() -> dict:
+    """Valida consistência mínima do envelope fixture/simulate para a onda FG-1."""
+    scenarios = _scenario_map()
+    errors: list[dict] = []
+    checked = 0
+    for country in FG1_WAVE_COUNTRIES:
+        for scenario_code, scenario_row in scenarios.items():
+            operation = scenario_row["operation"]
+            checked += 1
+            fixture = read_fg1_fixture_document(country, operation, scenario_code)
+            missing_fixture_fields = [key for key in _FIXTURE_REQUIRED_FIELDS if key not in fixture]
+            if missing_fixture_fields:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "fixture_missing_fields",
+                        "fields": missing_fixture_fields,
+                    }
+                )
+            if str(fixture.get("country_code", "")).upper() != country:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "fixture_country_mismatch",
+                    }
+                )
+            if str(fixture.get("operation", "")).lower() != operation:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "fixture_operation_mismatch",
+                    }
+                )
+            if str(fixture.get("scenario", "")).upper() != scenario_code:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "fixture_scenario_mismatch",
+                    }
+                )
+            sim = simulate_fg1_stub(country=country, operation=operation, scenario=scenario_code)
+            telemetry = sim.get("telemetry") or {}
+            gov_raw = (sim.get("government_response") or {}).get("raw") or {}
+            telemetry_required = ("trace_id", "provider_adapter", "fixture_source", "event_name", "timestamp")
+            missing_telemetry = [key for key in telemetry_required if key not in telemetry]
+            if missing_telemetry:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "simulate_missing_telemetry",
+                        "fields": missing_telemetry,
+                    }
+                )
+            raw_required = ("provider_adapter", "scenario", "operation", "authority_status", "country_code", "region", "trace_id")
+            missing_raw = [key for key in raw_required if key not in gov_raw]
+            if missing_raw:
+                errors.append(
+                    {
+                        "country_code": country,
+                        "operation": operation,
+                        "scenario": scenario_code,
+                        "type": "simulate_missing_government_raw",
+                        "fields": missing_raw,
+                    }
+                )
+    return {
+        "wave": "FG-1-WAVE-1",
+        "check_version": "fg1-envelope-check-v1",
+        "checked_pairs": checked,
+        "error_count": len(errors),
+        "status": "OK" if len(errors) == 0 else "FAIL",
+        "errors": errors,
     }

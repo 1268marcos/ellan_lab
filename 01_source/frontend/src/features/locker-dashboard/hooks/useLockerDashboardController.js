@@ -104,8 +104,6 @@ export default function useLockerDashboardController({
     token,
     region,
     orderPickupBase,
-    currentOrder,
-    setCurrentOrder,
     fetchOrdersOnce: orders.fetchOrdersOnce,
   });
 

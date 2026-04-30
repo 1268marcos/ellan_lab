@@ -16,6 +16,7 @@
 // 01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js
 
 import { useCallback, useMemo, useState } from "react";
+import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import {
   buildCurrentOrderFromListItem,
   getOrderSupportMeta,
@@ -24,9 +25,25 @@ import { groupIndexFromSlot } from "../utils/dashboardSlotUtils.js";
 import { getWalletProviderForMethod } from "../utils/dashboardPaymentUtils.js";
 
 export default function useCurrentOrder() {
-  const [currentOrder, setCurrentOrder] = useState(null);
+  const currentOrder = useCheckoutStore((state) => state.currentOrder);
+  const setCurrentOrderInStore = useCheckoutStore((state) => state.setCurrentOrder);
+  const orderError = useCheckoutStore((state) => state.orderError);
+  const setOrderErrorInStore = useCheckoutStore((state) => state.setOrderError);
   const [orderLoading, setOrderLoading] = useState(false);
-  const [orderError, setOrderError] = useState("");
+
+  const setCurrentOrder = useCallback(
+    (next) => {
+      setCurrentOrderInStore(next);
+    },
+    [setCurrentOrderInStore]
+  );
+
+  const setOrderError = useCallback(
+    (message) => {
+      setOrderErrorInStore(String(message || ""));
+    },
+    [setOrderErrorInStore]
+  );
 
   const supportMeta = useMemo(() => getOrderSupportMeta(currentOrder), [currentOrder]);
 
@@ -86,13 +103,13 @@ export default function useCurrentOrder() {
   }, []);
 
   const setCurrentOrderFromRaw = useCallback((item) => {
-    setCurrentOrder(buildCurrentOrderFromListItem(item));
-  }, []);
+    setCurrentOrderInStore(buildCurrentOrderFromListItem(item));
+  }, [setCurrentOrderInStore]);
 
   const resetCurrentOrder = useCallback(() => {
-    setCurrentOrder(null);
+    setCurrentOrderInStore(null);
     setOrderError("");
-  }, []);
+  }, [setCurrentOrderInStore]);
 
   return {
     currentOrder,

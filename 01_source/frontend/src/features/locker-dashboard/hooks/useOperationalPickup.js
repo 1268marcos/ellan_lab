@@ -11,6 +11,7 @@
 // 01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPickup.js
 
 import { useCallback, useState } from "react";
+import { useCheckoutStore } from "../../../store/useCheckoutStore";
 import { regeneratePickupToken } from "../services/operationalPickupService.js";
 import { buildManualCodeSummary, buildRedeemSummary } from "../utils/dashboardOrderUtils.js";
 
@@ -22,18 +23,41 @@ export default function useOperationalPickup({
   setCurrentOrder,
   fetchOrdersOnce,
 }) {
-  const [pickupResp, setPickupResp] = useState("");
+  const storeCurrentOrder = useCheckoutStore((state) => state.currentOrder);
+  const setStoreCurrentOrder = useCheckoutStore((state) => state.setCurrentOrder);
+  const setStorePickupResp = useCheckoutStore((state) => state.setPickupResp);
+
+  const effectiveCurrentOrder = currentOrder || storeCurrentOrder;
+  const effectiveSetCurrentOrder = setCurrentOrder || setStoreCurrentOrder;
+
+  const [pickupResp, setPickupRespLocal] = useState("");
   const [regenCodeLoading, setRegenCodeLoading] = useState(false);
 
+  const setPickupResp = useCallback(
+    (message) => {
+      const normalized = String(message || "");
+      setPickupRespLocal(normalized);
+      if (!normalized) {
+        setStorePickupResp(null);
+        return;
+      }
+      setStorePickupResp({
+        status: "idle",
+        raw: { source: "useOperationalPickup" },
+      });
+    },
+    [setStorePickupResp]
+  );
+
   const regenerateManualCode = useCallback(async () => {
-    if (!currentOrder?.order_id) {
+    if (!effectiveCurrentOrder?.order_id) {
       setPickupResp(
         "❌ Nenhum pedido selecionado para regenerar código.\n\nAção recomendada: selecione um pedido pago aguardando retirada."
       );
       return;
     }
 
-    if (currentOrder?.status !== "PAID_PENDING_PICKUP") {
+    if (effectiveCurrentOrder?.status !== "PAID_PENDING_PICKUP") {
       setPickupResp(
         "❌ Só é possível regenerar código para pedido em PAID_PENDING_PICKUP.\n\nVerifique o status do pedido atual."
       );
@@ -46,10 +70,10 @@ export default function useOperationalPickup({
       const data = await regeneratePickupToken({
         orderPickupBase,
         token,
-        orderId: currentOrder.order_id,
+        orderId: effectiveCurrentOrder.order_id,
       });
 
-      setCurrentOrder((prev) =>
+      effectiveSetCurrentOrder((prev) =>
         prev
           ? {
               ...prev,
@@ -83,11 +107,19 @@ export default function useOperationalPickup({
     } finally {
       setRegenCodeLoading(false);
     }
-  }, [currentOrder, fetchOrdersOnce, orderPickupBase, region, setCurrentOrder, token]);
+  }, [
+    effectiveCurrentOrder,
+    effectiveSetCurrentOrder,
+    fetchOrdersOnce,
+    orderPickupBase,
+    region,
+    token,
+    setPickupResp,
+  ]);
 
   const handleManualRedeemSuccess = useCallback(
     async (data) => {
-      setCurrentOrder((prev) =>
+      effectiveSetCurrentOrder((prev) =>
         prev
           ? {
               ...prev,
@@ -117,12 +149,12 @@ export default function useOperationalPickup({
 
       await fetchOrdersOnce?.(1);
     },
-    [fetchOrdersOnce, region, setCurrentOrder]
+    [effectiveSetCurrentOrder, fetchOrdersOnce, region, setPickupResp]
   );
 
   const handleQrRedeemSuccess = useCallback(
     async (data) => {
-      setCurrentOrder((prev) =>
+      effectiveSetCurrentOrder((prev) =>
         prev
           ? {
               ...prev,
@@ -152,7 +184,7 @@ export default function useOperationalPickup({
 
       await fetchOrdersOnce?.(1);
     },
-    [fetchOrdersOnce, region, setCurrentOrder]
+    [effectiveSetCurrentOrder, fetchOrdersOnce, region, setPickupResp]
   );
 
   return {

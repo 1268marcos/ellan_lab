@@ -10,6 +10,7 @@
   "customer_tax_id": "TAX-STUB-001",
   "adapter_name": "ato_stub_adapter_v1",
   "authority": "ATO",
+  "region": "OCEANIA",
   "canonical_status": "SUCCESS",
   "authority_status": "CANCELADO",
   "fixture_relative_path": "fixtures/fiscal/fg1/au/cancel/cancel_success.json"

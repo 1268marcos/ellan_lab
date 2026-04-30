@@ -25,6 +25,207 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-04-30T09:03:00-03:00",
+    scope: "Handoff visual diário — padronização cross-page",
+    title: "Texto e ordem dos indicadores unificados em ops/health, fg1-gate e fiscal/global",
+    description:
+      "Padronização aplicada para leitura operacional consistente no handoff: mesma ordem e semântica dos indicadores principais (Decisão consolidada, X/Y checks PASS, checks com falha e referência temporal/versão) nas três páginas de acompanhamento FG-1.",
+    uiRoutesNew: ["/ops/health", "/fiscal/fg1-gate", "/fiscal/global"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir handoff visual padronizado",
+  },
+  {
+    dateTime: "2026-04-30T09:01:00-03:00",
+    scope: "FG-1 gate — paridade com ops/health",
+    title: "Observabilidade técnica com contador explícito X/Y checks PASS",
+    description:
+      "A página fiscal/fg1-gate passou a consumir o endpoint stub-wave-readiness e agora exibe no bloco técnico o contador explícito de conformidade de checks (X/Y checks PASS), mantendo paridade visual com o card consolidado de ops/health.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/stub-wave-readiness"],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir fg1-gate com X/Y checks PASS",
+  },
+  {
+    dateTime: "2026-04-30T08:48:00-03:00",
+    scope: "Ops/health — handoff consolidado FG-1 (4 checks PASS)",
+    title: "Card consolidado exibe contador explícito de conformidade de checks",
+    description:
+      "Ajuste no card de handoff consolidado FG-1 para exibir contador explícito de conformidade no formato 4/4 checks PASS, além de incluir a mesma métrica no payload de cópia para Slack/Teams.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card consolidado com 4/4 checks PASS",
+  },
+  {
+    dateTime: "2026-04-30T08:16:00-03:00",
+    scope: "FG-1-SPRINT-09 — Stub readiness + regionalidade inicial",
+    title: "Endpoint de readiness da onda + region explícita no simulate (US/CA)",
+    description:
+      "Novo checkpoint técnico da onda FG-1 com GET /admin/fiscal/global/fg1/stub-wave-readiness, smoke operacional dedicado e evolução de regionalidade no simulate via query region (US-CA/US-TX/US-NY e CA-QC), mantendo contrato canônico e correlação telemetry/raw.",
+    uiRoutesNew: ["/fiscal/global"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/global/fg1/stub-wave-readiness",
+      "POST /admin/fiscal/global/fg1/simulate?region=<...>",
+    ],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_stub_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Script: 02_docker/run_fg1_stub_wave_readiness_smoke.sh",
+      "Script: 02_docker/run_fg1_simulate_trace_smoke.sh",
+      "Frontend: 01_source/frontend/src/pages/FiscalGlobalPage.jsx",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/global",
+    directLinkLabel: "Abrir fiscal/global com stub readiness",
+  },
+  {
+    dateTime: "2026-04-30T08:09:00-03:00",
+    scope: "Ops/health — handoff consolidado FG-1 (microevolução)",
+    title: "Card consolidado com copiar payload Slack/Teams + copiar comando do orquestrador",
+    description:
+      "Microajuste operacional no card de handoff consolidado FG-1: adicionados botões de cópia em 1 clique para payload de comunicação (Slack/Teams) e para comando run_fg1_handoff_orchestrator.sh --json, reduzindo atrito no plantão.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card consolidado FG-1 com cópia 1 clique",
+  },
+  {
+    dateTime: "2026-04-30T07:08:00-03:00",
+    scope: "Ops/health — handoff consolidado FG-1",
+    title: "Card único no ops/health consumindo fg1_handoff_orchestrator_latest.json",
+    description:
+      "Integração fim-a-fim do handoff diário FG-1: backend ganhou GET /dev-admin/fiscal-fg1-handoff/latest e o ops/health agora mostra card consolidado com decisão GO/NO_GO, resultado, número de checks com falha, timestamp e links rápidos para fiscal/fg1-gate e fiscal/readiness-execution.",
+    uiRoutesNew: ["/ops/health"],
+    apiRoutesNew: ["GET /dev-admin/fiscal-fg1-handoff/latest"],
+    routes: [
+      "Backend: 01_source/order_pickup_service/app/routers/dev_admin.py",
+      "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/ops/health",
+    directLinkLabel: "Abrir card consolidado FG-1 no ops/health",
+  },
+  {
+    dateTime: "2026-04-30T06:59:00-03:00",
+    scope: "Automação diária FG-1",
+    title: "Orquestrador único dos 3 smokes com decisão consolidada GO/NO_GO",
+    description:
+      "Implementado run_fg1_handoff_orchestrator.sh para executar fixture-inventory + envelope-check + simulate-trace, consolidar resultado diário (decision GO/NO_GO) e gerar artefato latest para handoff operacional.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Script: 02_docker/run_fg1_handoff_orchestrator.sh",
+      "Script: 02_docker/run_fg1_fixture_inventory_smoke.sh",
+      "Script: 02_docker/run_fg1_envelope_check_smoke.sh",
+      "Script: 02_docker/run_fg1_simulate_trace_smoke.sh",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/updates",
+    directLinkLabel: "Histórico FISCAL (orquestrador diário FG-1)",
+  },
+  {
+    dateTime: "2026-04-30T06:55:00-03:00",
+    scope: "Próximo sprint previsto executado — FG-1-SPRINT-08",
+    title: "Correlação provider/region/scenario/trace no simulate + smoke diário dedicado",
+    description:
+      "Sprint aplicado no eixo BE/SRE: simulate agora propaga region no telemetry e government_response.raw, envelope-check reforçado com esse campo, fixtures canônicas regeneradas com region e novo script run_fg1_simulate_trace_smoke.sh para validar correlação entre telemetry/raw em cenários FG-1.",
+    uiRoutesNew: [],
+    apiRoutesNew: ["POST /admin/fiscal/global/fg1/simulate"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_stub_service.py",
+      "Script: 01_source/backend/billing_fiscal_service/scripts/write_fg1_fixtures.py",
+      "Script: 02_docker/run_fg1_simulate_trace_smoke.sh",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/updates",
+    directLinkLabel: "Histórico FISCAL (sprint FG-1-SPRINT-08)",
+  },
+  {
+    dateTime: "2026-04-30T06:32:00-03:00",
+    scope: "Sprint curto 1-clique FG-1",
+    title: "fg1-gate abre readiness-execution já focado nos países com pending_actions > 0",
+    description:
+      "Implementado fluxo de ação 1 clique: fiscal/fg1-gate calcula países com pending_actions e abre fiscal/readiness-execution com country_focus na URL; readiness aplica o filtro automaticamente, mostra foco ativo e permite limpar foco em um clique.",
+    uiRoutesNew: ["/fiscal/fg1-gate", "/fiscal/readiness-execution"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/pages/FiscalReadinessExecutionPage.jsx",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir FG-1 gate com ação 1 clique",
+  },
+  {
+    dateTime: "2026-04-30T06:27:00-03:00",
+    scope: "Próximo sprint previsto executado — FE-OPS FG-1",
+    title: "fiscal/fg1-gate com observabilidade técnica de envelope/fixtures",
+    description:
+      "Fechamento do próximo sprint previsto: a página fiscal/fg1-gate passou a consumir envelope-check + fixture-inventory e exibir card técnico com status operacional (error_count, checked_pairs, complete/count/expected_count), indicação de fixture_source padrão e atalhos de diagnóstico direto no Swagger.",
+    uiRoutesNew: ["/fiscal/fg1-gate"],
+    apiRoutesNew: [
+      "GET /admin/fiscal/global/fg1/envelope-check",
+      "GET /admin/fiscal/global/fg1/fixture-inventory",
+    ],
+    routes: [
+      "Frontend: 01_source/frontend/src/pages/FiscalFg1GatePage.jsx",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal/fg1-gate",
+    directLinkLabel: "Abrir FG-1 gate com observabilidade técnica",
+  },
+  {
+    dateTime: "2026-04-30T06:19:00-03:00",
+    scope: "FG-1-SPRINT-07 executado (envelope + observabilidade)",
+    title: "Envelope-check backend + log estruturado simulate + smoke dedicado",
+    description:
+      "Execução do sprint FG-1-SPRINT-07 no eixo BE/SRE: nova validação canônica de envelope (45 pares), endpoint GET /admin/fiscal/global/fg1/envelope-check, log INFO estruturado no simulate (trace_id/country/operation/scenario/provider_adapter/fixture_source/canonical_status), script run_fg1_envelope_check_smoke.sh e catálogo de APIs FISCAL atualizado.",
+    uiRoutesNew: [],
+    apiRoutesNew: ["GET /admin/fiscal/global/fg1/envelope-check"],
+    routes: [
+      "Backend: 01_source/backend/billing_fiscal_service/app/services/fiscal_fg1_stub_service.py",
+      "Backend: 01_source/backend/billing_fiscal_service/app/api/routes_admin_fiscal.py",
+      "Script: 02_docker/run_fg1_envelope_check_smoke.sh",
+      "Frontend: 01_source/frontend/src/constants/fiscalApiCatalog.js",
+      "DOC: docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt",
+    ],
+    directLink: "/fiscal",
+    directLinkLabel: "Abrir hub FISCAL (endpoint envelope-check)",
+  },
+  {
+    dateTime: "2026-04-29T21:00:00-03:00",
+    scope: "Planeamento — próximo sprint FG-1",
+    title: "Sprint FG-1-SPRINT-07 preparado: envelope universal + logs estruturados (DoD + tarefas)",
+    description:
+      "No acompanhamento foi adicionado o bloco «Próximo sprint PREPARADO» (FG-1 envelope + observabilidade): matriz de conformidade fixture/simulate, logs INFO com trace_id/cenário, smoke SRE, FE opcional em fg1-gate/global. Postgres de fixtures fora de escopo até pedido explícito.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: ["DOC docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt"],
+    directLink: "/fiscal/updates",
+    directLinkLabel: "Histórico FISCAL (planeamento)",
+  },
+  {
     dateTime: "2026-04-29T20:30:00-03:00",
     scope: "FG-1 fixtures — decisão disco vs BD",
     title: "Registro no acompanhamento: canónico em repo; futuro BD sobrepõe ou só metadados",
