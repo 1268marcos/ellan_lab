@@ -232,11 +232,11 @@ Objetivo: fechar arquitetura global e iniciar entrega de valor visivel.
 Checklist:
 - [ ] Frontend: iniciar migracao de estilos (dominios checkout, kiosk, ops).
 - [~] Frontend: criar store central para `currentOrder`, `payResp`, `pickupResp`, `syncStatus`.
-  - Progresso: **91%** (store integrado em `useCurrentOrder`, `useOperationalPayment`, `useOperationalPickup` e fluxo de `orders/responses`; resta hardening final e limpeza residual)
+  - Progresso: **94%** (store integrado nos hooks criticos + hardening no controller; resta limpeza final de duplicidade residual)
 - [~] Frontend: aplicar Error Boundaries por dominio critico.
   - Progresso: **55%** (boundary migrado para TSX e aplicado no roteamento principal; falta cobertura por feature critica)
 - [~] Frontend: setup TS incremental (`allowJs`, `checkJs`, CI `tsc --noEmit`).
-  - Progresso: **70%** (typecheck/build estáveis após bloco 3; falta estabilizar no CI)
+  - Progresso: **82%** (typecheck/build estáveis e gate de typecheck adicionado no workflow; falta observar execucao no remoto)
 - [ ] Produto/UX: prototipos navegaveis dos 4 modelos de tela KIOSK touch.
 - [ ] Eng/UX: validar fluxo KIOSK E2E assistido (compra -> pagamento -> abertura -> retirada/alocacao).
 
@@ -402,6 +402,92 @@ Riscos imediatos:
 Proximo checkpoint:
 - Hardening final: reduzir estados duplicados remanescentes no controller e preparar estabilizacao do `typecheck` no CI.
 
+### 2026-04-30 - Hardening final + estabilizacao do typecheck no CI
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `useLockerDashboardController` recebeu hardening com `resetTransientFlowState` para centralizar limpeza de estado e reduzir duplicidade.
+- Fluxos de troca de locker, selecao de slot e limpeza de selecao agora usam a mesma rotina de reset.
+- Workflow de CI atualizado para Node 22 e passo explicito de `npm run typecheck` (smoke + regression).
+- Validacao local concluida: `typecheck` e `build` verdes apos ajustes.
+
+Decisao executiva do checkpoint:
+- Considerar trilha de consolidacao de estado praticamente fechada (>90%) e mover foco para limpeza residual de baixo risco.
+- Tratar `typecheck` como gate oficial do frontend no pipeline de regressao.
+
+Riscos imediatos:
+- `[!]` Gate de CI precisa de validacao em execucao remota (GitHub Actions) para confirmar estabilidade fim-a-fim.
+- `[!]` Aviso de Node 20 persiste na sessao local do agente (ambiente Cursor), sem bloquear build.
+
+Proximo checkpoint:
+- Executar rodada remota de CI e registrar evidencias de estabilidade do gate de typecheck.
+
+### 2026-04-30 - Tentativa de validacao remota do workflow (bloqueada por ambiente)
+Status geral: `[!]` Bloqueado / risco
+
+Resumo:
+- Tentativa de disparo remoto via CLI GitHub (`gh workflow run "Sprint5 Item5 Regression"`) realizada.
+- Evidencia coletada no terminal: `gh: command not found`.
+- Validacao remota do gate de typecheck ficou bloqueada por ausencia do GitHub CLI no ambiente local.
+
+Decisao executiva do checkpoint:
+- Manter frente tecnica concluida localmente (build + typecheck verdes), com pendencia apenas de comprovacao remota.
+- Tratar instalacao/autenticacao do `gh` como desbloqueador operacional imediato.
+
+Riscos imediatos:
+- `[!]` Sem execucao remota do workflow, falta evidencia final de estabilidade no ambiente GitHub Actions.
+
+Proximo checkpoint:
+- Instalar `gh`, autenticar (`gh auth login`) e executar `Sprint5 Item5 Regression`, registrando URL e resultado da run.
+
+### 2026-04-30 - Nova tentativa de validacao remota (evidencia coletada)
+Status geral: `[~]` Em andamento
+
+Resumo:
+- `gh` instalado e autenticado com sucesso no ambiente local.
+- Disparo manual via `gh workflow run` bloqueado por permissao do token atual:
+  - `HTTP 403: Resource not accessible by personal access token`.
+- Evidencia remota coletada via listagem de runs recentes:
+  - Workflow: `Sprint5 Item5 Regression`
+  - Run ID: `25164702339`
+  - Status: `failure`
+  - Branch/evento: `main` / `push`
+  - Falha principal no job `Sprint5 Item5 Smoke`, step `Install backend dependencies`.
+- Causa observada no log do run:
+  - `ERROR: Could not open requirements file: [Errno 2] No such file or directory: '01_source/order_pickup_service/requirements.txt'`
+
+Decisao executiva do checkpoint:
+- Frente de gate remoto segue parcialmente validada: pipeline executa, mas falha por problema de caminho/arquivo no ambiente remoto.
+- Acao imediata: corrigir o step de dependencias backend no workflow para caminho resiliente.
+
+Riscos imediatos:
+- `[!]` Sem ajustar o passo de instalacao backend, o gate remoto nao confirma estabilidade fim-a-fim.
+- `[!]` Token atual nao possui permissao para `workflow_dispatch` (disparo manual via CLI).
+
+Proximo checkpoint:
+- Ajustar workflow para validar caminho de `requirements.txt` antes de instalar e rerodar por push/manual.
+
+### 2026-04-30 - Correcao de resiliencia no workflow CI (backend deps)
+Status geral: `[x]` Concluido
+
+Resumo:
+- Workflow `Sprint5 Item5 Regression` ajustado para evitar falha de caminho no backend:
+  - criacao de venv com `working-directory: 01_source/order_pickup_service`;
+  - instalacao de dependencias usando caminho local (`requirements.txt`) no mesmo `working-directory`;
+  - validacao explicita (`test -f requirements.txt`) com log de diagnostico em caso de ausencia.
+- Ajuste aplicado nos dois jobs (`Smoke` e `Regression`).
+
+Decisao executiva do checkpoint:
+- Padrao de caminho absoluto no comando foi substituido por execucao contextual por diretório, reduzindo risco de inconsistencias em runner.
+- Frente pronta para nova rodada de validacao remota.
+
+Riscos imediatos:
+- `[!]` Execucao remota ainda depende de push/manual rerun para comprovar efeito no GitHub Actions.
+- `[!]` `workflow_dispatch` via CLI continua limitado pela permissao do token atual.
+
+Proximo checkpoint:
+- Rodar novamente a pipeline no remoto e registrar resultado final (run id + status) nesta secao.
+
 ## Snapshot para o daily de hoje (Sprint 0)
 - Progresso medio Sprint 0: **70%**
 - Itens concluidos: **1/4**
@@ -435,6 +521,10 @@ Use esta estrutura para manter historico objetivo das entregas:
 | 2026-04-30 | Sprint 1 | Integracao do store em `useOperationalPickup` | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalPickup.js` | Consolidar fluxo de responses no estado central |
 | 2026-04-30 | Sprint 1 | Reducao de estado duplicado no controller (pickup) | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useLockerDashboardController.js` | Repetir simplificacao para orders/responses |
 | 2026-04-30 | Sprint 1 | Integracao de `orders/responses` ao store | `[x]` | `01_source/frontend/src/store/useCheckoutStore.ts`, `01_source/frontend/src/features/locker-dashboard/hooks/useCurrentOrder.js`, `01_source/frontend/src/features/locker-dashboard/hooks/useOperationalOrders.js` | Hardening final e limpeza residual de estado local |
+| 2026-04-30 | Sprint 1 | Hardening no controller (reset centralizado de estado transitório) | `[x]` | `01_source/frontend/src/features/locker-dashboard/hooks/useLockerDashboardController.js` | Limpeza residual de duplicidade nao critica |
+| 2026-04-30 | Sprint 1 | Estabilizacao do typecheck no CI (Node 22 + gate) | `[x]` | `.github/workflows/sprint5-item5-regression.yml` | Validar execucao remota do workflow |
+| 2026-04-30 | Sprint 1 | Validacao remota do workflow no GitHub Actions | `[~]` | `gh run list` + `gh run view 25164702339 --log-failed` | Corrigir falha do step backend (`requirements.txt`) e rerodar |
+| 2026-04-30 | Sprint 1 | Correcao de resiliencia no install backend do workflow | `[x]` | `.github/workflows/sprint5-item5-regression.yml` | Executar nova run remota e coletar evidencia final |
 | 2026-04-30 | Sprint 1 | Error Boundary por dominio no roteamento | `[~]` | `01_source/frontend/src/components/DomainErrorBoundary.tsx`, `01_source/frontend/src/App.jsx` | Expandir boundaries por feature critica |
 
 ### Modelo de lancamento diario (copiar e preencher)

@@ -107,19 +107,21 @@ export default function useLockerDashboardController({
     fetchOrdersOnce: orders.fetchOrdersOnce,
   });
 
-  useEffect(() => {
-    if (!selectedLocker) return;
-
-    slotSelection.setSelectedSlot(null);
+  const resetTransientFlowState = useCallback(() => {
     setCurrentOrder(null);
     setOrderError("");
     pickup.setPickupResp("");
     payment.setPayResp("");
     payment.setPendingPaymentContext(null);
     slotSelection.setSlotSelectionExpiresAt(null);
-  }, [
-    selectedLocker?.locker_id,
-  ]);
+  }, [payment, pickup, setCurrentOrder, setOrderError, slotSelection]);
+
+  useEffect(() => {
+    if (!selectedLocker) return;
+
+    slotSelection.setSelectedSlot(null);
+    resetTransientFlowState();
+  }, [resetTransientFlowState, selectedLocker?.locker_id, slotSelection]);
 
   const applyOrderSelectionPatch = useCallback(
     (patch) => {
@@ -165,13 +167,9 @@ export default function useLockerDashboardController({
       const selected = slotSelection.selectSlot(slot);
       if (!selected) return;
 
-      setCurrentOrder(null);
-      setOrderError("");
-      pickup.setPickupResp("");
-      payment.setPayResp("");
-      payment.setPendingPaymentContext(null);
+      resetTransientFlowState();
     },
-    [payment, pickup, setCurrentOrder, setOrderError, slotSelection]
+    [resetTransientFlowState, slotSelection]
   );
 
   const handleCreateOnlineOrder = useCallback(async () => {
@@ -232,9 +230,8 @@ export default function useLockerDashboardController({
   const handleClearSlotSelection = useCallback(() => {
     slotSelection.clearSlotSelection();
     payment.setPaySlot(1);
-    payment.setPayResp("");
-    payment.setPendingPaymentContext(null);
-  }, [payment, slotSelection]);
+    resetTransientFlowState();
+  }, [payment, resetTransientFlowState, slotSelection]);
 
   const headerProps = useMemo(
     () => ({

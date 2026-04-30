@@ -35,22 +35,29 @@ jobs:
           python-version: "3.12"
 
       - name: Create backend test venv
-        run: python -m venv 01_source/order_pickup_service/.venv_test
+        run: python -m venv .venv_test
+        working-directory: 01_source/order_pickup_service
 
       - name: Install backend dependencies
         run: |
-          01_source/order_pickup_service/.venv_test/bin/python -m pip install --upgrade pip
-          01_source/order_pickup_service/.venv_test/bin/python -m pip install -r 01_source/order_pickup_service/requirements.txt
+          test -f requirements.txt || (echo "requirements.txt não encontrado em $(pwd)" && ls -la && exit 1)
+          .venv_test/bin/python -m pip install --upgrade pip
+          .venv_test/bin/python -m pip install -r requirements.txt
+        working-directory: 01_source/order_pickup_service
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: 01_source/frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
+        working-directory: 01_source/frontend
+
+      - name: Frontend incremental typecheck
+        run: npm run typecheck
         working-directory: 01_source/frontend
 
       - name: Run Sprint 5 Item 5 smoke script
@@ -93,23 +100,30 @@ jobs:
           python-version: "3.12"
 
       - name: Create backend test venv
-        run: python -m venv 01_source/order_pickup_service/.venv_test
+        run: python -m venv .venv_test
+        working-directory: 01_source/order_pickup_service
 
       - name: Install backend dependencies
         run: |
-          01_source/order_pickup_service/.venv_test/bin/python -m pip install --upgrade pip
-          01_source/order_pickup_service/.venv_test/bin/python -m pip install -r 01_source/order_pickup_service/requirements.txt
-          01_source/order_pickup_service/.venv_test/bin/python -m pip install "psycopg[binary]"
+          test -f requirements.txt || (echo "requirements.txt não encontrado em $(pwd)" && ls -la && exit 1)
+          .venv_test/bin/python -m pip install --upgrade pip
+          .venv_test/bin/python -m pip install -r requirements.txt
+          .venv_test/bin/python -m pip install "psycopg[binary]"
+        working-directory: 01_source/order_pickup_service
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: 01_source/frontend/package-lock.json
 
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
+        working-directory: 01_source/frontend
+
+      - name: Frontend incremental typecheck
+        run: npm run typecheck
         working-directory: 01_source/frontend
 
       - name: Run Sprint 5 Item 5 regression script
