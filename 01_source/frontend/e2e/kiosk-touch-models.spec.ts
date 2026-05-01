@@ -18,6 +18,10 @@ type InstallKioskPtMocksOptions = {
   withSelectableCatalog?: boolean;
   /** Mock `POST` order-pickup `/kiosk/orders` após formulário válido. */
   mockKioskOrderPost?: boolean;
+  /** Mock `POST` gateway `/gateway/pagamento` (resposta APPROVED → chama payment-approved no cliente). */
+  mockGatewayPagamentoPost?: boolean;
+  /** Mock `POST` order-pickup `kiosk/orders/{id}/payment-approved` (após gateway APPROVED). */
+  mockPaymentApprovedPost?: boolean;
 };
 
 const E2E_CATALOG_SLOT = {
@@ -49,7 +53,12 @@ const E2E_KIOSK_ORDER_RESPONSE = {
  * Aceita `localhost` e `127.0.0.1` (Vite / env do browser).
  */
 async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOptions = {}) {
-  const { withSelectableCatalog = false, mockKioskOrderPost = false } = options;
+  const {
+    withSelectableCatalog = false,
+    mockKioskOrderPost = false,
+    mockGatewayPagamentoPost = false,
+    mockPaymentApprovedPost = false,
+  } = options;
 
   await page.route(
     (url) =>
@@ -102,6 +111,62 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
     },
   );
 
+  if (mockPaymentApprovedPost) {
+    await page.route(
+      (url) =>
+        isLabHost(url.hostname) &&
+        url.port === "8003" &&
+        url.pathname.includes("/kiosk/orders/") &&
+        url.pathname.endsWith("/payment-approved"),
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            order_id: "e2e-order-pt-1",
+            allocation_id: "e2e-allocation-1",
+            slot: 1,
+            status: "paid",
+            payment_method: "MBWAY",
+            message: "Pagamento confirmado (E2E).",
+            receipt_code: "E2E-RC-PT-1",
+            fiscal: { receipt_code: "E2E-RC-PT-1" },
+          }),
+        });
+      },
+    );
+  }
+
+  if (mockGatewayPagamentoPost) {
+    await page.route(
+      (url) =>
+        isLabHost(url.hostname) && url.port === "8000" && url.pathname === "/gateway/pagamento",
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            result: "approved",
+            payment: {
+              status: "APPROVED",
+              gateway_status: "CAPTURED",
+              metodo: "MBWAY",
+              transaction_id: "e2e-tx-gateway-1",
+            },
+          }),
+        });
+      },
+    );
+  }
+
   if (mockKioskOrderPost) {
     await page.route(
       (url) => isLabHost(url.hostname) && url.port === "8003" && url.pathname === "/kiosk/orders",
@@ -124,7 +189,7 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
  * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
  * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. **Modelo A** → `/comprar`;
  * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`);
- * **Modelo C** → `/ops/pt/kiosk` (simulador + mocks; ext.: vitrine + **POST** `/kiosk/orders`); **Modelo D** → `/ops/dev/slots` (alocação dev).
+ * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, `/kiosk/orders`, opcional **gateway/pagamento** + **payment-approved**); **Modelo D** → `/ops/dev/slots`.
  * `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
 test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
@@ -254,6 +319,32 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
 
     await expect(page.getByText(/Pedido criado com sucesso/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/e2e-order-pt-1/).first()).toBeVisible();
+  });
+
+  test("Modelo C — KIOSK PT: pedido + iniciar pagamento (gateway APPROVED, mocks)", async ({ page }) => {
+    await installKioskPtLabMocks(page, {
+      withSelectableCatalog: true,
+      mockKioskOrderPost: true,
+      mockGatewayPagamentoPost: true,
+      mockPaymentApprovedPost: true,
+    });
+
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Modelo C — Pickup Fast Lane/i }).click();
+    await page.getByRole("link", { name: /Abrir kiosk OPS \(PT\)/i }).click();
+    await expect(page).toHaveURL(/\/ops\/pt\/kiosk/, { timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Gaveta 1/i }).click();
+    await page.getByLabel(/Telefone MB WAY/i).fill("+351912345678");
+    await page.getByRole("button", { name: /^Criar pedido KIOSK$/i }).click();
+    await expect(page.getByText(/Pedido criado com sucesso/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Iniciar pagamento no gateway/i }).click();
+
+    await expect(page.getByText(/Resposta do gateway/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/comprovante:\s*E2E-RC-PT-1/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Comprovante fiscal")).toBeVisible();
   });
 
   test("Modelo D — CTA primário abre alocação por slot (dev)", async ({ page }) => {
