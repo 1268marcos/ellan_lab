@@ -59,6 +59,28 @@ Este runbook descreve como operar e evoluir o **catálogo de países**, a **onda
 - **Endpoints read-only** já previstos no grupo “Global Catalog & FG-1” no cockpit fiscal (catalog, fixtures-matrix, envelope-check, coverage-gate).
 - **Export CSV/JSON** da página de países, quando ligada a `fg1-wave-scope`, para provar IN WAVE / OUT WAVE.
 
+## FG-1 Sprint 07 — envelope do `simulate` + telemetria (stdout)
+
+Objetivo operacional: cada simulação gera **um evento correlacionável** sem dados sensíveis; o contrato JSON de resposta mantém-se alinhado ao fixture (disco ou sintético).
+
+### Chaves estáveis em log (nível INFO)
+
+| Momento | `logger` message | Campos em `extra` |
+| --- | --- | --- |
+| Simulação OK | `fiscal_fg1_stub_simulated` | `trace_id`, `country_code`, `operation`, `scenario`, `provider_adapter`, `region`, `fixture_source` (`disk` \| `synthetic`), `canonical_status`, `authority_status` |
+| Parâmetros inválidos (400) | `fiscal_fg1_stub_simulate_rejected` | `country_code`, `operation`, `scenario`, `region`, `error` (mensagem truncada) |
+
+O `trace_id` devolvido no JSON (`telemetry.trace_id`) coincide com o enviado em `extra` no sucesso — usar para filtrar stdout do `billing_fiscal_service` em plantão.
+
+### Checklist mínimo do envelope (resposta `POST .../fg1/simulate`)
+
+- Corpo inclui `wave`, `mode`, `country_code`, `operation`, `scenario`, `canonical_status`, `authority_status`.
+- `telemetry` com `trace_id`, `provider_adapter`, `region`, `fixture_source`, `event_name`, `timestamp`.
+- `government_response.status` alinhado a `canonical_status`; `government_response.raw` espelha metadados de cenário (sem payload de cliente).
+- `fixture` presente e consistente com `GET .../fg1/fixture-document` para o mesmo triplo país/operação/cenário.
+
+Validação automática agregada: `GET /admin/fiscal/global/fg1/envelope-check` → `validate_fg1_envelope_contract()` em `fiscal_fg1_stub_service.py`.
+
 ## Evolução futura: admin CRUD (opcional)
 
 Quando uma UI ou API de escrita fizer sentido:
@@ -81,4 +103,4 @@ PYTHONPATH=. python3 -c "from app.services.fiscal_fg1_stub_service import valida
 
 ---
 
-*Última alinhamento conceitual: operação sem “página de gestão” por país — config versionada + script + CI + APIs de leitura.*
+*Última revisão: 2026-04-30 — secção FG-1 Sprint 07 (telemetria do simulate + checklist de envelope).*

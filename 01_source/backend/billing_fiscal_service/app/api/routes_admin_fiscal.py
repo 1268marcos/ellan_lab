@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -79,6 +80,8 @@ from app.services.financial_pnl_service import (
     recompute_daily_revenue_recognition,
     recompute_monthly_pnl,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/fiscal", tags=["admin-fiscal"])
 
@@ -1132,6 +1135,16 @@ def post_fiscal_fg1_stub_simulate(
     try:
         return simulate_fg1_stub(country=country, operation=operation, scenario=scenario, region=region)
     except ValueError as exc:
+        logger.info(
+            "fiscal_fg1_stub_simulate_rejected",
+            extra={
+                "country_code": country,
+                "operation": operation,
+                "scenario": scenario,
+                "region": region,
+                "error": str(exc)[:240],
+            },
+        )
         raise _safe_client_error("Invalid FG-1 simulation parameters.") from exc
 
 

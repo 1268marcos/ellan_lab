@@ -437,6 +437,7 @@ def simulate_fg1_stub(country: str, operation: str, scenario: str | None = None,
             "region": resolved_region,
             "fixture_source": fixture_source,
             "canonical_status": scenario_row["canonical_status"],
+            "authority_status": scenario_row["authority_status"],
         },
     )
     return response
