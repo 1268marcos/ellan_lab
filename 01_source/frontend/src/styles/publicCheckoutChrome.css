@@ -1,6 +1,6 @@
 /**
- * Checkout público — migração incremental de estilos (fatias 1–2).
- * Escopo: `.public-checkout-chrome` para não colidir com outras rotas.
+ * Checkout público — migração incremental de estilos (fatias 1–3).
+ * Escopo: `.public-checkout-chrome` + shell da página + painel fiscal em checkout.
  */
 
 @keyframes public-checkout-chrome-spin {
@@ -457,4 +457,55 @@
 
 .public-checkout-chrome__icon-success {
   font-size: var(--font-size-xl);
+}
+
+/* --- Fatia 3: shell da página (fundo) + painel fiscal no checkout --- */
+
+.public-checkout-chrome__page {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: var(--spacing-6) var(--spacing-4);
+}
+
+.public-checkout-chrome__page-inner {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.public-checkout-chrome__fiscal-panel {
+  margin-top: var(--spacing-4);
+  margin-bottom: var(--spacing-2);
+}
+
+.public-checkout-chrome__fiscal-panel-title {
+  margin: 0 0 var(--spacing-2) 0;
+  font-size: var(--font-size-base);
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.public-checkout-chrome__fiscal-panel-notice {
+  background: #f8fafc;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-3);
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.public-checkout-chrome__fiscal-panel-notice-text {
+  margin: var(--spacing-2) 0 0 0;
+  line-height: 1.45;
+}
+
+.public-checkout-chrome__fiscal-panel-link {
+  color: #0f766e;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.public-checkout-chrome__fiscal-panel-link:hover {
+  color: #0d9488;
 }

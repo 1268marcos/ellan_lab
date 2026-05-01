@@ -738,9 +738,9 @@ export default function PublicCheckoutPage() {
 
   if (invalidParams) {
     return (
-      <main style={pageStyle}>
+      <main className="public-checkout-chrome__page">
         <div className="public-checkout-chrome">
-          <div style={containerStyle}>
+          <div className="public-checkout-chrome__page-inner">
           <h1 className="sr-only">Checkout</h1>
           <CheckoutSteps currentStep={0} />
           <section
@@ -768,9 +768,9 @@ export default function PublicCheckoutPage() {
   }
 
   return (
-    <main style={pageStyle}>
+    <main className="public-checkout-chrome__page">
       <div className="public-checkout-chrome">
-        <div style={containerStyle}>
+        <div className="public-checkout-chrome__page-inner">
         <CheckoutSteps currentStep={currentStep} />
 
         <section className="public-checkout-chrome__hero-card">
@@ -1090,13 +1090,3 @@ export default function PublicCheckoutPage() {
   );
 }
 
-const pageStyle = {
-  minHeight: "100vh",
-  background: "linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%)",
-  padding: "24px 16px",
-};
-
-const containerStyle = {
-  maxWidth: 900,
-  margin: "0 auto",
-};

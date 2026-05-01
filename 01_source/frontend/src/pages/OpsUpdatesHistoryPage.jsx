@@ -26,6 +26,25 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-02T12:00:00-03:00",
+    date: "2026-05-02",
+    scope: "Sprint 1 — checkout público: fatia 3 CSS (página + painel fiscal)",
+    title: "`publicCheckoutChrome`: shell `<main>` e `FiscalProfileCheckoutPanel` sem inline",
+    description:
+      "Classes `.public-checkout-chrome__page` / `__page-inner` substituem `pageStyle`/`containerStyle` em `PublicCheckoutPage.jsx`. Aviso e título do painel «Nota fiscal» passam a `__fiscal-panel-*`; `data-testid=\"public-checkout-fiscal-panel\"`.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/styles/publicCheckoutChrome.css",
+      "Frontend: 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx",
+      "Frontend: 01_source/frontend/src/components/public/FiscalProfileCheckoutPanel.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/checkout",
+    directLinkLabel: "Abrir checkout (query mínima)",
+  },
+  {
     dateTime: "2026-05-01T22:30:00-03:00",
     date: "2026-05-01",
     scope: "Sprint 1 — E2E checkout: POST order-pickup mock + Processando…",
