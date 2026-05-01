@@ -31,15 +31,17 @@ import {
 import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
 import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
 import {
+  FISCAL_D10_HANDOFF_KEY,
   FISCAL_D10_TRACKER_KEY,
   buildD10ProvidersEvidencePayload,
+  parseD10OpsHandoffFromLocalStorageRaw,
   parseD10TrackerFromLocalStorageRaw,
 } from "../utils/fiscalD10ProvidersTracker";
 import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAcceptance } from "../utils/fiscalSprint2D12D13Evidence";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.12-d10-evidence-zip";
+const PAGE_VERSION = "fiscal/management-daily v1.0.13-d10-ops-handoff";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -117,6 +119,7 @@ export default function FiscalManagementDailyPage() {
   const [approvalTimestamp, setApprovalTimestamp] = useState("");
   const [approvalEta, setApprovalEta] = useState("");
   const [d11Handoff, setD11Handoff] = useState(null);
+  const [d10Handoff, setD10Handoff] = useState(null);
   const [d13ChecklistState, setD13ChecklistState] = useState({});
   const [historyItems, setHistoryItems] = useState([]);
   const [historyTotal, setHistoryTotal] = useState(0);
@@ -148,6 +151,8 @@ export default function FiscalManagementDailyPage() {
     function refreshFiscalMirrorsFromStorage() {
       setGateMirror(summarizeSprint2FinanceGateV2(loadSprint2FinanceGateV2State()));
       setPartnerAuditMirror(loadSprint3PartnerAuditMirrorForDaily());
+      loadD11Handoff();
+      loadD10Handoff();
     }
     window.addEventListener("focus", refreshFiscalMirrorsFromStorage);
     window.addEventListener("storage", refreshFiscalMirrorsFromStorage);
@@ -159,6 +164,7 @@ export default function FiscalManagementDailyPage() {
 
   useEffect(() => {
     loadD11Handoff();
+    loadD10Handoff();
     void loadLatestAccountingApproval();
     void loadAccountingApprovalHistory(0);
     void loadAccountingApprovalComparison();
@@ -341,6 +347,14 @@ export default function FiscalManagementDailyPage() {
               : null,
           }
         : null,
+      d10_providers_ops_handoff: d10Handoff
+        ? {
+            generated_at: String(d10Handoff?.generated_at || "-"),
+            source: String(d10Handoff?.source || "-"),
+            summary: d10Handoff?.summary || null,
+            providers_count: Number(d10Handoff?.summary?.providers_count ?? 0),
+          }
+        : null,
     };
   }
 
@@ -366,6 +380,8 @@ export default function FiscalManagementDailyPage() {
         d11_unique_orders_with_gaps: Number(
           d11Handoff?.summary?.unique_orders_with_gaps ?? d11OrderIdRollup?.unique_orders_with_gaps ?? 0,
         ),
+        d10_generated_at: String(d10Handoff?.generated_at || "-"),
+        d10_progress_pct: Number(d10Handoff?.summary?.d10_progress_pct ?? 0),
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -474,6 +490,19 @@ export default function FiscalManagementDailyPage() {
       setD11Handoff(parsed && typeof parsed === "object" ? parsed : null);
     } catch {
       setD11Handoff(null);
+    }
+  }
+
+  function loadD10Handoff() {
+    try {
+      const raw = window.localStorage.getItem(FISCAL_D10_HANDOFF_KEY);
+      if (!raw) {
+        setD10Handoff(null);
+        return;
+      }
+      setD10Handoff(parseD10OpsHandoffFromLocalStorageRaw(raw));
+    } catch {
+      setD10Handoff(null);
     }
   }
 
@@ -776,6 +805,7 @@ export default function FiscalManagementDailyPage() {
       catalog,
       matrix,
       d11Handoff,
+      d10Handoff,
     });
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D12_ACCOUNTING_HANDOFF_${ts}.json`, payload);
     setStatus("Evidência D12 exportada (SPRINT2_D12_ACCOUNTING_HANDOFF_*.json).");
@@ -843,6 +873,7 @@ export default function FiscalManagementDailyPage() {
           catalog,
           matrix,
           d11Handoff,
+          d10Handoff,
         });
         const signedD12 = await buildSignedPayload(d12Evidence);
         zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D12_ACCOUNTING_HANDOFF_${ts}.json`] = strToU8(JSON.stringify(signedD12, null, 2));
@@ -1033,9 +1064,17 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // D10 opcional no pacote
     }
+    try {
+      if (d10Handoff) {
+        const signedD10Ops = await buildSignedPayload(d10Handoff);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D10_PROVIDERS_OPS_HANDOFF_${ts}.json`] = strToU8(JSON.stringify(signedD10Ops, null, 2));
+      }
+    } catch {
+      // D10 OPS handoff opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1167,6 +1206,9 @@ export default function FiscalManagementDailyPage() {
           <button type="button" onClick={() => loadD11Handoff()} style={buttonStyle}>
             Recarregar lote D11
           </button>
+          <button type="button" onClick={() => loadD10Handoff()} style={buttonStyle}>
+            Recarregar espelho D10
+          </button>
           <button type="button" onClick={() => void loadLatestAccountingApproval()} style={buttonStyle}>
             Carregar aceite central
           </button>
@@ -1200,6 +1242,43 @@ export default function FiscalManagementDailyPage() {
                 <li key={action}>{action}</li>
               ))}
             </ul>
+          </div>
+        ) : null}
+        {!error ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>D10 — Espelho OPS (handoff publicado)</h3>
+            {d10Handoff ? (
+              <>
+                <div style={summaryRowStyle}>
+                  <span style={chipStyle}>Publicado: {String(d10Handoff?.generated_at || "-")}</span>
+                  <span style={chipStyle}>
+                    Checklist D10: {Number(d10Handoff?.summary?.d10_progress_pct ?? 0)}% (
+                    {Number(d10Handoff?.summary?.d10_done_count ?? 0)}/{Number(d10Handoff?.summary?.d10_total_tasks ?? 0)})
+                  </span>
+                  <span style={chipStyle}>Providers (amostra): {Number(d10Handoff?.summary?.providers_count ?? 0)}</span>
+                  {d10Handoff?.summary?.go_no_go_br ? (
+                    <span style={chipStyle}>GO/NO-GO BR: {String(d10Handoff.summary.go_no_go_br)}</span>
+                  ) : null}
+                  {d10Handoff?.summary?.go_no_go_pt ? (
+                    <span style={chipStyle}>GO/NO-GO PT: {String(d10Handoff.summary.go_no_go_pt)}</span>
+                  ) : null}
+                </div>
+                <small style={mutedTextStyle}>
+                  Origem <code>/ops/fiscal/providers</code> — use «Publicar D10 no handoff diário» na OPS. O payload entra em{" "}
+                  <code>FISCAL_MANAGEMENT_DAILY</code>, D12/D13 e no ZIP como <code>SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*</code> (assinado).
+                </small>
+                <div style={{ marginTop: 10 }}>
+                  <Link to="/ops/fiscal/providers" style={shortcutLinkStyle}>
+                    Abrir ops/fiscal/providers (D10)
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <small style={mutedTextStyle}>
+                Sem espelho D10. Abra <Link to="/ops/fiscal/providers">ops/fiscal/providers</Link> e use «Publicar D10 no handoff diário», depois
+                «Recarregar espelho D10».
+              </small>
+            )}
           </div>
         ) : null}
         {!error ? (

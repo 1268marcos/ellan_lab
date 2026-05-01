@@ -11,6 +11,7 @@ import { buildD11OrderIdRollupFromGapRows } from "./fiscalD11OrderIdRollup";
  * @param {object|null} [opts.catalog] opcional — contagens de catálogo global
  * @param {object|null} [opts.matrix] opcional — matriz de cenários
  * @param {object|null} [opts.d11Handoff] lote publicado em ops/fiscal/providers (localStorage)
+ * @param {object|null} [opts.d10Handoff] handoff D10 publicado em ops/fiscal/providers (`FISCAL_D10_HANDOFF_KEY`)
  */
 export function buildSprint2D12AccountingHandoffEvidence({
   generatedAt,
@@ -19,6 +20,7 @@ export function buildSprint2D12AccountingHandoffEvidence({
   catalog = null,
   matrix = null,
   d11Handoff = null,
+  d10Handoff = null,
 }) {
   const decision = String(stubReadiness?.decision || "NO_GO").toUpperCase();
   const readinessChecks = Array.isArray(stubReadiness?.checks) ? stubReadiness.checks : [];
@@ -57,6 +59,18 @@ export function buildSprint2D12AccountingHandoffEvidence({
     };
   }
 
+  let d10_providers_ops_handoff = null;
+  if (d10Handoff && typeof d10Handoff === "object" && d10Handoff.scope === "SPRINT2_D10_PROVIDERS_OPS_HANDOFF") {
+    d10_providers_ops_handoff = {
+      generated_at: String(d10Handoff.generated_at || "-"),
+      source: String(d10Handoff.source || "-"),
+      summary: d10Handoff.summary && typeof d10Handoff.summary === "object" ? d10Handoff.summary : null,
+      providers_health_summary: d10Handoff.providers_health?.items
+        ? { providers_count: d10Handoff.providers_health.items.length }
+        : null,
+    };
+  }
+
   return {
     scope: "SPRINT2_D12_ACCOUNTING_HANDOFF",
     generated_at: generatedAt,
@@ -75,6 +89,7 @@ export function buildSprint2D12AccountingHandoffEvidence({
       },
     },
     d11_fiscal_gap_handoff,
+    d10_providers_ops_handoff,
   };
 }
 
@@ -107,6 +122,7 @@ export function buildExecutiveAccountingApprovalInnerForClose({
   failedChecks,
   approvalDraft,
   d11Snapshot,
+  d10Snapshot = null,
 }) {
   const decision = String(gateDecision || "NO_GO").toUpperCase();
   const countriesNotReady = Number(stubReadiness?.countries_not_ready || 0);
@@ -125,6 +141,13 @@ export function buildExecutiveAccountingApprovalInnerForClose({
         ? embedded
         : buildD11OrderIdRollupFromGapRows(items);
     d11_unique_orders = Number(d11Snapshot?.summary?.unique_orders_with_gaps ?? rollup?.unique_orders_with_gaps ?? 0);
+  }
+
+  let d10_progress_pct = 0;
+  let d10_generated_at = "-";
+  if (d10Snapshot && typeof d10Snapshot === "object" && d10Snapshot.scope === "SPRINT2_D10_PROVIDERS_OPS_HANDOFF") {
+    d10_generated_at = String(d10Snapshot.generated_at || "-");
+    d10_progress_pct = Number(d10Snapshot?.summary?.d10_progress_pct ?? 0);
   }
 
   return {
@@ -146,6 +169,8 @@ export function buildExecutiveAccountingApprovalInnerForClose({
       d11_total_items: d11_total,
       d11_generated_at: d11_gen,
       d11_unique_orders_with_gaps: d11_unique_orders,
+      d10_generated_at: d10_generated_at,
+      d10_progress_pct: d10_progress_pct,
     },
     d13_critical_checklist: {
       owner: String(approvalDraft?.owner || "-").trim() || "-",

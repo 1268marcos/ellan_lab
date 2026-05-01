@@ -6,8 +6,10 @@ import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
 import { FISCAL_SCOPE_PROVIDERS_INFO, buildFiscalScopedGateTitle } from "../constants/fiscalScope";
 import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
 import {
+  FISCAL_D10_HANDOFF_KEY,
   FISCAL_D10_TASKS,
   FISCAL_D10_TRACKER_KEY,
+  buildD10OpsHandoffPayload,
   buildD10ProvidersEvidencePayload,
   createDefaultD10Tracker,
   d10ProgressFromTracker,
@@ -458,6 +460,29 @@ export default function OpsFiscalProvidersPage() {
     window.setTimeout(() => setD10TrackerStatus(""), 2600);
   }
 
+  function publishD10HandoffToManagementDaily() {
+    const nowIso = new Date().toISOString();
+    const payload = buildD10OpsHandoffPayload({
+      generatedAt: nowIso,
+      source: "/ops/fiscal/providers",
+      tracker: d10Tracker,
+      goNoGoBr: brGoNoGo,
+      goNoGoPt: ptGoNoGo,
+      providersHealth: {
+        items: Array.isArray(items) ? items : [],
+        canonical_error_codes: Array.isArray(canonicalErrorCodes) ? canonicalErrorCodes : [],
+      },
+    });
+    try {
+      window.localStorage.setItem(FISCAL_D10_HANDOFF_KEY, JSON.stringify(payload));
+      setD10TrackerStatus("D10 publicado para espelho em fiscal/management-daily (localStorage).");
+      window.setTimeout(() => setD10TrackerStatus(""), 3200);
+    } catch (err) {
+      setD10TrackerStatus(`Falha ao publicar D10: ${String(err?.message || err)}`);
+      window.setTimeout(() => setD10TrackerStatus(""), 3200);
+    }
+  }
+
   async function loadFiscalGaps(refresh = false) {
     setGapLoading(true);
     setGapError("");
@@ -730,6 +755,14 @@ export default function OpsFiscalProvidersPage() {
               style={buttonGhostStyle}
             >
               Exportar evidência D10 (JSON)
+            </button>
+            <button
+              type="button"
+              data-testid="ops-fiscal-d10-publish-handoff"
+              onClick={() => publishD10HandoffToManagementDaily()}
+              style={buttonPrimaryStyle}
+            >
+              Publicar D10 no handoff diário
             </button>
             <small style={smallStyle}>
               {d10CompletedCount}/{FISCAL_D10_TASKS.length} concluídos

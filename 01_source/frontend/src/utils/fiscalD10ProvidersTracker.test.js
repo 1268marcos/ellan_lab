@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   FISCAL_D10_TASKS,
+  buildD10OpsHandoffPayload,
   buildD10ProvidersEvidencePayload,
   createDefaultD10Tracker,
   d10ProgressFromTracker,
   mergeLsPatchIntoD10Tracker,
+  parseD10OpsHandoffFromLocalStorageRaw,
   parseD10TrackerFromLocalStorageRaw,
 } from "./fiscalD10ProvidersTracker";
 
@@ -81,5 +83,35 @@ describe("fiscalD10ProvidersTracker", () => {
     });
     expect(p.go_no_go_snapshot?.br?.go_no_go).toBe("GO");
     expect(p.go_no_go_snapshot?.pt?.go_no_go).toBe("NO_GO");
+  });
+
+  it("buildD10OpsHandoffPayload inclui scope OPS e amostra de providers", () => {
+    const ho = buildD10OpsHandoffPayload({
+      generatedAt: "2026-05-01T12:00:00.000Z",
+      source: "/ops/fiscal/providers",
+      tracker: { ...createDefaultD10Tracker(), matrix: true },
+      goNoGoBr: { go_no_go: "GO", summary: "x" },
+      providersHealth: {
+        items: [{ country: "BR", namespace: "n1", last_status: "OK", last_error_code: "" }],
+        canonical_error_codes: ["E1"],
+      },
+    });
+    expect(ho.scope).toBe("SPRINT2_D10_PROVIDERS_OPS_HANDOFF");
+    expect(ho.summary?.d10_progress_pct).toBe(20);
+    expect(ho.summary?.providers_count).toBe(1);
+    expect(ho.d10_tracker_evidence?.scope).toBe("SPRINT2_D10_PROVIDERS_TRACKER_ATTACH");
+    expect(Array.isArray(ho.providers_health?.items)).toBe(true);
+    expect(ho.providers_health?.items?.[0]?.country).toBe("BR");
+  });
+
+  it("parseD10OpsHandoffFromLocalStorageRaw valida scope", () => {
+    expect(parseD10OpsHandoffFromLocalStorageRaw(JSON.stringify({ scope: "WRONG" }))).toBe(null);
+    const ok = buildD10OpsHandoffPayload({
+      generatedAt: "2026-05-01T12:00:00.000Z",
+      source: "/ops/fiscal/providers",
+      tracker: createDefaultD10Tracker(),
+    });
+    const parsed = parseD10OpsHandoffFromLocalStorageRaw(JSON.stringify(ok));
+    expect(parsed?.scope).toBe("SPRINT2_D10_PROVIDERS_OPS_HANDOFF");
   });
 });

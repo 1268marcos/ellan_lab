@@ -66,7 +66,7 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 
 ## Recomendacao atual — onde codar (checkpoint)
 
-**Carimbo:** 2026-04-30 (percentuais Sprint 1 / trilhas; registo Lab alinhado a **Metodo** *(x)* e snapshot «trilhas C/E/F1/F2/D»; Sprint 2 financeiro **Metodo** *(xi)* — Fiscal **~33%**, Contábil **~20%**, consolidado **~54%**). **Atualização 2026-05-01 (lab):** Fiscal **~35%** (+2 p.p.) com evidência D10 nomeada exportável e anexável ao ZIP (ver **Evidência no repositório**). Rever esta secao sempre que o comité mudar prioridade ou quando Fiscal/Contabil/Consolidado S2 cruzarem limiares do **gate v2**.
+**Carimbo:** 2026-04-30 (percentuais Sprint 1 / trilhas; registo Lab alinhado a **Metodo** *(x)* e snapshot «trilhas C/E/F1/F2/D»; Sprint 2 financeiro **Metodo** *(xi)* — Fiscal **~33%**, Contábil **~20%**, consolidado **~54%**). **Atualização 2026-05-01 (lab):** Fiscal **~39%** (+6 p.p. vs snapshot *(xi)* ~33%): tranche 1 — evidência D10 export/ZIP assinado; tranche 2 — **handoff OPS** `SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*` (`ellan_ops_fiscal_d10_handoff_v1`), espelho em **`fiscal/management-daily`**, ligação **D12/D13** (`d10_providers_ops_handoff`) e ZIP diário/executivo (ver **Evidência no repositório**). Rever esta secao sempre que o comité mudar prioridade ou quando Fiscal/Contabil/Consolidado S2 cruzarem limiares do **gate v2**.
 
 ### Uma frase (foco dominante)
 **Codar primeiro na Sprint 2**, na trilha **Fiscal + Contábil** (P0 e sequencia **D10–D18**), até aproximar o **gate v2** (Fiscal **≥50%**, Contábil **≥40%**, consolidado Sprint 2 **≥55%**, mais comprovação P0 em artefato de daily/ZIP). Em **paralelo seguro**, reservar **~25–35%** da capacidade de engenharia para **Sprint 1** (média checklist **~67%** — ver **Metodo** *(x)*; próximo: E2E **fluxo físico** KIOSK ou `checkJs` gradual) para não perder o embalo da fundação FE/KIOSK.
@@ -76,7 +76,7 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 | --- | --- |
 | **Só Sprint 1** | Fundação e KIOSK avançam, mas **Sprint 3/4** continuam **congeladas** em net-new até o **gate v2**; Go/No-Go fica sem base financeira. |
 | **Só Sprint 3 ou 4** | **Desalinhado** com a fase **A — Pré-gate** do plano: expansão antes do financeiro suficiente aumenta retrabalho e pressão no aceite. |
-| **Sprint 2 dominante + fatia S1** | Maximiza **progresso no gargalo** (Fiscal **~35%**, Contábil ~20%, consolidado ~54% vs limiares v2) **sem** abandonar o **#1 capacidade FE** (Sprint 1 ~**67%**; meta **≥60%** cumprida; ver **Metodo** *(x)*–*(xi)* e snapshots *(vii)*–*(x)*). |
+| **Sprint 2 dominante + fatia S1** | Maximiza **progresso no gargalo** (Fiscal **~39%**, Contábil ~20%, consolidado ~54% vs limiares v2) **sem** abandonar o **#1 capacidade FE** (Sprint 1 ~**67%**; meta **≥60%** cumprida; ver **Metodo** *(x)*–*(xi)* e snapshots *(vii)*–*(x)*). |
 
 ### Duas frentes (se houver duas pessoas)
 | Frente | Sprint | O que codificar agora |
@@ -100,15 +100,15 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 
 ### Evidência no repositório (checkpoint)
 - **`FiscalGlobalPage.jsx`:** painel compacto **Sprint 2 — gate v2** com atalhos para `fiscal/management-daily`, `fiscal/accounting-close`, `fiscal/sprint2-finance-gate` e `fiscal/readiness-execution` (hub `fiscal/global`); lembrete textual do runbook `docs/runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md`.  
-- **D10 — evidência nomeada (Sprint 2):** `fiscalD10ProvidersTracker.js` — **`buildD10ProvidersEvidencePayload`**, **`parseD10TrackerFromLocalStorageRaw`** (Vitest em **`fiscalD10ProvidersTracker.test.js`**); **`OpsFiscalProvidersPage.jsx`** — export **`SPRINT2_D10_PROVIDERS_TRACKER_*.json`**, `data-testid` **`ops-fiscal-d10-export-json`**; **`FiscalManagementDailyPage.jsx`** / **`FiscalAccountingClosePage.jsx`** — anexos assinados **`SPRINT2_D10_PROVIDERS_TRACKER_*.json`** / **`SPRINT2_D10_PROVIDERS_TRACKER_EXEC_*.json`** no ZIP quando existir estado D10 em `localStorage`.
+- **D10 — evidência + handoff OPS (Sprint 2):** `fiscalD10ProvidersTracker.js` — **`buildD10ProvidersEvidencePayload`**, **`buildD10OpsHandoffPayload`**, **`parseD10TrackerFromLocalStorageRaw`**, **`parseD10OpsHandoffFromLocalStorageRaw`**, chave **`ellan_ops_fiscal_d10_handoff_v1`** (`FISCAL_D10_HANDOFF_KEY`, Vitest em **`fiscalD10ProvidersTracker.test.js`**); **`OpsFiscalProvidersPage.jsx`** — export **`SPRINT2_D10_PROVIDERS_TRACKER_*.json`**, botão «Publicar D10 no handoff diário», `data-testid` **`ops-fiscal-d10-export-json`** / **`ops-fiscal-d10-publish-handoff`**; **`FiscalManagementDailyPage.jsx`** — cartão espelho D10, recarga em foco/`storage`, payload **`FISCAL_MANAGEMENT_DAILY`** com **`d10_providers_ops_handoff`**, ZIP **`SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*`** + tracker; **`FiscalAccountingClosePage.jsx`** — **`SPRINT2_D10_PROVIDERS_OPS_HANDOFF_EXEC_*`** e D12/D13 executivos com **`d10_providers_ops_handoff`**; util **`fiscalSprint2D12D13Evidence.js`** (D12 liga D10 publicado).
 - **`OpsKioskTouchModelsPage.tsx`:** checklist heurística **n≥8** com persistência em `localStorage`, **export JSON**, **recarregar definições** de modelos (`localStorage` merge por id), **`src/styles/opsKioskTouchModelsChrome.css`** (BEM kiosk/OPS), **`e2e/kiosk-touch-models.spec.ts`** (Playwright + mock `/public/auth/me*`; encadeamentos **A–D** incl. `/comprar`, `/checkout`, `/ops/pt/kiosk`, `/ops/dev/slots`; `VITE_ENABLE_OPS_ROUTES` no `webServer`).  
 - **D11 — conciliação por `order_id` (Sprint 2):** `fiscalD11OrderIdRollup.js` + **`fiscalD11OrderIdRollup.test.js`** (Vitest); **`OpsFiscalProvidersPage.jsx`** — cartão *fila P0 por order_id*, export **`SPRINT2_D11_ORDER_ID_ROLLUP_*.json`**, handoff `localStorage` com `order_id_rollup`; **`FiscalManagementDailyPage.jsx`** — D12 com tabela + export + **`SPRINT2_D11_ORDER_ID_ROLLUP_*.json`** assinado no ZIP diário; **`FiscalAccountingClosePage.jsx`** — mesmo anexo **`SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*.json`** no ZIP executivo quando o lote D11 existir.
-- **D12/D13 — handoff contábil e aceite (Sprint 2, paridade D11):** `fiscalSprint2D12D13Evidence.js` + **`fiscalSprint2D12D13Evidence.test.js`**; **`FiscalManagementDailyPage.jsx`** — export **`SPRINT2_D12_ACCOUNTING_HANDOFF_*.json`**, **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_*.json`** e anexos assinados **`SPRINT2_D12_*` / `SPRINT2_D13_*`** no pacote diário (.zip); **`FiscalAccountingClosePage.jsx`** — **`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`** e **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`** no ZIP executivo (com token + bloco P0-1b).
+- **D12/D13 — handoff contábil e aceite (Sprint 2, paridade D11 + eco D10):** `fiscalSprint2D12D13Evidence.js` + **`fiscalSprint2D12D13Evidence.test.js`** (campo **`d10_providers_ops_handoff`** no D12 quando existir handoff D10 publicado; contexto D13 com **`d10_progress_pct`** / **`d10_generated_at`**); **`FiscalManagementDailyPage.jsx`** — export **`SPRINT2_D12_ACCOUNTING_HANDOFF_*.json`**, **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_*.json`** e anexos assinados **`SPRINT2_D12_*` / `SPRINT2_D13_*`** no pacote diário (.zip); **`FiscalAccountingClosePage.jsx`** — **`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`** e **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`** no ZIP executivo (com token + bloco P0-1b).
 - **Checkout público (Sprint 1 — estilos + E2E):** **`src/styles/publicCheckoutChrome.css`** — fatias **1–4** (passos, trust, spinners, hero, grelha, cartões resumo/pagamento, shell `<main>`, painel fiscal, **`FiscalProfileForm`** em `variant=checkout`); `data-testid` **`public-checkout-order-error`** no erro de pedido; **`e2e/public-catalog-to-checkout.spec.ts`** — catálogo → checkout, **POST** mock sucesso («Processando…» + redirect), **POST 409** + asserts de erro; sem inject de `@keyframes` no `document.head`.
 - **`FiscalGlobalPage.jsx` (faixa Sprint 3):** atalhos **hardening** — `fiscal/slo-alerts`, `fiscal/incident-response`, `fiscal/sprint3-partner-audit`, `ops/quick-enablement`, `ops/reconciliation`.
 - **`FiscalSprint3PartnerAuditPage.jsx`:** checklist de **handoff de sessão** (6 itens) + export JSON `SPRINT3_PARTNER_AUDIT_HANDOFF_SESSION_*`.
 - **Sprint 2 / gate v2:** `fiscalSprint2FinanceGate.js` (chave `localStorage` + limiares); **`FiscalManagementDailyPage.jsx`** — cartão **espelho gate v2** + anexo ZIP `SPRINT2_GATE_V2_MIRROR_*`; **`FiscalAccountingClosePage.jsx`** — mesmo anexo no ZIP executivo (`*_EXEC_*`); **`FiscalSprint2FinanceGatePage.jsx`** — cockpit passa a usar o util partilhado; **`FiscalReadinessExecutionPage.jsx`** (`fiscal/readiness-execution`) — espelho na trilha FG-1, export JSON com `sprint2_gate_v2_mirror` + handoff texto alinhado; **`FiscalFg1GatePage.jsx`** (`fiscal/fg1-gate`) — **ponte FG-1 ↔ gate v2** (espelho + export `FG-1-FINAL-DECISION` com `sprint2_gate_v2_mirror`).
-- **Registo Sprint 2 (lab):** `docs/SPRINT2_ANOTACOES_E_EVIDENCIA.md` — gate v2, D10–D18, **resumo executivo** (contagens Vitest/pytest), `npm test` e `pytest tests/test_accounting_approvals_*.py` (**18** testes); matriz no doc; frontend: `fiscalD10ProvidersTracker` (trilha **D10** OPS + export/ZIP assinado), `fiscalSprint2FinanceGate.test.js`, `fiscalSprint2D18Content.test.js`, `fiscalAccountingApprovalsHistory.test.js`, `fiscalP01bDailyPackage.test.js`. **Percentuais Sprint 2 no plano (lab, Metodo *(xi)*, leitura 2026-05-01):** Fiscal **~35%**, Contábil **~20%**, consolidado **~54%**.
+- **Registo Sprint 2 (lab):** `docs/SPRINT2_ANOTACOES_E_EVIDENCIA.md` — gate v2, D10–D18, **resumo executivo** (contagens Vitest/pytest), `npm test` e `pytest tests/test_accounting_approvals_*.py` (**18** testes); matriz no doc; frontend: `fiscalD10ProvidersTracker` (trilha **D10** OPS + export + handoff + ZIP assinado), `fiscalSprint2FinanceGate.test.js`, `fiscalSprint2D18Content.test.js`, `fiscalAccountingApprovalsHistory.test.js`, `fiscalP01bDailyPackage.test.js`. **Percentuais Sprint 2 no plano (lab, Metodo *(xi)*, leitura 2026-05-01):** Fiscal **~39%**, Contábil **~20%**, consolidado **~54%**.
 
 ### O que nao fazer agora como foco principal
 - **Não** abrir net-new grande em **Sprint 3** (hardening) ou **Sprint 4** (Go/No-Go) como substituto da subida Fiscal/Contábil/Consolidado enquanto a fase **A — Pré-gate** estiver ativa (ver tabela **Sprint ideal na sequência** na Sprint 2).
@@ -370,7 +370,7 @@ Checklist:
 ## Sprint 2 (Dias 10-18) - P0 por persona em producao assistida + Fiscal/Contabil
 Objetivo: colocar os P0 centrais para rodar com controle e incorporar trilhas financeiras operacionais (ELLAN LAB + partners).
 
-**Diretriz executiva (comité):** **fechar o macro financeiro desta sprint (Fiscal + Contábil, P0 e trilha D10–D18 com evidência)** antes de **ampliar escopo** nas Sprints 3 e 4. OPS/Suporte já puxam percentuais altos; Fiscal (**~35%**) e Contábil (~20%) continuam o gargalo para **Go/No-Go** — absorver net-new em S3/S4 sem isso mantém o risco de aceite. **Critério numérico exato** e **sprint ideal na sequência** após o gate: ver subsecção **«Critério numérico “financeiro suficiente”»** abaixo. **Coexistência (2026-04-30):** com **Sprint 1** como `#1` de **capacidade FE**, reservar **throughput mínimo explícito** para P0 financeiro (não zero) até o comité rever a prioridade. **Codificação:** **~65–75% Sprint 2** (gate v2) + **~25–35% Sprint 1** — ver **«Recomendacao atual — onde codar»**.
+**Diretriz executiva (comité):** **fechar o macro financeiro desta sprint (Fiscal + Contábil, P0 e trilha D10–D18 com evidência)** antes de **ampliar escopo** nas Sprints 3 e 4. OPS/Suporte já puxam percentuais altos; Fiscal (**~39%**) e Contábil (~20%) continuam o gargalo para **Go/No-Go** — absorver net-new em S3/S4 sem isso mantém o risco de aceite. **Critério numérico exato** e **sprint ideal na sequência** após o gate: ver subsecção **«Critério numérico “financeiro suficiente”»** abaixo. **Coexistência (2026-04-30):** com **Sprint 1** como `#1` de **capacidade FE**, reservar **throughput mínimo explícito** para P0 financeiro (não zero) até o comité rever a prioridade. **Codificação:** **~65–75% Sprint 2** (gate v2) + **~25–35% Sprint 1** — ver **«Recomendacao atual — onde codar»**.
 
 **Recomendação de codificação (síntese):** esta sprint é o **foco dominante** para quem prioriza **desbloquear S3/S4** e o **Go/No-Go**; alinhar com a secção **«Recomendacao atual — onde codar»** e com o **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado ≥55%).
 
@@ -384,7 +384,7 @@ Checklist:
 - [~] Suporte: console por jornada + macros de triagem.
   - Progresso: **78%** (macros com validacao automatica de consistencia via lookup de ticket)
 - [~] Fiscal (ELLAN LAB + partners): operacao fiscal assistida + governanca de emissores e conformidade.
-  - Progresso: **35%** (D10: **`fiscalD10ProvidersTracker`** + export **`SPRINT2_D10_PROVIDERS_TRACKER_*`** + anexo assinado no ZIP diário/executivo + Vitest; `data-testid` **`ops-fiscal-d10-export-json`** em `/ops/fiscal/providers`; D11: **rollup por `order_id`** + export/ZIP diário e executivo + Vitest no util; regressão de resync no host + trilha D10–D12/gaps; P0 conciliação por parceiro e aceite macro ainda em aberto)
+  - Progresso: **39%** (D10: **`fiscalD10ProvidersTracker`** + export **`SPRINT2_D10_PROVIDERS_TRACKER_*`** + **handoff OPS** `SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*` + espelho em **`fiscal/management-daily`** + ligação **D12/D13** + anexos ZIP diário/executivo + Vitest; `data-testid` **`ops-fiscal-d10-export-json`**, **`ops-fiscal-d10-publish-handoff`**; D11: **rollup por `order_id`** + export/ZIP diário e executivo + Vitest no util; regressão de resync no host + trilha D10–D12/gaps; P0 conciliação por parceiro e aceite macro ainda em aberto)
 - [~] Contabil (ELLAN LAB + partners): consolidacao contabil operacional + trilha de fechamento e evidencias.
   - Progresso: **20%** (aceite central D13-D18, exports, ZIP executivo; **pytest** `test_accounting_approvals_*` — list/compare/post/latest/retention/divergence; Vitest gate/D18/histórico/P01b; P0 reconciliacao receita/repasse ainda majoritariamente em backlog)
 
@@ -407,7 +407,7 @@ Gate para **liberar expansão de escopo** nas Sprints 3 e 4. Percentuais alinhad
 
 | Métrica | Limiar v2 (cumulativo **AND**) | Referência snapshot (pré-gate) |
 | --- | ---: | --- |
-| **Fiscal** (ELLAN LAB + partners) | **≥ 50%** | ~35% |
+| **Fiscal** (ELLAN LAB + partners) | **≥ 50%** | ~39% |
 | **Contábil** (ELLAN LAB + partners) | **≥ 40%** | ~20% |
 | **Consolidado Sprint 2** (macro, todas as frentes do sprint) | **≥ 55%** | ~54% |
 
@@ -465,7 +465,7 @@ Gate para **liberar expansão de escopo** nas Sprints 3 e 4. Percentuais alinhad
 
 Recalculo de evolucao Sprint 2 (apos detalhamento P0/P1 Fiscal+Contabil):
 - **Consolidado Sprint 2 ajustado: ~54%** (D17–D18 com governanca de aceites + closeout assistido; regressão fiscal no host; cobertura pytest/Vitest na trilha financeira — ver **Metodo** *(xi)*; escopo macro ainda inclui integracao ampliada)
-- **Fiscal (ELLAN LAB + partners): 35%** (D10 util + export nomeado **`SPRINT2_D10_PROVIDERS_TRACKER_*`** no ZIP diário/executivo + cockpits; endpoints admin fiscais + trilha D11 com evidência **rollup `order_id`** anexável ao daily/ZIP + regressão de resync no host)
+- **Fiscal (ELLAN LAB + partners): 39%** (D10 util + export **`SPRINT2_D10_PROVIDERS_TRACKER_*`** + handoff **`SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*`** no ZIP diário/executivo + espelho management-daily + D12/D13; cockpits; endpoints admin fiscais + trilha D11 com evidência **rollup `order_id`** anexável ao daily/ZIP + regressão de resync no host)
 - **Contabil (ELLAN LAB + partners): 20%** (trilha D13-D18; API list/compare/post/latest + retenção/divergência prolongada com **pytest** dedicado; FE gate/D18/histórico/P01b)
 
 #### Evolucao percentual dos sprints (snapshot consolidado)
@@ -476,7 +476,7 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 | Sprint 0 (lab) | Dias 1-2 | **`[x]` ~100%** | Encerrado (lab): baseline KPI v0 + board neste doc + contratos referenciais v0 |
 | **Sprint 0b (produção)** | Contínuo | **`[~]` ~20%** | Trilha documental (KPI v0 no doc + mapa interno de APIs); medição **oficial** em prod e coms externas **pendentes** |
 | Sprint 1 | Dias 3-9 | **~67%** | **`#1` capacidade FE/KIOSK v1** — média 6 itens (**Metodo** *(x)* + *(xiii)*); fundação ~**97%**; migração estilos **~25%** (checkout + kiosk OPS); protótipos KIOSK **`[~]` ~66%**; E2E assistido **`[~]` ~20%** |
-| Sprint 2 | Dias 10-18 | **~54%** consolidado; Fiscal **~35%**; Contabil **~20%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
+| Sprint 2 | Dias 10-18 | **~54%** consolidado; Fiscal **~39%**; Contabil **~20%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
 | Sprint 3 | Dias 19-24 | **~68%** | Média das seis frentes (CSP 68, TS 96, auditoria **58**, SLO 65, quick-enablement 100, P0-3 incidente 22); ver **Metodo** *(xii)* |
 | Sprint 4 | Dias 25-30 | **~32%** | Média dos 4 itens do checklist Sprint 4 (24, 40, 28, 35) |
 
@@ -488,7 +488,7 @@ Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão ch
 | Sprint 0 lab | **100%** | `[x]` Fechado | Setup de governanca; **não** cobre KPI numerico nem contrato publicado externo |
 | **Sprint 0b produção** | **~20%** | `[~]` Em andamento (documental) | KPI v0 + mapa interno de APIs; **oficial** em prod + coms externas ainda por fechar |
 | Sprint 1 | **~67%** | `[~]` | **Prioridade `#1` capacidade**; store **`[x]`**; TS **`[~]` ~93%**; checkout **CSS+E2E** (fatias 1–4 + mobile, POST sucesso/409); KIOSK cockpit + **CSS OPS** (`opsKioskTouchModelsChrome.css`); E2E assistido **A–D** + Modelo D alocação (**~20%**); próximo: **fluxo físico** no totem ou `checkJs` |
-| Sprint 2 | **~54%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18; Fiscal **~35%**, Contábil **~20%**); **coexiste** com S1 — throughput mínimo acordado |
+| Sprint 2 | **~54%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18; Fiscal **~39%**, Contábil **~20%**); **coexiste** com S1 — throughput mínimo acordado |
 | Sprint 3 | **~68%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
 | Sprint 4 | **~32%** | `[~]` | **Sprint ideal** só na **fase C** pós-**gate v2**; até lá matriz/UAT sem expansão além do planeado |
 
@@ -1507,7 +1507,7 @@ Recalculo de evolucao:
 - Consolidado Sprint 2 recalculado de **~50%** para **~46%** apos granularizacao completa de escopo (baseline historica).
 - Fiscal (ELLAN LAB + partners): **20%**.
 - Contabil (ELLAN LAB + partners): **9%**.
-- Atualizacao pos-D17 (governanca de aceites): consolidado **~50%**, Fiscal **22%**, Contabil **15%** (snapshot histórico; leitura atual no topo: **~54%** / **35%** / **20%** — **Metodo** *(xi)* + checkpoint 2026-05-01).
+- Atualizacao pos-D17 (governanca de aceites): consolidado **~50%**, Fiscal **22%**, Contabil **15%** (snapshot histórico; leitura atual no topo: **~54%** / **39%** / **20%** — **Metodo** *(xi)* + checkpoints 2026-05-01).
 
 Decisao executiva do checkpoint:
 - Sprint 2 passa a operar com trilha financeira completa (fiscal + contabil) com governança explícita para ELLAN LAB e partners.
@@ -1644,7 +1644,7 @@ Resumo:
 - Backend fiscal: `GET /admin/fiscal/accounting-approvals/divergence-health` analisa uma janela de snapshots recentes e sinaliza quando o mesmo diff de governança se repete em várias bordas consecutivas (divergência prolongada).
 - Backend fiscal: `POST /admin/fiscal/accounting-approvals/retention` com `dry_run` remove snapshots mais antigos que um cutoff em dias, respeitando `keep_minimum` de linhas na tabela (compactação por poda controlada).
 - `fiscal/management-daily` exibe card D17 com alerta visual, resumo de bordas e ações de dry-run / execução de retenção.
-- Progresso Sprint 2 atualizado no topo deste documento: consolidado **~54%**, Fiscal **35%**, Contabil **20%** (ver **Metodo** *(xi)* e snapshot incremental Sprint 2).
+- Progresso Sprint 2 atualizado no topo deste documento: consolidado **~54%**, Fiscal **39%**, Contabil **20%** (ver **Metodo** *(xi)* e snapshot incremental Sprint 2).
 
 Decisao executiva do checkpoint:
 - D17 reduz risco de crescimento desordenado do histórico e chama atenção para estagnação de divergências entre snapshots antes que virem surpresa em fechamento.
@@ -1696,12 +1696,12 @@ Proximo checkpoint:
 Status geral: `[~]` Em andamento
 
 Resumo:
-- **Sprint 3** continua como camada de **confiabilidade** (CSP, TS, auditoria, SLO, incidente) **sem** ser tratada como “próximo saco de escopo” enquanto **Fiscal (~35%)** e **Contábil (~20%)** da Sprint 2 não subirem com evidência operacional.
+- **Sprint 3** continua como camada de **confiabilidade** (CSP, TS, auditoria, SLO, incidente) **sem** ser tratada como “próximo saco de escopo” enquanto **Fiscal (~39%)** e **Contábil (~20%)** da Sprint 2 não subirem com evidência operacional.
 - Regressão fiscal com PostgreSQL no host e `ELL_USE_LOCAL_DOCKER_PG=1` (`127.0.0.1:5435`) permanecem suporte à **trilha financeira**, não substituto do fecho P0.
 - Efeito no plano: **menor risco de Go/No-Go cosmético**; hardening avança onde já existe fio, sem desviar donos dos P0 financeiros.
 
 Atualização de progresso:
-- **Sprint 2:** **~54%** consolidado (Fiscal **~35%**, Contábil **~20%**) — **foco comité até subir**.
+- **Sprint 2:** **~54%** consolidado (Fiscal **~39%**, Contábil **~20%**) — **foco comité até subir**.
 - **Sprint 3:** **~67%** (média checklist; ver painel) — **sem net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado ≥55% + comprovação; comité **2026-05-01**); depois **sprint ideal** para expansão.
 - **Sprint 4:** **~32%** — sprint ideal **dominante** só na **fase C** da sequência pós-gate (ver Sprint 2).
 - **Sprint 0b produção:** **~0%** (`[ ]` — ver secao dedicada; separado do Sprint 0 lab).
@@ -1929,7 +1929,7 @@ Resumo (sem alterar gate v2 nem itens `[x]`/`[ ]` fechados pelo comité):
 - **Sprint 0 (lab):** **`[x]` ~100%** — inalterado.
 - **Sprint 0b (produção):** **`[~]` ~20%** — trilha documental (KPI v0 no plano + mapa interno de APIs); primeiro `[x]` com KPI **oficial** em produção ainda pendente.
 - **Sprint 1:** média dos **6** itens do checklist **~61% → ~65%** — **Metodo** *(ix)*: estilos (parcel checkout) **22%**, E2E assistido **14%**, demais itens inalterados (store/boundary **100%**, TS **91%**, protótipos KIOSK **64%**); fundação FE **~97%**. (Atualização posterior **Metodo** *(x)* em **2026-04-30**: painel **~67%** — ver registo nessa data.)
-- **Sprint 2:** consolidado **~52% → ~54%** (**Metodo** *(xi)*, **2026-04-30**); **trilhas** com percentual explícito no doc: OPS **~88%**, Suporte **~78%**, Fiscal **~35%** (checkpoint **2026-05-01**), Contábil **~20%**, Comprador ONLINE (evidência checkout; espelho **Metodo** *(x)* **~25%**), KIOSK operacional **0%**, Parceiros **0%**.
+- **Sprint 2:** consolidado **~52% → ~54%** (**Metodo** *(xi)*, **2026-04-30**); **trilhas** com percentual explícito no doc: OPS **~88%**, Suporte **~78%**, Fiscal **~39%** (checkpoints **2026-05-01**), Contábil **~20%**, Comprador ONLINE (evidência checkout; espelho **Metodo** *(x)* **~25%**), KIOSK operacional **0%**, Parceiros **0%**.
 - **Sprint 3:** **~68%** — média **(68 + 96 + 58 + 65 + 100 + 22) / 6 ≈ 68,2%** com itens do checklist atual (CSP 68, TS 96, auditoria **58**, SLO 65, quick-enablement 100, P0-3 incidente 22); **sem** net-new além do planeado até **gate v2**.
 - **Sprint 4:** **~32%** — média **(24 + 40 + 28 + 35) / 4 ≈ 31,8%** com itens atuais da secção Sprint 4; **sem** mudança nesta reavaliação.
 
@@ -1958,3 +1958,13 @@ Resumo:
 
 Decisão executiva:
 - Comprovação P0 alinhada ao gate v2: uma unidade de trabalho com **export + ZIP** na mesma convenção D11/D12, sem ampliar escopo para S3/S4.
+
+### 2026-05-01 (bis) - Sprint 2: handoff OPS D10 → management-daily + D12/D13 — Fiscal **+4 p.p.**
+Status geral: `[~]` Sprint 2; P0 de **ponte OPS ↔ cockpit diário** na trilha D10 (paridade com publicação D11).
+
+Resumo:
+- **Fiscal:** **35% → 39%** (+4 p.p.) — `buildD10OpsHandoffPayload`, **`FISCAL_D10_HANDOFF_KEY`** (`ellan_ops_fiscal_d10_handoff_v1`); **`OpsFiscalProvidersPage.jsx`** — «Publicar D10 no handoff diário» (`data-testid` **`ops-fiscal-d10-publish-handoff`**); **`FiscalManagementDailyPage.jsx`** — cartão espelho, **`d10_providers_ops_handoff`** no payload diário, ZIP **`SPRINT2_D10_PROVIDERS_OPS_HANDOFF_*`**; **`fiscalSprint2D12D13Evidence.js`** — **`d10_providers_ops_handoff`** no D12 e **`d10_progress_pct`** / **`d10_generated_at`** no contexto D13/D13 executivo; **`FiscalAccountingClosePage.jsx`** — **`SPRINT2_D10_PROVIDERS_OPS_HANDOFF_EXEC_*`**; Vitest em **`fiscalD10ProvidersTracker.test.js`** e **`fiscalSprint2D12D13Evidence.test.js`**.
+- **Consolidado Sprint 2:** inalterado em **~54%** neste checkpoint.
+
+Decisão executiva:
+- Trilha fiscal com **duas peças de evidência** (tracker assinado + handoff OPS rico) consumíveis no **mesmo pacote** que D11/D12, reforçando comprovação P0 sem backend novo.

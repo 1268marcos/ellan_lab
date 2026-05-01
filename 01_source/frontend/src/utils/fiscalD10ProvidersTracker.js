@@ -5,6 +5,9 @@
 
 export const FISCAL_D10_TRACKER_KEY = "ellan_ops_fiscal_d10_tracker_v1";
 
+/** Handoff publicado em OPS (paridade com `ellan_ops_fiscal_d11_handoff_v1`) para `fiscal/management-daily`. */
+export const FISCAL_D10_HANDOFF_KEY = "ellan_ops_fiscal_d10_handoff_v1";
+
 export const FISCAL_D10_TASKS = Object.freeze([
   { id: "matrix", label: "Matriz pais/tenant/emissor revisada" },
   { id: "go_no_go_br", label: "GO/NO-GO BR validado com evidência" },
@@ -110,4 +113,68 @@ export function buildD10ProvidersEvidencePayload({ generatedAt, source, tracker,
     };
   }
   return out;
+}
+
+/**
+ * @param {object} [providersHealth]
+ * @param {unknown[]} [providersHealth.items] linhas de status do provider (payload `/admin/fiscal/providers/status`)
+ * @param {unknown[]} [providersHealth.canonical_error_codes]
+ */
+export function buildD10OpsHandoffPayload({ generatedAt, source, tracker, goNoGoBr, goNoGoPt, providersHealth }) {
+  const evidence = buildD10ProvidersEvidencePayload({
+    generatedAt,
+    source,
+    tracker,
+    goNoGoBr,
+    goNoGoPt,
+  });
+  const progress = evidence.progress;
+  const providerItems = Array.isArray(providersHealth?.items) ? providersHealth.items : [];
+  const summary = {
+    d10_progress_pct: progress.progressPct,
+    d10_done_count: progress.doneCount,
+    d10_total_tasks: FISCAL_D10_TASKS.length,
+    providers_count: providerItems.length,
+    go_no_go_br: goNoGoBr && typeof goNoGoBr === "object" ? String(goNoGoBr.go_no_go || "NO_GO") : null,
+    go_no_go_pt: goNoGoPt && typeof goNoGoPt === "object" ? String(goNoGoPt.go_no_go || "NO_GO") : null,
+  };
+  const providers_health =
+    providersHealth && typeof providersHealth === "object"
+      ? {
+          items: providerItems.slice(0, 24).map((row) => ({
+            country: row?.country,
+            namespace: row?.namespace,
+            last_status: row?.last_status,
+            last_error_code: row?.last_error_code ?? row?.last_error,
+          })),
+          canonical_error_codes: Array.isArray(providersHealth.canonical_error_codes)
+            ? providersHealth.canonical_error_codes.slice(0, 40)
+            : [],
+        }
+      : null;
+  return {
+    scope: "SPRINT2_D10_PROVIDERS_OPS_HANDOFF",
+    generated_at: String(generatedAt || new Date().toISOString()),
+    source: String(source || "/ops/fiscal/providers"),
+    summary,
+    d10_tracker_evidence: evidence,
+    providers_health,
+  };
+}
+
+/**
+ * @param {string | null | undefined} raw
+ * @returns {Record<string, unknown> | null}
+ */
+export function parseD10OpsHandoffFromLocalStorageRaw(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  if (parsed.scope !== "SPRINT2_D10_PROVIDERS_OPS_HANDOFF") return null;
+  return parsed;
 }
