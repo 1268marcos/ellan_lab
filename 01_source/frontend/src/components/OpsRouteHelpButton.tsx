@@ -1,17 +1,12 @@
 import { useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import OpsHelpTutorialModal from "./OpsHelpTutorialModal";
+import OpsHelpTutorialModal, { type OpsTutorialSection } from "./OpsHelpTutorialModal";
 import { resolveOpsTutorial } from "../constants/opsTutorialContent";
-
-interface TutorialSection {
-  title: string;
-  items: string[];
-}
 
 interface ResolvedTutorial {
   title: string;
   subtitle?: string;
-  sections: TutorialSection[];
+  sections: OpsTutorialSection[];
 }
 
 export default function OpsRouteHelpButton() {

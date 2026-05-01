@@ -72,6 +72,7 @@
     "src/types/opsLegacyModules.d.ts",
     "src/context/AuthContext.tsx",
     "src/components/opsVisualTokens.ts",
+    "src/components/OpsHelpTutorialModal.tsx",
     "src/components/OpsRouteHelpButton.tsx",
     "src/components/OpsTrendKpiCard.tsx",
     "src/components/OpsPageTitleHeader.tsx",

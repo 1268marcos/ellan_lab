@@ -1,6 +1,28 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 
-function HelpButton({ onClick, label = "Abrir tutorial da página", hiddenByPreference = false }) {
+export type OpsTutorialSection = {
+  title: string;
+  items: string[];
+};
+
+export interface OpsHelpTutorialModalProps {
+  title: string;
+  subtitle?: string;
+  sections: OpsTutorialSection[];
+  ctaLabel?: string;
+  ctaHref?: string;
+  storageKey: string;
+  /** Identificador estável do utilizador para a chave de preferência em `localStorage`. */
+  userKey?: string;
+}
+
+interface HelpButtonProps {
+  onClick: () => void;
+  label?: string;
+  hiddenByPreference?: boolean;
+}
+
+function HelpButton({ onClick, label = "Abrir tutorial da página", hiddenByPreference = false }: HelpButtonProps) {
   return (
     <div style={helpCtaWrapStyle}>
       <span style={hiddenByPreference ? helpBadgeMutedStyle : helpBadgeStyle}>Ajuda</span>
@@ -17,14 +39,34 @@ function HelpButton({ onClick, label = "Abrir tutorial da página", hiddenByPref
   );
 }
 
-function TutorialModal({ open, onClose, title, subtitle, sections = [], ctaLabel, ctaHref, preferenceControl }) {
+interface TutorialModalProps {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  sections: OpsTutorialSection[];
+  ctaLabel?: string;
+  ctaHref?: string;
+  preferenceControl: ReactNode;
+}
+
+function TutorialModal({
+  open,
+  onClose,
+  title,
+  subtitle,
+  sections = [],
+  ctaLabel,
+  ctaHref,
+  preferenceControl,
+}: TutorialModalProps) {
   const normalizedSections = useMemo(() => {
     return Array.isArray(sections) ? sections.filter((section) => section && Array.isArray(section.items)) : [];
   }, [sections]);
 
   useEffect(() => {
     if (!open) return undefined;
-    function handleEscape(event) {
+    function handleEscape(event: KeyboardEvent) {
       if (event.key === "Escape") onClose();
     }
     window.addEventListener("keydown", handleEscape);
@@ -35,7 +77,13 @@ function TutorialModal({ open, onClose, title, subtitle, sections = [], ctaLabel
 
   return (
     <div role="presentation" style={overlayStyle} onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label={title} style={modalStyle} onClick={(event) => event.stopPropagation()}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        style={modalStyle}
+        onClick={(event) => event.stopPropagation()}
+      >
         <div style={modalHeaderStyle}>
           <div>
             <h2 style={modalTitleStyle}>{title}</h2>
@@ -80,7 +128,7 @@ export default function OpsHelpTutorialModal({
   ctaHref,
   storageKey,
   userKey = "anonymous",
-}) {
+}: OpsHelpTutorialModalProps) {
   const [open, setOpen] = useState(false);
   const preferenceStorageKey = useMemo(() => {
     const safeScope = String(storageKey || "default").trim() || "default";
@@ -98,8 +146,8 @@ export default function OpsHelpTutorialModal({
     }
   }, [preferenceStorageKey]);
 
-  function handlePreferenceChange(nextValue) {
-    setHideAgain(Boolean(nextValue));
+  function handlePreferenceChange(nextValue: boolean) {
+    setHideAgain(nextValue);
     try {
       if (nextValue) {
         window.localStorage.setItem(preferenceStorageKey, "1");
@@ -107,7 +155,7 @@ export default function OpsHelpTutorialModal({
         window.localStorage.removeItem(preferenceStorageKey);
       }
     } catch {
-      // Ignore localStorage errors in restricted environments.
+      /* ignore */
     }
   }
 
@@ -141,7 +189,7 @@ export default function OpsHelpTutorialModal({
   );
 }
 
-const helpButtonStyle = {
+const helpButtonStyle: CSSProperties = {
   width: 30,
   height: 30,
   borderRadius: 999,
@@ -154,20 +202,20 @@ const helpButtonStyle = {
   fontSize: 16,
 };
 
-const helpButtonMutedStyle = {
+const helpButtonMutedStyle: CSSProperties = {
   ...helpButtonStyle,
   border: "1px solid rgba(148,163,184,0.6)",
   background: "rgba(30,41,59,0.35)",
   color: "#cbd5e1",
 };
 
-const helpCtaWrapStyle = {
+const helpCtaWrapStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   gap: 6,
 };
 
-const helpBadgeStyle = {
+const helpBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   borderRadius: 999,
@@ -181,14 +229,14 @@ const helpBadgeStyle = {
   letterSpacing: 0.2,
 };
 
-const helpBadgeMutedStyle = {
+const helpBadgeMutedStyle: CSSProperties = {
   ...helpBadgeStyle,
   border: "1px solid rgba(148,163,184,0.5)",
   background: "rgba(30,41,59,0.35)",
   color: "#cbd5e1",
 };
 
-const overlayStyle = {
+const overlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
   background: "rgba(2, 6, 23, 0.72)",
@@ -198,7 +246,7 @@ const overlayStyle = {
   padding: 16,
 };
 
-const modalStyle = {
+const modalStyle: CSSProperties = {
   width: "min(760px, 100%)",
   maxHeight: "86vh",
   overflow: "auto",
@@ -211,25 +259,25 @@ const modalStyle = {
   gap: 12,
 };
 
-const modalHeaderStyle = {
+const modalHeaderStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   alignItems: "flex-start",
   gap: 10,
 };
 
-const modalTitleStyle = {
+const modalTitleStyle: CSSProperties = {
   margin: 0,
   fontSize: 18,
 };
 
-const modalSubtitleStyle = {
+const modalSubtitleStyle: CSSProperties = {
   margin: "6px 0 0",
   color: "#cbd5e1",
   fontSize: 13,
 };
 
-const closeButtonStyle = {
+const closeButtonStyle: CSSProperties = {
   border: "1px solid rgba(148,163,184,0.5)",
   background: "transparent",
   color: "#e2e8f0",
@@ -239,44 +287,44 @@ const closeButtonStyle = {
   fontWeight: 700,
 };
 
-const modalBodyStyle = {
+const modalBodyStyle: CSSProperties = {
   display: "grid",
   gap: 10,
 };
 
-const sectionStyle = {
+const sectionStyle: CSSProperties = {
   border: "1px solid rgba(148,163,184,0.28)",
   borderRadius: 10,
   background: "rgba(15,23,42,0.55)",
   padding: 10,
 };
 
-const sectionTitleStyle = {
+const sectionTitleStyle: CSSProperties = {
   margin: "0 0 8px",
   fontSize: 13,
   color: "#bfdbfe",
 };
 
-const sectionListStyle = {
+const sectionListStyle: CSSProperties = {
   margin: 0,
   paddingLeft: 18,
   display: "grid",
   gap: 4,
 };
 
-const sectionItemStyle = {
+const sectionItemStyle: CSSProperties = {
   fontSize: 13,
   color: "#e2e8f0",
 };
 
-const ctaLinkStyle = {
+const ctaLinkStyle: CSSProperties = {
   color: "#93c5fd",
   textDecoration: "none",
   fontSize: 13,
   fontWeight: 700,
 };
 
-const footerAreaStyle = {
+const footerAreaStyle: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
   gap: 12,
@@ -284,7 +332,7 @@ const footerAreaStyle = {
   flexWrap: "wrap",
 };
 
-const hideToggleStyle = {
+const hideToggleStyle: CSSProperties = {
   border: "1px solid rgba(148,163,184,0.45)",
   background: "rgba(15,23,42,0.65)",
   color: "#e2e8f0",

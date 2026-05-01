@@ -1204,7 +1204,7 @@ const UPDATES = [
     uiRoutesNew: ["/ops/updates", "/ops/audit", "/ops/health", "/ops/reconciliation"],
     apiRoutesNew: [],
     routes: [
-      "Frontend: 01_source/frontend/src/components/OpsHelpTutorialModal.jsx",
+      "Frontend: 01_source/frontend/src/components/OpsHelpTutorialModal.tsx",
       "Frontend: 01_source/frontend/src/App.jsx",
       "Frontend: 01_source/frontend/src/constants/opsTutorialContent.js",
       "Frontend: 01_source/frontend/src/pages/OpsAuditPage.jsx",
