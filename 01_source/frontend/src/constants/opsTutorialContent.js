@@ -372,11 +372,16 @@ export const OPS_TUTORIALS_BY_PATH = {
   },
   "/ops/00": {
     title: "Tutorial rápido - ops/00",
-    subtitle: "Ambiente operacional base para laboratório/controlado.",
+    subtitle: "Protótipo legado descontinuado — mensagem ELLAN LAB na rota.",
     sections: [
-      { title: "1) Objetivo da tela", items: ["Executar validações operacionais em contexto controlado."] },
-      { title: "2) Fluxo recomendado de uso", items: ["Teste fluxo fim-a-fim, valide métricas e documente observações."] },
-      { title: "3) Dicas rápidas", items: ["Não confundir evidência de laboratório com produção."] },
+      {
+        title: "1) Estado atual",
+        items: [
+          "A rota `/ops/00` exibe apenas a página de descontinuação; o código `LockerDashboardFirst` está em `src/pages/legacy/` sem ligação ativa.",
+        ],
+      },
+      { title: "2) Onde operar", items: ["Use `/ops/sp` ou `/ops/pt` para o locker OPS atual."] },
+      { title: "3) KIOSK", items: ["Protótipos touch: `/ops/kiosk-touch-models`."] },
     ],
   },
   "/ops/sp/kiosk": {

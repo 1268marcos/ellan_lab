@@ -31,7 +31,7 @@ const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyP
 const PublicTermsOfUsePage = lazy(() => import("./pages/public/PublicTermsOfUsePage"));
 const PublicAccessDeniedPage = lazy(() => import("./pages/public/PublicAccessDeniedPage"));
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
-const LockerDashboardFirst = lazy(() => import("./pages/LockerDashboardFirst"));
+const OpsDiscontinuedEllanLabPage = lazy(() => import("./pages/OpsDiscontinuedEllanLabPage"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
 const RegionPageFirst = lazy(() => import("./pages/RegionPageFirst"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
@@ -1173,7 +1173,7 @@ function AppContent() {
               path="/ops/00"
               element={
                 <OpsRoute>
-                  <LockerDashboardFirst region="SP" />
+                  {withBoundary("ops", <OpsDiscontinuedEllanLabPage />)}
                 </OpsRoute>
               }
             />

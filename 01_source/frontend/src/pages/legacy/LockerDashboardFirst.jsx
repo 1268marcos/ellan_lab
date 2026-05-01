@@ -1,15 +1,18 @@
-// 01_source/frontend/src/pages/LockerDashboardFirst.jsx
-/** Rota OPS `/ops/00`: protótipo “first”. Mensagem `payResp` usa o mesmo Zustand que `/ops/sp` (useOperationalPayment). */
+// 01_source/frontend/src/pages/legacy/LockerDashboardFirst.jsx
+/**
+ * LEGADO — não ligar em `App.jsx`. A rota `/ops/00` mostra `OpsDiscontinuedEllanLabPage`.
+ * Protótipo “first”; `payResp` partilhava Zustand com `/ops/sp`. Mantido para referência / correções isoladas.
+ */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import PickupQRCodePanel from "../components/PickupQRCodePanel.jsx";
-import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
-import PickupHealthPanel from "../components/PickupHealthPanel";
-import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import PickupQRCodePanel from "../../components/PickupQRCodePanel.jsx";
+import ManualPickupPanel from "../../components/ManualPickupPanel.jsx";
+import PickupHealthPanel from "../../components/PickupHealthPanel";
+import OpsPageTitleHeader from "../../components/OpsPageTitleHeader";
 
 import { QRCodeCanvas } from "qrcode.react";
 
-import { useAuth } from "../context/AuthContext";
-import { useCheckoutStore } from "../store/useCheckoutStore";
+import { useAuth } from "../../context/AuthContext";
+import { useCheckoutStore } from "../../store/useCheckoutStore";
 
 /**
  * Estados das gavetas (use os mesmos nomes do backend)

@@ -60,7 +60,7 @@ const USABILITY_CHECKLIST: ReadonlyArray<{ id: string; label: string }> = [
   { id: "n2", label: "Áreas de toque ≥44px nos CTAs principais (cards e link primário)." },
   { id: "n3", label: "Contraste legível no cartão selecionado vs. cartões inativos." },
   { id: "n4", label: "Estados explícitos: seleção de modelo + painel de detalhe coerente." },
-  { id: "n5", label: "Rotas secundárias (kiosk PT/SP, locker `/ops/00`) acessíveis a partir do detalhe." },
+  { id: "n5", label: "Rotas secundárias (kiosk PT/SP, locker legado `/ops/00` → página de descontinuação) acessíveis a partir do detalhe." },
   { id: "n6", label: "Microcopy em PT consistente nesta rota (títulos, bullets, rodapé)." },
   { id: "n7", label: "Ligações a fluxos reais do lab revistas na sessão (≥1 fluxo aberto para smoke)." },
   { id: "n8", label: "Evidência exportável: checklist + pontuação em JSON (botão abaixo)." },
@@ -354,8 +354,12 @@ export default function OpsKioskTouchModelsPage() {
           <Link to="/ops/sp/kiosk" className="ops-kiosk-touch-chrome__link-secondary">
             Kiosk OPS (SP)
           </Link>
-          <Link to="/ops/00" className="ops-kiosk-touch-chrome__link-secondary">
-            Locker protótipo `/ops/00`
+          <Link
+            to="/ops/00"
+            className="ops-kiosk-touch-chrome__link-secondary"
+            title="Descontinuado para o estágio atual do projeto ELLAN LAB — ver mensagem na rota"
+          >
+            Locker legado `/ops/00` (descontinuado)
           </Link>
         </div>
       </section>
