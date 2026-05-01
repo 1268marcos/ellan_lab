@@ -22,6 +22,8 @@ type InstallKioskPtMocksOptions = {
   mockGatewayPagamentoPost?: boolean;
   /** Mock `POST` order-pickup `kiosk/orders/{id}/payment-approved` (após gateway APPROVED). */
   mockPaymentApprovedPost?: boolean;
+  /** Mock `POST` order-pickup `/kiosk/identify` (secção 4 após pagamento). */
+  mockKioskIdentifyPost?: boolean;
 };
 
 const E2E_CATALOG_SLOT = {
@@ -58,6 +60,7 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
     mockKioskOrderPost = false,
     mockGatewayPagamentoPost = false,
     mockPaymentApprovedPost = false,
+    mockKioskIdentifyPost = false,
   } = options;
 
   await page.route(
@@ -183,13 +186,36 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
       },
     );
   }
+
+  if (mockKioskIdentifyPost) {
+    await page.route(
+      (url) => isLabHost(url.hostname) && url.port === "8003" && url.pathname === "/kiosk/identify",
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            order_id: "e2e-order-pt-1",
+            phone: "+351910000001",
+            email: "e2e-identify@ellan.local",
+            message: "Identificação guardada (E2E).",
+          }),
+        });
+      },
+    );
+  }
 }
 
 /**
  * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
  * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. **Modelo A** → `/comprar`;
  * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`);
- * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, `/kiosk/orders`, opcional **gateway/pagamento** + **payment-approved**); **Modelo D** → `/ops/dev/slots`.
+ * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, orders, gateway, payment-approved, `/kiosk/identify`); **Modelo D** → `/ops/dev/slots`.
  * `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
 test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
@@ -321,12 +347,13 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page.getByText(/e2e-order-pt-1/).first()).toBeVisible();
   });
 
-  test("Modelo C — KIOSK PT: pedido + iniciar pagamento (gateway APPROVED, mocks)", async ({ page }) => {
+  test("Modelo C — KIOSK PT: pedido, pagamento (APPROVED) e identificação (mocks)", async ({ page }) => {
     await installKioskPtLabMocks(page, {
       withSelectableCatalog: true,
       mockKioskOrderPost: true,
       mockGatewayPagamentoPost: true,
       mockPaymentApprovedPost: true,
+      mockKioskIdentifyPost: true,
     });
 
     await page.goto("/ops/kiosk-touch-models");
@@ -345,6 +372,13 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page.getByText(/Resposta do gateway/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText(/comprovante:\s*E2E-RC-PT-1/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByText("Comprovante fiscal")).toBeVisible();
+
+    await page.getByPlaceholder("+5511999999999 / +351912345678").fill("+351910000001");
+    await page.getByPlaceholder("cliente@email.com").fill("e2e-identify@ellan.local");
+    await page.getByRole("button", { name: /Salvar identificação/i }).click();
+
+    await expect(page.getByText(/Identificação salva/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("pre").filter({ hasText: "e2e-identify@ellan.local" })).toBeVisible();
   });
 
   test("Modelo D — CTA primário abre alocação por slot (dev)", async ({ page }) => {
