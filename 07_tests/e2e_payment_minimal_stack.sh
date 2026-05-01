@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# E2E stack mínima: runtime allocate → seed Postgres → (P1) gateway payment/create → pickup payment-confirm.
+# E2E stack mínima: (P2) POST /orders com auth lab OU (seed) allocate+psql → (P1) gateway payment/create → payment-confirm.
 # P0-only: export E2E_SKIP_GATEWAY=1 para omitir payment_gateway (regressão rápida).
+# P2 omissão: E2E_CREATE_ORDER_VIA=seed — allocate manual + seed SQL (P0/P1 legado).
 #
 # Pré-requisitos:
 #   - Stack mínima no ar (ex.: deploy/compose-minimal-stack.sh) com portas mapeadas no host.
@@ -9,6 +10,8 @@
 #
 # Variáveis opcionais:
 #   E2E_SKIP_GATEWAY  — "1" omite health + POST /gateway/payment/create (default 0 = P1 ativo)
+#   E2E_CREATE_ORDER_VIA — "http" (default P2): POST /orders + X-Dev-Bypass-Auth (exige DEV_BYPASS_AUTH no pickup).
+#                          "seed": allocate runtime + psql seed (legado).
 #   GATEWAY_BASE      — default http://127.0.0.1:8000
 #   E2E_ENV_FILE     — caminho para env com ORDER_INTERNAL_TOKEN (default: 02_docker/env.e2e-minimal)
 #   E2E_RUN_ID       — sufixo único (default: timestamp)
@@ -34,6 +37,7 @@ RUNTIME_BASE="${RUNTIME_BASE:-http://127.0.0.1:8200}"
 PICKUP_BASE="${PICKUP_BASE:-http://127.0.0.1:8003}"
 GATEWAY_BASE="${GATEWAY_BASE:-http://127.0.0.1:8000}"
 E2E_SKIP_GATEWAY="${E2E_SKIP_GATEWAY:-0}"
+E2E_CREATE_ORDER_VIA="${E2E_CREATE_ORDER_VIA:-http}"
 PGHOST="${PGHOST:-127.0.0.1}"
 PGPORT="${PGPORT:-5435}"
 PGUSER="${PGUSER:-admin}"
@@ -47,8 +51,8 @@ E2E_CURRENCY="${E2E_CURRENCY:-BRL}"
 E2E_PROVIDER="${E2E_PROVIDER:-PIX}"
 E2E_AMOUNT_CENTS="${E2E_AMOUNT_CENTS:-1000}"
 
-ORDER_ID="e2e-order-p0-${E2E_RUN_ID}"
-ALLOC_ID="al_e2e_p0_${E2E_RUN_ID}"
+ORDER_ID=""
+ALLOC_ID=""
 
 die() { echo "ERRO: $*" >&2; exit 1; }
 
@@ -143,44 +147,110 @@ if [[ -z "${E2E_SLOT:-}" ]]; then
 fi
 
 E2E_USER_ID_FOR_SEED=""
-if [[ -n "${E2E_USER_ID:-}" ]]; then
-  E2E_USER_ID_FOR_SEED="${E2E_USER_ID//[:space:]/}"
-elif [[ -n "${E2E_USER_EMAIL+set}" ]]; then
-  if [[ -n "${E2E_USER_EMAIL}" ]]; then
-    E2E_USER_ID_FOR_SEED="$(lookup_user_id_by_email "${E2E_USER_EMAIL}" || true)"
+if [[ "${E2E_CREATE_ORDER_VIA}" == "seed" ]]; then
+  ORDER_ID="e2e-order-p0-${E2E_RUN_ID}"
+  ALLOC_ID="al_e2e_p0_${E2E_RUN_ID}"
+  if [[ -n "${E2E_USER_ID:-}" ]]; then
+    E2E_USER_ID_FOR_SEED="${E2E_USER_ID//[:space:]/}"
+  elif [[ -n "${E2E_USER_EMAIL+set}" ]]; then
+    if [[ -n "${E2E_USER_EMAIL}" ]]; then
+      E2E_USER_ID_FOR_SEED="$(lookup_user_id_by_email "${E2E_USER_EMAIL}" || true)"
+      if [[ -z "$E2E_USER_ID_FOR_SEED" ]]; then
+        echo "AVISO: sem linha em users para E2E_USER_EMAIL='${E2E_USER_EMAIL}'; orders.user_id fica NULL." >&2
+      fi
+    fi
+  else
+    _def_email="admin.operacao@ellanlab.com"
+    E2E_USER_ID_FOR_SEED="$(lookup_user_id_by_email "${_def_email}" || true)"
     if [[ -z "$E2E_USER_ID_FOR_SEED" ]]; then
-      echo "AVISO: sem linha em users para E2E_USER_EMAIL='${E2E_USER_EMAIL}'; orders.user_id fica NULL." >&2
+      echo "AVISO: utilizador lab '${_def_email}' não encontrado em users; orders.user_id fica NULL (crie o user ou defina E2E_USER_ID)." >&2
     fi
   fi
-else
-  _def_email="admin.operacao@ellanlab.com"
-  E2E_USER_ID_FOR_SEED="$(lookup_user_id_by_email "${_def_email}" || true)"
-  if [[ -z "$E2E_USER_ID_FOR_SEED" ]]; then
-    echo "AVISO: utilizador lab '${_def_email}' não encontrado em users; orders.user_id fica NULL (crie o user ou defina E2E_USER_ID)." >&2
+fi
+
+echo "== E2E payment (run_id=$E2E_RUN_ID create_via=${E2E_CREATE_ORDER_VIA} order=${ORDER_ID:-<após POST>} alloc=${ALLOC_ID:-<após POST>} slot=$E2E_SLOT locker=$LOCKER_ID skip_gateway=${E2E_SKIP_GATEWAY}) =="
+
+if [[ "${E2E_CREATE_ORDER_VIA}" == "seed" ]]; then
+  echo "[4/8] Runtime allocate definitivo (slot=${E2E_SLOT}, allocation_id=${ALLOC_ID})"
+  code="$(http_allocate "${E2E_SLOT}" "${ALLOC_ID}")"
+  if [[ "$code" != "200" ]]; then
+    die "allocate falhou (HTTP ${code}): $(cat /tmp/e2e_alloc_body.json 2>/dev/null)"
   fi
+  head -c 300 /tmp/e2e_alloc_body.json
+  echo ""
+
+  echo "[5/8] psql seed (orders + allocations)"
+  psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
+    -v "order_id=${ORDER_ID}" \
+    -v "allocation_id=${ALLOC_ID}" \
+    -v "slot=${E2E_SLOT}" \
+    -v "totem_id=${LOCKER_ID}" \
+    -v "region=${E2E_REGION}" \
+    -v "currency=${E2E_CURRENCY}" \
+    -v "sku_id=${SKU_ID}" \
+    -v "user_id=${E2E_USER_ID_FOR_SEED}" \
+    -f "${ROOT_DIR}/02_docker/seeds/seed_e2e_payment_order.sql"
+else
+  echo "[4/8] POST ${PICKUP_BASE}/orders (P2: X-Dev-Bypass-Auth + pickup aloca no runtime)"
+  export E2E_SLOT E2E_REGION SKU_ID LOCKER_ID E2E_AMOUNT_CENTS
+  python3 <<'PY'
+import json, os
+out = {
+    "region": os.environ["E2E_REGION"],
+    "sku_id": os.environ["SKU_ID"],
+    "totem_id": os.environ["LOCKER_ID"],
+    "desired_slot": int(os.environ["E2E_SLOT"]),
+    "payment_method": "pix",
+    "payment_interface": "qr_code",
+    "amount_cents": int(os.environ["E2E_AMOUNT_CENTS"]),
+}
+with open("/tmp/e2e_create_order.json", "w", encoding="utf-8") as f:
+    json.dump(out, f)
+PY
+  co_code="$(curl -sS -o /tmp/e2e_co_resp.json -w "%{http_code}" -X POST "${PICKUP_BASE}/orders" \
+    -H "Content-Type: application/json" \
+    -H "X-Dev-Bypass-Auth: 1" \
+    -d @/tmp/e2e_create_order.json)"
+  export CO_CODE="${co_code}"
+  # Não usar eval "$(python …)" sozinho: em bash, atribuição a $(cmd) com cmd≠0 não falha com set -e.
+  if ! CO_CODE="${co_code}" python3 <<'PY'
+import json, os, shlex
+code = (os.environ.get("CO_CODE") or "").strip()
+raw = open("/tmp/e2e_co_resp.json", encoding="utf-8").read()
+try:
+    r = json.loads(raw)
+except json.JSONDecodeError as e:
+    raise SystemExit(f"POST /orders resposta não-JSON (HTTP {code}): {raw[:800]}") from e
+if code != "200":
+    raise SystemExit(f"POST /orders HTTP {code}: {r}")
+if r.get("status") != "PAYMENT_PENDING":
+    raise SystemExit(f"estado inesperado após create: {r}")
+alloc = r.get("allocation") or {}
+aid = alloc.get("allocation_id")
+slot = alloc.get("slot")
+oid = r.get("order_id")
+if not aid or slot is None or not oid:
+    raise SystemExit(f"resposta create incompleta: {r}")
+open("/tmp/e2e_co_exports.sh", "w", encoding="utf-8").write(
+    "\n".join(
+        [
+            f"export ORDER_ID={shlex.quote(str(oid))}",
+            f"export ALLOC_ID={shlex.quote(str(aid))}",
+            f"export E2E_SLOT={int(slot)}",
+        ]
+    )
+    + "\n"
+)
+PY
+  then
+    die "POST /orders falhou (ver mensagem acima)."
+  fi
+  # shellcheck disable=SC1091
+  source /tmp/e2e_co_exports.sh
+  head -c 400 /tmp/e2e_co_resp.json
+  echo ""
+  echo "[5/8] Pedido criado via HTTP (sem seed SQL)"
 fi
-
-echo "== E2E payment (run_id=$E2E_RUN_ID order=$ORDER_ID alloc=$ALLOC_ID slot=$E2E_SLOT locker=$LOCKER_ID skip_gateway=${E2E_SKIP_GATEWAY}) =="
-
-echo "[4/8] Runtime allocate definitivo (slot=${E2E_SLOT}, allocation_id=${ALLOC_ID})"
-code="$(http_allocate "${E2E_SLOT}" "${ALLOC_ID}")"
-if [[ "$code" != "200" ]]; then
-  die "allocate falhou (HTTP ${code}): $(cat /tmp/e2e_alloc_body.json 2>/dev/null)"
-fi
-head -c 300 /tmp/e2e_alloc_body.json
-echo ""
-
-echo "[5/8] psql seed (orders + allocations)"
-psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -v ON_ERROR_STOP=1 \
-  -v "order_id=${ORDER_ID}" \
-  -v "allocation_id=${ALLOC_ID}" \
-  -v "slot=${E2E_SLOT}" \
-  -v "totem_id=${LOCKER_ID}" \
-  -v "region=${E2E_REGION}" \
-  -v "currency=${E2E_CURRENCY}" \
-  -v "sku_id=${SKU_ID}" \
-  -v "user_id=${E2E_USER_ID_FOR_SEED}" \
-  -f "${ROOT_DIR}/02_docker/seeds/seed_e2e_payment_order.sql"
 
 # P1: cartão no gateway → set_state PAID_PENDING_PICKUP no runtime (com X-Locker-Id no cliente HTTP).
 GATEWAY_VALOR="$(python3 -c "print(round(int('${E2E_AMOUNT_CENTS}') / 100.0, 2))")"
@@ -246,4 +316,4 @@ if [[ -n "${E2E_USER_ID_FOR_SEED}" ]]; then
   [[ "$uchk" == "$E2E_USER_ID_FOR_SEED" ]] || die "orders.user_id esperado '${E2E_USER_ID_FOR_SEED}' obtido '${uchk}'"
 fi
 
-echo "OK: E2E payment (P1 gateway + pickup) concluído."
+echo "OK: E2E payment (${E2E_CREATE_ORDER_VIA} create + gateway + pickup) concluído."

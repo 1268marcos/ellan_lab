@@ -106,18 +106,25 @@ def create_order(
     resolved_user_id = getattr(user, "id", None)
     resolved_user_id = str(resolved_user_id) if resolved_user_id is not None else None
 
+    desired_slot = payload.desired_slot
+    if desired_slot is None and payload.slot is not None:
+        desired_slot = payload.slot
+
+    _card = getattr(payload, "card_type", None)
+    card_type_value = _card.value if _card is not None else None
+
     result = create_order_core(
         db=db,
         region=payload.region.value,
         sku_id=payload.sku_id,
         totem_id=payload.totem_id,
-        desired_slot=payload.desired_slot,
+        desired_slot=desired_slot,
 
         # 🔴 IMPORTANTE: valor direto do payload (será resolvido via DB)
         payment_method_value=payload.payment_method.value,
 
-        # 🔴 NOVO: card_type suportado corretamente
-        card_type_value=payload.card_type.value if payload.card_type else None,
+        # 🔴 NOVO: card_type suportado corretamente (opcional no schema)
+        card_type_value=card_type_value,
 
         # 🔴 IMPORTANTE: não confiar no frontend (service resolve se None)
         amount_cents_input=payload.amount_cents,
@@ -125,10 +132,14 @@ def create_order(
         guest_phone=payload.customer_phone,
         user_id=resolved_user_id,
 
-        # 🔴 NOVOS CAMPOS (antes ignorados)
-        payment_interface=payload.payment_interface,
-        wallet_provider=payload.wallet_provider,
-        customer_email=payload.customer_email,
+        # 🔴 NOVOS CAMPOS (antes ignorados) — usar .value para strings canónicas no core/ORM
+        payment_interface=(
+            payload.payment_interface.value if payload.payment_interface is not None else None
+        ),
+        wallet_provider=(
+            payload.wallet_provider.value if payload.wallet_provider is not None else None
+        ),
+        guest_email=payload.customer_email,
         device_id=payload.device_id,
         ip_address=payload.ip_address,
         order_line_ncm=payload.ncm,

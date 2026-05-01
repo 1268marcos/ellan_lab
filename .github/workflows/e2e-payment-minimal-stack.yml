@@ -1,5 +1,5 @@
-# E2E P1: runtime → seed SQL → POST /gateway/payment/create → POST /internal/.../payment-confirm (E2E_SKIP_GATEWAY=1 omite o gateway).
-name: E2E payment minimal stack (P1)
+# E2E P2: POST /orders (dev bypass) → POST /gateway/payment/create → POST /internal/.../payment-confirm (E2E_CREATE_ORDER_VIA=seed ou E2E_SKIP_GATEWAY=1 para variantes).
+name: E2E payment minimal stack (P2)
 
 on:
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
       - name: Start minimal stack (build + up)
         run: ./deploy/compose-minimal-stack.sh
 
-      - name: Run E2E script (runtime + pickup + gateway + psql + payment-confirm)
+      - name: Run E2E script (runtime + pickup + POST /orders + gateway + payment-confirm)
         run: bash 07_tests/e2e_payment_minimal_stack.sh
         env:
           PGHOST: 127.0.0.1

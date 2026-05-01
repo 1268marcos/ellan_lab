@@ -44,4 +44,4 @@ Ver `.github/workflows/backend-test-collect.yml` e `.github/workflows/payment-ru
 Especificação em camadas (P0 seed + `payment-confirm`, P1 gateway, P2 create order HTTP, P3 UI):  
 [`docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md`](../docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md).
 
-Com a stack no ar: `make e2e-payment-p0` — fluxo P1 com `POST /gateway/payment/create` antes do `payment-confirm`; `E2E_SKIP_GATEWAY=1` omite o gateway (P0). Locker default SP-Carapicuíba LK-002; slots via runtime, não fixos em 24.
+Com a stack no ar: `make e2e-payment-p0` — fluxo **P2** com `POST /orders` (dev bypass lab) + gateway + `payment-confirm`; `E2E_CREATE_ORDER_VIA=seed` volta ao allocate+SQL; `E2E_SKIP_GATEWAY=1` omite o gateway. Locker default SP-Carapicuíba LK-002; slots via runtime, não fixos em 24.

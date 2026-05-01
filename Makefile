@@ -12,8 +12,9 @@ test-payment-contract:
 	@chmod +x 07_tests/run_payment_runtime_contract_tests.sh
 	@./07_tests/run_payment_runtime_contract_tests.sh
 
-# E2E pagamento: runtime → seed → gateway /gateway/payment/create (P1) → pickup payment-confirm.
-# E2E_SKIP_GATEWAY=1 reproduz só o caminho sem gateway. Pré-requisito: ./deploy/compose-minimal-stack.sh
+# E2E pagamento (P2): POST /orders (dev bypass) → gateway /gateway/payment/create → payment-confirm.
+# E2E_CREATE_ORDER_VIA=seed: allocate + psql seed (legado). E2E_SKIP_GATEWAY=1 omite o gateway.
+# Pré-requisito: ./deploy/compose-minimal-stack.sh; pickup com DEV_BYPASS_AUTH=true em lab (env.e2e-minimal).
 # Locker default SP-CARAPICUIBA-JDMARILU-LK-002; slots via GET /locker/slots (não fixo em 24).
 e2e-payment-p0:
 	@chmod +x 07_tests/e2e_payment_minimal_stack.sh

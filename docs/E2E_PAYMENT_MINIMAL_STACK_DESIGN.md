@@ -168,7 +168,7 @@ Após `payment-confirm` bem-sucedido:
 2. Instalar cliente `psql` no runner  
 3. Copiar `02_docker/env.e2e-minimal` para `02_docker/.env` e `01_source/order_pickup_service/.env` (valores só de lab; em CI privado pode substituir por secrets).  
 4. `./deploy/compose-minimal-stack.sh` (build + up da stack mínima).  
-5. `bash 07_tests/e2e_payment_minimal_stack.sh` — health runtime + pickup + **gateway**, allocate, seed via `psql -f`, **`POST /gateway/payment/create`** (cartão), `payment-confirm`; `PG*` aponta a `127.0.0.1:5435`. `E2E_SKIP_GATEWAY=1` omite o gateway (regressão estilo P0).  
+5. `bash 07_tests/e2e_payment_minimal_stack.sh` — health runtime + pickup + **gateway**, **`POST /orders`** (P2, omissão `E2E_CREATE_ORDER_VIA=seed` para allocate+`psql` legado), **`POST /gateway/payment/create`** (cartão), `payment-confirm`; `PG*` aponta a `127.0.0.1:5435`. `E2E_SKIP_GATEWAY=1` omite o gateway (regressão estilo P0).  
 6. **Tear down:** `docker compose down --remove-orphans` (sempre, `if: always()`).
 
 **Paralelização:** manter **um** job por PR para reduzir flakiness de portas; matriz só se houver regiões distintas (SP vs PT) com stacks isoladas.
@@ -179,7 +179,7 @@ Após `payment-confirm` bem-sucedido:
 
 **Ficheiro:** `07_tests/e2e_payment_minimal_stack.sh` — também exposto como `make e2e-payment-p0` (requer stack já no ar).
 
-- Lê `E2E_ENV_FILE` / `ORDER_INTERNAL_TOKEN`, `RUNTIME_BASE`, `PICKUP_BASE`, `GATEWAY_BASE` (P1), `PG*`, opcionalmente `E2E_LOCKER_ID`, `E2E_REGION`, `E2E_CURRENCY`, `E2E_PROVIDER`, `E2E_SLOT`, `E2E_USER_ID` / `E2E_USER_EMAIL`, `E2E_SKIP_GATEWAY`, `E2E_AMOUNT_CENTS`.
+- Lê `E2E_ENV_FILE` / `ORDER_INTERNAL_TOKEN`, `RUNTIME_BASE`, `PICKUP_BASE`, `GATEWAY_BASE` (P1), `PG*`, opcionalmente `E2E_LOCKER_ID`, `E2E_REGION`, `E2E_CURRENCY`, `E2E_PROVIDER`, `E2E_SLOT`, `E2E_USER_ID` / `E2E_USER_EMAIL`, `E2E_SKIP_GATEWAY`, `E2E_AMOUNT_CENTS`, **`E2E_CREATE_ORDER_VIA`** (`http` = P2 com `X-Dev-Bypass-Auth` + `DEV_BYPASS_AUTH` no pickup; `seed` = allocate + `seed_e2e_payment_order.sql`).
 - Por omissão tenta resolver `users.id` para `admin.operacao@ellanlab.com` (operador lab; ex.: mesmo utilizador com sessão no FE). Se não existir na BD, `orders.user_id` fica `NULL` com aviso; pode forçar com `E2E_USER_ID=<uuid>` ou desativar o email explícito com `E2E_USER_EMAIL=` (string vazia).
 - Obtém a lista de slots candidatos com `GET /locker/slots` + `X-Locker-Id` (topologia real; não assume 24 cacifos).
 - `curl -sfS` para health, allocate e `payment-confirm`; asserts JSON via `python3`; asserts SQL no passo final.
@@ -207,7 +207,7 @@ Não substitui `make test-payment-contract` (testes unitários de contrato); **c
 | `deploy/compose-minimal-stack.sh` | Base de infra do E2E |
 | `make test-payment-contract` | Rede de segurança **sem** Docker |
 | `make e2e-payment-p0` | Mesmo fluxo que o script shell (stack mínima já de pé) |
-| `.github/workflows/e2e-payment-minimal-stack.yml` | CI compose + E2E P1 (gateway + pickup) |
+| `.github/workflows/e2e-payment-minimal-stack.yml` | CI compose + E2E P2 (POST /orders + gateway + pickup) |
 | `.github/workflows/backend-test-collect.yml` | CI Python (paralelo ao E2E compose) |
 | `docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt` | Registar evolução quando P1 (gateway no meio) estiver verde |
 
@@ -217,7 +217,7 @@ Não substitui `make test-payment-contract` (testes unitários de contrato); **c
 
 1. **P0 — Seed + script:** `seed_e2e_payment_order.sql` + `e2e_payment_minimal_stack.sh` com `payment-confirm` + query SQL (sem gateway). Mantido com `E2E_SKIP_GATEWAY=1`.  
 2. **P1 — Gateway no meio:** **feito** no mesmo script: health gateway + `POST /gateway/payment/create` com `creditCard` + headers `Idempotency-Key` / `X-Device-Fingerprint`; o gateway chama o runtime `set-state` com **`X-Locker-Id`** (`LockerBackendClient`). Em lab, `GATEWAY_E2E_RELAX_RISK` e URLs `BACKEND_*` / `RUNTIME_BASE_URL` no compose apontam para `backend_runtime` na rede Docker.  
-3. **P2 — Create order HTTP:** autenticação + `POST /orders` + reduzir seed a “cleanup” apenas.  
+3. **P2 — Create order HTTP:** **feito** no script por omissão (`E2E_CREATE_ORDER_VIA=http`): `POST /orders` com header **`X-Dev-Bypass-Auth: 1`** quando o pickup tem **`DEV_BYPASS_AUTH=true`** (lab/CI via `env.e2e-minimal`); o pickup chama `create_order_core` (allocate no runtime + persistência + lifecycle). Regressão allocate+seed: `E2E_CREATE_ORDER_VIA=seed`. Ficheiro **`02_docker/seeds/seed_e2e_payment_cleanup.sql`** só DELETE (teardown manual opcional).  
 4. **P3 — UI:** Playwright contra `FRONTEND_BASE_URL` (fora deste desenho).
 
-Com P1 verde no CI, o Ellan Lab cobre **gateway → runtime → pickup** no fluxo mínimo, além dos contratos unitários já existentes.
+Com P2 verde no CI, o Ellan Lab cobre **criar pedido HTTP → gateway → runtime → pickup** no fluxo mínimo, além dos contratos unitários já existentes.
