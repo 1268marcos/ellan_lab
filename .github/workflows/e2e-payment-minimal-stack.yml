@@ -1,0 +1,71 @@
+# E2E P1: runtime → seed SQL → POST /gateway/payment/create → POST /internal/.../payment-confirm (E2E_SKIP_GATEWAY=1 omite o gateway).
+name: E2E payment minimal stack (P1)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "Makefile"
+      - "02_docker/docker-compose.yml"
+      - "02_docker/env.e2e-minimal"
+      - "02_docker/seeds/seed_e2e_payment_order.sql"
+      - "07_tests/e2e_payment_minimal_stack.sh"
+      - "deploy/**"
+      - "deploy/compose-minimal-stack.sh"
+      - "01_source/order_pickup_service/**"
+      - "01_source/backend_runtime/**"
+      - "01_source/payment_gateway/**"
+      - "01_source/backend/order_lifecycle_service/**"
+      - ".github/workflows/e2e-payment-minimal-stack.yml"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "Makefile"
+      - "02_docker/docker-compose.yml"
+      - "02_docker/env.e2e-minimal"
+      - "02_docker/seeds/seed_e2e_payment_order.sql"
+      - "07_tests/e2e_payment_minimal_stack.sh"
+      - "deploy/**"
+      - "deploy/compose-minimal-stack.sh"
+      - "01_source/order_pickup_service/**"
+      - "01_source/backend_runtime/**"
+      - "01_source/payment_gateway/**"
+      - "01_source/backend/order_lifecycle_service/**"
+      - ".github/workflows/e2e-payment-minimal-stack.yml"
+
+jobs:
+  e2e-payment-p0:
+    name: Docker minimal stack + gateway + pickup E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y postgresql-client
+
+      - name: Env for compose and pickup (lab defaults)
+        run: |
+          cp 02_docker/env.e2e-minimal 02_docker/.env
+          cp 02_docker/env.e2e-minimal 01_source/order_pickup_service/.env
+
+      - name: Start minimal stack (build + up)
+        run: ./deploy/compose-minimal-stack.sh
+
+      - name: Run E2E script (runtime + pickup + gateway + psql + payment-confirm)
+        run: bash 07_tests/e2e_payment_minimal_stack.sh
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: "5435"
+          PGUSER: admin
+          PGPASSWORD: admin123
+          PGDATABASE: locker_central
+
+      - name: Teardown compose
+        if: always()
+        working-directory: 02_docker
+        run: docker compose -f docker-compose.yml down --remove-orphans
