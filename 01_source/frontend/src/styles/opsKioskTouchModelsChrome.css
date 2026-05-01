@@ -1,0 +1,263 @@
+/**
+ * OPS — KIOSK touch models (`/ops/kiosk-touch-models`).
+ * Sprint 1 trilha F2 (CSS kiosk/OPS): escopo `.ops-kiosk-touch-chrome` para não colidir com outras rotas OPS.
+ */
+
+.ops-kiosk-touch-chrome__page {
+  padding: var(--spacing-5) var(--spacing-5) var(--spacing-9);
+  max-width: 1100px;
+  margin: 0 auto;
+  color: var(--color-text);
+  background: #f8fafc;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__intro {
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: #334155;
+  margin-top: 0;
+  margin-bottom: var(--spacing-4);
+}
+
+.ops-kiosk-touch-chrome__definitions-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+  padding: var(--spacing-3) 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.ops-kiosk-touch-chrome__reload-btn {
+  padding: 10px var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #64748b;
+  background: #f1f5f9;
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+  font-family: inherit;
+}
+
+.ops-kiosk-touch-chrome__reload-btn:hover {
+  background: #e2e8f0;
+}
+
+.ops-kiosk-touch-chrome__toolbar-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+  flex: 1 1 200px;
+}
+
+.ops-kiosk-touch-chrome__toolbar-code {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-5);
+}
+
+.ops-kiosk-touch-chrome__model-card {
+  min-height: 96px;
+  padding: 14px var(--spacing-4);
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  font: inherit;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.ops-kiosk-touch-chrome__model-card:hover {
+  border-color: #94a3b8;
+}
+
+.ops-kiosk-touch-chrome__model-card--active {
+  border-color: #0284c7;
+  background: #e0f2fe;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
+}
+
+.ops-kiosk-touch-chrome__model-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__model-card-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.ops-kiosk-touch-chrome__detail {
+  padding: var(--spacing-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.ops-kiosk-touch-chrome__detail h2 {
+  margin-top: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__detail-list {
+  margin: 0 0 var(--spacing-4);
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.ops-kiosk-touch-chrome__detail-list li {
+  margin-bottom: 6px;
+}
+
+.ops-kiosk-touch-chrome__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.ops-kiosk-touch-chrome__link-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-lg);
+  background: #1d4ed8;
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__link-primary:hover {
+  background: #1e40af;
+}
+
+.ops-kiosk-touch-chrome__link-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-lg);
+  background: #f1f5f9;
+  border: 1px solid #94a3b8;
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__link-secondary:hover {
+  background: #e2e8f0;
+}
+
+.ops-kiosk-touch-chrome__footer-note {
+  margin-top: var(--spacing-5);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.ops-kiosk-touch-chrome__checklist {
+  margin-top: 22px;
+  padding: var(--spacing-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid #6ee7b7;
+  background: #ecfdf5;
+  box-shadow: 0 1px 3px rgba(6, 78, 59, 0.08);
+}
+
+.ops-kiosk-touch-chrome__checklist h2 {
+  margin-top: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__checklist-intro {
+  margin-top: 0;
+  margin-bottom: var(--spacing-3);
+  font-size: 13px;
+  line-height: 1.55;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__checklist-ul {
+  margin: 0 0 14px;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.ops-kiosk-touch-chrome__checklist-li {
+  margin: 0;
+}
+
+.ops-kiosk-touch-chrome__check-label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__check-input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.ops-kiosk-touch-chrome__export-btn {
+  padding: 10px var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #047857;
+  background: #059669;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.ops-kiosk-touch-chrome__export-btn:hover {
+  background: #047857;
+}

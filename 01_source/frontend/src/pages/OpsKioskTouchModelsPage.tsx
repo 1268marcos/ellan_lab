@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import "../styles/opsKioskTouchModelsChrome.css";
 
 type ModelId = "A" | "B" | "C" | "D";
 
@@ -164,7 +165,15 @@ function resolveTouchModels(): TouchModelRow[] {
   }
 }
 
-const PAGE_VERSION = "ops/kiosk-touch-models v1.1.1-contrast-light";
+const PAGE_VERSION = "ops/kiosk-touch-models v1.2.0-ops-kiosk-chrome-css";
+
+const titleHeaderContainer: CSSProperties = { marginBottom: 12 };
+const titleHeaderTitle: CSSProperties = { color: "#0f172a" };
+const titleHeaderBadge: CSSProperties = {
+  border: "1px solid #38bdf8",
+  background: "#e0f2fe",
+  color: "#0c4a6e",
+};
 
 export default function OpsKioskTouchModelsPage() {
   const [active, setActive] = useState<ModelId | null>("A");
@@ -211,36 +220,32 @@ export default function OpsKioskTouchModelsPage() {
   }
 
   return (
-    <div style={pageWrap} data-testid="ops-kiosk-touch-models-page">
+    <div className="ops-kiosk-touch-chrome__page" data-testid="ops-kiosk-touch-models-page">
       <OpsPageTitleHeader
         title="KIOSK touch — modelos de tela v1"
         versionLabel={PAGE_VERSION}
-        containerStyle={{ marginBottom: 12 }}
-        titleStyle={{ color: "#0f172a" }}
-        versionBadgeStyle={{
-          border: "1px solid #38bdf8",
-          background: "#e0f2fe",
-          color: "#0c4a6e",
-        }}
+        containerStyle={titleHeaderContainer}
+        titleStyle={titleHeaderTitle}
+        versionBadgeStyle={titleHeaderBadge}
       />
 
-      <p style={intro}>
+      <p className="ops-kiosk-touch-chrome__intro">
         Protótipo navegável Sprint 1: quatro modelos do plano global (Quick Buy, Guided Buy, Pickup Fast Lane, Partner
         Allocation). Use os botões para pré-visualizar o foco de cada modelo e os links para abrir fluxos existentes no
         lab.
       </p>
 
-      <div style={definitionsToolbar}>
-        <button type="button" onClick={reloadModelDefinitions} style={reloadDefinitionsBtn}>
+      <div className="ops-kiosk-touch-chrome__definitions-toolbar">
+        <button type="button" onClick={reloadModelDefinitions} className="ops-kiosk-touch-chrome__reload-btn">
           Recarregar definições
         </button>
-        <span style={definitionsToolbarHint}>
-          Relê <code style={definitionsToolbarCode}>{MODEL_DEFINITIONS_LS_KEY}</code> a partir do{" "}
-          <code style={definitionsToolbarCode}>localStorage</code> sem refrescar a página.
+        <span className="ops-kiosk-touch-chrome__toolbar-hint">
+          Relê <code className="ops-kiosk-touch-chrome__toolbar-code">{MODEL_DEFINITIONS_LS_KEY}</code> a partir do{" "}
+          <code className="ops-kiosk-touch-chrome__toolbar-code">localStorage</code> sem refrescar a página.
         </span>
       </div>
 
-      <div style={grid}>
+      <div className="ops-kiosk-touch-chrome__model-grid">
         {models.map((m) => {
           const isOn = active === m.id;
           return (
@@ -248,71 +253,64 @@ export default function OpsKioskTouchModelsPage() {
               key={m.id}
               type="button"
               onClick={() => setActive(m.id)}
-              style={{
-                ...card,
-                borderColor: isOn ? "#0284c7" : "#cbd5e1",
-                background: isOn ? "#e0f2fe" : "#ffffff",
-                boxShadow: isOn ? "0 0 0 2px rgba(2,132,199,0.25)" : "0 1px 2px rgba(15,23,42,0.06)",
-              }}
+              className={`ops-kiosk-touch-chrome__model-card${isOn ? " ops-kiosk-touch-chrome__model-card--active" : ""}`}
             >
-              <div style={cardTitle}>{m.title}</div>
-              <div style={cardSub}>{m.subtitle}</div>
+              <div className="ops-kiosk-touch-chrome__model-card-title">{m.title}</div>
+              <div className="ops-kiosk-touch-chrome__model-card-sub">{m.subtitle}</div>
             </button>
           );
         })}
       </div>
 
-      <section style={detailPanel} aria-live="polite">
-        <h2 style={h2}>{activeModel.title}</h2>
-        <ul style={ul}>
+      <section className="ops-kiosk-touch-chrome__detail" aria-live="polite">
+        <h2>{activeModel.title}</h2>
+        <ul className="ops-kiosk-touch-chrome__detail-list">
           {activeModel.bullets.map((line) => (
-            <li key={line} style={li}>
+            <li key={line}>
               {line}
             </li>
           ))}
         </ul>
-        <div style={row}>
-          <Link to={activeModel.primaryTo} style={ctaLink}>
+        <div className="ops-kiosk-touch-chrome__cta-row">
+          <Link to={activeModel.primaryTo} className="ops-kiosk-touch-chrome__link-primary">
             {activeModel.primaryLabel}
           </Link>
-          <Link to="/ops/sp/kiosk" style={secondaryLink}>
+          <Link to="/ops/sp/kiosk" className="ops-kiosk-touch-chrome__link-secondary">
             Kiosk OPS (SP)
           </Link>
-          <Link to="/ops/00" style={secondaryLink}>
+          <Link to="/ops/00" className="ops-kiosk-touch-chrome__link-secondary">
             Locker protótipo `/ops/00`
           </Link>
         </div>
       </section>
 
-      <section style={checklistPanel} aria-labelledby="kiosk-usability-n8-heading">
-        <h2 id="kiosk-usability-n8-heading" style={h2}>
-          Checklist usabilidade (n≥8) — Sprint 1
-        </h2>
-        <p style={checklistIntro}>
+      <section className="ops-kiosk-touch-chrome__checklist" aria-labelledby="kiosk-usability-n8-heading">
+        <h2 id="kiosk-usability-n8-heading">Checklist usabilidade (n≥8) — Sprint 1</h2>
+        <p className="ops-kiosk-touch-chrome__checklist-intro">
           Progresso: <strong>{usabilityDone}</strong> / {USABILITY_CHECKLIST.length}. Estado guardado em{" "}
           <code>localStorage</code> ({USABILITY_LS_KEY}) para sessões de revisão; exporte JSON para anexar ao daily.
         </p>
-        <ul style={checklistUl}>
+        <ul className="ops-kiosk-touch-chrome__checklist-ul">
           {USABILITY_CHECKLIST.map((row) => (
-            <li key={row.id} style={checklistLi}>
-              <label style={checkLabel}>
+            <li key={row.id} className="ops-kiosk-touch-chrome__checklist-li">
+              <label className="ops-kiosk-touch-chrome__check-label">
                 <input
                   type="checkbox"
                   checked={Boolean(usabilityChecks[row.id])}
                   onChange={() => toggleUsability(row.id)}
-                  style={checkInput}
+                  className="ops-kiosk-touch-chrome__check-input"
                 />
                 <span>{row.label}</span>
               </label>
             </li>
           ))}
         </ul>
-        <button type="button" onClick={exportUsabilityJson} style={exportBtn}>
+        <button type="button" onClick={exportUsabilityJson} className="ops-kiosk-touch-chrome__export-btn">
           Exportar checklist (JSON)
         </button>
       </section>
 
-      <p style={footerNote}>
+      <p className="ops-kiosk-touch-chrome__footer-note">
         Critério Sprint 1: modelo <strong>mínimo clicável</strong> + ligação a fluxo real ou OPS. Heurística n≥8
         acima cobre evidência leve até testes moderados com utilizadores; próximo: E2E KIOSK assistido ou estilos
         checkout conforme plano.
@@ -320,204 +318,3 @@ export default function OpsKioskTouchModelsPage() {
     </div>
   );
 }
-
-const pageWrap: CSSProperties = {
-  padding: "20px 20px 36px",
-  maxWidth: 1100,
-  margin: "0 auto",
-  color: "#0f172a",
-  background: "#f8fafc",
-  borderRadius: 16,
-  border: "1px solid #e2e8f0",
-  boxSizing: "border-box",
-};
-
-const intro: CSSProperties = {
-  fontSize: 14,
-  lineHeight: 1.55,
-  color: "#334155",
-  marginTop: 0,
-  marginBottom: 16,
-};
-
-const definitionsToolbar: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: 12,
-  marginBottom: 16,
-  padding: "12px 14px",
-  borderRadius: 12,
-  border: "1px solid #cbd5e1",
-  background: "#ffffff",
-};
-
-const reloadDefinitionsBtn: CSSProperties = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #64748b",
-  background: "#f1f5f9",
-  color: "#0f172a",
-  fontWeight: 700,
-  fontSize: 13,
-  cursor: "pointer",
-  minHeight: 44,
-};
-
-const definitionsToolbarHint: CSSProperties = {
-  fontSize: 12,
-  lineHeight: 1.45,
-  color: "#475569",
-  flex: "1 1 200px",
-};
-
-const definitionsToolbarCode: CSSProperties = {
-  fontSize: 11,
-  padding: "1px 5px",
-  borderRadius: 4,
-  background: "#e2e8f0",
-  color: "#0f172a",
-};
-
-const grid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-  gap: 12,
-  marginBottom: 20,
-};
-
-const card: CSSProperties = {
-  minHeight: 96,
-  padding: "14px 16px",
-  borderRadius: 14,
-  border: "1px solid #cbd5e1",
-  textAlign: "left" as const,
-  cursor: "pointer",
-  color: "#0f172a",
-  font: "inherit",
-  background: "#ffffff",
-};
-
-const cardTitle: CSSProperties = {
-  fontSize: 15,
-  fontWeight: 800,
-  marginBottom: 6,
-  color: "#0f172a",
-};
-
-const cardSub: CSSProperties = {
-  fontSize: 12,
-  lineHeight: 1.45,
-  color: "#475569",
-};
-
-const detailPanel: CSSProperties = {
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #e2e8f0",
-  background: "#ffffff",
-  boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
-};
-
-const h2: CSSProperties = {
-  marginTop: 0,
-  fontSize: 18,
-  fontWeight: 800,
-  color: "#0f172a",
-};
-
-const ul: CSSProperties = {
-  margin: "0 0 16px",
-  paddingLeft: 20,
-  fontSize: 13,
-  lineHeight: 1.55,
-  color: "#334155",
-};
-
-const li: CSSProperties = { marginBottom: 6 };
-
-const row: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  alignItems: "center",
-};
-
-const ctaLink: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: 44,
-  minWidth: 44,
-  padding: "10px 18px",
-  borderRadius: 12,
-  background: "#1d4ed8",
-  color: "#f8fafc",
-  fontWeight: 700,
-  fontSize: 14,
-  textDecoration: "none",
-};
-
-const secondaryLink: CSSProperties = {
-  ...ctaLink,
-  background: "#f1f5f9",
-  border: "1px solid #94a3b8",
-  color: "#0f172a",
-};
-
-const footerNote: CSSProperties = {
-  marginTop: 20,
-  fontSize: 12,
-  lineHeight: 1.55,
-  color: "#64748b",
-};
-
-const checklistPanel: CSSProperties = {
-  marginTop: 22,
-  padding: 16,
-  borderRadius: 16,
-  border: "1px solid #6ee7b7",
-  background: "#ecfdf5",
-  boxShadow: "0 1px 3px rgba(6,78,59,0.08)",
-};
-
-const checklistIntro: CSSProperties = {
-  marginTop: 0,
-  marginBottom: 12,
-  fontSize: 13,
-  lineHeight: 1.55,
-  color: "#14532d",
-};
-
-const checklistUl: CSSProperties = {
-  margin: "0 0 14px",
-  paddingLeft: 0,
-  listStyle: "none",
-  display: "grid",
-  gap: 10,
-};
-
-const checklistLi: CSSProperties = { margin: 0 };
-
-const checkLabel: CSSProperties = {
-  display: "flex",
-  gap: 10,
-  alignItems: "flex-start",
-  fontSize: 13,
-  lineHeight: 1.45,
-  cursor: "pointer",
-  color: "#14532d",
-};
-
-const checkInput: CSSProperties = { marginTop: 3, flexShrink: 0 };
-
-const exportBtn: CSSProperties = {
-  padding: "10px 16px",
-  borderRadius: 12,
-  border: "1px solid #047857",
-  background: "#059669",
-  color: "#ffffff",
-  fontWeight: 700,
-  fontSize: 13,
-  cursor: "pointer",
-};
