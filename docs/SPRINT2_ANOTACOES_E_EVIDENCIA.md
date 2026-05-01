@@ -2,7 +2,7 @@
 
 Documento vivo para **acompanhar a Sprint 2** (Fiscal + Contábil, dias 10–18 do plano 30 dias) e apontar **onde está a evidência no repositório**. Alinhar com `docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md` (secção **Sprint 2**, **gate v2**, **D10–D18**).
 
-**Carimbo da última atualização deste ficheiro:** 2026-04-30 (sessão: pytest list `status`/datas + compare por `current_id`/`previous_id`; sessões anteriores: `owner` LIKE, `keep_minimum`, P0-1b, gate v2, D18).
+**Carimbo da última atualização deste ficheiro:** 2026-04-30 (sessão: trilha **D10** — util `fiscalD10ProvidersTracker.js` + Vitest + `data-testid` em `OpsFiscalProvidersPage`; sessões anteriores: pytest list/compare, P0-1b, gate v2, D18).
 
 ---
 
@@ -10,7 +10,7 @@ Documento vivo para **acompanhar a Sprint 2** (Fiscal + Contábil, dias 10–18 
 
 | Área | Comando | Resultado esperado (lab) |
 | ---- | ------- | ------------------------- |
-| **Frontend** | `cd 01_source/frontend && npm test -- --run` | Vitest **49** testes em ficheiros `*.test.js` do projeto (incl. utilitários fiscais / Sprint 2 na tabela *Cobertura de testes* abaixo). |
+| **Frontend** | `cd 01_source/frontend && npm test -- --run` | Vitest **53** testes em ficheiros `*.test.js` do projeto (incl. utilitários fiscais / Sprint 2 na tabela *Cobertura de testes* abaixo). |
 | **Backend fiscal D15–D17** | `cd 01_source/backend/billing_fiscal_service && PYTHONPATH=. .venv/bin/pytest tests/test_accounting_approvals_*.py -q` | **18** testes: listagem (`owner`, `status`, datas), compare (últimos dois / ids explícitos), post/latest, retention/divergence, helpers diff D17. |
 
 Estes números mudam quando acrescentares testes; após cada entrega relevante, atualizar esta tabela e a **Registo de incrementos**.
@@ -41,7 +41,7 @@ Fechar **P0 fiscal/contábil** com artefactos anexáveis ao daily ou ao ZIP (`fi
 
 | Dia | Foco principal (plano) |
 | --- | ------------------------ |
-| D10 | Governança emissores / matriz país–tenant |
+| D10 | Governança emissores / matriz país–tenant (`fiscalD10ProvidersTracker.js` + checklist em `OpsFiscalProvidersPage`, `data-testid` **`ops-fiscal-d10-tracker`**) |
 | D11 | Conciliação fiscal pedido→documento; rollup `order_id` exportável |
 | D12 | Handoff contábil (parceiro / FG-1) |
 | D13 | Aceite contábil central (`POST` / `GET latest` em `routes_admin_fiscal`; ver `test_accounting_approvals_post_latest.py`) |
@@ -56,7 +56,9 @@ Fechar **P0 fiscal/contábil** com artefactos anexáveis ao daily ou ao ZIP (`fi
 
 **Pacote diário / P0-1b (ZIP `management-daily` / close):** `fiscalP01bDailyPackage.js` — `buildP01bPartnerReconciliationSlice` (agregação por `partner_id`, cruzamento opcional com snapshot D11) e `appendP01bSignedZipEntries` (GET `e2e-audit-trail`, erros assinados `SPRINT3_P0_1B_E2E_ATTACH_ERROR`, anexos `SPRINT3_E2E_AUDIT_TRAIL_*` + `P0_1B_PARTNER_RECONCILIATION_*`). **Testes:** `fiscalP01bDailyPackage.test.js` (Vitest: slice + `fetch` mockado em `appendP01bSignedZipEntries`).
 
-**UI:** `FiscalManagementDailyPage.jsx`, `FiscalAccountingClosePage.jsx`, `FiscalSprint2FinanceGatePage.jsx`, `FiscalGlobalPage.jsx`, `OpsFiscalProvidersPage.jsx` (D11 fila / export).
+**Trilha D10 (OPS):** `fiscalD10ProvidersTracker.js` — chave `localStorage`, tarefas canónicas, `d10ProgressFromTracker`, `mergeLsPatchIntoD10Tracker` (sem poluir estado com chaves estranhas). **Testes:** `fiscalD10ProvidersTracker.test.js`.
+
+**UI:** `FiscalManagementDailyPage.jsx`, `FiscalAccountingClosePage.jsx`, `FiscalSprint2FinanceGatePage.jsx`, `FiscalGlobalPage.jsx`, `OpsFiscalProvidersPage.jsx` (D10 checklist + D11 fila / export; página com `data-testid="ops-fiscal-providers-page"`).
 
 ---
 
@@ -102,6 +104,7 @@ PYTHONPATH=. .venv/bin/pytest tests/test_accounting_approvals_*.py -q
 | 2026-04-30 | Vitest mesmo ficheiro — `appendP01bSignedZipEntries`: URL `e2e-audit-trail`, erro rede, HTTP !ok, sucesso (ZIP keys). |
 | 2026-04-30 | Backend `list_accounting_approvals` — teste de filtro `owner` (padrão `%` após trim); `retention` — `keep_minimum` inválido → 400. |
 | 2026-04-30 | Backend `list_accounting_approvals` — `status` + `date_from`/`date_to` nos params; `compare` com ids explícitos `snap-cur` / `snap-prev`. |
+| 2026-04-30 | Frontend trilha **D10:** `fiscalD10ProvidersTracker.js` + Vitest; `OpsFiscalProvidersPage` usa util + `data-testid` página / tracker D10. |
 | 2026-04-30 | `vite.config.js` — `test.exclude` inclui `**/e2e/**` para `npm test` estável. |
 
 Atualizar a tabela acima quando houver novo commit relevante à Sprint 2.
@@ -110,7 +113,7 @@ Atualizar a tabela acima quando houver novo commit relevante à Sprint 2.
 
 ## Próximos passos sugeridos (prioridade)
 
-1. **Fiscal / D10:** matriz de emissores em `OpsFiscalProvidersPage` e/ou `billing_fiscal_service` — runbook `docs/runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md`.
+1. **Fiscal / D10:** Playwright smoke em `/ops/fiscal/providers` (assert `ops-fiscal-d10-tracker` + checklist); evoluir matriz em `billing_fiscal_service` — runbook `docs/runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md`.
 2. **Backend:** `pytest` com DB real ou container para `retention` com `dry_run: false` e linhas elegíveis a DELETE (hoje só dry-run / limites).
 3. **Plano:** checkpoint comité → percentuais Sprint 2 + linha na tabela **Registo de incrementos** acima e **Metodo** em `PLANO_30_DIAS_GLOBAL_POR_PERSONA.md`.
 
@@ -124,6 +127,7 @@ Atualizar a tabela acima quando houver novo commit relevante à Sprint 2.
 | `fiscalSprint2D12D13Evidence.test.js` | Vitest | D12/D13 payloads e wrapper |
 | `fiscalAccountingApprovalsHistory.test.js` | Vitest | D15–D17: CSV, `fetch` mockado (list/compare/health/retention, `!ok`) |
 | `fiscalP01bDailyPackage.test.js` | Vitest | P0-1b: `buildP01bPartnerReconciliationSlice` + `appendP01bSignedZipEntries` (`fetch` mock) |
+| `fiscalD10ProvidersTracker.test.js` | Vitest | D10: tracker default, progresso %, merge `localStorage` |
 | `tests/test_accounting_approvals_list_compare.py` | pytest | `list_accounting_approvals`, `compare_accounting_approval_snapshots` (DB fake) |
 | `tests/test_accounting_approvals_retention_divergence.py` | pytest | D17: `divergence-health`, `retention` (DB fake) |
 | `tests/test_accounting_approvals_post_latest.py` | pytest | D13/D14: `post_accounting_approval`, `get_latest_accounting_approval` |

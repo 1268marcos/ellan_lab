@@ -5,6 +5,13 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
 import { FISCAL_SCOPE_PROVIDERS_INFO, buildFiscalScopedGateTitle } from "../constants/fiscalScope";
 import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
+import {
+  FISCAL_D10_TASKS,
+  FISCAL_D10_TRACKER_KEY,
+  createDefaultD10Tracker,
+  d10ProgressFromTracker,
+  mergeLsPatchIntoD10Tracker,
+} from "../utils/fiscalD10ProvidersTracker";
 
 const BILLING_BASE =
   import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
@@ -12,15 +19,7 @@ const BILLING_BASE =
 const INTERNAL_TOKEN =
   import.meta.env.VITE_INTERNAL_TOKEN || "";
 const LATENCY_ALERT_MS = 1500;
-const FISCAL_D10_TRACKER_KEY = "ellan_ops_fiscal_d10_tracker_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
-const FISCAL_D10_TASKS = [
-  { id: "matrix", label: "Matriz pais/tenant/emissor revisada" },
-  { id: "go_no_go_br", label: "GO/NO-GO BR validado com evidência" },
-  { id: "go_no_go_pt", label: "GO/NO-GO PT validado com evidência" },
-  { id: "fallback", label: "Fallback operacional fiscal confirmado" },
-  { id: "handoff", label: "Resumo D10 pronto para handoff" },
-];
 
 function headersJson() {
   return {
@@ -63,12 +62,7 @@ export default function OpsFiscalProvidersPage() {
   const [goNoGoBusy, setGoNoGoBusy] = useState(false);
   const [ptGoNoGoBusy, setPtGoNoGoBusy] = useState(false);
   const [highlightedAnchor, setHighlightedAnchor] = useState("");
-  const [d10Tracker, setD10Tracker] = useState(() =>
-    FISCAL_D10_TASKS.reduce((acc, item) => {
-      acc[item.id] = false;
-      return acc;
-    }, {})
-  );
+  const [d10Tracker, setD10Tracker] = useState(() => createDefaultD10Tracker());
   const [d10TrackerStatus, setD10TrackerStatus] = useState("");
   const [gapItems, setGapItems] = useState([]);
   const [gapLoading, setGapLoading] = useState(false);
@@ -81,8 +75,10 @@ export default function OpsFiscalProvidersPage() {
   const brScopedSummary = withScopePrefixIfGenericSummary(brGoNoGo?.summary, "BR");
   const ptScopedSummary = withScopePrefixIfGenericSummary(ptGoNoGo?.summary, "PT");
 
-  const d10CompletedCount = FISCAL_D10_TASKS.filter((item) => Boolean(d10Tracker[item.id])).length;
-  const d10ProgressPct = Math.round((d10CompletedCount / FISCAL_D10_TASKS.length) * 100);
+  const { doneCount: d10CompletedCount, progressPct: d10ProgressPct } = useMemo(
+    () => d10ProgressFromTracker(d10Tracker),
+    [d10Tracker],
+  );
 
   async function loadStatus() {
     setLoading(true);
@@ -404,9 +400,7 @@ export default function OpsFiscalProvidersPage() {
     try {
       const raw = localStorage.getItem(FISCAL_D10_TRACKER_KEY);
       if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return;
-      setD10Tracker((prev) => ({ ...prev, ...parsed }));
+      setD10Tracker((prev) => mergeLsPatchIntoD10Tracker(prev, raw));
     } catch (_) {
       // no-op
     }
@@ -659,7 +653,7 @@ export default function OpsFiscalProvidersPage() {
     String(smokeProviderNamespace || "").toLowerCase() === "svrs_real" && smokeBatchAsync;
 
   return (
-    <div style={pageStyle}>
+    <div style={pageStyle} data-testid="ops-fiscal-providers-page">
       <section style={cardStyle}>
         <div style={crossShortcutStyle}>
           <Link to="/ops/health" style={crossShortcutLinkStyle}>
@@ -683,9 +677,11 @@ export default function OpsFiscalProvidersPage() {
           </div>
         </div>
 
-        <section style={trackerCardStyle}>
+        <section style={trackerCardStyle} data-testid="ops-fiscal-d10-tracker" aria-labelledby="ops-fiscal-d10-heading">
           <div style={trackerHeaderStyle}>
-            <h3 style={{ margin: 0 }}>Sprint 2 Fiscal - Execução D10</h3>
+            <h3 style={{ margin: 0 }} id="ops-fiscal-d10-heading">
+              Sprint 2 Fiscal - Execução D10
+            </h3>
             <span style={trackerBadgeStyle}>{d10ProgressPct}%</span>
           </div>
           <p style={{ ...mutedTextStyle, marginTop: 6 }}>
