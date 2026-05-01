@@ -2,8 +2,10 @@ import { expect, test } from "@playwright/test";
 
 /**
  * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
- * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. Extensão: **Modelo A** → `/comprar`;
- * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`). `VITE_ENABLE_OPS_ROUTES` no `webServer`.
+ * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. **Modelo A** → `/comprar`;
+ * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`);
+ * **Modelo C** → `/ops/pt/kiosk` (simulador KIOSK); **Modelo D** → `/ops/dev/slots` (alocação dev).
+ * `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
 test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
   test.beforeEach(async ({ page, context }) => {
@@ -89,5 +91,31 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page).toHaveURL(/\/checkout(?:\?|$)/, { timeout: 15_000 });
     await expect(page.getByTestId("public-checkout-invalid")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /Checkout inválido/i })).toBeVisible();
+  });
+
+  test("Modelo C — CTA primário abre simulador KIOSK OPS (PT)", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Modelo C — Pickup Fast Lane/i }).click();
+    await page.getByRole("link", { name: /Abrir kiosk OPS \(PT\)/i }).click();
+
+    await expect(page).toHaveURL(/\/ops\/pt\/kiosk/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /Simulador KIOSK — PT/i })).toBeVisible({
+      timeout: 30_000,
+    });
+  });
+
+  test("Modelo D — CTA primário abre alocação por slot (dev)", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Modelo D — Partner Allocation/i }).click();
+    await page.getByRole("link", { name: /Abrir alocação por slot \(dev\)/i }).click();
+
+    await expect(page).toHaveURL(/\/ops\/dev\/slots/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /Ops — Alocação de Produtos por Slot/i })).toBeVisible({
+      timeout: 30_000,
+    });
   });
 });
