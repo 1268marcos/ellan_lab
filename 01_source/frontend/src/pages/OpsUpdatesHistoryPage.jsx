@@ -26,6 +26,25 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-01T21:15:00-03:00",
+    date: "2026-05-01",
+    scope: "Sprint 1 — checkout público: fatia 2 CSS (Resumo/Pagamento) + E2E",
+    title: "publicCheckoutChrome — cartões + formulário; testes em summary/payment/combobox",
+    description:
+      "`publicCheckoutChrome.css` ganha layout em grelha, hero, cartões Resumo e Pagamento, highlight de produto, inputs, avisos e botões. `PublicCheckoutPage.jsx` remove ~280 linhas de objetos `*Style` inline; `data-testid` em `public-checkout-summary-card` e `public-checkout-payment-card`. Playwright `public-catalog-to-checkout` cobre também heading Pagamento e método de pagamento.",
+    uiRoutesNew: ["/checkout"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/styles/publicCheckoutChrome.css",
+      "Frontend: 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx",
+      "Frontend: 01_source/frontend/e2e/public-catalog-to-checkout.spec.ts",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/comprar",
+    directLinkLabel: "Abrir catálogo (entrada checkout)",
+  },
+  {
     dateTime: "2026-05-01T20:00:00-03:00",
     date: "2026-05-01",
     scope: "Sprint 1 — checkout público: fatia 1 de CSS + E2E",

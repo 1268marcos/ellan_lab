@@ -743,17 +743,20 @@ export default function PublicCheckoutPage() {
           <div style={containerStyle}>
           <h1 className="sr-only">Checkout</h1>
           <CheckoutSteps currentStep={0} />
-          <section data-testid="public-checkout-invalid" style={errorCardStyle}>
-            <div style={errorIconStyle}>⚠️</div>
-            <h2 style={cardTitleStyle}>Checkout inválido</h2>
-            <p style={cardTextStyle}>
+          <section
+            data-testid="public-checkout-invalid"
+            className="public-checkout-chrome__card public-checkout-chrome__card--invalid"
+          >
+            <div className="public-checkout-chrome__card-icon-lg">⚠️</div>
+            <h2 className="public-checkout-chrome__card-title">Checkout inválido</h2>
+            <p className="public-checkout-chrome__card-text">
               Faltam dados obrigatórios da seleção. Volte ao catálogo e escolha uma gaveta.
             </p>
             <Link
               to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(
                 lockerId
               )}`}
-              style={primaryButtonStyle}
+              className="public-checkout-chrome__btn-primary"
             >
               Voltar ao catálogo
             </Link>
@@ -770,10 +773,10 @@ export default function PublicCheckoutPage() {
         <div style={containerStyle}>
         <CheckoutSteps currentStep={currentStep} />
 
-        <section style={heroCardStyle}>
-          <div style={heroContentStyle}>
-            <h1 style={titleStyle}>Finalizar Reserva</h1>
-            <p style={subtitleStyle}>
+        <section className="public-checkout-chrome__hero-card">
+          <div className="public-checkout-chrome__hero-head">
+            <h1 className="public-checkout-chrome__page-title">Finalizar Reserva</h1>
+            <p className="public-checkout-chrome__subtitle">
               Confira os dados do seu pedido, escolha a forma de pagamento e confirme sua
               reserva para retirada no locker selecionado.
             </p>
@@ -781,30 +784,30 @@ export default function PublicCheckoutPage() {
           <TrustSignals />
         </section>
 
-        <div style={layoutStyle}>
-          <section style={cardStyle}>
-            <h2 style={cardTitleStyle}>📦 Resumo do Pedido</h2>
+        <div className="public-checkout-chrome__layout-grid">
+          <section className="public-checkout-chrome__card" data-testid="public-checkout-summary-card">
+            <h2 className="public-checkout-chrome__card-title">📦 Resumo do Pedido</h2>
 
             {lockerLoading ? (
-              <div style={loadingStyle}>
+              <div className="public-checkout-chrome__loading-state">
                 <div className="public-checkout-chrome__spinner" />
                 <p>Carregando locker...</p>
               </div>
             ) : lockerError ? (
-              <pre style={errorBoxStyle}>{lockerError}</pre>
+              <pre className="public-checkout-chrome__error-box">{lockerError}</pre>
             ) : locker ? (
-              <div style={{ ...summaryGridStyle, marginBottom: 18 }}>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Locker</span>
-                  <span style={summaryValueStyle}>{locker.display_name || lockerId}</span>
+              <div className="public-checkout-chrome__summary-grid public-checkout-chrome__summary-grid--locker-gap">
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Locker</span>
+                  <span className="public-checkout-chrome__summary-value">{locker.display_name || lockerId}</span>
                 </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Endereço</span>
-                  <span style={summaryValueStyle}>{formatAddress(locker)}</span>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Endereço</span>
+                  <span className="public-checkout-chrome__summary-value">{formatAddress(locker)}</span>
                 </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Métodos permitidos</span>
-                  <span style={summaryValueStyle}>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Métodos permitidos</span>
+                  <span className="public-checkout-chrome__summary-value">
                     {allowedPaymentMethods.length
                       ? allowedPaymentMethods.map(paymentMethodLabel).join(", ")
                       : "-"}
@@ -814,43 +817,43 @@ export default function PublicCheckoutPage() {
             ) : null}
 
             {productLoading ? (
-              <div style={loadingStyle}>
+              <div className="public-checkout-chrome__loading-state">
                 <div className="public-checkout-chrome__spinner" />
                 <p>Carregando produto...</p>
               </div>
             ) : productError ? (
-              <pre style={errorBoxStyle}>{productError}</pre>
+              <pre className="public-checkout-chrome__error-box">{productError}</pre>
             ) : product ? (
-              <div style={summaryGridStyle}>
-                <div style={summaryHighlightStyle}>
-                  <small style={summaryHighlightLabelStyle}>Produto selecionado</small>
-                  <div style={summaryHighlightMainRowStyle}>
-                    <div style={summaryHighlightProductStyle}>{product.name || "-"}</div>
-                    <span style={summaryHighlightMetaChipStyle}>Gaveta {slot}</span>
-                    <div style={summaryHighlightPriceStyle}>
+              <div className="public-checkout-chrome__summary-grid">
+                <div className="public-checkout-chrome__summary-highlight">
+                  <small className="public-checkout-chrome__summary-highlight-label">Produto selecionado</small>
+                  <div className="public-checkout-chrome__summary-highlight-row">
+                    <div className="public-checkout-chrome__summary-highlight-product">{product.name || "-"}</div>
+                    <span className="public-checkout-chrome__summary-meta-chip">Gaveta {slot}</span>
+                    <div className="public-checkout-chrome__summary-highlight-price">
                       {formatMoney(product.amount_cents, displayCurrency, displayLocale)}
                     </div>
                   </div>
-                  <small style={summaryHighlightHintStyle}>
+                  <small className="public-checkout-chrome__summary-highlight-hint">
                     Retirada liberada após confirmação do pagamento.
                   </small>
                 </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Região</span>
-                  <span style={summaryValueStyle}>{region}</span>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Região</span>
+                  <span className="public-checkout-chrome__summary-value">{region}</span>
                 </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Identificador do locker</span>
-                  <span style={summaryValueStyle}>{lockerId}</span>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Identificador do locker</span>
+                  <span className="public-checkout-chrome__summary-value">{lockerId}</span>
                 </div>
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Identificador do SKU</span>
-                  <span style={summaryValueStyle}>{product.sku_id || skuId}</span>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Identificador do SKU</span>
+                  <span className="public-checkout-chrome__summary-value">{product.sku_id || skuId}</span>
                 </div>
                 {useCredit ? (
-                  <div style={summaryItemStyle}>
-                    <span style={summaryLabelStyle}>Total com crédito</span>
-                    <span style={priceStyle}>
+                  <div className="public-checkout-chrome__summary-row">
+                    <span className="public-checkout-chrome__summary-label">Total com crédito</span>
+                    <span className="public-checkout-chrome__price-accent">
                       {formatMoney(
                         creditPreview?.final_amount_cents ?? product.amount_cents,
                         displayCurrency,
@@ -859,9 +862,9 @@ export default function PublicCheckoutPage() {
                     </span>
                   </div>
                 ) : null}
-                <div style={summaryItemStyle}>
-                  <span style={summaryLabelStyle}>Moeda exibida</span>
-                  <span style={summaryValueStyle}>
+                <div className="public-checkout-chrome__summary-row">
+                  <span className="public-checkout-chrome__summary-label">Moeda exibida</span>
+                  <span className="public-checkout-chrome__summary-value">
                     {displayCurrency || "-"}
                     {catalogCurrency && catalogCurrency !== displayCurrency
                       ? ` (catálogo: ${catalogCurrency})`
@@ -870,20 +873,20 @@ export default function PublicCheckoutPage() {
                 </div>
               </div>
             ) : (
-              <p style={cardTextStyle}>Produto indisponível.</p>
+              <p className="public-checkout-chrome__card-text">Produto indisponível.</p>
             )}
           </section>
 
-          <section style={cardStyle}>
-            <h2 style={cardTitleStyle}>💳 Pagamento</h2>
+          <section className="public-checkout-chrome__card" data-testid="public-checkout-payment-card">
+            <h2 className="public-checkout-chrome__card-title">💳 Pagamento</h2>
 
-            <div style={fieldGridStyle}>
-              <label style={labelStyle}>
+            <div className="public-checkout-chrome__field-grid">
+              <label className="public-checkout-chrome__field-label">
                 Método de pagamento
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
-                  style={inputStyle}
+                  className="public-checkout-chrome__field-input"
                   disabled={submitting || !allowedPaymentMethods.length}
                 >
                   {!allowedPaymentMethods.length ? (
@@ -901,12 +904,12 @@ export default function PublicCheckoutPage() {
 
 
               {paymentMethod === "MBWAY" && (
-                <label style={labelStyle}>
+                <label className="public-checkout-chrome__field-label">
                   Telefone MB WAY
                   <input
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    style={inputStyle}
+                    className="public-checkout-chrome__field-input"
                     placeholder="+351912345678"
                     disabled={submitting}
                   />
@@ -914,29 +917,29 @@ export default function PublicCheckoutPage() {
               )}
             </div>
 
-            <div style={creditPanelStyle}>
-              <label style={{ ...labelStyle, margin: 0 }}>
+            <div className="public-checkout-chrome__credit-panel">
+              <label className="public-checkout-chrome__field-label public-checkout-chrome__field-label--inline">
                 <input
                   type="checkbox"
+                  className="public-checkout-chrome__checkbox"
                   checked={useCredit}
                   onChange={(event) => setUseCredit(event.target.checked)}
                   disabled={submitting || loadingCreditPreview}
-                  style={{ marginRight: 8 }}
                 />
                 Usar crédito (aplica automaticamente o que vence primeiro)
               </label>
 
               {useCredit ? (
-                <div style={{ marginTop: 10 }}>
+                <div className="public-checkout-chrome__credit-detail">
                   {loadingCreditPreview ? (
-                    <small style={{ color: "#475569" }}>Simulando crédito disponível...</small>
+                    <small className="public-checkout-chrome__credit-hint-muted">Simulando crédito disponível...</small>
                   ) : creditPreview?.eligible ? (
-                    <small style={{ color: "#166534" }}>
+                    <small className="public-checkout-chrome__credit-hint-ok">
                       Crédito selecionado: {formatMoney(creditPreview.discount_cents, displayCurrency, displayLocale)}.
                       Total final: {formatMoney(creditPreview.final_amount_cents, displayCurrency, displayLocale)}.
                     </small>
                   ) : (
-                    <small style={{ color: "#b91c1c" }}>
+                    <small className="public-checkout-chrome__credit-hint-warn">
                       Nenhum crédito elegível no momento.
                       {creditPreview?.error_message ? ` (${creditPreview.error_message})` : ""}
                     </small>
@@ -945,11 +948,11 @@ export default function PublicCheckoutPage() {
               ) : null}
             </div>
 
-            <div style={noticeStyle}>
-              <span style={noticeIconStyle}>ℹ️</span>
+            <div className="public-checkout-chrome__notice">
+              <span className="public-checkout-chrome__notice-icon">ℹ️</span>
               <div>
                 <strong>Antes de confirmar:</strong>
-                <p style={{ margin: "4px 0 0 0" }}>
+                <p className="public-checkout-chrome__notice-text">
                   O valor final e a disponibilidade são validados novamente no servidor no momento
                   da confirmação para garantir segurança e consistência do pedido.
                 </p>
@@ -957,9 +960,9 @@ export default function PublicCheckoutPage() {
             </div>
 
             {!emailVerified ? (
-              <div style={errorBoxStyle}>
+              <div className="public-checkout-chrome__error-box">
                 <strong>E-mail não verificado.</strong>
-                <p style={{ margin: "6px 0 0 0" }}>
+                <p className="public-checkout-chrome__error-box-intro">
                   Para criar pedidos, confirme seu e-mail em{" "}
                   <Link to="/seguranca">Segurança da conta</Link>.
                 </p>
@@ -976,16 +979,16 @@ export default function PublicCheckoutPage() {
             ) : null}
 
             {submitError ? (
-              <div style={errorBoxStyle}>
+              <div className="public-checkout-chrome__error-box">
                 <strong>Erro ao processar:</strong>
-                <pre style={{ margin: "8px 0 0 0", fontSize: 12 }}>{submitError}</pre>
+                <pre className="public-checkout-chrome__error-pre">{submitError}</pre>
               </div>
             ) : null}
 
 
             {/* 15/04/2026 */}
             {simulateResult ? (
-              <pre style={okDevBoxStyle}>
+              <pre className="public-checkout-chrome__dev-json-box">
                 {JSON.stringify(simulateResult, null, 2)}
               </pre>
             ) : null}
@@ -994,6 +997,8 @@ export default function PublicCheckoutPage() {
 
 
             <button
+              type="button"
+              className="public-checkout-chrome__btn-primary"
               onClick={handleCreateOrder}
               disabled={
                 submitting ||
@@ -1008,10 +1013,6 @@ export default function PublicCheckoutPage() {
                 !emailVerified ||
                 !fiscalReadyForCheckout
               }
-              style={{
-                ...primaryButtonStyle,
-                ...(submitting ? buttonDisabledStyle : {}),
-              }}
             >
               {submitting ? (
                 <>
@@ -1020,7 +1021,7 @@ export default function PublicCheckoutPage() {
                 </>
               ) : currentStep === 3 ? (
                 <>
-                  <span style={successIconStyle}>✓</span>
+                  <span className="public-checkout-chrome__icon-success">✓</span>
                   Pedido Criado! Redirecionando...
                 </>
               ) : (
@@ -1036,6 +1037,7 @@ export default function PublicCheckoutPage() {
               <button
                 type="button"
                 data-testid="public-checkout-dev-simulate"
+                className="public-checkout-chrome__btn-danger-dev"
                 onClick={handleSimulateOnlinePaymentDev}
                 disabled={
                   loadingSimulatePayment ||
@@ -1050,11 +1052,6 @@ export default function PublicCheckoutPage() {
                   !emailVerified ||
                   !fiscalReadyForCheckout
                 }
-                style={{
-                  ...buttonDangerStyleDev,
-                  ...(loadingSimulatePayment ? buttonDisabledStyle : {}),
-                  marginTop: 12,
-                }}
               >
                 {loadingSimulatePayment
                   ? "Simulando pagamento DEV..."
@@ -1071,16 +1068,16 @@ export default function PublicCheckoutPage() {
 
 
 
-            <div style={actionsStyle}>
+            <div className="public-checkout-chrome__actions-row">
               <Link
                 to={`/comprar?region=${encodeURIComponent(region)}&locker_id=${encodeURIComponent(
                   lockerId
                 )}`}
-                style={secondaryButtonStyle}
+                className="public-checkout-chrome__btn-secondary"
               >
                 ← Voltar
               </Link>
-              <Link to="/meus-pedidos" style={secondaryButtonStyle}>
+              <Link to="/meus-pedidos" className="public-checkout-chrome__btn-secondary">
                 Meus pedidos
               </Link>
             </div>
@@ -1102,294 +1099,3 @@ const containerStyle = {
   maxWidth: 900,
   margin: "0 auto",
 };
-
-const heroCardStyle = {
-  borderRadius: 20,
-  padding: 28,
-  marginBottom: 24,
-  background: "white",
-  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-};
-
-const heroContentStyle = {
-  marginBottom: 20,
-};
-
-const titleStyle = {
-  margin: "0 0 12px 0",
-  fontSize: 32,
-  fontWeight: 800,
-  color: "#1a202c",
-};
-
-const subtitleStyle = {
-  margin: 0,
-  fontSize: 16,
-  lineHeight: 1.6,
-  color: "#4a5568",
-};
-
-const layoutStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  gap: 20,
-};
-
-const cardStyle = {
-  borderRadius: 16,
-  padding: 24,
-  background: "white",
-  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-};
-
-const errorCardStyle = {
-  ...cardStyle,
-  textAlign: "center",
-  padding: 48,
-};
-
-const errorIconStyle = {
-  fontSize: 48,
-  marginBottom: 16,
-};
-
-const cardTitleStyle = {
-  margin: "0 0 20px 0",
-  fontSize: 20,
-  fontWeight: 700,
-  color: "#1a202c",
-};
-
-const cardTextStyle = {
-  margin: 0,
-  color: "#4a5568",
-  lineHeight: 1.6,
-};
-
-const summaryGridStyle = {
-  display: "grid",
-  gap: 12,
-};
-
-const summaryHighlightStyle = {
-  padding: "12px 14px",
-  borderRadius: 12,
-  border: "1px solid #c7d2fe",
-  background: "#eef2ff",
-  display: "grid",
-  gap: 6,
-};
-
-const summaryHighlightLabelStyle = {
-  fontSize: 12,
-  color: "#4f46e5",
-  fontWeight: 700,
-  textTransform: "uppercase",
-  letterSpacing: "0.03em",
-};
-
-const summaryHighlightMainRowStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const summaryHighlightProductStyle = {
-  fontSize: 16,
-  color: "#1e1b4b",
-  fontWeight: 700,
-  lineHeight: 1.35,
-  flex: "1 1 220px",
-};
-
-const summaryHighlightMetaChipStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "3px 8px",
-  borderRadius: 999,
-  border: "1px solid rgba(79,70,229,0.24)",
-  background: "rgba(79,70,229,0.1)",
-  color: "#4338ca",
-  fontSize: 12,
-  fontWeight: 700,
-};
-
-const summaryHighlightPriceStyle = {
-  fontSize: 22,
-  color: "#3730a3",
-  fontWeight: 900,
-  lineHeight: 1.2,
-};
-
-const summaryHighlightHintStyle = {
-  fontSize: 12,
-  color: "#4338ca",
-  fontWeight: 500,
-};
-
-const summaryItemStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "12px 0",
-  borderBottom: "1px solid #e2e8f0",
-  gap: 12,
-};
-
-const summaryLabelStyle = {
-  fontSize: 14,
-  color: "#718096",
-  fontWeight: 500,
-};
-
-const summaryValueStyle = {
-  fontSize: 14,
-  color: "#1a202c",
-  fontWeight: 600,
-  textAlign: "right",
-};
-
-const priceStyle = {
-  fontSize: 24,
-  fontWeight: 800,
-  color: "#667eea",
-};
-
-const fieldGridStyle = {
-  display: "grid",
-  gap: 16,
-  marginBottom: 20,
-};
-
-const labelStyle = {
-  display: "grid",
-  gap: 8,
-  fontWeight: 600,
-  color: "#1a202c",
-  fontSize: 14,
-};
-
-const inputStyle = {
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "1px solid #cdb5e0",
-  background: "#ffffff",
-  color: "#1a202c",
-  fontSize: 15,
-  outline: "none",
-  transition: "all 0.2s",
-};
-
-const noticeStyle = {
-  padding: 16,
-  borderRadius: 12,
-  background: "#ebf8ff",
-  border: "1px solid #bee3f8",
-  display: "flex",
-  gap: 12,
-  alignItems: "flex-start",
-  marginBottom: 20,
-};
-
-const creditPanelStyle = {
-  padding: 12,
-  borderRadius: 12,
-  background: "#f8fafc",
-  border: "1px solid #e2e8f0",
-  marginBottom: 20,
-};
-
-const noticeIconStyle = {
-  fontSize: 20,
-  flexShrink: 0,
-};
-
-const primaryButtonStyle = {
-  width: "100%",
-  padding: "16px 20px",
-  borderRadius: 12,
-  border: "none",
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  color: "white",
-  fontWeight: 700,
-  fontSize: 16,
-  cursor: "pointer",
-  transition: "all 0.2s",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 8,
-};
-
-const buttonDisabledStyle = {
-  opacity: 0.6,
-  cursor: "not-allowed",
-};
-
-const secondaryButtonStyle = {
-  textDecoration: "none",
-  padding: "12px 16px",
-  borderRadius: 10,
-  border: "1px solid #e2e8f0",
-  background: "#f7fafc",
-  color: "#4a5568",
-  fontWeight: 600,
-  fontSize: 14,
-  transition: "all 0.2s",
-};
-
-const actionsStyle = {
-  display: "flex",
-  gap: 12,
-  marginTop: 16,
-  flexWrap: "wrap",
-};
-
-const errorBoxStyle = {
-  padding: 16,
-  borderRadius: 12,
-  background: "#fed7d7",
-  border: "1px solid #feb2b2",
-  color: "#c53030",
-  marginBottom: 16,
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-
-const loadingStyle = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: 12,
-  padding: 24,
-  color: "#4a5568",
-};
-
-const successIconStyle = {
-  fontSize: 20,
-};
-
-const buttonDangerStyleDev = {
-  width: "100%",
-  padding: "14px 18px",
-  borderRadius: 12,
-  border: "1px solid rgba(179,38,30,0.40)",
-  background: "#8a2323",
-  color: "white",
-  fontWeight: 700,
-  fontSize: 15,
-  cursor: "pointer",
-};
-
-const okDevBoxStyle = {
-  marginTop: 16,
-  padding: 12,
-  borderRadius: 12,
-  background: "rgba(31,122,63,0.15)",
-  border: "1px solid rgba(31,122,63,0.35)",
-  color: "#1f7a3f",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-

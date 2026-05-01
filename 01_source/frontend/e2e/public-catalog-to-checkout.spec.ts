@@ -163,7 +163,11 @@ test.describe("Jornada pública — catálogo → checkout (query mínima)", () 
     await expect(page).toHaveURL(/slot=3(?:&|$)/);
 
     await expect(page.getByTestId("public-checkout-steps")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("public-checkout-summary-card")).toBeVisible();
+    await expect(page.getByTestId("public-checkout-payment-card")).toBeVisible();
     await expect(page.getByRole("heading", { name: /Resumo do Pedido/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /Pagamento/i })).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /Método de pagamento/i })).toBeVisible();
     await expect(page.getByText(/Produto selecionado/i)).toBeVisible();
     await expect(page.getByText(/Cookie laboratório/i).first()).toBeVisible();
   });
