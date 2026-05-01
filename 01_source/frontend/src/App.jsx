@@ -33,7 +33,6 @@ const PublicAccessDeniedPage = lazy(() => import("./pages/public/PublicAccessDen
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
 const OpsDiscontinuedEllanLabPage = lazy(() => import("./pages/OpsDiscontinuedEllanLabPage"));
 const RegionPage = lazy(() => import("./pages/RegionPage"));
-const RegionPageFirst = lazy(() => import("./pages/RegionPageFirst"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
 const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage"));
 const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
@@ -1203,7 +1202,7 @@ function AppContent() {
               path="/ops/00/kiosk"
               element={
                 <OpsRoute>
-                  <RegionPageFirst region="SP" mode="kiosk" />
+                  {withBoundary("ops", <OpsDiscontinuedEllanLabPage />)}
                 </OpsRoute>
               }
             />

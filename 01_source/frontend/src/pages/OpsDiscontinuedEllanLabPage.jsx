@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 /**
- * Destino para rotas OPS que expunham protótipos legados (ex.: `/ops/00` — LockerDashboardFirst).
+ * Destino para rotas OPS que expunham protótipos legados: `/ops/00` (LockerDashboardFirst), `/ops/00/kiosk` (RegionPageFirst).
  * Não importar código legado aqui; manter esta página enxuta.
  */
 export default function OpsDiscontinuedEllanLabPage() {
@@ -23,8 +23,8 @@ export default function OpsDiscontinuedEllanLabPage() {
         Descontinuado para o estágio atual do projeto ELLAN LAB
       </p>
       <p style={{ marginTop: 12, color: "#475569", lineHeight: 1.55 }}>
-        O protótipo associado a esta rota foi isolado do fluxo principal. Use o locker OPS atual ou o cockpit de modelos
-        KIOSK conforme o plano Sprint 1.
+        As rotas <code>/ops/00</code> e <code>/ops/00/kiosk</code> deixaram de expor protótipos legados. Use o locker OPS
+        atual ou o cockpit de modelos KIOSK conforme o plano Sprint 1.
       </p>
       <ul style={{ marginTop: 20, paddingLeft: 20, color: "#334155", lineHeight: 1.6 }}>
         <li>

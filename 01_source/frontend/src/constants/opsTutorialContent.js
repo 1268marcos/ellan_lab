@@ -404,11 +404,16 @@ export const OPS_TUTORIALS_BY_PATH = {
   },
   "/ops/00/kiosk": {
     title: "Tutorial rápido - ops/00/kiosk",
-    subtitle: "Kiosk em ambiente base/controlado.",
+    subtitle: "Kiosk legado descontinuado — mesma mensagem ELLAN LAB que `/ops/00`.",
     sections: [
-      { title: "1) Objetivo da tela", items: ["Validar comportamento kiosk em cenário controlado."] },
-      { title: "2) Fluxo recomendado de uso", items: ["Execute teste guiado e confirme resposta esperada dos componentes."] },
-      { title: "3) Dicas rápidas", items: ["Mantenha rastreio de cenário/teste para reprodução posterior."] },
+      {
+        title: "1) Estado atual",
+        items: [
+          "A rota `/ops/00/kiosk` exibe a página de descontinuação; `RegionPageFirst` está em `src/pages/legacy/` sem ligação ativa.",
+        ],
+      },
+      { title: "2) Onde operar kiosk", items: ["Use `/ops/sp/kiosk` ou `/ops/pt/kiosk` para simuladores atuais."] },
+      { title: "3) Protótipos touch", items: ["`/ops/kiosk-touch-models` para modelos A–D."] },
     ],
   },
 };

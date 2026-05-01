@@ -1,11 +1,15 @@
-// 01_source/frontend/src/pages/RegionPage.jsx
+// 01_source/frontend/src/pages/legacy/RegionPageFirst.jsx
+/**
+ * LEGADO — não ligar em `App.jsx`. A rota `/ops/00/kiosk` mostra `OpsDiscontinuedEllanLabPage`.
+ * Kiosk “first” SP; mantido para referência / correções isoladas.
+ */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import OpsPageTitleHeader from "../../components/OpsPageTitleHeader";
 
-import ManualPickupPanel from "../components/ManualPickupPanel.jsx";
+import ManualPickupPanel from "../../components/ManualPickupPanel.jsx";
 
-import EmailReceiptModal from "../components/EmailReceiptModal.jsx";
+import EmailReceiptModal from "../../components/EmailReceiptModal.jsx";
 
 const ORDER_PICKUP_BASE =
   import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
