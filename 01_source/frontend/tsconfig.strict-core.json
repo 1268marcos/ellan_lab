@@ -78,6 +78,7 @@
     "src/utils/opsDateTimeFormat.ts",
     "src/hooks/useOpsWindowPreset.ts",
     "src/components/OpsActionButton.tsx",
+    "src/components/OpsScenarioPresets.tsx",
     "src/pages/OpsKioskTouchModelsPage.tsx",
     "src/pages/OpsDevErrorsPageBody.tsx",
     "src/pages/OpsDevErrorsPage.tsx",

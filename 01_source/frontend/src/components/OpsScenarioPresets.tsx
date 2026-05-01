@@ -1,6 +1,21 @@
-import React from "react";
+import React, { type CSSProperties } from "react";
 
-const TONE_STYLE = {
+type PresetTone = "success" | "warn" | "error";
+
+export type OpsScenarioPresetItem = {
+  id: string;
+  tone: PresetTone;
+  label: string;
+  onClick: () => void;
+};
+
+export interface OpsScenarioPresetsProps {
+  items: OpsScenarioPresetItem[];
+  disabled?: boolean;
+  style?: CSSProperties;
+}
+
+const TONE_STYLE: Record<PresetTone, CSSProperties> = {
   success: {
     border: "1px solid rgba(22,163,74,0.45)",
     background: "rgba(22,163,74,0.2)",
@@ -18,7 +33,7 @@ const TONE_STYLE = {
   },
 };
 
-function buttonStyle(tone) {
+function buttonStyle(tone: PresetTone): CSSProperties {
   return {
     padding: "8px 12px",
     borderRadius: 999,
@@ -31,29 +46,8 @@ function buttonStyle(tone) {
 
 /**
  * Grupo de presets de cenário da camada OPS com cores padronizadas.
- *
- * Cores/tom:
- * - `success`: cenário saudável/fluxo esperado (verde)
- * - `warn`: cenário de atenção/revisão (âmbar)
- * - `error`: cenário crítico/diagnóstico (vermelho)
- *
- * Estrutura esperada em `items`:
- * - `{ id: string, tone: "success"|"warn"|"error", label: string, onClick: () => void }`
- *
- * Exemplo:
- * `<OpsScenarioPresets
- *   items={[
- *     { id: "ok", tone: "success", label: "Preset verde", onClick: onHealthy },
- *     { id: "review", tone: "warn", label: "Preset âmbar", onClick: onReview },
- *     { id: "critical", tone: "error", label: "Preset vermelho", onClick: onCritical },
- *   ]}
- * />`
- *
- * Dicas de uso:
- * - Use `style` para encaixe de layout local (margem/grid/flex), sem redefinir as cores.
- * - Use `disabled` para bloquear interação durante chamadas em andamento.
  */
-export default function OpsScenarioPresets({ items, disabled = false, style }) {
+export default function OpsScenarioPresets({ items, disabled = false, style }: OpsScenarioPresetsProps) {
   const list = Array.isArray(items) ? items : [];
   if (!list.length) return null;
 
