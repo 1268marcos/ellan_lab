@@ -29,10 +29,12 @@ import {
   SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
 } from "../utils/fiscalSprint2FinanceGate";
 import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
+import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
+import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAcceptance } from "../utils/fiscalSprint2D12D13Evidence";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.9-s3-partner-audit-mirror-zip";
+const PAGE_VERSION = "fiscal/management-daily v1.0.11-d12-d13-sprint2-evidence";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -252,6 +254,16 @@ export default function FiscalManagementDailyPage() {
 
   const d13ChecklistDoneCount = d13CriticalChecklist.filter((item) => Boolean(d13ChecklistState[item.id])).length;
 
+  const d11OrderIdRollup = useMemo(() => {
+    if (!d11Handoff) return null;
+    const embedded = d11Handoff.order_id_rollup;
+    if (embedded && typeof embedded === "object" && Array.isArray(embedded.orders)) {
+      return embedded;
+    }
+    const items = Array.isArray(d11Handoff.items) ? d11Handoff.items : [];
+    return buildD11OrderIdRollupFromGapRows(items);
+  }, [d11Handoff]);
+
   async function loadData() {
     if (!INTERNAL_TOKEN) {
       setError("Token interno ausente/inválido (422/403). Configure VITE_INTERNAL_TOKEN com o valor correto.");
@@ -310,7 +322,18 @@ export default function FiscalManagementDailyPage() {
             severity: d11Handoff?.summary?.severity || {},
             unique_partners: Number(d11Handoff?.summary?.unique_partners || 0),
             unique_batches: Number(d11Handoff?.summary?.unique_batches || 0),
+            unique_orders_with_gaps: Number(
+              d11Handoff?.summary?.unique_orders_with_gaps ?? d11OrderIdRollup?.unique_orders_with_gaps ?? 0,
+            ),
             filters: d11Handoff?.filters || {},
+            order_id_rollup_summary: d11OrderIdRollup
+              ? {
+                  scope: d11OrderIdRollup.scope,
+                  generated_at: d11OrderIdRollup.generated_at,
+                  unique_orders_with_gaps: d11OrderIdRollup.unique_orders_with_gaps,
+                  top_orders: d11OrderIdRollup.orders.slice(0, 15),
+                }
+              : null,
           }
         : null,
     };
@@ -335,6 +358,9 @@ export default function FiscalManagementDailyPage() {
         readiness_version: String(stubReadiness?.readiness_version || "-"),
         d11_total_items: Number(d11Handoff?.summary?.total_items || 0),
         d11_generated_at: String(d11Handoff?.generated_at || "-"),
+        d11_unique_orders_with_gaps: Number(
+          d11Handoff?.summary?.unique_orders_with_gaps ?? d11OrderIdRollup?.unique_orders_with_gaps ?? 0,
+        ),
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -720,11 +746,48 @@ export default function FiscalManagementDailyPage() {
 
   function exportAccountingApprovalJson() {
     const nowIso = new Date().toISOString();
-    const payload = buildAccountingApprovalPayload(nowIso);
+    const inner = buildAccountingApprovalPayload(nowIso);
+    const wrapped = wrapSprint2D13AccountingAcceptance(inner, nowIso, "fiscal/management-daily");
     const ts = nowIso.replace(/[:.]/g, "-");
     const day = toAuditDayStamp(nowIso);
-    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`, payload);
-    setStatus("Aprovação contábil do dia exportada em JSON.");
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D13_ACCOUNTING_ACCEPTANCE_${ts}.json`, wrapped);
+    setStatus("Evidência D13 exportada (SPRINT2_D13_ACCOUNTING_ACCEPTANCE_*.json). POST ao backend continua com o corpo FISCAL_ACCOUNTING_DAILY_APPROVAL.");
+    window.setTimeout(() => setStatus(""), 3200);
+  }
+
+  function exportD12AccountingHandoffJson() {
+    if (!stubReadiness) {
+      setStatus("Carregue o readiness FG-1 antes de exportar o handoff D12.");
+      window.setTimeout(() => setStatus(""), 3200);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    const payload = buildSprint2D12AccountingHandoffEvidence({
+      generatedAt: nowIso,
+      source: "fiscal/management-daily",
+      stubReadiness,
+      catalog,
+      matrix,
+      d11Handoff,
+    });
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D12_ACCOUNTING_HANDOFF_${ts}.json`, payload);
+    setStatus("Evidência D12 exportada (SPRINT2_D12_ACCOUNTING_HANDOFF_*.json).");
+    window.setTimeout(() => setStatus(""), 2200);
+  }
+
+  function exportD11OrderIdRollupJson() {
+    if (!d11OrderIdRollup) {
+      setStatus("Sem rollup D11: publique o lote em ops/fiscal/providers e recarregue.");
+      window.setTimeout(() => setStatus(""), 3200);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D11_ORDER_ID_ROLLUP_${ts}.json`, d11OrderIdRollup);
+    setStatus("Export JSON rollup D11 por order_id (evidência Sprint 2).");
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -766,6 +829,37 @@ export default function FiscalManagementDailyPage() {
       [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_MANAGEMENT_PAYLOAD_${ts}.json`]: strToU8(JSON.stringify(signedFiscalPayload, null, 2)),
       [`${DAILY_AUDIT_PREFIX}_${day}_FISCAL_ACCOUNTING_APPROVAL_${ts}.json`]: strToU8(JSON.stringify(signedApprovalPayload, null, 2)),
     };
+    try {
+      if (stubReadiness) {
+        const d12Evidence = buildSprint2D12AccountingHandoffEvidence({
+          generatedAt: nowIso,
+          source: "fiscal/management-daily",
+          stubReadiness,
+          catalog,
+          matrix,
+          d11Handoff,
+        });
+        const signedD12 = await buildSignedPayload(d12Evidence);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D12_ACCOUNTING_HANDOFF_${ts}.json`] = strToU8(JSON.stringify(signedD12, null, 2));
+      }
+    } catch {
+      // D12 opcional
+    }
+    try {
+      const d13Evidence = wrapSprint2D13AccountingAcceptance(approvalPayload, nowIso, "fiscal/management-daily");
+      const signedD13Evidence = await buildSignedPayload(d13Evidence);
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D13_ACCOUNTING_ACCEPTANCE_${ts}.json`] = strToU8(JSON.stringify(signedD13Evidence, null, 2));
+    } catch {
+      // D13 opcional
+    }
+    try {
+      if (d11Handoff && d11OrderIdRollup) {
+        const signedRollup = await buildSignedPayload(d11OrderIdRollup);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D11_ORDER_ID_ROLLUP_${ts}.json`] = strToU8(JSON.stringify(signedRollup, null, 2));
+      }
+    } catch {
+      // rollup opcional no pacote
+    }
     if (INTERNAL_TOKEN) {
       try {
         const historyBundle = await fetchConsolidatedAccountingApprovals({
@@ -921,7 +1015,7 @@ export default function FiscalManagementDailyPage() {
     }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + D16 + P0-1b + Sprint 4 (matriz + Go/No-Go resumo + pilotos, se houver) + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit (se gravados) quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1103,12 +1197,56 @@ export default function FiscalManagementDailyPage() {
                   <span style={chipStyle}>ERROR: {Number(d11Handoff?.summary?.severity?.ERROR || 0)}</span>
                   <span style={chipStyle}>WARN: {Number(d11Handoff?.summary?.severity?.WARN || 0)}</span>
                   <span style={chipStyle}>INFO: {Number(d11Handoff?.summary?.severity?.INFO || 0)}</span>
+                  <span style={chipStyle}>
+                    Pedidos c/ gap: {Number(d11Handoff?.summary?.unique_orders_with_gaps ?? d11OrderIdRollup?.unique_orders_with_gaps ?? 0)}
+                  </span>
                 </div>
+                {d11OrderIdRollup && d11OrderIdRollup.orders.length ? (
+                  <>
+                    <h4 style={{ ...boxTitleStyle, marginTop: 14, marginBottom: 8, fontSize: 15 }}>D11 — fila por order_id (P0 conciliação)</h4>
+                    <div style={toolbarStyle}>
+                      <button type="button" onClick={exportD11OrderIdRollupJson} style={buttonStyle}>
+                        Exportar rollup order_id (JSON)
+                      </button>
+                      <Link to="/ops/fiscal/providers" style={shortcutLinkStyle}>
+                        Abrir ops/fiscal/providers (D11)
+                      </Link>
+                    </div>
+                    <div style={{ overflowX: "auto", marginTop: 8 }}>
+                      <table style={historyTableStyle}>
+                        <thead>
+                          <tr>
+                            <th style={historyThStyle}>order_id</th>
+                            <th style={historyThStyle}># gaps</th>
+                            <th style={historyThStyle}>ERROR</th>
+                            <th style={historyThStyle}>WARN</th>
+                            <th style={historyThStyle}>INFO</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {d11OrderIdRollup.orders.slice(0, 15).map((o) => (
+                            <tr key={o.order_id}>
+                              <td style={historyTdStyle}>
+                                <code>{o.order_id}</code>
+                              </td>
+                              <td style={historyTdStyle}>{o.gap_count}</td>
+                              <td style={historyTdStyle}>{o.by_severity.ERROR || 0}</td>
+                              <td style={historyTdStyle}>{o.by_severity.WARN || 0}</td>
+                              <td style={historyTdStyle}>{o.by_severity.INFO || 0}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : null}
                 <small style={mutedTextStyle}>
-                  Este snapshot D11 já entra automaticamente nos payloads JSON/ZIP do handoff contábil diário. O pacote .zip inclui também Sprint 3{" "}
-                  <strong>P0-1b</strong>: <code>SPRINT3_E2E_AUDIT_TRAIL</code> + <code>P0_1B_PARTNER_RECONCILIATION</code> (mesmo padrão SHA-256), com{" "}
-                  <code>d11_cross_check</code> quando o lote D11 estiver carregado. Com dados no browser, anexa ainda Sprint 4 (matriz/pilotos) e carimbo P0-3 (
-                  <code>SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH</code>) de <code>fiscal/incident-response</code>.
+                  Este snapshot D11 já entra automaticamente nos payloads JSON/ZIP do handoff contábil diário. Com rollup por <code>order_id</code>, o ZIP inclui{" "}
+                  <code>SPRINT2_D11_ORDER_ID_ROLLUP_*.json</code> assinado (SHA-256). O mesmo padrão de evidência nomeada aplica-se a{" "}
+                  <code>SPRINT2_D12_ACCOUNTING_HANDOFF_*</code> (handoff contábil + contexto FG-1) e <code>SPRINT2_D13_ACCOUNTING_ACCEPTANCE_*</code> (aceite + checklist
+                  crítico). O pacote .zip inclui também Sprint 3 <strong>P0-1b</strong>: <code>SPRINT3_E2E_AUDIT_TRAIL</code> +{" "}
+                  <code>P0_1B_PARTNER_RECONCILIATION</code> (SHA-256), com <code>d11_cross_check</code> quando o lote D11 estiver carregado. Com dados no browser, anexa
+                  ainda Sprint 4 (matriz/pilotos) e carimbo P0-3 (<code>SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH</code>) de <code>fiscal/incident-response</code>.
                 </small>
               </>
             ) : (
@@ -1116,6 +1254,11 @@ export default function FiscalManagementDailyPage() {
                 Nenhum lote D11 encontrado no navegador. Publique o lote em `ops/fiscal/providers` e clique em "Recarregar lote D11".
               </small>
             )}
+            <div style={{ ...toolbarStyle, marginTop: 12 }}>
+              <button type="button" onClick={exportD12AccountingHandoffJson} style={buttonStyle} disabled={!stubReadiness}>
+                Export handoff D12 (JSON)
+              </button>
+            </div>
           </div>
         ) : null}
         {!error ? (
@@ -1419,7 +1562,7 @@ export default function FiscalManagementDailyPage() {
                 Salvar aceite no backend (multiusuário)
               </button>
               <button type="button" onClick={() => exportAccountingApprovalJson()} style={buttonStyle}>
-                Exportar aprovação contábil (JSON)
+                Exportar aceite D13 (SPRINT2_D13_*.json)
               </button>
             </div>
           </div>

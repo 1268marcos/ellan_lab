@@ -19,10 +19,16 @@ import {
   SPRINT2_FINANCE_GATE_V2_THRESHOLDS,
 } from "../utils/fiscalSprint2FinanceGate";
 import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
+import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
+import {
+  buildExecutiveAccountingApprovalInnerForClose,
+  buildSprint2D12AccountingHandoffEvidence,
+  wrapSprint2D13AccountingAcceptance,
+} from "../utils/fiscalSprint2D12D13Evidence";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.2.4-s3-partner-mirror-zip";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.6-d12-d13-exec-evidence-zip";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
@@ -356,6 +362,47 @@ export default function FiscalAccountingClosePage() {
           source: "fiscal/accounting-close",
           zipEntries,
         });
+        if (d11Snapshot) {
+          const embedded = d11Snapshot.order_id_rollup;
+          const items = Array.isArray(d11Snapshot.items) ? d11Snapshot.items : [];
+          const rollup =
+            embedded && typeof embedded === "object" && Array.isArray(embedded.orders)
+              ? embedded
+              : buildD11OrderIdRollupFromGapRows(items);
+          const signedRollup = await buildSignedPayload(rollup);
+          zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_${ts}.json`] = strToU8(
+            JSON.stringify(signedRollup, null, 2),
+          );
+        }
+        if (stubReadiness) {
+          const d12Exec = buildSprint2D12AccountingHandoffEvidence({
+            generatedAt: nowIso,
+            source: "fiscal/accounting-close",
+            stubReadiness,
+            catalog: null,
+            matrix: null,
+            d11Handoff: d11Snapshot,
+          });
+          const signedD12Exec = await buildSignedPayload(d12Exec);
+          zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_${ts}.json`] = strToU8(
+            JSON.stringify(signedD12Exec, null, 2),
+          );
+        }
+        const d13Inner = buildExecutiveAccountingApprovalInnerForClose({
+          nowIso,
+          gateDecision,
+          stubReadiness,
+          passedChecks,
+          readinessChecksLength: readinessChecks.length,
+          failedChecks,
+          approvalDraft,
+          d11Snapshot,
+        });
+        const d13Exec = wrapSprint2D13AccountingAcceptance(d13Inner, nowIso, "fiscal/accounting-close");
+        const signedD13Exec = await buildSignedPayload(d13Exec);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_${ts}.json`] = strToU8(
+          JSON.stringify(signedD13Exec, null, 2),
+        );
       } catch (err) {
         const signedErr = await buildSignedPayload({
           scope: "SPRINT3_P0_1B_E2E_ATTACH_ERROR",
@@ -493,7 +540,7 @@ export default function FiscalAccountingClosePage() {
     }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D18 + matriz Sprint 4 + resumo Go/No-Go Sprint 4 + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit (se gravados) quando houver no browser.",
+      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D11 rollup (`SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*`) + D12/D13 executivos (`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`, `SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`) + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -547,7 +594,7 @@ export default function FiscalAccountingClosePage() {
           <button type="button" onClick={() => void exportZip()} style={buttonStyle} disabled={loading}>Exportar ZIP auditável</button>
         </div>
         <small style={mutedTextStyle}>
-          O ZIP alinha ao handoff único do sprint: com token e dados no browser, inclui P0-1b (E2E + fatia parceiro + D11), matriz Sprint 4 (EXEC), resumo assinado <code>SPRINT4_GO_NO_GO_REGISTER</code> (decisão + UAT KIOSK + % matriz), histórico de pilotos e carimbo P0-3 — alinhado ao pacote diário em management/ops.
+          O ZIP alinha ao handoff único do sprint: com token e dados no browser, inclui P0-1b (E2E + fatia parceiro + D11), <code>SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*</code> quando o lote D11 existir, <code>SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*</code> (FG-1 + D11), <code>SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*</code> (rascunho aceite local), matriz Sprint 4 (EXEC), resumo assinado <code>SPRINT4_GO_NO_GO_REGISTER</code> (decisão + UAT KIOSK + % matriz), histórico de pilotos e carimbo P0-3 — alinhado ao pacote diário em management/ops.
         </small>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
         {error ? <div style={errorStyle}>{error}</div> : null}
