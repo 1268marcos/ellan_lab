@@ -9,6 +9,8 @@ interface OpsPageTitleHeaderProps {
   versionTitle?: string;
   titleStyle?: CSSProperties;
   containerStyle?: CSSProperties;
+  /** Sobrepõe o badge de versão (ex.: páginas com fundo claro). */
+  versionBadgeStyle?: CSSProperties;
 }
 
 export default function OpsPageTitleHeader({
@@ -18,17 +20,19 @@ export default function OpsPageTitleHeader({
   versionTitle = "",
   titleStyle = {},
   containerStyle = {},
+  versionBadgeStyle: versionBadgeOverride = {},
 }: OpsPageTitleHeaderProps) {
+  const versionBadgeMerged = { ...defaultVersionBadgeStyle, ...versionBadgeOverride };
   return (
     <div style={{ ...baseContainerStyle, ...containerStyle }}>
       <h1 style={{ ...baseTitleStyle, ...titleStyle }}>{title}</h1>
       {versionLabel ? (
         versionTo ? (
-          <Link to={versionTo} style={versionBadgeStyle} title={versionTitle || "Abrir política de versionamento"}>
+          <Link to={versionTo} style={versionBadgeMerged} title={versionTitle || "Abrir política de versionamento"}>
             {versionLabel}
           </Link>
         ) : (
-          <span style={versionBadgeStyle}>{versionLabel}</span>
+          <span style={versionBadgeMerged}>{versionLabel}</span>
         )
       ) : null}
       <OpsRouteHelpButton />
@@ -49,7 +53,7 @@ const baseTitleStyle: CSSProperties = {
   marginBottom: 0,
 };
 
-const versionBadgeStyle: CSSProperties = {
+const defaultVersionBadgeStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   padding: "3px 8px",

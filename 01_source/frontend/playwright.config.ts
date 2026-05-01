@@ -25,6 +25,7 @@ export default defineConfig({
         env: {
           ...process.env,
           VITE_DEV_BYPASS_AUTH: process.env.VITE_DEV_BYPASS_AUTH || "true",
+          VITE_ENABLE_OPS_ROUTES: process.env.VITE_ENABLE_OPS_ROUTES || "true",
           VITE_ORDER_PICKUP_BASE_URL: process.env.VITE_ORDER_PICKUP_BASE_URL || "http://127.0.0.1:8003",
           VITE_GATEWAY_BASE_URL: process.env.VITE_GATEWAY_BASE_URL || "http://127.0.0.1:8000",
           VITE_RUNTIME_BASE_URL: process.env.VITE_RUNTIME_BASE_URL || "http://127.0.0.1:8200",

@@ -25,6 +25,17 @@ PYTHONPATH=. .venv/bin/pytest tests/ -q
 ```
 Alternativa: `/home/marcos/ellan_lab/.venv/bin/pytest` com o mesmo `cd` e `PYTHONPATH=.` .
 
+# Três backends — `pytest --collect-only` de uma vez
+Na raiz do repo: `make test-collect` (billing + order_pickup + payment_gateway). O
+`payment_gateway` precisa do **seu** `.venv` com `pip install -r requirements.txt` (não
+misturar com o venv do billing). CI: `.github/workflows/backend-test-collect.yml`.
+
+# Contrato pagamento → runtime / lifecycle
+`make test-payment-contract` — pytest em slice gateway (`LockerBackendClient`) + pickup
+(`LifecycleClient` + hook interno). Deploy mínimo Compose: `deploy/compose-minimal-stack.sh`;
+baseline cloud: `deploy/README.md` + `deploy/ecs/taskdef-payment-gateway.example.json`.
+E2E compose (desenho): `docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md`.
+
 # Dicas de ouro para sua produtividade
     - Desafio do TDAH	        Solução com Claude Code
     - Dificuldade de começar    Comece com claude "explique este código"

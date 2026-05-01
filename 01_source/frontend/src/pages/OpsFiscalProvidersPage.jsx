@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { getSeverityBadgeStyle } from "../components/opsVisualTokens";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { withScopePrefixIfGenericSummary } from "../utils/fiscalScopeSummary";
 import { FISCAL_SCOPE_PROVIDERS_INFO, buildFiscalScopedGateTitle } from "../constants/fiscalScope";
+import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
 
 const BILLING_BASE =
   import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
@@ -507,6 +508,12 @@ export default function OpsFiscalProvidersPage() {
     return matchOrder && matchPartner && matchBatch && matchStatus;
   });
 
+  const filteredGapExportRows = useMemo(() => buildGapExportRows(filteredGapItems), [filteredGapItems]);
+  const d11OrderIdRollup = useMemo(
+    () => buildD11OrderIdRollupFromGapRows(filteredGapExportRows),
+    [filteredGapExportRows],
+  );
+
   function buildGapExportRows(rows) {
     return rows.map((item) => {
       const details = item?.details_json && typeof item.details_json === "object" ? item.details_json : {};
@@ -539,7 +546,7 @@ export default function OpsFiscalProvidersPage() {
   }
 
   function exportGapsJson() {
-    const rows = buildGapExportRows(filteredGapItems);
+    const rows = filteredGapExportRows;
     const content = JSON.stringify(
       {
         exported_at: new Date().toISOString(),
@@ -561,7 +568,7 @@ export default function OpsFiscalProvidersPage() {
   }
 
   function exportGapsCsv() {
-    const rows = buildGapExportRows(filteredGapItems);
+    const rows = filteredGapExportRows;
     const headers = [
       "id",
       "gap_type",
@@ -591,8 +598,20 @@ export default function OpsFiscalProvidersPage() {
     window.setTimeout(() => setGapExportStatus(""), 2200);
   }
 
+  function exportD11OrderIdRollupJson() {
+    const content = JSON.stringify(d11OrderIdRollup, null, 2);
+    downloadTextFile(
+      `SPRINT2_D11_ORDER_ID_ROLLUP_${new Date().toISOString().replaceAll(":", "-")}.json`,
+      "application/json;charset=utf-8",
+      content,
+    );
+    setGapExportStatus("Export JSON rollup por order_id gerado.");
+    window.setTimeout(() => setGapExportStatus(""), 2200);
+  }
+
   function publishD11HandoffToAccounting() {
-    const rows = buildGapExportRows(filteredGapItems);
+    const rows = filteredGapExportRows;
+    const rollup = { ...d11OrderIdRollup, generated_at: new Date().toISOString() };
     const severityCount = rows.reduce(
       (acc, row) => {
         const sev = String(row?.severity || "UNKNOWN").toUpperCase();
@@ -616,7 +635,9 @@ export default function OpsFiscalProvidersPage() {
         severity: severityCount,
         unique_partners: Array.from(new Set(rows.map((row) => String(row.partner_id || "").trim()).filter(Boolean))).length,
         unique_batches: Array.from(new Set(rows.map((row) => String(row.batch_id || "").trim()).filter(Boolean))).length,
+        unique_orders_with_gaps: rollup.unique_orders_with_gaps,
       },
+      order_id_rollup: rollup,
       items: rows,
     };
     try {
@@ -723,6 +744,9 @@ export default function OpsFiscalProvidersPage() {
             <button type="button" onClick={exportGapsJson} style={buttonGhostStyle} disabled={!filteredGapItems.length}>
               Exportar JSON (lote)
             </button>
+            <button type="button" onClick={exportD11OrderIdRollupJson} style={buttonGhostStyle} disabled={!filteredGapItems.length}>
+              Exportar rollup order_id (JSON)
+            </button>
             <button
               type="button"
               onClick={publishD11HandoffToAccounting}
@@ -737,6 +761,44 @@ export default function OpsFiscalProvidersPage() {
           </div>
           {gapError ? <pre style={errorStyle}>{gapError}</pre> : null}
           {gapExportStatus ? <small style={{ ...smallStyle, color: "#93c5fd" }}>{gapExportStatus}</small> : null}
+          {filteredGapItems.length ? (
+            <div style={d11RollupCardStyle}>
+              <div style={trackerHeaderStyle}>
+                <h4 style={{ margin: 0, fontSize: 14 }}>Fila P0 por order_id (rollup D11)</h4>
+                <span style={trackerBadgeStyle}>{d11OrderIdRollup.unique_orders_with_gaps} pedidos</span>
+              </div>
+              <p style={{ ...mutedTextStyle, marginTop: 6, marginBottom: 8 }}>
+                Pedidos com ≥1 gap no lote filtrado; ordenação por contagem. Publicar handoff inclui este rollup em{" "}
+                <code>localStorage</code> para <Link to="/fiscal/management-daily">fiscal/management-daily</Link>.
+              </p>
+              <div style={tableWrapStyle}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>order_id</th>
+                      <th style={thStyle}># gaps</th>
+                      <th style={thStyle}>ERROR</th>
+                      <th style={thStyle}>WARN</th>
+                      <th style={thStyle}>INFO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {d11OrderIdRollup.orders.slice(0, 12).map((o) => (
+                      <tr key={o.order_id}>
+                        <td style={tdStyle}>
+                          <code>{o.order_id}</code>
+                        </td>
+                        <td style={tdStyle}>{o.gap_count}</td>
+                        <td style={tdStyle}>{o.by_severity.ERROR || 0}</td>
+                        <td style={tdStyle}>{o.by_severity.WARN || 0}</td>
+                        <td style={tdStyle}>{o.by_severity.INFO || 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
           <div style={tableWrapStyle}>
             <table style={tableStyle}>
               <thead>
@@ -1279,6 +1341,11 @@ const trackerCardStyle = {
   padding: 12,
   display: "grid",
   gap: 8,
+};
+const d11RollupCardStyle = {
+  ...trackerCardStyle,
+  marginTop: 10,
+  border: "1px dashed rgba(148,163,184,0.35)",
 };
 const trackerHeaderStyle = {
   display: "flex",

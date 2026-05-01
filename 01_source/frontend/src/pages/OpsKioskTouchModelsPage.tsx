@@ -4,6 +4,11 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 type ModelId = "A" | "B" | "C" | "D";
 
+const MODEL_IDS: ModelId[] = ["A", "B", "C", "D"];
+
+/** Sobrescreve textos/rotas dos modelos; merge por id com canónicos quando a chave não existir ou o JSON for inválido. */
+const MODEL_DEFINITIONS_LS_KEY = "ops_kiosk_touch_models_definitions_v1";
+
 const USABILITY_LS_KEY = "ops_kiosk_touch_models_usability_n8_v1";
 
 const USABILITY_CHECKLIST: ReadonlyArray<{ id: string; label: string }> = [
@@ -48,14 +53,16 @@ function downloadJsonFile(filename: string, payload: unknown) {
   URL.revokeObjectURL(url);
 }
 
-const MODELS: Array<{
+type TouchModelRow = {
   id: ModelId;
   title: string;
   subtitle: string;
   bullets: string[];
   primaryTo: string;
   primaryLabel: string;
-}> = [
+};
+
+const CANONICAL_TOUCH_MODELS: TouchModelRow[] = [
   {
     id: "A",
     title: "Modelo A — Quick Buy",
@@ -106,13 +113,69 @@ const MODELS: Array<{
   },
 ];
 
-const PAGE_VERSION = "ops/kiosk-touch-models v1.1.0-usability-n8";
+function isModelId(v: unknown): v is ModelId {
+  return v === "A" || v === "B" || v === "C" || v === "D";
+}
+
+function coerceTouchModel(row: unknown): TouchModelRow | null {
+  if (typeof row !== "object" || row === null) return null;
+  const r = row as Record<string, unknown>;
+  if (!isModelId(r.id)) return null;
+  if (typeof r.title !== "string" || !r.title.trim()) return null;
+  if (typeof r.subtitle !== "string" || !r.subtitle.trim()) return null;
+  if (!Array.isArray(r.bullets)) return null;
+  const bullets = r.bullets
+    .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
+    .map((b) => b.trim());
+  if (bullets.length === 0) return null;
+  if (typeof r.primaryTo !== "string" || !r.primaryTo.trim()) return null;
+  if (typeof r.primaryLabel !== "string" || !r.primaryLabel.trim()) return null;
+  return {
+    id: r.id,
+    title: r.title.trim(),
+    subtitle: r.subtitle.trim(),
+    bullets,
+    primaryTo: r.primaryTo.trim(),
+    primaryLabel: r.primaryLabel.trim(),
+  };
+}
+
+function resolveTouchModels(): TouchModelRow[] {
+  const fallback = (): TouchModelRow[] => CANONICAL_TOUCH_MODELS.map((m) => ({ ...m, bullets: [...m.bullets] }));
+  if (typeof window === "undefined") return fallback();
+  try {
+    const raw = window.localStorage.getItem(MODEL_DEFINITIONS_LS_KEY);
+    if (!raw) return fallback();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return fallback();
+    const byId = new Map<ModelId, TouchModelRow>(
+      CANONICAL_TOUCH_MODELS.map((m) => [m.id, { ...m, bullets: [...m.bullets] }]),
+    );
+    for (const item of parsed) {
+      const coerced = coerceTouchModel(item);
+      if (coerced) byId.set(coerced.id, coerced);
+    }
+    return MODEL_IDS.map((id) => {
+      const row = byId.get(id);
+      return row ?? CANONICAL_TOUCH_MODELS.find((m) => m.id === id)!;
+    });
+  } catch {
+    return fallback();
+  }
+}
+
+const PAGE_VERSION = "ops/kiosk-touch-models v1.1.1-contrast-light";
 
 export default function OpsKioskTouchModelsPage() {
   const [active, setActive] = useState<ModelId | null>("A");
   const [usabilityChecks, setUsabilityChecks] = useState<Record<string, boolean>>(() => readUsabilityChecksFromLs());
+  const [models, setModels] = useState<TouchModelRow[]>(() => resolveTouchModels());
 
-  const activeModel = useMemo(() => MODELS.find((m) => m.id === active) ?? MODELS[0], [active]);
+  const activeModel = useMemo(() => models.find((m) => m.id === active) ?? models[0], [active, models]);
+
+  function reloadModelDefinitions() {
+    setModels(resolveTouchModels());
+  }
 
   const usabilityDone = useMemo(
     () => USABILITY_CHECKLIST.filter((row) => usabilityChecks[row.id]).length,
@@ -148,11 +211,17 @@ export default function OpsKioskTouchModelsPage() {
   }
 
   return (
-    <div style={pageWrap}>
+    <div style={pageWrap} data-testid="ops-kiosk-touch-models-page">
       <OpsPageTitleHeader
         title="KIOSK touch — modelos de tela v1"
         versionLabel={PAGE_VERSION}
         containerStyle={{ marginBottom: 12 }}
+        titleStyle={{ color: "#0f172a" }}
+        versionBadgeStyle={{
+          border: "1px solid #38bdf8",
+          background: "#e0f2fe",
+          color: "#0c4a6e",
+        }}
       />
 
       <p style={intro}>
@@ -161,8 +230,18 @@ export default function OpsKioskTouchModelsPage() {
         lab.
       </p>
 
+      <div style={definitionsToolbar}>
+        <button type="button" onClick={reloadModelDefinitions} style={reloadDefinitionsBtn}>
+          Recarregar definições
+        </button>
+        <span style={definitionsToolbarHint}>
+          Relê <code style={definitionsToolbarCode}>{MODEL_DEFINITIONS_LS_KEY}</code> a partir do{" "}
+          <code style={definitionsToolbarCode}>localStorage</code> sem refrescar a página.
+        </span>
+      </div>
+
       <div style={grid}>
-        {MODELS.map((m) => {
+        {models.map((m) => {
           const isOn = active === m.id;
           return (
             <button
@@ -171,8 +250,9 @@ export default function OpsKioskTouchModelsPage() {
               onClick={() => setActive(m.id)}
               style={{
                 ...card,
-                borderColor: isOn ? "rgba(56,189,248,0.75)" : "rgba(255,255,255,0.14)",
-                background: isOn ? "rgba(14,165,233,0.12)" : "rgba(255,255,255,0.04)",
+                borderColor: isOn ? "#0284c7" : "#cbd5e1",
+                background: isOn ? "#e0f2fe" : "#ffffff",
+                boxShadow: isOn ? "0 0 0 2px rgba(2,132,199,0.25)" : "0 1px 2px rgba(15,23,42,0.06)",
               }}
             >
               <div style={cardTitle}>{m.title}</div>
@@ -242,18 +322,61 @@ export default function OpsKioskTouchModelsPage() {
 }
 
 const pageWrap: CSSProperties = {
-  padding: "16px 18px 32px",
+  padding: "20px 20px 36px",
   maxWidth: 1100,
   margin: "0 auto",
-  color: "#e2e8f0",
+  color: "#0f172a",
+  background: "#f8fafc",
+  borderRadius: 16,
+  border: "1px solid #e2e8f0",
+  boxSizing: "border-box",
 };
 
 const intro: CSSProperties = {
   fontSize: 14,
-  lineHeight: 1.5,
-  opacity: 0.88,
+  lineHeight: 1.55,
+  color: "#334155",
   marginTop: 0,
   marginBottom: 16,
+};
+
+const definitionsToolbar: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 12,
+  marginBottom: 16,
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#ffffff",
+};
+
+const reloadDefinitionsBtn: CSSProperties = {
+  padding: "10px 16px",
+  borderRadius: 12,
+  border: "1px solid #64748b",
+  background: "#f1f5f9",
+  color: "#0f172a",
+  fontWeight: 700,
+  fontSize: 13,
+  cursor: "pointer",
+  minHeight: 44,
+};
+
+const definitionsToolbarHint: CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "#475569",
+  flex: "1 1 200px",
+};
+
+const definitionsToolbarCode: CSSProperties = {
+  fontSize: 11,
+  padding: "1px 5px",
+  borderRadius: 4,
+  background: "#e2e8f0",
+  color: "#0f172a",
 };
 
 const grid: CSSProperties = {
@@ -267,36 +390,40 @@ const card: CSSProperties = {
   minHeight: 96,
   padding: "14px 16px",
   borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.14)",
+  border: "1px solid #cbd5e1",
   textAlign: "left" as const,
   cursor: "pointer",
-  color: "inherit",
+  color: "#0f172a",
   font: "inherit",
+  background: "#ffffff",
 };
 
 const cardTitle: CSSProperties = {
   fontSize: 15,
   fontWeight: 800,
   marginBottom: 6,
+  color: "#0f172a",
 };
 
 const cardSub: CSSProperties = {
   fontSize: 12,
-  opacity: 0.82,
   lineHeight: 1.45,
+  color: "#475569",
 };
 
 const detailPanel: CSSProperties = {
   padding: 16,
   borderRadius: 16,
-  border: "1px solid rgba(255,255,255,0.12)",
-  background: "rgba(255,255,255,0.03)",
+  border: "1px solid #e2e8f0",
+  background: "#ffffff",
+  boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
 };
 
 const h2: CSSProperties = {
   marginTop: 0,
   fontSize: 18,
   fontWeight: 800,
+  color: "#0f172a",
 };
 
 const ul: CSSProperties = {
@@ -304,7 +431,7 @@ const ul: CSSProperties = {
   paddingLeft: 20,
   fontSize: 13,
   lineHeight: 1.55,
-  opacity: 0.9,
+  color: "#334155",
 };
 
 const li: CSSProperties = { marginBottom: 6 };
@@ -333,32 +460,33 @@ const ctaLink: CSSProperties = {
 
 const secondaryLink: CSSProperties = {
   ...ctaLink,
-  background: "rgba(255,255,255,0.08)",
-  border: "1px solid rgba(255,255,255,0.2)",
-  color: "#e2e8f0",
+  background: "#f1f5f9",
+  border: "1px solid #94a3b8",
+  color: "#0f172a",
 };
 
 const footerNote: CSSProperties = {
   marginTop: 20,
   fontSize: 12,
-  opacity: 0.75,
-  lineHeight: 1.5,
+  lineHeight: 1.55,
+  color: "#64748b",
 };
 
 const checklistPanel: CSSProperties = {
   marginTop: 22,
   padding: 16,
   borderRadius: 16,
-  border: "1px solid rgba(52,211,153,0.35)",
-  background: "rgba(16,185,129,0.08)",
+  border: "1px solid #6ee7b7",
+  background: "#ecfdf5",
+  boxShadow: "0 1px 3px rgba(6,78,59,0.08)",
 };
 
 const checklistIntro: CSSProperties = {
   marginTop: 0,
   marginBottom: 12,
   fontSize: 13,
-  lineHeight: 1.5,
-  opacity: 0.9,
+  lineHeight: 1.55,
+  color: "#14532d",
 };
 
 const checklistUl: CSSProperties = {
@@ -378,6 +506,7 @@ const checkLabel: CSSProperties = {
   fontSize: 13,
   lineHeight: 1.45,
   cursor: "pointer",
+  color: "#14532d",
 };
 
 const checkInput: CSSProperties = { marginTop: 3, flexShrink: 0 };
@@ -385,9 +514,9 @@ const checkInput: CSSProperties = { marginTop: 3, flexShrink: 0 };
 const exportBtn: CSSProperties = {
   padding: "10px 16px",
   borderRadius: 12,
-  border: "1px solid rgba(52,211,153,0.45)",
-  background: "rgba(6,95,70,0.55)",
-  color: "#ecfdf5",
+  border: "1px solid #047857",
+  background: "#059669",
+  color: "#ffffff",
   fontWeight: 700,
   fontSize: 13,
   cursor: "pointer",
