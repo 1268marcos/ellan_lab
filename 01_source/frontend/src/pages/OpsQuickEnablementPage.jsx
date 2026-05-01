@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { strToU8, zipSync } from "fflate";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import "../styles/opsQuickEnablementChrome.css";
 import {
   OPS_ENABLEMENT_PAGE_VERSION,
   OPS_ENABLEMENT_STORAGE_KEY,
@@ -63,10 +64,11 @@ async function buildSignedPayload(payload) {
 }
 
 export default function OpsQuickEnablementPage() {
-  const [trainee, setTrainee] = useState(() => String(loadOpsEnablementStateRaw()?.trainee || ""));
-  const [role, setRole] = useState(() => String(loadOpsEnablementStateRaw()?.role || "OPS"));
-  const [sessionNotes, setSessionNotes] = useState(() => String(loadOpsEnablementStateRaw()?.session_notes || ""));
-  const [rows, setRows] = useState(() => mergeOpsEnablementChecklist(loadOpsEnablementStateRaw()?.checklist || {}));
+  const raw = loadOpsEnablementStateRaw();
+  const [trainee, setTrainee] = useState(() => String(raw?.trainee || ""));
+  const [role, setRole] = useState(() => String(raw?.role || "OPS"));
+  const [sessionNotes, setSessionNotes] = useState(() => String(raw?.session_notes || ""));
+  const [rows, setRows] = useState(() => mergeOpsEnablementChecklist(raw?.checklist || {}));
   const [statusMsg, setStatusMsg] = useState("");
 
   useEffect(() => {
@@ -74,9 +76,7 @@ export default function OpsQuickEnablementPage() {
       trainee,
       role,
       session_notes: sessionNotes,
-      checklist: Object.fromEntries(
-        rows.map((r) => [r.id, { done: r.done, marked_at: r.marked_at }])
-      ),
+      checklist: Object.fromEntries(rows.map((r) => [r.id, { done: r.done, marked_at: r.marked_at }])),
       updated_at: new Date().toISOString(),
     };
     try {
@@ -156,24 +156,29 @@ export default function OpsQuickEnablementPage() {
   }
 
   return (
-    <main style={{ maxWidth: 980, margin: "0 auto", padding: 24, fontFamily: "system-ui, sans-serif", color: "#0f172a" }}>
-      <header style={{ marginBottom: 16 }}>
+    <main className="ops-quick-enablement-chrome__main" data-testid="ops-quick-enablement-page">
+      <header className="ops-quick-enablement-chrome__header">
         <OpsPageTitleHeader title="OPS + Suporte — Treinamento rápido (Sprint 3)" versionLabel={OPS_ENABLEMENT_PAGE_VERSION} />
-        <p style={{ marginTop: 8, color: "#475569", lineHeight: 1.5 }}>
+        <p className="ops-quick-enablement-chrome__intro">
           Roteiro curto (~15 minutos) para OPS e Suporte alinharem ferramentas fiscais e de incidente, com evidência auditável no padrão{" "}
           <code>{DAILY_AUDIT_PREFIX}</code>. Não substitui playbooks completos; acelera o primeiro dia útil em paralelo ao hardening Sprint 3.
         </p>
       </header>
 
-      <section style={cardStyle}>
-        <div style={toolbarStyle}>
-          <label style={labelStyle}>
+      <section className="ops-quick-enablement-chrome__card">
+        <div className="ops-quick-enablement-chrome__toolbar">
+          <label className="ops-quick-enablement-chrome__label">
             Nome / matrícula
-            <input value={trainee} onChange={(e) => setTrainee(e.target.value)} style={inputStyle} placeholder="Quem realizou o treinamento" />
+            <input
+              value={trainee}
+              onChange={(e) => setTrainee(e.target.value)}
+              className="ops-quick-enablement-chrome__input"
+              placeholder="Quem realizou o treinamento"
+            />
           </label>
-          <label style={labelStyle}>
+          <label className="ops-quick-enablement-chrome__label">
             Papel
-            <select value={role} onChange={(e) => setRole(e.target.value)} style={inputStyle}>
+            <select value={role} onChange={(e) => setRole(e.target.value)} className="ops-quick-enablement-chrome__input">
               <option value="OPS">OPS</option>
               <option value="SUPORTE_N1">Suporte N1</option>
               <option value="SUPORTE_N2">Suporte N2</option>
@@ -181,49 +186,54 @@ export default function OpsQuickEnablementPage() {
             </select>
           </label>
         </div>
-        <label style={{ ...labelStyle, marginTop: 12 }}>
+        <label className="ops-quick-enablement-chrome__label ops-quick-enablement-chrome__label--block">
           Notas da sessão (opcional)
-          <textarea value={sessionNotes} onChange={(e) => setSessionNotes(e.target.value)} rows={3} style={textareaStyle} placeholder="Tópicos cobertos, dúvidas, follow-up." />
+          <textarea
+            value={sessionNotes}
+            onChange={(e) => setSessionNotes(e.target.value)}
+            rows={3}
+            className="ops-quick-enablement-chrome__textarea"
+            placeholder="Tópicos cobertos, dúvidas, follow-up."
+          />
         </label>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-          <button type="button" style={buttonStyle} onClick={() => void exportSignedJson()}>
+        <div className="ops-quick-enablement-chrome__actions">
+          <button type="button" className="ops-quick-enablement-chrome__btn" onClick={() => void exportSignedJson()}>
             Exportar JSON assinado
           </button>
-          <button type="button" style={buttonStyle} onClick={() => void exportSignedZip()}>
+          <button type="button" className="ops-quick-enablement-chrome__btn" onClick={() => void exportSignedZip()}>
             Exportar ZIP auditável
           </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => void copySlackHandoff()}>
+          <button type="button" className="ops-quick-enablement-chrome__btn ops-quick-enablement-chrome__btn--secondary" onClick={() => void copySlackHandoff()}>
             Copiar handoff Slack
           </button>
-          <button type="button" style={buttonSecondaryStyle} onClick={() => resetLocal()}>
+          <button type="button" className="ops-quick-enablement-chrome__btn ops-quick-enablement-chrome__btn--secondary" onClick={() => resetLocal()}>
             Limpar rascunho
           </button>
         </div>
-        <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <span style={chipStyle}>
+        <div className="ops-quick-enablement-chrome__status-row">
+          <span className="ops-quick-enablement-chrome__chip">
             Progresso: {progress.done}/{progress.total} ({progress.pct}%)
           </span>
         </div>
-        {statusMsg ? <small style={{ color: "#64748b", display: "block", marginTop: 8 }}>{statusMsg}</small> : null}
+        {statusMsg ? <small className="ops-quick-enablement-chrome__status-msg">{statusMsg}</small> : null}
       </section>
 
-      <section style={{ ...cardStyle, marginTop: 16 }}>
-        <h2 style={{ margin: "0 0 10px", fontSize: 16 }}>Checklist guiado</h2>
-        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+      <section className="ops-quick-enablement-chrome__card ops-quick-enablement-chrome__card--spaced">
+        <h2 className="ops-quick-enablement-chrome__section-title">Checklist guiado</h2>
+        <ul className="ops-quick-enablement-chrome__checklist">
           {rows.map((row) => (
-            <li key={row.id} style={rowStyle}>
-              <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer" }}>
+            <li key={row.id} className="ops-quick-enablement-chrome__checklist-row">
+              <label className="ops-quick-enablement-chrome__checklist-label">
                 <input
                   type="checkbox"
                   checked={row.done}
                   onChange={(e) => setRow(row.id, { done: e.target.checked })}
-                  style={{ marginTop: 4 }}
                   aria-label={row.label}
                 />
                 <span>
                   <strong>{row.label}</strong>
-                  <div style={{ color: "#64748b", fontSize: 13, marginTop: 4 }}>{row.description}</div>
-                  <Link to={row.path} style={linkStyle}>
+                  <div className="ops-quick-enablement-chrome__row-desc">{row.description}</div>
+                  <Link to={row.path} className="ops-quick-enablement-chrome__row-link">
                     Abrir {row.path}
                   </Link>
                 </span>
@@ -233,20 +243,9 @@ export default function OpsQuickEnablementPage() {
         </ul>
       </section>
 
-      <p style={{ marginTop: 16, fontSize: 13, color: "#64748b" }}>
+      <p className="ops-quick-enablement-chrome__footer-tip">
         Dica: após concluir o checklist, exporte o JSON ou ZIP e anexe ao handoff diário em <Link to="/fiscal/management-daily">fiscal/management-daily</Link> quando for o fechamento do turno.
       </p>
     </main>
   );
 }
-
-const cardStyle = { border: "1px solid #e2e8f0", borderRadius: 12, padding: 16, background: "#fff" };
-const toolbarStyle = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 };
-const labelStyle = { display: "grid", gap: 6, fontSize: 12, fontWeight: 700, color: "#475569" };
-const inputStyle = { borderRadius: 8, border: "1px solid #cbd5e1", padding: "8px 10px", fontSize: 14 };
-const textareaStyle = { ...inputStyle, resize: "vertical", width: "100%", boxSizing: "border-box" };
-const buttonStyle = { padding: "8px 14px", borderRadius: 10, border: "1px solid #0f172a", background: "#0f172a", color: "#fff", fontWeight: 700, cursor: "pointer" };
-const buttonSecondaryStyle = { ...buttonStyle, background: "#fff", color: "#0f172a" };
-const chipStyle = { display: "inline-flex", padding: "4px 10px", borderRadius: 999, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 12, fontWeight: 700 };
-const rowStyle = { borderBottom: "1px solid #f1f5f9", padding: "12px 0" };
-const linkStyle = { display: "inline-block", marginTop: 6, color: "#2563eb", fontWeight: 700, fontSize: 13 };

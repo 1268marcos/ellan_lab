@@ -102,7 +102,7 @@ const UPDATES = [
     apiRoutesNew: [],
     routes: [
       "Frontend: 01_source/frontend/src/pages/OpsQuickEnablementPage.jsx",
-      "Frontend: 01_source/frontend/src/utils/fiscalSprint3OpsEnablement.js",
+      "Frontend: 01_source/frontend/src/utils/fiscalSprint3OpsEnablement.ts",
       "Frontend: 01_source/frontend/src/App.jsx",
       "Frontend: 01_source/frontend/src/pages/OpsHealthPage.jsx",
       "Frontend: 01_source/frontend/src/utils/fiscalSprint3IncidentRunbook.js",

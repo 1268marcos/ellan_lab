@@ -245,7 +245,7 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
  * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
  * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. **Modelo A** → `/comprar`;
  * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`);
- * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, orders, gateway, payment-approved, identify, redeem-manual; teste isolado só retirada manual); **Modelo D** → `/ops/dev/slots`.
+ * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, orders, gateway, payment-approved, identify, redeem-manual; teste isolado só retirada manual); **Modelo D** → `/ops/dev/slots` (+ mocks: lockers + catálogo de slots + **POST** alocação por gaveta).
  * **Trilha D** (checklist n≥8): progresso 8/8 + validação do payload JSON exportado.
  * `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
@@ -334,11 +334,16 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     const raw = await readFile(savedPath!, "utf-8");
     const data = JSON.parse(raw) as {
       page?: string;
+      exportSchema?: string;
       exportedAt?: string;
       activeModelId?: string | null;
       score?: number;
       total?: number;
       checklist?: Array<{ id: string; label: string; done: boolean }>;
+      moderatedSession?: {
+        participantsTotal?: number;
+        participants?: Array<{ participantIndex?: number; outcome?: string | null; note?: string | null }>;
+      };
     };
 
     expect(data.score).toBe(8);
@@ -349,6 +354,31 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     expect(typeof data.page).toBe("string");
     expect(typeof data.exportedAt).toBe("string");
     expect(data.activeModelId).toBe("A");
+    expect(data.exportSchema).toBe("sprint1-kiosk-touch-n8-v2");
+    expect(data.moderatedSession?.participantsTotal).toBe(8);
+    expect(data.moderatedSession?.participants).toHaveLength(8);
+    expect(data.moderatedSession?.participants?.map((p) => p.participantIndex)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+
+  test("export JSON inclui sessão moderada (participante 1 pass + nota)", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-moderated-n8")).toBeVisible({ timeout: 30_000 });
+
+    const p1 = page.getByTestId("ops-kiosk-moderated-participant-1");
+    await p1.locator("#moderated-outcome-1").selectOption("pass");
+    await p1.locator("#moderated-note-1").fill("fluxo A ok");
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: /Exportar checklist \(JSON\)/i }).click();
+    const download = await downloadPromise;
+    const savedPath = await download.path();
+    expect(savedPath).toBeTruthy();
+    const data = JSON.parse(await readFile(savedPath!, "utf-8")) as {
+      moderatedSession?: { participants?: Array<{ participantIndex: number; outcome: string | null; note: string | null }> };
+    };
+    const row1 = data.moderatedSession?.participants?.find((p) => p.participantIndex === 1);
+    expect(row1?.outcome).toBe("pass");
+    expect(row1?.note).toBe("fluxo A ok");
   });
 
   test("Modelo A — CTA primário abre catálogo /comprar", async ({ page }) => {
@@ -488,6 +518,44 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page.locator("pre").filter({ hasText: "e2e-pickup-1" })).toBeVisible({ timeout: 15_000 });
   });
 
+  test("Trilha E — KIOSK PT entrada direta em /ops/pt/kiosk: fluxo completo mockado", async ({ page }) => {
+    await installKioskPtLabMocks(page, {
+      withSelectableCatalog: true,
+      mockKioskOrderPost: true,
+      mockGatewayPagamentoPost: true,
+      mockPaymentApprovedPost: true,
+      mockKioskIdentifyPost: true,
+      mockManualPickupRedeem: true,
+    });
+
+    await page.goto("/ops/pt/kiosk");
+    await expect(page).toHaveURL(/\/ops\/pt\/kiosk/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /Simulador KIOSK — PT/i })).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Gaveta 1/i }).click();
+    await page.getByLabel(/Telefone MB WAY/i).fill("+351912345678");
+    await page.getByRole("button", { name: /^Criar pedido KIOSK$/i }).click();
+    await expect(page.getByText(/Pedido criado com sucesso/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Iniciar pagamento no gateway/i }).click();
+    await expect(page.getByText(/comprovante:\s*E2E-RC-PT-1/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByPlaceholder("+5511999999999 / +351912345678").fill("+351910000001");
+    await page.getByPlaceholder("cliente@email.com").fill("e2e-direct@ellan.local");
+    await page.getByRole("button", { name: /Salvar identificação/i }).click();
+    await expect(page.getByText(/Identificação salva/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Use aqui para digitar o código/i }).click();
+    const pickupDialog = page.getByRole("dialog", { name: /Código de Retirada/i });
+    await expect(pickupDialog).toBeVisible();
+    for (const digit of ["1", "2", "3", "4", "5", "6"]) {
+      await pickupDialog.getByRole("button", { name: digit, exact: true }).click();
+    }
+    await pickupDialog.getByRole("button", { name: /Concluir e usar código/i }).click();
+    await page.getByRole("button", { name: /Retirar com código/i }).click();
+    await expect(page.locator("pre").filter({ hasText: "e2e-pickup-1" })).toBeVisible({ timeout: 15_000 });
+  });
+
   test("Modelo D — CTA primário abre alocação por slot (dev)", async ({ page }) => {
     await page.goto("/ops/kiosk-touch-models");
     await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
@@ -499,5 +567,121 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page.getByRole("heading", { level: 1, name: /Ops — Alocação de Produtos por Slot/i })).toBeVisible({
       timeout: 30_000,
     });
+  });
+
+  test("Modelo D — dev slots: grelha de gavetas + alocar SKU (fluxo físico assistido)", async ({ page }) => {
+    const catalogState = {
+      slots: [
+        { slot: 1, sku_id: "sku-e2e-alloc-1" },
+        { slot: 2, sku_id: "" },
+      ],
+      skus: [
+        { sku_id: "sku-e2e-alloc-1", name: "Produto alocação 1" },
+        { sku_id: "sku-e2e-alloc-2", name: "Produto alocação 2" },
+      ],
+    };
+
+    await page.route(
+      (url) =>
+        isLabHost(url.hostname) &&
+        url.port === "8003" &&
+        url.pathname === "/dev-admin/base/lockers",
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            items: [
+              {
+                locker_id: "e2e-dev-slot-locker-1",
+                display_name: "E2E Locker SP alocação",
+                active: true,
+                country_code: "BR",
+                province_code: "BR-SP",
+              },
+            ],
+          }),
+        });
+      },
+    );
+
+    await page.route(
+      (url) =>
+        isLabHost(url.hostname) &&
+        url.port === "8200" &&
+        url.pathname === "/dev/catalog/slots",
+      async (route) => {
+        if (route.request().method() !== "GET") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ slots: catalogState.slots, skus: catalogState.skus }),
+        });
+      },
+    );
+
+    await page.route(
+      (url) =>
+        isLabHost(url.hostname) &&
+        url.port === "8200" &&
+        /^\/dev\/catalog\/slots\/\d+$/.test(url.pathname),
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        const reqUrl = new URL(route.request().url());
+        const slotNum = Number(reqUrl.pathname.split("/").pop() || "0");
+        let body: { slot?: number; sku_id?: string } = {};
+        try {
+          body = JSON.parse(route.request().postData() || "{}");
+        } catch {
+          body = {};
+        }
+        const skuId = String(body.sku_id || "");
+        const idx = catalogState.slots.findIndex((s) => Number(s.slot) === slotNum);
+        if (idx >= 0) {
+          catalogState.slots[idx] = { ...catalogState.slots[idx], sku_id: skuId };
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: true, slot: slotNum, sku_id: skuId }),
+        });
+      },
+    );
+
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Modelo D — Partner Allocation/i }).click();
+    await page.getByRole("link", { name: /Abrir alocação por slot \(dev\)/i }).click();
+    await expect(page).toHaveURL(/\/ops\/dev\/slots/, { timeout: 15_000 });
+
+    const lockerSelect = page.getByRole("combobox", { name: /^Locker$/i });
+    await expect(lockerSelect).toHaveValue("e2e-dev-slot-locker-1", { timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: /^Slots$/i })).toBeVisible();
+    await expect(page.getByRole("columnheader", { name: /^Slot$/i })).toBeVisible();
+
+    const dataRows = page.locator("table tbody tr");
+    await expect(dataRows).toHaveCount(2);
+    const rowSlot2 = dataRows.nth(1);
+    await expect(rowSlot2.getByRole("cell").first()).toHaveText("2");
+
+    const draftSelect = rowSlot2.getByRole("cell").nth(2).getByRole("combobox");
+    await draftSelect.selectOption({ value: "sku-e2e-alloc-2" });
+
+    const saveRow2 = rowSlot2.getByRole("button", { name: /^Salvar$/i });
+    await expect(saveRow2).toBeEnabled({ timeout: 10_000 });
+    await saveRow2.click();
+
+    const row2After = page.locator("table tbody tr").nth(1);
+    await expect(row2After.getByRole("cell").nth(1)).toHaveText("sku-e2e-alloc-2", { timeout: 15_000 });
   });
 });

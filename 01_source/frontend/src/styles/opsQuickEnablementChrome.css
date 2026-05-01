@@ -1,0 +1,177 @@
+/**
+ * OPS — treinamento rápido (`/ops/quick-enablement`).
+ * Sprint 1 trilha **F2**: ficheiro dedicado (paridade com `opsKioskTouchModelsChrome.css`).
+ */
+
+.ops-quick-enablement-chrome__main {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: var(--spacing-5, 24px);
+  box-sizing: border-box;
+  font-family: system-ui, sans-serif;
+  color: #0f172a;
+}
+
+.ops-quick-enablement-chrome__header {
+  margin-bottom: var(--spacing-4, 16px);
+}
+
+.ops-quick-enablement-chrome__intro {
+  margin-top: var(--spacing-2, 8px);
+  color: #475569;
+  line-height: 1.5;
+}
+
+.ops-quick-enablement-chrome__card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: var(--spacing-4, 16px);
+  background: #fff;
+}
+
+.ops-quick-enablement-chrome__card--spaced {
+  margin-top: var(--spacing-4, 16px);
+}
+
+.ops-quick-enablement-chrome__toolbar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--spacing-3, 12px);
+}
+
+.ops-quick-enablement-chrome__label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.ops-quick-enablement-chrome__label--block {
+  margin-top: var(--spacing-3, 12px);
+}
+
+.ops-quick-enablement-chrome__input,
+.ops-quick-enablement-chrome__textarea {
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+}
+
+.ops-quick-enablement-chrome__textarea {
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.ops-quick-enablement-chrome__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: var(--spacing-3, 12px);
+}
+
+.ops-quick-enablement-chrome__btn {
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #0f172a;
+  background: #0f172a;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+}
+
+.ops-quick-enablement-chrome__btn:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.ops-quick-enablement-chrome__btn--secondary {
+  background: #fff;
+  color: #0f172a;
+}
+
+.ops-quick-enablement-chrome__status-row {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-quick-enablement-chrome__chip {
+  display: inline-flex;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ops-quick-enablement-chrome__status-msg {
+  color: #64748b;
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.ops-quick-enablement-chrome__section-title {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.ops-quick-enablement-chrome__checklist {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.ops-quick-enablement-chrome__checklist-row {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 12px 0;
+}
+
+.ops-quick-enablement-chrome__checklist-row:last-child {
+  border-bottom: none;
+}
+
+.ops-quick-enablement-chrome__checklist-label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.ops-quick-enablement-chrome__checklist-label input {
+  margin-top: 4px;
+}
+
+.ops-quick-enablement-chrome__row-desc {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.ops-quick-enablement-chrome__row-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.ops-quick-enablement-chrome__footer-tip {
+  margin-top: var(--spacing-4, 16px);
+  font-size: 13px;
+  color: #64748b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-quick-enablement-chrome__btn {
+    transition: none;
+  }
+}

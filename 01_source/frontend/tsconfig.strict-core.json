@@ -76,6 +76,7 @@
     "src/components/OpsRouteHelpButton.tsx",
     "src/components/OpsTrendKpiCard.tsx",
     "src/components/OpsPageTitleHeader.tsx",
+    "src/utils/fiscalSprint3OpsEnablement.ts",
     "src/utils/opsDateTimeFormat.ts",
     "src/hooks/useOpsWindowPreset.ts",
     "src/components/OpsActionButton.tsx",

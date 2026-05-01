@@ -12,6 +12,49 @@ const MODEL_DEFINITIONS_LS_KEY = "ops_kiosk_touch_models_definitions_v1";
 
 const USABILITY_LS_KEY = "ops_kiosk_touch_models_usability_n8_v1";
 
+const MODERATED_N8_LS_KEY = "ops_kiosk_touch_models_moderated_n8_v1";
+
+type ModeratedOutcome = "" | "pass" | "fail" | "skip";
+
+type ModeratedParticipantRow = {
+  participantIndex: number;
+  outcome: ModeratedOutcome;
+  note: string;
+};
+
+function defaultModeratedRows(): ModeratedParticipantRow[] {
+  return Array.from({ length: 8 }, (_, i) => ({
+    participantIndex: i + 1,
+    outcome: "",
+    note: "",
+  }));
+}
+
+function isModeratedOutcome(v: unknown): v is ModeratedOutcome {
+  return v === "" || v === "pass" || v === "fail" || v === "skip";
+}
+
+function readModeratedRowsFromLs(): ModeratedParticipantRow[] {
+  const base = defaultModeratedRows();
+  if (typeof window === "undefined") return base;
+  try {
+    const raw = window.localStorage.getItem(MODERATED_N8_LS_KEY);
+    if (!raw) return base;
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return base;
+    return base.map((row, idx) => {
+      const cell = parsed[idx];
+      if (typeof cell !== "object" || cell === null) return row;
+      const c = cell as Record<string, unknown>;
+      const outcome = isModeratedOutcome(c.outcome) ? c.outcome : "";
+      const note = typeof c.note === "string" ? c.note : "";
+      return { participantIndex: idx + 1, outcome, note };
+    });
+  } catch {
+    return base;
+  }
+}
+
 const USABILITY_CHECKLIST: ReadonlyArray<{ id: string; label: string }> = [
   { id: "n1", label: "CTA principal do modelo ativo visível sem scroll nesta página." },
   { id: "n2", label: "Áreas de toque ≥44px nos CTAs principais (cards e link primário)." },
@@ -165,7 +208,7 @@ function resolveTouchModels(): TouchModelRow[] {
   }
 }
 
-const PAGE_VERSION = "ops/kiosk-touch-models v1.3.0-trilha-D-mobile-a11y";
+const PAGE_VERSION = "ops/kiosk-touch-models v1.4.0-moderated-n8-export";
 
 const titleHeaderContainer: CSSProperties = { marginBottom: 12 };
 const titleHeaderTitle: CSSProperties = { color: "#0f172a" };
@@ -178,6 +221,7 @@ const titleHeaderBadge: CSSProperties = {
 export default function OpsKioskTouchModelsPage() {
   const [active, setActive] = useState<ModelId | null>("A");
   const [usabilityChecks, setUsabilityChecks] = useState<Record<string, boolean>>(() => readUsabilityChecksFromLs());
+  const [moderatedRows, setModeratedRows] = useState<ModeratedParticipantRow[]>(() => readModeratedRowsFromLs());
   const [models, setModels] = useState<TouchModelRow[]>(() => resolveTouchModels());
 
   const activeModel = useMemo(() => models.find((m) => m.id === active) ?? models[0], [active, models]);
@@ -199,14 +243,30 @@ export default function OpsKioskTouchModelsPage() {
     }
   }, [usabilityChecks]);
 
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(MODERATED_N8_LS_KEY, JSON.stringify(moderatedRows));
+    } catch {
+      /* ignore quota / private mode */
+    }
+  }, [moderatedRows]);
+
+  function setModeratedRow(participantIndex: number, patch: Partial<Pick<ModeratedParticipantRow, "outcome" | "note">>) {
+    setModeratedRows((prev) =>
+      prev.map((row) => (row.participantIndex === participantIndex ? { ...row, ...patch } : row)),
+    );
+  }
+
   function toggleUsability(id: string) {
     setUsabilityChecks((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   function exportUsabilityJson() {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const moderatedWithOutcome = moderatedRows.filter((r) => r.outcome !== "").length;
     downloadJsonFile(`SPRINT1_KIOSK_TOUCH_USABILITY_N8_${ts}.json`, {
       page: PAGE_VERSION,
+      exportSchema: "sprint1-kiosk-touch-n8-v2",
       exportedAt: new Date().toISOString(),
       activeModelId: active,
       checklist: USABILITY_CHECKLIST.map((row) => ({
@@ -216,6 +276,16 @@ export default function OpsKioskTouchModelsPage() {
       })),
       score: usabilityDone,
       total: USABILITY_CHECKLIST.length,
+      moderatedSession: {
+        storageKey: MODERATED_N8_LS_KEY,
+        participantsRecorded: moderatedWithOutcome,
+        participantsTotal: moderatedRows.length,
+        participants: moderatedRows.map((r) => ({
+          participantIndex: r.participantIndex,
+          outcome: r.outcome || null,
+          note: r.note.trim() || null,
+        })),
+      },
     });
   }
 
@@ -314,6 +384,73 @@ export default function OpsKioskTouchModelsPage() {
         <button type="button" onClick={exportUsabilityJson} className="ops-kiosk-touch-chrome__export-btn">
           Exportar checklist (JSON)
         </button>
+      </section>
+
+      <section
+        className="ops-kiosk-touch-chrome__moderated"
+        aria-labelledby="kiosk-moderated-n8-heading"
+        data-testid="ops-kiosk-moderated-n8"
+      >
+        <h2 id="kiosk-moderated-n8-heading">Sessão moderada (n≥8) — Sprint 1</h2>
+        <p className="ops-kiosk-touch-chrome__moderated-intro">
+          Registo por participante após teste moderado; incluído no mesmo JSON do botão acima. Estado em{" "}
+          <code className="ops-kiosk-touch-chrome__toolbar-code">{MODERATED_N8_LS_KEY}</code>.
+        </p>
+        <div className="ops-kiosk-touch-chrome__moderated-table" role="table" aria-label="Participantes sessão moderada">
+          <div role="rowgroup">
+            <div role="row" className="ops-kiosk-touch-chrome__moderated-head-row">
+              <span role="columnheader">#</span>
+              <span role="columnheader">Resultado</span>
+              <span role="columnheader">Nota curta</span>
+            </div>
+          </div>
+          <div role="rowgroup">
+            {moderatedRows.map((r) => (
+              <div
+                key={r.participantIndex}
+                role="row"
+                className="ops-kiosk-touch-chrome__moderated-data-row"
+                data-testid={`ops-kiosk-moderated-participant-${r.participantIndex}`}
+              >
+                <span role="cell" className="ops-kiosk-touch-chrome__moderated-cell-index">
+                  {r.participantIndex}
+                </span>
+                <span role="cell">
+                  <label className="ops-kiosk-touch-chrome__moderated-sr-only" htmlFor={`moderated-outcome-${r.participantIndex}`}>
+                    Resultado participante {r.participantIndex}
+                  </label>
+                  <select
+                    id={`moderated-outcome-${r.participantIndex}`}
+                    className="ops-kiosk-touch-chrome__moderated-select"
+                    value={r.outcome}
+                    onChange={(e) =>
+                      setModeratedRow(r.participantIndex, { outcome: e.target.value as ModeratedOutcome })
+                    }
+                  >
+                    <option value="">—</option>
+                    <option value="pass">Pass</option>
+                    <option value="fail">Fail</option>
+                    <option value="skip">Skip</option>
+                  </select>
+                </span>
+                <span role="cell" className="ops-kiosk-touch-chrome__moderated-cell-note">
+                  <label className="ops-kiosk-touch-chrome__moderated-sr-only" htmlFor={`moderated-note-${r.participantIndex}`}>
+                    Nota participante {r.participantIndex}
+                  </label>
+                  <input
+                    id={`moderated-note-${r.participantIndex}`}
+                    type="text"
+                    className="ops-kiosk-touch-chrome__moderated-note-input"
+                    value={r.note}
+                    onChange={(e) => setModeratedRow(r.participantIndex, { note: e.target.value })}
+                    placeholder="Opcional"
+                    maxLength={200}
+                  />
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </section>
 
       <p className="ops-kiosk-touch-chrome__footer-note">

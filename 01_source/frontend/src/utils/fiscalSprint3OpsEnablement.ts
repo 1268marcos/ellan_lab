@@ -7,10 +7,14 @@ export const OPS_ENABLEMENT_STORAGE_KEY = "ellan_ops_sprint3_quick_training_v1";
 export const OPS_ENABLEMENT_VERSION = "sprint3-ops-enablement-v1";
 export const OPS_ENABLEMENT_PAGE_VERSION = "ops/quick-enablement v1.0.0";
 
-/** @typedef {{ id: string, label: string, description: string, path: string }} EnablementItem */
+export type EnablementItem = {
+  id: string;
+  label: string;
+  description: string;
+  path: string;
+};
 
-/** @type {EnablementItem[]} */
-export const OPS_ENABLEMENT_CHECKLIST = [
+export const OPS_ENABLEMENT_CHECKLIST: readonly EnablementItem[] = [
   {
     id: "ops_health",
     label: "OPS / health",
@@ -55,43 +59,56 @@ export const OPS_ENABLEMENT_CHECKLIST = [
   },
 ];
 
-export function loadOpsEnablementStateRaw() {
+export type EnablementChecklistRow = EnablementItem & {
+  done: boolean;
+  marked_at: string | null;
+};
+
+export function loadOpsEnablementStateRaw(): Record<string, unknown> | null {
   try {
     const raw = window.localStorage.getItem(OPS_ENABLEMENT_STORAGE_KEY);
     if (!raw) return null;
-    return JSON.parse(raw);
+    return JSON.parse(raw) as Record<string, unknown>;
   } catch {
     return null;
   }
 }
 
-/**
- * @param {Record<string, { done?: boolean }> | null | undefined} savedById
- */
-export function mergeOpsEnablementChecklist(savedById) {
-  const map = savedById && typeof savedById === "object" ? savedById : {};
+export function mergeOpsEnablementChecklist(savedById: unknown): EnablementChecklistRow[] {
+  const map =
+    savedById && typeof savedById === "object" && !Array.isArray(savedById)
+      ? (savedById as Record<string, { done?: boolean; marked_at?: string | null }>)
+      : {};
   return OPS_ENABLEMENT_CHECKLIST.map((item) => {
     const prev = map[item.id] || {};
     return {
       ...item,
       done: Boolean(prev.done),
-      marked_at: prev.marked_at || null,
+      marked_at: prev.marked_at ?? null,
     };
   });
 }
 
-export function computeOpsEnablementProgress(rows) {
+export function computeOpsEnablementProgress(rows: readonly { done: boolean }[]): {
+  total: number;
+  done: number;
+  pct: number;
+} {
   const total = rows.length;
   const done = rows.filter((r) => r.done).length;
   const pct = total > 0 ? Math.round((done / total) * 1000) / 10 : 0;
   return { total, done, pct };
 }
 
-/**
- * @param {string} nowIso
- * @param {{ trainee: string, role: string, notes: string, rows: ReturnType<typeof mergeOpsEnablementChecklist> }} body
- */
-export function buildOpsEnablementTrainingPayload(nowIso, { trainee, role, notes, rows }) {
+export function buildOpsEnablementTrainingPayload(
+  nowIso: string,
+  {
+    trainee,
+    role,
+    notes,
+    rows,
+  }: { trainee: string; role: string; notes: string; rows: EnablementChecklistRow[] }
+) {
   const progress = computeOpsEnablementProgress(rows);
   return {
     scope: "SPRINT3_OPS_SUPPORT_QUICK_TRAINING",
