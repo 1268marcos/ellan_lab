@@ -165,7 +165,7 @@ function resolveTouchModels(): TouchModelRow[] {
   }
 }
 
-const PAGE_VERSION = "ops/kiosk-touch-models v1.2.0-ops-kiosk-chrome-css";
+const PAGE_VERSION = "ops/kiosk-touch-models v1.3.0-trilha-D-mobile-a11y";
 
 const titleHeaderContainer: CSSProperties = { marginBottom: 12 };
 const titleHeaderTitle: CSSProperties = { color: "#0f172a" };
@@ -245,13 +245,19 @@ export default function OpsKioskTouchModelsPage() {
         </span>
       </div>
 
-      <div className="ops-kiosk-touch-chrome__model-grid">
+      <div
+        className="ops-kiosk-touch-chrome__model-grid"
+        role="group"
+        aria-label="Pré-visualizar modelo de ecrã KIOSK"
+      >
         {models.map((m) => {
           const isOn = active === m.id;
           return (
             <button
               key={m.id}
               type="button"
+              aria-pressed={isOn}
+              aria-controls="ops-kiosk-touch-model-detail"
               onClick={() => setActive(m.id)}
               className={`ops-kiosk-touch-chrome__model-card${isOn ? " ops-kiosk-touch-chrome__model-card--active" : ""}`}
             >
@@ -262,7 +268,7 @@ export default function OpsKioskTouchModelsPage() {
         })}
       </div>
 
-      <section className="ops-kiosk-touch-chrome__detail" aria-live="polite">
+      <section className="ops-kiosk-touch-chrome__detail" aria-live="polite" id="ops-kiosk-touch-model-detail">
         <h2>{activeModel.title}</h2>
         <ul className="ops-kiosk-touch-chrome__detail-list">
           {activeModel.bullets.map((line) => (
