@@ -8,6 +8,7 @@ import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollu
 import {
   FISCAL_D10_TASKS,
   FISCAL_D10_TRACKER_KEY,
+  buildD10ProvidersEvidencePayload,
   createDefaultD10Tracker,
   d10ProgressFromTracker,
   mergeLsPatchIntoD10Tracker,
@@ -438,6 +439,25 @@ export default function OpsFiscalProvidersPage() {
     }
   }
 
+  function exportD10ProvidersEvidenceJson() {
+    const nowIso = new Date().toISOString();
+    const payload = buildD10ProvidersEvidencePayload({
+      generatedAt: nowIso,
+      source: "/ops/fiscal/providers",
+      tracker: d10Tracker,
+      goNoGoBr: brGoNoGo,
+      goNoGoPt: ptGoNoGo,
+    });
+    const content = JSON.stringify(payload, null, 2);
+    downloadTextFile(
+      `SPRINT2_D10_PROVIDERS_TRACKER_${nowIso.replaceAll(":", "-")}.json`,
+      "application/json;charset=utf-8",
+      content,
+    );
+    setD10TrackerStatus("Evidência D10 exportada (SPRINT2_D10_PROVIDERS_TRACKER_*.json).");
+    window.setTimeout(() => setD10TrackerStatus(""), 2600);
+  }
+
   async function loadFiscalGaps(refresh = false) {
     setGapLoading(true);
     setGapError("");
@@ -702,6 +722,14 @@ export default function OpsFiscalProvidersPage() {
           <div style={toolbarStyle}>
             <button type="button" onClick={() => void copyD10HandoffSummary()} style={buttonGhostStyle}>
               Copiar resumo D10
+            </button>
+            <button
+              type="button"
+              data-testid="ops-fiscal-d10-export-json"
+              onClick={() => exportD10ProvidersEvidenceJson()}
+              style={buttonGhostStyle}
+            >
+              Exportar evidência D10 (JSON)
             </button>
             <small style={smallStyle}>
               {d10CompletedCount}/{FISCAL_D10_TASKS.length} concluídos

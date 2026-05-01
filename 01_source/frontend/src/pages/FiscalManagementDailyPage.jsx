@@ -30,11 +30,16 @@ import {
 } from "../utils/fiscalSprint2FinanceGate";
 import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
 import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
+import {
+  FISCAL_D10_TRACKER_KEY,
+  buildD10ProvidersEvidencePayload,
+  parseD10TrackerFromLocalStorageRaw,
+} from "../utils/fiscalD10ProvidersTracker";
 import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAcceptance } from "../utils/fiscalSprint2D12D13Evidence";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.11-d12-d13-sprint2-evidence";
+const PAGE_VERSION = "fiscal/management-daily v1.0.12-d10-evidence-zip";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -1013,9 +1018,24 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // espelho Sprint 3 opcional
     }
+    try {
+      const rawD10 = window.localStorage.getItem(FISCAL_D10_TRACKER_KEY);
+      const d10Tracker = parseD10TrackerFromLocalStorageRaw(rawD10 || "");
+      if (d10Tracker) {
+        const d10Evidence = buildD10ProvidersEvidencePayload({
+          generatedAt: nowIso,
+          source: "fiscal/management-daily",
+          tracker: d10Tracker,
+        });
+        const signedD10 = await buildSignedPayload(d10Evidence);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D10_PROVIDERS_TRACKER_${ts}.json`] = strToU8(JSON.stringify(signedD10, null, 2));
+      }
+    } catch {
+      // D10 opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }

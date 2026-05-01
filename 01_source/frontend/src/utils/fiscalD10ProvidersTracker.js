@@ -51,3 +51,63 @@ export function mergeLsPatchIntoD10Tracker(prev, raw) {
   }
   return out;
 }
+
+/**
+ * Lê o tracker D10 persistido (mesmo formato que `OpsFiscalProvidersPage` grava em `localStorage`).
+ * @param {string | null | undefined} raw
+ * @returns {Record<string, boolean> | null} `null` se não houver string válida
+ */
+export function parseD10TrackerFromLocalStorageRaw(raw) {
+  if (!raw || typeof raw !== "string") return null;
+  const merged = mergeLsPatchIntoD10Tracker(createDefaultD10Tracker(), raw);
+  return merged;
+}
+
+/**
+ * Payload de evidência Sprint 2 — trilha **D10** (export JSON / anexo ZIP assinado).
+ * @param {{ generatedAt: string, source: string, tracker: Record<string, unknown>, goNoGoBr?: { go_no_go?: string, summary?: string } | null, goNoGoPt?: { go_no_go?: string, summary?: string } | null }} args
+ */
+export function buildD10ProvidersEvidencePayload({ generatedAt, source, tracker, goNoGoBr, goNoGoPt }) {
+  const base = createDefaultD10Tracker();
+  const map = tracker && typeof tracker === "object" ? tracker : {};
+  const normalized = { ...base };
+  for (const row of FISCAL_D10_TASKS) {
+    if (typeof map[row.id] === "boolean") {
+      normalized[row.id] = map[row.id];
+    }
+  }
+  const progress = d10ProgressFromTracker(normalized);
+  const tasks = FISCAL_D10_TASKS.map((row) => ({
+    id: row.id,
+    label: row.label,
+    done: Boolean(normalized[row.id]),
+  }));
+  const snapBr = goNoGoBr && typeof goNoGoBr === "object";
+  const snapPt = goNoGoPt && typeof goNoGoPt === "object";
+  /** @type {Record<string, unknown>} */
+  const out = {
+    scope: "SPRINT2_D10_PROVIDERS_TRACKER_ATTACH",
+    generated_at: String(generatedAt || new Date().toISOString()),
+    source: String(source || "/ops/fiscal/providers"),
+    progress,
+    tasks,
+    tracker: normalized,
+  };
+  if (snapBr || snapPt) {
+    out.go_no_go_snapshot = {
+      br: snapBr
+        ? {
+            go_no_go: String(goNoGoBr.go_no_go || "NO_GO"),
+            summary: goNoGoBr.summary != null ? String(goNoGoBr.summary).slice(0, 4000) : "",
+          }
+        : { go_no_go: "NO_GO", summary: "" },
+      pt: snapPt
+        ? {
+            go_no_go: String(goNoGoPt.go_no_go || "NO_GO"),
+            summary: goNoGoPt.summary != null ? String(goNoGoPt.summary).slice(0, 4000) : "",
+          }
+        : { go_no_go: "NO_GO", summary: "" },
+    };
+  }
+  return out;
+}

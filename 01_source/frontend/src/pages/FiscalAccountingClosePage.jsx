@@ -21,6 +21,11 @@ import {
 import { loadSprint3PartnerAuditMirrorForDaily } from "../utils/fiscalSprint3PartnerAuditMirror";
 import { buildD11OrderIdRollupFromGapRows } from "../utils/fiscalD11OrderIdRollup";
 import {
+  FISCAL_D10_TRACKER_KEY,
+  buildD10ProvidersEvidencePayload,
+  parseD10TrackerFromLocalStorageRaw,
+} from "../utils/fiscalD10ProvidersTracker";
+import {
   buildExecutiveAccountingApprovalInnerForClose,
   buildSprint2D12AccountingHandoffEvidence,
   wrapSprint2D13AccountingAcceptance,
@@ -28,7 +33,7 @@ import {
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.2.6-d12-d13-exec-evidence-zip";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.7-d10-exec-evidence-zip";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
@@ -538,9 +543,26 @@ export default function FiscalAccountingClosePage() {
     } catch {
       // espelho Sprint 3 opcional
     }
+    try {
+      const rawD10 = window.localStorage.getItem(FISCAL_D10_TRACKER_KEY);
+      const d10Tracker = parseD10TrackerFromLocalStorageRaw(rawD10 || "");
+      if (d10Tracker) {
+        const d10Evidence = buildD10ProvidersEvidencePayload({
+          generatedAt: nowIso,
+          source: "fiscal/accounting-close",
+          tracker: d10Tracker,
+        });
+        const signedD10Exec = await buildSignedPayload(d10Evidence);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D10_PROVIDERS_TRACKER_EXEC_${ts}.json`] = strToU8(
+          JSON.stringify(signedD10Exec, null, 2),
+        );
+      }
+    } catch {
+      // D10 executivo opcional
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D11 rollup (`SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*`) + D12/D13 executivos (`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`, `SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`) + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
+      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D10 tracker (`SPRINT2_D10_PROVIDERS_TRACKER_EXEC_*`) + D11 rollup (`SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*`) + D12/D13 executivos (`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`, `SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`) + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
