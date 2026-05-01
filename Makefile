@@ -1,5 +1,5 @@
 # Raiz do Ellan Lab — alvos utilitários para desenvolvimento e CI.
-.PHONY: test-collect test-payment-contract e2e-payment-p0
+.PHONY: test-collect test-payment-contract e2e-payment-p0 e2e-payment-ui
 
 # pytest --collect-only em billing_fiscal_service, order_pickup_service e payment_gateway.
 # Exige .venv + requirements.txt instalados em cada serviço (ver 07_tests/run_backend_test_collect.sh).
@@ -19,3 +19,9 @@ test-payment-contract:
 e2e-payment-p0:
 	@chmod +x 07_tests/e2e_payment_minimal_stack.sh
 	@./07_tests/e2e_payment_minimal_stack.sh
+
+# P3 — Playwright no checkout (smoke sem stack; fluxo DEV com E2E_PUBLIC_AUTH_TOKEN + stack).
+# PLAYWRIGHT_START_VITE=0 se o Vite já estiver no ar em FRONTEND_BASE_URL.
+e2e-payment-ui:
+	@chmod +x 07_tests/e2e_payment_ui_playwright.sh
+	@./07_tests/e2e_payment_ui_playwright.sh

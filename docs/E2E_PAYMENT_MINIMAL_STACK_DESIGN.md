@@ -2,7 +2,7 @@
 
 Objetivo: definir **um job reproduzível** (local + CI) que valide o encadeamento **criar pedido em pagamento pendente → cobrança no gateway → confirmação interna no pickup → commit no runtime → cancelamento de deadline no lifecycle**, sem depender de PSP real nem de browser.
 
-Este documento é a **especificação**; a implementação pode ser feita em fases (P0 → P2).
+Este documento é a **especificação**; a implementação pode ser feita em fases (P0 → P3).
 
 ---
 
@@ -10,7 +10,8 @@ Este documento é a **especificação**; a implementação pode ser feita em fas
 
 | In scope | Out of scope (fases posteriores) |
 |----------|-----------------------------------|
-| HTTP entre serviços já existentes no compose mínimo | Checkout UI (Playwright/Cypress) |
+| HTTP entre serviços já existentes no compose mínimo | UI fora do checkout público (ex.: totem operador completo) |
+| Smoke Playwright no `/checkout` (P3, sem stack Docker) | Fluxo DEV no browser em CI sem segredos (fica `test.skip`) |
 | `POST /internal/.../payment-confirm` com `X-Internal-Token` | Mercado Pago / Stripe reais (sandbox pode ser P3) |
 | `POST` gateway em `/gateway/payment/create` (ou legado `/gateway/pagamento`) | Workers fiscais e emissão NFC-e |
 | Health gates e timeouts explícitos | Carga ou paralelismo elevado |
@@ -171,13 +172,15 @@ Após `payment-confirm` bem-sucedido:
 5. `bash 07_tests/e2e_payment_minimal_stack.sh` — health runtime + pickup + **gateway**, **`POST /orders`** (P2, omissão `E2E_CREATE_ORDER_VIA=seed` para allocate+`psql` legado), **`POST /gateway/payment/create`** (cartão), `payment-confirm`; `PG*` aponta a `127.0.0.1:5435`. `E2E_SKIP_GATEWAY=1` omite o gateway (regressão estilo P0).  
 6. **Tear down:** `docker compose down --remove-orphans` (sempre, `if: always()`).
 
+**Workflow Playwright (P3):** `.github/workflows/e2e-payment-ui-playwright.yml` — `npm ci` em `01_source/frontend`, `playwright install chromium`, `npx playwright test` com `PLAYWRIGHT_START_VITE=1` (Vite + smoke `/checkout`); teste DEV completo fica **skipped** sem `E2E_PUBLIC_AUTH_TOKEN` no secret/env.
+
 **Paralelização:** manter **um** job por PR para reduzir flakiness de portas; matriz só se houver regiões distintas (SP vs PT) com stacks isoladas.
 
 ---
 
 ## 9. Script runner
 
-**Ficheiro:** `07_tests/e2e_payment_minimal_stack.sh` — também exposto como `make e2e-payment-p0` (requer stack já no ar).
+**Ficheiros:** `07_tests/e2e_payment_minimal_stack.sh` (`make e2e-payment-p0`, stack no ar) e **`07_tests/e2e_payment_ui_playwright.sh`** (`make e2e-payment-ui`, smoke UI sem stack; opcional token para fluxo DEV).
 
 - Lê `E2E_ENV_FILE` / `ORDER_INTERNAL_TOKEN`, `RUNTIME_BASE`, `PICKUP_BASE`, `GATEWAY_BASE` (P1), `PG*`, opcionalmente `E2E_LOCKER_ID`, `E2E_REGION`, `E2E_CURRENCY`, `E2E_PROVIDER`, `E2E_SLOT`, `E2E_USER_ID` / `E2E_USER_EMAIL`, `E2E_SKIP_GATEWAY`, `E2E_AMOUNT_CENTS`, **`E2E_CREATE_ORDER_VIA`** (`http` = P2 com `X-Dev-Bypass-Auth` + `DEV_BYPASS_AUTH` no pickup; `seed` = allocate + `seed_e2e_payment_order.sql`).
 - Por omissão tenta resolver `users.id` para `admin.operacao@ellanlab.com` (operador lab; ex.: mesmo utilizador com sessão no FE). Se não existir na BD, `orders.user_id` fica `NULL` com aviso; pode forçar com `E2E_USER_ID=<uuid>` ou desativar o email explícito com `E2E_USER_EMAIL=` (string vazia).
@@ -207,7 +210,9 @@ Não substitui `make test-payment-contract` (testes unitários de contrato); **c
 | `deploy/compose-minimal-stack.sh` | Base de infra do E2E |
 | `make test-payment-contract` | Rede de segurança **sem** Docker |
 | `make e2e-payment-p0` | Mesmo fluxo que o script shell (stack mínima já de pé) |
+| `make e2e-payment-ui` | Playwright P3 (`01_source/frontend/e2e/`) |
 | `.github/workflows/e2e-payment-minimal-stack.yml` | CI compose + E2E P2 (POST /orders + gateway + pickup) |
+| `.github/workflows/e2e-payment-ui-playwright.yml` | CI Node + Playwright smoke (P3) |
 | `.github/workflows/backend-test-collect.yml` | CI Python (paralelo ao E2E compose) |
 | `docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt` | Registar evolução quando P1 (gateway no meio) estiver verde |
 
@@ -218,6 +223,6 @@ Não substitui `make test-payment-contract` (testes unitários de contrato); **c
 1. **P0 — Seed + script:** `seed_e2e_payment_order.sql` + `e2e_payment_minimal_stack.sh` com `payment-confirm` + query SQL (sem gateway). Mantido com `E2E_SKIP_GATEWAY=1`.  
 2. **P1 — Gateway no meio:** **feito** no mesmo script: health gateway + `POST /gateway/payment/create` com `creditCard` + headers `Idempotency-Key` / `X-Device-Fingerprint`; o gateway chama o runtime `set-state` com **`X-Locker-Id`** (`LockerBackendClient`). Em lab, `GATEWAY_E2E_RELAX_RISK` e URLs `BACKEND_*` / `RUNTIME_BASE_URL` no compose apontam para `backend_runtime` na rede Docker.  
 3. **P2 — Create order HTTP:** **feito** no script por omissão (`E2E_CREATE_ORDER_VIA=http`): `POST /orders` com header **`X-Dev-Bypass-Auth: 1`** quando o pickup tem **`DEV_BYPASS_AUTH=true`** (lab/CI via `env.e2e-minimal`); o pickup chama `create_order_core` (allocate no runtime + persistência + lifecycle). Regressão allocate+seed: `E2E_CREATE_ORDER_VIA=seed`. Ficheiro **`02_docker/seeds/seed_e2e_payment_cleanup.sql`** só DELETE (teardown manual opcional).  
-4. **P3 — UI:** Playwright contra `FRONTEND_BASE_URL` (fora deste desenho).
+4. **P3 — UI:** **feito** em `01_source/frontend` com **`@playwright/test`**: smoke em **`/checkout`** sem query (estado “Checkout inválido”, `data-testid=public-checkout-invalid`); teste opcional **`checkout-dev-full.spec.ts`** com `E2E_PUBLIC_AUTH_TOKEN` (JWT em `localStorage`), `VITE_DEV_BYPASS_AUTH=true`, utilizador com email verificado + perfil fiscal + role `admin_operacao`/`auditoria`, e stack pickup/gateway/runtime; botão **`public-checkout-dev-simulate`**. `FRONTEND_BASE_URL` / `PLAYWRIGHT_START_VITE` documentados em `playwright.config.ts`.
 
-Com P2 verde no CI, o Ellan Lab cobre **criar pedido HTTP → gateway → runtime → pickup** no fluxo mínimo, além dos contratos unitários já existentes.
+Com P2 + P3 smoke verdes no CI, o Ellan Lab cobre **API (pedido → gateway → pickup)** e **regressão mínima do checkout no browser**, além dos contratos unitários já existentes.

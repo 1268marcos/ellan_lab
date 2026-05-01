@@ -741,7 +741,7 @@ export default function PublicCheckoutPage() {
         <div style={containerStyle}>
           <h1 className="sr-only">Checkout</h1>
           <CheckoutSteps currentStep={0} />
-          <section style={errorCardStyle}>
+          <section data-testid="public-checkout-invalid" style={errorCardStyle}>
             <div style={errorIconStyle}>⚠️</div>
             <h2 style={cardTitleStyle}>Checkout inválido</h2>
             <p style={cardTextStyle}>
@@ -1030,6 +1030,8 @@ export default function PublicCheckoutPage() {
             {/* 15/04/2026 */}
             {canShowDevSimulateButton ? (
               <button
+                type="button"
+                data-testid="public-checkout-dev-simulate"
                 onClick={handleSimulateOnlinePaymentDev}
                 disabled={
                   loadingSimulatePayment ||

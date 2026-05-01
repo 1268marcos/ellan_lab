@@ -45,3 +45,5 @@ Especificação em camadas (P0 seed + `payment-confirm`, P1 gateway, P2 create o
 [`docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md`](../docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md).
 
 Com a stack no ar: `make e2e-payment-p0` — fluxo **P2** com `POST /orders` (dev bypass lab) + gateway + `payment-confirm`; `E2E_CREATE_ORDER_VIA=seed` volta ao allocate+SQL; `E2E_SKIP_GATEWAY=1` omite o gateway. Locker default SP-Carapicuíba LK-002; slots via runtime, não fixos em 24.
+
+**P3 (UI):** `make e2e-payment-ui` — Playwright em `01_source/frontend/e2e/` (smoke `/checkout` sem Docker; fluxo DEV com `E2E_PUBLIC_AUTH_TOKEN` + stack). Ver [`docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md`](../docs/E2E_PAYMENT_MINIMAL_STACK_DESIGN.md).
