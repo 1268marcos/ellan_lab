@@ -8,7 +8,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import Column, DateTime as _DateTime, Enum, Index, String, Integer, Boolean, Float
+from sqlalchemy import Column, DateTime as _DateTime, Enum, Index, String, Integer, Boolean, Float, TypeDecorator
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -328,6 +328,57 @@ class WalletProvider(str, enum.Enum):
     LINE_PAY = "linePay"
 
 
+class _PaymentMethodPg(TypeDecorator):
+    """Compatibilidade com rótulos Postgres (ex.: MBWAY) vs valores Python (ex.: mbway)."""
+
+    impl = String(32)
+    cache_ok = True
+
+    _PG_TO_PY: dict[str, PaymentMethod] = {}
+    for _m in PaymentMethod:
+        _PG_TO_PY[_m.name] = _m
+        _PG_TO_PY[_m.name.upper()] = _m
+        if isinstance(_m.value, str):
+            _PG_TO_PY[str(_m.value)] = _m
+            _PG_TO_PY[str(_m.value).upper()] = _m
+    _PG_TO_PY.setdefault("CARTAO", PaymentMethod.creditCard)
+
+    @staticmethod
+    def _to_pg(value: PaymentMethod) -> str:
+        upper = {
+            PaymentMethod.mbway: "MBWAY",
+            PaymentMethod.pix: "PIX",
+            PaymentMethod.nfc: "NFC",
+            PaymentMethod.apple_pay: "APPLE_PAY",
+            PaymentMethod.google_pay: "GOOGLE_PAY",
+            PaymentMethod.mercado_pago_wallet: "MERCADO_PAGO_WALLET",
+            PaymentMethod.multibanco_reference: "MULTIBANCO_REFERENCE",
+        }
+        if value in upper:
+            return upper[value]
+        return str(value.value) if isinstance(value.value, str) else value.name
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        if isinstance(value, PaymentMethod):
+            return self._to_pg(value)
+        if isinstance(value, str):
+            return self._to_pg(self._PG_TO_PY[value.strip().upper()])
+        raise TypeError(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        s = str(value)
+        if s in self._PG_TO_PY:
+            return self._PG_TO_PY[s]
+        try:
+            return PaymentMethod[s]
+        except KeyError:
+            return self._PG_TO_PY.get(s.upper(), self._PG_TO_PY.get(s.lower()))
+
+
 # ==================== Model Order ====================
 
 class Order(Base):
@@ -381,7 +432,7 @@ class Order(Base):
     
     # Pagamento
     gateway_transaction_id = Column(String, nullable=True)
-    payment_method = Column(Enum(PaymentMethod), nullable=True)
+    payment_method = Column(_PaymentMethodPg(), nullable=True)
     payment_status = Column(
         Enum(PaymentStatus),
         nullable=False,

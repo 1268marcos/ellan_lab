@@ -1,0 +1,68 @@
+# Garante que os três backends importam dependências, recolhem testes (collect-only) e correm
+# um slice de contrato pagamento↔runtime / pickup↔lifecycle (`make test-payment-contract`).
+# O payment_gateway deve usar o seu próprio .venv com requirements.txt (redis, stripe, httpx, …).
+name: Backend pytest collect-only
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "01_source/backend/billing_fiscal_service/**"
+      - "01_source/order_pickup_service/**"
+      - "01_source/payment_gateway/**"
+      - "07_tests/run_backend_test_collect.sh"
+      - "07_tests/run_payment_runtime_contract_tests.sh"
+      - ".github/workflows/backend-test-collect.yml"
+      - "Makefile"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "01_source/backend/billing_fiscal_service/**"
+      - "01_source/order_pickup_service/**"
+      - "01_source/payment_gateway/**"
+      - "07_tests/run_backend_test_collect.sh"
+      - "07_tests/run_payment_runtime_contract_tests.sh"
+      - ".github/workflows/backend-test-collect.yml"
+      - "Makefile"
+
+jobs:
+  test-collect:
+    name: Aggregate pytest --collect-only
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: billing_fiscal_service — venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/backend/billing_fiscal_service
+
+      - name: order_pickup_service — venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/order_pickup_service
+
+      - name: payment_gateway — venv + deps (próprio venv; não partilhar com outros serviços)
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/payment_gateway
+
+      - name: Run make test-collect
+        run: make test-collect
+
+      - name: Run payment ↔ runtime / lifecycle contract tests
+        run: make test-payment-contract

@@ -706,6 +706,7 @@ def payment_confirm(
         order=order,
         allocation=allocation,
         pickup=pickup,
+        amount_cents=payload.amount_cents,
         currency=payload.currency,
         source="internal",
         attempt=attempt,  # ← PASSAR O attempt

@@ -214,7 +214,7 @@ Não substitui `make test-payment-contract` (testes unitários de contrato); **c
 | `.github/workflows/e2e-payment-minimal-stack.yml` | CI compose + E2E P2 (POST /orders + gateway + pickup) |
 | `.github/workflows/e2e-payment-ui-playwright.yml` | CI Node + Playwright smoke (P3) |
 | `.github/workflows/backend-test-collect.yml` | CI Python (paralelo ao E2E compose) |
-| `docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt` | Registar evolução quando P1 (gateway no meio) estiver verde |
+| `docs/Sprint_Fiscal_and_Invoices_ACOMPANHAMENTO.txt` | Registar evolução E2E (P1–P3 / CI) quando relevante para fiscal/sprints |
 
 ---
 

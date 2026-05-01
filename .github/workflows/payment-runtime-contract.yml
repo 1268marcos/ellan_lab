@@ -1,0 +1,60 @@
+# Execução rápida dos testes de contrato pagamento ↔ runtime / pickup ↔ lifecycle.
+name: Payment runtime lifecycle contract
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "01_source/payment_gateway/**"
+      - "01_source/order_pickup_service/app/core/lifecycle_client.py"
+      - "01_source/order_pickup_service/app/routers/internal.py"
+      - "01_source/order_pickup_service/tests/test_lifecycle_client_prepayment_cancel.py"
+      - "01_source/order_pickup_service/tests/test_internal_prepayment_cancel_on_payment_path.py"
+      - "01_source/payment_gateway/app/integrations/tests/test_locker_backend_runtime.py"
+      - "01_source/payment_gateway/app/services/locker_backend_client.py"
+      - "07_tests/run_payment_runtime_contract_tests.sh"
+      - ".github/workflows/payment-runtime-contract.yml"
+      - "Makefile"
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - "01_source/payment_gateway/**"
+      - "01_source/order_pickup_service/app/core/lifecycle_client.py"
+      - "01_source/order_pickup_service/app/routers/internal.py"
+      - "01_source/order_pickup_service/tests/test_lifecycle_client_prepayment_cancel.py"
+      - "01_source/order_pickup_service/tests/test_internal_prepayment_cancel_on_payment_path.py"
+      - "01_source/payment_gateway/app/integrations/tests/test_locker_backend_runtime.py"
+      - "01_source/payment_gateway/app/services/locker_backend_client.py"
+      - "07_tests/run_payment_runtime_contract_tests.sh"
+      - ".github/workflows/payment-runtime-contract.yml"
+      - "Makefile"
+
+jobs:
+  contract:
+    name: pytest contract slice
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: order_pickup_service — venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/order_pickup_service
+
+      - name: payment_gateway — venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/payment_gateway
+
+      - name: make test-payment-contract
+        run: make test-payment-contract

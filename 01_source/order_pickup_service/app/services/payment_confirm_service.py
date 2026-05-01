@@ -334,6 +334,31 @@ def _validate_payment_confirmation(
 
 # ==================== Funções Principais ====================
 
+def _resolve_payment_method_enum(payment_method) -> PaymentMethod | None:
+    """Contratos internos usam literais em maiúsculas (ex.: MBWAY); SQLAlchemy usa membros Enum Python (ex.: mbway)."""
+    if payment_method is None:
+        return None
+    if isinstance(payment_method, PaymentMethod):
+        return payment_method
+    raw = str(payment_method).strip()
+    if not raw:
+        return None
+    ru = raw.upper()
+    for m in PaymentMethod:
+        if m.name.upper() == ru:
+            return m
+        val = getattr(m, "value", None)
+        if val is not None and str(val).upper() == ru:
+            return m
+    alias_member = {
+        "CARTAO": "creditCard",
+        "CARTÃO": "creditCard",
+    }.get(ru)
+    if alias_member and alias_member in PaymentMethod.__members__:
+        return PaymentMethod[alias_member]
+    raise ValueError(f"payment_method desconhecido: {payment_method!r}")
+
+
 def apply_payment_confirmation(
     *,
     db: Session,
@@ -353,7 +378,7 @@ def apply_payment_confirmation(
     
     # Atualiza método de pagamento se fornecido
     if payment_method:
-        order.payment_method = payment_method
+        order.payment_method = _resolve_payment_method_enum(payment_method)
 
     # Atualiza transaction_id
     if transaction_id and str(transaction_id).strip():
@@ -694,6 +719,7 @@ def confirm_payment_and_emit_event(
         order=order,
         allocation=allocation,
         pickup=pickup,
+        amount_cents=amount_cents,
         currency=str(currency or "").strip().upper(),
         source=source,
         transaction_id=transaction_id,
@@ -811,6 +837,7 @@ def regenerate_fiscal_document(
         order=order,
         allocation=allocation,
         pickup=pickup,
+        amount_cents=order.amount_cents,
         currency=currency,
         source=f"regenerate_attempt_{next_attempt}",
         attempt=next_attempt,
