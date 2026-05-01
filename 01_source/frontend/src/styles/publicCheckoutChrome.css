@@ -1,5 +1,5 @@
 /**
- * Checkout público — migração incremental de estilos (fatias 1–4).
+ * Checkout público — migração incremental de estilos (fatias 1–4 + polish mobile F1).
  * Escopo: `.public-checkout-chrome` + shell + fiscal (painel + formulário em `variant=checkout`).
  */
 
@@ -621,4 +621,73 @@
 .public-checkout-chrome__fiscal-form-rebuild-list {
   margin: var(--spacing-2) 0 0 0;
   padding-left: 18px;
+}
+
+/* --- Trilha F1 — polish mobile (checkout em viewports estreitas) --- */
+
+@media (max-width: 640px) {
+  .public-checkout-chrome__page {
+    padding: var(--spacing-4) var(--spacing-3);
+  }
+
+  .public-checkout-chrome__layout-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-4);
+  }
+
+  .public-checkout-chrome__hero-card {
+    padding: var(--spacing-4);
+    margin-bottom: var(--spacing-4);
+  }
+
+  .public-checkout-chrome__steps {
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: var(--spacing-2);
+    padding: var(--spacing-4) var(--spacing-3);
+    margin-bottom: var(--spacing-5);
+  }
+
+  .public-checkout-chrome__step-connector {
+    width: 28px;
+    margin: 0 var(--spacing-1);
+  }
+
+  .public-checkout-chrome__fiscal-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .public-checkout-chrome__actions-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .public-checkout-chrome__actions-row .public-checkout-chrome__btn-primary,
+  .public-checkout-chrome__actions-row .public-checkout-chrome__btn-secondary {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .public-checkout-chrome__trust-strip {
+    gap: var(--spacing-4);
+    padding-top: var(--spacing-4);
+  }
+}
+
+@media (max-width: 480px) {
+  .public-checkout-chrome__step {
+    padding: var(--spacing-2) var(--spacing-3);
+  }
+
+  .public-checkout-chrome__step-label {
+    font-size: 12px;
+  }
+
+  .public-checkout-chrome__hero-card {
+    padding: var(--spacing-3);
+  }
+
+  .public-checkout-chrome__step-icon {
+    font-size: var(--font-size-xl);
+  }
 }
