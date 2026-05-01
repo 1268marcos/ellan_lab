@@ -1,10 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 /**
- * Sprint 1 — «E2E KIOSK assistido» (entrada mínima): smoke da rota OPS
- * `/ops/kiosk-touch-models`. Sessão OPS simulada via mock HTTP do pickup (`pathname` `/public/auth/me*`)
- * + token em `localStorage` (sem backend obrigatório). `VITE_ENABLE_OPS_ROUTES` no `webServer`
- * do Playwright. Alinhado a `docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md` — «Recomendacao atual — onde codar».
+ * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
+ * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. Extensão: **Modelo A** → `/comprar`;
+ * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`). `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
 test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
   test.beforeEach(async ({ page, context }) => {
@@ -67,5 +66,28 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await page.getByRole("button", { name: /Exportar checklist \(JSON\)/i }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^SPRINT1_KIOSK_TOUCH_USABILITY_N8_/i);
+  });
+
+  test("Modelo A — CTA primário abre catálogo /comprar", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Modelo A — Quick Buy/i }).click();
+    await page.getByRole("link", { name: /Abrir catálogo \(fluxo compra\)/i }).click();
+
+    await expect(page).toHaveURL(/\/comprar/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { level: 1, name: /Escolha seu produto/i })).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("Modelo B — CTA primário abre /checkout (laboratório; sem query → checkout inválido)", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Modelo B — Guided Buy/i }).click();
+    await page.getByRole("link", { name: /Abrir checkout \(laboratório\)/i }).click();
+
+    await expect(page).toHaveURL(/\/checkout(?:\?|$)/, { timeout: 15_000 });
+    await expect(page.getByTestId("public-checkout-invalid")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: /Checkout inválido/i })).toBeVisible();
   });
 });
