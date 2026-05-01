@@ -26,6 +26,24 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-01T22:30:00-03:00",
+    date: "2026-05-01",
+    scope: "Sprint 1 — E2E checkout: POST order-pickup mock + Processando…",
+    title: "Playwright mocka `POST /public/orders/` e valida redirect `meus-pedidos`",
+    description:
+      "`e2e/public-catalog-to-checkout.spec.ts` regista `installOrderPickupPostMock` (delay ~800ms para ver «Processando…»), `data-testid=\"public-checkout-confirm-order\"` em `PublicCheckoutPage.jsx`, e assert de URL após criação mockada.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/e2e/public-catalog-to-checkout.spec.ts",
+      "Frontend: 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/checkout",
+    directLinkLabel: "Abrir checkout (query mínima)",
+  },
+  {
     dateTime: "2026-05-01T21:15:00-03:00",
     date: "2026-05-01",
     scope: "Sprint 1 — checkout público: fatia 2 CSS (Resumo/Pagamento) + E2E",

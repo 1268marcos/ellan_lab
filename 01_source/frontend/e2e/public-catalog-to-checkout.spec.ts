@@ -2,7 +2,9 @@ import { expect, test } from "@playwright/test";
 
 const GATEWAY_BASE = process.env.VITE_GATEWAY_BASE_URL || "http://127.0.0.1:8000";
 const RUNTIME_BASE = process.env.VITE_RUNTIME_BASE_URL || "http://127.0.0.1:8200";
+const ORDER_PICKUP_BASE = process.env.VITE_ORDER_PICKUP_BASE_URL || "http://127.0.0.1:8003";
 const LOCKER_ID = "SP-CARAPICUIBA-JDMARILU-LK-002";
+const E2E_ORDER_ID = "e2e-order-pw-catalog-checkout";
 const SKU_ID = "cookie_especial";
 const SLOT = 3;
 
@@ -136,6 +138,30 @@ async function installGatewayRuntimeMocks(page: import("@playwright/test").Page)
   );
 }
 
+/** POST `/public/orders/` — atraso opcional para o UI mostrar «Processando…» antes da resposta. */
+async function installOrderPickupPostMock(
+  page: import("@playwright/test").Page,
+  opts: { delayMs?: number; orderId?: string } = {},
+) {
+  const delayMs = opts.delayMs ?? 750;
+  const orderId = opts.orderId ?? E2E_ORDER_ID;
+  await page.route(
+    (url) => matchesServiceBase(url, ORDER_PICKUP_BASE) && url.pathname === "/public/orders/",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await new Promise((r) => setTimeout(r, delayMs));
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ order_id: orderId }),
+      });
+    },
+  );
+}
+
 test.describe("Jornada pública — catálogo → checkout (query mínima)", () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
@@ -170,5 +196,27 @@ test.describe("Jornada pública — catálogo → checkout (query mínima)", () 
     await expect(page.getByRole("combobox", { name: /Método de pagamento/i })).toBeVisible();
     await expect(page.getByText(/Produto selecionado/i)).toBeVisible();
     await expect(page.getByText(/Cookie laboratório/i).first()).toBeVisible();
+  });
+
+  test("Confirmar reserva chama POST mock, mostra Processando… e conclui pedido", async ({ page }) => {
+    await installOrderPickupPostMock(page, { delayMs: 800, orderId: E2E_ORDER_ID });
+    const qs = new URLSearchParams({
+      region: "SP",
+      locker_id: LOCKER_ID,
+      sku_id: SKU_ID,
+      slot: String(SLOT),
+    });
+    await page.goto(`/checkout?${qs.toString()}`);
+
+    const confirm = page.getByTestId("public-checkout-confirm-order");
+    await expect(confirm).toBeEnabled({ timeout: 30_000 });
+    await confirm.click();
+
+    await expect(confirm).toContainText(/Processando/i, { timeout: 5_000 });
+
+    await expect(confirm).toContainText(/Pedido Criado|Redirecionando/i, { timeout: 15_000 });
+    await expect(page).toHaveURL(new RegExp(`/meus-pedidos/${E2E_ORDER_ID.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), {
+      timeout: 15_000,
+    });
   });
 });

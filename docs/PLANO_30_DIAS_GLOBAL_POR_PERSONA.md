@@ -335,7 +335,7 @@ Checklist:
   - Progresso: **10%** (spec **OPS** `/ops/kiosk-touch-models` com auth mockada; smoke **`/comprar`** em `e2e/public-comprar-catalog.spec.ts`; checkout completo em `e2e/checkout-dev-full.spec.ts` com token opcional)
 
 **Prioridade executiva (comité, 2026-04-30): Sprint 1 = `#1` em alocação de capacidade de engenharia de produto/FE**  
-- **Objetivo:** média dos 6 itens **~61%** (ver **Metodo** *(viii)*); próximo ganho típico: **E2E** com mock `POST /public/orders/` (confirmar reserva) ou **fatia 3** de CSS (fundo página / painel fiscal). **Store e syncStatus: `[x]` 100%.** Catálogo→checkout + cartões + combo pagamento no E2E: **`[x]`** (`e2e/public-catalog-to-checkout.spec.ts`).  
+- **Objetivo:** média dos 6 itens **~61%** (ver **Metodo** *(viii)*); próximo ganho típico: **fatia 3** de CSS (fundo página / `FiscalProfileCheckoutPanel`) ou E2E de erro 4xx no checkout. **Store e syncStatus: `[x]` 100%.** Catálogo→checkout + **POST** mock + «Processando…» no E2E: **`[x]`** (`e2e/public-catalog-to-checkout.spec.ts`).  
 - **Coexistência:** Sprint 2 mantém **prioridade #1 de negócio** (Fiscal + Contábil / D10–D18); alocação de **codificação** espelhada na secção **«Recomendacao atual — onde codar»**: **~65–75% Sprint 2** + **~25–35% Sprint 1** (não zero no financeiro até o comité rever).  
 - **Ordem sugerida de ataque:** (1) **Store** — **`[x]`** → (2) **TS** — indicador **≥90%** + `OpsKioskTouchModelsPage` no strict-core → (3) **Protótipos KIOSK** — **`[~]`** cockpit `/ops/kiosk-touch-models` → (4) **E2E KIOSK assistido** → (5) **Migração de estilos** checkout.  
 - **Onde codar em primeiro lugar (recomendação consolidada):** ver secção **«Recomendacao atual — onde codar»** acima do **Backlog por persona** — em síntese: **Sprint 2 dominante** (gate v2) + **fatia Sprint 1** para fechar **≥60%** na média dos seis itens.
@@ -523,7 +523,7 @@ Tabela para o comité: **antes** = último snapshot neste documento antes da rev
 | Item checklist «E2E KIOSK assistido» | 0% | **`[~]` 10%** | +10 p.p. |
 | Sprint 1 — média dos 6 itens | ~58% | **~61%** | **+3 p.p.** |
 
-**Evidência:** `e2e/kiosk-touch-models.spec.ts`; `e2e/public-comprar-catalog.spec.ts`; `e2e/public-catalog-to-checkout.spec.ts` (catálogo → `/checkout`, query mínima, steps + cartões resumo/pagamento + combo método); `playwright.config.ts` (`VITE_ENABLE_OPS_ROUTES` no `webServer`); `OpsKioskTouchModelsPage.tsx` (`data-testid`, recarregar definições); `src/styles/publicCheckoutChrome.css` (estilos checkout fatias 1–2).
+**Evidência:** `e2e/kiosk-touch-models.spec.ts`; `e2e/public-comprar-catalog.spec.ts`; `e2e/public-catalog-to-checkout.spec.ts` (catálogo → `/checkout`; mock `POST` order-pickup `/public/orders/` + «Processando…» + redirect `meus-pedidos`); `playwright.config.ts` (`VITE_ORDER_PICKUP_BASE_URL` + `webServer`); `OpsKioskTouchModelsPage.tsx` (`data-testid`, recarregar definições); `src/styles/publicCheckoutChrome.css` (estilos checkout fatias 1–2).
 
 #### Snapshot incremental Sprint 2 — D11 evidência por `order_id` (2026-05-01)
 
@@ -1842,4 +1842,5 @@ Decisao executiva:
 - **Feito (A — encadeamento checkout):** **`e2e/public-catalog-to-checkout.spec.ts`** cobre catálogo → checkout com query mínima (Playwright).
 - **Feito (B — D12/D13):** artefactos **`SPRINT2_D12_*`** / **`SPRINT2_D13_*`** exportáveis e no ZIP diário/executivo, no mesmo padrão de evidência assinada do D11.
 - **Feito (Sprint 1 — estilos checkout, fatias 1–2):** `publicCheckoutChrome.css` cobre topo + **cartões Resumo/Pagamento** + CTAs; E2E reforça cartões e combo de pagamento.
-- **Próxima trilha recomendada (solo):** Sprint 1 — E2E com mock **`POST`** order pickup + assert **«Confirmar reserva»** / estado processando; ou **fatia 3** de CSS (fundos de página / `FiscalProfileCheckoutPanel`); Sprint 2 — D14+ conforme sequência D10–D18.
+- **Feito (Sprint 1 — E2E checkout pedido):** mock **`POST`** order-pickup `/public/orders/` (delay + `order_id`); `data-testid="public-checkout-confirm-order"`; asserts **Processando…**, sucesso e **`/meus-pedidos/{order_id}`**.
+- **Próxima trilha recomendada (solo):** Sprint 1 — **fatia 3** CSS (fundos / `FiscalProfileCheckoutPanel`) ou E2E de falha no `POST`; Sprint 2 — D14+ conforme sequência D10–D18.

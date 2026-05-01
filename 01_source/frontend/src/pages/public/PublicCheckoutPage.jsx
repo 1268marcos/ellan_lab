@@ -998,6 +998,7 @@ export default function PublicCheckoutPage() {
 
             <button
               type="button"
+              data-testid="public-checkout-confirm-order"
               className="public-checkout-chrome__btn-primary"
               onClick={handleCreateOrder}
               disabled={
