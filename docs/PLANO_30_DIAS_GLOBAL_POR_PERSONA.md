@@ -93,6 +93,10 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 - **~65–75%** da capacidade de **codificação** na **Sprint 2** (trilha fiscal/contábil, consolidado rumo ao **gate v2**: Fiscal ≥50%, Contábil ≥40%, consolidado Sprint 2 ≥55%, comprovação P0).  
 - **~25–35%** em **Sprint 1** (protótipos KIOSK, E2E assistido, estilos checkout) para sustentar a média do checklist Sprint 1 (**≥60%**; leitura **2026-05-02 ~65%** — **Metodo** *(ix)*) sem perder o desbloqueio de S3/S4.
 
+### Sprint 1 — leitura operacional (trilhas)
+- **Mapa único:** secção **`## Sprint 1`** → **«Mapa de trilhas (Sprint 1)»** (trilhas **A**–**F2**, ligadas aos 6 itens do checklist e à média **~65%**).
+- **Onde investir a fatia ~25–35%:** priorizar **F2** (CSS kiosk/OPS) e **E** (mais E2E na jornada assistida); **D** exige evidência qualitativa (n≥8 / visual) para subir de **`[~]`** com confiança.
+
 ### Evidência no repositório (checkpoint)
 - **`FiscalGlobalPage.jsx`:** painel compacto **Sprint 2 — gate v2** com atalhos para `fiscal/management-daily`, `fiscal/accounting-close`, `fiscal/sprint2-finance-gate` e `fiscal/readiness-execution` (hub `fiscal/global`); lembrete textual do runbook `docs/runbooks/FISCAL_CATALOGO_SEM_UI_POR_PAIS.md`.  
 - **`OpsKioskTouchModelsPage.tsx`:** checklist heurística **n≥8** com persistência em `localStorage`, **export JSON**, **recarregar definições** de modelos (`localStorage` merge por id), **`e2e/kiosk-touch-models.spec.ts`** (Playwright + mock `/public/auth/me*`, `VITE_ENABLE_OPS_ROUTES` no `webServer`).  
@@ -320,9 +324,29 @@ Nota de governanca:
 ## Sprint 1 (Dias 3-9) - Fundacao global + UX KIOSK v1
 Objetivo: fechar arquitetura global e iniciar entrega de valor visivel.
 
+### Mapa de trilhas (Sprint 1)
+
+As **trilhas** abaixo decompõem os **6 itens do checklist** em frentes de execução. A **média ~65%** do painel (**Metodo** *(ix)*) vem só desses seis itens, não do checklist da Sprint 2.
+
+| Trilha | Item checklist | Indicador (painel) | `[ ]` / `[~]` / `[x]` | Evidência / foco imediato |
+| --- | --- | ---: | :---: | --- |
+| **A — Store de checkout** | Store central | **100%** | `[x]` | `useCheckoutStore`, `useLockerSlotsSync`, `LockerDashboardFirst` + `syncStatus`. |
+| **B — Error boundaries** | Boundaries por domínio | **100%** | `[x]` | `DomainErrorBoundary`, rotas críticas, hook Sentry. |
+| **C — TS incremental** | `allowJs` / strict-core / CI | **91%** | `[~]` | `tsconfig.strict-core.json`; próximo: `checkJs` gradual ou mais superfície OPS. |
+| **D — Protótipos KIOSK touch** | 4 modelos + cockpit OPS | **64%** | `[~]` | `/ops/kiosk-touch-models`, n≥8, export JSON, `e2e/kiosk-touch-models.spec.ts`. |
+| **E — E2E assistido** | Compra → … (jornadas públicas + OPS) | **14%** | `[~]` | `/comprar`, `/checkout` (`public-catalog-to-checkout`: POST OK + **409**), kiosk OPS mockado; **falta** fluxo físico KIOSK (abertura → retirada/alocação). |
+| **F1 — CSS checkout público** | Migração de estilos (parcela checkout) | *maior parte do item* **~22%** | `[~]` | `publicCheckoutChrome.css` fatias **1–4**; `PublicCheckoutPage`, painel fiscal, `FiscalProfileForm` checkout; testids `public-checkout-order-error`, fiscal-form. |
+| **F2 — CSS kiosk / OPS** | Migração de estilos (parcela kiosk/ops) | **0%** | `[~]` | Sem ficheiro / âmbito dedicado ainda; próximo incremento típico para subir o **item** migração acima de **~22%**. |
+
+*O número **~22%** no painel é **um único** indicador de checklist (F1+F2 agregados); a tabela separa só para execução.*
+
+**Leitura rápida:** trilhas **`[x]`** = **A** e **B**; gargalo de subida da média = **F2** (zero) + **E** (baixo) + fecho qualitativo de **D** (utilizadores / visual); **C** já cumpre meta **≥90%** no indicador.
+
+**Ordem sugerida (só Sprint 1, FE):** **F2** ou **polish F1** (mobile) → **E** (mais um passo na jornada assistida) → **D** (sessão n≥8 ou refinamento) → **C** (fatias TS), mantendo **A/B** em regressão mínima.
+
 Checklist:
 - [~] Frontend: iniciar migracao de estilos (dominios checkout, kiosk, ops).
-  - Indicador no painel (média 6 itens): **~22%** neste item — **checkout público** com fatias **1–4** + `data-testid` fiscal; **kiosk** e **ops** no mesmo checklist item ainda **~0%**. Progresso: **checkout público fatias 1–4** — `publicCheckoutChrome.css`: (1)–(3) como antes; **(4)** `FiscalProfileForm` com `variant="checkout"`: grelha, labels, inputs, consentimento, botão submit, erro, hint de completude, caixa de rebuild (`__fiscal-form-*`); `data-testid="public-checkout-fiscal-form"`; **`variant="account"`** mantém `myAreaSharedFormStyles`. **E2E POST 4xx:** `installOrderPickupPostErrorMock` (409) + `public-checkout-order-error`. Próximo: **kiosk/ops** CSS ou polish mobile do checkout.
+  - Indicador no item (média 6): **~22%** — ver trilhas **F1** (checkout avançado) e **F2** (kiosk/ops por iniciar). Detalhe técnico: `publicCheckoutChrome.css` + `FiscalProfileForm` checkout + E2E **POST 4xx**; próximo: **F2** ou **responsive F1**.
 - [x] Frontend: criar store central para `currentOrder`, `payResp`, `pickupResp`, `syncStatus`.
   - Progresso: **100%** (`useLockerSlotsSync` + **`LockerDashboardFirst.jsx`** leem/escrevem `syncStatus` na mesma `useCheckoutStore`; pedido/pagamento/pickup já consolidados)
 - [x] Frontend: aplicar Error Boundaries por dominio critico.
@@ -337,8 +361,8 @@ Checklist:
 **Prioridade executiva (comité, 2026-04-30; percentuais Sprint 1 atualizados 2026-05-02): Sprint 1 = `#1` em alocação de capacidade de engenharia de produto/FE**  
 - **Objetivo:** média dos 6 itens **~65%** (ver **Metodo** *(ix)*; itens parciais: estilos **~22%**, E2E assistido **~14%**); próximo ganho típico: CSS **kiosk/ops** ou polish checkout (mobile). **Store e syncStatus: `[x]` 100%.** Catálogo→checkout + **POST** mock + «Processando…» no E2E: **`[x]`**. **POST 4xx** (erro visível, sem redirect): **`[x]`**. **Fatias 3–4** CSS: **`[x]`**.  
 - **Coexistência:** Sprint 2 mantém **prioridade #1 de negócio** (Fiscal + Contábil / D10–D18); alocação de **codificação** espelhada na secção **«Recomendacao atual — onde codar»**: **~65–75% Sprint 2** + **~25–35% Sprint 1** (não zero no financeiro até o comité rever).  
-- **Ordem sugerida de ataque:** (1) **Store** — **`[x]`** → (2) **TS** — indicador **≥90%** + `OpsKioskTouchModelsPage` no strict-core → (3) **Protótipos KIOSK** — **`[~]`** cockpit `/ops/kiosk-touch-models` → (4) **E2E KIOSK assistido** → (5) **Migração de estilos** checkout.  
-- **Onde codar em primeiro lugar (recomendação consolidada):** ver secção **«Recomendacao atual — onde codar»** acima do **Backlog por persona** — em síntese: **Sprint 2 dominante** (gate v2) + **fatia Sprint 1** para sustentar média **≥60%** dos seis itens (**~65%** em 2026-05-02 — **Metodo** *(ix)*).
+- **Ordem sugerida de ataque (itens checklist):** (1) **Store** — **`[x]`** → (2) **TS** — indicador **≥90%** + `OpsKioskTouchModelsPage` no strict-core → (3) **Protótipos KIOSK** — **`[~]`** cockpit `/ops/kiosk-touch-models` → (4) **E2E KIOSK assistido** → (5) **Migração de estilos** checkout. *Para a desdobragem em **trilhas A–F2**, ver **Mapa de trilhas** no início desta secção Sprint 1.*  
+- **Onde codar em primeiro lugar (recomendação consolidada):** ver secção **«Recomendacao atual — onde codar»** acima do **Backlog por persona** — em síntese: **Sprint 2 dominante** (gate v2) + **fatia Sprint 1** para sustentar média **≥60%** dos seis itens (**~65%** em 2026-05-02 — **Metodo** *(ix)*). **Foco Sprint 1:** trilhas **F2**, **E** e fecho de **D** (tabela *Mapa de trilhas*).
 
 ## Sprint 2 (Dias 10-18) - P0 por persona em producao assistida + Fiscal/Contabil
 Objetivo: colocar os P0 centrais para rodar com controle e incorporar trilhas financeiras operacionais (ELLAN LAB + partners).
@@ -1870,3 +1894,4 @@ Resumo (sem alterar gate v2 nem itens `[x]`/`[ ]` fechados pelo comité):
 Decisão executiva:
 - Manter **Sprint 2** como **#1 negócio** até **gate v2**; usar o quadro de trilhas S2 para não confundir **sub-trilha ONLINE (~22%)** com o **consolidado (~52%)**.
 - **Sprint 1** continua acima do limiar **≥60%** na média dos seis itens; próximo incremento recomendado: **kiosk/ops** em CSS ou **polish** checkout mobile.
+- **Sprint 1 (trilhas):** ver tabela **A–F2** em **«Mapa de trilhas (Sprint 1)»** na secção Sprint 1; **F2** e **E** concentram o ganho imediato na fatia de capacidade FE.
