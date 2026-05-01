@@ -162,6 +162,7 @@ test.describe("Jornada pública — catálogo → checkout (query mínima)", () 
     await expect(page).toHaveURL(/sku_id=cookie_especial/);
     await expect(page).toHaveURL(/slot=3(?:&|$)/);
 
+    await expect(page.getByTestId("public-checkout-steps")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /Resumo do Pedido/i })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(/Produto selecionado/i)).toBeVisible();
     await expect(page.getByText(/Cookie laboratório/i).first()).toBeVisible();

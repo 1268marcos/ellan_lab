@@ -1,0 +1,103 @@
+/**
+ * Checkout público — fatia 1 de migração de estilos (passos, trust strip, spinners).
+ * Escopo: `.public-checkout-chrome` para não colidir com outras rotas.
+ */
+
+@keyframes public-checkout-chrome-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.public-checkout-chrome__trust-strip {
+  display: flex;
+  gap: var(--spacing-6);
+  flex-wrap: wrap;
+  padding-top: var(--spacing-5);
+  border-top: 1px solid var(--color-border);
+}
+
+.public-checkout-chrome__trust-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.public-checkout-chrome__trust-icon {
+  font-size: var(--font-size-xl);
+}
+
+.public-checkout-chrome__trust-text {
+  font-weight: 500;
+}
+
+.public-checkout-chrome__steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  margin-bottom: var(--spacing-8);
+  padding: var(--spacing-6) var(--spacing-4);
+  background: #fff;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-sm);
+}
+
+.public-checkout-chrome__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3) var(--spacing-5);
+  border-radius: var(--radius-lg);
+  background: var(--color-border);
+  color: var(--color-text);
+  transition: background var(--transition-slow), color var(--transition-slow);
+}
+
+.public-checkout-chrome__step--active {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #764ba2 100%);
+  color: #fff;
+}
+
+.public-checkout-chrome__step-icon {
+  font-size: var(--font-size-2xl);
+  font-weight: 700;
+}
+
+.public-checkout-chrome__step-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.public-checkout-chrome__step-connector {
+  width: 60px;
+  height: 3px;
+  background: var(--color-border);
+  margin: 0 var(--spacing-2);
+  transition: background var(--transition-slow);
+}
+
+.public-checkout-chrome__step-connector--active {
+  background: linear-gradient(135deg, var(--color-primary) 0%, #764ba2 100%);
+}
+
+.public-checkout-chrome__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: public-checkout-chrome-spin 0.8s linear infinite;
+}
+
+.public-checkout-chrome__spinner--sm {
+  width: 20px;
+  height: 20px;
+  border-width: 2px;
+  border-color: rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  animation: public-checkout-chrome-spin 0.6s linear infinite;
+}

@@ -10,6 +10,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { useAuth } from "../../context/AuthContext";
 import FiscalProfileCheckoutPanel from "../../components/public/FiscalProfileCheckoutPanel";
+import "../../styles/publicCheckoutChrome.css";
 
 import {
   buildOnlineOrderPayload,
@@ -29,18 +30,18 @@ const RUNTIME_BASE =
 
 function TrustSignals() {
   return (
-    <div style={trustSignalsStyle}>
-      <div style={trustItemStyle}>
-        <span style={trustIconStyle}>🔒</span>
-        <span style={trustTextStyle}>Pagamento Seguro</span>
+    <div className="public-checkout-chrome__trust-strip">
+      <div className="public-checkout-chrome__trust-item">
+        <span className="public-checkout-chrome__trust-icon">🔒</span>
+        <span className="public-checkout-chrome__trust-text">Pagamento Seguro</span>
       </div>
-      <div style={trustItemStyle}>
-        <span style={trustIconStyle}>⚡</span>
-        <span style={trustTextStyle}>Confirmação Imediata</span>
+      <div className="public-checkout-chrome__trust-item">
+        <span className="public-checkout-chrome__trust-icon">⚡</span>
+        <span className="public-checkout-chrome__trust-text">Confirmação Imediata</span>
       </div>
-      <div style={trustItemStyle}>
-        <span style={trustIconStyle}>📦</span>
-        <span style={trustTextStyle}>Retirada após confirmação</span>
+      <div className="public-checkout-chrome__trust-item">
+        <span className="public-checkout-chrome__trust-icon">📦</span>
+        <span className="public-checkout-chrome__trust-text">Retirada após confirmação</span>
       </div>
     </div>
   );
@@ -54,24 +55,24 @@ function CheckoutSteps({ currentStep }) {
   ];
 
   return (
-    <div style={stepsContainerStyle}>
+    <div className="public-checkout-chrome__steps" data-testid="public-checkout-steps">
       {steps.map((step, index) => (
         <React.Fragment key={step.id}>
           <div
-            style={{
-              ...stepStyle,
-              ...(currentStep >= step.id ? stepActiveStyle : {}),
-            }}
+            className={
+              "public-checkout-chrome__step" +
+              (currentStep >= step.id ? " public-checkout-chrome__step--active" : "")
+            }
           >
-            <div style={stepIconStyle}>{step.icon}</div>
-            <div style={stepLabelStyle}>{step.label}</div>
+            <div className="public-checkout-chrome__step-icon">{step.icon}</div>
+            <div className="public-checkout-chrome__step-label">{step.label}</div>
           </div>
           {index < steps.length - 1 && (
             <div
-              style={{
-                ...stepConnectorStyle,
-                ...(currentStep > step.id ? stepConnectorActiveStyle : {}),
-              }}
+              className={
+                "public-checkout-chrome__step-connector" +
+                (currentStep > step.id ? " public-checkout-chrome__step-connector--active" : "")
+              }
             />
           )}
         </React.Fragment>
@@ -738,7 +739,8 @@ export default function PublicCheckoutPage() {
   if (invalidParams) {
     return (
       <main style={pageStyle}>
-        <div style={containerStyle}>
+        <div className="public-checkout-chrome">
+          <div style={containerStyle}>
           <h1 className="sr-only">Checkout</h1>
           <CheckoutSteps currentStep={0} />
           <section data-testid="public-checkout-invalid" style={errorCardStyle}>
@@ -756,6 +758,7 @@ export default function PublicCheckoutPage() {
               Voltar ao catálogo
             </Link>
           </section>
+          </div>
         </div>
       </main>
     );
@@ -763,7 +766,8 @@ export default function PublicCheckoutPage() {
 
   return (
     <main style={pageStyle}>
-      <div style={containerStyle}>
+      <div className="public-checkout-chrome">
+        <div style={containerStyle}>
         <CheckoutSteps currentStep={currentStep} />
 
         <section style={heroCardStyle}>
@@ -783,7 +787,7 @@ export default function PublicCheckoutPage() {
 
             {lockerLoading ? (
               <div style={loadingStyle}>
-                <div style={spinnerStyle} />
+                <div className="public-checkout-chrome__spinner" />
                 <p>Carregando locker...</p>
               </div>
             ) : lockerError ? (
@@ -811,7 +815,7 @@ export default function PublicCheckoutPage() {
 
             {productLoading ? (
               <div style={loadingStyle}>
-                <div style={spinnerStyle} />
+                <div className="public-checkout-chrome__spinner" />
                 <p>Carregando produto...</p>
               </div>
             ) : productError ? (
@@ -1011,7 +1015,7 @@ export default function PublicCheckoutPage() {
             >
               {submitting ? (
                 <>
-                  <span style={spinnerSmallStyle} />
+                  <span className="public-checkout-chrome__spinner public-checkout-chrome__spinner--sm" />
                   Processando...
                 </>
               ) : currentStep === 3 ? (
@@ -1082,6 +1086,7 @@ export default function PublicCheckoutPage() {
             </div>
           </section>
         </div>
+        </div>
       </div>
     </main>
   );
@@ -1122,80 +1127,6 @@ const subtitleStyle = {
   fontSize: 16,
   lineHeight: 1.6,
   color: "#4a5568",
-};
-
-const trustSignalsStyle = {
-  display: "flex",
-  gap: 24,
-  flexWrap: "wrap",
-  paddingTop: 20,
-  borderTop: "1px solid #e2e8f0",
-};
-
-const trustItemStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 14,
-  color: "#4a5568",
-};
-
-const trustIconStyle = {
-  fontSize: 20,
-};
-
-const trustTextStyle = {
-  fontWeight: 500,
-};
-
-const stepsContainerStyle = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 0,
-  marginBottom: 32,
-  padding: "24px 16px",
-  background: "white",
-  borderRadius: 16,
-  boxShadow: "0 2px 4px rgba(0, 0, 0, 0.05)",
-};
-
-const stepStyle = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "center",
-  gap: 8,
-  padding: "12px 20px",
-  borderRadius: 12,
-  background: "#e2e8f0",
-  transition: "all 0.3s ease",
-};
-
-const stepActiveStyle = {
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-  color: "white",
-};
-
-const stepIconStyle = {
-  fontSize: 24,
-  fontWeight: 700,
-};
-
-const stepLabelStyle = {
-  fontSize: 13,
-  fontWeight: 600,
-};
-
-const stepConnectorStyle = {
-  width: 60,
-  height: 3,
-  background: "#e2e8f0",
-  margin: "0 8px",
-  transition: "all 0.3s ease",
-};
-
-const stepConnectorActiveStyle = {
-  background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
 };
 
 const layoutStyle = {
@@ -1435,43 +1366,9 @@ const loadingStyle = {
   color: "#4a5568",
 };
 
-const spinnerStyle = {
-  width: 40,
-  height: 40,
-  border: "3px solid #e2e8f0",
-  borderTopColor: "#667eea",
-  borderRadius: "50%",
-  animation: "spin 0.8s linear infinite",
-};
-
-const spinnerSmallStyle = {
-  width: 20,
-  height: 20,
-  border: "2px solid rgba(255,255,255,0.3)",
-  borderTopColor: "white",
-  borderRadius: "50%",
-  animation: "spin 0.6s linear infinite",
-};
-
 const successIconStyle = {
   fontSize: 20,
 };
-
-if (typeof document !== "undefined") {
-  const existingStyle = document.head.querySelector("#public-checkout-styles");
-  if (!existingStyle) {
-    const styleSheet = document.createElement("style");
-    styleSheet.id = "public-checkout-styles";
-    styleSheet.textContent = `
-      @keyframes spin {
-        to { transform: rotate(360deg); }
-      }
-    `;
-    document.head.appendChild(styleSheet);
-  }
-}
-
-
 
 const buttonDangerStyleDev = {
   width: "100%",

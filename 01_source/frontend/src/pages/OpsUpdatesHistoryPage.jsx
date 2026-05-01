@@ -26,6 +26,25 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-01T20:00:00-03:00",
+    date: "2026-05-01",
+    scope: "Sprint 1 — checkout público: fatia 1 de CSS + E2E",
+    title: "publicCheckoutChrome.css (passos/trust/spinners) + assert steps no Playwright",
+    description:
+      "Primeira migração de estilos do `/checkout` para ficheiro dedicado com prefixo `.public-checkout-chrome__*` e tokens `--spacing-*` / `--color-*`. `PublicCheckoutPage.jsx` envolve o conteúdo em `.public-checkout-chrome`; `e2e/public-catalog-to-checkout.spec.ts` valida `data-testid=\"public-checkout-steps\"`.",
+    uiRoutesNew: ["/checkout"],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/styles/publicCheckoutChrome.css",
+      "Frontend: 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx",
+      "Frontend: 01_source/frontend/e2e/public-catalog-to-checkout.spec.ts",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/comprar",
+    directLinkLabel: "Abrir catálogo público (entrada checkout)",
+  },
+  {
     dateTime: "2026-05-01T18:30:00-03:00",
     date: "2026-05-01",
     scope: "Sprint 2 Fiscal — D12/D13 evidência SPRINT2_* + Sprint 1 E2E catálogo → checkout",

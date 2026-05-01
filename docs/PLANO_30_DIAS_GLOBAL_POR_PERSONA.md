@@ -98,6 +98,7 @@ Esses quatro itens entram no plano como backlog tecnico transversal de P0/P1.
 - **`OpsKioskTouchModelsPage.tsx`:** checklist heurística **n≥8** com persistência em `localStorage`, **export JSON**, **recarregar definições** de modelos (`localStorage` merge por id), **`e2e/kiosk-touch-models.spec.ts`** (Playwright + mock `/public/auth/me*`, `VITE_ENABLE_OPS_ROUTES` no `webServer`).  
 - **D11 — conciliação por `order_id` (Sprint 2):** `fiscalD11OrderIdRollup.js` + **`fiscalD11OrderIdRollup.test.js`** (Vitest); **`OpsFiscalProvidersPage.jsx`** — cartão *fila P0 por order_id*, export **`SPRINT2_D11_ORDER_ID_ROLLUP_*.json`**, handoff `localStorage` com `order_id_rollup`; **`FiscalManagementDailyPage.jsx`** — D12 com tabela + export + **`SPRINT2_D11_ORDER_ID_ROLLUP_*.json`** assinado no ZIP diário; **`FiscalAccountingClosePage.jsx`** — mesmo anexo **`SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*.json`** no ZIP executivo quando o lote D11 existir.
 - **D12/D13 — handoff contábil e aceite (Sprint 2, paridade D11):** `fiscalSprint2D12D13Evidence.js` + **`fiscalSprint2D12D13Evidence.test.js`**; **`FiscalManagementDailyPage.jsx`** — export **`SPRINT2_D12_ACCOUNTING_HANDOFF_*.json`**, **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_*.json`** e anexos assinados **`SPRINT2_D12_*` / `SPRINT2_D13_*`** no pacote diário (.zip); **`FiscalAccountingClosePage.jsx`** — **`SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*`** e **`SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*`** no ZIP executivo (com token + bloco P0-1b).
+- **Checkout público (Sprint 1 — estilos, fatia 1):** **`src/styles/publicCheckoutChrome.css`** importado em **`PublicCheckoutPage.jsx`** — passos (`data-testid="public-checkout-steps"`), faixa de confiança e spinners com tokens globais; removido inject de `@keyframes` no `document.head`.
 - **`FiscalGlobalPage.jsx` (faixa Sprint 3):** atalhos **hardening** — `fiscal/slo-alerts`, `fiscal/incident-response`, `fiscal/sprint3-partner-audit`, `ops/quick-enablement`, `ops/reconciliation`.
 - **`FiscalSprint3PartnerAuditPage.jsx`:** checklist de **handoff de sessão** (6 itens) + export JSON `SPRINT3_PARTNER_AUDIT_HANDOFF_SESSION_*`.
 - **Sprint 2 / gate v2:** `fiscalSprint2FinanceGate.js` (chave `localStorage` + limiares); **`FiscalManagementDailyPage.jsx`** — cartão **espelho gate v2** + anexo ZIP `SPRINT2_GATE_V2_MIRROR_*`; **`FiscalAccountingClosePage.jsx`** — mesmo anexo no ZIP executivo (`*_EXEC_*`); **`FiscalSprint2FinanceGatePage.jsx`** — cockpit passa a usar o util partilhado; **`FiscalReadinessExecutionPage.jsx`** (`fiscal/readiness-execution`) — espelho na trilha FG-1, export JSON com `sprint2_gate_v2_mirror` + handoff texto alinhado; **`FiscalFg1GatePage.jsx`** (`fiscal/fg1-gate`) — **ponte FG-1 ↔ gate v2** (espelho + export `FG-1-FINAL-DECISION` com `sprint2_gate_v2_mirror`).
@@ -320,7 +321,8 @@ Nota de governanca:
 Objetivo: fechar arquitetura global e iniciar entrega de valor visivel.
 
 Checklist:
-- [ ] Frontend: iniciar migracao de estilos (dominios checkout, kiosk, ops).
+- [~] Frontend: iniciar migracao de estilos (dominios checkout, kiosk, ops).
+  - Progresso: **fatia 1 em checkout público** — `src/styles/publicCheckoutChrome.css` + `PublicCheckoutPage.jsx` (passos, faixa de confiança, spinners com tokens `--spacing-*`, `--color-*`, `--radius-*`); kiosk/ops em fatias seguintes.
 - [x] Frontend: criar store central para `currentOrder`, `payResp`, `pickupResp`, `syncStatus`.
   - Progresso: **100%** (`useLockerSlotsSync` + **`LockerDashboardFirst.jsx`** leem/escrevem `syncStatus` na mesma `useCheckoutStore`; pedido/pagamento/pickup já consolidados)
 - [x] Frontend: aplicar Error Boundaries por dominio critico.
@@ -333,7 +335,7 @@ Checklist:
   - Progresso: **10%** (spec **OPS** `/ops/kiosk-touch-models` com auth mockada; smoke **`/comprar`** em `e2e/public-comprar-catalog.spec.ts`; checkout completo em `e2e/checkout-dev-full.spec.ts` com token opcional)
 
 **Prioridade executiva (comité, 2026-04-30): Sprint 1 = `#1` em alocação de capacidade de engenharia de produto/FE**  
-- **Objetivo:** média dos 6 itens **~61%** (ver **Metodo** *(viii)*); próximo ganho típico: **estilos checkout** (`[ ]`) ou **encadear** catálogo→checkout no E2E. **Store e syncStatus: `[x]` 100%.**  
+- **Objetivo:** média dos 6 itens **~61%** (ver **Metodo** *(viii)*); próximo ganho típico: **continuar estilos checkout** (cartões resumo/pagamento) ou **E2E** até método de pagamento. **Store e syncStatus: `[x]` 100%.** Encadear catálogo→checkout no E2E: **`[x]`** (`e2e/public-catalog-to-checkout.spec.ts`).  
 - **Coexistência:** Sprint 2 mantém **prioridade #1 de negócio** (Fiscal + Contábil / D10–D18); alocação de **codificação** espelhada na secção **«Recomendacao atual — onde codar»**: **~65–75% Sprint 2** + **~25–35% Sprint 1** (não zero no financeiro até o comité rever).  
 - **Ordem sugerida de ataque:** (1) **Store** — **`[x]`** → (2) **TS** — indicador **≥90%** + `OpsKioskTouchModelsPage` no strict-core → (3) **Protótipos KIOSK** — **`[~]`** cockpit `/ops/kiosk-touch-models` → (4) **E2E KIOSK assistido** → (5) **Migração de estilos** checkout.  
 - **Onde codar em primeiro lugar (recomendação consolidada):** ver secção **«Recomendacao atual — onde codar»** acima do **Backlog por persona** — em síntese: **Sprint 2 dominante** (gate v2) + **fatia Sprint 1** para fechar **≥60%** na média dos seis itens.
@@ -521,7 +523,7 @@ Tabela para o comité: **antes** = último snapshot neste documento antes da rev
 | Item checklist «E2E KIOSK assistido» | 0% | **`[~]` 10%** | +10 p.p. |
 | Sprint 1 — média dos 6 itens | ~58% | **~61%** | **+3 p.p.** |
 
-**Evidência:** `e2e/kiosk-touch-models.spec.ts`; `e2e/public-comprar-catalog.spec.ts`; `e2e/public-catalog-to-checkout.spec.ts` (catálogo → `/checkout`, query mínima); `playwright.config.ts` (`VITE_ENABLE_OPS_ROUTES` no `webServer`); `OpsKioskTouchModelsPage.tsx` (`data-testid`, recarregar definições).
+**Evidência:** `e2e/kiosk-touch-models.spec.ts`; `e2e/public-comprar-catalog.spec.ts`; `e2e/public-catalog-to-checkout.spec.ts` (catálogo → `/checkout`, query mínima + `data-testid="public-checkout-steps"`); `playwright.config.ts` (`VITE_ENABLE_OPS_ROUTES` no `webServer`); `OpsKioskTouchModelsPage.tsx` (`data-testid`, recarregar definições); `src/styles/publicCheckoutChrome.css` (fatia de estilos checkout).
 
 #### Snapshot incremental Sprint 2 — D11 evidência por `order_id` (2026-05-01)
 
@@ -1839,4 +1841,5 @@ Resumo:
 Decisao executiva:
 - **Feito (A — encadeamento checkout):** **`e2e/public-catalog-to-checkout.spec.ts`** cobre catálogo → checkout com query mínima (Playwright).
 - **Feito (B — D12/D13):** artefactos **`SPRINT2_D12_*`** / **`SPRINT2_D13_*`** exportáveis e no ZIP diário/executivo, no mesmo padrão de evidência assinada do D11.
-- **Próxima trilha recomendada (solo):** Sprint 1 — fatia de estilos em **`/checkout`** ou mais asserts E2E no pagamento; Sprint 2 — continuidade D14+ ou reconciliação por parceiro conforme sequência D10–D18.
+- **Feito (Sprint 1 — estilos checkout, fatia 1):** `publicCheckoutChrome.css` aplicado ao topo do **`PublicCheckoutPage.jsx`** (passos + trust + spinners).
+- **Próxima trilha recomendada (solo):** Sprint 1 — **fatia 2** de estilos em checkout (cartões resumo/pagamento) ou E2E com mock de **`/public/orders`**; Sprint 2 — continuidade D14+ ou reconciliação por parceiro conforme sequência D10–D18.
