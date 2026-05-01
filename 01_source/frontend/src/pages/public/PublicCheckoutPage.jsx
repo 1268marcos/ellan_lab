@@ -979,7 +979,7 @@ export default function PublicCheckoutPage() {
             ) : null}
 
             {submitError ? (
-              <div className="public-checkout-chrome__error-box">
+              <div className="public-checkout-chrome__error-box" data-testid="public-checkout-order-error">
                 <strong>Erro ao processar:</strong>
                 <pre className="public-checkout-chrome__error-pre">{submitError}</pre>
               </div>

@@ -25,6 +25,7 @@ function matchesServiceBase(url: URL, baseStr: string): boolean {
 /**
  * Sprint 1 — encadear catálogo (`/comprar`) → `/checkout` com query mínima (plano 2026-05-01).
  * Mocka gateway + runtime para não depender da stack local; auth pickup para evitar redirect imediato a `/login`.
+ * Cobertura adicional: POST `/public/orders/` com sucesso (delay + redirect) e com **409** (erro rico + permanência no checkout).
  */
 async function installPickupAuthMocks(page: import("@playwright/test").Page) {
   await page.route(
@@ -162,6 +163,29 @@ async function installOrderPickupPostMock(
   );
 }
 
+/** POST `/public/orders/` com 4xx — para E2E de erro rico no checkout (sem redirect). */
+async function installOrderPickupPostErrorMock(
+  page: import("@playwright/test").Page,
+  opts: { status?: number; detail?: string } = {},
+) {
+  const status = opts.status ?? 409;
+  const detail = opts.detail ?? "E2E: slot indisponível no serviço de pedidos";
+  await page.route(
+    (url) => matchesServiceBase(url, ORDER_PICKUP_BASE) && url.pathname === "/public/orders/",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status,
+        contentType: "application/json",
+        body: JSON.stringify({ detail }),
+      });
+    },
+  );
+}
+
 test.describe("Jornada pública — catálogo → checkout (query mínima)", () => {
   test.beforeEach(async ({ page, context }) => {
     await context.addInitScript(() => {
@@ -218,5 +242,32 @@ test.describe("Jornada pública — catálogo → checkout (query mínima)", () 
     await expect(page).toHaveURL(new RegExp(`/meus-pedidos/${E2E_ORDER_ID.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`), {
       timeout: 15_000,
     });
+  });
+
+  test("POST order-pickup 409 mostra erro e permanece no checkout", async ({ page }) => {
+    const detail = "E2E: slot indisponível no serviço de pedidos";
+    await installOrderPickupPostErrorMock(page, { status: 409, detail });
+
+    const qs = new URLSearchParams({
+      region: "SP",
+      locker_id: LOCKER_ID,
+      sku_id: SKU_ID,
+      slot: String(SLOT),
+    });
+    await page.goto(`/checkout?${qs.toString()}`);
+
+    const confirm = page.getByTestId("public-checkout-confirm-order");
+    await expect(confirm).toBeEnabled({ timeout: 30_000 });
+    await confirm.click();
+
+    const errBox = page.getByTestId("public-checkout-order-error");
+    await expect(errBox).toBeVisible({ timeout: 15_000 });
+    await expect(errBox).toContainText(/Falha ao criar pedido online/i);
+    await expect(errBox).toContainText("409");
+    await expect(errBox).toContainText(detail);
+
+    await expect(page).toHaveURL(/\/checkout\?/);
+    await expect(confirm).toBeEnabled();
+    await expect(confirm).toContainText(/Confirmar reserva e pagar/i);
   });
 });

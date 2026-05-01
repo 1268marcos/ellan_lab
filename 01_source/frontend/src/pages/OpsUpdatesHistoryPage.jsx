@@ -26,6 +26,24 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-02T18:30:00-03:00",
+    date: "2026-05-02",
+    scope: "Sprint 1 — E2E checkout: POST order-pickup 4xx",
+    title: "Playwright cobre 409 no `POST /public/orders/` com erro visível no checkout",
+    description:
+      "`installOrderPickupPostErrorMock` devolve JSON `{ detail }`; teste valida `data-testid=\"public-checkout-order-error\"`, texto rico, permanência em `/checkout` e botão «Confirmar reserva» reabilitado.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/e2e/public-catalog-to-checkout.spec.ts",
+      "Frontend: 01_source/frontend/src/pages/public/PublicCheckoutPage.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/checkout",
+    directLinkLabel: "Abrir checkout (query mínima)",
+  },
+  {
     dateTime: "2026-05-02T16:00:00-03:00",
     date: "2026-05-02",
     scope: "Sprint 1 — checkout público: fatia 4 CSS (FiscalProfileForm em checkout)",
