@@ -35,7 +35,7 @@ import {
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.2.9-d15-revenue-credits-exec";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.10-d16-partner-settlement-exec";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
@@ -605,9 +605,30 @@ export default function FiscalAccountingClosePage() {
     } catch {
       // D15 executivo opcional
     }
+    try {
+      if (INTERNAL_TOKEN) {
+        const r16 = await fetch(
+          `${BILLING_BASE}/admin/fiscal/accounting/partner-settlement-reconcile?${new URLSearchParams({
+            date: String(nowIso).slice(0, 10),
+            partner_limit: "200",
+          }).toString()}`,
+          { method: "GET", headers: headersJson() },
+        );
+        const data16 = await r16.json().catch(() => ({}));
+        if (r16.ok && data16?.ok && data16.scope === "SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE") {
+          const { ok: _ok16, ...rest16 } = data16;
+          const signedD16Exec = await buildSignedPayload(rest16);
+          zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_EXEC_${ts}.json`] = strToU8(
+            JSON.stringify(signedD16Exec, null, 2),
+          );
+        }
+      }
+    } catch {
+      // D16 executivo opcional
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote ZIP exportado: close + gate + aprovação + D16 + P0-1b (com token) + D10 tracker + D10 OPS handoff + D15 receita/estornos (`SPRINT2_D15_REVENUE_CREDITS_DELTA_EXEC_*`) + D11 rollup + D12/D13 executivos + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
+      "Pacote ZIP exportado: close + gate + aprovação + D16 aprovações + P0-1b (com token) + D10 tracker + D10 OPS handoff + D15 receita/estornos (`SPRINT2_D15_REVENUE_CREDITS_DELTA_EXEC_*`) + D16 repasse parceiro (`SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_EXEC_*`) + D11 rollup + D12/D13 executivos + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }

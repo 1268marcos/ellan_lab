@@ -41,7 +41,7 @@ import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAccep
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.14-d15-revenue-credits-delta";
+const PAGE_VERSION = "fiscal/management-daily v1.0.15-d16-partner-settlement-reconcile";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -139,6 +139,10 @@ export default function FiscalManagementDailyPage() {
   const [d15RevenueCreditsDelta, setD15RevenueCreditsDelta] = useState(null);
   const [d15DeltaLoading, setD15DeltaLoading] = useState(false);
   const [d15DeltaError, setD15DeltaError] = useState("");
+  const [d16PartnerDate, setD16PartnerDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [d16PartnerSettlement, setD16PartnerSettlement] = useState(null);
+  const [d16PartnerLoading, setD16PartnerLoading] = useState(false);
+  const [d16PartnerError, setD16PartnerError] = useState("");
   const [d18Checklist, setD18Checklist] = useState({});
   const [d18P1Rows, setD18P1Rows] = useState(() => createInitialP1RiskRows());
   const [d18Certification, setD18Certification] = useState(null);
@@ -366,6 +370,16 @@ export default function FiscalManagementDailyPage() {
             summary: d15RevenueCreditsDelta?.summary || null,
           }
         : null,
+      d16_partner_settlement_reconcile: d16PartnerSettlement
+        ? {
+            snapshot_date: String(d16PartnerSettlement?.snapshot_date || "-"),
+            currency_filter: d16PartnerSettlement?.currency_filter ?? null,
+            summary: d16PartnerSettlement?.summary || null,
+            per_partner_top_n: Array.isArray(d16PartnerSettlement?.per_partner)
+              ? d16PartnerSettlement.per_partner.slice(0, 12)
+              : [],
+          }
+        : null,
     };
   }
 
@@ -395,6 +409,9 @@ export default function FiscalManagementDailyPage() {
         d10_progress_pct: Number(d10Handoff?.summary?.d10_progress_pct ?? 0),
         d15_snapshot_date: String(d15RevenueCreditsDelta?.snapshot_date || "-"),
         d15_divergence_residual_pct: Number(d15RevenueCreditsDelta?.summary?.divergence_residual_pct ?? 0),
+        d16_snapshot_date: String(d16PartnerSettlement?.snapshot_date || "-"),
+        d16_partners_with_nonzero_residual: Number(d16PartnerSettlement?.summary?.partners_with_nonzero_residual ?? 0),
+        d16_orphan_ledger_lines: Number(d16PartnerSettlement?.summary?.orphan_ledger_lines_partner_cycle_ref ?? 0),
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -641,6 +658,49 @@ export default function FiscalManagementDailyPage() {
     } finally {
       setD15DeltaLoading(false);
     }
+  }
+
+  async function loadD16PartnerSettlementReconcile() {
+    if (!INTERNAL_TOKEN) {
+      setD16PartnerError("Token interno ausente para D16 (repasse parceiro).");
+      return;
+    }
+    setD16PartnerLoading(true);
+    setD16PartnerError("");
+    try {
+      const day = String(d16PartnerDate || "").trim() || new Date().toISOString().slice(0, 10);
+      const qs = new URLSearchParams({ date: day, partner_limit: "200" });
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/accounting/partner-settlement-reconcile?${qs.toString()}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar reconciliação D16."));
+      if (!data?.ok) throw new Error("Resposta D16 inválida.");
+      const { ok: _ok, ...rest } = data;
+      setD16PartnerSettlement(rest);
+      setStatus("Reconciliação D16 (billing parceiro × ledger) carregada.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setD16PartnerSettlement(null);
+      setD16PartnerError(String(err?.message || err));
+    } finally {
+      setD16PartnerLoading(false);
+    }
+  }
+
+  function exportD16PartnerSettlementJson() {
+    if (!d16PartnerSettlement?.scope) {
+      setStatus("Carregue a reconciliação D16 antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_${ts}.json`, d16PartnerSettlement);
+    setStatus("Export JSON D16 (SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE).");
+    window.setTimeout(() => setStatus(""), 2200);
   }
 
   function exportD15RevenueCreditsDeltaJson() {
@@ -1136,9 +1196,19 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // D15 opcional no pacote
     }
+    try {
+      if (INTERNAL_TOKEN && d16PartnerSettlement?.scope === "SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE") {
+        const signedD16 = await buildSignedPayload(d16PartnerSettlement);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_${ts}.json`] = strToU8(
+          JSON.stringify(signedD16, null, 2),
+        );
+      }
+    } catch {
+      // D16 repasse parceiro opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D15 receita/estornos + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1287,6 +1357,9 @@ export default function FiscalManagementDailyPage() {
           </button>
           <button type="button" onClick={() => void loadD15RevenueCreditsDelta()} style={buttonStyle} disabled={!INTERNAL_TOKEN || d15DeltaLoading}>
             {d15DeltaLoading ? "D15…" : "Carregar delta D15"}
+          </button>
+          <button type="button" onClick={() => void loadD16PartnerSettlementReconcile()} style={buttonStyle} disabled={!INTERNAL_TOKEN || d16PartnerLoading}>
+            {d16PartnerLoading ? "D16…" : "Carregar D16 repasse parceiro"}
           </button>
         </div>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
@@ -1559,6 +1632,78 @@ export default function FiscalManagementDailyPage() {
               </div>
             ) : (
               <small style={mutedTextStyle}>Use «Carregar delta D15» na barra ou «Atualizar delta» acima.</small>
+            )}
+          </div>
+        ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Contábil Sprint 2 — repasse parceiro (D16): ciclo × ledger</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Compara <code>partner_billing_cycles</code> (ciclos com <code>computed_at</code> no dia) com <code>financial_ledger</code>{" "}
+              (<code>BILLING_REVENUE</code> ligado ao ciclo via <code>metadata.reference_source = partner_billing_cycle</code>). API:{" "}
+              <code>GET /admin/fiscal/accounting/partner-settlement-reconcile</code>.
+            </p>
+            <div style={{ marginTop: 8, maxWidth: 320 }}>
+              <input
+                type="date"
+                value={d16PartnerDate}
+                onChange={(e) => setD16PartnerDate(e.target.value)}
+                style={inputStyle}
+                data-testid="fiscal-d16-partner-date"
+              />
+            </div>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button type="button" onClick={() => void loadD16PartnerSettlementReconcile()} style={buttonStyle} disabled={d16PartnerLoading}>
+                {d16PartnerLoading ? "A carregar…" : "Atualizar D16"}
+              </button>
+              <button type="button" onClick={() => exportD16PartnerSettlementJson()} style={buttonStyle} disabled={!d16PartnerSettlement?.scope}>
+                Export JSON (SPRINT2_D16_PARTNER_SETTLEMENT_*)
+              </button>
+            </div>
+            {d16PartnerError ? <div style={errorStyle}>{d16PartnerError}</div> : null}
+            {d16PartnerSettlement?.summary ? (
+              <>
+                <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                  <span style={chipStyle}>Data: {String(d16PartnerSettlement.snapshot_date || "-")}</span>
+                  <span style={chipStyle}>Parceiros: {Number(d16PartnerSettlement.summary.distinct_partners || 0)}</span>
+                  <span style={chipStyle}>Ciclos computados (dia): {Number(d16PartnerSettlement.summary.cycles_computed_on_date_total || 0)}</span>
+                  <span style={chipStyle}>Σ ciclos (¢): {Number(d16PartnerSettlement.summary.cycle_total_cents_computed_on_date_sum || 0)}</span>
+                  <span style={chipStyle}>Σ ledger (¢): {Number(d16PartnerSettlement.summary.ledger_billing_cents_on_date_sum || 0)}</span>
+                  <span style={chipStyle}>Parceiros c/ residual: {Number(d16PartnerSettlement.summary.partners_with_nonzero_residual || 0)}</span>
+                  <span style={chipStyle}>Máx. residual (¢): {Number(d16PartnerSettlement.summary.max_residual_cents_across_partners || 0)}</span>
+                  <span style={chipStyle}>Ledger órfão: {Number(d16PartnerSettlement.summary.orphan_ledger_lines_partner_cycle_ref || 0)}</span>
+                </div>
+                {Array.isArray(d16PartnerSettlement.per_partner) && d16PartnerSettlement.per_partner.length ? (
+                  <div style={{ marginTop: 12, overflowX: "auto" }}>
+                    <table style={historyTableStyle}>
+                      <thead>
+                        <tr>
+                          <th style={historyThStyle}>partner_id</th>
+                          <th style={historyThStyle}>ciclos</th>
+                          <th style={historyThStyle}>total ciclo (¢)</th>
+                          <th style={historyThStyle}>linhas ledger</th>
+                          <th style={historyThStyle}>ledger (¢)</th>
+                          <th style={historyThStyle}>residual (¢)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d16PartnerSettlement.per_partner.slice(0, 25).map((row) => (
+                          <tr key={String(row?.partner_id)}>
+                            <td style={historyTdStyle}>{String(row?.partner_id || "-")}</td>
+                            <td style={historyTdStyle}>{Number(row?.cycles_computed_on_date || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.cycle_total_cents_computed_on_date || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.ledger_lines_on_date || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.ledger_billing_cents_on_date || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.residual_cents || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <small style={mutedTextStyle}>Use «Carregar D16 repasse parceiro» na barra ou «Atualizar D16» acima.</small>
             )}
           </div>
         ) : null}
