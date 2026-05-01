@@ -26,6 +26,24 @@ const TIMELINE_TEMPLATE_JSON = `{
 
 const UPDATES = [
   {
+    dateTime: "2026-05-02T16:00:00-03:00",
+    date: "2026-05-02",
+    scope: "Sprint 1 — checkout público: fatia 4 CSS (FiscalProfileForm em checkout)",
+    title: "`FiscalProfileForm` usa classes `__fiscal-form-*` quando `variant=checkout`",
+    description:
+      "`publicCheckoutChrome.css` cobre grelha, inputs, consentimento, submit, erro, hint e rebuild. Conta (`variant=account`) mantém estilos partilhados. `data-testid=\"public-checkout-fiscal-form\"`.",
+    uiRoutesNew: [],
+    apiRoutesNew: [],
+    routes: [
+      "Frontend: 01_source/frontend/src/styles/publicCheckoutChrome.css",
+      "Frontend: 01_source/frontend/src/components/public/FiscalProfileForm.jsx",
+      "Docs: docs/PLANO_30_DIAS_GLOBAL_POR_PERSONA.md",
+      "UI /ops/updates",
+    ],
+    directLink: "/checkout",
+    directLinkLabel: "Abrir checkout (query mínima)",
+  },
+  {
     dateTime: "2026-05-02T12:00:00-03:00",
     date: "2026-05-02",
     scope: "Sprint 1 — checkout público: fatia 3 CSS (página + painel fiscal)",

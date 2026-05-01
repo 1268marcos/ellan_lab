@@ -1,4 +1,5 @@
 // Formulário reutilizável: PUT /public/auth/me/fiscal-profile
+// Checkout: classes em `publicCheckoutChrome.css` (prefixo `__fiscal-form-*`), carregado em `PublicCheckoutPage`.
 
 import React, { useEffect, useMemo, useState } from "react";
 import { upsertPublicFiscalProfile } from "../../services/authApi";
@@ -19,6 +20,27 @@ const gridStyle = {
   ...formGridTwoColsStyle,
 };
 
+const accountErrorStyle = { color: "#b91c1c", marginBottom: 10, fontSize: 13 };
+
+const rebuildBoxStyle = {
+  marginTop: 16,
+  padding: 12,
+  borderRadius: 10,
+  background: "#ecfdf5",
+  border: "1px solid #6ee7b7",
+  fontSize: 13,
+  color: "#064e3b",
+};
+
+const accountSubmitStyle = (saving) => ({
+  ...primaryFormButtonStyle,
+  marginTop: 14,
+  width: "100%",
+  padding: "12px 16px",
+  background: saving ? "#94a3b8" : "#0f766e",
+  cursor: saving ? "default" : "pointer",
+});
+
 /**
  * @param {object} props
  * @param {string} props.token
@@ -28,6 +50,7 @@ const gridStyle = {
  * @param {"checkout"|"account"} [props.variant]
  */
 export default function FiscalProfileForm({ token, user, defaultFiscalCountry = "BR", onSaved, variant = "checkout" }) {
+  const isCheckout = variant === "checkout";
   const docTypeDefault = defaultFiscalCountry === "PT" ? "NIF" : "CPF";
   const [taxCountry, setTaxCountry] = useState(defaultFiscalCountry);
   const [taxDocumentType, setTaxDocumentType] = useState(docTypeDefault);
@@ -100,132 +123,216 @@ export default function FiscalProfileForm({ token, user, defaultFiscalCountry = 
     }
   }
 
-  const rebuildBoxStyle = {
-    marginTop: 16,
-    padding: 12,
-    borderRadius: 10,
-    background: "#ecfdf5",
-    border: "1px solid #6ee7b7",
-    fontSize: 13,
-    color: "#064e3b",
-  };
-
   return (
-    <div>
+    <div
+      className={isCheckout ? "public-checkout-chrome__fiscal-form" : undefined}
+      data-testid={isCheckout ? "public-checkout-fiscal-form" : undefined}
+    >
       {error ? (
-        <div style={{ color: "#b91c1c", marginBottom: 10, fontSize: 13 }}>{error}</div>
+        <div
+          className={isCheckout ? "public-checkout-chrome__fiscal-form-error" : undefined}
+          style={isCheckout ? undefined : accountErrorStyle}
+        >
+          {error}
+        </div>
       ) : null}
 
       <form onSubmit={handleSubmit}>
-        <div style={gridStyle}>
-          <label style={labelStyle}>
+        <div className={isCheckout ? "public-checkout-chrome__fiscal-form-grid" : undefined} style={isCheckout ? undefined : gridStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             País fiscal
-            <select value={taxCountry} onChange={(e) => setTaxCountry(e.target.value)} style={inputStyle}>
+            <select
+              value={taxCountry}
+              onChange={(e) => setTaxCountry(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+            >
               <option value="BR">Brasil</option>
               <option value="PT">Portugal</option>
             </select>
           </label>
-          <label style={labelStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             Documento
-            <select value={taxDocumentType} onChange={(e) => setTaxDocumentType(e.target.value)} style={inputStyle}>
+            <select
+              value={taxDocumentType}
+              onChange={(e) => setTaxDocumentType(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+            >
               {taxCountry === "PT" ? <option value="NIF">NIF</option> : <option value="CPF">CPF</option>}
             </select>
           </label>
         </div>
 
-        <label style={{ ...labelStyle, marginTop: 4 }}>
+        <label
+          className={
+            isCheckout
+              ? "public-checkout-chrome__fiscal-form-label public-checkout-chrome__fiscal-form-label--mt-sm"
+              : undefined
+          }
+          style={isCheckout ? undefined : { ...labelStyle, marginTop: 4 }}
+        >
           {taxDocumentType === "NIF" ? "NIF (9 dígitos)" : "CPF (11 dígitos)"}
-          <input value={taxDocumentValue} onChange={(e) => setTaxDocumentValue(e.target.value)} style={inputStyle} />
+          <input
+            value={taxDocumentValue}
+            onChange={(e) => setTaxDocumentValue(e.target.value)}
+            className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+            style={isCheckout ? undefined : inputStyle}
+          />
         </label>
 
-        <div style={gridStyle}>
-          <label style={labelStyle}>
+        <div className={isCheckout ? "public-checkout-chrome__fiscal-form-grid" : undefined} style={isCheckout ? undefined : gridStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             E-mail da nota
             <input
               type="email"
               value={fiscalEmail}
               onChange={(e) => setFiscalEmail(e.target.value)}
-              style={inputStyle}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
               required
             />
           </label>
-          <label style={labelStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             Telefone (opcional)
-            <input value={fiscalPhone} onChange={(e) => setFiscalPhone(e.target.value)} style={inputStyle} />
+            <input
+              value={fiscalPhone}
+              onChange={(e) => setFiscalPhone(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+            />
           </label>
         </div>
 
-        <label style={labelStyle}>
+        <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
           Logradouro e número
-          <input value={line1} onChange={(e) => setLine1(e.target.value)} style={inputStyle} required />
+          <input
+            value={line1}
+            onChange={(e) => setLine1(e.target.value)}
+            className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+            style={isCheckout ? undefined : inputStyle}
+            required
+          />
         </label>
-        <label style={labelStyle}>
+        <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
           Complemento (opcional)
-          <input value={line2} onChange={(e) => setLine2(e.target.value)} style={inputStyle} />
+          <input
+            value={line2}
+            onChange={(e) => setLine2(e.target.value)}
+            className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+            style={isCheckout ? undefined : inputStyle}
+          />
         </label>
 
-        <div style={gridStyle}>
-          <label style={labelStyle}>
+        <div className={isCheckout ? "public-checkout-chrome__fiscal-form-grid" : undefined} style={isCheckout ? undefined : gridStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             Cidade
-            <input value={city} onChange={(e) => setCity(e.target.value)} style={inputStyle} required />
+            <input
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+              required
+            />
           </label>
-          <label style={labelStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             {taxCountry === "BR" ? "UF" : "Distrito / região"}
-            <input value={stateField} onChange={(e) => setStateField(e.target.value)} style={inputStyle} required />
+            <input
+              value={stateField}
+              onChange={(e) => setStateField(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+              required
+            />
           </label>
         </div>
 
-        <div style={gridStyle}>
-          <label style={labelStyle}>
+        <div className={isCheckout ? "public-checkout-chrome__fiscal-form-grid" : undefined} style={isCheckout ? undefined : gridStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             {taxCountry === "BR" ? "CEP" : "Código postal"}
-            <input value={postal} onChange={(e) => setPostal(e.target.value)} style={inputStyle} required />
+            <input
+              value={postal}
+              onChange={(e) => setPostal(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+              required
+            />
           </label>
-          <label style={labelStyle}>
+          <label className={isCheckout ? "public-checkout-chrome__fiscal-form-label" : undefined} style={isCheckout ? undefined : labelStyle}>
             País do endereço
-            <select value={addrCountry} onChange={(e) => setAddrCountry(e.target.value)} style={inputStyle}>
+            <select
+              value={addrCountry}
+              onChange={(e) => setAddrCountry(e.target.value)}
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-input" : undefined}
+              style={isCheckout ? undefined : inputStyle}
+            >
               <option value="BR">BR</option>
               <option value="PT">PT</option>
             </select>
           </label>
         </div>
 
-        <label style={{ ...labelStyle, display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10 }}>
-          <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 3 }} />
+        <label
+          className={
+            isCheckout
+              ? "public-checkout-chrome__fiscal-form-label public-checkout-chrome__fiscal-form-label--consent"
+              : undefined
+          }
+          style={
+            isCheckout
+              ? undefined
+              : { ...labelStyle, display: "flex", alignItems: "flex-start", gap: 8, marginTop: 10 }
+          }
+        >
+          <input
+            type="checkbox"
+            checked={consent}
+            onChange={(e) => setConsent(e.target.checked)}
+            className={isCheckout ? "public-checkout-chrome__fiscal-form-consent-check" : undefined}
+            style={isCheckout ? undefined : { marginTop: 3 }}
+          />
           <span>Autorizo o uso destes dados para emissão e entrega de documentos fiscais conforme a legislação aplicável.</span>
         </label>
 
-        <p style={{ margin: "10px 0 0 0", fontSize: 12, color: "#64748b" }}>Completude atual: {pct}%</p>
+        <p
+          className={isCheckout ? "public-checkout-chrome__fiscal-form-hint" : undefined}
+          style={isCheckout ? undefined : { margin: "10px 0 0 0", fontSize: 12, color: "#64748b" }}
+        >
+          Completude atual: {pct}%
+        </p>
 
         <button
           type="submit"
           disabled={saving || !consent}
-          style={{
-            ...primaryFormButtonStyle,
-            marginTop: 14,
-            width: "100%",
-            padding: "12px 16px",
-            background: saving ? "#94a3b8" : "#0f766e",
-            cursor: saving ? "default" : "pointer",
-          }}
+          className={isCheckout ? "public-checkout-chrome__fiscal-form-submit" : undefined}
+          style={isCheckout ? undefined : accountSubmitStyle(saving)}
         >
           {saving ? "A guardar…" : submitLabel}
         </button>
       </form>
 
       {rebuildSummary ? (
-        <div style={rebuildBoxStyle} role="status" aria-live="polite">
+        <div
+          className={isCheckout ? "public-checkout-chrome__fiscal-form-rebuild" : undefined}
+          style={isCheckout ? undefined : rebuildBoxStyle}
+          role="status"
+          aria-live="polite"
+        >
           <strong>Sincronização com faturação (snapshots)</strong>
           {rebuildSummary.skipped && rebuildSummary.reason === "no_eligible_paid_orders" ? (
-            <p style={{ margin: "8px 0 0 0" }}>
+            <p className={isCheckout ? "public-checkout-chrome__fiscal-form-rebuild-text" : undefined} style={isCheckout ? undefined : { margin: "8px 0 0 0" }}>
               Nenhum pedido pago elegível para atualizar (só contam pedidos com pagamento aprovado nesta conta).
             </p>
           ) : rebuildSummary.billing_unreachable ? (
-            <p style={{ margin: "8px 0 0 0" }}>
+            <p className={isCheckout ? "public-checkout-chrome__fiscal-form-rebuild-text" : undefined} style={isCheckout ? undefined : { margin: "8px 0 0 0" }}>
               O serviço de faturação não respondeu; o perfil foi guardado na mesma.
               {rebuildSummary.error ? ` (${String(rebuildSummary.error)})` : ""}
             </p>
           ) : (
-            <ul style={{ margin: "8px 0 0 0", paddingLeft: 18 }}>
+            <ul
+              className={isCheckout ? "public-checkout-chrome__fiscal-form-rebuild-list" : undefined}
+              style={isCheckout ? undefined : { margin: "8px 0 0 0", paddingLeft: 18 }}
+            >
               <li>Pedidos pagos enviados ao billing: {rebuildSummary.orders_sent_to_billing ?? rebuildSummary.orders_sent ?? 0}</li>
               <li>
                 <strong>Invoices com snapshot atualizado: {rebuildSummary.invoice_rows_updated ?? 0}</strong>

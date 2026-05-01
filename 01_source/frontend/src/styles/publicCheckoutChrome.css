@@ -1,6 +1,6 @@
 /**
- * Checkout público — migração incremental de estilos (fatias 1–3).
- * Escopo: `.public-checkout-chrome` + shell da página + painel fiscal em checkout.
+ * Checkout público — migração incremental de estilos (fatias 1–4).
+ * Escopo: `.public-checkout-chrome` + shell + fiscal (painel + formulário em `variant=checkout`).
  */
 
 @keyframes public-checkout-chrome-spin {
@@ -508,4 +508,117 @@
 
 .public-checkout-chrome__fiscal-panel-link:hover {
   color: #0d9488;
+}
+
+/* --- Fatia 4: FiscalProfileForm em checkout (`variant === "checkout"`) --- */
+
+.public-checkout-chrome__fiscal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.public-checkout-chrome__fiscal-form-error {
+  color: #b91c1c;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.public-checkout-chrome__fiscal-form-grid {
+  display: grid;
+  gap: var(--spacing-3);
+  grid-template-columns: 1fr 1fr;
+  margin-top: 0;
+}
+
+.public-checkout-chrome__fiscal-form-label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+
+.public-checkout-chrome__fiscal-form-label--mt-sm {
+  margin-top: var(--spacing-1);
+}
+
+.public-checkout-chrome__fiscal-form-label--consent {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  margin-top: var(--spacing-3);
+  font-weight: 600;
+  color: #334155;
+}
+
+.public-checkout-chrome__fiscal-form-consent-check {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.public-checkout-chrome__fiscal-form-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid #cbd5e1;
+  font-size: 14px;
+  box-sizing: border-box;
+  background: #fff;
+  color: var(--color-text);
+}
+
+.public-checkout-chrome__fiscal-form-input:focus {
+  outline: 2px solid rgba(15, 118, 110, 0.35);
+  outline-offset: 1px;
+}
+
+.public-checkout-chrome__fiscal-form-hint {
+  margin: var(--spacing-3) 0 0 0;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.public-checkout-chrome__fiscal-form-submit {
+  margin-top: 14px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-lg);
+  background: #0f766e;
+  color: #fff;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.public-checkout-chrome__fiscal-form-submit:hover:not(:disabled) {
+  background: #0d9488;
+}
+
+.public-checkout-chrome__fiscal-form-submit:disabled {
+  background: #94a3b8;
+  cursor: default;
+}
+
+.public-checkout-chrome__fiscal-form-rebuild {
+  margin-top: var(--spacing-4);
+  padding: var(--spacing-3);
+  border-radius: var(--radius-lg);
+  background: #ecfdf5;
+  border: 1px solid #6ee7b7;
+  font-size: 13px;
+  color: #064e3b;
+  line-height: 1.45;
+}
+
+.public-checkout-chrome__fiscal-form-rebuild-text {
+  margin: var(--spacing-2) 0 0 0;
+}
+
+.public-checkout-chrome__fiscal-form-rebuild-list {
+  margin: var(--spacing-2) 0 0 0;
+  padding-left: 18px;
 }
