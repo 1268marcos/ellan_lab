@@ -41,7 +41,7 @@ import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAccep
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.15-d16-partner-settlement-reconcile";
+const PAGE_VERSION = "fiscal/management-daily v1.0.17-fiscal-gap-conciliation-snapshot";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -143,6 +143,15 @@ export default function FiscalManagementDailyPage() {
   const [d16PartnerSettlement, setD16PartnerSettlement] = useState(null);
   const [d16PartnerLoading, setD16PartnerLoading] = useState(false);
   const [d16PartnerError, setD16PartnerError] = useState("");
+  const [d14CloseDate, setD14CloseDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [d14DailyClose, setD14DailyClose] = useState(null);
+  const [d14CloseLoading, setD14CloseLoading] = useState(false);
+  const [d14CloseError, setD14CloseError] = useState("");
+  const [fiscalGapSnapDate, setFiscalGapSnapDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [fiscalGapSnapshot, setFiscalGapSnapshot] = useState(null);
+  const [fiscalGapSnapLoading, setFiscalGapSnapLoading] = useState(false);
+  const [fiscalGapSnapError, setFiscalGapSnapError] = useState("");
+  const [fiscalGapSnapRefreshScan, setFiscalGapSnapRefreshScan] = useState(false);
   const [d18Checklist, setD18Checklist] = useState({});
   const [d18P1Rows, setD18P1Rows] = useState(() => createInitialP1RiskRows());
   const [d18Certification, setD18Certification] = useState(null);
@@ -380,6 +389,30 @@ export default function FiscalManagementDailyPage() {
               : [],
           }
         : null,
+      d14_daily_operational_close: d14DailyClose
+        ? {
+            snapshot_date: String(d14DailyClose?.snapshot_date || "-"),
+            currency_filter: d14DailyClose?.currency_filter ?? null,
+            summary: d14DailyClose?.summary || null,
+            ledger_entry_types: Array.isArray(d14DailyClose?.ledger_by_entry_type)
+              ? d14DailyClose.ledger_by_entry_type.slice(0, 20)
+              : [],
+          }
+        : null,
+      fiscal_gap_conciliation_snapshot: fiscalGapSnapshot
+        ? {
+            scope: fiscalGapSnapshot.scope,
+            snapshot_date: String(fiscalGapSnapshot?.snapshot_date || "-"),
+            refreshed_scan: Boolean(fiscalGapSnapshot?.refreshed_scan),
+            summary: fiscalGapSnapshot?.summary || null,
+            by_partner_top: Array.isArray(fiscalGapSnapshot?.summary?.by_partner_id)
+              ? fiscalGapSnapshot.summary.by_partner_id.slice(0, 20)
+              : [],
+            sample_open_gaps_count: Array.isArray(fiscalGapSnapshot?.sample_open_gaps)
+              ? fiscalGapSnapshot.sample_open_gaps.length
+              : 0,
+          }
+        : null,
     };
   }
 
@@ -412,6 +445,14 @@ export default function FiscalManagementDailyPage() {
         d16_snapshot_date: String(d16PartnerSettlement?.snapshot_date || "-"),
         d16_partners_with_nonzero_residual: Number(d16PartnerSettlement?.summary?.partners_with_nonzero_residual ?? 0),
         d16_orphan_ledger_lines: Number(d16PartnerSettlement?.summary?.orphan_ledger_lines_partner_cycle_ref ?? 0),
+        d14_snapshot_date: String(d14DailyClose?.snapshot_date || "-"),
+        d14_manual_adjustment_lines: Number(d14DailyClose?.summary?.manual_adjustments_provisions?.line_count ?? 0),
+        d14_kpi_without_rev_rec: Boolean(d14DailyClose?.summary?.health_flags?.kpi_rows_without_rev_rec_lines),
+        fiscal_gap_snapshot_date: String(fiscalGapSnapshot?.snapshot_date || "-"),
+        fiscal_gap_open_total: Number(fiscalGapSnapshot?.summary?.open_gaps_total ?? 0),
+        fiscal_gap_by_partner_rows: Array.isArray(fiscalGapSnapshot?.summary?.by_partner_id)
+          ? fiscalGapSnapshot.summary.by_partner_id.length
+          : 0,
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -631,6 +672,49 @@ export default function FiscalManagementDailyPage() {
     }
   }
 
+  async function loadD14DailyOperationalClose() {
+    if (!INTERNAL_TOKEN) {
+      setD14CloseError("Token interno ausente para D14 (fechamento diário).");
+      return;
+    }
+    setD14CloseLoading(true);
+    setD14CloseError("");
+    try {
+      const day = String(d14CloseDate || "").trim() || new Date().toISOString().slice(0, 10);
+      const qs = new URLSearchParams({ date: day });
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/accounting/daily-operational-close?${qs.toString()}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar fechamento D14."));
+      if (!data?.ok) throw new Error("Resposta D14 inválida.");
+      const { ok: _ok, ...rest } = data;
+      setD14DailyClose(rest);
+      setStatus("Fechamento contábil operacional D14 carregado.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setD14DailyClose(null);
+      setD14CloseError(String(err?.message || err));
+    } finally {
+      setD14CloseLoading(false);
+    }
+  }
+
+  function exportD14DailyOperationalCloseJson() {
+    if (!d14DailyClose?.scope) {
+      setStatus("Carregue o fechamento D14 antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE_${ts}.json`, d14DailyClose);
+    setStatus("Export JSON D14 (SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE).");
+    window.setTimeout(() => setStatus(""), 2200);
+  }
+
   async function loadD15RevenueCreditsDelta() {
     if (!INTERNAL_TOKEN) {
       setD15DeltaError("Token interno ausente para D15.");
@@ -700,6 +784,49 @@ export default function FiscalManagementDailyPage() {
     const day = toAuditDayStamp(nowIso);
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_${ts}.json`, d16PartnerSettlement);
     setStatus("Export JSON D16 (SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE).");
+    window.setTimeout(() => setStatus(""), 2200);
+  }
+
+  async function loadFiscalGapConciliationSnapshot() {
+    if (!INTERNAL_TOKEN) {
+      setFiscalGapSnapError("Token interno ausente para snapshot P0 de gaps fiscais.");
+      return;
+    }
+    setFiscalGapSnapLoading(true);
+    setFiscalGapSnapError("");
+    try {
+      const day = String(fiscalGapSnapDate || "").trim() || new Date().toISOString().slice(0, 10);
+      const qs = new URLSearchParams({ date: day, refresh: fiscalGapSnapRefreshScan ? "true" : "false" });
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/fiscal-gap-conciliation-snapshot?${qs.toString()}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar snapshot de gaps fiscais."));
+      if (!data?.ok) throw new Error("Resposta snapshot gaps inválida.");
+      const { ok: _ok, ...rest } = data;
+      setFiscalGapSnapshot(rest);
+      setStatus("Snapshot P0 de gaps fiscais (SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT) carregado.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setFiscalGapSnapshot(null);
+      setFiscalGapSnapError(String(err?.message || err));
+    } finally {
+      setFiscalGapSnapLoading(false);
+    }
+  }
+
+  function exportFiscalGapConciliationSnapshotJson() {
+    if (fiscalGapSnapshot?.scope !== "SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT") {
+      setStatus("Carregue o snapshot P0 de gaps fiscais antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_${ts}.json`, fiscalGapSnapshot);
+    setStatus("Export JSON P0 gaps (SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT).");
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -1189,6 +1316,16 @@ export default function FiscalManagementDailyPage() {
       // D10 OPS handoff opcional no pacote
     }
     try {
+      if (INTERNAL_TOKEN && d14DailyClose?.scope === "SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE") {
+        const signedD14 = await buildSignedPayload(d14DailyClose);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE_${ts}.json`] = strToU8(
+          JSON.stringify(signedD14, null, 2),
+        );
+      }
+    } catch {
+      // D14 opcional no pacote
+    }
+    try {
       if (INTERNAL_TOKEN && d15RevenueCreditsDelta?.scope === "SPRINT2_D15_REVENUE_CREDITS_DELTA") {
         const signedD15 = await buildSignedPayload(d15RevenueCreditsDelta);
         zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D15_REVENUE_CREDITS_DELTA_${ts}.json`] = strToU8(JSON.stringify(signedD15, null, 2));
@@ -1206,9 +1343,19 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // D16 repasse parceiro opcional no pacote
     }
+    try {
+      if (INTERNAL_TOKEN && fiscalGapSnapshot?.scope === "SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT") {
+        const signedFg = await buildSignedPayload(fiscalGapSnapshot);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_${ts}.json`] = strToU8(
+          JSON.stringify(signedFg, null, 2),
+        );
+      }
+    } catch {
+      // P0 snapshot gaps fiscal opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + P0 gaps fiscal + D14 fechamento diário + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1361,6 +1508,9 @@ export default function FiscalManagementDailyPage() {
           <button type="button" onClick={() => void loadD16PartnerSettlementReconcile()} style={buttonStyle} disabled={!INTERNAL_TOKEN || d16PartnerLoading}>
             {d16PartnerLoading ? "D16…" : "Carregar D16 repasse parceiro"}
           </button>
+          <button type="button" onClick={() => void loadD14DailyOperationalClose()} style={buttonStyle} disabled={!INTERNAL_TOKEN || d14CloseLoading}>
+            {d14CloseLoading ? "D14…" : "Carregar D14 fechamento diário"}
+          </button>
         </div>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
         {error ? <div style={errorStyle}>{error}</div> : null}
@@ -1500,6 +1650,84 @@ export default function FiscalManagementDailyPage() {
             </div>
           </div>
         ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Fiscal Sprint 2 — snapshot P0 de gaps (conciliação)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Agrega <code>fiscal_reconciliation_gaps</code> em <code>OPEN</code> por tipo, severidade e <code>partner_id</code> em{" "}
+              <code>details_json</code>. API: <code>GET /admin/fiscal/fiscal-gap-conciliation-snapshot</code> — evidência{" "}
+              <code>SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_*</code> (ZIP diário quando carregado).
+            </p>
+            <div style={{ marginTop: 8, maxWidth: 360, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
+              <label style={labelStyle}>
+                Data âncora
+                <input
+                  type="date"
+                  value={fiscalGapSnapDate}
+                  onChange={(e) => setFiscalGapSnapDate(e.target.value)}
+                  style={inputStyle}
+                  data-testid="fiscal-p0-gap-snapshot-date"
+                />
+              </label>
+              <label style={{ ...labelStyle, display: "flex", alignItems: "center", gap: 8 }}>
+                <input
+                  type="checkbox"
+                  checked={fiscalGapSnapRefreshScan}
+                  onChange={(e) => setFiscalGapSnapRefreshScan(e.target.checked)}
+                />
+                Refresh scan antes
+              </label>
+            </div>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button
+                type="button"
+                onClick={() => void loadFiscalGapConciliationSnapshot()}
+                style={buttonStyle}
+                disabled={fiscalGapSnapLoading}
+                data-testid="fiscal-p0-gap-snapshot-load"
+              >
+                {fiscalGapSnapLoading ? "A carregar…" : "Carregar snapshot P0 gaps"}
+              </button>
+              <button type="button" onClick={() => exportFiscalGapConciliationSnapshotJson()} style={buttonStyle} disabled={!fiscalGapSnapshot?.scope}>
+                Export JSON (SPRINT2_FISCAL_GAP_*)
+              </button>
+            </div>
+            {fiscalGapSnapError ? <div style={errorStyle}>{fiscalGapSnapError}</div> : null}
+            {fiscalGapSnapshot?.summary ? (
+              <>
+                <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                  <span style={chipStyle}>OPEN total: {Number(fiscalGapSnapshot.summary.open_gaps_total ?? 0)}</span>
+                  <span style={chipStyle}>
+                    1ª deteção no dia: {Number(fiscalGapSnapshot.summary.first_detected_on_snapshot_date_total ?? 0)}
+                  </span>
+                  <span style={chipStyle}>Scan refresh: {fiscalGapSnapshot.refreshed_scan ? "sim" : "não"}</span>
+                </div>
+                {Array.isArray(fiscalGapSnapshot.summary.by_partner_id) && fiscalGapSnapshot.summary.by_partner_id.length ? (
+                  <div style={{ overflowX: "auto", marginTop: 10 }}>
+                    <table style={historyTableStyle}>
+                      <thead>
+                        <tr>
+                          <th style={historyThStyle}>partner_id</th>
+                          <th style={historyThStyle}>OPEN</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {fiscalGapSnapshot.summary.by_partner_id.slice(0, 12).map((row) => (
+                          <tr key={String(row.partner_id)}>
+                            <td style={historyTdStyle}>
+                              <code>{String(row.partner_id)}</code>
+                            </td>
+                            <td style={historyTdStyle}>{Number(row.open_count ?? 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
         {!error ? (
           <div style={boxStyle}>
             <h3 style={boxTitleStyle}>D15 - Histórico paginado de aceite (owner/status/período)</h3>
@@ -1594,6 +1822,71 @@ export default function FiscalManagementDailyPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Contábil Sprint 2 — fechamento operacional diário (D14)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Snapshot auditável do dia: <code>ellanlab_revenue_recognition</code> (incl. <code>MANUAL_ADJUSTMENT</code>),{" "}
+              <code>financial_kpi_daily</code>, agregados <code>financial_ledger</code> por tipo e ciclos de billing com período ativo. API:{" "}
+              <code>GET /admin/fiscal/accounting/daily-operational-close</code>.
+            </p>
+            <div style={{ marginTop: 8, maxWidth: 320 }}>
+              <input
+                type="date"
+                value={d14CloseDate}
+                onChange={(e) => setD14CloseDate(e.target.value)}
+                style={inputStyle}
+                data-testid="fiscal-d14-close-date"
+              />
+            </div>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button type="button" onClick={() => void loadD14DailyOperationalClose()} style={buttonStyle} disabled={d14CloseLoading}>
+                {d14CloseLoading ? "A carregar…" : "Atualizar D14"}
+              </button>
+              <button type="button" onClick={() => exportD14DailyOperationalCloseJson()} style={buttonStyle} disabled={!d14DailyClose?.scope}>
+                Export JSON (SPRINT2_D14_*)
+              </button>
+            </div>
+            {d14CloseError ? <div style={errorStyle}>{d14CloseError}</div> : null}
+            {d14DailyClose?.summary ? (
+              <>
+                <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                  <span style={chipStyle}>Data: {String(d14DailyClose.snapshot_date || "-")}</span>
+                  <span style={chipStyle}>Rev.rec. linhas: {Number(d14DailyClose.summary.revenue_recognition?.line_count || 0)}</span>
+                  <span style={chipStyle}>Rev.rec. (¢): {Number(d14DailyClose.summary.revenue_recognition?.recognized_cents_total || 0)}</span>
+                  <span style={chipStyle}>Ajustes MANUAL linhas: {Number(d14DailyClose.summary.manual_adjustments_provisions?.line_count || 0)}</span>
+                  <span style={chipStyle}>KPI daily linhas: {Number(d14DailyClose.summary.financial_kpi_daily?.row_count || 0)}</span>
+                  <span style={chipStyle}>Ciclos abertos (dia): {Number(d14DailyClose.summary.partner_billing_cycles_open_pipeline?.cycles_open_on_date || 0)}</span>
+                  <span style={chipStyle}>KPI s/ rev.rec.: {d14DailyClose.summary.health_flags?.kpi_rows_without_rev_rec_lines ? "sim" : "não"}</span>
+                </div>
+                {Array.isArray(d14DailyClose.ledger_by_entry_type) && d14DailyClose.ledger_by_entry_type.length ? (
+                  <div style={{ marginTop: 12, overflowX: "auto" }}>
+                    <table style={historyTableStyle}>
+                      <thead>
+                        <tr>
+                          <th style={historyThStyle}>entry_type</th>
+                          <th style={historyThStyle}>linhas</th>
+                          <th style={historyThStyle}>Σ |¢|</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {d14DailyClose.ledger_by_entry_type.map((row) => (
+                          <tr key={String(row?.entry_type)}>
+                            <td style={historyTdStyle}>{String(row?.entry_type || "-")}</td>
+                            <td style={historyTdStyle}>{Number(row?.line_count || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.amount_cents_abs_sum || 0)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </>
+            ) : (
+              <small style={mutedTextStyle}>Use «Carregar D14 fechamento diário» na barra ou «Atualizar D14» acima.</small>
+            )}
           </div>
         ) : null}
         {!error && INTERNAL_TOKEN ? (

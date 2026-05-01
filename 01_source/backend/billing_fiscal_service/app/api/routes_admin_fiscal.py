@@ -20,6 +20,7 @@ from app.services.fiscal_reconciliation_service import (
     list_reconciliation_gaps,
     scan_and_persist_reconciliation_gaps,
 )
+from app.services.fiscal_gap_conciliation_snapshot_service import build_fiscal_gap_conciliation_snapshot
 from app.api.routes_invoice import _to_invoice_response
 from app.services.fiscal_reporting_service import (
     build_saft_pt_export_payload,
@@ -71,6 +72,7 @@ from app.services.fiscal_a1_dry_run_service import (
     verify_a1_dry_run_signature,
 )
 from app.services.fiscal_release_gate_service import build_fiscal_release_gate_payload
+from app.services.accounting_daily_operational_close_service import build_daily_operational_close_report
 from app.services.accounting_partner_settlement_reconcile_service import build_partner_settlement_reconcile_report
 from app.services.accounting_revenue_credits_delta_service import build_revenue_credits_delta_report
 from app.services.financial_pnl_service import (
@@ -269,6 +271,22 @@ def get_reconciliation_gaps(
             for r in rows
         ],
     }
+
+
+@router.get("/fiscal-gap-conciliation-snapshot")
+def get_fiscal_gap_conciliation_snapshot(
+    date: str = Query(..., description="YYYY-MM-DD (âncora de auditoria)"),
+    refresh: bool = Query(default=False, description="Se true, executa scan de gaps antes de agregar"),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """Sprint 2 P0 Fiscal: agregados OPEN em `fiscal_reconciliation_gaps` (tipo, severidade, partner em details_json) + amostra."""
+    try:
+        snapshot_date = datetime.fromisoformat(date.strip()).date()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    payload = build_fiscal_gap_conciliation_snapshot(db, snapshot_date=snapshot_date, refresh_scan=refresh)
+    return {"ok": True, **payload}
 
 
 @router.post("/gaps/seed")
@@ -1695,6 +1713,22 @@ def get_accounting_partner_settlement_reconcile(
         currency=currency,
         partner_limit=partner_limit,
     )
+    return {"ok": True, **payload}
+
+
+@router.get("/accounting/daily-operational-close")
+def get_accounting_daily_operational_close(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    currency: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """Sprint 2 D14: fechamento contábil operacional diário — agregados rev.rec., KPI, ledger e ciclos ativos."""
+    try:
+        snapshot_date = datetime.fromisoformat(date.strip()).date()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    payload = build_daily_operational_close_report(db, snapshot_date=snapshot_date, currency=currency)
     return {"ok": True, **payload}
 
 
