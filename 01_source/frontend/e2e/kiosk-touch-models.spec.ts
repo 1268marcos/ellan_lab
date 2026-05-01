@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+
 import { expect, test, type Page } from "@playwright/test";
 
 const E2E_PT_LOCKER = {
@@ -24,6 +26,8 @@ type InstallKioskPtMocksOptions = {
   mockPaymentApprovedPost?: boolean;
   /** Mock `POST` order-pickup `/kiosk/identify` (secção 4 após pagamento). */
   mockKioskIdentifyPost?: boolean;
+  /** Mock `POST` relativo `ManualPickupPanel` — `/api/op/totem/pickups/redeem-manual` (mesma origem do Vite). */
+  mockManualPickupRedeem?: boolean;
 };
 
 const E2E_CATALOG_SLOT = {
@@ -61,6 +65,7 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
     mockGatewayPagamentoPost = false,
     mockPaymentApprovedPost = false,
     mockKioskIdentifyPost = false,
+    mockManualPickupRedeem = false,
   } = options;
 
   await page.route(
@@ -209,13 +214,39 @@ async function installKioskPtLabMocks(page: Page, options: InstallKioskPtMocksOp
       },
     );
   }
+
+  if (mockManualPickupRedeem) {
+    await page.route(
+      (url) => url.pathname === "/api/op/totem/pickups/redeem-manual",
+      async (route) => {
+        if (route.request().method() !== "POST") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            pickup_id: "e2e-pickup-1",
+            order_status: "picked_up",
+            status: "picked_up",
+            picked_up_at: "2026-04-30T12:00:00.000Z",
+            pickup_status: "COMPLETED",
+            pickup_lifecycle_stage: "REDEEMED",
+            slot: 1,
+          }),
+        });
+      },
+    );
+  }
 }
 
 /**
  * Sprint 1 — trilha **E** («E2E KIOSK assistido»): smoke `/ops/kiosk-touch-models` + encadeamentos do plano.
  * Sessão OPS: mock `/public/auth/me*` + token em `localStorage`. **Modelo A** → `/comprar`;
  * **Modelo B** → `/checkout` (sem query mínima → `public-checkout-invalid`);
- * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, orders, gateway, payment-approved, `/kiosk/identify`); **Modelo D** → `/ops/dev/slots`.
+ * **Modelo C** → `/ops/pt/kiosk` (mocks: vitrine, orders, gateway, payment-approved, identify, redeem-manual; teste isolado só retirada manual); **Modelo D** → `/ops/dev/slots`.
+ * **Trilha D** (checklist n≥8): progresso 8/8 + validação do payload JSON exportado.
  * `VITE_ENABLE_OPS_ROUTES` no `webServer`.
  */
 test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
@@ -279,6 +310,45 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await page.getByRole("button", { name: /Exportar checklist \(JSON\)/i }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^SPRINT1_KIOSK_TOUCH_USABILITY_N8_/i);
+  });
+
+  test("checklist n≥8: 8/8 marcados e export JSON com score e itens (trilha D)", async ({ page }) => {
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+
+    const checklistSection = page.locator("section").filter({ has: page.locator("#kiosk-usability-n8-heading") });
+    const checkboxes = checklistSection.getByRole("checkbox");
+    await expect(checkboxes).toHaveCount(8);
+    for (let i = 0; i < 8; i += 1) {
+      await checkboxes.nth(i).check();
+    }
+    await expect(checklistSection).toContainText(/8\s*\/\s*8/);
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: /Exportar checklist \(JSON\)/i }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/^SPRINT1_KIOSK_TOUCH_USABILITY_N8_/i);
+
+    const savedPath = await download.path();
+    expect(savedPath).toBeTruthy();
+    const raw = await readFile(savedPath!, "utf-8");
+    const data = JSON.parse(raw) as {
+      page?: string;
+      exportedAt?: string;
+      activeModelId?: string | null;
+      score?: number;
+      total?: number;
+      checklist?: Array<{ id: string; label: string; done: boolean }>;
+    };
+
+    expect(data.score).toBe(8);
+    expect(data.total).toBe(8);
+    expect(data.checklist).toHaveLength(8);
+    expect(data.checklist?.every((row) => row.done)).toBe(true);
+    expect(data.checklist?.map((row) => row.id).sort()).toEqual(["n1", "n2", "n3", "n4", "n5", "n6", "n7", "n8"]);
+    expect(typeof data.page).toBe("string");
+    expect(typeof data.exportedAt).toBe("string");
+    expect(data.activeModelId).toBe("A");
   });
 
   test("Modelo A — CTA primário abre catálogo /comprar", async ({ page }) => {
@@ -347,13 +417,39 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     await expect(page.getByText(/e2e-order-pt-1/).first()).toBeVisible();
   });
 
-  test("Modelo C — KIOSK PT: pedido, pagamento (APPROVED) e identificação (mocks)", async ({ page }) => {
+  test("Modelo C — KIOSK PT: retirada manual isolada (mock redeem, sem fluxo de pagamento)", async ({ page }) => {
+    await installKioskPtLabMocks(page, { mockManualPickupRedeem: true });
+
+    await page.goto("/ops/kiosk-touch-models");
+    await expect(page.getByTestId("ops-kiosk-touch-models-page")).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Modelo C — Pickup Fast Lane/i }).click();
+    await page.getByRole("link", { name: /Abrir kiosk OPS \(PT\)/i }).click();
+    await expect(page).toHaveURL(/\/ops\/pt\/kiosk/, { timeout: 15_000 });
+
+    await expect(page.getByLabel(/Locker/i)).toHaveValue("e2e-kiosk-pt-1", { timeout: 15_000 });
+
+    await page.getByRole("heading", { level: 2, name: /Retirada por código manual/i }).scrollIntoViewIfNeeded();
+
+    await page.getByRole("button", { name: /Use aqui para digitar o código/i }).click();
+    const pickupDialog = page.getByRole("dialog", { name: /Código de Retirada/i });
+    await expect(pickupDialog).toBeVisible();
+    for (const digit of ["1", "2", "3", "4", "5", "6"]) {
+      await pickupDialog.getByRole("button", { name: digit, exact: true }).click();
+    }
+    await pickupDialog.getByRole("button", { name: /Concluir e usar código/i }).click();
+
+    await page.getByRole("button", { name: /Retirar com código/i }).click();
+    await expect(page.locator("pre").filter({ hasText: "e2e-pickup-1" })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test("Modelo C — KIOSK PT: pedido, pagamento (APPROVED), identificação e retirada manual (mocks)", async ({ page }) => {
     await installKioskPtLabMocks(page, {
       withSelectableCatalog: true,
       mockKioskOrderPost: true,
       mockGatewayPagamentoPost: true,
       mockPaymentApprovedPost: true,
       mockKioskIdentifyPost: true,
+      mockManualPickupRedeem: true,
     });
 
     await page.goto("/ops/kiosk-touch-models");
@@ -379,6 +475,17 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
 
     await expect(page.getByText(/Identificação salva/i)).toBeVisible({ timeout: 15_000 });
     await expect(page.locator("pre").filter({ hasText: "e2e-identify@ellan.local" })).toBeVisible();
+
+    await page.getByRole("button", { name: /Use aqui para digitar o código/i }).click();
+    const pickupDialog = page.getByRole("dialog", { name: /Código de Retirada/i });
+    await expect(pickupDialog).toBeVisible();
+    for (const digit of ["1", "2", "3", "4", "5", "6"]) {
+      await pickupDialog.getByRole("button", { name: digit, exact: true }).click();
+    }
+    await pickupDialog.getByRole("button", { name: /Concluir e usar código/i }).click();
+
+    await page.getByRole("button", { name: /Retirar com código/i }).click();
+    await expect(page.locator("pre").filter({ hasText: "e2e-pickup-1" })).toBeVisible({ timeout: 15_000 });
   });
 
   test("Modelo D — CTA primário abre alocação por slot (dev)", async ({ page }) => {
