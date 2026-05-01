@@ -41,7 +41,7 @@ import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAccep
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.13-d10-ops-handoff";
+const PAGE_VERSION = "fiscal/management-daily v1.0.14-d15-revenue-credits-delta";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -135,6 +135,10 @@ export default function FiscalManagementDailyPage() {
   const [d17RetentionKeep, setD17RetentionKeep] = useState(25);
   const [d17RetentionLast, setD17RetentionLast] = useState(null);
   const [d17RetentionBusy, setD17RetentionBusy] = useState(false);
+  const [d15DeltaDate, setD15DeltaDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [d15RevenueCreditsDelta, setD15RevenueCreditsDelta] = useState(null);
+  const [d15DeltaLoading, setD15DeltaLoading] = useState(false);
+  const [d15DeltaError, setD15DeltaError] = useState("");
   const [d18Checklist, setD18Checklist] = useState({});
   const [d18P1Rows, setD18P1Rows] = useState(() => createInitialP1RiskRows());
   const [d18Certification, setD18Certification] = useState(null);
@@ -355,6 +359,13 @@ export default function FiscalManagementDailyPage() {
             providers_count: Number(d10Handoff?.summary?.providers_count ?? 0),
           }
         : null,
+      d15_revenue_credits_delta: d15RevenueCreditsDelta
+        ? {
+            snapshot_date: String(d15RevenueCreditsDelta?.snapshot_date || "-"),
+            currency_filter: d15RevenueCreditsDelta?.currency_filter ?? null,
+            summary: d15RevenueCreditsDelta?.summary || null,
+          }
+        : null,
     };
   }
 
@@ -382,6 +393,8 @@ export default function FiscalManagementDailyPage() {
         ),
         d10_generated_at: String(d10Handoff?.generated_at || "-"),
         d10_progress_pct: Number(d10Handoff?.summary?.d10_progress_pct ?? 0),
+        d15_snapshot_date: String(d15RevenueCreditsDelta?.snapshot_date || "-"),
+        d15_divergence_residual_pct: Number(d15RevenueCreditsDelta?.summary?.divergence_residual_pct ?? 0),
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -599,6 +612,49 @@ export default function FiscalManagementDailyPage() {
     } catch (err) {
       setD17Health({ ok: false, error: String(err?.message || err) });
     }
+  }
+
+  async function loadD15RevenueCreditsDelta() {
+    if (!INTERNAL_TOKEN) {
+      setD15DeltaError("Token interno ausente para D15.");
+      return;
+    }
+    setD15DeltaLoading(true);
+    setD15DeltaError("");
+    try {
+      const day = String(d15DeltaDate || "").trim() || new Date().toISOString().slice(0, 10);
+      const qs = new URLSearchParams({ date: day });
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/accounting/revenue-credits-delta?${qs.toString()}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar delta D15."));
+      if (!data?.ok) throw new Error("Resposta D15 inválida.");
+      const { ok: _ok, ...rest } = data;
+      setD15RevenueCreditsDelta(rest);
+      setStatus("Delta D15 (receita / estornos / créditos) carregado.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setD15RevenueCreditsDelta(null);
+      setD15DeltaError(String(err?.message || err));
+    } finally {
+      setD15DeltaLoading(false);
+    }
+  }
+
+  function exportD15RevenueCreditsDeltaJson() {
+    if (!d15RevenueCreditsDelta?.scope) {
+      setStatus("Carregue o delta D15 antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D15_REVENUE_CREDITS_DELTA_${ts}.json`, d15RevenueCreditsDelta);
+    setStatus("Export JSON D15 (SPRINT2_D15_REVENUE_CREDITS_DELTA).");
+    window.setTimeout(() => setStatus(""), 2200);
   }
 
   async function runD17RetentionPreview() {
@@ -1072,9 +1128,17 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // D10 OPS handoff opcional no pacote
     }
+    try {
+      if (INTERNAL_TOKEN && d15RevenueCreditsDelta?.scope === "SPRINT2_D15_REVENUE_CREDITS_DELTA") {
+        const signedD15 = await buildSignedPayload(d15RevenueCreditsDelta);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D15_REVENUE_CREDITS_DELTA_${ts}.json`] = strToU8(JSON.stringify(signedD15, null, 2));
+      }
+    } catch {
+      // D15 opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + D15 receita/estornos + D11 rollup + D16 + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1220,6 +1284,9 @@ export default function FiscalManagementDailyPage() {
           </button>
           <button type="button" onClick={() => void loadD17DivergenceHealth()} style={buttonStyle} disabled={!INTERNAL_TOKEN}>
             Atualizar saúde D17
+          </button>
+          <button type="button" onClick={() => void loadD15RevenueCreditsDelta()} style={buttonStyle} disabled={!INTERNAL_TOKEN || d15DeltaLoading}>
+            {d15DeltaLoading ? "D15…" : "Carregar delta D15"}
           </button>
         </div>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
@@ -1454,6 +1521,45 @@ export default function FiscalManagementDailyPage() {
                 </tbody>
               </table>
             </div>
+          </div>
+        ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Contábil Sprint 2 — delta receita / estornos / créditos (D15)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Agrega <code>ellanlab_revenue_recognition</code> com <code>financial_ledger</code> (tipos BILLING_REVENUE, BILLING_REVERSAL, CREDIT_NOTE_APPLIED) no dia
+              civil. API: <code>GET /admin/fiscal/accounting/revenue-credits-delta</code>.
+            </p>
+            <div style={{ marginTop: 8, maxWidth: 320 }}>
+              <input
+                type="date"
+                value={d15DeltaDate}
+                onChange={(e) => setD15DeltaDate(e.target.value)}
+                style={inputStyle}
+                data-testid="fiscal-d15-delta-date"
+              />
+            </div>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button type="button" onClick={() => void loadD15RevenueCreditsDelta()} style={buttonStyle} disabled={d15DeltaLoading}>
+                {d15DeltaLoading ? "A carregar…" : "Atualizar delta"}
+              </button>
+              <button type="button" onClick={() => exportD15RevenueCreditsDeltaJson()} style={buttonStyle} disabled={!d15RevenueCreditsDelta?.scope}>
+                Export JSON (SPRINT2_D15_*)
+              </button>
+            </div>
+            {d15DeltaError ? <div style={errorStyle}>{d15DeltaError}</div> : null}
+            {d15RevenueCreditsDelta?.summary ? (
+              <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                <span style={chipStyle}>Data: {String(d15RevenueCreditsDelta.snapshot_date || "-")}</span>
+                <span style={chipStyle}>Linhas rev.rec.: {Number(d15RevenueCreditsDelta.summary.revenue_recognition_lines || 0)}</span>
+                <span style={chipStyle}>Receita reconhecida (¢): {Number(d15RevenueCreditsDelta.summary.recognized_revenue_cents_total || 0)}</span>
+                <span style={chipStyle}>Estornos (¢): {Number(d15RevenueCreditsDelta.summary.ledger_reversal_cents || 0)}</span>
+                <span style={chipStyle}>Créditos (¢): {Number(d15RevenueCreditsDelta.summary.ledger_credit_note_cents || 0)}</span>
+                <span style={chipStyle}>Residual %: {Number(d15RevenueCreditsDelta.summary.divergence_residual_pct || 0)}</span>
+              </div>
+            ) : (
+              <small style={mutedTextStyle}>Use «Carregar delta D15» na barra ou «Atualizar delta» acima.</small>
+            )}
           </div>
         ) : null}
         {!error ? (

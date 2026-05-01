@@ -71,6 +71,7 @@ from app.services.fiscal_a1_dry_run_service import (
     verify_a1_dry_run_signature,
 )
 from app.services.fiscal_release_gate_service import build_fiscal_release_gate_payload
+from app.services.accounting_revenue_credits_delta_service import build_revenue_credits_delta_report
 from app.services.financial_pnl_service import (
     calculate_monthly_kpis,
     list_daily_kpis,
@@ -1650,6 +1651,28 @@ def get_revenue_recognition(
         except Exception as exc:
             raise HTTPException(status_code=400, detail="Invalid to_date format. Use YYYY-MM-DD.") from exc
     return list_revenue_recognition(db, from_date=start, to_date=end, limit=limit, offset=offset)
+
+
+@router.get("/accounting/revenue-credits-delta")
+def get_accounting_revenue_credits_delta(
+    date: str = Query(..., description="YYYY-MM-DD"),
+    currency: str | None = Query(default=None),
+    ledger_sample_limit: int = Query(default=40, ge=1, le=200),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """Sprint 2 D15: receita reconhecida vs movimentos de estorno/crédito no `financial_ledger` (mesmo dia)."""
+    try:
+        snapshot_date = datetime.fromisoformat(date.strip()).date()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    payload = build_revenue_credits_delta_report(
+        db,
+        snapshot_date=snapshot_date,
+        currency=currency,
+        ledger_sample_limit=ledger_sample_limit,
+    )
+    return {"ok": True, **payload}
 
 
 @router.post("/kpi/daily/recompute")
