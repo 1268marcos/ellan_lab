@@ -317,7 +317,11 @@ def _store_risk_event(
 def _call_backend_paid_pending_pickup(locker_id: str, porta: int) -> tuple[str, dict]:
     backend_url = locker_registry.get_backend_url(locker_id)
     client = LockerBackendClient(backend_url, timeout_sec=5)
-    locker_effect = client.set_state(porta=porta, state="PAID_PENDING_PICKUP")
+    locker_effect = client.set_state(
+        porta=porta,
+        state="PAID_PENDING_PICKUP",
+        locker_id=locker_id,
+    )
     return backend_url, {"status": "ok", "locker": locker_effect}
 
 def normalize_method(value: str) -> str:

@@ -1,0 +1,43 @@
+{
+  "family": "ellan-payment-gateway-example",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "payment_gateway",
+      "image": "ACCOUNT.dkr.ecr.REGION.amazonaws.com/ellan-payment-gateway:TAG",
+      "essential": true,
+      "portMappings": [{ "containerPort": 8000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "REDIS_HOST", "value": "REPLACE_WITH_ELASTICACHE_OR_REDIS_SERVICE" },
+        { "name": "MQTT_HOST", "value": "REPLACE" },
+        { "name": "CENTRAL_POSTGRES_DSN", "value": "postgresql://user:pass@REPLACE:5432/locker_central" },
+        { "name": "LOCKER_RUNTIME_INTERNAL", "value": "http://REPLACE_RUNTIME:8000" }
+      ],
+      "secrets": [
+        {
+          "name": "INTERNAL_SERVICE_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:REGION:ACCOUNT:secret:ellan/ORDER_INTERNAL_TOKEN"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ellan-payment-gateway",
+          "awslogs-region": "REGION",
+          "awslogs-stream-prefix": "gateway"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 90
+      }
+    }
+  ]
+}

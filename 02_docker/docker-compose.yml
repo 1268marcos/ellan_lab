@@ -233,8 +233,11 @@ services:
       - STRIPE_SECRET_KEY_SP=${STRIPE_SECRET_KEY_SP}
       - LOG_DIR=/logs
 
-      # runtime operacional multi-locker
+      # runtime operacional multi-locker (sobrepõe .env do host se tiver RUNTIME_BASE_URL=127.0.0.1)
       - LOCKER_RUNTIME_INTERNAL=http://backend_runtime:8000
+      - RUNTIME_BASE_URL=http://backend_runtime:8000
+      - BACKEND_SP=http://backend_runtime:8000
+      - BACKEND_PT=http://backend_runtime:8000
       - LOCKER_RUNTIME_HEALTH_PATH=/health
       - LOCKER_RUNTIME_ALLOCATE_PATH=/locker/allocate
       - LOCKER_RUNTIME_COMMIT_PATH=/locker/allocations/{allocation_id}/commit
@@ -249,6 +252,9 @@ services:
       - LOCKER_RUNTIME_CATALOG_SLOTS_PATH=/catalog/slots
 
       - INTERNAL_SERVICE_TOKEN=${ORDER_INTERNAL_TOKEN}
+
+      # Lab/E2E: antifraude relaxado (ver risk_engine). Produção: exportar GATEWAY_E2E_RELAX_RISK=false ou omitir no .env.
+      - GATEWAY_E2E_RELAX_RISK=${GATEWAY_E2E_RELAX_RISK:-true}
 
     volumes:
       - ../03_data/sqlite:/data/sqlite

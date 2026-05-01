@@ -6,9 +6,25 @@ class LockerBackendClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout_sec
 
-    def set_state(self, porta: int, state: str, product_id: str | None = None):
+    def set_state(
+        self,
+        porta: int,
+        state: str,
+        product_id: str | None = None,
+        *,
+        locker_id: str | None = None,
+    ):
         payload = {"state": state, "product_id": product_id}
-        r = requests.post(f"{self.base_url}/locker/slots/{porta}/set-state", json=payload, timeout=self.timeout)
+        headers: dict[str, str] = {}
+        lid = (locker_id or "").strip()
+        if lid:
+            headers["X-Locker-Id"] = lid
+        r = requests.post(
+            f"{self.base_url}/locker/slots/{porta}/set-state",
+            json=payload,
+            headers=headers,
+            timeout=self.timeout,
+        )
         r.raise_for_status()
         return r.json()
 
