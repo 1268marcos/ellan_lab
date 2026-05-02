@@ -478,7 +478,7 @@ def list_revenue_recognition(
                     deferred_amount_cents,
                     currency
                 FROM ellanlab_revenue_recognition
-                WHERE recognition_date BETWEEN :from_date::date AND :to_date::date
+                WHERE recognition_date BETWEEN CAST(:from_date AS DATE) AND CAST(:to_date AS DATE)
                 ORDER BY recognition_date DESC, created_at DESC
                 LIMIT :limit OFFSET :offset
                 """
@@ -519,7 +519,7 @@ def list_daily_kpis(db: Session, snapshot_date: date | None = None, limit: int =
                     dso_days,
                     active_invoice_count
                 FROM financial_kpi_daily
-                WHERE snapshot_date = :snapshot_date::date
+                WHERE snapshot_date = CAST(:snapshot_date AS DATE)
                 ORDER BY revenue_recognized_cents DESC, partner_id ASC
                 LIMIT :limit OFFSET :offset
                 """

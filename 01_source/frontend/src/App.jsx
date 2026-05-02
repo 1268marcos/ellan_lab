@@ -68,6 +68,10 @@ const OpsIntegrationOrdersPartnerLookupPage = lazy(() => import("./pages/OpsInte
 const OpsPartnersFinancialsServiceAreasPage = lazy(() => import("./pages/OpsPartnersFinancialsServiceAreasPage"));
 const OpsPartnersReconciliationDashboardPage = lazy(() => import("./pages/OpsPartnersReconciliationDashboardPage"));
 const OpsPartnersBillingMonitoringPage = lazy(() => import("./pages/OpsPartnersBillingMonitoringPage"));
+const BillingInvoiceSearchPage = lazy(() => import("./pages/BillingInvoiceSearchPage"));
+const BillingInvoiceQueuePage = lazy(() => import("./pages/BillingInvoiceQueuePage"));
+const BillingReconciliationGapsPage = lazy(() => import("./pages/BillingReconciliationGapsPage"));
+const BillingKpiDailyPage = lazy(() => import("./pages/BillingKpiDailyPage"));
 const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -365,6 +369,10 @@ function TopNav() {
     { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", group: "Produtos & Fiscal" },
     { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3", group: "Produtos & Fiscal" },
     { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health", group: "Produtos & Fiscal" },
+    { to: "/ops/billing/invoices", label: "ops /billing/invoices", aria: "Busca de invoice (internal)", group: "Billing / Fiscal" },
+    { to: "/ops/billing/invoice-queue", label: "ops /billing/invoice-queue", aria: "Fila operacional (dead letters + gaps)", group: "Billing / Fiscal" },
+    { to: "/ops/billing/reconciliation-gaps", label: "ops /billing/reconciliation-gaps", aria: "Gaps de reconciliação fiscal", group: "Billing / Fiscal" },
+    { to: "/ops/billing/kpis", label: "ops /billing/kpis", aria: "KPI financeiro diário (FA-5)", group: "Billing / Fiscal" },
     { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT", group: "Produtos & Fiscal" },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao", group: "Integrações" },
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)", group: "Integrações" },
@@ -387,6 +395,7 @@ function TopNav() {
     "Runtime",
     "Logística",
     "Produtos & Fiscal",
+    "Billing / Fiscal",
     "Integrações",
     "Partners",
     "Políticas",
@@ -1467,6 +1476,30 @@ function AppContent() {
                 <OpsRoute>
                   <OpsPartnersBillingMonitoringPage />
                 </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/billing/invoices"
+              element={
+                <OpsRoute>{withBoundary("ops", <BillingInvoiceSearchPage />)}</OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/billing/invoice-queue"
+              element={
+                <OpsRoute>{withBoundary("ops", <BillingInvoiceQueuePage />)}</OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/billing/reconciliation-gaps"
+              element={
+                <OpsRoute>{withBoundary("ops", <BillingReconciliationGapsPage />)}</OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/billing/kpis"
+              element={
+                <OpsRoute>{withBoundary("ops", <BillingKpiDailyPage />)}</OpsRoute>
               }
             />
             <Route

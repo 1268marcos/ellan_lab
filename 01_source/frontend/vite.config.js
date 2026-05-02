@@ -75,6 +75,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ol/, ""),
       },
+      "/api/bf": {
+        target: "http://localhost:8020",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/bf/, ""),
+      },
     },
   },
 });
