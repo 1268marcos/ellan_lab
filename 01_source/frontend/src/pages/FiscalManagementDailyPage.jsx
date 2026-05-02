@@ -41,7 +41,7 @@ import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAccep
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.18-issuer-governance-matrix";
+const PAGE_VERSION = "fiscal/management-daily v1.0.19-partner-provisions-governance";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -143,6 +143,10 @@ export default function FiscalManagementDailyPage() {
   const [d16PartnerSettlement, setD16PartnerSettlement] = useState(null);
   const [d16PartnerLoading, setD16PartnerLoading] = useState(false);
   const [d16PartnerError, setD16PartnerError] = useState("");
+  const [provGovDate, setProvGovDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [provGovReport, setProvGovReport] = useState(null);
+  const [provGovLoading, setProvGovLoading] = useState(false);
+  const [provGovError, setProvGovError] = useState("");
   const [d14CloseDate, setD14CloseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [d14DailyClose, setD14DailyClose] = useState(null);
   const [d14CloseLoading, setD14CloseLoading] = useState(false);
@@ -392,6 +396,15 @@ export default function FiscalManagementDailyPage() {
               : [],
           }
         : null,
+      partner_provisions_governance: provGovReport
+        ? {
+            scope: provGovReport.scope,
+            as_of_date: String(provGovReport?.as_of_date || "-"),
+            currency_filter: provGovReport?.currency_filter ?? null,
+            summary: provGovReport?.summary || null,
+            per_partner_top_n: Array.isArray(provGovReport?.per_partner) ? provGovReport.per_partner.slice(0, 12) : [],
+          }
+        : null,
       d14_daily_operational_close: d14DailyClose
         ? {
             snapshot_date: String(d14DailyClose?.snapshot_date || "-"),
@@ -456,6 +469,9 @@ export default function FiscalManagementDailyPage() {
         d16_snapshot_date: String(d16PartnerSettlement?.snapshot_date || "-"),
         d16_partners_with_nonzero_residual: Number(d16PartnerSettlement?.summary?.partners_with_nonzero_residual ?? 0),
         d16_orphan_ledger_lines: Number(d16PartnerSettlement?.summary?.orphan_ledger_lines_partner_cycle_ref ?? 0),
+        prov_gov_as_of_date: String(provGovReport?.as_of_date || "-"),
+        prov_gov_manual_lines: Number(provGovReport?.summary?.total_manual_lines ?? 0),
+        prov_gov_owner_coverage_pct: Number(provGovReport?.summary?.governance_owner_coverage_pct ?? 0),
         d14_snapshot_date: String(d14DailyClose?.snapshot_date || "-"),
         d14_manual_adjustment_lines: Number(d14DailyClose?.summary?.manual_adjustments_provisions?.line_count ?? 0),
         d14_kpi_without_rev_rec: Boolean(d14DailyClose?.summary?.health_flags?.kpi_rows_without_rev_rec_lines),
@@ -797,6 +813,49 @@ export default function FiscalManagementDailyPage() {
     const day = toAuditDayStamp(nowIso);
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_${ts}.json`, d16PartnerSettlement);
     setStatus("Export JSON D16 (SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE).");
+    window.setTimeout(() => setStatus(""), 2200);
+  }
+
+  async function loadPartnerProvisionsGovernance() {
+    if (!INTERNAL_TOKEN) {
+      setProvGovError("Token interno ausente para governança de provisões (parceiros).");
+      return;
+    }
+    setProvGovLoading(true);
+    setProvGovError("");
+    try {
+      const day = String(provGovDate || "").trim() || new Date().toISOString().slice(0, 10);
+      const qs = new URLSearchParams({ date: day, partner_limit: "200" });
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/accounting/partner-provisions-governance?${qs.toString()}`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar governança de provisões."));
+      if (!data?.ok) throw new Error("Resposta provisões inválida.");
+      const { ok: _ok, ...rest } = data;
+      setProvGovReport(rest);
+      setStatus("Governança de provisões parceiros (SPRINT2_PARTNER_PROVISIONS_GOVERNANCE) carregada.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setProvGovReport(null);
+      setProvGovError(String(err?.message || err));
+    } finally {
+      setProvGovLoading(false);
+    }
+  }
+
+  function exportPartnerProvisionsGovernanceJson() {
+    if (provGovReport?.scope !== "SPRINT2_PARTNER_PROVISIONS_GOVERNANCE") {
+      setStatus("Carregue o relatório de provisões antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_${ts}.json`, provGovReport);
+    setStatus("Export JSON provisões parceiros (SPRINT2_PARTNER_PROVISIONS_GOVERNANCE).");
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -1398,6 +1457,16 @@ export default function FiscalManagementDailyPage() {
       // D16 repasse parceiro opcional no pacote
     }
     try {
+      if (INTERNAL_TOKEN && provGovReport?.scope === "SPRINT2_PARTNER_PROVISIONS_GOVERNANCE") {
+        const signedPv = await buildSignedPayload(provGovReport);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_${ts}.json`] = strToU8(
+          JSON.stringify(signedPv, null, 2),
+        );
+      }
+    } catch {
+      // P0 provisões parceiros opcional no pacote
+    }
+    try {
       if (INTERNAL_TOKEN && fiscalGapSnapshot?.scope === "SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT") {
         const signedFg = await buildSignedPayload(fiscalGapSnapshot);
         zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_${ts}.json`] = strToU8(
@@ -1419,7 +1488,7 @@ export default function FiscalManagementDailyPage() {
     }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + P0 gaps fiscal + matriz emissores (`SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`) + D14 fechamento diário + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + P0 gaps fiscal + matriz emissores (`SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`) + D14 fechamento diário + D15 receita/estornos + D16 repasse parceiro + P0 provisões parceiros (`SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_*`) + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -2117,6 +2186,64 @@ export default function FiscalManagementDailyPage() {
             ) : (
               <small style={mutedTextStyle}>Use «Carregar D16 repasse parceiro» na barra ou «Atualizar D16» acima.</small>
             )}
+          </div>
+        ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Contábil Partners — governança de provisões e ajustes (P0)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Linhas <code>MANUAL_ADJUSTMENT</code> em <code>ellanlab_revenue_recognition</code> até à data (inclusive), por parceiro, com cobertura de{" "}
+              <code>metadata_json.governance_owner</code>. API: <code>GET /admin/fiscal/accounting/partner-provisions-governance</code>.
+            </p>
+            <div style={{ marginTop: 8, maxWidth: 320 }}>
+              <input type="date" value={provGovDate} onChange={(e) => setProvGovDate(e.target.value)} style={inputStyle} />
+            </div>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button type="button" onClick={() => void loadPartnerProvisionsGovernance()} style={buttonStyle} disabled={provGovLoading}>
+                {provGovLoading ? "A carregar…" : "Carregar provisões parceiros"}
+              </button>
+              <button type="button" onClick={() => exportPartnerProvisionsGovernanceJson()} style={buttonStyle} disabled={!provGovReport?.scope}>
+                Export JSON (SPRINT2_PARTNER_PROVISIONS_*)
+              </button>
+            </div>
+            {provGovError ? <div style={errorStyle}>{provGovError}</div> : null}
+            {provGovReport?.summary ? (
+              <>
+                <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                  <span style={chipStyle}>Até: {String(provGovReport.as_of_date || "-")}</span>
+                  <span style={chipStyle}>Linhas MANUAL: {Number(provGovReport.summary.total_manual_lines ?? 0)}</span>
+                  <span style={chipStyle}>Parceiros: {Number(provGovReport.summary.distinct_partners ?? 0)}</span>
+                  <span style={chipStyle}>Cobertura owner %: {Number(provGovReport.summary.governance_owner_coverage_pct ?? 0)}</span>
+                  <span style={chipStyle}>Sem owner: {Number(provGovReport.summary.manual_lines_missing_governance_owner ?? 0)}</span>
+                </div>
+                {Array.isArray(provGovReport.per_partner) && provGovReport.per_partner.length ? (
+                  <div style={{ marginTop: 12, overflowX: "auto" }}>
+                    <table style={historyTableStyle}>
+                      <thead>
+                        <tr>
+                          <th style={historyThStyle}>partner_id</th>
+                          <th style={historyThStyle}>linhas</th>
+                          <th style={historyThStyle}>reconhecido (¢)</th>
+                          <th style={historyThStyle}>diferido (¢)</th>
+                          <th style={historyThStyle}>último ajuste</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {provGovReport.per_partner.slice(0, 20).map((row) => (
+                          <tr key={String(row?.partner_id)}>
+                            <td style={historyTdStyle}>{String(row?.partner_id || "-")}</td>
+                            <td style={historyTdStyle}>{Number(row?.manual_lines || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.recognized_cents || 0)}</td>
+                            <td style={historyTdStyle}>{Number(row?.deferred_cents || 0)}</td>
+                            <td style={historyTdStyle}>{String(row?.last_adjustment_date || "-")}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </>
+            ) : null}
           </div>
         ) : null}
         {!error ? (

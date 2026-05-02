@@ -75,6 +75,7 @@ from app.services.fiscal_a1_dry_run_service import (
 from app.services.fiscal_release_gate_service import build_fiscal_release_gate_payload
 from app.services.accounting_daily_operational_close_service import build_daily_operational_close_report
 from app.services.accounting_partner_settlement_reconcile_service import build_partner_settlement_reconcile_report
+from app.services.accounting_partner_provisions_governance_service import build_partner_provisions_governance_report
 from app.services.accounting_revenue_credits_delta_service import build_revenue_credits_delta_report
 from app.services.financial_pnl_service import (
     calculate_monthly_kpis,
@@ -1721,6 +1722,28 @@ def get_accounting_partner_settlement_reconcile(
     payload = build_partner_settlement_reconcile_report(
         db,
         snapshot_date=snapshot_date,
+        currency=currency,
+        partner_limit=partner_limit,
+    )
+    return {"ok": True, **payload}
+
+
+@router.get("/accounting/partner-provisions-governance")
+def get_accounting_partner_provisions_governance(
+    date: str = Query(..., description="YYYY-MM-DD (corte inclusive de ajustes MANUAL)"),
+    currency: str | None = Query(default=None),
+    partner_limit: int = Query(default=200, ge=1, le=500),
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """P0 Contábil Partners: provisões/ajustes contabilizados (`MANUAL_ADJUSTMENT`) por parceiro até a data."""
+    try:
+        as_of_date = datetime.fromisoformat(date.strip()).date()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
+    payload = build_partner_provisions_governance_report(
+        db,
+        as_of_date=as_of_date,
         currency=currency,
         partner_limit=partner_limit,
     )
