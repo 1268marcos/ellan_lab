@@ -437,8 +437,10 @@ export default function FiscalSprint4RegressionMatrixPage() {
         <section style={boxStyle}>
           <h3 style={boxTitleStyle}>UAT KIOSK touch (4 modelos A–D)</h3>
           <p style={mutedTextStyle}>
-            Protocolo manual alinhado a <code>e2e/kiosk-touch-models.spec.ts</code>; o ZIP inclui JSON assinado{" "}
-            <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> com passos + PASS/notas por modelo para anexar ao daily/executivo.
+            Protocolo manual <strong>v2</strong> alinhado aos títulos de teste em <code>e2e/kiosk-touch-models.spec.ts</code> (
+            <code>aligned_e2e_tests</code>) + bloco <strong>hardware presencial</strong> por modelo; JSON assinado{" "}
+            <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> no ZIP daily/executivo. Meta 90% documental — fecho 100% com ciclos em totem
+            real (notas + evidência).
           </p>
           <div style={kpiRowStyle}>
             <span style={chipStyle}>
@@ -500,6 +502,42 @@ export default function FiscalSprint4RegressionMatrixPage() {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      ) : null}
+                      {Array.isArray(row.aligned_e2e_tests) && row.aligned_e2e_tests.length ? (
+                        <div style={{ marginTop: 6 }}>
+                          <small style={{ ...mutedTextStyle, fontWeight: 700 }}>Testes Playwright (títulos):</small>
+                          <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                            {row.aligned_e2e_tests.map((t, i) => (
+                              <li key={`${row.id}-e2etitle-${i}`}>
+                                <small style={mutedTextStyle}>{t}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
+                      {row.hardware_presencial?.steps?.length ? (
+                        <div style={{ marginTop: 8 }}>
+                          <small style={{ ...mutedTextStyle, fontWeight: 700 }}>Hardware real (presencial):</small>
+                          <ol style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--fiscal-text)" }}>
+                            {row.hardware_presencial.steps.map((s, idx) => (
+                              <li key={`${row.id}-hw-${idx}`} style={{ marginBottom: 4 }}>
+                                {s}
+                              </li>
+                            ))}
+                          </ol>
+                          {row.hardware_presencial.evidence_required?.length ? (
+                            <div style={{ marginTop: 4 }}>
+                              <small style={{ ...mutedTextStyle, fontWeight: 700 }}>Evidência obrigatória:</small>
+                              <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                                {row.hardware_presencial.evidence_required.map((e, i) => (
+                                  <li key={`${row.id}-hwe-${i}`}>
+                                    <small style={mutedTextStyle}>{e}</small>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
                         </div>
                       ) : null}
                     </td>

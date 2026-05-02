@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY,
   SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG,
+  SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION,
   SPRINT4_KIOSK_UAT_MODELS,
   SPRINT4_MATRIX_DEFAULT_ITEMS,
   SPRINT4_MATRIX_VERSION,
@@ -76,6 +77,8 @@ describe("fiscalSprint4RegressionMatrix", () => {
     const a = rows.find((r) => r.id === "model_a_quick_buy");
     expect(a?.manual_steps?.length).toBeGreaterThanOrEqual(3);
     expect(a?.e2e_anchors?.length).toBeGreaterThanOrEqual(1);
+    expect(a?.aligned_e2e_tests?.length).toBeGreaterThanOrEqual(1);
+    expect(a?.hardware_presencial?.steps?.length).toBeGreaterThanOrEqual(1);
     expect(SPRINT4_KIOSK_UAT_MODELS).toHaveLength(4);
   });
 
@@ -94,7 +97,12 @@ describe("fiscalSprint4RegressionMatrix", () => {
       go_no_go: {},
     });
     expect(p.scope).toBe("SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D");
+    expect(p.kiosk_touch_uat_protocol_version).toBe(SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION);
+    expect(p.presencial_hardware_residual).toContain("hardware");
     expect(p.manual_protocol).toHaveLength(4);
+    expect(p.manual_protocol[0].aligned_e2e_tests?.length).toBeGreaterThanOrEqual(1);
+    expect(p.manual_protocol[0].hardware_presencial?.steps?.length).toBeGreaterThanOrEqual(1);
+    expect(p.zip_executive_attachment_hint).toContain("accounting-close");
     expect(p.kiosk_uat_execution?.models?.[0]?.id).toBe("model_a_quick_buy");
   });
 

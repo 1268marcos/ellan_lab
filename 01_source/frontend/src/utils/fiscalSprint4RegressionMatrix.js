@@ -6,7 +6,7 @@
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
 export const SPRINT4_MATRIX_VERSION = 3;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.9.0-matrix-v3-persona-schema";
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.10.0-kiosk-touch-uat-v2";
 export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v3";
 /** Schema do bloco `reference` em `SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST` (JSON assinado). */
 export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA = "sprint4-persona-functional-checklist-v1";
@@ -305,62 +305,110 @@ export function computeSprint4GoNoGoReadinessDocumentationPct(norm, matrixProgre
   return Math.min(100, Math.round(s));
 }
 
+/** Versão do protocolo UAT KIOSK exportado em `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`. */
+export const SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION = "sprint4-kiosk-touch-uat-v2-e2e-presencial";
+
 export const SPRINT4_KIOSK_UAT_MODELS = [
   {
     id: "model_a_quick_buy",
     label: "Modelo A — Quick Buy",
     default_note_hint: "Registar order_id, locker PT, captura catálogo /comprar.",
     manual_steps: [
-      "Viewport totem 1080×1920; abrir `/ops/kiosk-touch-models` com auth OPS.",
-      "Modelo A → CTA abre `/comprar`; vitrine com slot selecionável (lab: mocks conforme `e2e/kiosk-touch-models.spec.ts`).",
+      "Viewport totem 1080×1920 (retrato); abrir `/ops/kiosk-touch-models` com auth OPS — espelhar `test.describe(\"OPS KIOSK touch — viewport totem\")` quando validar legibilidade.",
+      "Modelo A → CTA abre `/comprar`; vitrine com slot selecionável (lab: `installKioskPtLabMocks` + slots AVAILABLE no spec).",
       "Fluxo feliz até pedido criado; validar MB WAY / instrução e ausência de erro de layout em touch.",
       "Simular timeout ou falha de rede leve; confirmar retry seguro sem estado preso.",
     ],
     e2e_anchors: ['Modelo A — CTA primário abre catálogo /comprar', "e2e/kiosk-touch-models.spec.ts"],
+    aligned_e2e_tests: ["Modelo A — CTA primário abre catálogo /comprar", "vitrine KIOSK PT legível em retrato 1080×1920 (totem)"],
+    hardware_presencial: {
+      steps: [
+        "Repetir o fluxo A em totem físico (sem mocks de rede) no site piloto; rede e APIs reais.",
+        "Validar alvos touch ≥44px nos CTAs críticos do catálogo; registo fotográfico ou vídeo ≤60s.",
+        "Anotar `order_id` real e locker_id no campo notas antes de marcar PASS.",
+      ],
+      evidence_required: ["Identificador do equipamento ou etiqueta do piloto", "Screenshot ou frame de vídeo com order_id ou confirmação visível"],
+    },
   },
   {
     id: "model_b_guided_buy",
     label: "Modelo B — Guided Buy",
     default_note_hint: "Registar se checkout inválido sem query é esperado em lab; anexar path guiado.",
     manual_steps: [
-      "Modelo B → CTA abre `/checkout` (lab: sem query mínima → `public-checkout-invalid` documentado).",
-      "Percorrer passos guiados até revisão; validar mensagens de validação acionáveis em touch.",
+      "Modelo B → CTA abre `/checkout` (lab: sem query mínima → `public-checkout-invalid` documentado — alinhar ao teste homónimo).",
+      "Com query válida de piloto: percorrer passos guiados até revisão; validar mensagens de validação acionáveis em touch.",
       "Confirmar correlação `order_id` ou bloqueio explícito antes de submit quando aplicável.",
     ],
     e2e_anchors: [
       "Modelo B — CTA primário abre /checkout (laboratório; sem query → checkout inválido)",
       "e2e/kiosk-touch-models.spec.ts",
     ],
+    aligned_e2e_tests: ["Modelo B — CTA primário abre /checkout (laboratório; sem query → checkout inválido)"],
+    hardware_presencial: {
+      steps: [
+        "No hardware: abrir checkout guiado com query mínima válida do piloto; percorrer até revisão sem bypass de validação.",
+        "Documentar qualquer desvio de copy/layout touch vs lab no campo notas.",
+      ],
+      evidence_required: ["Screenshot da revisão ou estado bloqueado esperado", "Query string ou order_id de teste utilizado"],
+    },
   },
   {
     id: "model_c_pickup_fast_lane",
     label: "Modelo C — Pickup Fast Lane",
     default_note_hint: "Anexar comprovante simulado/impresso, passo identify e redeem-manual.",
     manual_steps: [
-      "Modelo C → `/ops/pt/kiosk`; mocks ou backend: lockers PT, catálogo, slots AVAILABLE.",
-      "Criar pedido + gateway APPROVED + payment-approved + identify + `/api/op/totem/pickups/redeem-manual` (ver testes mock completos no spec).",
-      "Validar impressão simulada (lab) ou evidência fotográfica do comprovante (campo).",
-      "Executar variante só retirada manual isolada quando o turno validar apenas pickup.",
+      "Modelo C → CTA abre simulador `/ops/pt/kiosk` — alinhar a `Modelo C — CTA primário abre simulador KIOSK OPS (PT)`.",
+      "Fluxo completo mock: `Modelo C — KIOSK PT: pedido, pagamento (APPROVED), identificação e retirada manual (mocks)` ou variante `retirada manual isolada` do spec.",
+      "Entrada direta `/ops/pt/kiosk`: opcionalmente espelhar `Trilha E — KIOSK PT entrada direta em /ops/pt/kiosk: fluxo completo mockado`.",
+      "Validar impressão simulada (lab) ou evidência do comprovante; em totem físico seguir `Trilha E — totem físico: impressão + identificação + retirada (redeem) no mesmo fluxo`.",
     ],
     e2e_anchors: [
       "Modelo C — KIOSK PT: pedido, pagamento (APPROVED), identificação e retirada manual (mocks)",
       "Trilha E — totem físico: impressão + identificação + retirada (redeem) no mesmo fluxo",
       "e2e/kiosk-touch-models.spec.ts",
     ],
+    aligned_e2e_tests: [
+      "Modelo C — CTA primário abre simulador KIOSK OPS (PT)",
+      "Modelo C — KIOSK PT: vitrine, MB WAY e criar pedido (POST mock)",
+      "Modelo C — KIOSK PT: retirada manual isolada (mock redeem, sem fluxo de pagamento)",
+      "Modelo C — KIOSK PT: pedido, pagamento (APPROVED), identificação e retirada manual (mocks)",
+      "Trilha E — KIOSK PT entrada direta em /ops/pt/kiosk: fluxo completo mockado",
+      "Trilha E — totem físico: simulação de impressão do comprovante após pagamento aprovado",
+      "Trilha E — totem físico: impressão + identificação + retirada (redeem) no mesmo fluxo",
+    ],
+    hardware_presencial: {
+      steps: [
+        "Executar fluxo C em hardware com impressora real ou fluxo de comprovante aceite pelo comité.",
+        "Validar identify + redeem-manual (ou equivalente operacional) com operador presencial.",
+        "Registar incidentes de hardware (papel, rede totem) na nota.",
+      ],
+      evidence_required: ["Foto do comprovante ou confirmação de impressão", "order_id / pickup reference utilizado no piloto"],
+    },
   },
   {
     id: "model_d_partner_allocation",
     label: "Modelo D — Partner Allocation",
     default_note_hint: "Registar slot alvo, SKU e resposta POST alocação (print ou ID de gaveta).",
     manual_steps: [
-      "Modelo D → `/ops/dev/slots` via CTA do cockpit (rota dev slots do spec).",
-      "Grelha de gavetas legível em touch; selecionar slot AVAILABLE; alocar SKU de teste.",
+      "Modelo D → CTA abre `/ops/dev/slots` — alinhar a `Modelo D — CTA primário abre alocação por slot (dev)`.",
+      "Grelha de gavetas legível em touch; selecionar slot AVAILABLE; alocar SKU de teste (`Modelo D — dev slots: grelha de gavetas + alocar SKU`).",
       "Confirmar persistência visual e payload de alocação (evidência: HAR, screenshot ou ID de slot).",
     ],
     e2e_anchors: [
       "Modelo D — dev slots: grelha de gavetas + alocar SKU (fluxo físico assistido)",
       "e2e/kiosk-touch-models.spec.ts",
     ],
+    aligned_e2e_tests: [
+      "Modelo D — CTA primário abre alocação por slot (dev)",
+      "Modelo D — dev slots: grelha de gavetas + alocar SKU (fluxo físico assistido)",
+    ],
+    hardware_presencial: {
+      steps: [
+        "Em armário físico ou ambiente equivalente: confirmar abertura/após alocação conforme runbook do piloto (sem bypass de segurança).",
+        "Dois ciclos touch: seleção de slot + confirmação + leitura do estado da gaveta no UI.",
+      ],
+      evidence_required: ["ID de slot alocado e SKU", "Foto da grelha ou do estado pós-alocação"],
+    },
   },
 ];
 
@@ -691,18 +739,27 @@ export function buildSprint4KioskTouchUatModelsPayload(nowIso, storedState) {
   return {
     scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
+    kiosk_touch_uat_protocol_version: SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION,
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
-    manual_protocol: SPRINT4_KIOSK_UAT_MODELS.map(({ id, label, manual_steps, e2e_anchors, default_note_hint }) => ({
-      model_id: id,
-      label,
-      manual_steps,
-      e2e_anchors,
-      default_note_hint,
-    })),
+    presencial_hardware_residual:
+      "Checklist cockpit + protocolo v2 = 90% documental; fechamento 100% exige ciclos presenciais em hardware real (notas por modelo + evidência anexa).",
+    manual_protocol: SPRINT4_KIOSK_UAT_MODELS.map(
+      ({ id, label, manual_steps, e2e_anchors, default_note_hint, aligned_e2e_tests, hardware_presencial }) => ({
+        model_id: id,
+        label,
+        manual_steps,
+        e2e_anchors,
+        aligned_e2e_tests: aligned_e2e_tests || [],
+        default_note_hint,
+        hardware_presencial: hardware_presencial || { steps: [], evidence_required: [] },
+      })
+    ),
     kiosk_uat_execution: full.kiosk_uat,
     combined_functional_pct: full.combined_functional_pct,
     zip_attachment_hint: "ELLAN_FISCAL_DAILY_*_SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D_*.json",
+    zip_executive_attachment_hint:
+      "ELLAN_FISCAL_DAILY_{YYYYMMDD}_SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D_{ts}.json dentro do ZIP gerado em fiscal/accounting-close (mesmo padrão que management-daily quando appendSprint4OptionalSignedZipEntries corre com estado em localStorage).",
   };
 }
 

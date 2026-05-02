@@ -484,10 +484,10 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 | Sprint 1 | Dias 3-9 | **~73%** | **`#1` capacidade FE/KIOSK v1** — média 6 itens (**Metodo** *(xviii)*); fundação ~**97%**; migração estilos **~25%** (checkout + kiosk OPS); protótipos KIOSK **`[~]` ~80%**; E2E assistido **`[~]` ~40%** |
 | Sprint 2 | Dias 10-18 | **~62%** consolidado; Fiscal **~50%**; Contabil **~50%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
 | Sprint 3 | Dias 19-24 | **~84%** | Média das seis frentes (CSP **85**, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); ver **Metodo** *(xii)* + P0-1 `sprint3_e2e_audit_trail_service.py` (**v3**) + P0-2 `fiscal/slo-alerts` (**v3**) + P0-3 runbook **v2** simulação 15 min |
-| Sprint 4 | Dias 25-30 | **~65%** | Média dos 4 itens do checklist Sprint 4 (80, 70, 28, 80) |
+| Sprint 4 | Dias 25-30 | **~70%** | Média dos 4 itens do checklist Sprint 4 (80, 90, 28, 80) |
 
 #### Painel percentual para decisão (snapshot 2026-05-01)
-Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão checklist; **Sprint 0b = ~20% com trilha documental** (primeiro `[x]` com KPI **oficial** em produção ainda pendente — secção Sprint 0b); Sprint 1 = média simples dos seis itens do checklist da secção Sprint 1, com **parciais explícitos** para itens `[~]` (ver **Metodo** *(xviii)*, **2026-05-01**: **~73%**; histórico **~71%** em **Metodo** *(xvii)*; **2026-04-30**: **~67%** em **Metodo** *(x)*); Sprint 2 = consolidado já narrado no doc + trilhas com % nas linhas do checklist (checkpoint **Metodo** *(xi)*, **2026-04-30**–**2026-05-01**: consolidado **~62%**); Sprint 3 = média (85+96+80+90+100+50)/6 arredondada; Sprint 4 = média (80+70+28+80)/4 arredondada.
+Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão checklist; **Sprint 0b = ~20% com trilha documental** (primeiro `[x]` com KPI **oficial** em produção ainda pendente — secção Sprint 0b); Sprint 1 = média simples dos seis itens do checklist da secção Sprint 1, com **parciais explícitos** para itens `[~]` (ver **Metodo** *(xviii)*, **2026-05-01**: **~73%**; histórico **~71%** em **Metodo** *(xvii)*; **2026-04-30**: **~67%** em **Metodo** *(x)*); Sprint 2 = consolidado já narrado no doc + trilhas com % nas linhas do checklist (checkpoint **Metodo** *(xi)*, **2026-04-30**–**2026-05-01**: consolidado **~62%**); Sprint 3 = média (85+96+80+90+100+50)/6 arredondada; Sprint 4 = média (80+90+28+80)/4 arredondada.
 
 | Sprint | % execução (decisão) | Estado | Comentário útil para comité |
 | --- | ---: | --- | --- |
@@ -496,7 +496,7 @@ Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão ch
 | Sprint 1 | **~73%** | `[~]` | **Prioridade `#1` capacidade**; store **`[x]`**; TS **`[~]` ~93%**; checkout **CSS+E2E** (fatias 1–4 + mobile, POST sucesso/409); KIOSK cockpit + **CSS OPS** (`opsKioskTouchModelsChrome.css`); protótipos **~80%**; E2E assistido **A–D** + totem PT mockado (**~40%**); próximo: **sessão n≥8 presencial** ou `checkJs` |
 | Sprint 2 | **~62%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18; Fiscal **~50%**, Contábil **~50%**); **coexiste** com S1 — throughput mínimo acordado |
 | Sprint 3 | **~84%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
-| Sprint 4 | **~65%** | `[~]` | **Sprint ideal** só na **fase C** pós-**gate v2**; até lá matriz/UAT sem expansão além do planeado |
+| Sprint 4 | **~70%** | `[~]` | **Sprint ideal** só na **fase C** pós-**gate v2**; até lá matriz/UAT sem expansão além do planeado |
 
 #### Evolucao percentual entre snapshots (lab — 2026-04-30)
 
@@ -680,7 +680,7 @@ Checklist:
 - [~] Executar regressao funcional por persona.
   - Progresso: **80%** (matriz **n=21** casos + `export_schema` **sprint4-regression-matrix-v3** + checklist por persona com **`matrix_case_ids`** + **`checklist_schema`** **`sprint4-persona-functional-checklist-v1`** no JSON **`SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST`**; UI `fiscal/sprint4-regression-matrix`; Vitest `fiscalSprint4RegressionMatrix.test.js`; evidência pilotos + anexo automático no pacote diário/executivo; **pendente** rodadas presenciais por persona com assinatura no piloto)
 - [~] Executar UAT de KIOSK touch para os 4 modelos.
-  - Progresso: **70%** (cockpit `fiscal/sprint4-regression-matrix`: protocolo manual por modelo alinhado a `e2e/kiosk-touch-models.spec.ts`; guia de nota + passos + âncoras E2E na UI; JSON assinado **`SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`** no ZIP da página, no pacote diário/executivo e em `appendSprint4OptionalSignedZipEntries`; Vitest; **pendente** ciclos presenciais por turno em hardware real)
+  - Progresso: **90%** (cockpit `fiscal/sprint4-regression-matrix`: protocolo **v2** `SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION` — passos manuais + **`aligned_e2e_tests`** (títulos Playwright) + **`hardware_presencial`** (steps + evidência) por modelo A–D; UI com blocos presenciais; JSON **`SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`** com `presencial_hardware_residual` + hints ZIP daily/executivo; `appendSprint4OptionalSignedZipEntries` + **`fiscal/accounting-close`**; Vitest; **pendente** apenas ciclos presenciais finais em hardware real com carimbo no turno)
 - [~] Validar SLO/KPI minimo de saida.
   - Progresso: **28%** (SLO fiscal + exports; baseline global por persona ainda em calibragem)
 - [~] Registrar decisao Go/No-Go com riscos residuais e plano de mitigacao.
@@ -1739,7 +1739,7 @@ Resumo:
 Atualização de progresso:
 - **Sprint 2:** **~62%** consolidado (Fiscal **~50%**, Contábil **~50%**) — **foco comité até subir**.
 - **Sprint 3:** **~67%** (média checklist; ver painel) — **sem net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado ≥55% + comprovação; comité **2026-05-01**); depois **sprint ideal** para expansão.
-- **Sprint 4:** **~65%** — sprint ideal **dominante** só na **fase C** da sequência pós-gate (ver Sprint 2).
+- **Sprint 4:** **~70%** — sprint ideal **dominante** só na **fase C** da sequência pós-gate (ver Sprint 2).
 - **Sprint 0b produção:** **~0%** (`[ ]` — ver secao dedicada; separado do Sprint 0 lab).
 
 Foco imediato **compatível** com a diretriz (paralelo seguro):
@@ -1805,7 +1805,7 @@ Resumo:
 
 Atualização de progresso (snapshot consolidado):
 - **Sprint 3:** **~84%** (CSP **85%**, auditoria **80%**, SLO **90%**, P0-3 **50%**; média das seis frentes — secção Sprint 3 e **Metodo** *(xii)* no painel percentual)
-- **Sprint 4:** **~65%** (média checklist Sprint 4 atualizada; regressão **80%** + UAT **70%** + Go/No-Go **80%** — ver secção Sprint 4)
+- **Sprint 4:** **~70%** (média checklist Sprint 4 atualizada; regressão **80%** + UAT **90%** + Go/No-Go **80%** — ver secção Sprint 4)
 
 Decisão executiva:
 - Tratar Sprint 4 como **pré-produção assistida**: só aumenta ritmo quando Sprint 3 registrar evidência diária dos 3 P0 (template de 2 minutos).
@@ -1967,7 +1967,7 @@ Resumo (sem alterar gate v2 nem itens `[x]`/`[ ]` fechados pelo comité):
 - **Sprint 1:** média dos **6** itens do checklist **~61% → ~65%** — **Metodo** *(ix)*: estilos (parcel checkout) **22%**, E2E assistido **14%**, demais itens inalterados (store/boundary **100%**, TS **91%**, protótipos KIOSK **64%**); fundação FE **~97%**. (Atualização posterior **Metodo** *(x)* em **2026-04-30**: painel **~67%** — ver registo nessa data.)
 - **Sprint 2:** consolidado **~52% → ~54% → ~56% → ~58% → ~62%** (**Metodo** *(xi)*, **2026-04-30**–**2026-05-01**); **trilhas** com percentual explícito no doc: OPS **~88%**, Suporte **~78%**, Fiscal **~39% → ~48% → ~50%** (checkpoints **2026-05-01**, P0 gaps `SPRINT2_FISCAL_GAP_*` + matriz emissores `SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`), Contábil **~46% → ~50%** (D14–D16 + P0 **`SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_*`** — **Metodo** *(xiv)*–*(xvi)* + provisões), Comprador ONLINE (evidência checkout; espelho **Metodo** *(x)* **~25%**), KIOSK operacional **0%**, Parceiros **0%**.
 - **Sprint 3:** **~84%** — média **(85 + 96 + 80 + 90 + 100 + 50) / 6 ≈ 84%** com itens do checklist atual (CSP **85**, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); **sem** net-new além do planeado até **gate v2**.
-- **Sprint 4:** **~65%** — média **(80 + 70 + 28 + 80) / 4 ≈ 65%** após matriz v3 + checklist persona + registo Go/No-Go com riscos/tópicos + **`readiness_documentation_pct`** + export dedicado (**2026-05-01**).
+- **Sprint 4:** **~70%** — média **(80 + 90 + 28 + 80) / 4 ≈ 70%** após matriz v3 + UAT KIOSK protocolo v2 + checklist persona + registo Go/No-Go com riscos/tópicos + **`readiness_documentation_pct`** + export dedicado (**2026-05-01**).
 
 Decisão executiva:
 - Manter **Sprint 2** como **#1 negócio** até **gate v2**; usar o quadro de trilhas S2 para não confundir **sub-trilha ONLINE** (espelho checkout Sprint 1, **~25%** com **Metodo** *(x)*) com o **consolidado (~54%)**.
