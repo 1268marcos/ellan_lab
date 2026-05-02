@@ -5,6 +5,9 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { buildFiscalSwaggerUrl } from "../constants/fiscalApiCatalog";
 import {
   SPRINT3_ASSISTED_SIM_DEFAULT_SCENARIO,
+  SPRINT3_ASSISTED_SIMULATION_DURATION_MIN,
+  SPRINT3_ASSISTED_SIMULATION_TIMELINE_15M,
+  SPRINT3_ASSISTED_SIMULATION_15MIN_COMMANDS,
   SPRINT3_INCIDENT_CHECKLIST,
   SPRINT3_INCIDENT_RESPONSE_STORAGE_KEY,
   SPRINT3_INCIDENT_RUNBOOK_LINKS,
@@ -12,7 +15,7 @@ import {
   buildSprint3AssistedSimulationStampPayload,
 } from "../utils/fiscalSprint3IncidentRunbook";
 
-const PAGE_VERSION = "fiscal/incident-response v1.1.1-sim-stamp";
+const PAGE_VERSION = "fiscal/incident-response v1.2.0-15min-sim-v2";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
 
 function toAuditDayStamp(isoString) {
@@ -324,8 +327,41 @@ export default function FiscalIncidentResponsePage() {
           Checklist operacional + referência de runbook com exportação auditável (JSON assinado e pacote .zip) para anexar no handoff.
         </p>
         <p style={mutedTextStyle}>
-          P0-3: após tabletop assistido (15–20 min), use o carimbo abaixo; o ZIP inclui <code>SPRINT3_ASSISTED_SIMULATION_STAMP</code> para evidência executiva sem abrir o checklist completo.
+          P0-3: tabletop assistido <strong>{SPRINT3_ASSISTED_SIMULATION_DURATION_MIN} min</strong>; use o carimbo abaixo. Pacote diário/executivo anexa{" "}
+          <code>SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH</code> (payload <code>SPRINT3_P0_3_ASSISTED_SIMULATION_STAMP</code> com <code>stamp_attach_scope</code>).
         </p>
+
+        <section style={boxStyle}>
+          <h3 style={boxTitleStyle}>Roteiro 15 min (facilitador)</h3>
+          <ol style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: "var(--fiscal-text)" }}>
+            {SPRINT3_ASSISTED_SIMULATION_TIMELINE_15M.map((block) => (
+              <li key={block.phase} style={{ marginBottom: 8 }}>
+                <strong>
+                  {block.minute_start}–{block.minute_end} min — {block.title}
+                </strong>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                  {block.facilitator_actions.map((a) => (
+                    <li key={a}>{a}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+          <div style={{ marginTop: 10 }}>
+            <div style={{ ...labelStyle, marginBottom: 4 }}>Comandos lab (referência)</div>
+            <pre
+              style={{
+                ...inputStyle,
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                fontSize: 12,
+                fontFamily: "ui-monospace, monospace",
+              }}
+            >
+              {SPRINT3_ASSISTED_SIMULATION_15MIN_COMMANDS.join("\n")}
+            </pre>
+          </div>
+        </section>
 
         <div style={gridStyle}>
           <label style={labelStyle}>

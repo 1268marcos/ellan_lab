@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:strict-core": "tsc -p tsconfig.strict-core.json --noEmit",
     "e2e:payment-ui": "playwright test",
-    "e2e:payment-ui:ui": "playwright test --ui"
+    "e2e:payment-ui:ui": "playwright test --ui",
+    "sprint3:p03-sim": "vitest run src/utils/fiscalSprint3IncidentRunbook.test.js"
   },
   "dependencies": {
     "fflate": "^0.8.2",
