@@ -6,6 +6,7 @@ import {
   SPRINT4_MATRIX_DEFAULT_ITEMS,
   SPRINT4_MATRIX_VERSION,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
+  SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA,
   SPRINT4_REGRESSION_EXPORT_SCHEMA,
   buildSprint4GoNoGoRegisterSummaryPayload,
   buildSprint4KioskTouchUatModelsPayload,
@@ -20,8 +21,20 @@ import {
 
 describe("fiscalSprint4RegressionMatrix", () => {
   it("mantém versão de storage alinhada ao incremento da matriz", () => {
-    expect(SPRINT4_MATRIX_VERSION).toBeGreaterThanOrEqual(2);
-    expect(SPRINT4_MATRIX_DEFAULT_ITEMS.length).toBeGreaterThanOrEqual(16);
+    expect(SPRINT4_MATRIX_VERSION).toBeGreaterThanOrEqual(3);
+    expect(SPRINT4_MATRIX_DEFAULT_ITEMS.length).toBeGreaterThanOrEqual(20);
+  });
+
+  it("checklist por persona referencia ids existentes na matriz (schema v1)", () => {
+    const matrixIds = new Set(SPRINT4_MATRIX_DEFAULT_ITEMS.map((i) => i.id));
+    for (const block of SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST) {
+      expect(Array.isArray(block.matrix_case_ids)).toBe(true);
+      expect(block.matrix_case_ids.length).toBeGreaterThan(0);
+      for (const id of block.matrix_case_ids) {
+        expect(matrixIds.has(id)).toBe(true);
+      }
+    }
+    expect(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA).toMatch(/sprint4-persona-functional-checklist-v1/);
   });
 
   it("mergeSprint4MatrixRows inclui todos os ids default", () => {
@@ -38,7 +51,7 @@ describe("fiscalSprint4RegressionMatrix", () => {
     expect(computeSprint4CombinedFunctionalPct({ done: 5, total: 10 }, { pass: 2, total: 4 })).toBe(50);
   });
 
-  it("payload da matriz inclui export_schema v2, checklist e combinado", () => {
+  it("payload da matriz inclui export_schema v3, checklist, schema persona e combinado", () => {
     const now = "2026-05-01T12:00:00.000Z";
     const stored = {
       version: SPRINT4_MATRIX_VERSION,
@@ -49,8 +62,10 @@ describe("fiscalSprint4RegressionMatrix", () => {
       go_no_go: { decision: "PENDING_REVIEW", residual_risk: "MEDIUM", mitigation_plan: "", owner: "qa", updated_at: now },
     };
     const p = buildSprint4RegressionMatrixPayload(now, stored);
+    expect(p.export_schema).toBe("sprint4-regression-matrix-v3");
     expect(p.export_schema).toBe(SPRINT4_REGRESSION_EXPORT_SCHEMA);
     expect(p.persona_functional_checklist).toEqual(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST);
+    expect(p.persona_functional_checklist_schema).toBe(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA);
     expect(typeof p.combined_functional_pct).toBe("number");
     expect(p.progress.total).toBe(SPRINT4_MATRIX_DEFAULT_ITEMS.length);
   });
@@ -122,7 +137,7 @@ describe("fiscalSprint4RegressionMatrix", () => {
     expect(computeSprint4GoNoGoReadinessDocumentationPct(n, { pct: 0, total: 1, done: 0 }, { pct: 0, all_pass: false })).toBeLessThan(50);
   });
 
-  it("buildSprint4PersonaFunctionalChecklistPayload expõe referência e rollups", () => {
+  it("buildSprint4PersonaFunctionalChecklistPayload expõe referência, checklist_schema e rollups", () => {
     const now = "2026-05-01T12:00:00.000Z";
     const p = buildSprint4PersonaFunctionalChecklistPayload(now, {
       version: SPRINT4_MATRIX_VERSION,
@@ -133,6 +148,8 @@ describe("fiscalSprint4RegressionMatrix", () => {
       go_no_go: {},
     });
     expect(p.scope).toBe("SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST");
+    expect(p.checklist_schema).toBe(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA);
+    expect(p.export_schema).toBe(SPRINT4_REGRESSION_EXPORT_SCHEMA);
     expect(p.reference).toEqual(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST);
     expect(Array.isArray(p.persona_rollups)).toBe(true);
   });

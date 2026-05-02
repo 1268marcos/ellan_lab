@@ -5,9 +5,11 @@
 
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
-export const SPRINT4_MATRIX_VERSION = 2;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.8.0-gonogo-risk-register";
-export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v2";
+export const SPRINT4_MATRIX_VERSION = 3;
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.9.0-matrix-v3-persona-schema";
+export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v3";
+/** Schema do bloco `reference` em `SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST` (JSON assinado). */
+export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA = "sprint4-persona-functional-checklist-v1";
 
 /** Limite de tamanho (chars JSON do payload sem assinatura) para anexar histórico de pilotos no pacote diário. */
 export const SPRINT4_ATTACH_MAX_HISTORY_JSON_CHARS = 120_000;
@@ -115,30 +117,94 @@ export const SPRINT4_MATRIX_DEFAULT_ITEMS = [
     area: "CI / Qualidade",
     case: "`npm test` + `typecheck:strict-core` verdes no frontend após alterações na matriz fiscal",
   },
+  {
+    id: "online-catalog-public-smoke",
+    persona: "Comprador ONLINE",
+    area: "Catálogo público",
+    case: "`/comprar` ou catálogo regional — smoke sem regressão de preço visível + `data-testid` críticos",
+  },
+  {
+    id: "kiosk-touch-models-page-smoke",
+    persona: "Comprador KIOSK",
+    area: "Cockpit touch",
+    case: "`/ops/kiosk-touch-models` — 4 modelos A–D navegáveis + CTAs alinhados a `e2e/kiosk-touch-models.spec.ts`",
+  },
+  {
+    id: "ops-quick-enablement-zip-scope",
+    persona: "OPS",
+    area: "Treino Sprint 3",
+    case: "`/ops/quick-enablement` — checklist + export JSON com scope `SPRINT3_OPS_SUPPORT_QUICK_TRAINING`",
+  },
+  {
+    id: "fiscal-readiness-exec-page-smoke",
+    persona: "Fiscal / OPS",
+    area: "Readiness execução",
+    case: "`/fiscal/readiness-execution` — estado EXEC + export sem regressão de storage keys Sprint 4",
+  },
 ];
 
-/** Checklist textual por persona (referência executiva; não depende de localStorage). */
+/**
+ * Checklist por persona: `must_cover` (texto) + `matrix_case_ids` (ligação explícita à matriz).
+ * @type {{ persona: string, must_cover: string[], matrix_case_ids: string[] }[]}
+ */
 export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST = [
   {
     persona: "Comprador ONLINE",
-    must_cover: ["Checkout feliz + erro acionável", "Rastreabilidade pedido→invoice", "Caminho 4xx/409"],
+    must_cover: ["Checkout feliz + erro acionável", "Rastreabilidade pedido→invoice", "Caminho 4xx/409", "Catálogo / comprar smoke"],
+    matrix_case_ids: [
+      "online-checkout-payment",
+      "online-order-traceability",
+      "online-checkout-4xx-path",
+      "online-catalog-public-smoke",
+    ],
   },
   {
     persona: "Comprador KIOSK",
-    must_cover: ["Quick Buy + timeout", "Pickup Fast Lane + fallback de slot", "UAT 4 modelos (A–D) marcados"],
+    must_cover: ["Quick Buy + timeout", "Pickup Fast Lane + fallback de slot", "Cockpit touch A–D + E2E anchors", "UAT 4 modelos (A–D) marcados"],
+    matrix_case_ids: ["kiosk-quick-buy", "kiosk-pickup-fast-lane", "kiosk-touch-models-page-smoke"],
   },
-  { persona: "OPS", must_cover: ["Triagem + export evidência", "Reconciliação / health sem regressão de auth"] },
-  { persona: "Suporte", must_cover: ["Console por jornada + playbook + handoff owner/ETA"] },
+  {
+    persona: "OPS",
+    must_cover: ["Triagem + export evidência", "Reconciliação / health sem regressão de auth", "Treino rápido + ZIP Sprint 3"],
+    matrix_case_ids: ["ops-unified-triage", "ops-health-reconciliation-link", "ops-quick-enablement-zip-scope"],
+  },
+  {
+    persona: "Suporte",
+    must_cover: ["Console por jornada + playbook + handoff owner/ETA"],
+    matrix_case_ids: ["support-journey-console"],
+  },
   {
     persona: "Parceiros",
     must_cover: ["Onboarding contrato fiscal mínimo", "Amostra settlement × documento"],
+    matrix_case_ids: ["partner-contract-onboarding", "partner-reconciliation-sample"],
   },
   {
     persona: "Fiscal / OPS",
-    must_cover: ["SLO export JSON/ZIP", "E2E audit handoff", "Pacote diário assinado", "Smoke gap snapshot"],
+    must_cover: [
+      "SLO export JSON/ZIP",
+      "E2E audit handoff",
+      "Pacote diário assinado",
+      "Smoke gap snapshot",
+      "Readiness execution smoke",
+    ],
+    matrix_case_ids: [
+      "fiscal-slo-scorecard-export",
+      "fiscal-e2e-audit-handoff",
+      "fiscal-management-daily-signed",
+      "fiscal-gap-snapshot-smoke",
+      "fiscal-readiness-exec-page-smoke",
+    ],
   },
-  { persona: "Contábil", must_cover: ["ZIP fechamento diário", "Contexto D18 / aprovações"] },
-  { persona: "Engenharia Plataforma", must_cover: ["CI core (Vitest + strict-core) após mudanças na trilha fiscal"] },
+  {
+    persona: "Contábil",
+    must_cover: ["ZIP fechamento diário", "Contexto D18 / aprovações"],
+    matrix_case_ids: ["contabil-daily-close-zip", "contabil-approvals-d18-context"],
+  },
+  {
+    persona: "Engenharia Plataforma",
+    must_cover: ["CI core (Vitest + strict-core) após mudanças na trilha fiscal"],
+    matrix_case_ids: ["eng-frontend-ci-core"],
+  },
 ];
 
 /**
@@ -606,6 +672,7 @@ export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedStat
   return {
     scope: "SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST",
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
+    checklist_schema: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA,
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
     reference: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
@@ -669,6 +736,7 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
     progress,
     combined_functional_pct: combinedPct,
     persona_functional_checklist: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
+    persona_functional_checklist_schema: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA,
     personas,
     kiosk_uat: {
       progress: kioskUatProgress,

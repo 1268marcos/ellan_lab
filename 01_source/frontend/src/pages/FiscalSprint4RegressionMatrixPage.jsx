@@ -611,6 +611,11 @@ export default function FiscalSprint4RegressionMatrixPage() {
             {SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST.map((block) => (
               <li key={block.persona} style={{ marginBottom: 10 }}>
                 <strong>{block.persona}</strong>
+                {Array.isArray(block.matrix_case_ids) && block.matrix_case_ids.length ? (
+                  <div style={{ ...mutedTextStyle, marginTop: 4, fontSize: 12 }}>
+                    IDs matriz: <code>{block.matrix_case_ids.join(", ")}</code>
+                  </div>
+                ) : null}
                 <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
                   {block.must_cover.map((line) => (
                     <li key={line}>{line}</li>
