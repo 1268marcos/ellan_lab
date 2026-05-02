@@ -12,7 +12,7 @@
  */
 export function buildP01bPartnerReconciliationSlice({ e2ePayload, d11Handoff, generatedAt, source }) {
   const items = Array.isArray(e2ePayload?.items) ? e2ePayload.items : [];
-  /** @type {Map<string, { partner_id: string, gap_rows: number, batches: Set<string>, materialized_complete: number, raw_complete: number, severities: Record<string, number> }>} */
+  /** @type {Map<string, { partner_id: string, gap_rows: number, batches: Set<string>, materialized_complete: number, raw_complete: number, severities: Record<string, number>, presencial_signed: number, presencial_pending: number }>} */
   const byPartner = new Map();
 
   for (const it of items) {
@@ -27,6 +27,8 @@ export function buildP01bPartnerReconciliationSlice({ e2ePayload, d11Handoff, ge
         materialized_complete: 0,
         raw_complete: 0,
         severities: {},
+        presencial_signed: 0,
+        presencial_pending: 0,
       };
       byPartner.set(pid, cur);
     }
@@ -34,6 +36,8 @@ export function buildP01bPartnerReconciliationSlice({ e2ePayload, d11Handoff, ge
     if (batch) cur.batches.add(batch);
     if (it?.trace_quality?.materialized_complete) cur.materialized_complete += 1;
     if (it?.trace_quality?.raw_complete) cur.raw_complete += 1;
+    if (String(it?.presencial?.status || "").toUpperCase() === "SIGNED") cur.presencial_signed += 1;
+    else cur.presencial_pending += 1;
     const sev = String(it?.severity || "UNK").toUpperCase();
     cur.severities[sev] = (cur.severities[sev] || 0) + 1;
   }
@@ -48,6 +52,8 @@ export function buildP01bPartnerReconciliationSlice({ e2ePayload, d11Handoff, ge
       materialized_complete: p.materialized_complete,
       raw_complete: p.raw_complete,
       severities: p.severities,
+      presencial_signed: p.presencial_signed,
+      presencial_pending: p.presencial_pending,
     }))
     .sort((a, b) => b.gap_rows - a.gap_rows);
 
@@ -65,7 +71,7 @@ export function buildP01bPartnerReconciliationSlice({ e2ePayload, d11Handoff, ge
 
   return {
     scope: "SPRINT3_P0_1B_PARTNER_RECONCILIATION_SLICE",
-    slice_version: "p0-1b-v1",
+    slice_version: "p0-1b-v2-presencial-partner",
     generated_at: generatedAt,
     source,
     mandatory_trace_keys: ["order_id", "invoice_id", "partner_id", "batch_id"],

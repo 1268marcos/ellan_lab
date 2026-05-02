@@ -79,3 +79,81 @@ def test_get_sprint3_e2e_audit_trail_invalid_date():
             _=None,
         )
     assert ei.value.status_code == 400
+
+
+def test_build_trail_multi_partner_presencial_rollups():
+    ts = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    rows = [
+        SimpleNamespace(
+            id="a",
+            gap_type="PAID_WITHOUT_INVOICE",
+            severity="ERROR",
+            status="OPEN",
+            order_id="o1",
+            invoice_id=None,
+            details_json={"partner_id": "BR-1", "batch_id": "b1"},
+            last_detected_at=ts,
+        ),
+        SimpleNamespace(
+            id="b",
+            gap_type="PAID_WITHOUT_INVOICE",
+            severity="WARN",
+            status="OPEN",
+            order_id="o2",
+            invoice_id=None,
+            details_json={
+                "partner_id": "PT-9",
+                "batch_id": "b2",
+                "presencial_signoff": {"operator": "ops-1", "signed_at": "2026-05-01T10:00:00+00:00", "location": "LIS"},
+            },
+            last_detected_at=ts,
+        ),
+        SimpleNamespace(
+            id="c",
+            gap_type="ISSUED_WITHOUT_PAID",
+            severity="ERROR",
+            status="OPEN",
+            order_id="o3",
+            invoice_id="inv-3",
+            details_json={"partner_id": "BR-1", "batch_id": "b3"},
+            last_detected_at=ts,
+        ),
+    ]
+    out = build_sprint3_e2e_audit_trail(rows, status_filter="OPEN", date_filter=None, limit=50)
+    assert out["audit_version"] == AUDIT_VERSION
+    rr = out["trail_rollups"]
+    assert rr["distinct_partner_count"] == 2
+    assert set(rr["distinct_partner_ids"]) == {"BR-1", "PT-9"}
+    assert rr["presencial_signed_rows"] == 1
+    assert rr["presencial_pending_rows"] == 2
+    assert rr["presencial_completion_rate"] == pytest.approx(0.3333, rel=1e-3)
+    signed_item = next(i for i in out["items"] if i["id"] == "b")
+    assert signed_item["presencial"]["status"] == "SIGNED"
+    assert signed_item["presencial"]["operator"] == "ops-1"
+    pending = next(i for i in out["items"] if i["id"] == "a")
+    assert pending["presencial"]["status"] == "PENDING"
+    hz = out["handoff_evidence"]["daily_zip_attachment"]
+    assert "SPRINT3_E2E_AUDIT_TRAIL" in hz["filenames_pattern"][0]
+    assert "P0_1B_PARTNER_RECONCILIATION" in hz["filenames_pattern"][1]
+    assert "appendP01bSignedZipEntries" in hz["source"]
+
+
+def test_presencial_signoff_incomplete_operator_is_pending():
+    ts = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)
+    row = SimpleNamespace(
+        id="x",
+        gap_type="PAID_WITHOUT_INVOICE",
+        severity="ERROR",
+        status="OPEN",
+        order_id="o9",
+        invoice_id=None,
+        details_json={
+            "partner_id": "p9",
+            "batch_id": "b9",
+            "presencial_signoff": {"operator": "", "signed_at": "2026-05-01T11:00:00+00:00"},
+        },
+        last_detected_at=ts,
+    )
+    out = build_sprint3_e2e_audit_trail([row], status_filter="OPEN", date_filter=None, limit=10)
+    assert out["items"][0]["presencial"]["status"] == "PENDING"
+    assert out["trail_rollups"]["presencial_signed_rows"] == 0

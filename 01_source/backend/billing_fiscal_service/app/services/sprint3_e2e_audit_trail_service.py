@@ -7,7 +7,7 @@ from typing import Any
 
 
 SCOPE_SPRINT3_E2E_AUDIT_TRAIL = "SPRINT3_P0_1_E2E_AUDIT_TRAIL"
-AUDIT_VERSION = "sprint3-e2e-audit-v2"
+AUDIT_VERSION = "sprint3-e2e-audit-v3"
 
 
 def _as_trace_value(value: object, fallback: str) -> str:
@@ -39,6 +39,20 @@ def _reconciliacao_status(*, status: str, gap_type: str) -> str:
     return "RESOLVED"
 
 
+def _presencial_block(details: dict[str, Any]) -> dict[str, Any]:
+    raw = details.get("presencial_signoff")
+    if not isinstance(raw, dict):
+        return {"status": "PENDING", "operator": "", "signed_at": "", "location": ""}
+    signed_at = str(raw.get("signed_at") or "").strip()
+    ok = bool(signed_at and str(raw.get("operator") or "").strip())
+    return {
+        "status": "SIGNED" if ok else "PENDING",
+        "operator": str(raw.get("operator") or "").strip(),
+        "signed_at": signed_at,
+        "location": str(raw.get("location") or "").strip(),
+    }
+
+
 def build_sprint3_e2e_audit_trail(
     rows: list[Any],
     *,
@@ -54,6 +68,8 @@ def build_sprint3_e2e_audit_trail(
     pedido_ok = 0
     emissao_ok = 0
     chain_ok = 0
+    partner_ids_seen: set[str] = set()
+    presencial_signed = 0
 
     for row in rows:
         details = _row_details(row)
@@ -85,6 +101,12 @@ def build_sprint3_e2e_audit_trail(
         if ped == "OK" and emi == "OK" and raw_partner and raw_batch:
             chain_ok += 1
 
+        if trace_partner_id and not trace_partner_id.startswith("UNKNOWN"):
+            partner_ids_seen.add(trace_partner_id)
+        presencial = _presencial_block(details)
+        if presencial["status"] == "SIGNED":
+            presencial_signed += 1
+
         seen_at = row.last_detected_at.isoformat() if getattr(row, "last_detected_at", None) else None
         if seen_at:
             latest_seen_at = max(latest_seen_at or seen_at, seen_at)
@@ -114,6 +136,7 @@ def build_sprint3_e2e_audit_trail(
                     "raw_complete": raw_ok,
                     "materialized_complete": materialized_ok,
                 },
+                "presencial": presencial,
                 "last_detected_at": seen_at,
             }
         )
@@ -131,6 +154,12 @@ def build_sprint3_e2e_audit_trail(
         "emissao_consistent_ok": emissao_ok,
         "pedido_emissao_operational_keys_ok": chain_ok,
         "pedido_emissao_rate": round((chain_ok / total), 4) if total > 0 else 1.0,
+        "distinct_partner_count": len(partner_ids_seen),
+        "distinct_partner_ids": sorted(partner_ids_seen)[:80],
+        "distinct_partner_ids_truncated": len(partner_ids_seen) > 80,
+        "presencial_signed_rows": presencial_signed,
+        "presencial_pending_rows": total - presencial_signed,
+        "presencial_completion_rate": round((presencial_signed / total), 4) if total > 0 else 1.0,
     }
 
     return {
@@ -153,6 +182,17 @@ def build_sprint3_e2e_audit_trail(
             "status_filter": status_filter,
             "date_filter": date_filter,
             "limit": int(limit),
+            "daily_zip_attachment": {
+                "filenames_pattern": [
+                    "ELLAN_FISCAL_DAILY_{YYYYMMDD}_SPRINT3_E2E_AUDIT_TRAIL_{ts}.json",
+                    "ELLAN_FISCAL_DAILY_{YYYYMMDD}_P0_1B_PARTNER_RECONCILIATION_{ts}.json",
+                ],
+                "source": "appendP01bSignedZipEntries (fiscal/management-daily | ops/health) com token interno billing",
+                "presencial_note": (
+                    "Reconciliação presencial multi-parceiro: persistir objeto presencial_signoff "
+                    "(operator, signed_at, location) em details_json dos gaps; repetir export diário para anexar JSON atualizado."
+                ),
+            },
         },
         "items": items,
     }

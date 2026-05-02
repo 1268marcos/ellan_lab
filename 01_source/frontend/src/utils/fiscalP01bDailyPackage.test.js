@@ -23,6 +23,7 @@ describe("buildP01bPartnerReconciliationSlice", () => {
     expect(out.d11_cross_check).toBeNull();
     expect(out.mandatory_trace_keys).toEqual(["order_id", "invoice_id", "partner_id", "batch_id"]);
     expect(out.e2e_coverage_ref.decision).toBe("NO_GO");
+    expect(out.slice_version).toBe("p0-1b-v2-presencial-partner");
   });
 
   it("agrega por partner_id, severidades e batches", () => {
@@ -58,11 +59,43 @@ describe("buildP01bPartnerReconciliationSlice", () => {
     expect(out.partners[0].severities.WARN).toBe(1);
     expect(out.partners[0].materialized_complete).toBe(1);
     expect(out.partners[0].raw_complete).toBe(1);
+    expect(out.partners[0].presencial_signed).toBe(0);
+    expect(out.partners[0].presencial_pending).toBe(2);
     expect(out.partners[0].batches).toEqual(["b1", "b2"]);
     expect(out.d11_cross_check).not.toBeNull();
     expect(out.d11_cross_check.storage_total_items).toBe(10);
     expect(out.d11_cross_check.e2e_distinct_partners).toBe(2);
     expect(out.e2e_coverage_ref.handoff_evidence_id).toBe("e1");
+    expect(out.slice_version).toBe("p0-1b-v2-presencial-partner");
+  });
+
+  it("conta presencial SIGNED por parceiro", () => {
+    const out = buildP01bPartnerReconciliationSlice({
+      e2ePayload: {
+        items: [
+          {
+            severity: "ERROR",
+            trace: { partner_id: "p1", batch_id: "b1", order_id: "o1", invoice_id: "i1" },
+            trace_quality: {},
+            presencial: { status: "SIGNED" },
+          },
+          {
+            severity: "ERROR",
+            trace: { partner_id: "p1", batch_id: "b2", order_id: "o2", invoice_id: "i2" },
+            trace_quality: {},
+            presencial: { status: "PENDING" },
+          },
+        ],
+        decision: "NO_GO",
+        coverage: { total: 2 },
+      },
+      d11Handoff: null,
+      generatedAt: iso,
+      source: "ops/health",
+    });
+    const p1 = out.partners.find((p) => p.partner_id === "p1");
+    expect(p1.presencial_signed).toBe(1);
+    expect(p1.presencial_pending).toBe(1);
   });
 
   it("trunca batches por parceiro acima de 80", () => {
