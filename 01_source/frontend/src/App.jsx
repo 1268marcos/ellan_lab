@@ -63,8 +63,10 @@ const OpsUpdatesHistoryPage = lazy(() => import("./pages/OpsUpdatesHistoryPage")
 const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage"));
 const OpsProductsAssetsPage = lazy(() => import("./pages/OpsProductsAssetsPage"));
 const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPricingFiscalPage"));
+const OpsPricingRulesPage = lazy(() => import("./pages/OpsPricingRulesPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
+const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
@@ -404,9 +406,23 @@ function TopNav() {
       opsSubGroup: "Products",
     },
     {
+      to: "/ops/products/bundles",
+      label: "ops /products/bundles",
+      aria: "Listagem OPS de product_bundles e itens (ativar/desativar)",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
       to: "/ops/products/pricing-fiscal",
       label: "ops /products/pricing-fiscal",
       aria: "Operacao OPS para pricing e fiscal do Pr-3",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/pricing-rules",
+      label: "ops /products/pricing-rules",
+      aria: "Regras comerciais pricing_rules (regiao, categoria, vigencia)",
       group: "Produtos & Fiscal",
       opsSubGroup: "Products",
     },
@@ -1508,6 +1524,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/products/bundles"
+              element={
+                <OpsRoute>
+                  <OpsProductBundlesPage />
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/products/assets"
               element={
                 <OpsRoute>
@@ -1520,6 +1544,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductsPricingFiscalPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/pricing-rules"
+              element={
+                <OpsRoute>
+                  <OpsPricingRulesPage />
                 </OpsRoute>
               }
             />

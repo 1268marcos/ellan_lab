@@ -36,6 +36,7 @@ from app.routers import (
     partners,
     pickup,
     pricing_fiscal,
+    pricing_rules,
     product_categories,
     products,
 )
@@ -142,6 +143,7 @@ app.include_router(logistics.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
 app.include_router(pricing_fiscal.router)
+app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
 app.include_router(inventory.router)
 app.include_router(internal.router)

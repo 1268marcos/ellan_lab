@@ -23,6 +23,10 @@ class ProductBundleItemCreateIn(BaseModel):
     sort_order: int = Field(default=0, ge=0)
 
 
+class ProductBundleStatusPatchIn(BaseModel):
+    is_active: bool
+
+
 class PromotionCreateIn(BaseModel):
     code: str | None = Field(default=None, max_length=32)
     name: str = Field(..., min_length=1, max_length=128)
@@ -104,6 +108,12 @@ class ProductBundleItemOut(BaseModel):
     quantity: int
     unit_price_cents: int | None = None
     sort_order: int
+
+
+class ProductBundleItemsListOut(BaseModel):
+    ok: bool
+    bundle_id: str
+    items: list[ProductBundleItemOut]
 
 
 class PromotionOut(BaseModel):

@@ -28,10 +28,12 @@ from app.schemas.pricing_fiscal import (
     PricingFiscalSourceSummaryItemOut,
     PricingFiscalSourceSummaryOut,
     ProductBundleItemOut,
+    ProductBundleItemsListOut,
     ProductBundleCreateIn,
     ProductBundleListOut,
     ProductBundleOut,
     ProductBundleItemCreateIn,
+    ProductBundleStatusPatchIn,
     ProductFiscalConfigOut,
     ProductFiscalConfigUpsertIn,
     ProductFiscalConfigUpsertOut,
@@ -411,24 +413,139 @@ def list_product_bundles(
     if where_expr is not None:
         rows_stmt = rows_stmt.where(where_expr)
     rows = db.execute(rows_stmt).mappings().all()
+    items = [_product_bundle_out_from_row(dict(row)) for row in rows]
+    return ProductBundleListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+
+
+def _product_bundle_out_from_row(row: dict) -> ProductBundleOut:
+    return ProductBundleOut(
+        id=str(row.get("id") or ""),
+        name=str(row.get("name") or ""),
+        code=str(row.get("code") or ""),
+        description=(str(row.get("description")) if row.get("description") is not None else None),
+        amount_cents=int(row.get("amount_cents") or 0),
+        currency=str(row.get("currency") or "BRL"),
+        bundle_type=str(row.get("bundle_type") or "FIXED"),
+        is_active=bool(row.get("is_active")),
+        valid_from=(_to_iso_utc(row.get("valid_from")) if row.get("valid_from") else None),
+        valid_until=(_to_iso_utc(row.get("valid_until")) if row.get("valid_until") else None),
+        created_at=_to_iso_utc(row.get("created_at")),
+        updated_at=_to_iso_utc(row.get("updated_at")),
+    )
+
+
+@router.get("/products/bundles/{bundle_id}/items", response_model=ProductBundleItemsListOut)
+def list_product_bundle_items(bundle_id: str, db: Session = Depends(get_db)):
+    bundle_exists = db.execute(
+        text("SELECT id FROM product_bundles WHERE id = :id"),
+        {"id": bundle_id},
+    ).mappings().first()
+    if not bundle_exists:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "BUNDLE_NOT_FOUND", "message": "Bundle não encontrado.", "bundle_id": bundle_id},
+        )
+    rows = db.execute(
+        text(
+            """
+            SELECT id, bundle_id, product_id, quantity, unit_price_cents, sort_order
+            FROM product_bundle_items
+            WHERE bundle_id = :bid
+            ORDER BY sort_order ASC, id ASC
+            """
+        ),
+        {"bid": bundle_id},
+    ).mappings().all()
     items = [
-        ProductBundleOut(
-            id=str(row.get("id") or ""),
-            name=str(row.get("name") or ""),
-            code=str(row.get("code") or ""),
-            description=(str(row.get("description")) if row.get("description") is not None else None),
-            amount_cents=int(row.get("amount_cents") or 0),
-            currency=str(row.get("currency") or "BRL"),
-            bundle_type=str(row.get("bundle_type") or "FIXED"),
-            is_active=bool(row.get("is_active")),
-            valid_from=(_to_iso_utc(row.get("valid_from")) if row.get("valid_from") else None),
-            valid_until=(_to_iso_utc(row.get("valid_until")) if row.get("valid_until") else None),
-            created_at=_to_iso_utc(row.get("created_at")),
-            updated_at=_to_iso_utc(row.get("updated_at")),
+        ProductBundleItemOut(
+            id=int(row.get("id") or 0),
+            bundle_id=str(row.get("bundle_id") or ""),
+            product_id=str(row.get("product_id") or ""),
+            quantity=int(row.get("quantity") or 1),
+            unit_price_cents=(int(row.get("unit_price_cents")) if row.get("unit_price_cents") is not None else None),
+            sort_order=int(row.get("sort_order") or 0),
         )
         for row in rows
     ]
-    return ProductBundleListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+    return ProductBundleItemsListOut(ok=True, bundle_id=bundle_id, items=items)
+
+
+@router.patch("/products/bundles/{bundle_id}/status", response_model=ProductBundleOut)
+def patch_product_bundle_status(
+    bundle_id: str,
+    payload: ProductBundleStatusPatchIn,
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text(
+            """
+            SELECT id, name, code, description, amount_cents, currency, bundle_type, is_active,
+                   valid_from, valid_until, created_at, updated_at
+            FROM product_bundles WHERE id = :id
+            """
+        ),
+        {"id": bundle_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "BUNDLE_NOT_FOUND", "message": "Bundle não encontrado.", "bundle_id": bundle_id},
+        )
+    before_active = bool(row.get("is_active"))
+    corr_id = _resolve_correlation_id(correlation_id)
+    try:
+        db.execute(
+            text(
+                """
+                UPDATE product_bundles
+                SET is_active = :is_active, updated_at = NOW()
+                WHERE id = :id
+                """
+            ),
+            {"id": bundle_id, "is_active": bool(payload.is_active)},
+        )
+        _record_pr3_audit(
+            db=db,
+            correlation_id=corr_id,
+            current_user=current_user,
+            action="PR3_BUNDLE_STATUS_PATCH",
+            payload={
+                "bundle_id": bundle_id,
+                "before": {"is_active": before_active},
+                "after": {"is_active": bool(payload.is_active)},
+            },
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        _record_pr3_audit(
+            db=db,
+            correlation_id=corr_id,
+            current_user=current_user,
+            action="PR3_BUNDLE_STATUS_PATCH",
+            result="ERROR",
+            error_message=str(exc),
+            payload={"bundle_id": bundle_id, "attempted": {"is_active": bool(payload.is_active)}},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "BUNDLE_STATUS_PATCH_FAILED", "message": "Não foi possível atualizar status do bundle."},
+        ) from exc
+
+    updated = db.execute(
+        text(
+            """
+            SELECT id, name, code, description, amount_cents, currency, bundle_type, is_active,
+                   valid_from, valid_until, created_at, updated_at
+            FROM product_bundles WHERE id = :id
+            """
+        ),
+        {"id": bundle_id},
+    ).mappings().first()
+    return _product_bundle_out_from_row(dict(updated or {}))
 
 
 @router.post("/products/bundles", response_model=ProductBundleOut)
