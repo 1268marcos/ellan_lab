@@ -21,6 +21,7 @@ from app.services.fiscal_reconciliation_service import (
     scan_and_persist_reconciliation_gaps,
 )
 from app.services.fiscal_gap_conciliation_snapshot_service import build_fiscal_gap_conciliation_snapshot
+from app.services.fiscal_issuer_governance_matrix_service import build_fiscal_issuer_governance_matrix
 from app.api.routes_invoice import _to_invoice_response
 from app.services.fiscal_reporting_service import (
     build_saft_pt_export_payload,
@@ -286,6 +287,16 @@ def get_fiscal_gap_conciliation_snapshot(
     except Exception as exc:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
     payload = build_fiscal_gap_conciliation_snapshot(db, snapshot_date=snapshot_date, refresh_scan=refresh)
+    return {"ok": True, **payload}
+
+
+@router.get("/issuer-governance-matrix")
+def get_fiscal_issuer_governance_matrix(
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """P0 Fiscal ELLAN LAB: matriz país × tenant de emissores + overlay de estado do provider."""
+    payload = build_fiscal_issuer_governance_matrix(db)
     return {"ok": True, **payload}
 
 

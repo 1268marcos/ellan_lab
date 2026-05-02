@@ -35,7 +35,7 @@ import {
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/accounting-close v1.2.12-fiscal-gap-snapshot-exec";
+const PAGE_VERSION = "fiscal/accounting-close v1.2.13-issuer-governance-matrix-exec";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
@@ -667,9 +667,27 @@ export default function FiscalAccountingClosePage() {
     } catch {
       // P0 snapshot gaps fiscal executivo opcional
     }
+    try {
+      if (INTERNAL_TOKEN) {
+        const rIg = await fetch(`${BILLING_BASE}/admin/fiscal/issuer-governance-matrix`, {
+          method: "GET",
+          headers: headersJson(),
+        });
+        const dataIg = await rIg.json().catch(() => ({}));
+        if (rIg.ok && dataIg?.ok && dataIg.scope === "SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX") {
+          const { ok: _okIg, ...restIg } = dataIg;
+          const signedIgExec = await buildSignedPayload(restIg);
+          zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_EXEC_${ts}.json`] = strToU8(
+            JSON.stringify(signedIgExec, null, 2),
+          );
+        }
+      }
+    } catch {
+      // matriz emissores executiva opcional
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_ACCOUNTING_CLOSE_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote ZIP exportado: close + gate + aprovação + D16 aprovações + P0-1b (com token) + D10 tracker + D10 OPS handoff + P0 gaps fiscal (`SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_EXEC_*`) + D14 fechamento diário (`SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE_EXEC_*`) + D15 receita/estornos (`SPRINT2_D15_REVENUE_CREDITS_DELTA_EXEC_*`) + D16 repasse parceiro (`SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_EXEC_*`) + D11 rollup + D12/D13 executivos + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
+      "Pacote ZIP exportado: close + gate + aprovação + D16 aprovações + P0-1b (com token) + D10 tracker + D10 OPS handoff + P0 gaps fiscal (`SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_EXEC_*`) + matriz emissores (`SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_EXEC_*`) + D14 fechamento diário (`SPRINT2_D14_ACCOUNTING_DAILY_OPERATIONAL_CLOSE_EXEC_*`) + D15 receita/estornos (`SPRINT2_D15_REVENUE_CREDITS_DELTA_EXEC_*`) + D16 repasse parceiro (`SPRINT2_D16_PARTNER_SETTLEMENT_RECONCILE_EXEC_*`) + D11 rollup + D12/D13 executivos + D18 + matriz Sprint 4 + resumo Go/No-Go + pilotos + carimbo P0-3 + espelhos gate v2 e Sprint 3 partner-audit quando houver no browser.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }

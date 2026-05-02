@@ -41,7 +41,7 @@ import { buildSprint2D12AccountingHandoffEvidence, wrapSprint2D13AccountingAccep
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/management-daily v1.0.17-fiscal-gap-conciliation-snapshot";
+const PAGE_VERSION = "fiscal/management-daily v1.0.18-issuer-governance-matrix";
 const APPROVAL_STORAGE_KEY = "fiscal_management_daily:accounting_approval_v1";
 const FISCAL_D11_HANDOFF_KEY = "ellan_ops_fiscal_d11_handoff_v1";
 const D13_CHECKLIST_STORAGE_KEY = "fiscal_management_daily:d13_critical_checklist_v1";
@@ -152,6 +152,9 @@ export default function FiscalManagementDailyPage() {
   const [fiscalGapSnapLoading, setFiscalGapSnapLoading] = useState(false);
   const [fiscalGapSnapError, setFiscalGapSnapError] = useState("");
   const [fiscalGapSnapRefreshScan, setFiscalGapSnapRefreshScan] = useState(false);
+  const [issuerGovMatrix, setIssuerGovMatrix] = useState(null);
+  const [issuerGovLoading, setIssuerGovLoading] = useState(false);
+  const [issuerGovError, setIssuerGovError] = useState("");
   const [d18Checklist, setD18Checklist] = useState({});
   const [d18P1Rows, setD18P1Rows] = useState(() => createInitialP1RiskRows());
   const [d18Certification, setD18Certification] = useState(null);
@@ -413,6 +416,14 @@ export default function FiscalManagementDailyPage() {
               : 0,
           }
         : null,
+      fiscal_issuer_governance_matrix: issuerGovMatrix
+        ? {
+            scope: issuerGovMatrix.scope,
+            generated_at: String(issuerGovMatrix?.generated_at || "-"),
+            summary: issuerGovMatrix?.summary || null,
+            matrix_preview: Array.isArray(issuerGovMatrix?.matrix) ? issuerGovMatrix.matrix.slice(0, 6) : [],
+          }
+        : null,
     };
   }
 
@@ -453,6 +464,8 @@ export default function FiscalManagementDailyPage() {
         fiscal_gap_by_partner_rows: Array.isArray(fiscalGapSnapshot?.summary?.by_partner_id)
           ? fiscalGapSnapshot.summary.by_partner_id.length
           : 0,
+        issuer_gov_matrix_rows: Number(issuerGovMatrix?.summary?.matrix_rows ?? 0),
+        issuer_gov_complete: Boolean(issuerGovMatrix?.summary?.governance_complete),
       },
       d13_critical_checklist: {
         owner: String(approvalOwner || "").trim() || "-",
@@ -827,6 +840,47 @@ export default function FiscalManagementDailyPage() {
     const day = toAuditDayStamp(nowIso);
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT_${ts}.json`, fiscalGapSnapshot);
     setStatus("Export JSON P0 gaps (SPRINT2_FISCAL_GAP_CONCILIATION_SNAPSHOT).");
+    window.setTimeout(() => setStatus(""), 2200);
+  }
+
+  async function loadIssuerGovernanceMatrix() {
+    if (!INTERNAL_TOKEN) {
+      setIssuerGovError("Token interno ausente para matriz de emissores.");
+      return;
+    }
+    setIssuerGovLoading(true);
+    setIssuerGovError("");
+    try {
+      const r = await fetch(`${BILLING_BASE}/admin/fiscal/issuer-governance-matrix`, {
+        method: "GET",
+        headers: headersJson(),
+      });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(data?.detail || "Falha ao carregar matriz de emissores."));
+      if (!data?.ok) throw new Error("Resposta matriz emissores inválida.");
+      const { ok: _ok, ...rest } = data;
+      setIssuerGovMatrix(rest);
+      setStatus("Matriz de governança de emissores (SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX) carregada.");
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (err) {
+      setIssuerGovMatrix(null);
+      setIssuerGovError(String(err?.message || err));
+    } finally {
+      setIssuerGovLoading(false);
+    }
+  }
+
+  function exportIssuerGovernanceMatrixJson() {
+    if (issuerGovMatrix?.scope !== "SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX") {
+      setStatus("Carregue a matriz de emissores antes de exportar.");
+      window.setTimeout(() => setStatus(""), 2600);
+      return;
+    }
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const day = toAuditDayStamp(nowIso);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_${ts}.json`, issuerGovMatrix);
+    setStatus("Export JSON matriz emissores (SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX).");
     window.setTimeout(() => setStatus(""), 2200);
   }
 
@@ -1353,9 +1407,19 @@ export default function FiscalManagementDailyPage() {
     } catch {
       // P0 snapshot gaps fiscal opcional no pacote
     }
+    try {
+      if (INTERNAL_TOKEN && issuerGovMatrix?.scope === "SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX") {
+        const signedIg = await buildSignedPayload(issuerGovMatrix);
+        zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_${ts}.json`] = strToU8(
+          JSON.stringify(signedIg, null, 2),
+        );
+      }
+    } catch {
+      // matriz emissores opcional no pacote
+    }
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_PACKAGE_${ts}.zip`, zipEntries);
     setStatus(
-      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + P0 gaps fiscal + D14 fechamento diário + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
+      "Pacote diário (.zip): OPS + FISCAL + APPROVAL + SPRINT2_D12/D13 (quando aplicável) + D10 tracker + D10 OPS handoff + P0 gaps fiscal + matriz emissores (`SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`) + D14 fechamento diário + D15 receita/estornos + D16 repasse parceiro + D11 rollup + D16 aprovações + P0-1b + Sprint 4 + carimbo P0-3 + D18 + espelhos gate v2 e Sprint 3 partner-audit quando disponíveis.",
     );
     window.setTimeout(() => setStatus(""), 2200);
   }
@@ -1648,6 +1712,61 @@ export default function FiscalManagementDailyPage() {
                 Export handoff D12 (JSON)
               </button>
             </div>
+          </div>
+        ) : null}
+        {!error && INTERNAL_TOKEN ? (
+          <div style={boxStyle}>
+            <h3 style={boxTitleStyle}>Fiscal ELLAN LAB — matriz de governança de emissores (país × tenant)</h3>
+            <p style={{ ...mutedTextStyle, marginTop: 4 }}>
+              Matriz canónica com autoridade, perfil de emissor, modos permitidos, fallback e overlay do estado do provider. API:{" "}
+              <code>GET /admin/fiscal/issuer-governance-matrix</code> — evidência <code>SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*</code>.
+            </p>
+            <div style={{ ...toolbarStyle, marginTop: 10 }}>
+              <button type="button" onClick={() => void loadIssuerGovernanceMatrix()} style={buttonStyle} disabled={issuerGovLoading}>
+                {issuerGovLoading ? "A carregar…" : "Carregar matriz emissores"}
+              </button>
+              <button type="button" onClick={() => exportIssuerGovernanceMatrixJson()} style={buttonStyle} disabled={!issuerGovMatrix?.scope}>
+                Export JSON (SPRINT2_FISCAL_ISSUER_*)
+              </button>
+            </div>
+            {issuerGovError ? <div style={errorStyle}>{issuerGovError}</div> : null}
+            {issuerGovMatrix?.summary ? (
+              <div style={{ ...summaryRowStyle, marginTop: 10 }}>
+                <span style={chipStyle}>Linhas: {Number(issuerGovMatrix.summary.matrix_rows ?? 0)}</span>
+                <span style={chipStyle}>OK: {Number(issuerGovMatrix.summary.matrix_rows_ok ?? 0)}</span>
+                <span style={chipStyle}>Governança completa: {issuerGovMatrix.summary.governance_complete ? "sim" : "não"}</span>
+              </div>
+            ) : null}
+            {Array.isArray(issuerGovMatrix?.matrix) && issuerGovMatrix.matrix.length ? (
+              <div style={{ overflowX: "auto", marginTop: 10 }}>
+                <table style={historyTableStyle}>
+                  <thead>
+                    <tr>
+                      <th style={historyThStyle}>tenant</th>
+                      <th style={historyThStyle}>país</th>
+                      <th style={historyThStyle}>autoridade</th>
+                      <th style={historyThStyle}>perfil</th>
+                      <th style={historyThStyle}>modo efetivo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {issuerGovMatrix.matrix.map((row) => (
+                      <tr key={`${row.country}-${row.tenant_id}-${row.issuer_profile}`}>
+                        <td style={historyTdStyle}>
+                          <code>{String(row.tenant_id)}</code>
+                        </td>
+                        <td style={historyTdStyle}>{String(row.country)}</td>
+                        <td style={historyTdStyle}>{String(row.fiscal_authority || "-")}</td>
+                        <td style={historyTdStyle}>
+                          <code>{String(row.issuer_profile || "-")}</code>
+                        </td>
+                        <td style={historyTdStyle}>{String(row.effective_mode || "-")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {!error && INTERNAL_TOKEN ? (
