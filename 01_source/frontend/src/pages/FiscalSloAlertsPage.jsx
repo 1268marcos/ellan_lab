@@ -33,7 +33,7 @@ import {
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/slo-alerts v1.7.0-sprint4-kpi-exit-baseline";
+const PAGE_VERSION = "fiscal/slo-alerts v1.8.0-sprint4-kpi-exit-baseline-v2-prod-br-pt";
 
 const POST_REC_DECISION_OPTIONS = [
   { value: "FOLLOW_RECOMMENDATION", label: "Seguir recomendação (ação alinhada)" },
