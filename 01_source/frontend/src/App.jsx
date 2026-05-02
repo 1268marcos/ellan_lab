@@ -41,6 +41,9 @@ const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPo
 const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
+const OpsRuntimeHealthPage = lazy(() => import("./pages/OpsRuntimeHealthPage"));
+const OpsRuntimeEventLogPage = lazy(() => import("./pages/OpsRuntimeEventLogPage"));
+const OpsRuntimeSlotsMonitorPage = lazy(() => import("./pages/OpsRuntimeSlotsMonitorPage"));
 const OpsQuickEnablementPage = lazy(() => import("./pages/OpsQuickEnablementPage"));
 const OpsKioskTouchModelsPage = lazy(() => import("./pages/OpsKioskTouchModelsPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
@@ -313,6 +316,9 @@ function TopNav() {
       isNew: true,
     },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
+    { to: "/ops/runtime/health", label: "ops /runtime/health", aria: "Health do backend runtime (8200)", group: "Runtime" },
+    { to: "/ops/runtime/events", label: "ops /runtime/events", aria: "Log de eventos SQLite do runtime", group: "Runtime" },
+    { to: "/ops/runtime/slots", label: "ops /runtime/slots", aria: "Monitor de slots do locker runtime", group: "Runtime" },
     {
       to: "/ops/quick-enablement",
       label: "ops /quick-enablement",
@@ -351,6 +357,7 @@ function TopNav() {
   const opsGroupOrder = [
     "Visão Geral",
     "Dashboards",
+    "Runtime",
     "Logística",
     "Produtos & Fiscal",
     "Integrações",
@@ -1256,6 +1263,30 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsHealthPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/runtime/health"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRuntimeHealthPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/runtime/events"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRuntimeEventLogPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/runtime/slots"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRuntimeSlotsMonitorPage />)}
                 </OpsRoute>
               }
             />

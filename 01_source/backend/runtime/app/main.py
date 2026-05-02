@@ -20,6 +20,7 @@ from app.routers.locker_state import router as locker_state_router
 from app.routers.hardware import router as hardware_router
 from app.routers.catalog import router as catalog_router
 from app.routers.dev_catalog import router as dev_catalog_router
+from app.routers.audit import router as audit_router
 from app.services.runtime_bootstrap_service import safe_bootstrap_runtime_on_startup
 
 logging.basicConfig(level=logging.INFO)
@@ -83,6 +84,7 @@ def startup():
 
 
 app.include_router(health_router)
+app.include_router(audit_router)
 app.include_router(internal_runtime_router)
 app.include_router(allocations_router)
 app.include_router(locker_state_router)
