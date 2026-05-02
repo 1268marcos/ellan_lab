@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -261,6 +263,24 @@ class ReturnLegOut(BaseModel):
     received_at: str | None = None
     created_at: str
     updated_at: str
+
+
+class ReturnTrackingEventOut(BaseModel):
+    id: str
+    return_leg_id: str
+    event_code: str
+    description: str | None = None
+    location_name: str | None = None
+    occurred_at: datetime
+    source: str
+    created_at: datetime
+
+
+class ReturnTrackingEventListOut(BaseModel):
+    items: list[ReturnTrackingEventOut]
+    total: int
+    limit: int
+    offset: int
 
 
 class ReturnRequestOut(BaseModel):

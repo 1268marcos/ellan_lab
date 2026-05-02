@@ -27,6 +27,7 @@ from app.models.logistics_tracking import (
     ReturnLeg,
     ReturnReasonCatalog,
     ReturnRequest,
+    ReturnTrackingEvent,
     SlaBreachEvent,
 )
 from app.models.logistics_manifest import LogisticsCapacityAllocation, LogisticsCarrierRate, LogisticsManifest, LogisticsManifestItem
@@ -74,6 +75,8 @@ from app.schemas.logistics import (
     ReturnRequestOut,
     ReturnRequestStatusPatchIn,
     ReturnLegOut,
+    ReturnTrackingEventListOut,
+    ReturnTrackingEventOut,
     SlaBreachEventListOut,
     SlaBreachEventOut,
 )
@@ -402,6 +405,25 @@ def _to_return_leg_out(row: ReturnLeg) -> ReturnLegOut:
         received_at=_to_iso_utc(row.received_at) if row.received_at else None,
         created_at=_to_iso_utc(row.created_at),
         updated_at=_to_iso_utc(row.updated_at),
+    )
+
+
+def _dt_utc_for_out(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _to_return_tracking_event_out(row: ReturnTrackingEvent) -> ReturnTrackingEventOut:
+    return ReturnTrackingEventOut(
+        id=row.id,
+        return_leg_id=row.return_leg_id,
+        event_code=row.event_code,
+        description=row.description,
+        location_name=row.location_name,
+        occurred_at=_dt_utc_for_out(row.occurred_at),
+        source=row.source,
+        created_at=_dt_utc_for_out(row.created_at),
     )
 
 
@@ -1755,6 +1777,30 @@ def post_return_request_label(
     )
     db.commit()
     return _to_return_leg_out(leg)
+
+
+@router.get("/return-legs/{return_leg_id}/tracking-events", response_model=ReturnTrackingEventListOut)
+def list_return_leg_tracking_events(
+    return_leg_id: str,
+    limit: int = Query(default=50, ge=1, le=300),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+):
+    leg = db.get(ReturnLeg, return_leg_id)
+    if leg is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "RETURN_LEG_NOT_FOUND", "message": "Perna de devolução não encontrada."},
+        )
+    query = db.query(ReturnTrackingEvent).filter(ReturnTrackingEvent.return_leg_id == return_leg_id)
+    total = query.count()
+    rows = query.order_by(ReturnTrackingEvent.occurred_at.desc()).offset(offset).limit(limit).all()
+    return ReturnTrackingEventListOut(
+        items=[_to_return_tracking_event_out(row) for row in rows],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/sla-breaches", response_model=SlaBreachEventListOut)

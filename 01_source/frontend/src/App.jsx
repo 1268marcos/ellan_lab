@@ -57,6 +57,7 @@ const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
 const OpsLogisticsDashboardPage = lazy(() => import("./pages/OpsLogisticsDashboardPage"));
 const OpsLogisticsReturnsPage = lazy(() => import("./pages/OpsLogisticsReturnsPage"));
+const OpsReturnTrackingPage = lazy(() => import("./pages/OpsReturnTrackingPage"));
 const OpsLogisticsManifestsPage = lazy(() => import("./pages/OpsLogisticsManifestsPage"));
 const OpsLogisticsManifestsOverviewPage = lazy(() => import("./pages/OpsLogisticsManifestsOverviewPage"));
 const OpsLogisticsInventoryPage = lazy(() => import("./pages/OpsLogisticsInventoryPage"));
@@ -425,6 +426,7 @@ function TopNav() {
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns", group: "Logística" },
+    { to: "/ops/returns/tracking", label: "ops /returns/tracking", aria: "Eventos de tracking por return leg", group: "Logística" },
     {
       to: "/ops/logistics/inventory",
       label: "ops /logistics/inventory",
@@ -1553,6 +1555,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLogisticsReturnsPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/returns/tracking"
+              element={
+                <OpsRoute>
+                  <OpsReturnTrackingPage />
                 </OpsRoute>
               }
             />
