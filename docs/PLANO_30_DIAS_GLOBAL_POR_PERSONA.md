@@ -483,11 +483,11 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 | **Sprint 0b (produção)** | Contínuo | **`[~]` ~20%** | Trilha documental (KPI v0 no doc + mapa interno de APIs); medição **oficial** em prod e coms externas **pendentes** |
 | Sprint 1 | Dias 3-9 | **~73%** | **`#1` capacidade FE/KIOSK v1** — média 6 itens (**Metodo** *(xviii)*); fundação ~**97%**; migração estilos **~25%** (checkout + kiosk OPS); protótipos KIOSK **`[~]` ~80%**; E2E assistido **`[~]` ~40%** |
 | Sprint 2 | Dias 10-18 | **~62%** consolidado; Fiscal **~50%**; Contabil **~50%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
-| Sprint 3 | Dias 19-24 | **~68%** | Média das seis frentes (CSP 68, TS 96, auditoria **58**, SLO 65, quick-enablement 100, P0-3 incidente 22); ver **Metodo** *(xii)* |
+| Sprint 3 | Dias 19-24 | **~70%** | Média das seis frentes (CSP 68, TS 96, auditoria **70**, SLO 65, quick-enablement 100, P0-3 incidente 22); ver **Metodo** *(xii)* + P0-1 `sprint3_e2e_audit_trail_service.py` |
 | Sprint 4 | Dias 25-30 | **~32%** | Média dos 4 itens do checklist Sprint 4 (24, 40, 28, 35) |
 
 #### Painel percentual para decisão (snapshot 2026-05-01)
-Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão checklist; **Sprint 0b = ~20% com trilha documental** (primeiro `[x]` com KPI **oficial** em produção ainda pendente — secção Sprint 0b); Sprint 1 = média simples dos seis itens do checklist da secção Sprint 1, com **parciais explícitos** para itens `[~]` (ver **Metodo** *(xviii)*, **2026-05-01**: **~73%**; histórico **~71%** em **Metodo** *(xvii)*; **2026-04-30**: **~67%** em **Metodo** *(x)*); Sprint 2 = consolidado já narrado no doc + trilhas com % nas linhas do checklist (checkpoint **Metodo** *(xi)*, **2026-04-30**–**2026-05-01**: consolidado **~62%**); Sprint 3 = média (68+96+58+65+100+22)/6 arredondada; Sprint 4 = média (24+40+28+35)/4 arredondada.
+Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão checklist; **Sprint 0b = ~20% com trilha documental** (primeiro `[x]` com KPI **oficial** em produção ainda pendente — secção Sprint 0b); Sprint 1 = média simples dos seis itens do checklist da secção Sprint 1, com **parciais explícitos** para itens `[~]` (ver **Metodo** *(xviii)*, **2026-05-01**: **~73%**; histórico **~71%** em **Metodo** *(xvii)*; **2026-04-30**: **~67%** em **Metodo** *(x)*); Sprint 2 = consolidado já narrado no doc + trilhas com % nas linhas do checklist (checkpoint **Metodo** *(xi)*, **2026-04-30**–**2026-05-01**: consolidado **~62%**); Sprint 3 = média (68+96+70+65+100+22)/6 arredondada; Sprint 4 = média (24+40+28+35)/4 arredondada.
 
 | Sprint | % execução (decisão) | Estado | Comentário útil para comité |
 | --- | ---: | --- | --- |
@@ -495,7 +495,7 @@ Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão ch
 | **Sprint 0b produção** | **~20%** | `[~]` Em andamento (documental) | KPI v0 + mapa interno de APIs; **oficial** em prod + coms externas ainda por fechar |
 | Sprint 1 | **~73%** | `[~]` | **Prioridade `#1` capacidade**; store **`[x]`**; TS **`[~]` ~93%**; checkout **CSS+E2E** (fatias 1–4 + mobile, POST sucesso/409); KIOSK cockpit + **CSS OPS** (`opsKioskTouchModelsChrome.css`); protótipos **~80%**; E2E assistido **A–D** + totem PT mockado (**~40%**); próximo: **sessão n≥8 presencial** ou `checkJs` |
 | Sprint 2 | **~62%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18; Fiscal **~50%**, Contábil **~50%**); **coexiste** com S1 — throughput mínimo acordado |
-| Sprint 3 | **~68%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
+| Sprint 3 | **~70%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
 | Sprint 4 | **~32%** | `[~]` | **Sprint ideal** só na **fase C** pós-**gate v2**; até lá matriz/UAT sem expansão além do planeado |
 
 #### Evolucao percentual entre snapshots (lab — 2026-04-30)
@@ -663,7 +663,7 @@ Checklist:
 - [~] Evoluir tipagem TS em modulos criticos (`noImplicitAny` nesses modulos).
   - Progresso: **96%** (strict-core inclui locker-dashboard, `LockerDashboard`, `PickupHealthPanel`, `useOpsWindowPreset`, `OpsActionButton`, **`OpsKioskTouchModelsPage`**; utilitários OPS/data em páginas fiscais e `DevBaseCatalog` como antes)
 - [~] Completar auditoria ponta a ponta em fluxos de alto impacto.
-  - Progresso: **58%** (trilha E2E + rollup por parceiro em `fiscal/sprint3-partner-audit` + export slice + **espelho ZIP** `SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH` em `fiscal/management-daily` / `fiscal/accounting-close` via `fiscalSprint3PartnerAuditMirror.js`; checklist de handoff (6 itens) + export JSON; **faixa Sprint 3** no hub `fiscal/global`; falta reconciliação **real** multi-parceiro e evidência de utilizadores nos dailies)
+  - Progresso: **70%** (P0-1 backend: `sprint3_e2e_audit_trail_service.py` + **`GET /admin/fiscal/global/sprint3/e2e-audit-trail`** com `trail` **pedido→emissão→reconciliação** + `trail_rollups` + `audit_version` **v2**; **pytest** `test_sprint3_e2e_audit_trail.py`; trilha E2E + rollup por parceiro em `fiscal/sprint3-partner-audit` + **espelho ZIP** `SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH`; falta reconciliação **real** multi-parceiro presencial e evidência de utilizadores nos dailies)
 - [~] Consolidar scorecards de parceiros e alertas por SLO.
   - Progresso: **65%** (`fiscal/slo-alerts`: thresholds por janela + severidade + export auditável + recomendações automáticas + **registo P0-2** de decisões pós-recomendação em `localStorage`, export dedicado `SPRINT3_P0_2_POST_RECOMMENDATION_DECISIONS` e inclusão no JSON/ZIP do scorecard; falta calibragem operacional BR/PT com 3 decisões reais anexadas ao daily e scorecards de parceiros fora do núcleo fiscal)
 - [x] Fechar treinamento rapido operacional (OPS/Suporte).
@@ -1754,7 +1754,7 @@ Objetivo do bloco:
 Checklist P0 (curto, com aceite e % inicial):
 - [~] **P0-1 Auditoria ponta a ponta dos fluxos críticos (pedido -> emissão -> reconciliação -> handoff).**  
   - Critério de aceite: trilha auditável com `order_id`, `invoice_id`, `partner_id`, `batch_id` em 100% dos cenários de teste definidos para Sprint 3.  
-  - Progresso atual: **58%** (alinhado ao item «auditoria ponta a ponta» do checklist Sprint 3 neste `.md`, incl. espelho ZIP `SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH`).
+  - Progresso atual: **70%** (alinhado ao item «auditoria ponta a ponta» do checklist Sprint 3 neste `.md`, incl. serviço `sprint3_e2e_audit_trail_service` + espelho ZIP `SPRINT3_PARTNER_AUDIT_MIRROR_ATTACH`).
 - [~] **P0-2 Scorecards e alertas SLO para Fiscal/OPS consolidados no painel.**  
   - Critério de aceite: dashboard com KPIs mínimos (`erro fiscal`, `latência`, `divergência prolongada`, `tempo de tratativa`) e alertas ativos por severidade.  
   - Progresso atual: **65%** (UI + export para ≥3 decisões pós-recomendação no sprint).
@@ -1802,7 +1802,7 @@ Resumo:
 - **Sprint 4** entra em modo **paralelo seguro**: preparação de regressão/UAT e KPI mínimo de saída, sem bloquear o fechamento da Sprint 3.
 
 Atualização de progresso (snapshot consolidado):
-- **Sprint 3:** **~68%** (item auditoria **58%**; média das seis frentes — secção Sprint 3 e **Metodo** *(xii)* no painel percentual)
+- **Sprint 3:** **~70%** (item auditoria **70%**; média das seis frentes — secção Sprint 3 e **Metodo** *(xii)* no painel percentual)
 - **Sprint 4:** **~32%**
 
 Decisão executiva:
@@ -1964,7 +1964,7 @@ Resumo (sem alterar gate v2 nem itens `[x]`/`[ ]` fechados pelo comité):
 - **Sprint 0b (produção):** **`[~]` ~20%** — trilha documental (KPI v0 no plano + mapa interno de APIs); primeiro `[x]` com KPI **oficial** em produção ainda pendente.
 - **Sprint 1:** média dos **6** itens do checklist **~61% → ~65%** — **Metodo** *(ix)*: estilos (parcel checkout) **22%**, E2E assistido **14%**, demais itens inalterados (store/boundary **100%**, TS **91%**, protótipos KIOSK **64%**); fundação FE **~97%**. (Atualização posterior **Metodo** *(x)* em **2026-04-30**: painel **~67%** — ver registo nessa data.)
 - **Sprint 2:** consolidado **~52% → ~54% → ~56% → ~58% → ~62%** (**Metodo** *(xi)*, **2026-04-30**–**2026-05-01**); **trilhas** com percentual explícito no doc: OPS **~88%**, Suporte **~78%**, Fiscal **~39% → ~48% → ~50%** (checkpoints **2026-05-01**, P0 gaps `SPRINT2_FISCAL_GAP_*` + matriz emissores `SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`), Contábil **~46% → ~50%** (D14–D16 + P0 **`SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_*`** — **Metodo** *(xiv)*–*(xvi)* + provisões), Comprador ONLINE (evidência checkout; espelho **Metodo** *(x)* **~25%**), KIOSK operacional **0%**, Parceiros **0%**.
-- **Sprint 3:** **~68%** — média **(68 + 96 + 58 + 65 + 100 + 22) / 6 ≈ 68,2%** com itens do checklist atual (CSP 68, TS 96, auditoria **58**, SLO 65, quick-enablement 100, P0-3 incidente 22); **sem** net-new além do planeado até **gate v2**.
+- **Sprint 3:** **~70%** — média **(68 + 96 + 70 + 65 + 100 + 22) / 6 ≈ 70,2%** com itens do checklist atual (CSP 68, TS 96, auditoria **70**, SLO 65, quick-enablement 100, P0-3 incidente 22); **sem** net-new além do planeado até **gate v2**.
 - **Sprint 4:** **~32%** — média **(24 + 40 + 28 + 35) / 4 ≈ 31,8%** com itens atuais da secção Sprint 4; **sem** mudança nesta reavaliação.
 
 Decisão executiva:

@@ -77,6 +77,7 @@ from app.services.accounting_daily_operational_close_service import build_daily_
 from app.services.accounting_partner_settlement_reconcile_service import build_partner_settlement_reconcile_report
 from app.services.accounting_partner_provisions_governance_service import build_partner_provisions_governance_report
 from app.services.accounting_revenue_credits_delta_service import build_revenue_credits_delta_report
+from app.services.sprint3_e2e_audit_trail_service import build_sprint3_e2e_audit_trail
 from app.services.financial_pnl_service import (
     calculate_monthly_kpis,
     list_daily_kpis,
@@ -419,11 +420,6 @@ def seed_reconciliation_gaps_for_ops(
     }
 
 
-def _as_trace_value(value: object, fallback: str) -> str:
-    text_value = str(value or "").strip()
-    return text_value if text_value else fallback
-
-
 @router.get("/global/sprint3/e2e-audit-trail")
 def get_sprint3_e2e_audit_trail(
     date: str | None = Query(default=None, description="YYYY-MM-DD"),
@@ -439,84 +435,18 @@ def get_sprint3_e2e_audit_trail(
     (order_id, invoice_id, partner_id, batch_id) para handoff operacional.
     """
     date_from = None
+    date_filter: str | None = None
     if date:
-        date_from = datetime.fromisoformat(date)
+        try:
+            date_from = datetime.fromisoformat(date.strip())
+            date_filter = date.strip()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.") from exc
     if refresh:
         scan_and_persist_reconciliation_gaps(db)
 
     rows = list_reconciliation_gaps(db, status=status, date_from=date_from, limit=limit)
-    raw_complete = 0
-    materialized_complete = 0
-    items: list[dict[str, object]] = []
-    latest_seen_at = None
-    for row in rows:
-        details = row.details_json if isinstance(row.details_json, dict) else {}
-        raw_order = str(row.order_id or "").strip()
-        raw_invoice = str(row.invoice_id or details.get("invoice_id") or "").strip()
-        raw_partner = str(details.get("partner_id") or "").strip()
-        raw_batch = str(details.get("batch_id") or "").strip()
-        raw_ok = bool(raw_order and raw_invoice and raw_partner and raw_batch)
-        if raw_ok:
-            raw_complete += 1
-
-        trace_order_id = _as_trace_value(raw_order, f"UNKNOWN_ORDER::{row.id}")
-        trace_invoice_id = _as_trace_value(raw_invoice, f"PENDING_INVOICE::{trace_order_id}")
-        trace_partner_id = _as_trace_value(raw_partner, "UNKNOWN_PARTNER")
-        trace_batch_id = _as_trace_value(raw_batch, f"BATCH_UNSPECIFIED::{status}")
-        materialized_ok = bool(trace_order_id and trace_invoice_id and trace_partner_id and trace_batch_id)
-        if materialized_ok:
-            materialized_complete += 1
-
-        seen_at = row.last_detected_at.isoformat() if row.last_detected_at else None
-        latest_seen_at = max(latest_seen_at or seen_at, seen_at) if seen_at else latest_seen_at
-        items.append(
-            {
-                "id": row.id,
-                "gap_type": row.gap_type,
-                "severity": row.severity,
-                "status": row.status,
-                "trace": {
-                    "order_id": trace_order_id,
-                    "invoice_id": trace_invoice_id,
-                    "partner_id": trace_partner_id,
-                    "batch_id": trace_batch_id,
-                },
-                "trace_quality": {
-                    "raw_complete": raw_ok,
-                    "materialized_complete": materialized_ok,
-                },
-                "last_detected_at": seen_at,
-            }
-        )
-
-    total = len(items)
-    raw_rate = (raw_complete / total) if total > 0 else 1.0
-    materialized_rate = (materialized_complete / total) if total > 0 else 1.0
-    decision = "GO" if materialized_rate >= 1.0 else "NO_GO"
-    generated_at = datetime.now(timezone.utc).isoformat()
-    handoff_evidence_id = f"sprint3-e2e-audit::{generated_at}::{status}::{total}"
-    return {
-        "scope": "SPRINT3_P0_1_E2E_AUDIT_TRAIL",
-        "audit_version": "sprint3-e2e-audit-v1",
-        "generated_at": generated_at,
-        "decision": decision,
-        "coverage": {
-            "total": total,
-            "raw_complete": raw_complete,
-            "materialized_complete": materialized_complete,
-            "raw_rate": round(raw_rate, 4),
-            "materialized_rate": round(materialized_rate, 4),
-            "target_rate": 1.0,
-        },
-        "handoff_evidence": {
-            "evidence_id": handoff_evidence_id,
-            "latest_seen_at": latest_seen_at,
-            "status_filter": status,
-            "date_filter": date,
-            "limit": int(limit),
-        },
-        "items": items,
-    }
+    return build_sprint3_e2e_audit_trail(rows, status_filter=status, date_filter=date_filter, limit=limit)
 
 
 @router.post("/accounting-approvals")
