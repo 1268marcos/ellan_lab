@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, desc, func, select, table, column, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth_dep import get_current_user, require_user_roles
@@ -37,6 +38,10 @@ from app.schemas.pricing_fiscal import (
     PromotionCreateIn,
     PromotionListOut,
     PromotionOut,
+    PromotionProductExclusionCreateIn,
+    PromotionProductExclusionDeleteOut,
+    PromotionProductExclusionListOut,
+    PromotionProductExclusionOut,
     PromotionStatusPatchIn,
     PromotionStatusOut,
     PromotionValidateIn,
@@ -749,6 +754,177 @@ def patch_promotion_status(
         is_active=bool((after_row or {}).get("is_active")),
         changed_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+@router.get("/promotions/{promotion_id}/product-exclusions", response_model=PromotionProductExclusionListOut)
+def list_promotion_product_exclusions(
+    promotion_id: str,
+    limit: int = Query(default=200, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    promo = db.execute(text("SELECT id FROM promotions WHERE id = :id"), {"id": promotion_id}).mappings().first()
+    if not promo:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PROMOTION_NOT_FOUND", "message": "Promoção não encontrada.", "promotion_id": promotion_id},
+        )
+    total = int(
+        db.execute(
+            text("SELECT COUNT(*) AS c FROM promotion_product_exclusions WHERE promotion_id = :pid"),
+            {"pid": promotion_id},
+        ).scalar()
+        or 0
+    )
+    rows = db.execute(
+        text(
+            """
+            SELECT promotion_id, product_id
+            FROM promotion_product_exclusions
+            WHERE promotion_id = :pid
+            ORDER BY product_id
+            LIMIT :lim
+            """
+        ),
+        {"pid": promotion_id, "lim": int(limit)},
+    ).mappings().all()
+    items = [
+        PromotionProductExclusionOut(promotion_id=str(r.get("promotion_id") or ""), product_id=str(r.get("product_id") or ""))
+        for r in rows
+    ]
+    return PromotionProductExclusionListOut(ok=True, total=total, limit=int(limit), items=items)
+
+
+@router.post("/promotions/{promotion_id}/product-exclusions", response_model=PromotionProductExclusionOut)
+def add_promotion_product_exclusion(
+    promotion_id: str,
+    payload: PromotionProductExclusionCreateIn,
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    promo = db.execute(text("SELECT id FROM promotions WHERE id = :id"), {"id": promotion_id}).mappings().first()
+    if not promo:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PROMOTION_NOT_FOUND", "message": "Promoção não encontrada.", "promotion_id": promotion_id},
+        )
+    product_exists = db.execute(
+        text("SELECT id FROM products WHERE id = :id"),
+        {"id": payload.product_id},
+    ).mappings().first()
+    if not product_exists:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_NOT_FOUND", "message": "Produto não encontrado.", "product_id": payload.product_id},
+        )
+    dup = db.execute(
+        text(
+            "SELECT 1 FROM promotion_product_exclusions WHERE promotion_id = :pid AND product_id = :prid LIMIT 1"
+        ),
+        {"pid": promotion_id, "prid": payload.product_id},
+    ).first()
+    if dup:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "PROMOTION_EXCLUSION_DUPLICATE",
+                "message": "Exclusão já registrada para este produto.",
+                "promotion_id": promotion_id,
+                "product_id": payload.product_id,
+            },
+        )
+    corr_id = _resolve_correlation_id(correlation_id)
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO promotion_product_exclusions (promotion_id, product_id)
+                VALUES (:promotion_id, :product_id)
+                """
+            ),
+            {"promotion_id": promotion_id, "product_id": payload.product_id},
+        )
+        _record_pr3_audit(
+            db=db,
+            correlation_id=corr_id,
+            current_user=current_user,
+            action="PR3_PROMOTION_EXCLUSION_ADD",
+            payload={
+                "before": None,
+                "after": {"promotion_id": promotion_id, "product_id": payload.product_id},
+            },
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        _record_pr3_audit(
+            db=db,
+            correlation_id=corr_id,
+            current_user=current_user,
+            action="PR3_PROMOTION_EXCLUSION_ADD",
+            result="ERROR",
+            error_message=str(exc),
+            payload={"attempted_after": {"promotion_id": promotion_id, "product_id": payload.product_id}},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "type": "PROMOTION_EXCLUSION_CONFLICT",
+                "message": "Conflito ao inserir exclusão (possível duplicata ou FK).",
+            },
+        ) from exc
+    return PromotionProductExclusionOut(promotion_id=promotion_id, product_id=payload.product_id)
+
+
+@router.delete("/promotions/{promotion_id}/product-exclusions/{product_id}", response_model=PromotionProductExclusionDeleteOut)
+def delete_promotion_product_exclusion(
+    promotion_id: str,
+    product_id: str,
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    promo = db.execute(text("SELECT id FROM promotions WHERE id = :id"), {"id": promotion_id}).mappings().first()
+    if not promo:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PROMOTION_NOT_FOUND", "message": "Promoção não encontrada.", "promotion_id": promotion_id},
+        )
+    existing = db.execute(
+        text(
+            """
+            SELECT promotion_id, product_id
+            FROM promotion_product_exclusions
+            WHERE promotion_id = :pid AND product_id = :prid
+            """
+        ),
+        {"pid": promotion_id, "prid": product_id},
+    ).mappings().first()
+    if not existing:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "PROMOTION_EXCLUSION_NOT_FOUND",
+                "message": "Exclusão não encontrada.",
+                "promotion_id": promotion_id,
+                "product_id": product_id,
+            },
+        )
+    corr_id = _resolve_correlation_id(correlation_id)
+    db.execute(
+        text("DELETE FROM promotion_product_exclusions WHERE promotion_id = :pid AND product_id = :prid"),
+        {"pid": promotion_id, "prid": product_id},
+    )
+    _record_pr3_audit(
+        db=db,
+        correlation_id=corr_id,
+        current_user=current_user,
+        action="PR3_PROMOTION_EXCLUSION_DELETE",
+        payload={"before": dict(existing), "after": None},
+    )
+    db.commit()
+    return PromotionProductExclusionDeleteOut(ok=True, promotion_id=promotion_id, product_id=product_id)
 
 
 @router.post("/promotions/validate", response_model=PromotionValidateOut)

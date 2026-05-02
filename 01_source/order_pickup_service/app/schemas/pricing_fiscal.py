@@ -151,6 +151,28 @@ class PromotionValidateOut(BaseModel):
     reason: str | None = None
 
 
+class PromotionProductExclusionOut(BaseModel):
+    promotion_id: str
+    product_id: str
+
+
+class PromotionProductExclusionListOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    items: list[PromotionProductExclusionOut]
+
+
+class PromotionProductExclusionCreateIn(BaseModel):
+    product_id: str = Field(..., min_length=1, max_length=255)
+
+
+class PromotionProductExclusionDeleteOut(BaseModel):
+    ok: bool
+    promotion_id: str
+    product_id: str
+
+
 class ProductFiscalConfigOut(BaseModel):
     sku_id: str
     ncm_code: str | None = None
