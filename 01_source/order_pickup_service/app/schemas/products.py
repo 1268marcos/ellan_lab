@@ -51,6 +51,16 @@ class ProductListOut(BaseModel):
     items: list[ProductListItemOut]
 
 
+class ProductPricePatchIn(BaseModel):
+    amount_cents: int = Field(..., ge=0, description="Preço em centavos (inteiro não negativo).")
+
+
+class ProductPricePatchOut(BaseModel):
+    ok: bool
+    product_id: str
+    amount_cents: int
+
+
 class ProductMediaCreateIn(BaseModel):
     media_type: str = Field(..., max_length=10, description="IMAGE|VIDEO|PDF|3D")
     url: str = Field(..., max_length=500)

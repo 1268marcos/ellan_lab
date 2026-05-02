@@ -12,6 +12,7 @@ from app.core.db import get_db
 from app.models.product_catalog_assets import ProductBarcode, ProductMedia
 from app.models.product_status_history import ProductStatusHistory
 from app.models.user import User
+from app.services.ops_audit_service import record_ops_action_audit
 from app.schemas.products import (
     ProductAssetDeleteOut,
     ProductBarcodeCreateIn,
@@ -20,6 +21,8 @@ from app.schemas.products import (
     ProductBarcodeUpdateIn,
     ProductListItemOut,
     ProductListOut,
+    ProductPricePatchIn,
+    ProductPricePatchOut,
     ProductMediaCreateIn,
     ProductMediaListOut,
     ProductMediaOut,
@@ -100,6 +103,36 @@ def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) 
 
 def _ensure_product_exists(db: Session, product_id: str) -> None:
     _load_product_status(db, product_id=product_id)
+
+
+def _record_product_price_audit(
+    *,
+    db: Session,
+    correlation_id: str,
+    actor_user_id: str | None,
+    action: str,
+    old_value: int,
+    new_value: int,
+    product_id: str,
+) -> None:
+    try:
+        record_ops_action_audit(
+            db=db,
+            action=action,
+            result="OK",
+            correlation_id=correlation_id,
+            user_id=actor_user_id,
+            role=None,
+            order_id=None,
+            details={
+                "actor": actor_user_id,
+                "old_value": old_value,
+                "new_value": new_value,
+                "product_id": product_id,
+            },
+        )
+    except Exception:
+        pass
 
 
 def _to_media_out(row: ProductMedia) -> ProductMediaOut:
@@ -205,6 +238,71 @@ def list_products(
         for row in rows
     ]
     return ProductListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+
+
+@router.patch("/{product_id}/price", response_model=ProductPricePatchOut)
+def patch_product_price(
+    product_id: str,
+    payload: ProductPricePatchIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text(
+            """
+            SELECT id, amount_cents, COALESCE(status, 'DRAFT') AS status
+            FROM products
+            WHERE id = :id
+            """
+        ),
+        {"id": product_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "PRODUCT_NOT_FOUND",
+                "message": "Produto não encontrado.",
+                "product_id": product_id,
+            },
+        )
+    status = str(row.get("status") or "DRAFT").strip().upper()
+    if status not in {"DRAFT", "ACTIVE"}:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "PRODUCT_PRICE_STATUS_NOT_ALLOWED",
+                "message": "Preço só pode ser editado para produtos em DRAFT ou ACTIVE.",
+                "status": status,
+            },
+        )
+    old_cents = int(row.get("amount_cents") or 0)
+    new_cents = int(payload.amount_cents)
+
+    db.execute(
+        text(
+            """
+            UPDATE products
+            SET amount_cents = :amount_cents,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+            """
+        ),
+        {"id": product_id, "amount_cents": new_cents},
+    )
+    actor_id = str(current_user.id) if current_user and current_user.id else None
+    _record_product_price_audit(
+        db=db,
+        correlation_id=str(uuid4()),
+        actor_user_id=actor_id,
+        action="PRODUCT_PRICE_UPDATE",
+        old_value=old_cents,
+        new_value=new_cents,
+        product_id=product_id,
+    )
+    db.commit()
+
+    return ProductPricePatchOut(ok=True, product_id=product_id, amount_cents=new_cents)
 
 
 @router.patch("/{product_id}/status", response_model=ProductStatusOut)

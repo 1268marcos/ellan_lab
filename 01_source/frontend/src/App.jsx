@@ -64,6 +64,7 @@ const OpsProductsCatalogPage = lazy(() => import("./pages/OpsProductsCatalogPage
 const OpsProductsAssetsPage = lazy(() => import("./pages/OpsProductsAssetsPage"));
 const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPricingFiscalPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
+const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
@@ -381,10 +382,41 @@ function TopNav() {
       aria: "Inventário OPS: estoque por SKU/locker e reservas",
       group: "Logística / Inventário",
     },
-    { to: "/ops/products/catalog", label: "ops /products/catalog", aria: "Dashboard OPS de Catalogo de produtos", group: "Produtos & Fiscal" },
-    { to: "/ops/products/assets", label: "ops /products/assets", aria: "Operacao OPS para media e barcodes de produtos", group: "Produtos & Fiscal" },
-    { to: "/ops/products/pricing-fiscal", label: "ops /products/pricing-fiscal", aria: "Operacao OPS para pricing e fiscal do Pr-3", group: "Produtos & Fiscal" },
-    { to: "/ops/products/inventory-health", label: "ops /products/inventory-health", aria: "Dashboard OPS de Inventory Health", group: "Produtos & Fiscal" },
+    {
+      to: "/ops/products/catalog",
+      label: "ops /products/catalog",
+      aria: "Dashboard OPS de Catalogo de produtos",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/assets",
+      label: "ops /products/assets",
+      aria: "Operacao OPS para media e barcodes de produtos",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/categories",
+      label: "ops /products/categories",
+      aria: "CRUD OPS de product_categories (arvore hierarquica)",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/pricing-fiscal",
+      label: "ops /products/pricing-fiscal",
+      aria: "Operacao OPS para pricing e fiscal do Pr-3",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/inventory-health",
+      label: "ops /products/inventory-health",
+      aria: "Dashboard OPS de Inventory Health",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Products",
+    },
     { to: "/ops/marketing/promotions", label: "ops /marketing/promotions", aria: "Listagem e CRUD basico de promocoes (PR3)", group: "Marketing" },
     { to: "/ops/billing/invoices", label: "ops /billing/invoices", aria: "Busca de invoice (internal)", group: "Billing / Fiscal" },
     { to: "/ops/billing/invoice-queue", label: "ops /billing/invoice-queue", aria: "Fila operacional (dead letters + gaps)", group: "Billing / Fiscal" },
@@ -558,16 +590,25 @@ function TopNav() {
                         <div className="ops-group-title">
                           {groupEntry.group}
                         </div>
-                        {groupEntry.links.map(link => (
-                          <Link
-                            key={link.to}
-                            className="nav-ops-item"
-                            to={link.to}
-                            onClick={() => setIsOpsMenuOpen(false)}
-                          >
-                            <span>{link.label}</span>
-                            {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
-                          </Link>
+                        {clusterOpsLinksBySubGroup(groupEntry.links).map((bucket, bidx) => (
+                          <div key={`${groupEntry.group}-sg-${bidx}`}>
+                            {bucket.subGroupLabel ? (
+                              <div className="ops-subgroup-title" style={{ padding: "6px 12px 2px", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>
+                                {bucket.subGroupLabel}
+                              </div>
+                            ) : null}
+                            {bucket.links.map((link) => (
+                              <Link
+                                key={link.to}
+                                className="nav-ops-item"
+                                to={link.to}
+                                onClick={() => setIsOpsMenuOpen(false)}
+                              >
+                                <span>{link.label}</span>
+                                {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                              </Link>
+                            ))}
+                          </div>
                         ))}
                       </div>
                     ))}
@@ -848,16 +889,25 @@ function TopNav() {
                           <div className="ops-group-title ops-group-title--mobile">
                             {groupEntry.group}
                           </div>
-                          {groupEntry.links.map(link => (
-                            <Link 
-                              key={link.to} 
-                              className="mobile-nav-link mobile-nav-link--dev" 
-                              to={link.to} 
-                              onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                              <span>{link.label}</span>
-                              {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
-                            </Link>
+                          {clusterOpsLinksBySubGroup(groupEntry.links).map((bucket, bidx) => (
+                            <div key={`${groupEntry.group}-m-sg-${bidx}`}>
+                              {bucket.subGroupLabel ? (
+                                <div className="ops-subgroup-title" style={{ padding: "6px 12px 2px", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>
+                                  {bucket.subGroupLabel}
+                                </div>
+                              ) : null}
+                              {bucket.links.map((link) => (
+                                <Link
+                                  key={link.to}
+                                  className="mobile-nav-link mobile-nav-link--dev"
+                                  to={link.to}
+                                  onClick={() => setIsMobileMenuOpen(false)}
+                                >
+                                  <span>{link.label}</span>
+                                  {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                                </Link>
+                              ))}
+                            </div>
                           ))}
                         </div>
                       ))}
@@ -992,6 +1042,21 @@ function RecoverFiscalRoute() {
     return <Navigate to="/fiscal" replace />;
   }
   return <PublicNotFoundPage />;
+}
+
+/** Agrupa links OPS consecutivos com o mesmo `opsSubGroup` (ex.: Products → categories). */
+function clusterOpsLinksBySubGroup(links) {
+  const out = [];
+  for (const link of links) {
+    const sub = link.opsSubGroup ? String(link.opsSubGroup) : null;
+    const prev = out[out.length - 1];
+    if (prev && prev.subGroupLabel === sub) {
+      prev.links.push(link);
+    } else {
+      out.push({ subGroupLabel: sub, links: [link] });
+    }
+  }
+  return out;
 }
 
 function AppContent() {
@@ -1431,6 +1496,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductsCatalogPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/categories"
+              element={
+                <OpsRoute>
+                  <OpsProductCategoriesPage />
                 </OpsRoute>
               }
             />

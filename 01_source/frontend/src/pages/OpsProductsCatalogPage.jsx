@@ -177,6 +177,9 @@ export default function OpsProductsCatalogPage() {
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
   const [statusPatchingId, setStatusPatchingId] = useState(null);
+  const [priceModalRow, setPriceModalRow] = useState(null);
+  const [priceReaisInput, setPriceReaisInput] = useState("");
+  const [pricePatchingId, setPricePatchingId] = useState(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -281,6 +284,48 @@ export default function OpsProductsCatalogPage() {
       setPrevious(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function openPriceModal(row) {
+    if (!row?.id) return;
+    const cents = Number(row.amount_cents);
+    const reais = Number.isFinite(cents) ? (cents / 100).toFixed(2) : "0.00";
+    setPriceModalRow(row);
+    setPriceReaisInput(reais);
+  }
+
+  function closePriceModal() {
+    setPriceModalRow(null);
+    setPriceReaisInput("");
+  }
+
+  async function patchProductPrice(productId) {
+    if (!token || !productId) return;
+    const raw = String(priceReaisInput || "").trim().replace(",", ".");
+    const reais = Number(raw);
+    if (!Number.isFinite(reais) || reais < 0) {
+      setError("Informe um valor em R$ valido (ex.: 19.99).");
+      return;
+    }
+    const amountCents = Math.round(reais * 100);
+    setPricePatchingId(productId);
+    setError("");
+    try {
+      const endpoint = `${ORDER_PICKUP_BASE}/products/${encodeURIComponent(productId)}/price`;
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ amount_cents: amountCents }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseError(data, "Nao foi possivel atualizar o preco."));
+      closePriceModal();
+      await loadCatalog({});
+    } catch (err) {
+      setError(normalizeNetworkError(err, `${ORDER_PICKUP_BASE}/products/.../price`));
+    } finally {
+      setPricePatchingId(null);
     }
   }
 
@@ -509,6 +554,8 @@ export default function OpsProductsCatalogPage() {
                   const fromSt = String(row?.status || "DRAFT").toUpperCase();
                   const nextStatuses = ALLOWED_STATUS_TRANSITIONS[fromSt] || [];
                   const rowBusy = statusPatchingId === row.id;
+                  const priceBusy = pricePatchingId === row.id;
+                  const canEditPrice = fromSt === "DRAFT" || fromSt === "ACTIVE";
                   return (
                     <tr key={row.id}>
                       <td style={tdStyle}>{row.id}</td>
@@ -521,23 +568,35 @@ export default function OpsProductsCatalogPage() {
                       <td style={tdStyle}>{String(!!row.is_active)}</td>
                       <td style={tdStyle}>{row.updated_at}</td>
                       <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
-                        {nextStatuses.length === 0 ? (
-                          <span style={mutedStyleSmall}>—</span>
-                        ) : (
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 280 }}>
-                            {nextStatuses.map((target) => (
-                              <button
-                                key={target}
-                                type="button"
-                                style={statusActionButtonStyle}
-                                disabled={Boolean(loading || rowBusy)}
-                                onClick={() => void patchProductStatus(row.id, target)}
-                              >
-                                {rowBusy ? "…" : STATUS_ACTION_LABEL[target] || target}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "flex-start" }}>
+                          {canEditPrice ? (
+                            <button
+                              type="button"
+                              style={priceEditButtonStyle}
+                              disabled={Boolean(loading || rowBusy || priceBusy)}
+                              onClick={() => openPriceModal(row)}
+                            >
+                              Editar preço
+                            </button>
+                          ) : null}
+                          {nextStatuses.length === 0 ? (
+                            <span style={mutedStyleSmall}>{canEditPrice ? "" : "—"}</span>
+                          ) : (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 280 }}>
+                              {nextStatuses.map((target) => (
+                                <button
+                                  key={target}
+                                  type="button"
+                                  style={statusActionButtonStyle}
+                                  disabled={Boolean(loading || rowBusy || priceBusy)}
+                                  onClick={() => void patchProductStatus(row.id, target)}
+                                >
+                                  {rowBusy ? "…" : STATUS_ACTION_LABEL[target] || target}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -547,6 +606,43 @@ export default function OpsProductsCatalogPage() {
           </div>
         )}
       </section>
+
+      {priceModalRow ? (
+        <div style={modalBackdropStyle} role="presentation" onClick={() => !pricePatchingId && closePriceModal()}>
+          <div
+            style={modalCardStyle}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ops-price-modal-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="ops-price-modal-title" style={modalTitleStyle}>
+              Editar preço — {priceModalRow.id}
+            </h2>
+            <p style={mutedStyleSmall}>{priceModalRow.name}</p>
+            <label style={labelStyle}>
+              Valor (R$)
+              <input
+                type="text"
+                inputMode="decimal"
+                value={priceReaisInput}
+                onChange={(e) => setPriceReaisInput(e.target.value)}
+                placeholder="ex.: 19.99"
+                style={inputStyle}
+                disabled={Boolean(pricePatchingId)}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <button type="button" style={buttonStyle} disabled={Boolean(pricePatchingId)} onClick={() => void patchProductPrice(priceModalRow.id)}>
+                {pricePatchingId ? "Salvando…" : "Salvar"}
+              </button>
+              <button type="button" style={secondaryButtonStyle} disabled={Boolean(pricePatchingId)} onClick={closePriceModal}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -576,6 +672,36 @@ const statusActionButtonStyle = {
   fontWeight: 600,
   cursor: "pointer",
 };
+const priceEditButtonStyle = {
+  padding: "4px 10px",
+  borderRadius: 8,
+  border: "1px solid #2563EB",
+  background: "rgba(37,99,235,0.2)",
+  color: "#BFDBFE",
+  fontSize: 11,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const modalBackdropStyle = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15,23,42,0.72)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 50,
+  padding: 16,
+};
+const modalCardStyle = {
+  background: "#111827",
+  border: "1px solid #334155",
+  borderRadius: 14,
+  padding: 20,
+  maxWidth: 420,
+  width: "100%",
+  boxSizing: "border-box",
+};
+const modalTitleStyle = { margin: 0, fontSize: 18, color: "#F8FAFC" };
 const thStyle = { textAlign: "left", padding: 10, fontSize: 12, color: "#94A3B8", borderBottom: "1px solid #1E293B", background: "#020617" };
 const tdStyle = { padding: 10, fontSize: 12, color: "#E2E8F0", borderBottom: "1px solid #1E293B" };
 const presetSectionStyle = { marginTop: 12, background: "#0B1220", border: "1px solid #1E293B", borderRadius: 10, padding: 10 };
