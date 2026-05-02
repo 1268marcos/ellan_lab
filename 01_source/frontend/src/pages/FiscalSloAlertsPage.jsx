@@ -24,10 +24,16 @@ import {
   SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
   SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION,
 } from "../utils/fiscalSprint3SloScorecardRollup";
+import {
+  FISCAL_SLO_ALERTS_PRODUCTION_MIN_CONFIG,
+  SPRINT4_SLO_KPI_EXIT_BASELINE_BY_PERSONA,
+  SPRINT4_SLO_KPI_EXIT_BASELINE_VERSION,
+  SPRINT4_SLO_METRICS_COLLECT_COMMANDS,
+} from "../utils/fiscalSprint4SloKpiExitBaseline";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/slo-alerts v1.6.0-br-pt-thresholds-v6";
+const PAGE_VERSION = "fiscal/slo-alerts v1.7.0-sprint4-kpi-exit-baseline";
 
 const POST_REC_DECISION_OPTIONS = [
   { value: "FOLLOW_RECOMMENDATION", label: "Seguir recomendação (ação alinhada)" },
@@ -759,6 +765,53 @@ export default function FiscalSloAlertsPage() {
         <p style={mutedTextStyle}>
           Sprint 3 (P0-2): scorecard SLO v3 + limiares BR/PT explícitos no export + recomendações automáticas + registo local de decisões pós-recomendação (JSON/ZIP; meta **3 decisões reais** BR/PT no daily via ZIP ou ficheiro `SPRINT3_P0_2_POST_REC_DECISIONS_*`).
         </p>
+
+        <section style={{ ...cardStyle, marginTop: 12, padding: 12 }}>
+          <h3 style={{ margin: "0 0 8px", fontSize: 15 }}>Sprint 4 — KPI mínimo de saída (baseline)</h3>
+          <p style={{ ...mutedTextStyle, marginTop: 0 }}>
+            Versão <code>{SPRINT4_SLO_KPI_EXIT_BASELINE_VERSION}</code>. Produção mínima:{" "}
+            <code>{FISCAL_SLO_ALERTS_PRODUCTION_MIN_CONFIG.version}</code> — env{" "}
+            <code>VITE_BILLING_FISCAL_BASE_URL</code> + <code>VITE_INTERNAL_TOKEN</code>; UI padrão{" "}
+            <code>{JSON.stringify(FISCAL_SLO_ALERTS_PRODUCTION_MIN_CONFIG.ui_defaults)}</code>.
+          </p>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: 6 }}>Persona</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: 6 }}>KPI</th>
+                  <th style={{ textAlign: "right", borderBottom: "1px solid #ccc", padding: 6 }}>Baseline v1</th>
+                  <th style={{ textAlign: "left", borderBottom: "1px solid #ccc", padding: 6 }}>Fonte</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SPRINT4_SLO_KPI_EXIT_BASELINE_BY_PERSONA.map((row) => (
+                  <tr key={row.persona + row.kpi}>
+                    <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{row.persona}</td>
+                    <td style={{ padding: 6, borderBottom: "1px solid #eee" }}>{row.kpi}</td>
+                    <td style={{ padding: 6, borderBottom: "1px solid #eee", textAlign: "right" }}>
+                      {row.value} {row.unit}
+                    </td>
+                    <td style={{ padding: 6, borderBottom: "1px solid #eee", color: "var(--fiscal-muted, #666)" }}>{row.source}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ ...mutedTextStyle, marginBottom: 4 }}>Coleta métricas (shell — mesmo contrato que esta página):</p>
+          <pre
+            style={{
+              margin: 0,
+              padding: 8,
+              fontSize: 11,
+              background: "var(--fiscal-surface-2, #f6f6f6)",
+              borderRadius: 6,
+              overflowX: "auto",
+            }}
+          >
+            {SPRINT4_SLO_METRICS_COLLECT_COMMANDS.join("\n")}
+          </pre>
+        </section>
 
         <div style={filtersRowStyle}>
           <label style={labelStyle}>País
