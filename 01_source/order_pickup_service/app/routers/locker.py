@@ -11,7 +11,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.db import get_db
-from app.models.locker import Locker, LockerOperator
+from app.models.locker import Locker, LockerOperator, LockerSlotConfig
 from app.models.product_locker_config import ProductLockerConfig, ProductCategory
 from app.services.locker_service import (
     get_locker_or_404,

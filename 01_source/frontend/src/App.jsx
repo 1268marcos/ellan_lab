@@ -67,6 +67,7 @@ const OpsPricingRulesPage = lazy(() => import("./pages/OpsPricingRulesPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
 const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
+const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
@@ -373,6 +374,13 @@ function TopNav() {
       to: "/ops/lockers/product-configs",
       label: "ops /lockers/product-configs",
       aria: "Regras product_locker_configs por locker (categoria permitida, dimensões, temperatura)",
+      group: "Lockers",
+      opsSubGroup: "Lockers",
+    },
+    {
+      to: "/ops/lockers/slots",
+      label: "ops /lockers/slots",
+      aria: "Grade locker_slots + configs e force-release admin",
       group: "Lockers",
       opsSubGroup: "Lockers",
     },
@@ -1521,6 +1529,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLockerProductConfigPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/slots"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsLockerSlotsPage />)}
                 </OpsRoute>
               }
             />
