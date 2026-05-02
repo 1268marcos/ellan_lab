@@ -684,4 +684,123 @@ test.describe("OPS KIOSK touch — modelos v1 (assistido)", () => {
     const row2After = page.locator("table tbody tr").nth(1);
     await expect(row2After.getByRole("cell").nth(1)).toHaveText("sku-e2e-alloc-2", { timeout: 15_000 });
   });
+
+  test("Trilha E — totem físico: simulação de impressão do comprovante após pagamento aprovado", async ({
+    page,
+  }) => {
+    await installKioskPtLabMocks(page, {
+      withSelectableCatalog: true,
+      mockKioskOrderPost: true,
+      mockGatewayPagamentoPost: true,
+      mockPaymentApprovedPost: true,
+      mockKioskIdentifyPost: false,
+      mockManualPickupRedeem: false,
+    });
+
+    await page.goto("/ops/pt/kiosk");
+    await expect(page.getByRole("heading", { level: 1, name: /Simulador KIOSK — PT/i })).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Gaveta 1/i }).click();
+    await page.getByLabel(/Telefone MB WAY/i).fill("+351912345678");
+    await page.getByRole("button", { name: /^Criar pedido KIOSK$/i }).click();
+    await expect(page.getByText(/Pedido criado com sucesso/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Iniciar pagamento no gateway/i }).click();
+    await expect(page.getByText(/comprovante:\s*E2E-RC-PT-1/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Imprimir comprovante/i }).click();
+    await expect(page.getByRole("dialog", { name: /Simulação de impressão/i })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/Imprimindo comprovante/i)).toBeVisible();
+    await expect(page.getByText(/RETIRE O COMPROVANTE IMPRESSO/i)).toBeVisible({ timeout: 20_000 });
+  });
+
+  test("Trilha E — totem físico: impressão + identificação + retirada (redeem) no mesmo fluxo", async ({
+    page,
+  }) => {
+    await installKioskPtLabMocks(page, {
+      withSelectableCatalog: true,
+      mockKioskOrderPost: true,
+      mockGatewayPagamentoPost: true,
+      mockPaymentApprovedPost: true,
+      mockKioskIdentifyPost: true,
+      mockManualPickupRedeem: true,
+    });
+
+    await page.goto("/ops/pt/kiosk");
+    await expect(page.getByRole("heading", { level: 1, name: /Simulador KIOSK — PT/i })).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole("button", { name: /Gaveta 1/i }).click();
+    await page.getByLabel(/Telefone MB WAY/i).fill("+351912345678");
+    await page.getByRole("button", { name: /^Criar pedido KIOSK$/i }).click();
+    await expect(page.getByText(/Pedido criado com sucesso/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Iniciar pagamento no gateway/i }).click();
+    await expect(page.getByText(/comprovante:\s*E2E-RC-PT-1/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Imprimir comprovante/i }).click();
+    await expect(page.getByText(/RETIRE O COMPROVANTE IMPRESSO/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("dialog", { name: /Simulação de impressão/i })).toBeHidden({ timeout: 6_000 });
+
+    await page.getByPlaceholder("+5511999999999 / +351912345678").fill("+351910000001");
+    await page.getByPlaceholder("cliente@email.com").fill("e2e-totem-print@ellan.local");
+    await page.getByRole("button", { name: /Salvar identificação/i }).click();
+    await expect(page.getByText(/Identificação salva/i)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole("button", { name: /Use aqui para digitar o código/i }).click();
+    const pickupDialog = page.getByRole("dialog", { name: /Código de Retirada/i });
+    await expect(pickupDialog).toBeVisible();
+    for (const digit of ["1", "2", "3", "4", "5", "6"]) {
+      await pickupDialog.getByRole("button", { name: digit, exact: true }).click();
+    }
+    await pickupDialog.getByRole("button", { name: /Concluir e usar código/i }).click();
+    await page.getByRole("button", { name: /Retirar com código/i }).click();
+    await expect(page.locator("pre").filter({ hasText: "e2e-pickup-1" })).toBeVisible({ timeout: 15_000 });
+  });
+});
+
+test.describe("OPS KIOSK touch — viewport totem (trilha E)", () => {
+  test.use({ viewport: { width: 1080, height: 1920 } });
+
+  test.beforeEach(async ({ page, context }) => {
+    await context.addInitScript(() => {
+      window.localStorage.setItem("ellan_public_auth_token", "e2e-playwright-ops-kiosk-touch");
+    });
+
+    await page.route(
+      (url) => url.pathname === "/public/auth/me/roles",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ roles: [{ role: "admin_operacao" }] }),
+        });
+      },
+    );
+    await page.route(
+      (url) => url.pathname === "/public/auth/me",
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            user: {
+              id: "e2e-kiosk-touch",
+              full_name: "E2E KIOSK touch",
+              email: "e2e-kiosk-touch@ellan.local",
+            },
+          }),
+        });
+      },
+    );
+  });
+
+  test("vitrine KIOSK PT legível em retrato 1080×1920 (totem)", async ({ page }) => {
+    await installKioskPtLabMocks(page, { withSelectableCatalog: true });
+
+    await page.goto("/ops/pt/kiosk");
+    await expect(page.getByRole("heading", { level: 1, name: /Simulador KIOSK — PT/i })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /Gaveta 1/i })).toBeVisible({ timeout: 30_000 });
+    await page.getByRole("button", { name: /Gaveta 1/i }).click();
+    await expect(page.getByRole("heading", { name: /2\. Criar pedido KIOSK/i })).toBeVisible({ timeout: 15_000 });
+  });
 });
