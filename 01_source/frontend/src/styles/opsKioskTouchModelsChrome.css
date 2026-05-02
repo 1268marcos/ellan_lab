@@ -234,10 +234,26 @@
 
 .ops-kiosk-touch-chrome__checklist-intro {
   margin-top: 0;
-  margin-bottom: var(--spacing-3);
+  margin-bottom: var(--spacing-2);
   font-size: 13px;
   line-height: 1.55;
   color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__checklist-meter {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(20, 83, 45, 0.12);
+  overflow: hidden;
+  margin-bottom: var(--spacing-3);
+  border: 1px solid rgba(5, 150, 105, 0.35);
+}
+
+.ops-kiosk-touch-chrome__checklist-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #059669, #34d399);
+  transition: width var(--transition-base, 0.2s ease);
 }
 
 .ops-kiosk-touch-chrome__checklist-ul {
@@ -277,6 +293,7 @@
   font-size: 13px;
   cursor: pointer;
   font-family: inherit;
+  min-height: 44px;
 }
 
 .ops-kiosk-touch-chrome__export-btn:hover {
@@ -304,6 +321,67 @@
   color: #334155;
   margin-top: 0;
   margin-bottom: var(--spacing-3);
+}
+
+.ops-kiosk-touch-chrome__session-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: var(--spacing-3);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid #7dd3fc;
+  background: linear-gradient(135deg, #fff, #f0f9ff);
+}
+
+.ops-kiosk-touch-chrome__session-strip-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0c4a6e;
+}
+
+.ops-kiosk-touch-chrome__session-strip-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 220px;
+}
+
+.ops-kiosk-touch-chrome__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.ops-kiosk-touch-chrome__chip--pass {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__chip--fail {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+.ops-kiosk-touch-chrome__chip--skip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.ops-kiosk-touch-chrome__chip--pending {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #713f12;
 }
 
 .ops-kiosk-touch-chrome__moderated-table {
@@ -386,6 +464,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ops-kiosk-touch-chrome__model-card {
+    transition: none;
+  }
+
+  .ops-kiosk-touch-chrome__checklist-meter-fill {
     transition: none;
   }
 }

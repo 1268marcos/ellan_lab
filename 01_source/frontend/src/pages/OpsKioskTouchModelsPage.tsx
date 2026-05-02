@@ -208,7 +208,7 @@ function resolveTouchModels(): TouchModelRow[] {
   }
 }
 
-const PAGE_VERSION = "ops/kiosk-touch-models v1.4.0-moderated-n8-export";
+const PAGE_VERSION = "ops/kiosk-touch-models v1.5.0-trilha-d-n8-refino";
 
 const titleHeaderContainer: CSSProperties = { marginBottom: 12 };
 const titleHeaderTitle: CSSProperties = { color: "#0f172a" };
@@ -234,6 +234,22 @@ export default function OpsKioskTouchModelsPage() {
     () => USABILITY_CHECKLIST.filter((row) => usabilityChecks[row.id]).length,
     [usabilityChecks],
   );
+
+  const moderatedStats = useMemo(() => {
+    let pass = 0;
+    let fail = 0;
+    let skip = 0;
+    let pending = 0;
+    for (const r of moderatedRows) {
+      if (r.outcome === "pass") pass += 1;
+      else if (r.outcome === "fail") fail += 1;
+      else if (r.outcome === "skip") skip += 1;
+      else pending += 1;
+    }
+    return { pass, fail, skip, pending };
+  }, [moderatedRows]);
+
+  const checklistProgressPct = Math.round((usabilityDone / USABILITY_CHECKLIST.length) * 100);
 
   useEffect(() => {
     try {
@@ -280,6 +296,12 @@ export default function OpsKioskTouchModelsPage() {
         storageKey: MODERATED_N8_LS_KEY,
         participantsRecorded: moderatedWithOutcome,
         participantsTotal: moderatedRows.length,
+        facilitatorSummary: {
+          pass: moderatedStats.pass,
+          fail: moderatedStats.fail,
+          skip: moderatedStats.skip,
+          pending: moderatedStats.pending,
+        },
         participants: moderatedRows.map((r) => ({
           participantIndex: r.participantIndex,
           outcome: r.outcome || null,
@@ -370,6 +392,19 @@ export default function OpsKioskTouchModelsPage() {
           Progresso: <strong>{usabilityDone}</strong> / {USABILITY_CHECKLIST.length}. Estado guardado em{" "}
           <code>localStorage</code> ({USABILITY_LS_KEY}) para sessões de revisão; exporte JSON para anexar ao daily.
         </p>
+        <div
+          className="ops-kiosk-touch-chrome__checklist-meter"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={checklistProgressPct}
+          aria-label={`Checklist usabilidade ${checklistProgressPct}% concluído`}
+        >
+          <div
+            className="ops-kiosk-touch-chrome__checklist-meter-fill"
+            style={{ width: `${checklistProgressPct}%` }}
+          />
+        </div>
         <ul className="ops-kiosk-touch-chrome__checklist-ul">
           {USABILITY_CHECKLIST.map((row) => (
             <li key={row.id} className="ops-kiosk-touch-chrome__checklist-li">
@@ -400,6 +435,28 @@ export default function OpsKioskTouchModelsPage() {
           Registo por participante após teste moderado; incluído no mesmo JSON do botão acima. Estado em{" "}
           <code className="ops-kiosk-touch-chrome__toolbar-code">{MODERATED_N8_LS_KEY}</code>.
         </p>
+        <div
+          className="ops-kiosk-touch-chrome__session-strip"
+          data-testid="ops-kiosk-moderated-summary"
+          role="status"
+          aria-live="polite"
+        >
+          <span className="ops-kiosk-touch-chrome__session-strip-label">Resumo (n=8)</span>
+          <span className="ops-kiosk-touch-chrome__session-strip-chips">
+            <span className="ops-kiosk-touch-chrome__chip ops-kiosk-touch-chrome__chip--pass">
+              Passou: {moderatedStats.pass}
+            </span>
+            <span className="ops-kiosk-touch-chrome__chip ops-kiosk-touch-chrome__chip--fail">
+              Falhou: {moderatedStats.fail}
+            </span>
+            <span className="ops-kiosk-touch-chrome__chip ops-kiosk-touch-chrome__chip--skip">
+              Ignorado: {moderatedStats.skip}
+            </span>
+            <span className="ops-kiosk-touch-chrome__chip ops-kiosk-touch-chrome__chip--pending">
+              Por registar: {moderatedStats.pending}
+            </span>
+          </span>
+        </div>
         <div className="ops-kiosk-touch-chrome__moderated-table" role="table" aria-label="Participantes sessão moderada">
           <div role="rowgroup">
             <div role="row" className="ops-kiosk-touch-chrome__moderated-head-row">
@@ -432,9 +489,9 @@ export default function OpsKioskTouchModelsPage() {
                     }
                   >
                     <option value="">—</option>
-                    <option value="pass">Pass</option>
-                    <option value="fail">Fail</option>
-                    <option value="skip">Skip</option>
+                    <option value="pass">Passou</option>
+                    <option value="fail">Falhou</option>
+                    <option value="skip">Ignorado</option>
                   </select>
                 </span>
                 <span role="cell" className="ops-kiosk-touch-chrome__moderated-cell-note">
@@ -458,9 +515,8 @@ export default function OpsKioskTouchModelsPage() {
       </section>
 
       <p className="ops-kiosk-touch-chrome__footer-note">
-        Critério Sprint 1: modelo <strong>mínimo clicável</strong> + ligação a fluxo real ou OPS. Heurística n≥8
-        acima cobre evidência leve até testes moderados com utilizadores; próximo: E2E KIOSK assistido ou estilos
-        checkout conforme plano.
+        Trilha D: grelha de modelos, detalhe, checklist n≥8, sessão moderada com resumo e export JSON único. Próximo
+        passo típico: testes com utilizadores reais no totem ou E2E assistido conforme plano.
       </p>
     </div>
   );
