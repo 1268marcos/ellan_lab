@@ -17,7 +17,6 @@ from app.schemas.locker_operators import (
     LockerOperatorUpdateIn,
 )
 
-READ_ROLES = {"admin_operacao", "suporte", "auditoria"}
 WRITE_ROLES = {"admin_operacao"}
 
 router = APIRouter(prefix="/operators", tags=["operators"])
@@ -52,7 +51,7 @@ def _row_to_out(row: dict[str, Any]) -> LockerOperatorOut:
     )
 
 
-@router.get("", response_model=LockerOperatorListOut, dependencies=[Depends(require_user_roles(allowed_roles=READ_ROLES))])
+@router.get("", response_model=LockerOperatorListOut, dependencies=[Depends(require_user_roles(allowed_roles=WRITE_ROLES))])
 def list_operators_ops(db: Session = Depends(get_db)):
     rows = (
         db.execute(

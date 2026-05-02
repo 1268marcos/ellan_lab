@@ -196,11 +196,11 @@ export default function OpsLockerOperatorsPage() {
       <section style={cardStyle}>
         <OpsPageTitleHeader title="OPS — Locker operators" />
         <p style={muted}>
-          Gestao de <code>locker_operators</code> (comissao / contrato). API: <code>{ORDER_PICKUP_BASE}/operators</code> — escrita exige{" "}
+          Gestao de <code>locker_operators</code> (comissao / contrato). API: <code>{ORDER_PICKUP_BASE}/operators</code> — listagem e escrita exigem{" "}
           <code>admin_operacao</code>.
         </p>
         <div style={rowActions}>
-          <button type="button" style={btnPrimary} disabled={loading || !token} onClick={() => void load()}>
+          <button type="button" style={btnPrimary} disabled={loading || !token || !canMutate} onClick={() => void load()}>
             {loading ? "Carregando…" : "Atualizar"}
           </button>
           <button type="button" style={btnSecondary} disabled={!token || !canMutate} onClick={openCreate}>
@@ -209,7 +209,7 @@ export default function OpsLockerOperatorsPage() {
         </div>
         {error ? <pre style={errBox}>{error}</pre> : null}
         {!token ? <p style={muted}>Faça login.</p> : null}
-        {token && !canMutate ? <p style={muted}>Listagem liberada; criar/editar/excluir apenas com admin_operacao.</p> : null}
+        {token && !canMutate ? <p style={muted}>Listagem e alteracoes exigem perfil admin_operacao.</p> : null}
         {token && !loading && !items.length && !error ? <p style={muted}>Nenhum operador retornado.</p> : null}
         {items.length > 0 ? (
           <div style={tableWrap}>
