@@ -43,6 +43,7 @@ from app.routers import (
     pricing_rules,
     product_categories,
     products,
+    rentals_ops,
 )
 
 from app.routers.public_auth import router as public_auth_router
@@ -155,6 +156,7 @@ app.include_router(integration_ops.router)
 app.include_router(inventory.router)
 app.include_router(notifications.router)
 app.include_router(internal.router)
+app.include_router(rentals_ops.router, prefix="/internal")
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
 app.include_router(public_auth_router)

@@ -70,6 +70,8 @@ const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategories
 const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
 const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
 const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage"));
+const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
+const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
@@ -400,6 +402,20 @@ function TopNav() {
       opsSubGroup: "Lockers",
     },
     {
+      to: "/ops/rentals/contracts",
+      label: "ops /rentals/contracts",
+      aria: "Listagem interna de contratos de aluguel (rental_contracts)",
+      group: "Rentals",
+      opsSubGroup: "Rentals",
+    },
+    {
+      to: "/ops/rentals/plans",
+      label: "ops /rentals/plans",
+      aria: "Planos de aluguel ativos (rental_plans, admin_operacao)",
+      group: "Rentals",
+      opsSubGroup: "Rentals",
+    },
+    {
       to: "/ops/payments/reconciliation",
       label: "ops /payments/reconciliation",
       aria: "Conciliação payment_transactions e payment_splits (status e lote)",
@@ -490,6 +506,7 @@ function TopNav() {
     "Dashboards",
     "Order / Pickup",
     "Lockers",
+    "Rentals",
     "Runtime",
     "Logística",
     "Logística / Inventário",
@@ -1568,6 +1585,30 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerOperatorsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/rentals/contracts/:id"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRentalContractsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/rentals/contracts"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRentalContractsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/rentals/plans"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRentalPlansPage />)}
                 </OpsRoute>
               }
             />

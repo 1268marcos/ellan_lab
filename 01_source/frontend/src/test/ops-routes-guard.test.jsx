@@ -69,4 +69,22 @@ describe("OPS route guard", () => {
 
     expect(await screen.findByRole("heading", { name: /ops — política de autorização/i })).toBeInTheDocument();
   });
+
+  it("allows admin_operacao to open /ops/rentals/contracts", async () => {
+    setAuthenticatedSession(["admin_operacao"]);
+    renderAt("/ops/rentals/contracts");
+    expect(await screen.findByRole("heading", { name: /ops — contratos de aluguel/i })).toBeInTheDocument();
+  });
+
+  it("allows admin_operacao to open /ops/rentals/plans", async () => {
+    setAuthenticatedSession(["admin_operacao"]);
+    renderAt("/ops/rentals/plans");
+    expect(await screen.findByRole("heading", { name: /ops — planos de aluguel ativos/i })).toBeInTheDocument();
+  });
+
+  it("blocks suporte from rental plans page content (admin_operacao only)", async () => {
+    setAuthenticatedSession(["suporte"]);
+    renderAt("/ops/rentals/plans");
+    expect(await screen.findByText(/admin_operacao/i)).toBeInTheDocument();
+  });
 });
