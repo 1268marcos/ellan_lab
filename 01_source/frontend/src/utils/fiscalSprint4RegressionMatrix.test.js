@@ -21,6 +21,7 @@ import {
   mergeSprint4KioskUatRows,
   mergeSprint4MatrixRows,
   normalizeSprint4GoNoGoState,
+  normalizeKioskHardwarePresencialStamp,
 } from "./fiscalSprint4RegressionMatrix";
 
 describe("fiscalSprint4RegressionMatrix", () => {
@@ -104,12 +105,46 @@ describe("fiscalSprint4RegressionMatrix", () => {
     });
     expect(p.scope).toBe("SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D");
     expect(p.kiosk_touch_uat_protocol_version).toBe(SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION);
-    expect(p.presencial_hardware_residual).toContain("hardware");
+    expect(p.kiosk_touch_uat_protocol_version).toMatch(/v3/);
+    expect(p.presencial_hardware_residual).toMatch(/Protocolo v3/);
     expect(p.manual_protocol).toHaveLength(4);
     expect(p.manual_protocol[0].aligned_e2e_tests?.length).toBeGreaterThanOrEqual(1);
     expect(p.manual_protocol[0].hardware_presencial?.steps?.length).toBeGreaterThanOrEqual(1);
     expect(p.zip_executive_attachment_hint).toContain("accounting-close");
     expect(p.kiosk_uat_execution?.models?.[0]?.id).toBe("model_a_quick_buy");
+    expect(p.kiosk_final_carimbo).toMatch(/PENDING|CLOSED/);
+  });
+
+  it("kiosk_touch_uat_presencial_stamp_complete quando 4 PASS + carimbo hardware completo", () => {
+    const now = "2026-05-01T20:00:00.000Z";
+    const stamp = {
+      session_id: "hw-1",
+      site_pilot: "piloto-x",
+      session_signed_at: now,
+      operator_name: "Ops Lead",
+      device_inventory_tag: "TOTEM-PT-01",
+      model_attestations: SPRINT4_KIOSK_UAT_MODELS.map((m) => ({
+        model_id: m.id,
+        hardware_cycle_at: now,
+        evidence_ref: "ticket-123",
+        operator_initials: "OL",
+      })),
+    };
+    const stored = {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: now,
+      owner: "qa",
+      rows: {},
+      kiosk_uat: {
+        models: Object.fromEntries(SPRINT4_KIOSK_UAT_MODELS.map((m) => [m.id, { pass: true, note: "hw ok", marked_at: now }])),
+      },
+      go_no_go: {},
+      kiosk_hardware_presencial_stamp: stamp,
+    };
+    const p = buildSprint4KioskTouchUatModelsPayload(now, stored);
+    expect(p.kiosk_touch_uat_presencial_stamp_complete).toBe(true);
+    expect(p.kiosk_final_carimbo).toBe("SPRINT4_KIOSK_TOUCH_UAT_CLOSED_100_PCT");
+    expect(normalizeKioskHardwarePresencialStamp(stamp)?.model_attestations).toHaveLength(4);
   });
 
   it("go_no_go_register inclui riscos, tópicos de mitigação e readiness", () => {

@@ -6,7 +6,7 @@
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
 export const SPRINT4_MATRIX_VERSION = 4;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.12.0-persona-presencial-signoff";
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.13.0-kiosk-uat-hardware-stamp";
 /** Número de casos na matriz mínima Sprint 4 (regressão funcional por persona). */
 export const SPRINT4_MATRIX_N_CASES = 21;
 export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v4";
@@ -358,7 +358,7 @@ export function computeSprint4GoNoGoReadinessDocumentationPct(norm, matrixProgre
 }
 
 /** Versão do protocolo UAT KIOSK exportado em `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`. */
-export const SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION = "sprint4-kiosk-touch-uat-v2-e2e-presencial";
+export const SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION = "sprint4-kiosk-touch-uat-v3-hardware-stamp-closed";
 
 export const SPRINT4_KIOSK_UAT_MODELS = [
   {
@@ -378,6 +378,7 @@ export const SPRINT4_KIOSK_UAT_MODELS = [
         "Repetir o fluxo A em totem físico (sem mocks de rede) no site piloto; rede e APIs reais.",
         "Validar alvos touch ≥44px nos CTAs críticos do catálogo; registo fotográfico ou vídeo ≤60s.",
         "Anotar `order_id` real e locker_id no campo notas antes de marcar PASS.",
+        "Preencher carimbo presencial (sessão + attestação do modelo A) antes de exportar o JSON `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`.",
       ],
       evidence_required: ["Identificador do equipamento ou etiqueta do piloto", "Screenshot ou frame de vídeo com order_id ou confirmação visível"],
     },
@@ -400,6 +401,7 @@ export const SPRINT4_KIOSK_UAT_MODELS = [
       steps: [
         "No hardware: abrir checkout guiado com query mínima válida do piloto; percorrer até revisão sem bypass de validação.",
         "Documentar qualquer desvio de copy/layout touch vs lab no campo notas.",
+        "Carimbo: attestação modelo B com `hardware_cycle_at` + referência de evidência (ticket ou path).",
       ],
       evidence_required: ["Screenshot da revisão ou estado bloqueado esperado", "Query string ou order_id de teste utilizado"],
     },
@@ -433,6 +435,7 @@ export const SPRINT4_KIOSK_UAT_MODELS = [
         "Executar fluxo C em hardware com impressora real ou fluxo de comprovante aceite pelo comité.",
         "Validar identify + redeem-manual (ou equivalente operacional) com operador presencial.",
         "Registar incidentes de hardware (papel, rede totem) na nota.",
+        "Carimbo: comprovante físico ou digital anexado ao ticket de sessão; attestação modelo C.",
       ],
       evidence_required: ["Foto do comprovante ou confirmação de impressão", "order_id / pickup reference utilizado no piloto"],
     },
@@ -458,11 +461,98 @@ export const SPRINT4_KIOSK_UAT_MODELS = [
       steps: [
         "Em armário físico ou ambiente equivalente: confirmar abertura/após alocação conforme runbook do piloto (sem bypass de segurança).",
         "Dois ciclos touch: seleção de slot + confirmação + leitura do estado da gaveta no UI.",
+        "Carimbo: attestação modelo D com evidência de slot/SKU e iniciais do operador no bloco de sessão hardware.",
       ],
       evidence_required: ["ID de slot alocado e SKU", "Foto da grelha ou do estado pós-alocação"],
     },
   },
 ];
+
+export function defaultKioskHardwarePresencialStampModelRows() {
+  return SPRINT4_KIOSK_UAT_MODELS.map((m) => ({
+    model_id: m.id,
+    hardware_cycle_at: "",
+    evidence_ref: "",
+    operator_initials: "",
+  }));
+}
+
+/**
+ * @param {unknown} rawRoot matriz completa em localStorage ou objeto `kiosk_hardware_presencial_stamp`
+ */
+export function parseKioskHardwarePresencialStampFromRaw(rawRoot) {
+  if (rawRoot == null) {
+    const b0 = defaultKioskHardwarePresencialStampModelRows();
+    return {
+      session_id: "",
+      site_pilot: "",
+      session_signed_at: "",
+      operator_name: "",
+      device_inventory_tag: "",
+      model_rows: b0,
+    };
+  }
+  const k = rawRoot && typeof rawRoot === "object" && "kiosk_hardware_presencial_stamp" in rawRoot
+    ? rawRoot.kiosk_hardware_presencial_stamp
+    : rawRoot;
+  const base = defaultKioskHardwarePresencialStampModelRows();
+  if (!k || typeof k !== "object") {
+    return {
+      session_id: "",
+      site_pilot: "",
+      session_signed_at: "",
+      operator_name: "",
+      device_inventory_tag: "",
+      model_rows: base,
+    };
+  }
+  const by = new Map(
+    (Array.isArray(k.model_attestations) ? k.model_attestations : []).map((r) => [String(r?.model_id || "").trim(), r])
+  );
+  return {
+    session_id: String(k.session_id || ""),
+    site_pilot: String(k.site_pilot || ""),
+    session_signed_at: String(k.session_signed_at || ""),
+    operator_name: String(k.operator_name || ""),
+    device_inventory_tag: String(k.device_inventory_tag || ""),
+    model_rows: base.map((d) => {
+      const hit = by.get(d.model_id);
+      if (!hit) return d;
+      return {
+        model_id: d.model_id,
+        hardware_cycle_at: String(hit.hardware_cycle_at || ""),
+        evidence_ref: String(hit.evidence_ref || ""),
+        operator_initials: String(hit.operator_initials || ""),
+      };
+    }),
+  };
+}
+
+/**
+ * Carimbo presencial hardware (export `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`).
+ * @param {unknown} raw objeto gravado em `kiosk_hardware_presencial_stamp`
+ */
+export function normalizeKioskHardwarePresencialStamp(raw) {
+  const p = parseKioskHardwarePresencialStampFromRaw(raw);
+  if (!String(p.session_id || "").trim() || !String(p.operator_name || "").trim() || !String(p.session_signed_at || "").trim()) {
+    return null;
+  }
+  const model_attestations = p.model_rows.map((r) => ({
+    model_id: r.model_id,
+    hardware_cycle_at: String(r.hardware_cycle_at || "").trim(),
+    evidence_ref: String(r.evidence_ref || "").trim(),
+    operator_initials: String(r.operator_initials || "").trim(),
+  }));
+  return {
+    scope: "SPRINT4_KIOSK_TOUCH_UAT_HARDWARE_STAMP",
+    session_id: String(p.session_id || "").trim(),
+    site_pilot: String(p.site_pilot || "").trim(),
+    session_signed_at: String(p.session_signed_at || "").trim(),
+    operator_name: String(p.operator_name || "").trim(),
+    device_inventory_tag: String(p.device_inventory_tag || "").trim(),
+    model_attestations,
+  };
+}
 
 export function loadSprint4MatrixStateRaw() {
   try {
@@ -834,14 +924,26 @@ export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedStat
  */
 export function buildSprint4KioskTouchUatModelsPayload(nowIso, storedState) {
   const full = buildSprint4RegressionMatrixPayload(nowIso, storedState);
+  const stamp = normalizeKioskHardwarePresencialStamp(storedState?.kiosk_hardware_presencial_stamp);
+  const stampComplete =
+    Boolean(full.kiosk_uat.progress.all_pass) &&
+    Boolean(stamp) &&
+    stamp.model_attestations.length === SPRINT4_KIOSK_UAT_MODELS.length &&
+    stamp.model_attestations.every(
+      (a) => a.hardware_cycle_at.length > 0 && a.evidence_ref.length > 0 && a.operator_initials.length > 0
+    );
   return {
     scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
     kiosk_touch_uat_protocol_version: SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION,
+    kiosk_final_carimbo: stampComplete ? "SPRINT4_KIOSK_TOUCH_UAT_CLOSED_100_PCT" : "SPRINT4_KIOSK_TOUCH_UAT_PENDING_HARDWARE",
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
-    presencial_hardware_residual:
-      "Checklist cockpit + protocolo v2 = 90% documental; fechamento 100% exige ciclos presenciais em hardware real (notas por modelo + evidência anexa).",
+    presencial_hardware_residual: stampComplete
+      ? "Protocolo v3: UAT A–D PASS em cockpit + ciclos presenciais hardware com carimbo (`kiosk_touch_uat_presencial_stamp_complete`)."
+      : "Protocolo v3: marcar 4×PASS, executar hardware real por modelo e preencher sessão + attestations para fechar 100%.",
+    kiosk_hardware_presencial_stamp: stamp,
+    kiosk_touch_uat_presencial_stamp_complete: stampComplete,
     manual_protocol: SPRINT4_KIOSK_UAT_MODELS.map(
       ({ id, label, manual_steps, e2e_anchors, default_note_hint, aligned_e2e_tests, hardware_presencial }) => ({
         model_id: id,

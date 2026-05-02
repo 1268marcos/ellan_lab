@@ -8,6 +8,7 @@ import {
   SPRINT4_MATRIX_PAGE_VERSION,
   SPRINT4_MATRIX_STORAGE_KEY,
   SPRINT4_MATRIX_VERSION,
+  SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
   appendSprint4PilotRun,
   buildSprint4GoNoGoRegisterSummaryPayload,
@@ -26,6 +27,7 @@ import {
   loadSprint4PilotRunsRaw,
   mergeSprint4KioskUatRows,
   mergeSprint4MatrixRows,
+  parseKioskHardwarePresencialStampFromRaw,
   saveSprint4PilotRuns,
 } from "../utils/fiscalSprint4RegressionMatrix";
 
@@ -148,6 +150,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
   const [pilotNotes, setPilotNotes] = useState("");
   const [pilotRuns, setPilotRuns] = useState(() => loadSprint4PilotRunsRaw());
   const [presencialBlock, setPresencialBlock] = useState(() => parsePresencialBlockFromRaw(loadSprint4MatrixStateRaw()));
+  const [kioskStampBlock, setKioskStampBlock] = useState(() => parseKioskHardwarePresencialStampFromRaw(loadSprint4MatrixStateRaw()));
 
   useEffect(() => {
     const payload = {
@@ -175,6 +178,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         session_signed_at: presencialBlock.session_signed_at,
         persona_signoffs: presencialBlock.persona_signoffs,
       },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
+      },
     };
     window.localStorage.setItem(SPRINT4_MATRIX_STORAGE_KEY, JSON.stringify(payload));
   }, [
@@ -187,6 +198,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
     goNoGoRiskIds,
     goNoGoMitigationTopicIds,
     presencialBlock,
+    kioskStampBlock,
   ]);
 
   const progress = useMemo(() => computeSprint4MatrixProgress(rows), [rows]);
@@ -245,6 +257,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         session_signed_at: presencialBlock.session_signed_at,
         persona_signoffs: presencialBlock.persona_signoffs,
       },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
+      },
     };
     return buildSprint4PersonaFunctionalChecklistPayload(nowIso, st).presencial_functional_signoff_complete === true;
   }, [
@@ -257,12 +277,70 @@ export default function FiscalSprint4RegressionMatrixPage() {
     goNoGoRiskIds,
     goNoGoMitigationTopicIds,
     presencialBlock,
+    kioskStampBlock,
   ]);
 
   function patchPersonaPresencial(persona, patch) {
     setPresencialBlock((prev) => ({
       ...prev,
       persona_signoffs: prev.persona_signoffs.map((row) => (row.persona === persona ? { ...row, ...patch } : row)),
+    }));
+  }
+
+  const kioskHardwareStampComplete = useMemo(() => {
+    const nowIso = new Date().toISOString();
+    const st = {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: nowIso,
+      owner,
+      rows: Object.fromEntries(rows.map((r) => [r.id, { done: r.done, note: r.note, last_marked_at: r.last_marked_at }])),
+      kiosk_uat: {
+        models: Object.fromEntries(
+          kioskUatRows.map((r) => [r.id, { pass: r.pass, note: r.note, marked_at: r.marked_at }])
+        ),
+      },
+      go_no_go: {
+        decision: goNoGoDecision,
+        residual_risk: goNoGoRisk,
+        mitigation_plan: goNoGoMitigation,
+        owner: String(owner || "").trim() || "-",
+        updated_at: nowIso,
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
+      },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
+      },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
+      },
+    };
+    return buildSprint4KioskTouchUatModelsPayload(nowIso, st).kiosk_touch_uat_presencial_stamp_complete === true;
+  }, [
+    rows,
+    kioskUatRows,
+    owner,
+    goNoGoDecision,
+    goNoGoRisk,
+    goNoGoMitigation,
+    goNoGoRiskIds,
+    goNoGoMitigationTopicIds,
+    presencialBlock,
+    kioskStampBlock,
+  ]);
+
+  function patchKioskStampModelRow(modelId, patch) {
+    setKioskStampBlock((prev) => ({
+      ...prev,
+      model_rows: prev.model_rows.map((row) => (row.model_id === modelId ? { ...row, ...patch } : row)),
     }));
   }
 
@@ -331,6 +409,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         session_signed_at: presencialBlock.session_signed_at,
         persona_signoffs: presencialBlock.persona_signoffs,
       },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
+      },
     };
     const payload = buildSprint4RegressionMatrixPayload(nowIso, stored || syntheticState);
     const signed = await buildSignedPayload(payload);
@@ -368,6 +454,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         facilitator_name: presencialBlock.facilitator_name,
         session_signed_at: presencialBlock.session_signed_at,
         persona_signoffs: presencialBlock.persona_signoffs,
+      },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
       },
     };
     const payload = buildSprint4GoNoGoRegisterSummaryPayload(nowIso, syntheticState);
@@ -407,6 +501,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         facilitator_name: presencialBlock.facilitator_name,
         session_signed_at: presencialBlock.session_signed_at,
         persona_signoffs: presencialBlock.persona_signoffs,
+      },
+      kiosk_hardware_presencial_stamp: {
+        session_id: kioskStampBlock.session_id,
+        site_pilot: kioskStampBlock.site_pilot,
+        session_signed_at: kioskStampBlock.session_signed_at,
+        operator_name: kioskStampBlock.operator_name,
+        device_inventory_tag: kioskStampBlock.device_inventory_tag,
+        model_attestations: kioskStampBlock.model_rows,
       },
     };
     const matrixPayload = buildSprint4RegressionMatrixPayload(nowIso, syntheticState);
@@ -497,6 +599,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
     setGoNoGoRiskIds({});
     setGoNoGoMitigationTopicIds({});
     setPresencialBlock(parsePresencialBlockFromRaw(null));
+    setKioskStampBlock(parseKioskHardwarePresencialStampFromRaw(null));
     setStatusMsg("Matriz reiniciada.");
     window.setTimeout(() => setStatusMsg(""), 2000);
   }
@@ -555,16 +658,20 @@ export default function FiscalSprint4RegressionMatrixPage() {
           <span style={chipStyle}>
             Checklist presencial: {presencialChecklistComplete ? "ASSINATURA COMPLETA" : "pendente"}
           </span>
+          <span style={chipStyle}>
+            UAT hardware carimbo: {kioskHardwareStampComplete ? "100% FECHADO" : "pendente"}
+          </span>
         </div>
         {statusMsg ? <small style={mutedTextStyle}>{statusMsg}</small> : null}
 
         <section style={boxStyle}>
           <h3 style={boxTitleStyle}>UAT KIOSK touch (4 modelos A–D)</h3>
           <p style={mutedTextStyle}>
-            Protocolo manual <strong>v2</strong> alinhado aos títulos de teste em <code>e2e/kiosk-touch-models.spec.ts</code> (
-            <code>aligned_e2e_tests</code>) + bloco <strong>hardware presencial</strong> por modelo; JSON assinado{" "}
-            <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> no ZIP daily/executivo. Meta 90% documental — fecho 100% com ciclos em totem
-            real (notas + evidência).
+            Protocolo manual <strong>v3</strong> (<code>{SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION}</code>) alinhado a{" "}
+            <code>e2e/kiosk-touch-models.spec.ts</code> (<code>aligned_e2e_tests</code>) + passos e evidência{" "}
+            <strong>hardware presencial</strong> por modelo; JSON <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> inclui{" "}
+            <code>kiosk_final_carimbo</code> e <code>kiosk_touch_uat_presencial_stamp_complete</code> quando 4×PASS + sessão hardware
+            attestada.
           </p>
           <div style={kpiRowStyle}>
             <span style={chipStyle}>
@@ -672,6 +779,105 @@ export default function FiscalSprint4RegressionMatrixPage() {
                         rows={4}
                         style={textareaStyle}
                         placeholder="ticket, vídeo, order_id, path, HAR, screenshot — exportado no ZIP com o protocolo"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section style={boxStyle}>
+          <h3 style={boxTitleStyle}>Carimbo hardware presencial (sessão A–D)</h3>
+          <p style={mutedTextStyle}>
+            Preenche após ciclos reais no totem/armário; exporta dentro de <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> como{" "}
+            <code>kiosk_hardware_presencial_stamp</code>.
+          </p>
+          <div style={pilotGridStyle}>
+            <label style={labelStyle}>
+              session_id
+              <input
+                value={kioskStampBlock.session_id}
+                onChange={(e) => setKioskStampBlock((p) => ({ ...p, session_id: e.target.value }))}
+                style={inputStyle}
+                placeholder="ex.: kiosk-hw-20260501-turno-B"
+              />
+            </label>
+            <label style={labelStyle}>
+              site_pilot
+              <input
+                value={kioskStampBlock.site_pilot}
+                onChange={(e) => setKioskStampBlock((p) => ({ ...p, site_pilot: e.target.value }))}
+                style={inputStyle}
+                placeholder="URL ou código do site piloto"
+              />
+            </label>
+            <label style={labelStyle}>
+              Operador (nome)
+              <input
+                value={kioskStampBlock.operator_name}
+                onChange={(e) => setKioskStampBlock((p) => ({ ...p, operator_name: e.target.value }))}
+                style={inputStyle}
+              />
+            </label>
+            <label style={labelStyle}>
+              session_signed_at (ISO8601)
+              <input
+                value={kioskStampBlock.session_signed_at}
+                onChange={(e) => setKioskStampBlock((p) => ({ ...p, session_signed_at: e.target.value }))}
+                style={inputStyle}
+                placeholder="2026-05-01T18:00:00.000Z"
+              />
+            </label>
+            <label style={labelStyle}>
+              device_inventory_tag
+              <input
+                value={kioskStampBlock.device_inventory_tag}
+                onChange={(e) => setKioskStampBlock((p) => ({ ...p, device_inventory_tag: e.target.value }))}
+                style={inputStyle}
+                placeholder="etiqueta inventário totem"
+              />
+            </label>
+          </div>
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>model_id</th>
+                  <th style={thStyle}>hardware_cycle_at</th>
+                  <th style={thStyle}>evidence_ref</th>
+                  <th style={thStyle}>operator_initials</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kioskStampBlock.model_rows.map((mr) => (
+                  <tr key={mr.model_id}>
+                    <td style={tdStyle}>
+                      <code>{mr.model_id}</code>
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={mr.hardware_cycle_at}
+                        onChange={(e) => patchKioskStampModelRow(mr.model_id, { hardware_cycle_at: e.target.value })}
+                        style={inputStyle}
+                        placeholder="ISO8601"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={mr.evidence_ref}
+                        onChange={(e) => patchKioskStampModelRow(mr.model_id, { evidence_ref: e.target.value })}
+                        style={inputStyle}
+                        placeholder="ticket / path / order_id"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={mr.operator_initials}
+                        onChange={(e) => patchKioskStampModelRow(mr.model_id, { operator_initials: e.target.value })}
+                        style={inputStyle}
+                        placeholder="AB"
                       />
                     </td>
                   </tr>
