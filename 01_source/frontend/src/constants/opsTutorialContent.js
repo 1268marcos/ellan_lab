@@ -181,6 +181,15 @@ export const OPS_TUTORIALS_BY_PATH = {
       { title: "3) Dicas rápidas", items: ["Priorize parceiros com divergência financeira e SLA degradado."] },
     ],
   },
+  "/ops/partners/settlement": {
+    title: "Tutorial rápido - ops/partners/settlement",
+    subtitle: "Leitura de batches e linhas de settlement com export para auditoria.",
+    sections: [
+      { title: "1) Objetivo da tela", items: ["Inspecionar períodos, status e valores líquidos; detalhar pedidos por batch."] },
+      { title: "2) Fluxo recomendado de uso", items: ["Carregar batches, selecionar linha, carregar itens; opcionalmente métricas SLA do parceiro."] },
+      { title: "3) Dicas rápidas", items: ["Use CSV/JSON para anexar evidência em handoff ou incidente."] },
+    ],
+  },
   "/ops/partners/reconciliation-dashboard": {
     title: "Tutorial rápido - ops/partners/reconciliation-dashboard",
     subtitle: "Conciliação de divergências de settlement por parceiro.",

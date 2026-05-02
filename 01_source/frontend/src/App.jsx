@@ -75,6 +75,7 @@ const BillingInvoiceQueuePage = lazy(() => import("./pages/BillingInvoiceQueuePa
 const BillingReconciliationGapsPage = lazy(() => import("./pages/BillingReconciliationGapsPage"));
 const BillingKpiDailyPage = lazy(() => import("./pages/BillingKpiDailyPage"));
 const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
+const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
 const FiscalUpdatesPage = lazy(() => import("./pages/FiscalUpdatesPage"));
@@ -388,6 +389,7 @@ function TopNav() {
     { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", group: "Integrações" },
     { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners", group: "Partners" },
     { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas", group: "Partners" },
+    { to: "/ops/partners/settlement", label: "ops /partners/settlement", aria: "Batches e itens de settlement por parceiro com export CSV/JSON", group: "Partners" },
     { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", group: "Partners" },
     { to: "/ops/partners/billing-monitor", label: "ops /partners/billing-monitor", aria: "Monitor simples de billing e invoices de partners", group: "Partners" },
     { to: "/ops/partners/hypertables", label: "ops /partners/hypertables", aria: "Status de hypertables e policies Timescale FA-5", group: "Partners" },
@@ -1486,6 +1488,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsPartnersFinancialsServiceAreasPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/partners/settlement"
+              element={
+                <OpsRoute>
+                  <PartnerSettlementPage />
                 </OpsRoute>
               }
             />

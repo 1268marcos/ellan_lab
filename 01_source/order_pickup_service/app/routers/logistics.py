@@ -1210,6 +1210,12 @@ def list_logistics_manifests(
     return LogisticsManifestListOut(ok=True, total=total, items=[_to_manifest_out(row) for row in rows])
 
 
+@router.get("/manifests/{manifest_id}", response_model=LogisticsManifestOut)
+def get_logistics_manifest(manifest_id: str, db: Session = Depends(get_db)):
+    manifest = _ensure_manifest_exists(db, manifest_id)
+    return _to_manifest_out(manifest)
+
+
 @router.get("/manifests/{manifest_id}/items", response_model=LogisticsManifestItemListOut)
 def list_logistics_manifest_items(
     manifest_id: str,
