@@ -1,7 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import mkcert from "vite-plugin-mkcert"; // ← NOVO: import do plugin
 import { ELLAN_FRONTEND_CSP, ELLAN_FRONTEND_CSP_META } from "./ellan-frontend-csp.mjs";
 
+/**
+ * CSP (fonte: ./ellan-frontend-csp.mjs):
+ * - Dev (vite serve): meta no HTML com placeholder → substituída pela política + unsafe-inline em script-src (HMR).
+ * - Build: meta removida do dist — produção: header no gateway (02_docker/nginx/csp-frontend.example.conf).
+ * - vite preview: header Content-Security-Policy (mesmo valor), pois o dist não tem meta.
+ */
 function ellanCspIndexHtml() {
   const cspMetaRe = /\s*<meta[\s\S]*?http-equiv\s*=\s*["']Content-Security-Policy["'][\s\S]*?\/>/gi;
   return {
@@ -22,11 +29,17 @@ function ellanCspIndexHtml() {
   };
 }
 
+// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     ellanCspIndexHtml(),
-    // plugin mkcert REMOVIDO
+    mkcert({
+      // Hosts para gerar certificado (localhost + variações)
+      hosts: ["localhost", "127.0.0.1", "::1"],
+      // Opcional: forçar regeneração se mudar algo
+      // force: process.env.FORCE_CERT === "true",
+    }),
   ],
   preview: {
     headers: {
@@ -40,10 +53,10 @@ export default defineConfig({
     pool: "threads",
   },
   server: {
-    https: false,        // ← MUDADO para false
-    host: true,
+    https: true,        // ← NOVO: habilita HTTPS
+    host: true,         // ← NOVO: permite acesso via IP da rede
     port: 5173,
-    strictPort: true,
+    strictPort: true,   // ← OPCIONAL: falha se a porta estiver em uso
     proxy: {
       "/api/sp": {
         target: "http://localhost:8201",

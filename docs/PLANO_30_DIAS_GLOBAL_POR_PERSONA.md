@@ -483,7 +483,7 @@ Indicativos para acompanhamento executivo; sprints podem sobrepor-se no calendar
 | **Sprint 0b (produção)** | Contínuo | **`[~]` ~20%** | Trilha documental (KPI v0 no doc + mapa interno de APIs); medição **oficial** em prod e coms externas **pendentes** |
 | Sprint 1 | Dias 3-9 | **~73%** | **`#1` capacidade FE/KIOSK v1** — média 6 itens (**Metodo** *(xviii)*); fundação ~**97%**; migração estilos **~25%** (checkout + kiosk OPS); protótipos KIOSK **`[~]` ~80%**; E2E assistido **`[~]` ~40%** |
 | Sprint 2 | Dias 10-18 | **~62%** consolidado; Fiscal **~50%**; Contabil **~50%** | Trilha financeira D10-D18; OPS **~88%**, Suporte **~78%** no mesmo macro |
-| Sprint 3 | Dias 19-24 | **~81%** | Média das seis frentes (CSP 68, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); ver **Metodo** *(xii)* + P0-1 `sprint3_e2e_audit_trail_service.py` (**v3**) + P0-2 `fiscal/slo-alerts` (**v3**) + P0-3 runbook **v2** simulação 15 min |
+| Sprint 3 | Dias 19-24 | **~84%** | Média das seis frentes (CSP **85**, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); ver **Metodo** *(xii)* + P0-1 `sprint3_e2e_audit_trail_service.py` (**v3**) + P0-2 `fiscal/slo-alerts` (**v3**) + P0-3 runbook **v2** simulação 15 min |
 | Sprint 4 | Dias 25-30 | **~57%** | Média dos 4 itens do checklist Sprint 4 (50, 70, 28, 80) |
 
 #### Painel percentual para decisão (snapshot 2026-05-01)
@@ -495,7 +495,7 @@ Percentuais acima **para decisão executiva** usam: Sprint 0 lab = conclusão ch
 | **Sprint 0b produção** | **~20%** | `[~]` Em andamento (documental) | KPI v0 + mapa interno de APIs; **oficial** em prod + coms externas ainda por fechar |
 | Sprint 1 | **~73%** | `[~]` | **Prioridade `#1` capacidade**; store **`[x]`**; TS **`[~]` ~93%**; checkout **CSS+E2E** (fatias 1–4 + mobile, POST sucesso/409); KIOSK cockpit + **CSS OPS** (`opsKioskTouchModelsChrome.css`); protótipos **~80%**; E2E assistido **A–D** + totem PT mockado (**~40%**); próximo: **sessão n≥8 presencial** ou `checkJs` |
 | Sprint 2 | **~62%** | `[~]` | **Prioridade `#1` negócio** (Fiscal + Contábil / D10–D18; Fiscal **~50%**, Contábil **~50%**); **coexiste** com S1 — throughput mínimo acordado |
-| Sprint 3 | **~81%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
+| Sprint 3 | **~84%** | `[~]` | **Congelar net-new** até **gate v2** (Fiscal ≥50%, Contábil ≥40%, consolidado S2 ≥55%, comprovação P0 — secção Sprint 2); depois S3 = **sprint ideal** para expansão |
 | Sprint 4 | **~57%** | `[~]` | **Sprint ideal** só na **fase C** pós-**gate v2**; até lá matriz/UAT sem expansão além do planeado |
 
 #### Evolucao percentual entre snapshots (lab — 2026-04-30)
@@ -659,7 +659,7 @@ Objetivo: reduzir fragilidade operacional e risco de escala.
 
 Checklist:
 - [~] Endurecer CSP e politicas de seguranca frontend.
-  - Progresso: **68%** (meta CSP removida do `dist` no build — política só no gateway; exemplo Nginx em `02_docker/nginx/csp-frontend.example.conf`; JSON-LD externo; dev: plugin reabre `unsafe-inline` em `script-src`; `style-src` ainda com `unsafe-inline` no gateway até migração de estilos)
+  - Progresso: **85%** (`ellan-frontend-csp.mjs`: `script-src-attr 'none'`, `navigate-to 'self'`, `worker-src 'self' blob:`; meta CSP removida do `dist`; gateway `02_docker/nginx/csp-frontend.example.conf` alinhado; dev: `unsafe-inline` só em `script-src` via Vite; **`style-src` ainda `unsafe-inline`** até migração de estilos; produção HTTPS: documentado `upgrade-insecure-requests` + `connect-src` real no exemplo Nginx)
 - [~] Evoluir tipagem TS em modulos criticos (`noImplicitAny` nesses modulos).
   - Progresso: **96%** (strict-core inclui locker-dashboard, `LockerDashboard`, `PickupHealthPanel`, `useOpsWindowPreset`, `OpsActionButton`, **`OpsKioskTouchModelsPage`**; utilitários OPS/data em páginas fiscais e `DevBaseCatalog` como antes)
 - [~] Completar auditoria ponta a ponta em fluxos de alto impacto.
@@ -1804,7 +1804,7 @@ Resumo:
 - **Sprint 4** entra em modo **paralelo seguro**: preparação de regressão/UAT e KPI mínimo de saída, sem bloquear o fechamento da Sprint 3.
 
 Atualização de progresso (snapshot consolidado):
-- **Sprint 3:** **~81%** (itens auditoria **80%**, SLO **90%**, P0-3 **50%**; média das seis frentes — secção Sprint 3 e **Metodo** *(xii)* no painel percentual)
+- **Sprint 3:** **~84%** (CSP **85%**, auditoria **80%**, SLO **90%**, P0-3 **50%**; média das seis frentes — secção Sprint 3 e **Metodo** *(xii)* no painel percentual)
 - **Sprint 4:** **~57%** (média checklist Sprint 4 atualizada; regressão **50%** + UAT **70%** + Go/No-Go **80%** — ver secção Sprint 4)
 
 Decisão executiva:
@@ -1966,7 +1966,7 @@ Resumo (sem alterar gate v2 nem itens `[x]`/`[ ]` fechados pelo comité):
 - **Sprint 0b (produção):** **`[~]` ~20%** — trilha documental (KPI v0 no plano + mapa interno de APIs); primeiro `[x]` com KPI **oficial** em produção ainda pendente.
 - **Sprint 1:** média dos **6** itens do checklist **~61% → ~65%** — **Metodo** *(ix)*: estilos (parcel checkout) **22%**, E2E assistido **14%**, demais itens inalterados (store/boundary **100%**, TS **91%**, protótipos KIOSK **64%**); fundação FE **~97%**. (Atualização posterior **Metodo** *(x)* em **2026-04-30**: painel **~67%** — ver registo nessa data.)
 - **Sprint 2:** consolidado **~52% → ~54% → ~56% → ~58% → ~62%** (**Metodo** *(xi)*, **2026-04-30**–**2026-05-01**); **trilhas** com percentual explícito no doc: OPS **~88%**, Suporte **~78%**, Fiscal **~39% → ~48% → ~50%** (checkpoints **2026-05-01**, P0 gaps `SPRINT2_FISCAL_GAP_*` + matriz emissores `SPRINT2_FISCAL_ISSUER_GOVERNANCE_MATRIX_*`), Contábil **~46% → ~50%** (D14–D16 + P0 **`SPRINT2_PARTNER_PROVISIONS_GOVERNANCE_*`** — **Metodo** *(xiv)*–*(xvi)* + provisões), Comprador ONLINE (evidência checkout; espelho **Metodo** *(x)* **~25%**), KIOSK operacional **0%**, Parceiros **0%**.
-- **Sprint 3:** **~81%** — média **(68 + 96 + 80 + 90 + 100 + 50) / 6 ≈ 81%** com itens do checklist atual (CSP 68, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); **sem** net-new além do planeado até **gate v2**.
+- **Sprint 3:** **~84%** — média **(85 + 96 + 80 + 90 + 100 + 50) / 6 ≈ 84%** com itens do checklist atual (CSP **85**, TS 96, auditoria **80**, SLO **90**, quick-enablement 100, P0-3 incidente **50**); **sem** net-new além do planeado até **gate v2**.
 - **Sprint 4:** **~57%** — média **(50 + 70 + 28 + 80) / 4 ≈ 57%** após registo Go/No-Go com riscos/tópicos + **`readiness_documentation_pct`** + export dedicado (**2026-05-01**).
 
 Decisão executiva:

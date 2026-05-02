@@ -2,6 +2,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { ELLAN_FRONTEND_CSP, ELLAN_FRONTEND_CSP_META } from "./ellan-frontend-csp.mjs";
 
+/**
+ * CSP (fonte: ./ellan-frontend-csp.mjs):
+ * - Dev (vite serve): meta no HTML com placeholder → substituída pela política + unsafe-inline em script-src (HMR).
+ * - Build: meta removida do dist — produção: header no gateway (02_docker/nginx/csp-frontend.example.conf).
+ * - vite preview: header Content-Security-Policy (mesmo valor), pois o dist não tem meta.
+ */
 function ellanCspIndexHtml() {
   const cspMetaRe = /\s*<meta[\s\S]*?http-equiv\s*=\s*["']Content-Security-Policy["'][\s\S]*?\/>/gi;
   return {
@@ -22,12 +28,9 @@ function ellanCspIndexHtml() {
   };
 }
 
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    react(),
-    ellanCspIndexHtml(),
-    // plugin mkcert REMOVIDO
-  ],
+  plugins: [react(), ellanCspIndexHtml()],
   preview: {
     headers: {
       "Content-Security-Policy": ELLAN_FRONTEND_CSP,
@@ -40,10 +43,6 @@ export default defineConfig({
     pool: "threads",
   },
   server: {
-    https: false,        // ← MUDADO para false
-    host: true,
-    port: 5173,
-    strictPort: true,
     proxy: {
       "/api/sp": {
         target: "http://localhost:8201",
