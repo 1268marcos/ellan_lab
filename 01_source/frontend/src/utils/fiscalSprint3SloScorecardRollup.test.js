@@ -1,14 +1,19 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  applySprint3CountryCalibration,
   buildCountrySloScorecardRows,
+  buildSloThresholdsExportBundle,
   computeSloFiscalOpsReadinessScore,
+  resolveSprint3SloBaseThresholds,
   SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
+  SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION,
 } from "./fiscalSprint3SloScorecardRollup";
 
 describe("fiscalSprint3SloScorecardRollup", () => {
-  it("exports schema v2", () => {
-    expect(SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA).toBe("sprint3-slo-scorecard-v2");
+  it("exports schema v3 e bundle v6", () => {
+    expect(SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA).toBe("sprint3-slo-scorecard-v3");
+    expect(SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION).toBe("sprint3-v6-br-pt-calibration");
   });
 
   it("buildCountrySloScorecardRows aggregates by country", () => {
@@ -22,6 +27,24 @@ describe("fiscalSprint3SloScorecardRollup", () => {
     expect(br?.rows).toBe(2);
     expect(br?.errors).toBe(1);
     expect(pt?.rows).toBe(1);
+  });
+
+  it("buildSloThresholdsExportBundle: BR mais apertado que GLOBAL em 7D", () => {
+    const bundle = buildSloThresholdsExportBundle("7D");
+    expect(bundle.bundle_version).toBe(SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION);
+    const g = bundle.by_profile.GLOBAL.thresholds.errorRate.medium;
+    const br = bundle.by_profile.BR.thresholds.errorRate.medium;
+    const pt = bundle.by_profile.PT.thresholds.errorRate.medium;
+    expect(br).toBeLessThan(g);
+    expect(pt).toBeLessThan(g);
+    expect(br).toBeLessThanOrEqual(pt);
+    expect(bundle.by_profile.BR.thresholds.latencyP95Ms.medium).toBeLessThan(bundle.by_profile.GLOBAL.thresholds.latencyP95Ms.medium);
+  });
+
+  it("resolveSprint3SloBaseThresholds 24H difere de 7D", () => {
+    const d1 = resolveSprint3SloBaseThresholds("24H");
+    const d7 = resolveSprint3SloBaseThresholds("7D");
+    expect(d1.errorRate.medium).not.toEqual(d7.errorRate.medium);
   });
 
   it("computeSloFiscalOpsReadinessScore penalizes high severity", () => {
@@ -48,5 +71,11 @@ describe("fiscalSprint3SloScorecardRollup", () => {
     expect(low).toBeGreaterThan(critical);
     expect(critical).toBeLessThanOrEqual(100);
     expect(critical).toBeGreaterThanOrEqual(0);
+  });
+
+  it("applySprint3CountryCalibration preserva prolongedDiff", () => {
+    const base = resolveSprint3SloBaseThresholds("7D");
+    const br = applySprint3CountryCalibration(base, "BR");
+    expect(br.prolongedDiff).toEqual(base.prolongedDiff);
   });
 });

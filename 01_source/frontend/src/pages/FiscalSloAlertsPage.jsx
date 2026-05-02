@@ -15,14 +15,19 @@ import {
   SPRINT3_SLO_POST_REC_VERSION,
 } from "../utils/fiscalSprint3SloPostRecDecisions";
 import {
+  applySprint3CountryCalibration,
   buildCountrySloScorecardRows,
+  buildSloThresholdsExportBundle,
+  COUNTRY_CALIBRATION_PROFILES,
   computeSloFiscalOpsReadinessScore,
+  resolveSprint3SloBaseThresholds,
   SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
+  SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION,
 } from "../utils/fiscalSprint3SloScorecardRollup";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/slo-alerts v1.5.0-p02-scorecard-ops";
+const PAGE_VERSION = "fiscal/slo-alerts v1.6.0-br-pt-thresholds-v6";
 
 const POST_REC_DECISION_OPTIONS = [
   { value: "FOLLOW_RECOMMENDATION", label: "Seguir recomendação (ação alinhada)" },
@@ -32,113 +37,12 @@ const POST_REC_DECISION_OPTIONS = [
   { value: "INVESTIGATE_FIRST", label: "Investigar antes de mudar threshold" },
 ];
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
-const SLO_THRESHOLD_VERSION = "sprint3-v5-ops-fiscal-scorecard";
-
-const SLO_THRESHOLDS_BY_PERIOD = Object.freeze({
-  "24H": {
-    errorRate: {
-      medium: 0.08,
-      critical: 0.2,
-    },
-    latencyP95Ms: {
-      medium: 700,
-      high: 1200,
-    },
-    hoursSinceLatestApproval: {
-      high: 8,
-    },
-    prolongedDiff: {
-      critical: true,
-      divergenceWindow: 6,
-      prolongedEdges: 2,
-    },
-  },
-  "7D": {
-    errorRate: {
-      medium: 0.1,
-      critical: 0.3,
-    },
-    latencyP95Ms: {
-      medium: 900,
-      high: 1500,
-    },
-    hoursSinceLatestApproval: {
-      high: 24,
-    },
-    prolongedDiff: {
-      critical: true,
-      divergenceWindow: 10,
-      prolongedEdges: 3,
-    },
-  },
-  "30D": {
-    errorRate: {
-      medium: 0.12,
-      critical: 0.35,
-    },
-    latencyP95Ms: {
-      medium: 1000,
-      high: 1700,
-    },
-    hoursSinceLatestApproval: {
-      high: 48,
-    },
-    prolongedDiff: {
-      critical: true,
-      divergenceWindow: 16,
-      prolongedEdges: 4,
-    },
-  },
-});
 
 const CALIBRATION_STRATEGY_SEVERITY = Object.freeze({
   TIGHTEN_THRESHOLDS: "MEDIUM",
   INVESTIGATE_FIRST: "HIGH",
   KEEP_BASELINE: "LOW",
 });
-
-const COUNTRY_CALIBRATION_PROFILES = Object.freeze({
-  GLOBAL: {
-    label: "Global baseline",
-    errorRateMultiplier: 1,
-    latencyMultiplier: 1,
-    approvalHoursMultiplier: 1,
-  },
-  BR: {
-    label: "BR operacional (mais sensível)",
-    errorRateMultiplier: 0.9,
-    latencyMultiplier: 0.92,
-    approvalHoursMultiplier: 0.85,
-  },
-  PT: {
-    label: "PT operacional (moderado)",
-    errorRateMultiplier: 0.95,
-    latencyMultiplier: 0.96,
-    approvalHoursMultiplier: 0.9,
-  },
-});
-
-function resolveSloThresholds(period) {
-  return SLO_THRESHOLDS_BY_PERIOD[period] || SLO_THRESHOLDS_BY_PERIOD["7D"];
-}
-
-function applyCountryCalibration(baseThresholds, calibrationKey) {
-  const profile = COUNTRY_CALIBRATION_PROFILES[calibrationKey] || COUNTRY_CALIBRATION_PROFILES.GLOBAL;
-  return {
-    ...baseThresholds,
-    errorRate: {
-      medium: Number((baseThresholds.errorRate.medium * profile.errorRateMultiplier).toFixed(4)),
-      critical: Number((baseThresholds.errorRate.critical * profile.errorRateMultiplier).toFixed(4)),
-    },
-    latencyP95Ms: {
-      medium: Math.max(1, Math.round(baseThresholds.latencyP95Ms.medium * profile.latencyMultiplier)),
-      high: Math.max(1, Math.round(baseThresholds.latencyP95Ms.high * profile.latencyMultiplier)),
-    },
-    hoursSinceLatestApproval: {
-      high: Number((baseThresholds.hoursSinceLatestApproval.high * profile.approvalHoursMultiplier).toFixed(2)),
-    },
-  };
-}
 
 function median(values) {
   const nums = values.filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
@@ -453,7 +357,7 @@ export default function FiscalSloAlertsPage() {
     return "GLOBAL";
   }, [calibrationProfile, countryFilter]);
   const activeThresholds = useMemo(
-    () => applyCountryCalibration(resolveSloThresholds(periodFilter), effectiveCalibrationProfile),
+    () => applySprint3CountryCalibration(resolveSprint3SloBaseThresholds(periodFilter), effectiveCalibrationProfile),
     [periodFilter, effectiveCalibrationProfile]
   );
 
@@ -548,7 +452,8 @@ export default function FiscalSloAlertsPage() {
     return {
       export_schema: SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
       page_version: PAGE_VERSION,
-      threshold_bundle: SLO_THRESHOLD_VERSION,
+      threshold_bundle: SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION,
+      thresholds_by_country: buildSloThresholdsExportBundle(periodFilter),
       filters: {
         country: countryFilter,
         partner: partnerFilter,
@@ -572,7 +477,7 @@ export default function FiscalSloAlertsPage() {
     setError("");
     try {
       const effectivePeriod = periodOverride || periodFilter;
-      const thresholdsForFetch = resolveSloThresholds(effectivePeriod);
+      const thresholdsForFetch = resolveSprint3SloBaseThresholds(effectivePeriod);
       const dateFrom = readPeriodDateFrom(effectivePeriod);
       const [providerRes, latestRes, auditRes, divergencePayload, approvalsPayload] = await Promise.all([
         fetch(`${BILLING_BASE}/admin/fiscal/providers/status`, { method: "GET", headers: headersJson() }),
@@ -632,7 +537,7 @@ export default function FiscalSloAlertsPage() {
         trilha_e2e_materialized_rate: Number(auditMaterializedRate.toFixed(4)),
       },
       thresholds: {
-        version: SLO_THRESHOLD_VERSION,
+        version: SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION,
         selected_period: periodFilter,
         error_rate: activeThresholds.errorRate,
         latency_p95_ms: activeThresholds.latencyP95Ms,
@@ -642,6 +547,7 @@ export default function FiscalSloAlertsPage() {
           key: effectiveCalibrationProfile,
           label: COUNTRY_CALIBRATION_PROFILES[effectiveCalibrationProfile]?.label || "Global baseline",
         },
+        by_country: buildSloThresholdsExportBundle(periodFilter),
       },
       totals: {
         provider_rows_filtered: totalCount,
@@ -651,6 +557,7 @@ export default function FiscalSloAlertsPage() {
       },
       scorecard_rollups: {
         by_country: countryScorecardAll,
+        thresholds_by_country: buildSloThresholdsExportBundle(periodFilter),
         slo_readiness_0_100: sloReadinessScore,
         fiscal_ops_note:
           "Agregado por país sobre `providers/status`; readiness combina severidade SLO, erro, latência p95 vs limiares da janela e cobertura E2E.",
@@ -819,6 +726,7 @@ export default function FiscalSloAlertsPage() {
           selected: calibrationProfile,
           applied: effectiveCalibrationProfile,
         },
+        thresholds_by_country: buildSloThresholdsExportBundle(periodFilter),
         e2e_audit_trail_rollups: auditTrail?.trail_rollups ?? null,
       },
     });
@@ -849,7 +757,7 @@ export default function FiscalSloAlertsPage() {
         </div>
         <OpsPageTitleHeader title="FISCAL - Sprint 3 SLO Scorecard" versionLabel={PAGE_VERSION} />
         <p style={mutedTextStyle}>
-          Sprint 3 (P0-2): scorecard SLO + recomendações automáticas + registo local de decisões pós-recomendação (export JSON/ZIP, meta 3 decisões por sprint).
+          Sprint 3 (P0-2): scorecard SLO v3 + limiares BR/PT explícitos no export + recomendações automáticas + registo local de decisões pós-recomendação (JSON/ZIP; meta **3 decisões reais** BR/PT no daily via ZIP ou ficheiro `SPRINT3_P0_2_POST_REC_DECISIONS_*`).
         </p>
 
         <div style={filtersRowStyle}>
@@ -925,7 +833,7 @@ export default function FiscalSloAlertsPage() {
                   <span style={chipStyle}>Aprovação sem update: {hoursSinceLatestApproval.toFixed(1)}h</span>
                 </div>
                 <small style={mutedTextStyle}>
-                  Thresholds ({SLO_THRESHOLD_VERSION}, janela {periodFilter}, perfil {effectiveCalibrationProfile}): erro `{(activeThresholds.errorRate.medium * 100).toFixed(0)}%`/`{(activeThresholds.errorRate.critical * 100).toFixed(0)}%`, latência `{activeThresholds.latencyP95Ms.medium}`/`{activeThresholds.latencyP95Ms.high}` ms, tratativa `{activeThresholds.hoursSinceLatestApproval.high}`h.
+                  Thresholds ({SPRINT3_SLO_THRESHOLD_BUNDLE_VERSION}, janela {periodFilter}, perfil {effectiveCalibrationProfile}): erro `{(activeThresholds.errorRate.medium * 100).toFixed(0)}%`/`{(activeThresholds.errorRate.critical * 100).toFixed(0)}%`, latência `{activeThresholds.latencyP95Ms.medium}`/`{activeThresholds.latencyP95Ms.high}` ms, tratativa `{activeThresholds.hoursSinceLatestApproval.high}`h.
                 </small>
               </section>
               <section style={boxStyle}>
