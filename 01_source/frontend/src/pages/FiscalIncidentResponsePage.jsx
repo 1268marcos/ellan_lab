@@ -15,7 +15,7 @@ import {
   buildSprint3AssistedSimulationStampPayload,
 } from "../utils/fiscalSprint3IncidentRunbook";
 
-const PAGE_VERSION = "fiscal/incident-response v1.2.0-15min-sim-v2";
+const PAGE_VERSION = "fiscal/incident-response v1.3.0-s3-1-drill-presencial-fechado";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
 
 function toAuditDayStamp(isoString) {

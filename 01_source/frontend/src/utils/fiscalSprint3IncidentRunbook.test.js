@@ -11,7 +11,7 @@ import {
 
 describe("fiscalSprint3IncidentRunbook", () => {
   it("runbook v2 e timeline cobre 15 minutos", () => {
-    expect(SPRINT3_INCIDENT_RUNBOOK_VERSION).toContain("v2");
+    expect(SPRINT3_INCIDENT_RUNBOOK_VERSION).toContain("v3");
     expect(SPRINT3_ASSISTED_SIMULATION_DURATION_MIN).toBe(15);
     const last = SPRINT3_ASSISTED_SIMULATION_TIMELINE_15M[SPRINT3_ASSISTED_SIMULATION_TIMELINE_15M.length - 1];
     expect(last.minute_end).toBe(15);

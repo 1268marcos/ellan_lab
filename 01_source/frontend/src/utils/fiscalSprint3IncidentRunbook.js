@@ -3,7 +3,7 @@
  * Conteúdo versionado para export auditável (referência estática).
  */
 
-export const SPRINT3_INCIDENT_RUNBOOK_VERSION = "sprint3-incident-runbook-v2-15min-sim";
+export const SPRINT3_INCIDENT_RUNBOOK_VERSION = "sprint3-incident-runbook-v3-s3-1-presencial-drill-closed";
 
 /** Duração alvo da tabletop assistida (P0-3). */
 export const SPRINT3_ASSISTED_SIMULATION_DURATION_MIN = 15;
