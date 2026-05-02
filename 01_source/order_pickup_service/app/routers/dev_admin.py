@@ -49,6 +49,9 @@ from app.schemas.dev_admin import (
     DevReconciliationPendingItemOut,
     DevReconciliationPendingListOut,
     DevReconcileOrderOut,
+    DevPaymentReconciliationSnapshotOut,
+    DevPaymentSplitItemOut,
+    DevPaymentTxReconItemOut,
     DevReleaseRegionalAllocationsIn,
     DevReleaseRegionalAllocationsOut,
     DevResetLockerIn,
@@ -75,6 +78,7 @@ from app.services.order_reconciliation_service import (
     resolve_latest_allocation,
     resolve_latest_pickup,
 )
+from app.services.payment_reconciliation_ops_service import fetch_ops_payment_reconciliation_snapshot
 from app.services.reconciliation_pending_service import list_reconciliation_pending
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
 from app.services.ops_audit_service import list_ops_action_audit, record_ops_action_audit
@@ -615,6 +619,65 @@ def dev_reconcile_order(
             error_message=exc.__class__.__name__,
         )
         raise
+
+
+@router.get("/payment-reconciliation", response_model=DevPaymentReconciliationSnapshotOut)
+def dev_payment_reconciliation_snapshot(
+    reconciliation_status: str | None = Query(default=None),
+    reconciliation_batch_id: str | None = Query(default=None),
+    payment_status: str | None = Query(default=None, description="Status da transação (INITIATED, APPROVED, …)"),
+    split_status: str | None = Query(default=None, description="Filtro opcional em payment_splits.status"),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(get_current_user),
+    correlation_id: str | None = Header(default=None, alias="X-Correlation-Id"),
+    db: Session = Depends(get_db),
+):
+    corr_id = _resolve_correlation_id(correlation_id)
+    raw = fetch_ops_payment_reconciliation_snapshot(
+        db,
+        reconciliation_status=reconciliation_status,
+        reconciliation_batch_id=reconciliation_batch_id,
+        payment_status=payment_status,
+        split_status=split_status,
+        limit=limit,
+        offset=offset,
+    )
+    total = int(raw.get("total") or 0)
+    txs = [
+        DevPaymentTxReconItemOut(**item) for item in (raw.get("transactions") or [])
+    ]
+    splits = [
+        DevPaymentSplitItemOut(**item) for item in (raw.get("splits") or [])
+    ]
+    has_more = offset + len(txs) < total
+    _safe_record_ops_audit(
+        action="OPS_PAYMENT_RECONCILIATION_SNAPSHOT",
+        result="SUCCESS",
+        correlation_id=corr_id,
+        user_id=current_user.id,
+        role="ops_user",
+        details={
+            "reconciliation_status": reconciliation_status,
+            "reconciliation_batch_id": reconciliation_batch_id,
+            "payment_status": payment_status,
+            "split_status": split_status,
+            "limit": limit,
+            "offset": offset,
+            "returned_tx": len(txs),
+            "returned_splits": len(splits),
+        },
+    )
+    return DevPaymentReconciliationSnapshotOut(
+        ok=True,
+        total=total,
+        limit=limit,
+        offset=offset,
+        has_more=has_more,
+        payment_splits_available=bool(raw.get("payment_splits_available")),
+        transactions=txs,
+        splits=splits,
+    )
 
 
 @router.get("/reconciliation-pending", response_model=DevReconciliationPendingListOut)

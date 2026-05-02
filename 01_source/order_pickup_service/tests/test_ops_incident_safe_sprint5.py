@@ -59,6 +59,7 @@ def _build_client(Session):
         ("post", "/dev-admin/reconcile-order", {"order_id": "order-should-not-run"}),
         ("post", "/dev-admin/reconciliation-pending/run-once", None),
         ("get", "/dev-admin/reconciliation-pending", None),
+        ("get", "/dev-admin/payment-reconciliation", None),
         ("get", "/dev-admin/ops-audit", None),
         ("get", "/dev-admin/ops-metrics", None),
     ],

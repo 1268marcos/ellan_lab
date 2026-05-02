@@ -83,6 +83,43 @@ class DevReconciliationPendingListOut(BaseModel):
     items: list[DevReconciliationPendingItemOut]
 
 
+class DevPaymentTxReconItemOut(BaseModel):
+    id: str
+    order_id: str
+    gateway: str
+    status: str
+    amount_cents: int
+    reconciliation_status: str | None = None
+    reconciliation_batch_id: str | None = None
+    initiated_at: str | None = None
+    approved_at: str | None = None
+    settled_at: str | None = None
+    updated_at: str | None = None
+
+
+class DevPaymentSplitItemOut(BaseModel):
+    id: str
+    order_id: str
+    recipient_type: str
+    recipient_id: str
+    amount_cents: int
+    percentage: float | None = None
+    status: str
+    settled_at: str | None = None
+    created_at: str | None = None
+
+
+class DevPaymentReconciliationSnapshotOut(BaseModel):
+    ok: bool
+    total: int
+    limit: int
+    offset: int
+    has_more: bool
+    payment_splits_available: bool
+    transactions: list[DevPaymentTxReconItemOut]
+    splits: list[DevPaymentSplitItemOut]
+
+
 class DevOpsAuditItemOut(BaseModel):
     id: str
     action: str

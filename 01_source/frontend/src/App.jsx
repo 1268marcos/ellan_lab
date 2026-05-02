@@ -43,6 +43,7 @@ const OrderDeadlinesPage = lazy(() => import("./pages/OrderDeadlinesPage"));
 const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
 const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
+const PaymentReconciliationPage = lazy(() => import("./pages/PaymentReconciliationPage"));
 const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsRuntimeHealthPage = lazy(() => import("./pages/OpsRuntimeHealthPage"));
 const OpsRuntimeEventLogPage = lazy(() => import("./pages/OpsRuntimeEventLogPage"));
@@ -362,6 +363,12 @@ function TopNav() {
       to: "/ops/order/deadlines",
       label: "ops /order/deadlines",
       aria: "Deadlines lifecycle (documentação / gap listagem)",
+      group: "Order / Pickup",
+    },
+    {
+      to: "/ops/payments/reconciliation",
+      label: "ops /payments/reconciliation",
+      aria: "Conciliação payment_transactions e payment_splits (status e lote)",
       group: "Order / Pickup",
     },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
@@ -1585,6 +1592,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OrderDeadlinesPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/payments/reconciliation"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <PaymentReconciliationPage />)}
                 </OpsRoute>
               }
             />

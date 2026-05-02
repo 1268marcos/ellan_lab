@@ -2730,6 +2730,74 @@ def _create_payment_transactions(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _migrate_payment_transactions_reconciliation_v1(conn, applied: list[str]) -> None:
+    """
+    Colunas de conciliação com lote (adquirente / fechamento) em payment_transactions.
+    """
+    name = "payment_transactions.reconciliation_columns_v1"
+    if _migration_applied(conn, name):
+        return
+    inspector = inspect(conn)
+    if not _has_table(inspector, "payment_transactions"):
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    _ensure_columns(conn, "payment_transactions", {
+        "reconciliation_status": "VARCHAR(20) NOT NULL DEFAULT 'PENDING'",
+        "reconciliation_batch_id": "VARCHAR(100)",
+    })
+    if _dialect(conn) == "postgresql":
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_pt_reconciliation "
+                "ON payment_transactions (reconciliation_status) "
+                "WHERE reconciliation_status = 'PENDING'"
+            )
+        )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_payment_splits(conn, applied: list[str]) -> None:
+    """
+    Repasses por pedido (marketplace / split) — status e settled_at para conciliação.
+    """
+    name = "payment_splits.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    inspector = inspect(conn)
+    if not _has_table(inspector, "orders"):
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS payment_splits (
+                id               VARCHAR(36) PRIMARY KEY,
+                order_id         VARCHAR(36) NOT NULL REFERENCES orders(id),
+                recipient_type   VARCHAR(30) NOT NULL,
+                recipient_id     VARCHAR(128) NOT NULL,
+                amount_cents     INTEGER NOT NULL,
+                percentage       NUMERIC(5,2),
+                status             VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                settled_at         TIMESTAMPTZ,
+                created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ps_order ON payment_splits (order_id)"))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_ps_recipient "
+            "ON payment_splits (recipient_type, recipient_id, status)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ---------------------------------------------------------------------------
 # ══════════════════════════════════════════════════════════════════════════
 # BLOCO 8 — Alocações e Pickups
@@ -4153,6 +4221,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_webhook_deliveries,
     _create_orders,
     _create_payment_transactions,
+    _migrate_payment_transactions_reconciliation_v1,
+    _create_payment_splits,
     _create_allocations,
     _create_pickups,
     _create_pickup_tokens,
