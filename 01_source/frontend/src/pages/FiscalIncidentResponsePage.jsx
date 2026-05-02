@@ -12,10 +12,12 @@ import {
   SPRINT3_INCIDENT_RESPONSE_STORAGE_KEY,
   SPRINT3_INCIDENT_RUNBOOK_LINKS,
   SPRINT3_INCIDENT_RUNBOOK_VERSION,
+  SPRINT3_PRESENCIAL_DRILL_EVIDENCE_TEMPLATE,
+  buildPresencialDrillEvidenceFromForm,
   buildSprint3AssistedSimulationStampPayload,
 } from "../utils/fiscalSprint3IncidentRunbook";
 
-const PAGE_VERSION = "fiscal/incident-response v1.3.0-s3-1-drill-presencial-fechado";
+const PAGE_VERSION = "fiscal/incident-response v1.4.0-presencial-drill-form";
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
 
 function toAuditDayStamp(isoString) {
@@ -111,6 +113,12 @@ export default function FiscalIncidentResponsePage() {
   const [doneById, setDoneById] = useState({});
   const [simulationScenario, setSimulationScenario] = useState(SPRINT3_ASSISTED_SIM_DEFAULT_SCENARIO);
   const [simulationStamps, setSimulationStamps] = useState([]);
+  const [presencialAgendaSessionId, setPresencialAgendaSessionId] = useState("");
+  const [presencialAgendaStartedAt, setPresencialAgendaStartedAt] = useState("");
+  const [presencialAgendaEndedAt, setPresencialAgendaEndedAt] = useState("");
+  const [presencialTurnLabel, setPresencialTurnLabel] = useState("");
+  const [presencialParticipantsLines, setPresencialParticipantsLines] = useState("");
+  const [presencialSignoffName, setPresencialSignoffName] = useState("");
 
   useEffect(() => {
     try {
@@ -126,6 +134,19 @@ export default function FiscalIncidentResponsePage() {
         setSimulationScenario(String(parsed?.simulation_scenario || SPRINT3_ASSISTED_SIM_DEFAULT_SCENARIO));
         const stamps = parsed?.simulation_stamps;
         setSimulationStamps(Array.isArray(stamps) ? stamps.slice(-15) : []);
+        const pd = parsed?.presencial_drill;
+        if (pd && typeof pd === "object") {
+          setPresencialAgendaSessionId(String(pd.agenda_session_id || "").replace(/^-$/, ""));
+          setPresencialTurnLabel(String(pd.turn_label || "").replace(/^-$/, ""));
+          setPresencialSignoffName(String(pd.facilitator_signoff?.name || "").replace(/^-$/, ""));
+          setPresencialAgendaStartedAt(String(pd.agenda_started_at || ""));
+          setPresencialAgendaEndedAt(String(pd.agenda_ended_at || ""));
+          if (Array.isArray(pd.participants)) {
+            setPresencialParticipantsLines(
+              pd.participants.map((p) => `${String(p?.name || "").trim()}|${String(p?.role || "").trim()}`).join("\n")
+            );
+          }
+        }
       }
     } catch {
       setError("Falha ao carregar rascunho local.");
@@ -146,6 +167,18 @@ export default function FiscalIncidentResponsePage() {
   const totalSteps = SPRINT3_INCIDENT_CHECKLIST.length;
 
   function persistDraft(nextDone = doneById, nextStamps = simulationStamps) {
+    const nowIso = new Date().toISOString();
+    const presencialDrill = buildPresencialDrillEvidenceFromForm(
+      {
+        agenda_session_id: presencialAgendaSessionId,
+        turn_label: presencialTurnLabel,
+        participants_lines: presencialParticipantsLines,
+        signoff_name: presencialSignoffName,
+        agenda_started_at: presencialAgendaStartedAt,
+        agenda_ended_at: presencialAgendaEndedAt,
+      },
+      nowIso
+    );
     const payload = {
       incident_id: incidentId,
       owner,
@@ -156,6 +189,7 @@ export default function FiscalIncidentResponsePage() {
       simulation_scenario: simulationScenario,
       simulation_stamps: nextStamps.slice(-15),
     };
+    if (presencialDrill) payload.presencial_drill = presencialDrill;
     try {
       window.localStorage.setItem(SPRINT3_INCIDENT_RESPONSE_STORAGE_KEY, JSON.stringify(payload));
       setStatus("Rascunho salvo localmente.");
@@ -173,6 +207,17 @@ export default function FiscalIncidentResponsePage() {
 
   function recordAssistedSimulationStamp() {
     const nowIso = new Date().toISOString();
+    const drillSnap = buildPresencialDrillEvidenceFromForm(
+      {
+        agenda_session_id: presencialAgendaSessionId,
+        turn_label: presencialTurnLabel,
+        participants_lines: presencialParticipantsLines,
+        signoff_name: presencialSignoffName,
+        agenda_started_at: presencialAgendaStartedAt,
+        agenda_ended_at: presencialAgendaEndedAt,
+      },
+      nowIso
+    );
     const stamp = {
       id: `sprint3_sim_${Date.now()}`,
       recorded_at: nowIso,
@@ -180,6 +225,7 @@ export default function FiscalIncidentResponsePage() {
       facilitator: String(owner || "").trim() || "-",
       incident_id: String(incidentId || "").trim() || "-",
       checklist_progress_at_stamp: `${doneCount}/${totalSteps}`,
+      ...(drillSnap ? { presencial_drill_snapshot: drillSnap } : {}),
     };
     const next = [...simulationStamps, stamp].slice(-15);
     setSimulationStamps(next);
@@ -217,13 +263,26 @@ export default function FiscalIncidentResponsePage() {
   }
 
   function buildSimulationStampPayload(nowIso) {
-    return buildSprint3AssistedSimulationStampPayload(nowIso, "fiscal/incident-response", {
+    const drill = buildPresencialDrillEvidenceFromForm(
+      {
+        agenda_session_id: presencialAgendaSessionId,
+        turn_label: presencialTurnLabel,
+        participants_lines: presencialParticipantsLines,
+        signoff_name: presencialSignoffName,
+        agenda_started_at: presencialAgendaStartedAt,
+        agenda_ended_at: presencialAgendaEndedAt,
+      },
+      nowIso
+    );
+    const draft = {
       incident_id: incidentId,
       owner,
       severity,
       simulation_stamps: simulationStamps,
       simulation_scenario: simulationScenario,
-    });
+    };
+    if (drill) draft.presencial_drill = drill;
+    return buildSprint3AssistedSimulationStampPayload(nowIso, "fiscal/incident-response", draft);
   }
 
   function buildRunbookRefPayload(nowIso) {
@@ -391,6 +450,72 @@ export default function FiscalIncidentResponsePage() {
           Evidências anexáveis (texto livre: URLs, order_id, logs, tickets)
           <textarea value={evidenceNotes} onChange={(e) => setEvidenceNotes(e.target.value)} style={textareaStyle} />
         </label>
+
+        <section style={boxStyle}>
+          <h3 style={boxTitleStyle}>Drill presencial — agenda e participantes (evidência P0-3)</h3>
+          <p style={mutedTextStyle}>
+            Preenche antes do carimbo; entra no JSON <code>presencial_drill</code> e no pacote diário via{" "}
+            <code>SPRINT3_ASSISTED_SIMULATION_STAMP_ATTACH</code>. Template JSON:{" "}
+            <code>{Object.keys(SPRINT3_PRESENCIAL_DRILL_EVIDENCE_TEMPLATE).join(", ")}</code>.
+          </p>
+          <div style={gridStyle}>
+            <label style={labelStyle}>
+              agenda_session_id
+              <input
+                value={presencialAgendaSessionId}
+                onChange={(e) => setPresencialAgendaSessionId(e.target.value)}
+                style={inputStyle}
+                placeholder="ex.: p03-drill-20260501-turno-A"
+              />
+            </label>
+            <label style={labelStyle}>
+              turn_label
+              <input
+                value={presencialTurnLabel}
+                onChange={(e) => setPresencialTurnLabel(e.target.value)}
+                style={inputStyle}
+                placeholder="ex.: tabletop"
+              />
+            </label>
+            <label style={labelStyle}>
+              agenda_started_at (ISO8601)
+              <input
+                value={presencialAgendaStartedAt}
+                onChange={(e) => setPresencialAgendaStartedAt(e.target.value)}
+                style={inputStyle}
+                placeholder="2026-05-01T14:00:00.000Z"
+              />
+            </label>
+            <label style={labelStyle}>
+              agenda_ended_at (ISO8601)
+              <input
+                value={presencialAgendaEndedAt}
+                onChange={(e) => setPresencialAgendaEndedAt(e.target.value)}
+                style={inputStyle}
+                placeholder="2026-05-01T15:30:00.000Z"
+              />
+            </label>
+          </div>
+          <label style={{ ...labelStyle, marginTop: 10 }}>
+            participants (1 linha = <code>nome|papel</code>)
+            <textarea
+              value={presencialParticipantsLines}
+              onChange={(e) => setPresencialParticipantsLines(e.target.value)}
+              style={textareaStyle}
+              placeholder={"Ana Silva|OPS\nBruno Costa|Fiscal\nCarla Dias|Parceiro"}
+              rows={4}
+            />
+          </label>
+          <label style={{ ...labelStyle, marginTop: 10 }}>
+            facilitator_signoff.name
+            <input
+              value={presencialSignoffName}
+              onChange={(e) => setPresencialSignoffName(e.target.value)}
+              style={inputStyle}
+              placeholder="Facilitador que assina o turno"
+            />
+          </label>
+        </section>
 
         <section style={boxStyle}>
           <h3 style={boxTitleStyle}>Simulação assistida — carimbo (Sprint 3 P0-3)</h3>

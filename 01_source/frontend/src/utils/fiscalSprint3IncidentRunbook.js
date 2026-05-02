@@ -3,7 +3,7 @@
  * Conteúdo versionado para export auditável (referência estática).
  */
 
-export const SPRINT3_INCIDENT_RUNBOOK_VERSION = "sprint3-incident-runbook-v3-s3-1-presencial-drill-closed";
+export const SPRINT3_INCIDENT_RUNBOOK_VERSION = "sprint3-incident-runbook-v3-1-p03-presencial-evidence";
 
 /** Duração alvo da tabletop assistida (P0-3). */
 export const SPRINT3_ASSISTED_SIMULATION_DURATION_MIN = 15;
@@ -70,7 +70,55 @@ export const SPRINT3_ASSISTED_SIMULATION_15MIN_COMMANDS = [
   "cd 01_source/frontend && npm run dev",
   "# Navegador: abrir /fiscal/incident-response (ex.: http://127.0.0.1:5173/fiscal/incident-response)",
   "cd 01_source/frontend && npm run sprint3:p03-sim",
+  "cd 01_source/frontend && npm run sprint3:p03-sim -- --presencial",
 ];
+
+/**
+ * Evidência mínima drill presencial (agenda + participantes + alinhamento ao carimbo `simulation_stamps`).
+ * Preencher no `localStorage` via cockpit `fiscal/incident-response` (campos opcionais) antes do ZIP diário.
+ */
+export const SPRINT3_PRESENCIAL_DRILL_EVIDENCE_TEMPLATE = {
+  agenda_session_id: "p03-drill-{YYYYMMDD}-turno-{A|B|C}",
+  agenda_started_at: "ISO8601",
+  agenda_ended_at: "ISO8601",
+  turn_label: "ex.: triagem / tabletop / encerramento",
+  participants: [{ name: "", role: "OPS|Fiscal|Parceiro|Suporte|..." }],
+  facilitator_signoff: { name: "", signed_at: "ISO8601" },
+  linked_simulation_stamp_ids: ["sprint3_sim_<timestamp>"],
+};
+
+/**
+ * @param {{ agenda_session_id?: string, turn_label?: string, participants_lines?: string, signoff_name?: string }} raw
+ * @param {string} signedAtIso
+ */
+export function buildPresencialDrillEvidenceFromForm(raw, signedAtIso) {
+  const agenda = String(raw?.agenda_session_id || "").trim();
+  const turn = String(raw?.turn_label || "").trim();
+  const agendaStarted = String(raw?.agenda_started_at || "").trim();
+  const agendaEnded = String(raw?.agenda_ended_at || "").trim();
+  const lines = String(raw?.participants_lines || "")
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [name, role] = line.split("|").map((x) => x.trim());
+      return { name: name || line, role: role || "-" };
+    });
+  const signoffName = String(raw?.signoff_name || "").trim();
+  if (!agenda && lines.length === 0 && !turn && !signoffName && !agendaStarted && !agendaEnded) return null;
+  const out = {
+    agenda_session_id: agenda || "-",
+    turn_label: turn || "-",
+    participants: lines.length ? lines : [{ name: "-", role: "-" }],
+    facilitator_signoff: {
+      name: signoffName || "-",
+      signed_at: signedAtIso || new Date().toISOString(),
+    },
+  };
+  if (agendaStarted) out.agenda_started_at = agendaStarted;
+  if (agendaEnded) out.agenda_ended_at = agendaEnded;
+  return out;
+}
 
 export const SPRINT3_INCIDENT_CHECKLIST = [
   {
@@ -147,7 +195,11 @@ export function loadSprint3IncidentResponseDraft() {
 export function buildSprint3AssistedSimulationStampPayload(nowIso, sourceAttach, draft) {
   const d = draft ?? loadSprint3IncidentResponseDraft() ?? {};
   const stamps = Array.isArray(d.simulation_stamps) ? d.simulation_stamps.slice(-15) : [];
-  return {
+  const presencial =
+    d.presencial_drill && typeof d.presencial_drill === "object" && Object.keys(d.presencial_drill).length
+      ? d.presencial_drill
+      : null;
+  const out = {
     scope: "SPRINT3_P0_3_ASSISTED_SIMULATION_STAMP",
     runbook_version: SPRINT3_INCIDENT_RUNBOOK_VERSION,
     generated_at: nowIso,
@@ -157,6 +209,7 @@ export function buildSprint3AssistedSimulationStampPayload(nowIso, sourceAttach,
     simulation_duration_min: SPRINT3_ASSISTED_SIMULATION_DURATION_MIN,
     simulation_timeline: SPRINT3_ASSISTED_SIMULATION_TIMELINE_15M,
     cli_commands_reference: SPRINT3_ASSISTED_SIMULATION_15MIN_COMMANDS,
+    presencial_drill_template_ref: "SPRINT3_PRESENCIAL_DRILL_EVIDENCE_TEMPLATE",
     incident: {
       incident_id: String(d.incident_id || "").trim() || "-",
       owner: String(d.owner || "").trim() || "-",
@@ -167,6 +220,8 @@ export function buildSprint3AssistedSimulationStampPayload(nowIso, sourceAttach,
     stamps_count: stamps.length,
     stamps,
   };
+  if (presencial) out.presencial_drill = presencial;
+  return out;
 }
 
 /**
