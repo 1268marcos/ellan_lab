@@ -1,21 +1,23 @@
 import React, { useCallback, useEffect, useState } from "react";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
-import { olFetch } from "../utils/orderLifecycleInternalApi";
+import { getOrderLifecycleBase, olFetch } from "../utils/orderLifecycleInternalApi";
+
+const PAGE_VERSION = "ops/order/executive-summary v0.1";
 
 export default function OrderPickupExecutiveSummaryPage() {
   const [data, setData] = useState(null);
-  const [err, setErr] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
-    setErr("");
+    setError("");
     try {
       const q = new URLSearchParams();
       const j = await olFetch(`/internal/analytics/pickup-executive-summary?${q.toString()}`);
       setData(j);
     } catch (e) {
-      setErr(e?.message || String(e));
+      setError(e?.message || "Falha ao carregar resumo executivo");
       setData(null);
     } finally {
       setLoading(false);
@@ -27,16 +29,34 @@ export default function OrderPickupExecutiveSummaryPage() {
   }, [load]);
 
   return (
-    <div style={{ padding: 24, maxWidth: 1100 }}>
-      <OpsPageTitleHeader title="Pickup — resumo executivo" subtitle="GET /internal/analytics/pickup-executive-summary" />
-      <button type="button" onClick={load} disabled={loading} style={{ marginTop: 12 }}>
-        {loading ? "Carregando…" : "Atualizar"}
-      </button>
-      {err ? <p style={{ color: "#f87171", marginTop: 12 }}>{err}</p> : null}
-      {data ? (
-        <pre style={{ marginTop: 16, fontSize: 12, overflow: "auto", background: "#111", color: "#e2e8f0", padding: 12 }}>
-          {JSON.stringify(data, null, 2)}
-        </pre>
+    <div className="ops-page" style={{ padding: "1rem", maxWidth: 1200 }}>
+      <OpsPageTitleHeader title="OPS — Order / resumo executivo (pickup)" versionLabel={PAGE_VERSION} />
+      <p style={{ opacity: 0.85, marginBottom: 12 }}>
+        <code>GET /internal/analytics/pickup-executive-summary</code> no order lifecycle (
+        <code>{getOrderLifecycleBase()}</code>). Token interno: <code>VITE_INTERNAL_TOKEN</code> (header{" "}
+        <code>X-Internal-Token</code>).
+      </p>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
+        <button type="button" onClick={load} disabled={loading}>
+          {loading ? "Carregando…" : "Atualizar"}
+        </button>
+      </div>
+      {error ? <p style={{ color: "#f87171" }}>{error}</p> : null}
+      {data && !error ? (
+        <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #333", borderRadius: 4 }}>
+          <pre
+            style={{
+              margin: 0,
+              padding: 12,
+              fontSize: 12,
+              fontFamily: "ui-monospace, monospace",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </div>
       ) : null}
     </div>
   );

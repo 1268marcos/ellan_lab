@@ -1,7 +1,26 @@
 import React, { useCallback, useEffect, useState } from "react";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
-import { fetchRuntimeJson } from "../utils/runtimeOpsApi";
+import OpsActionButton from "../components/OpsActionButton";
+import RuntimeOpsSubnav from "../components/RuntimeOpsSubnav";
+import { fetchRuntimeJson, formatRuntimeFetchError } from "../utils/runtimeOpsApi";
+import {
+  actionsStyle,
+  cardStyle,
+  errorStyle,
+  filtersStyle,
+  inputStyle,
+  labelStyle,
+  metaLineStyle,
+  mutedStyle,
+  pageStyle,
+  tableStyle,
+  tableWrapStyle,
+  tdStyle,
+  thStyle,
+  monoTdStyle,
+} from "../utils/runtimeOpsPageChrome";
 
+const PAGE_VERSION = "ops/runtime/events v0.2";
 const INTERNAL = import.meta.env.VITE_INTERNAL_TOKEN || "";
 const DEFAULT_MACHINE = import.meta.env.VITE_RUNTIME_MACHINE_ID || "CACIFO-XX-001";
 
@@ -24,7 +43,7 @@ export default function OpsRuntimeEventLogPage() {
       setMeta(data);
       setRows(Array.isArray(data?.events) ? data.events : []);
     } catch (e) {
-      setError(e?.message || "Falha ao listar eventos");
+      setError(formatRuntimeFetchError(e));
       setRows([]);
       setMeta(null);
     } finally {
@@ -37,63 +56,69 @@ export default function OpsRuntimeEventLogPage() {
   }, [load]);
 
   return (
-    <div className="ops-page" style={{ padding: "1rem", maxWidth: 1200 }}>
-      <OpsPageTitleHeader title="OPS — Runtime / events" versionLabel="ops/runtime/events v0.1" />
-      <p style={{ opacity: 0.85, marginBottom: 12 }}>
-        SQLite append-only via <code>/api/rt/audit/events</code>. Token interno opcional:{" "}
-        <code>VITE_INTERNAL_TOKEN</code>.
-      </p>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <label>
-          machine_id{" "}
-          <input value={machineId} onChange={(e) => setMachineId(e.target.value)} style={{ minWidth: 220 }} />
-        </label>
-        <label>
-          limit{" "}
-          <input
-            type="number"
-            min={1}
-            max={2000}
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value) || 100)}
-            style={{ width: 80 }}
-          />
-        </label>
-        <button type="button" onClick={load} disabled={loading}>
-          {loading ? "Carregando…" : "Carregar"}
-        </button>
-      </div>
-      {error ? <p style={{ color: "#f87171" }}>{error}</p> : null}
-      {meta && !error ? (
-        <p style={{ fontSize: 13 }}>
-          returned={meta.returned} machine_id={meta.machine_id}
+    <div style={pageStyle}>
+      <section style={cardStyle}>
+        <OpsPageTitleHeader title="OPS — Runtime / events" versionLabel={PAGE_VERSION} />
+        <RuntimeOpsSubnav />
+        <p style={mutedStyle}>
+          Append-only SQLite via <code style={{ color: "#E2E8F0" }}>/api/rt/audit/events</code>. Se o runtime exigir,
+          envie <code>VITE_INTERNAL_TOKEN</code> (header <code>X-Internal-Token</code>).
         </p>
-      ) : null}
-      <div style={{ overflow: "auto", maxHeight: "70vh" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-          <thead>
-            <tr>
-              {["id", "ts", "door", "type", "severity", "hash"].map((h) => (
-                <th key={h} style={{ textAlign: "left", borderBottom: "1px solid #444", padding: 4 }}>
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.event_id}>
-                <td style={{ padding: 4 }}>{r.event_id}</td>
-                <td style={{ padding: 4 }}>{r.ts}</td>
-                <td style={{ padding: 4 }}>{r.door_id}</td>
-                <td style={{ padding: 4 }}>{r.event_type}</td>
-                <td style={{ padding: 4 }}>{r.severity}</td>
-                <td style={{ padding: 4, fontFamily: "monospace", fontSize: 10 }}>{String(r.hash || "").slice(0, 18)}…</td>
+        <div style={filtersStyle}>
+          <label style={labelStyle}>
+            machine_id
+            <input value={machineId} onChange={(e) => setMachineId(e.target.value)} style={inputStyle} />
+          </label>
+          <label style={labelStyle}>
+            limit
+            <input
+              type="number"
+              min={1}
+              max={2000}
+              value={limit}
+              onChange={(e) => setLimit(Number(e.target.value) || 100)}
+              style={inputStyle}
+            />
+          </label>
+        </div>
+        <div style={actionsStyle}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void load()} disabled={loading}>
+            {loading ? "Carregando…" : "Carregar eventos"}
+          </OpsActionButton>
+        </div>
+        {error ? <div style={errorStyle}>{error}</div> : null}
+        {meta && !error ? (
+          <p style={metaLineStyle}>
+            returned={meta.returned} machine_id={meta.machine_id}
+            {meta.door_id != null ? ` door_id=${meta.door_id}` : ""}
+          </p>
+        ) : null}
+        <div style={tableWrapStyle}>
+          <table style={tableStyle}>
+            <thead>
+              <tr>
+                {["id", "ts", "door", "type", "severity", "hash"].map((h) => (
+                  <th key={h} style={thStyle}>
+                    {h}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.event_id}>
+                  <td style={tdStyle}>{r.event_id}</td>
+                  <td style={monoTdStyle}>{r.ts}</td>
+                  <td style={tdStyle}>{r.door_id}</td>
+                  <td style={tdStyle}>{r.event_type}</td>
+                  <td style={tdStyle}>{r.severity}</td>
+                  <td style={monoTdStyle}>{String(r.hash || "").slice(0, 22)}…</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }

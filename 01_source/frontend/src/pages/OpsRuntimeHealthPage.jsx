@@ -1,6 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
-import { fetchRuntimeJson } from "../utils/runtimeOpsApi";
+import OpsActionButton from "../components/OpsActionButton";
+import RuntimeOpsSubnav from "../components/RuntimeOpsSubnav";
+import { fetchRuntimeJson, formatRuntimeFetchError } from "../utils/runtimeOpsApi";
+import {
+  actionsStyle,
+  cardStyle,
+  errorStyle,
+  metaLineStyle,
+  mutedStyle,
+  pageStyle,
+  preJsonStyle,
+} from "../utils/runtimeOpsPageChrome";
+
+const PAGE_VERSION = "ops/runtime/health v0.2";
 
 export default function OpsRuntimeHealthPage() {
   const [data, setData] = useState(null);
@@ -13,7 +26,7 @@ export default function OpsRuntimeHealthPage() {
     try {
       setData(await fetchRuntimeJson("/health"));
     } catch (e) {
-      setError(e?.message || "Falha ao consultar runtime");
+      setError(formatRuntimeFetchError(e));
       setData(null);
     } finally {
       setLoading(false);
@@ -25,16 +38,27 @@ export default function OpsRuntimeHealthPage() {
   }, [load]);
 
   return (
-    <div className="ops-page" style={{ padding: "1rem", maxWidth: 960 }}>
-      <OpsPageTitleHeader title="OPS — Runtime / health" versionLabel="ops/runtime/health v0.1" />
-      <p style={{ opacity: 0.85, marginBottom: 12 }}>GET via proxy <code>/api/rt/health</code> (runtime :8200).</p>
-      <button type="button" onClick={load} disabled={loading}>
-        {loading ? "Atualizando…" : "Atualizar"}
-      </button>
-      {error ? <p style={{ color: "#f87171", marginTop: 12 }}>{error}</p> : null}
-      {data ? (
-        <pre style={{ marginTop: 16, overflow: "auto", fontSize: 13 }}>{JSON.stringify(data, null, 2)}</pre>
-      ) : null}
+    <div style={pageStyle}>
+      <section style={cardStyle}>
+        <OpsPageTitleHeader title="OPS — Runtime / health" versionLabel={PAGE_VERSION} />
+        <RuntimeOpsSubnav />
+        <p style={mutedStyle}>
+          <strong>GET</strong> <code style={{ color: "#E2E8F0" }}>/api/rt/health</code> — proxy Vite para{" "}
+          <code>backend_runtime</code> (porta 8200).
+        </p>
+        <div style={actionsStyle}>
+          <OpsActionButton type="button" variant="primary" onClick={() => void load()} disabled={loading}>
+            {loading ? "Atualizando…" : "Atualizar"}
+          </OpsActionButton>
+        </div>
+        {error ? <div style={errorStyle}>{error}</div> : null}
+        {data && !error ? (
+          <p style={metaLineStyle}>
+            ok={String(data.ok)} service={String(data.service || "—")}
+          </p>
+        ) : null}
+        {data ? <pre style={preJsonStyle}>{JSON.stringify(data, null, 2)}</pre> : null}
+      </section>
     </div>
   );
 }

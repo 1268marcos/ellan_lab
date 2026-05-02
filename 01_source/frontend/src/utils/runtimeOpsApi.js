@@ -1,6 +1,16 @@
 /** Base path proxied by Vite to backend_runtime (port 8200). */
 export const RUNTIME_OPS_PROXY_PREFIX = "/api/rt";
 
+export function formatRuntimeFetchError(err) {
+  const raw = String(err?.message || err || "").trim();
+  if (!raw) return "Falha de comunicação com o runtime.";
+  const lower = raw.toLowerCase();
+  if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
+    return "Falha de conexão com /api/rt (proxy → :8200). Confirme `npm run dev`, o proxy em vite.config e o backend_runtime.";
+  }
+  return raw;
+}
+
 export async function fetchRuntimeJson(path, options = {}) {
   const { headers: extraHeaders = {}, ...init } = options;
   const normalized = path.startsWith("/") ? path : `/${path}`;

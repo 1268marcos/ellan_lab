@@ -518,11 +518,16 @@ export default function PickupHealthPage() {
   }
 
   return (
-    <div style={pageStyle}>
+    <div className="ops-page" style={pageStyle}>
       <section style={headerCardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
           <div>
-            <OpsPageTitleHeader title="Pickup Health Dashboard" containerStyle={{ marginBottom: 0 }} titleStyle={{ margin: 0 }} />
+            <OpsPageTitleHeader
+              title="Pickup Health Dashboard"
+              versionLabel="ops/order/pickup-health v0.1"
+              containerStyle={{ marginBottom: 0 }}
+              titleStyle={{ margin: 0 }}
+            />
             <div style={subtleStyle}>
               Priorizacao de risco por entidade, com sinais operacionais e acao recomendada.
             </div>
@@ -1032,7 +1037,10 @@ function ClassificationChip({ label, accent }) {
 }
 
 const pageStyle = {
-  padding: 24,
+  padding: "1rem",
+  maxWidth: 1200,
+  margin: "0 auto",
+  boxSizing: "border-box",
   color: "#f5f7fa",
   fontFamily: "system-ui, sans-serif",
 };
