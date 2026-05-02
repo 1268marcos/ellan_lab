@@ -34,6 +34,7 @@ from app.routers import (
     locker_product_configs,
     locker_slots_ops,
     logistics,
+    notifications,
     orders,
     partners,
     pickup,
@@ -150,6 +151,7 @@ app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
 app.include_router(inventory.router)
+app.include_router(notifications.router)
 app.include_router(internal.router)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)

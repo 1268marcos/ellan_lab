@@ -51,6 +51,7 @@ const OpsRuntimeSlotsMonitorPage = lazy(() => import("./pages/OpsRuntimeSlotsMon
 const OpsQuickEnablementPage = lazy(() => import("./pages/OpsQuickEnablementPage"));
 const OpsKioskTouchModelsPage = lazy(() => import("./pages/OpsKioskTouchModelsPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
+const OpsNotificationLogsPage = lazy(() => import("./pages/OpsNotificationLogsPage"));
 const OpsDevErrorsPage = lazy(() => import("./pages/OpsDevErrorsPage.tsx"));
 const OpsFiscalProvidersPage = lazy(() => import("./pages/OpsFiscalProvidersPage"));
 const OpsPartnersDashboardPage = lazy(() => import("./pages/OpsPartnersDashboardPage"));
@@ -343,6 +344,12 @@ function TopNav() {
       isNew: true,
     },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional", group: "Dashboards" },
+    {
+      to: "/ops/notifications/logs",
+      label: "ops /notifications/logs",
+      aria: "Logs de notificação (email/sms/push) e reenvio",
+      group: "Dashboards",
+    },
     { to: "/ops/dev/errors", label: "ops /dev/errors", aria: "Visualizacao interna de erros 4xx/5xx", group: "Dashboards" },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
@@ -1409,6 +1416,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsAuditPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/notifications/logs"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsNotificationLogsPage />)}
                 </OpsRoute>
               }
             />

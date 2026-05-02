@@ -33,6 +33,7 @@ class NotificationLog(Base):
 
     provider_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    provider_status: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="QUEUED")
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
