@@ -66,6 +66,7 @@ const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPrici
 const OpsPricingRulesPage = lazy(() => import("./pages/OpsPricingRulesPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
+const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
@@ -369,6 +370,13 @@ function TopNav() {
       group: "Order / Pickup",
     },
     {
+      to: "/ops/lockers/product-configs",
+      label: "ops /lockers/product-configs",
+      aria: "Regras product_locker_configs por locker (categoria permitida, dimensões, temperatura)",
+      group: "Lockers",
+      opsSubGroup: "Lockers",
+    },
+    {
       to: "/ops/payments/reconciliation",
       label: "ops /payments/reconciliation",
       aria: "Conciliação payment_transactions e payment_splits (status e lote)",
@@ -458,6 +466,7 @@ function TopNav() {
     "Visão Geral",
     "Dashboards",
     "Order / Pickup",
+    "Lockers",
     "Runtime",
     "Logística",
     "Logística / Inventário",
@@ -1504,6 +1513,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLogisticsInventoryPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/product-configs"
+              element={
+                <OpsRoute>
+                  <OpsLockerProductConfigPage />
                 </OpsRoute>
               }
             />
