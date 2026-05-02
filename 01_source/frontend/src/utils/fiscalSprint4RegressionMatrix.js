@@ -6,10 +6,13 @@
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
 export const SPRINT4_MATRIX_VERSION = 3;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.10.0-kiosk-touch-uat-v2";
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.11.0-gonogo-summary-final";
 export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v3";
 /** Schema do bloco `reference` em `SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST` (JSON assinado). */
 export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA = "sprint4-persona-functional-checklist-v1";
+
+/** Schema do resumo executivo Go/No-Go (JSON assinado). */
+export const SPRINT4_GO_NO_GO_REGISTER_SUMMARY_SCHEMA = "sprint4-go-no-go-register-summary-v1-final";
 
 /** Limite de tamanho (chars JSON do payload sem assinatura) para anexar histórico de pilotos no pacote diário. */
 export const SPRINT4_ATTACH_MAX_HISTORY_JSON_CHARS = 120_000;
@@ -219,6 +222,10 @@ export const SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG = [
   { id: "rr_partner_edge", title: "Parceiros edge-case (reconciliação, provisões) fora da amostra piloto" },
   { id: "rr_auth_browser_zip", title: "Dependência de token interno / browser para ZIP auditável completo" },
   { id: "rr_p03_stamp", title: "P0-3 / simulação assistida sem evidência anexada ao último daily" },
+  {
+    id: "rr_legal_committee_rubric",
+    title: "Rubrica legal / acta de comité presencial Go/No-Go não arquivada (fora do escopo só digital)",
+  },
 ];
 
 /** Tópicos de mitigação pré-definidos (complementam o texto livre). */
@@ -229,6 +236,10 @@ export const SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY = [
   { id: "mt_pilot_extra", label: "Rodadas piloto adicionais com outcome PASS/PARTIAL/FAIL registradas" },
   { id: "mt_ops_handoff", label: "Handoff OPS/Suporte formal (Slack) com correlation_id / order_id" },
   { id: "mt_gate_review", label: "Revisão comité gate v2 antes de promover GO a produção" },
+  {
+    id: "mt_legal_committee_act",
+    label: "Acta / rubrica legal presencial do Go/No-Go arquivada (referência externa ao ZIP)",
+  },
 ];
 
 /**
@@ -290,9 +301,11 @@ export function computeSprint4GoNoGoReadinessDocumentationPct(norm, matrixProgre
   if (norm.decision === "GO" || norm.decision === "NO_GO") s += 20;
   else s += 8;
   const rc = SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.filter((r) => norm.residual_risk_ids[r.id]).length;
-  s += Math.min(22, rc * 4);
+  /** Até 7 riscos × 4 p.p. (cap 28) — alinhado ao catálogo `SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG`. */
+  s += Math.min(28, rc * 4);
   const tc = SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.filter((t) => norm.mitigation_topic_ids[t.id]).length;
-  s += Math.min(24, tc * 4);
+  /** Até 7 tópicos × 4 p.p. (cap 28) — biblioteca `SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY`. */
+  s += Math.min(28, tc * 4);
   const len = norm.mitigation_plan.length;
   if (len >= 80) s += 18;
   else if (len >= 40) s += 12;
@@ -301,6 +314,9 @@ export function computeSprint4GoNoGoReadinessDocumentationPct(norm, matrixProgre
   if (matrixProgress.pct >= 75) s += 4;
   if (kioskUatProgress.all_pass) s += 12;
   else if (kioskUatProgress.pct >= 50) s += 6;
+  if (norm.mitigation_topic_ids.mt_legal_committee_act && norm.residual_risk_ids.rr_legal_committee_rubric) {
+    s += 6;
+  }
   if (norm.residual_risk !== "MEDIUM" || norm.decision === "NO_GO") s += 4;
   return Math.min(100, Math.round(s));
 }
@@ -698,6 +714,7 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
   const full = buildSprint4RegressionMatrixPayload(nowIso, storedState);
   return {
     scope: "SPRINT4_GO_NO_GO_REGISTER_SUMMARY",
+    register_summary_schema: SPRINT4_GO_NO_GO_REGISTER_SUMMARY_SCHEMA,
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
@@ -707,8 +724,27 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
     kiosk_uat: full.kiosk_uat.progress,
     combined_functional_pct: full.combined_functional_pct,
     kiosk_touch_uat_export_scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
+    residual_risks_catalog: SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG,
+    mitigation_topics_library: SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY,
     go_no_go_register: full.go_no_go_register,
     readiness_documentation_pct: full.go_no_go_register.readiness_documentation_pct,
+    readiness_documentation_pct_formula: {
+      version: "sprint4-readiness-doc-v2-final",
+      decision_go_no_go_max: 20,
+      decision_pending_max: 8,
+      residual_risks_marked_points_cap: 28,
+      residual_risk_points_per_mark: 4,
+      mitigation_topics_marked_points_cap: 28,
+      mitigation_topic_points_per_mark: 4,
+      mitigation_plan_length_tiers: { gte_80: 18, gte_40: 12, gte_16: 6 },
+      matrix_progress_points: { gte_50: 8, gte_75: 4 },
+      kiosk_uat_points: { all_pass: 12, gte_50_pct: 6 },
+      legal_committee_both_marked_bonus: 6,
+      residual_risk_or_no_go_bonus: 4,
+      cap: 100,
+    },
+    presencial_legal_note:
+      "readiness_documentation_pct = 100% documental no cockpit; rubrica legal/acta presencial é evidência externa referenciada em `mt_legal_committee_act` + risco `rr_legal_committee_rubric`.",
   };
 }
 
