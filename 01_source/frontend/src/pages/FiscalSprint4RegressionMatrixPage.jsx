@@ -6,11 +6,14 @@ import {
   SPRINT4_MATRIX_PAGE_VERSION,
   SPRINT4_MATRIX_STORAGE_KEY,
   SPRINT4_MATRIX_VERSION,
+  SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
   appendSprint4PilotRun,
   buildSprint4GoNoGoRegisterSummaryPayload,
   buildSprint4LastPilotRunPayload,
   buildSprint4PilotHistoryPayload,
+  buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
+  computeSprint4CombinedFunctionalPct,
   computeSprint4KioskUatProgress,
   computeSprint4MatrixProgress,
   computeSprint4PersonaRollup,
@@ -120,6 +123,10 @@ export default function FiscalSprint4RegressionMatrixPage() {
   const progress = useMemo(() => computeSprint4MatrixProgress(rows), [rows]);
   const kioskUatProgress = useMemo(() => computeSprint4KioskUatProgress(kioskUatRows), [kioskUatRows]);
   const personaRollup = useMemo(() => computeSprint4PersonaRollup(rows), [rows]);
+  const combinedFunctionalPct = useMemo(
+    () => computeSprint4CombinedFunctionalPct(progress, kioskUatProgress),
+    [progress, kioskUatProgress]
+  );
 
   function setRow(id, patch) {
     setRows((prev) =>
@@ -205,15 +212,21 @@ export default function FiscalSprint4RegressionMatrixPage() {
     const matrixPayload = buildSprint4RegressionMatrixPayload(nowIso, syntheticState);
     const signedMatrix = await buildSignedPayload(matrixPayload);
     const signedGoNoGo = await buildSignedPayload(buildSprint4GoNoGoRegisterSummaryPayload(nowIso, syntheticState));
+    const signedPersonaChecklist = await buildSignedPayload(
+      buildSprint4PersonaFunctionalChecklistPayload(nowIso, syntheticState)
+    );
     const runs = loadSprint4PilotRunsRaw();
     const pilotPayload = buildSprint4PilotHistoryPayload(nowIso, runs);
     const signedPilot = await buildSignedPayload(pilotPayload);
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_REGRESSION_PILOT_PACKAGE_${ts}.zip`, {
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_REGRESSION_MATRIX_${ts}.json`]: strToU8(JSON.stringify(signedMatrix, null, 2)),
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_GO_NO_GO_REGISTER_${ts}.json`]: strToU8(JSON.stringify(signedGoNoGo, null, 2)),
+      [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_${ts}.json`]: strToU8(
+        JSON.stringify(signedPersonaChecklist, null, 2)
+      ),
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PILOT_HISTORY_${ts}.json`]: strToU8(JSON.stringify(signedPilot, null, 2)),
     });
-    setStatusMsg("Pacote ZIP auditável: matriz + Go/No-Go (resumo) + histórico de rodadas piloto.");
+    setStatusMsg("Pacote ZIP: matriz + Go/No-Go + checklist por persona + histórico de pilotos.");
     window.setTimeout(() => setStatusMsg(""), 2600);
   }
 
@@ -314,7 +327,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
               Exportar JSON assinado
             </button>
             <button type="button" style={buttonStyle} onClick={() => void exportAuditZip()}>
-              Exportar ZIP (matriz + pilotos)
+              Exportar ZIP (matriz + checklist + pilotos)
             </button>
             <button type="button" style={buttonStyle} onClick={() => void copyLastPilotSignedJson()}>
               Copiar JSON da última rodada
@@ -328,6 +341,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
         <div style={kpiRowStyle}>
           <span style={chipStyle}>Progresso: {progress.done}/{progress.total}</span>
           <span style={chipStyle}>{progress.pct}%</span>
+          <span style={chipStyle}>Combinado matriz+UAT: {combinedFunctionalPct}%</span>
         </div>
         {statusMsg ? <small style={mutedTextStyle}>{statusMsg}</small> : null}
 
@@ -427,6 +441,25 @@ export default function FiscalSprint4RegressionMatrixPage() {
               </span>
             ))}
           </div>
+        </section>
+
+        <section style={boxStyle}>
+          <h3 style={boxTitleStyle}>Checklist funcional por persona (referência Sprint 4)</h3>
+          <p style={mutedTextStyle}>
+            Texto fixo de cobertura mínima; o JSON assinado <code>SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST</code> replica este bloco com rollups atuais no ZIP e nos anexos diários quando a matriz existir em <code>localStorage</code>.
+          </p>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18, color: "var(--fiscal-text)", fontSize: 13 }}>
+            {SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST.map((block) => (
+              <li key={block.persona} style={{ marginBottom: 10 }}>
+                <strong>{block.persona}</strong>
+                <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                  {block.must_cover.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section style={boxStyle}>

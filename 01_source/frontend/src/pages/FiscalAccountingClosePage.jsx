@@ -10,6 +10,7 @@ import { appendSprint3P03OptionalSignedZipEntries } from "../utils/fiscalSprint3
 import {
   appendSprint4PilotHistoryOptionalSignedZipEntries,
   buildSprint4GoNoGoRegisterSummaryPayload,
+  buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
   loadSprint4MatrixStateRaw,
 } from "../utils/fiscalSprint4RegressionMatrix";
@@ -471,6 +472,12 @@ export default function FiscalAccountingClosePage() {
         buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedMatrix && typeof storedMatrix === "object" ? storedMatrix : {})
       );
       zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_GO_NO_GO_REGISTER_${ts}.json`] = strToU8(JSON.stringify(signedSprint4GoNoGo, null, 2));
+      const signedSprint4PersonaChecklist = await buildSignedPayload(
+        buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedMatrix && typeof storedMatrix === "object" ? storedMatrix : {})
+      );
+      zipEntries[`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_${ts}.json`] = strToU8(
+        JSON.stringify(signedSprint4PersonaChecklist, null, 2)
+      );
     } catch {
       try {
         const signedMatrixErr = await buildSignedPayload({
@@ -762,7 +769,7 @@ export default function FiscalAccountingClosePage() {
           <button type="button" onClick={() => void exportZip()} style={buttonStyle} disabled={loading}>Exportar ZIP auditável</button>
         </div>
         <small style={mutedTextStyle}>
-          O ZIP alinha ao handoff único do sprint: com token e dados no browser, inclui P0-1b (E2E + fatia parceiro + D11), <code>SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*</code> quando o lote D11 existir, <code>SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*</code> (FG-1 + D11), <code>SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*</code> (rascunho aceite local), matriz Sprint 4 (EXEC), resumo assinado <code>SPRINT4_GO_NO_GO_REGISTER</code> (decisão + UAT KIOSK + % matriz), histórico de pilotos e carimbo P0-3 — alinhado ao pacote diário em management/ops.
+          O ZIP alinha ao handoff único do sprint: com token e dados no browser, inclui P0-1b (E2E + fatia parceiro + D11), <code>SPRINT2_D11_ORDER_ID_ROLLUP_EXEC_*</code> quando o lote D11 existir, <code>SPRINT2_D12_ACCOUNTING_HANDOFF_EXEC_*</code> (FG-1 + D11), <code>SPRINT2_D13_ACCOUNTING_ACCEPTANCE_EXEC_*</code> (rascunho aceite local), matriz Sprint 4 (EXEC), resumo assinado <code>SPRINT4_GO_NO_GO_REGISTER</code> (decisão + UAT KIOSK + % matriz + combinado), <code>SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST</code>, histórico de pilotos e carimbo P0-3 — alinhado ao pacote diário em management/ops.
         </small>
         {status ? <small style={mutedTextStyle}>{status}</small> : null}
         {error ? <div style={errorStyle}>{error}</div> : null}

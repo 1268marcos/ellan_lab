@@ -5,8 +5,9 @@
 
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
-export const SPRINT4_MATRIX_VERSION = 1;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.4.0-gonogo-summary";
+export const SPRINT4_MATRIX_VERSION = 2;
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.6.0-persona-matrix-v2";
+export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v2";
 
 /** Limite de tamanho (chars JSON do payload sem assinatura) para anexar histórico de pilotos no pacote diário. */
 export const SPRINT4_ATTACH_MAX_HISTORY_JSON_CHARS = 120_000;
@@ -72,6 +73,72 @@ export const SPRINT4_MATRIX_DEFAULT_ITEMS = [
     area: "Auditoria E2E",
     case: "Export evidência única P0-1 + cobertura materializada consultável",
   },
+  {
+    id: "contabil-daily-close-zip",
+    persona: "Contábil",
+    area: "Fechamento diário",
+    case: "`fiscal/accounting-close` — ZIP executivo com blocos D14/D15/D16 + provisões quando aplicável",
+  },
+  {
+    id: "contabil-approvals-d18-context",
+    persona: "Contábil",
+    area: "Aceite D18",
+    case: "Contexto `FISCAL_ACCOUNTING_DAILY_APPROVAL` coerente com histórico e exports assinados",
+  },
+  {
+    id: "fiscal-management-daily-signed",
+    persona: "Fiscal / OPS",
+    area: "Pacote diário",
+    case: "`fiscal/management-daily` — gerar .zip com anexos Sprint 2/3 previstos (gate mirror, SLO, Sprint4 quando gravado)",
+  },
+  {
+    id: "fiscal-gap-snapshot-smoke",
+    persona: "Fiscal / OPS",
+    area: "Conciliação",
+    case: "Smoke `GET /admin/fiscal/fiscal-gap-conciliation-snapshot` + interpretação de agregados por partner",
+  },
+  {
+    id: "online-checkout-4xx-path",
+    persona: "Comprador ONLINE",
+    area: "Checkout",
+    case: "Erro acionável em 4xx/409 (`public-checkout-order-error`) com retry seguro",
+  },
+  {
+    id: "ops-health-reconciliation-link",
+    persona: "OPS",
+    area: "Reconciliação OPS",
+    case: "Atalho `ops/health` → evidência ou `ops/reconciliation` sem regressão de auth",
+  },
+  {
+    id: "eng-frontend-ci-core",
+    persona: "Engenharia Plataforma",
+    area: "CI / Qualidade",
+    case: "`npm test` + `typecheck:strict-core` verdes no frontend após alterações na matriz fiscal",
+  },
+];
+
+/** Checklist textual por persona (referência executiva; não depende de localStorage). */
+export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST = [
+  {
+    persona: "Comprador ONLINE",
+    must_cover: ["Checkout feliz + erro acionável", "Rastreabilidade pedido→invoice", "Caminho 4xx/409"],
+  },
+  {
+    persona: "Comprador KIOSK",
+    must_cover: ["Quick Buy + timeout", "Pickup Fast Lane + fallback de slot", "UAT 4 modelos (A–D) marcados"],
+  },
+  { persona: "OPS", must_cover: ["Triagem + export evidência", "Reconciliação / health sem regressão de auth"] },
+  { persona: "Suporte", must_cover: ["Console por jornada + playbook + handoff owner/ETA"] },
+  {
+    persona: "Parceiros",
+    must_cover: ["Onboarding contrato fiscal mínimo", "Amostra settlement × documento"],
+  },
+  {
+    persona: "Fiscal / OPS",
+    must_cover: ["SLO export JSON/ZIP", "E2E audit handoff", "Pacote diário assinado", "Smoke gap snapshot"],
+  },
+  { persona: "Contábil", must_cover: ["ZIP fechamento diário", "Contexto D18 / aprovações"] },
+  { persona: "Engenharia Plataforma", must_cover: ["CI core (Vitest + strict-core) após mudanças na trilha fiscal"] },
 ];
 
 export const SPRINT4_KIOSK_UAT_MODELS = [
@@ -137,6 +204,17 @@ export function computeSprint4KioskUatProgress(rows) {
   const pass = rows.filter((r) => r.pass).length;
   const pct = total > 0 ? Math.round((pass / total) * 1000) / 10 : 0;
   return { total, pass, pct, all_pass: total > 0 && pass === total };
+}
+
+/**
+ * Cobertura combinada matriz (70%) + UAT KIOSK (30%) para narrativa Sprint 4.
+ * @param {{ done: number, total: number }} matrixProgress
+ * @param {{ pass: number, total: number }} kioskProgress
+ */
+export function computeSprint4CombinedFunctionalPct(matrixProgress, kioskProgress) {
+  const m = matrixProgress?.total > 0 ? matrixProgress.done / matrixProgress.total : 0;
+  const k = kioskProgress?.total > 0 ? kioskProgress.pass / kioskProgress.total : 0;
+  return Math.round((m * 0.7 + k * 0.3) * 1000) / 10;
 }
 
 export function computeSprint4PersonaRollup(rows) {
@@ -285,7 +363,7 @@ export async function appendSprint4PilotHistoryOptionalSignedZipEntries({
 }
 
 /**
- * Anexa ao ZIP diário (opcional) JSONs assinados da matriz Sprint 4 + histórico de pilotos, se existirem em localStorage.
+ * Anexa ao ZIP diário (opcional) JSONs assinados da matriz Sprint 4 + resumo Go/No-Go + checklist por persona + histórico de pilotos, se existirem em localStorage.
  * Se o histórico exceder o limite, grava artefato `*_ATTACH_SKIPPED_*` em vez do payload completo.
  *
  * @param {object} opts
@@ -325,6 +403,9 @@ export async function appendSprint4OptionalSignedZipEntries({
     const signedGoNoGo = await buildSignedPayload(buildSprint4GoNoGoRegisterSummaryPayload(nowIso, matrixStored));
     zipEntries[`${fileBasePrefix}_SPRINT4_GO_NO_GO_REGISTER_${ts}.json`] = strToU8(JSON.stringify(signedGoNoGo, null, 2));
     attached.push("sprint4_go_no_go_summary");
+    const signedChecklist = await buildSignedPayload(buildSprint4PersonaFunctionalChecklistPayload(nowIso, matrixStored));
+    zipEntries[`${fileBasePrefix}_SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_${ts}.json`] = strToU8(JSON.stringify(signedChecklist, null, 2));
+    attached.push("sprint4_persona_functional_checklist");
   }
 
   if (runs.length > 0) {
@@ -352,11 +433,31 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
     scope: "SPRINT4_GO_NO_GO_REGISTER_SUMMARY",
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
+    export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
     storage: { key: SPRINT4_MATRIX_STORAGE_KEY },
     owner: full.owner,
     matrix_progress: full.progress,
     kiosk_uat: full.kiosk_uat.progress,
+    combined_functional_pct: full.combined_functional_pct,
     go_no_go_register: full.go_no_go_register,
+  };
+}
+
+/**
+ * Export dedicado: checklist por persona (texto de referência + contagens atuais).
+ */
+export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedState) {
+  const full = buildSprint4RegressionMatrixPayload(nowIso, storedState);
+  return {
+    scope: "SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST",
+    export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
+    generated_at: nowIso,
+    page_version: SPRINT4_MATRIX_PAGE_VERSION,
+    reference: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
+    persona_rollups: full.personas,
+    matrix_progress: full.progress,
+    kiosk_uat: full.kiosk_uat.progress,
+    combined_functional_pct: full.combined_functional_pct,
   };
 }
 
@@ -370,10 +471,12 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
   const progress = computeSprint4MatrixProgress(rows);
   const kioskUatProgress = computeSprint4KioskUatProgress(kioskUatRows);
   const personas = computeSprint4PersonaRollup(rows);
+  const combinedPct = computeSprint4CombinedFunctionalPct(progress, kioskUatProgress);
   const goNoGo = storedState?.go_no_go && typeof storedState.go_no_go === "object" ? storedState.go_no_go : {};
 
   return {
     scope: "SPRINT4_REGRESSION_MATRIX",
+    export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
     storage: {
@@ -383,6 +486,8 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
     },
     owner,
     progress,
+    combined_functional_pct: combinedPct,
+    persona_functional_checklist: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
     personas,
     kiosk_uat: {
       progress: kioskUatProgress,
