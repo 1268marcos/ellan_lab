@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
+  SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY,
+  SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG,
   SPRINT4_KIOSK_UAT_MODELS,
   SPRINT4_MATRIX_DEFAULT_ITEMS,
   SPRINT4_MATRIX_VERSION,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
   SPRINT4_REGRESSION_EXPORT_SCHEMA,
+  buildSprint4GoNoGoRegisterSummaryPayload,
   buildSprint4KioskTouchUatModelsPayload,
   buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
   computeSprint4CombinedFunctionalPct,
+  computeSprint4GoNoGoReadinessDocumentationPct,
   mergeSprint4KioskUatRows,
   mergeSprint4MatrixRows,
+  normalizeSprint4GoNoGoState,
 } from "./fiscalSprint4RegressionMatrix";
 
 describe("fiscalSprint4RegressionMatrix", () => {
@@ -76,6 +81,45 @@ describe("fiscalSprint4RegressionMatrix", () => {
     expect(p.scope).toBe("SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D");
     expect(p.manual_protocol).toHaveLength(4);
     expect(p.kiosk_uat_execution?.models?.[0]?.id).toBe("model_a_quick_buy");
+  });
+
+  it("go_no_go_register inclui riscos, tópicos de mitigação e readiness", () => {
+    const now = "2026-05-01T15:00:00.000Z";
+    const riskIds = Object.fromEntries(SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.map((r) => [r.id, true]));
+    const topicIds = Object.fromEntries(SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.map((t) => [t.id, true]));
+    const stored = {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: now,
+      owner: "comite",
+      rows: {},
+      kiosk_uat: {
+        models: Object.fromEntries(SPRINT4_KIOSK_UAT_MODELS.map((m) => [m.id, { pass: true, note: "ok", marked_at: now }])),
+      },
+      go_no_go: {
+        decision: "GO",
+        residual_risk: "LOW",
+        mitigation_plan: "x".repeat(85),
+        owner: "comite",
+        updated_at: now,
+        residual_risk_ids: riskIds,
+        mitigation_topic_ids: topicIds,
+      },
+    };
+    const p = buildSprint4RegressionMatrixPayload(now, stored);
+    expect(p.go_no_go_register.residual_risks_documented?.length).toBe(SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.length);
+    expect(p.go_no_go_register.mitigation_plan_topics?.selected_from_library?.length).toBe(
+      SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.length
+    );
+    expect(p.go_no_go_register.readiness_documentation_pct).toBeGreaterThanOrEqual(80);
+    const summary = buildSprint4GoNoGoRegisterSummaryPayload(now, stored);
+    expect(summary.scope).toBe("SPRINT4_GO_NO_GO_REGISTER_SUMMARY");
+    expect(summary.readiness_documentation_pct).toBe(p.go_no_go_register.readiness_documentation_pct);
+  });
+
+  it("normalizeSprint4GoNoGoState tolera ausência de ids", () => {
+    const n = normalizeSprint4GoNoGoState({ decision: "PENDING_REVIEW" });
+    expect(n.residual_risk_ids).toEqual({});
+    expect(computeSprint4GoNoGoReadinessDocumentationPct(n, { pct: 0, total: 1, done: 0 }, { pct: 0, all_pass: false })).toBeLessThan(50);
   });
 
   it("buildSprint4PersonaFunctionalChecklistPayload expõe referência e rollups", () => {

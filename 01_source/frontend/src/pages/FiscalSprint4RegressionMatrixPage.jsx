@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { strToU8, zipSync } from "fflate";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import {
+  SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY,
+  SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG,
   SPRINT4_MATRIX_PAGE_VERSION,
   SPRINT4_MATRIX_STORAGE_KEY,
   SPRINT4_MATRIX_VERSION,
@@ -15,9 +17,11 @@ import {
   buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
   computeSprint4CombinedFunctionalPct,
+  computeSprint4GoNoGoReadinessDocumentationPct,
   computeSprint4KioskUatProgress,
   computeSprint4MatrixProgress,
   computeSprint4PersonaRollup,
+  normalizeSprint4GoNoGoState,
   loadSprint4MatrixStateRaw,
   loadSprint4PilotRunsRaw,
   mergeSprint4KioskUatRows,
@@ -92,6 +96,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
   const [goNoGoMitigation, setGoNoGoMitigation] = useState(
     () => String(loadSprint4MatrixStateRaw()?.go_no_go?.mitigation_plan || "")
   );
+  const [goNoGoRiskIds, setGoNoGoRiskIds] = useState(() => {
+    const o = loadSprint4MatrixStateRaw()?.go_no_go?.residual_risk_ids;
+    return o && typeof o === "object" ? { ...o } : {};
+  });
+  const [goNoGoMitigationTopicIds, setGoNoGoMitigationTopicIds] = useState(() => {
+    const o = loadSprint4MatrixStateRaw()?.go_no_go?.mitigation_topic_ids;
+    return o && typeof o === "object" ? { ...o } : {};
+  });
   const [statusMsg, setStatusMsg] = useState("");
   const [pilotLabel, setPilotLabel] = useState("");
   const [pilotEnv, setPilotEnv] = useState("HML");
@@ -116,10 +128,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
         mitigation_plan: goNoGoMitigation,
         owner: String(owner || "").trim() || "-",
         updated_at: new Date().toISOString(),
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
       },
     };
     window.localStorage.setItem(SPRINT4_MATRIX_STORAGE_KEY, JSON.stringify(payload));
-  }, [rows, kioskUatRows, owner, goNoGoDecision, goNoGoRisk, goNoGoMitigation]);
+  }, [rows, kioskUatRows, owner, goNoGoDecision, goNoGoRisk, goNoGoMitigation, goNoGoRiskIds, goNoGoMitigationTopicIds]);
 
   const progress = useMemo(() => computeSprint4MatrixProgress(rows), [rows]);
   const kioskUatProgress = useMemo(() => computeSprint4KioskUatProgress(kioskUatRows), [kioskUatRows]);
@@ -128,6 +142,27 @@ export default function FiscalSprint4RegressionMatrixPage() {
     () => computeSprint4CombinedFunctionalPct(progress, kioskUatProgress),
     [progress, kioskUatProgress]
   );
+  const goNoGoReadinessPct = useMemo(() => {
+    const norm = normalizeSprint4GoNoGoState({
+      decision: goNoGoDecision,
+      residual_risk: goNoGoRisk,
+      mitigation_plan: goNoGoMitigation,
+      owner,
+      updated_at: "",
+      residual_risk_ids: goNoGoRiskIds,
+      mitigation_topic_ids: goNoGoMitigationTopicIds,
+    });
+    return computeSprint4GoNoGoReadinessDocumentationPct(norm, progress, kioskUatProgress);
+  }, [
+    goNoGoDecision,
+    goNoGoRisk,
+    goNoGoMitigation,
+    owner,
+    goNoGoRiskIds,
+    goNoGoMitigationTopicIds,
+    progress,
+    kioskUatProgress,
+  ]);
 
   function setRow(id, patch) {
     setRows((prev) =>
@@ -140,6 +175,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
         return next;
       })
     );
+  }
+
+  function toggleGoNoGoRisk(id) {
+    setGoNoGoRiskIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
+  function toggleGoNoGoMitigationTopic(id) {
+    setGoNoGoMitigationTopicIds((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   function setKioskUatRow(id, patch) {
@@ -177,6 +220,8 @@ export default function FiscalSprint4RegressionMatrixPage() {
         mitigation_plan: goNoGoMitigation,
         owner: String(owner || "").trim() || "-",
         updated_at: nowIso,
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
       },
     };
     const payload = buildSprint4RegressionMatrixPayload(nowIso, stored || syntheticState);
@@ -184,6 +229,38 @@ export default function FiscalSprint4RegressionMatrixPage() {
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${toAuditDayStamp(nowIso)}_SPRINT4_REGRESSION_MATRIX_${ts}.json`, signed);
     setStatusMsg("Matriz exportada (JSON assinado por SHA-256 do conteúdo).");
     window.setTimeout(() => setStatusMsg(""), 2400);
+  }
+
+  async function exportGoNoGoSignedJson() {
+    const nowIso = new Date().toISOString();
+    const ts = nowIso.replace(/[:.]/g, "-");
+    const syntheticState = {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: nowIso,
+      owner,
+      rows: Object.fromEntries(
+        rows.map((r) => [r.id, { done: r.done, note: r.note, last_marked_at: r.last_marked_at }])
+      ),
+      kiosk_uat: {
+        models: Object.fromEntries(
+          kioskUatRows.map((r) => [r.id, { pass: r.pass, note: r.note, marked_at: r.marked_at }])
+        ),
+      },
+      go_no_go: {
+        decision: goNoGoDecision,
+        residual_risk: goNoGoRisk,
+        mitigation_plan: goNoGoMitigation,
+        owner: String(owner || "").trim() || "-",
+        updated_at: nowIso,
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
+      },
+    };
+    const payload = buildSprint4GoNoGoRegisterSummaryPayload(nowIso, syntheticState);
+    const signed = await buildSignedPayload(payload);
+    downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${toAuditDayStamp(nowIso)}_SPRINT4_GO_NO_GO_REGISTER_${ts}.json`, signed);
+    setStatusMsg("Go/No-Go exportado (scope SPRINT4_GO_NO_GO_REGISTER_SUMMARY, JSON assinado).");
+    window.setTimeout(() => setStatusMsg(""), 2600);
   }
 
   async function exportAuditZip() {
@@ -208,6 +285,8 @@ export default function FiscalSprint4RegressionMatrixPage() {
         mitigation_plan: goNoGoMitigation,
         owner: String(owner || "").trim() || "-",
         updated_at: nowIso,
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
       },
     };
     const matrixPayload = buildSprint4RegressionMatrixPayload(nowIso, syntheticState);
@@ -295,6 +374,8 @@ export default function FiscalSprint4RegressionMatrixPage() {
     setGoNoGoDecision("PENDING_REVIEW");
     setGoNoGoRisk("MEDIUM");
     setGoNoGoMitigation("");
+    setGoNoGoRiskIds({});
+    setGoNoGoMitigationTopicIds({});
     setStatusMsg("Matriz reiniciada.");
     window.setTimeout(() => setStatusMsg(""), 2000);
   }
@@ -330,6 +411,9 @@ export default function FiscalSprint4RegressionMatrixPage() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "end" }}>
             <button type="button" style={buttonStyle} onClick={() => void exportSignedJson()}>
               Exportar JSON assinado
+            </button>
+            <button type="button" style={buttonStyle} onClick={() => void exportGoNoGoSignedJson()}>
+              Exportar Go/No-Go (JSON)
             </button>
             <button type="button" style={buttonStyle} onClick={() => void exportAuditZip()}>
               Exportar ZIP (matriz + checklist + UAT KIOSK + pilotos)
@@ -437,6 +521,14 @@ export default function FiscalSprint4RegressionMatrixPage() {
 
         <section style={boxStyle}>
           <h3 style={boxTitleStyle}>Registro Go/No-Go (mínimo)</h3>
+          <div style={kpiRowStyle}>
+            <span style={chipStyle}>Readiness documentação: {goNoGoReadinessPct}%</span>
+            <span style={chipStyle}>Riscos catalogados marcados: {SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.filter((r) => goNoGoRiskIds[r.id]).length}/{SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.length}</span>
+            <span style={chipStyle}>
+              Tópicos mitigação: {SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.filter((t) => goNoGoMitigationTopicIds[t.id]).length}/
+              {SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.length}
+            </span>
+          </div>
           <div style={pilotGridStyle}>
             <label style={labelStyle}>
               Decisão
@@ -454,6 +546,35 @@ export default function FiscalSprint4RegressionMatrixPage() {
                 <option value="HIGH">HIGH</option>
               </select>
             </label>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ ...labelStyle, marginBottom: 6 }}>Riscos residuais documentados (marque os aplicáveis)</div>
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+              {SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.map((r) => (
+                <label key={r.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, cursor: "pointer" }}>
+                  <input type="checkbox" checked={Boolean(goNoGoRiskIds[r.id])} onChange={() => toggleGoNoGoRisk(r.id)} />
+                  <span>
+                    <strong style={{ color: "var(--fiscal-text)" }}>{r.id}</strong>
+                    <div style={mutedTextStyle}>{r.title}</div>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ ...labelStyle, marginBottom: 6 }}>Plano de mitigação — tópicos (marque e complemente no texto)</div>
+            <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+              {SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.map((t) => (
+                <label key={t.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={Boolean(goNoGoMitigationTopicIds[t.id])}
+                    onChange={() => toggleGoNoGoMitigationTopic(t.id)}
+                  />
+                  <span style={{ color: "var(--fiscal-text)" }}>{t.label}</span>
+                </label>
+              ))}
+            </div>
           </div>
           <label style={{ ...labelStyle, marginTop: 10 }}>
             Plano de mitigação (obrigatório para NO_GO)

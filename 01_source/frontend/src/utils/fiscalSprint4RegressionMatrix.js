@@ -6,7 +6,7 @@
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
 export const SPRINT4_MATRIX_VERSION = 2;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.7.0-kiosk-touch-uat-a-d";
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.8.0-gonogo-risk-register";
 export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v2";
 
 /** Limite de tamanho (chars JSON do payload sem assinatura) para anexar histórico de pilotos no pacote diário. */
@@ -145,6 +145,100 @@ export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST = [
  * UAT touch documentado (manual + âncoras E2E). Espelhado no ZIP `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`.
  * @type {{ id: string, label: string, default_note_hint: string, manual_steps: string[], e2e_anchors: string[] }[]}
  */
+/** Riscos residuais explícitos (marcação no cockpit + JSON `SPRINT4_GO_NO_GO_REGISTER_SUMMARY`). */
+export const SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG = [
+  { id: "rr_gate_v2_prod", title: "Gate v2 financeiro não comprovado em produção real" },
+  { id: "rr_kiosk_hw", title: "KIOSK touch sem sessão presencial / hardware físico validado" },
+  { id: "rr_slo_calibration", title: "SLO fiscal / KPI de saída sem calibragem regional presencial" },
+  { id: "rr_partner_edge", title: "Parceiros edge-case (reconciliação, provisões) fora da amostra piloto" },
+  { id: "rr_auth_browser_zip", title: "Dependência de token interno / browser para ZIP auditável completo" },
+  { id: "rr_p03_stamp", title: "P0-3 / simulação assistida sem evidência anexada ao último daily" },
+];
+
+/** Tópicos de mitigação pré-definidos (complementam o texto livre). */
+export const SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY = [
+  { id: "mt_zip_daily", label: "Anexar pacote diário (ZIP) com P0-1b + Sprint 4 + P0-3 a cada turno crítico" },
+  { id: "mt_owner_eta", label: "Owner + ETA explícitos por risco aberto no plano de mitigação (texto livre)" },
+  { id: "mt_rollback", label: "Plano de rollback / feature flag documentado para NO_GO" },
+  { id: "mt_pilot_extra", label: "Rodadas piloto adicionais com outcome PASS/PARTIAL/FAIL registradas" },
+  { id: "mt_ops_handoff", label: "Handoff OPS/Suporte formal (Slack) com correlation_id / order_id" },
+  { id: "mt_gate_review", label: "Revisão comité gate v2 antes de promover GO a produção" },
+];
+
+/**
+ * @param {unknown} goNoGo
+ * @returns {{
+ *   decision: string,
+ *   residual_risk: string,
+ *   mitigation_plan: string,
+ *   owner: string,
+ *   updated_at: string,
+ *   residual_risk_ids: Record<string, boolean>,
+ *   mitigation_topic_ids: Record<string, boolean>,
+ * }}
+ */
+export function normalizeSprint4GoNoGoState(goNoGo) {
+  const g = goNoGo && typeof goNoGo === "object" ? goNoGo : {};
+  const rr = g.residual_risk_ids && typeof g.residual_risk_ids === "object" ? g.residual_risk_ids : {};
+  const mt = g.mitigation_topic_ids && typeof g.mitigation_topic_ids === "object" ? g.mitigation_topic_ids : {};
+  return {
+    decision: String(g.decision || "PENDING_REVIEW"),
+    residual_risk: String(g.residual_risk || "MEDIUM"),
+    mitigation_plan: String(g.mitigation_plan || "").trim(),
+    owner: String(g.owner || "").trim(),
+    updated_at: String(g.updated_at || ""),
+    residual_risk_ids: { ...rr },
+    mitigation_topic_ids: { ...mt },
+  };
+}
+
+/**
+ * @param {ReturnType<typeof normalizeSprint4GoNoGoState>} norm
+ */
+export function buildSprint4GoNoGoDerivedBlocks(norm) {
+  const residual_risks_documented = SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.map((r) => ({
+    id: r.id,
+    title: r.title,
+    marked: Boolean(norm.residual_risk_ids[r.id]),
+  }));
+  const selected_from_library = SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.filter((t) =>
+    Boolean(norm.mitigation_topic_ids[t.id])
+  ).map((t) => t.label);
+  return {
+    residual_risks_documented,
+    mitigation_plan_topics: {
+      selected_from_library,
+      free_text: norm.mitigation_plan || "-",
+    },
+  };
+}
+
+/**
+ * Percentagem de “readiness” da documentação Go/No-Go (0–100), para narrativa Sprint 4.
+ * @param {ReturnType<typeof normalizeSprint4GoNoGoState>} norm
+ * @param {{ pct: number, total: number, done: number }} matrixProgress
+ * @param {{ pct: number, all_pass: boolean }} kioskUatProgress
+ */
+export function computeSprint4GoNoGoReadinessDocumentationPct(norm, matrixProgress, kioskUatProgress) {
+  let s = 0;
+  if (norm.decision === "GO" || norm.decision === "NO_GO") s += 20;
+  else s += 8;
+  const rc = SPRINT4_GO_NO_GO_RESIDUAL_RISKS_CATALOG.filter((r) => norm.residual_risk_ids[r.id]).length;
+  s += Math.min(22, rc * 4);
+  const tc = SPRINT4_GO_NO_GO_MITIGATION_TOPICS_LIBRARY.filter((t) => norm.mitigation_topic_ids[t.id]).length;
+  s += Math.min(24, tc * 4);
+  const len = norm.mitigation_plan.length;
+  if (len >= 80) s += 18;
+  else if (len >= 40) s += 12;
+  else if (len >= 16) s += 6;
+  if (matrixProgress.pct >= 50) s += 8;
+  if (matrixProgress.pct >= 75) s += 4;
+  if (kioskUatProgress.all_pass) s += 12;
+  else if (kioskUatProgress.pct >= 50) s += 6;
+  if (norm.residual_risk !== "MEDIUM" || norm.decision === "NO_GO") s += 4;
+  return Math.min(100, Math.round(s));
+}
+
 export const SPRINT4_KIOSK_UAT_MODELS = [
   {
     id: "model_a_quick_buy",
@@ -500,6 +594,7 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
     combined_functional_pct: full.combined_functional_pct,
     kiosk_touch_uat_export_scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
     go_no_go_register: full.go_no_go_register,
+    readiness_documentation_pct: full.go_no_go_register.readiness_documentation_pct,
   };
 }
 
@@ -556,6 +651,9 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
   const personas = computeSprint4PersonaRollup(rows);
   const combinedPct = computeSprint4CombinedFunctionalPct(progress, kioskUatProgress);
   const goNoGo = storedState?.go_no_go && typeof storedState.go_no_go === "object" ? storedState.go_no_go : {};
+  const normGo = normalizeSprint4GoNoGoState(goNoGo);
+  const goNoGoDerived = buildSprint4GoNoGoDerivedBlocks(normGo);
+  const readinessDocumentationPct = computeSprint4GoNoGoReadinessDocumentationPct(normGo, progress, kioskUatProgress);
 
   return {
     scope: "SPRINT4_REGRESSION_MATRIX",
@@ -583,12 +681,15 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
       })),
     },
     go_no_go_register: {
-      decision: String(goNoGo.decision || "PENDING_REVIEW"),
-      residual_risk: String(goNoGo.residual_risk || "MEDIUM"),
-      mitigation_plan: String(goNoGo.mitigation_plan || "").trim() || "-",
-      owner: String(goNoGo.owner || owner || "-"),
+      decision: normGo.decision,
+      residual_risk: normGo.residual_risk,
+      mitigation_plan: normGo.mitigation_plan.trim() || "-",
+      owner: String(goNoGo.owner || owner || "-").trim() || "-",
       updated_at: String(goNoGo.updated_at || ""),
       ready_hint: kioskUatProgress.all_pass ? "UAT_KIOSK_OK" : "UAT_KIOSK_PENDING",
+      residual_risks_documented: goNoGoDerived.residual_risks_documented,
+      mitigation_plan_topics: goNoGoDerived.mitigation_plan_topics,
+      readiness_documentation_pct: readinessDocumentationPct,
     },
     items: rows.map((r) => ({
       id: r.id,
