@@ -6,7 +6,9 @@ import {
   SPRINT4_KIOSK_TOUCH_UAT_PROTOCOL_VERSION,
   SPRINT4_KIOSK_UAT_MODELS,
   SPRINT4_MATRIX_DEFAULT_ITEMS,
+  SPRINT4_MATRIX_N_CASES,
   SPRINT4_MATRIX_VERSION,
+  normalizePresencialFunctionalChecklist,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA,
   SPRINT4_REGRESSION_EXPORT_SCHEMA,
@@ -23,11 +25,12 @@ import {
 
 describe("fiscalSprint4RegressionMatrix", () => {
   it("mantém versão de storage alinhada ao incremento da matriz", () => {
-    expect(SPRINT4_MATRIX_VERSION).toBeGreaterThanOrEqual(3);
-    expect(SPRINT4_MATRIX_DEFAULT_ITEMS.length).toBeGreaterThanOrEqual(20);
+    expect(SPRINT4_MATRIX_VERSION).toBeGreaterThanOrEqual(4);
+    expect(SPRINT4_MATRIX_DEFAULT_ITEMS.length).toBe(SPRINT4_MATRIX_N_CASES);
+    expect(SPRINT4_MATRIX_N_CASES).toBe(21);
   });
 
-  it("checklist por persona referencia ids existentes na matriz (schema v1)", () => {
+  it("checklist por persona referencia ids existentes na matriz (schema v2)", () => {
     const matrixIds = new Set(SPRINT4_MATRIX_DEFAULT_ITEMS.map((i) => i.id));
     for (const block of SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST) {
       expect(Array.isArray(block.matrix_case_ids)).toBe(true);
@@ -36,7 +39,7 @@ describe("fiscalSprint4RegressionMatrix", () => {
         expect(matrixIds.has(id)).toBe(true);
       }
     }
-    expect(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA).toMatch(/sprint4-persona-functional-checklist-v1/);
+    expect(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA).toMatch(/sprint4-persona-functional-checklist-v2/);
   });
 
   it("mergeSprint4MatrixRows inclui todos os ids default", () => {
@@ -64,8 +67,10 @@ describe("fiscalSprint4RegressionMatrix", () => {
       go_no_go: { decision: "PENDING_REVIEW", residual_risk: "MEDIUM", mitigation_plan: "", owner: "qa", updated_at: now },
     };
     const p = buildSprint4RegressionMatrixPayload(now, stored);
-    expect(p.export_schema).toBe("sprint4-regression-matrix-v3");
+    expect(p.export_schema).toBe("sprint4-regression-matrix-v4");
     expect(p.export_schema).toBe(SPRINT4_REGRESSION_EXPORT_SCHEMA);
+    expect(p.matrix_n_cases).toBe(SPRINT4_MATRIX_N_CASES);
+    expect(p.matrix_execution_evidence?.total).toBe(SPRINT4_MATRIX_N_CASES);
     expect(p.persona_functional_checklist).toEqual(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST);
     expect(p.persona_functional_checklist_schema).toBe(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA);
     expect(typeof p.combined_functional_pct).toBe("number");
@@ -191,5 +196,50 @@ describe("fiscalSprint4RegressionMatrix", () => {
     expect(p.export_schema).toBe(SPRINT4_REGRESSION_EXPORT_SCHEMA);
     expect(p.reference).toEqual(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST);
     expect(Array.isArray(p.persona_rollups)).toBe(true);
+    expect(p.matrix_n_cases).toBe(21);
+    expect(p.presencial_functional_signoff).toBe(null);
+  });
+
+  it("normalizePresencialFunctionalChecklist exige sessão mínima", () => {
+    expect(normalizePresencialFunctionalChecklist(null)).toBe(null);
+    expect(normalizePresencialFunctionalChecklist({})).toBe(null);
+    const n = normalizePresencialFunctionalChecklist({
+      session_id: "s1",
+      facilitator_name: "F",
+      session_signed_at: "2026-05-01T10:00:00.000Z",
+      persona_signoffs: [{ persona: "OPS", signer_name: "A", signer_role: "r", signed_at: "t", location: "L" }],
+    });
+    expect(n?.session_id).toBe("s1");
+    expect(n?.persona_signoffs?.length).toBe(1);
+  });
+
+  it("presencial_functional_signoff_complete quando matriz 21/21 + todas personas assinadas", () => {
+    const now = "2026-05-01T18:00:00.000Z";
+    const rows = Object.fromEntries(
+      SPRINT4_MATRIX_DEFAULT_ITEMS.map((it) => [it.id, { done: true, note: "ok", last_marked_at: now }])
+    );
+    const persona_signoffs = SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST.map((b) => ({
+      persona: b.persona,
+      signer_name: "Chair",
+      signer_role: "lead",
+      signed_at: now,
+      location: "LAB-A",
+    }));
+    const p = buildSprint4PersonaFunctionalChecklistPayload(now, {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: now,
+      owner: "qa",
+      rows,
+      kiosk_uat: { models: {} },
+      go_no_go: {},
+      presencial_functional_checklist: {
+        session_id: "spr4-pres-1",
+        facilitator_name: "Fac",
+        session_signed_at: now,
+        persona_signoffs,
+      },
+    });
+    expect(p.presencial_functional_signoff_complete).toBe(true);
+    expect(p.matrix_execution_evidence?.all_matrix_cases_marked).toBe(true);
   });
 });

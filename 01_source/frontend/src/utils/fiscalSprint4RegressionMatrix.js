@@ -5,11 +5,24 @@
 
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
-export const SPRINT4_MATRIX_VERSION = 3;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.11.0-gonogo-summary-final";
-export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v3";
+export const SPRINT4_MATRIX_VERSION = 4;
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.12.0-persona-presencial-signoff";
+/** Número de casos na matriz mínima Sprint 4 (regressão funcional por persona). */
+export const SPRINT4_MATRIX_N_CASES = 21;
+export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v4";
 /** Schema do bloco `reference` em `SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST` (JSON assinado). */
-export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA = "sprint4-persona-functional-checklist-v1";
+export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_SCHEMA = "sprint4-persona-functional-checklist-v2-presencial-signoff";
+
+/** Padrões de nome no ZIP executivo / diário (prefixo `ELLAN_FISCAL_DAILY_{YYYYMMDD}_` + sufixo `_{ts}.json`). */
+export const SPRINT4_EXEC_ZIP_ATTACHMENT_STEMS = [
+  "SPRINT4_EXEC_REGRESSION_MATRIX",
+  "SPRINT4_REGRESSION_MATRIX_ATTACH",
+  "SPRINT4_GO_NO_GO_REGISTER",
+  "SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST",
+  "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
+  "SPRINT4_PILOT_HISTORY_ATTACH",
+  "SPRINT4_PILOT_HISTORY",
+];
 
 /** Schema do resumo executivo Go/No-Go (JSON assinado). */
 export const SPRINT4_GO_NO_GO_REGISTER_SUMMARY_SCHEMA = "sprint4-go-no-go-register-summary-v1-final";
@@ -209,6 +222,29 @@ export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST = [
     matrix_case_ids: ["eng-frontend-ci-core"],
   },
 ];
+
+/**
+ * Normaliza evidência de rodadas presenciais por persona (checklist funcional assinado).
+ * @param {unknown} raw
+ * @returns {{ session_id: string, facilitator_name: string, session_signed_at: string, persona_signoffs: { persona: string, signer_name: string, signer_role: string, signed_at: string, location: string }[] } | null}
+ */
+export function normalizePresencialFunctionalChecklist(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const session_id = String(raw.session_id || "").trim();
+  const facilitator_name = String(raw.facilitator_name || "").trim();
+  const session_signed_at = String(raw.session_signed_at || "").trim();
+  if (!session_id || !facilitator_name || !session_signed_at) return null;
+  const persona_signoffs = Array.isArray(raw.persona_signoffs)
+    ? raw.persona_signoffs.map((r) => ({
+        persona: String(r?.persona || "").trim(),
+        signer_name: String(r?.signer_name || "").trim(),
+        signer_role: String(r?.signer_role || "").trim(),
+        signed_at: String(r?.signed_at || "").trim(),
+        location: String(r?.location || "").trim(),
+      }))
+    : [];
+  return { session_id, facilitator_name, session_signed_at, persona_signoffs };
+}
 
 /**
  * UAT touch documentado (manual + âncoras E2E). Espelhado no ZIP `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`.
@@ -753,6 +789,21 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
  */
 export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedState) {
   const full = buildSprint4RegressionMatrixPayload(nowIso, storedState);
+  const presencial = normalizePresencialFunctionalChecklist(storedState?.presencial_functional_checklist);
+  const expectedPersonas = SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST.map((b) => b.persona);
+  const signedPersonaCount = presencial
+    ? presencial.persona_signoffs.filter(
+        (s) =>
+          s.signer_name &&
+          s.signed_at &&
+          expectedPersonas.includes(s.persona)
+      ).length
+    : 0;
+  const presencial_complete =
+    Boolean(presencial) &&
+    signedPersonaCount === expectedPersonas.length &&
+    full.progress.done === full.progress.total &&
+    full.progress.total === SPRINT4_MATRIX_N_CASES;
   return {
     scope: "SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST",
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
@@ -760,10 +811,21 @@ export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedStat
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
     reference: SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
+    matrix_n_cases: SPRINT4_MATRIX_N_CASES,
+    matrix_execution_evidence: {
+      done: full.progress.done,
+      total: full.progress.total,
+      pct: full.progress.pct,
+      all_matrix_cases_marked: full.progress.done === full.progress.total && full.progress.total === SPRINT4_MATRIX_N_CASES,
+    },
     persona_rollups: full.personas,
     matrix_progress: full.progress,
     kiosk_uat: full.kiosk_uat.progress,
     combined_functional_pct: full.combined_functional_pct,
+    presencial_functional_signoff: presencial,
+    presencial_functional_signoff_complete: presencial_complete,
+    presencial_signoff_expected_personas: expectedPersonas,
+    presencial_signoff_signed_persona_count: signedPersonaCount,
   };
 }
 
@@ -820,6 +882,13 @@ export function buildSprint4RegressionMatrixPayload(nowIso, storedState) {
     export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
     generated_at: nowIso,
     page_version: SPRINT4_MATRIX_PAGE_VERSION,
+    matrix_n_cases: SPRINT4_MATRIX_N_CASES,
+    matrix_execution_evidence: {
+      done: progress.done,
+      total: progress.total,
+      pct: progress.pct,
+      all_matrix_cases_marked: progress.done === progress.total && progress.total === SPRINT4_MATRIX_N_CASES,
+    },
     storage: {
       key: SPRINT4_MATRIX_STORAGE_KEY,
       version: Number(storedState?.version || SPRINT4_MATRIX_VERSION),

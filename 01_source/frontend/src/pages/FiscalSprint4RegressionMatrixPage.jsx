@@ -32,6 +32,43 @@ import {
 const PAGE_VERSION = SPRINT4_MATRIX_PAGE_VERSION;
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
 
+function defaultPersonaPresencialSignoffs() {
+  return SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST.map((b) => ({
+    persona: b.persona,
+    signer_name: "",
+    signer_role: "",
+    signed_at: "",
+    location: "",
+  }));
+}
+
+function parsePresencialBlockFromRaw(raw) {
+  const p = raw?.presencial_functional_checklist;
+  const base = defaultPersonaPresencialSignoffs();
+  if (!p || typeof p !== "object") {
+    return { session_id: "", facilitator_name: "", session_signed_at: "", persona_signoffs: base };
+  }
+  const by = new Map(
+    (Array.isArray(p.persona_signoffs) ? p.persona_signoffs : []).map((r) => [String(r?.persona || "").trim(), r])
+  );
+  return {
+    session_id: String(p.session_id || ""),
+    facilitator_name: String(p.facilitator_name || ""),
+    session_signed_at: String(p.session_signed_at || ""),
+    persona_signoffs: base.map((d) => {
+      const hit = by.get(d.persona);
+      if (!hit) return d;
+      return {
+        persona: d.persona,
+        signer_name: String(hit.signer_name || ""),
+        signer_role: String(hit.signer_role || ""),
+        signed_at: String(hit.signed_at || ""),
+        location: String(hit.location || ""),
+      };
+    }),
+  };
+}
+
 function downloadJsonFile(filename, payload) {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = window.URL.createObjectURL(blob);
@@ -110,6 +147,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
   const [pilotOutcome, setPilotOutcome] = useState("PARTIAL");
   const [pilotNotes, setPilotNotes] = useState("");
   const [pilotRuns, setPilotRuns] = useState(() => loadSprint4PilotRunsRaw());
+  const [presencialBlock, setPresencialBlock] = useState(() => parsePresencialBlockFromRaw(loadSprint4MatrixStateRaw()));
 
   useEffect(() => {
     const payload = {
@@ -131,9 +169,25 @@ export default function FiscalSprint4RegressionMatrixPage() {
         residual_risk_ids: goNoGoRiskIds,
         mitigation_topic_ids: goNoGoMitigationTopicIds,
       },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
+      },
     };
     window.localStorage.setItem(SPRINT4_MATRIX_STORAGE_KEY, JSON.stringify(payload));
-  }, [rows, kioskUatRows, owner, goNoGoDecision, goNoGoRisk, goNoGoMitigation, goNoGoRiskIds, goNoGoMitigationTopicIds]);
+  }, [
+    rows,
+    kioskUatRows,
+    owner,
+    goNoGoDecision,
+    goNoGoRisk,
+    goNoGoMitigation,
+    goNoGoRiskIds,
+    goNoGoMitigationTopicIds,
+    presencialBlock,
+  ]);
 
   const progress = useMemo(() => computeSprint4MatrixProgress(rows), [rows]);
   const kioskUatProgress = useMemo(() => computeSprint4KioskUatProgress(kioskUatRows), [kioskUatRows]);
@@ -163,6 +217,54 @@ export default function FiscalSprint4RegressionMatrixPage() {
     progress,
     kioskUatProgress,
   ]);
+
+  const presencialChecklistComplete = useMemo(() => {
+    const nowIso = new Date().toISOString();
+    const st = {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: nowIso,
+      owner,
+      rows: Object.fromEntries(rows.map((r) => [r.id, { done: r.done, note: r.note, last_marked_at: r.last_marked_at }])),
+      kiosk_uat: {
+        models: Object.fromEntries(
+          kioskUatRows.map((r) => [r.id, { pass: r.pass, note: r.note, marked_at: r.marked_at }])
+        ),
+      },
+      go_no_go: {
+        decision: goNoGoDecision,
+        residual_risk: goNoGoRisk,
+        mitigation_plan: goNoGoMitigation,
+        owner: String(owner || "").trim() || "-",
+        updated_at: nowIso,
+        residual_risk_ids: goNoGoRiskIds,
+        mitigation_topic_ids: goNoGoMitigationTopicIds,
+      },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
+      },
+    };
+    return buildSprint4PersonaFunctionalChecklistPayload(nowIso, st).presencial_functional_signoff_complete === true;
+  }, [
+    rows,
+    kioskUatRows,
+    owner,
+    goNoGoDecision,
+    goNoGoRisk,
+    goNoGoMitigation,
+    goNoGoRiskIds,
+    goNoGoMitigationTopicIds,
+    presencialBlock,
+  ]);
+
+  function patchPersonaPresencial(persona, patch) {
+    setPresencialBlock((prev) => ({
+      ...prev,
+      persona_signoffs: prev.persona_signoffs.map((row) => (row.persona === persona ? { ...row, ...patch } : row)),
+    }));
+  }
 
   function setRow(id, patch) {
     setRows((prev) =>
@@ -223,6 +325,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
         residual_risk_ids: goNoGoRiskIds,
         mitigation_topic_ids: goNoGoMitigationTopicIds,
       },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
+      },
     };
     const payload = buildSprint4RegressionMatrixPayload(nowIso, stored || syntheticState);
     const signed = await buildSignedPayload(payload);
@@ -254,6 +362,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
         updated_at: nowIso,
         residual_risk_ids: goNoGoRiskIds,
         mitigation_topic_ids: goNoGoMitigationTopicIds,
+      },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
       },
     };
     const payload = buildSprint4GoNoGoRegisterSummaryPayload(nowIso, syntheticState);
@@ -287,6 +401,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
         updated_at: nowIso,
         residual_risk_ids: goNoGoRiskIds,
         mitigation_topic_ids: goNoGoMitigationTopicIds,
+      },
+      presencial_functional_checklist: {
+        session_id: presencialBlock.session_id,
+        facilitator_name: presencialBlock.facilitator_name,
+        session_signed_at: presencialBlock.session_signed_at,
+        persona_signoffs: presencialBlock.persona_signoffs,
       },
     };
     const matrixPayload = buildSprint4RegressionMatrixPayload(nowIso, syntheticState);
@@ -376,6 +496,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
     setGoNoGoMitigation("");
     setGoNoGoRiskIds({});
     setGoNoGoMitigationTopicIds({});
+    setPresencialBlock(parsePresencialBlockFromRaw(null));
     setStatusMsg("Matriz reiniciada.");
     window.setTimeout(() => setStatusMsg(""), 2000);
   }
@@ -428,9 +549,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
         </div>
 
         <div style={kpiRowStyle}>
-          <span style={chipStyle}>Progresso: {progress.done}/{progress.total}</span>
+          <span style={chipStyle}>Matriz n=21: {progress.done}/{progress.total}</span>
           <span style={chipStyle}>{progress.pct}%</span>
           <span style={chipStyle}>Combinado matriz+UAT: {combinedFunctionalPct}%</span>
+          <span style={chipStyle}>
+            Checklist presencial: {presencialChecklistComplete ? "ASSINATURA COMPLETA" : "pendente"}
+          </span>
         </div>
         {statusMsg ? <small style={mutedTextStyle}>{statusMsg}</small> : null}
 
@@ -637,6 +761,97 @@ export default function FiscalSprint4RegressionMatrixPage() {
                 {p.persona}: {p.done}/{p.total}
               </span>
             ))}
+          </div>
+        </section>
+
+        <section style={boxStyle}>
+          <h3 style={boxTitleStyle}>Assinaturas presenciais por persona (evidência 100%)</h3>
+          <p style={mutedTextStyle}>
+            Sessão e cadeira por persona entram no JSON <code>SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST</code> como{" "}
+            <code>presencial_functional_signoff</code>; <code>presencial_functional_signoff_complete</code> exige matriz 21/21 + todas as personas com nome e data.
+          </p>
+          <div style={pilotGridStyle}>
+            <label style={labelStyle}>
+              session_id
+              <input
+                value={presencialBlock.session_id}
+                onChange={(e) => setPresencialBlock((p) => ({ ...p, session_id: e.target.value }))}
+                style={inputStyle}
+                placeholder="ex.: spr4-func-20260501-presencial-A"
+              />
+            </label>
+            <label style={labelStyle}>
+              Facilitador (nome)
+              <input
+                value={presencialBlock.facilitator_name}
+                onChange={(e) => setPresencialBlock((p) => ({ ...p, facilitator_name: e.target.value }))}
+                style={inputStyle}
+                placeholder="Nome do facilitador da sessão"
+              />
+            </label>
+            <label style={labelStyle}>
+              session_signed_at (ISO8601)
+              <input
+                value={presencialBlock.session_signed_at}
+                onChange={(e) => setPresencialBlock((p) => ({ ...p, session_signed_at: e.target.value }))}
+                style={inputStyle}
+                placeholder="2026-05-01T16:00:00.000Z"
+              />
+            </label>
+          </div>
+          <div style={{ marginTop: 12, overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Persona</th>
+                  <th style={thStyle}>Assinante</th>
+                  <th style={thStyle}>Papel</th>
+                  <th style={thStyle}>signed_at</th>
+                  <th style={thStyle}>Local</th>
+                </tr>
+              </thead>
+              <tbody>
+                {presencialBlock.persona_signoffs.map((row) => (
+                  <tr key={row.persona}>
+                    <td style={tdStyle}>
+                      <strong>{row.persona}</strong>
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={row.signer_name}
+                        onChange={(e) => patchPersonaPresencial(row.persona, { signer_name: e.target.value })}
+                        style={inputStyle}
+                        placeholder="Nome stakeholder"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={row.signer_role}
+                        onChange={(e) => patchPersonaPresencial(row.persona, { signer_role: e.target.value })}
+                        style={inputStyle}
+                        placeholder="ex.: lead persona"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={row.signed_at}
+                        onChange={(e) => patchPersonaPresencial(row.persona, { signed_at: e.target.value })}
+                        style={inputStyle}
+                        placeholder="ISO8601"
+                      />
+                    </td>
+                    <td style={tdStyle}>
+                      <input
+                        value={row.location}
+                        onChange={(e) => patchPersonaPresencial(row.persona, { location: e.target.value })}
+                        style={inputStyle}
+                        placeholder="sala / site piloto"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </section>
 
