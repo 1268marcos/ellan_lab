@@ -6,7 +6,7 @@
 export const SPRINT4_MATRIX_STORAGE_KEY = "ellan_fiscal_sprint4_regression_matrix_v1";
 export const SPRINT4_PILOT_RUNS_STORAGE_KEY = "ellan_fiscal_sprint4_pilot_runs_v1";
 export const SPRINT4_MATRIX_VERSION = 2;
-export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.6.0-persona-matrix-v2";
+export const SPRINT4_MATRIX_PAGE_VERSION = "fiscal/sprint4-regression-matrix v1.7.0-kiosk-touch-uat-a-d";
 export const SPRINT4_REGRESSION_EXPORT_SCHEMA = "sprint4-regression-matrix-v2";
 
 /** Limite de tamanho (chars JSON do payload sem assinatura) para anexar histórico de pilotos no pacote diário. */
@@ -141,11 +141,67 @@ export const SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST = [
   { persona: "Engenharia Plataforma", must_cover: ["CI core (Vitest + strict-core) após mudanças na trilha fiscal"] },
 ];
 
+/**
+ * UAT touch documentado (manual + âncoras E2E). Espelhado no ZIP `SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D`.
+ * @type {{ id: string, label: string, default_note_hint: string, manual_steps: string[], e2e_anchors: string[] }[]}
+ */
 export const SPRINT4_KIOSK_UAT_MODELS = [
-  { id: "model_a_quick_buy", label: "Modelo A — Quick Buy" },
-  { id: "model_b_guided_buy", label: "Modelo B — Guided Buy" },
-  { id: "model_c_pickup_fast_lane", label: "Modelo C — Pickup Fast Lane" },
-  { id: "model_d_partner_allocation", label: "Modelo D — Partner Allocation" },
+  {
+    id: "model_a_quick_buy",
+    label: "Modelo A — Quick Buy",
+    default_note_hint: "Registar order_id, locker PT, captura catálogo /comprar.",
+    manual_steps: [
+      "Viewport totem 1080×1920; abrir `/ops/kiosk-touch-models` com auth OPS.",
+      "Modelo A → CTA abre `/comprar`; vitrine com slot selecionável (lab: mocks conforme `e2e/kiosk-touch-models.spec.ts`).",
+      "Fluxo feliz até pedido criado; validar MB WAY / instrução e ausência de erro de layout em touch.",
+      "Simular timeout ou falha de rede leve; confirmar retry seguro sem estado preso.",
+    ],
+    e2e_anchors: ['Modelo A — CTA primário abre catálogo /comprar', "e2e/kiosk-touch-models.spec.ts"],
+  },
+  {
+    id: "model_b_guided_buy",
+    label: "Modelo B — Guided Buy",
+    default_note_hint: "Registar se checkout inválido sem query é esperado em lab; anexar path guiado.",
+    manual_steps: [
+      "Modelo B → CTA abre `/checkout` (lab: sem query mínima → `public-checkout-invalid` documentado).",
+      "Percorrer passos guiados até revisão; validar mensagens de validação acionáveis em touch.",
+      "Confirmar correlação `order_id` ou bloqueio explícito antes de submit quando aplicável.",
+    ],
+    e2e_anchors: [
+      "Modelo B — CTA primário abre /checkout (laboratório; sem query → checkout inválido)",
+      "e2e/kiosk-touch-models.spec.ts",
+    ],
+  },
+  {
+    id: "model_c_pickup_fast_lane",
+    label: "Modelo C — Pickup Fast Lane",
+    default_note_hint: "Anexar comprovante simulado/impresso, passo identify e redeem-manual.",
+    manual_steps: [
+      "Modelo C → `/ops/pt/kiosk`; mocks ou backend: lockers PT, catálogo, slots AVAILABLE.",
+      "Criar pedido + gateway APPROVED + payment-approved + identify + `/api/op/totem/pickups/redeem-manual` (ver testes mock completos no spec).",
+      "Validar impressão simulada (lab) ou evidência fotográfica do comprovante (campo).",
+      "Executar variante só retirada manual isolada quando o turno validar apenas pickup.",
+    ],
+    e2e_anchors: [
+      "Modelo C — KIOSK PT: pedido, pagamento (APPROVED), identificação e retirada manual (mocks)",
+      "Trilha E — totem físico: impressão + identificação + retirada (redeem) no mesmo fluxo",
+      "e2e/kiosk-touch-models.spec.ts",
+    ],
+  },
+  {
+    id: "model_d_partner_allocation",
+    label: "Modelo D — Partner Allocation",
+    default_note_hint: "Registar slot alvo, SKU e resposta POST alocação (print ou ID de gaveta).",
+    manual_steps: [
+      "Modelo D → `/ops/dev/slots` via CTA do cockpit (rota dev slots do spec).",
+      "Grelha de gavetas legível em touch; selecionar slot AVAILABLE; alocar SKU de teste.",
+      "Confirmar persistência visual e payload de alocação (evidência: HAR, screenshot ou ID de slot).",
+    ],
+    e2e_anchors: [
+      "Modelo D — dev slots: grelha de gavetas + alocar SKU (fluxo físico assistido)",
+      "e2e/kiosk-touch-models.spec.ts",
+    ],
+  },
 ];
 
 export function loadSprint4MatrixStateRaw() {
@@ -406,6 +462,9 @@ export async function appendSprint4OptionalSignedZipEntries({
     const signedChecklist = await buildSignedPayload(buildSprint4PersonaFunctionalChecklistPayload(nowIso, matrixStored));
     zipEntries[`${fileBasePrefix}_SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_${ts}.json`] = strToU8(JSON.stringify(signedChecklist, null, 2));
     attached.push("sprint4_persona_functional_checklist");
+    const signedKioskTouch = await buildSignedPayload(buildSprint4KioskTouchUatModelsPayload(nowIso, matrixStored));
+    zipEntries[`${fileBasePrefix}_SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D_${ts}.json`] = strToU8(JSON.stringify(signedKioskTouch, null, 2));
+    attached.push("sprint4_kiosk_touch_uat_models");
   }
 
   if (runs.length > 0) {
@@ -439,6 +498,7 @@ export function buildSprint4GoNoGoRegisterSummaryPayload(nowIso, storedState) {
     matrix_progress: full.progress,
     kiosk_uat: full.kiosk_uat.progress,
     combined_functional_pct: full.combined_functional_pct,
+    kiosk_touch_uat_export_scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
     go_no_go_register: full.go_no_go_register,
   };
 }
@@ -458,6 +518,29 @@ export function buildSprint4PersonaFunctionalChecklistPayload(nowIso, storedStat
     matrix_progress: full.progress,
     kiosk_uat: full.kiosk_uat.progress,
     combined_functional_pct: full.combined_functional_pct,
+  };
+}
+
+/**
+ * UAT KIOSK touch A–D: protocolo manual documentado + estado PASS/nota por modelo (evidência no ZIP diário/executivo).
+ */
+export function buildSprint4KioskTouchUatModelsPayload(nowIso, storedState) {
+  const full = buildSprint4RegressionMatrixPayload(nowIso, storedState);
+  return {
+    scope: "SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D",
+    export_schema: SPRINT4_REGRESSION_EXPORT_SCHEMA,
+    generated_at: nowIso,
+    page_version: SPRINT4_MATRIX_PAGE_VERSION,
+    manual_protocol: SPRINT4_KIOSK_UAT_MODELS.map(({ id, label, manual_steps, e2e_anchors, default_note_hint }) => ({
+      model_id: id,
+      label,
+      manual_steps,
+      e2e_anchors,
+      default_note_hint,
+    })),
+    kiosk_uat_execution: full.kiosk_uat,
+    combined_functional_pct: full.combined_functional_pct,
+    zip_attachment_hint: "ELLAN_FISCAL_DAILY_*_SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D_*.json",
   };
 }
 

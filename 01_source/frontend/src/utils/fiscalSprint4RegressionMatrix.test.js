@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  SPRINT4_KIOSK_UAT_MODELS,
   SPRINT4_MATRIX_DEFAULT_ITEMS,
   SPRINT4_MATRIX_VERSION,
   SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST,
   SPRINT4_REGRESSION_EXPORT_SCHEMA,
+  buildSprint4KioskTouchUatModelsPayload,
   buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
   computeSprint4CombinedFunctionalPct,
+  mergeSprint4KioskUatRows,
   mergeSprint4MatrixRows,
 } from "./fiscalSprint4RegressionMatrix";
 
@@ -45,6 +48,34 @@ describe("fiscalSprint4RegressionMatrix", () => {
     expect(p.persona_functional_checklist).toEqual(SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST);
     expect(typeof p.combined_functional_pct).toBe("number");
     expect(p.progress.total).toBe(SPRINT4_MATRIX_DEFAULT_ITEMS.length);
+  });
+
+  it("mergeSprint4KioskUatRows inclui protocolo manual por modelo", () => {
+    const rows = mergeSprint4KioskUatRows({});
+    expect(rows).toHaveLength(4);
+    const a = rows.find((r) => r.id === "model_a_quick_buy");
+    expect(a?.manual_steps?.length).toBeGreaterThanOrEqual(3);
+    expect(a?.e2e_anchors?.length).toBeGreaterThanOrEqual(1);
+    expect(SPRINT4_KIOSK_UAT_MODELS).toHaveLength(4);
+  });
+
+  it("buildSprint4KioskTouchUatModelsPayload inclui manual_protocol e execução", () => {
+    const now = "2026-05-01T12:00:00.000Z";
+    const p = buildSprint4KioskTouchUatModelsPayload(now, {
+      version: SPRINT4_MATRIX_VERSION,
+      updated_at: now,
+      owner: "qa",
+      rows: {},
+      kiosk_uat: {
+        models: {
+          model_a_quick_buy: { pass: true, note: "e2e verde", marked_at: now },
+        },
+      },
+      go_no_go: {},
+    });
+    expect(p.scope).toBe("SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D");
+    expect(p.manual_protocol).toHaveLength(4);
+    expect(p.kiosk_uat_execution?.models?.[0]?.id).toBe("model_a_quick_buy");
   });
 
   it("buildSprint4PersonaFunctionalChecklistPayload expõe referência e rollups", () => {

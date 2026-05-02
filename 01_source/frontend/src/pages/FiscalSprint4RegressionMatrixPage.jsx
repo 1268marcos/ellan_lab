@@ -11,6 +11,7 @@ import {
   buildSprint4GoNoGoRegisterSummaryPayload,
   buildSprint4LastPilotRunPayload,
   buildSprint4PilotHistoryPayload,
+  buildSprint4KioskTouchUatModelsPayload,
   buildSprint4PersonaFunctionalChecklistPayload,
   buildSprint4RegressionMatrixPayload,
   computeSprint4CombinedFunctionalPct,
@@ -215,6 +216,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
     const signedPersonaChecklist = await buildSignedPayload(
       buildSprint4PersonaFunctionalChecklistPayload(nowIso, syntheticState)
     );
+    const signedKioskTouchUat = await buildSignedPayload(buildSprint4KioskTouchUatModelsPayload(nowIso, syntheticState));
     const runs = loadSprint4PilotRunsRaw();
     const pilotPayload = buildSprint4PilotHistoryPayload(nowIso, runs);
     const signedPilot = await buildSignedPayload(pilotPayload);
@@ -224,9 +226,12 @@ export default function FiscalSprint4RegressionMatrixPage() {
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PERSONA_FUNCTIONAL_CHECKLIST_${ts}.json`]: strToU8(
         JSON.stringify(signedPersonaChecklist, null, 2)
       ),
+      [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D_${ts}.json`]: strToU8(
+        JSON.stringify(signedKioskTouchUat, null, 2)
+      ),
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT4_PILOT_HISTORY_${ts}.json`]: strToU8(JSON.stringify(signedPilot, null, 2)),
     });
-    setStatusMsg("Pacote ZIP: matriz + Go/No-Go + checklist por persona + histórico de pilotos.");
+    setStatusMsg("Pacote ZIP: matriz + Go/No-Go + checklist + UAT KIOSK A–D + pilotos.");
     window.setTimeout(() => setStatusMsg(""), 2600);
   }
 
@@ -327,7 +332,7 @@ export default function FiscalSprint4RegressionMatrixPage() {
               Exportar JSON assinado
             </button>
             <button type="button" style={buttonStyle} onClick={() => void exportAuditZip()}>
-              Exportar ZIP (matriz + checklist + pilotos)
+              Exportar ZIP (matriz + checklist + UAT KIOSK + pilotos)
             </button>
             <button type="button" style={buttonStyle} onClick={() => void copyLastPilotSignedJson()}>
               Copiar JSON da última rodada
@@ -346,7 +351,11 @@ export default function FiscalSprint4RegressionMatrixPage() {
         {statusMsg ? <small style={mutedTextStyle}>{statusMsg}</small> : null}
 
         <section style={boxStyle}>
-          <h3 style={boxTitleStyle}>UAT KIOSK (4 modelos)</h3>
+          <h3 style={boxTitleStyle}>UAT KIOSK touch (4 modelos A–D)</h3>
+          <p style={mutedTextStyle}>
+            Protocolo manual alinhado a <code>e2e/kiosk-touch-models.spec.ts</code>; o ZIP inclui JSON assinado{" "}
+            <code>SPRINT4_KIOSK_TOUCH_UAT_MODELS_A_D</code> com passos + PASS/notas por modelo para anexar ao daily/executivo.
+          </p>
           <div style={kpiRowStyle}>
             <span style={chipStyle}>
               Cobertura UAT: {kioskUatProgress.pass}/{kioskUatProgress.total} ({kioskUatProgress.pct}%)
@@ -360,8 +369,8 @@ export default function FiscalSprint4RegressionMatrixPage() {
               <thead>
                 <tr>
                   <th style={thStyle}>PASS</th>
-                  <th style={thStyle}>Modelo</th>
-                  <th style={thStyle}>Evidência / nota</th>
+                  <th style={thStyle}>Modelo / testes manuais</th>
+                  <th style={thStyle}>Notas por modelo (evidência)</th>
                 </tr>
               </thead>
               <tbody>
@@ -380,14 +389,43 @@ export default function FiscalSprint4RegressionMatrixPage() {
                       <div>
                         <small style={mutedTextStyle}>id: {row.id}</small>
                       </div>
+                      {row.default_note_hint ? (
+                        <div style={{ marginTop: 6 }}>
+                          <small style={{ ...mutedTextStyle, fontWeight: 700 }}>Guia de nota:</small>
+                          <div>
+                            <small style={mutedTextStyle}>{row.default_note_hint}</small>
+                          </div>
+                        </div>
+                      ) : null}
+                      {Array.isArray(row.manual_steps) && row.manual_steps.length ? (
+                        <ol style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12, color: "var(--fiscal-text)" }}>
+                          {row.manual_steps.map((step, idx) => (
+                            <li key={`${row.id}-mstep-${idx}`} style={{ marginBottom: 4 }}>
+                              {step}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : null}
+                      {Array.isArray(row.e2e_anchors) && row.e2e_anchors.length ? (
+                        <div style={{ marginTop: 6 }}>
+                          <small style={{ ...mutedTextStyle, fontWeight: 700 }}>Âncoras E2E:</small>
+                          <ul style={{ margin: "4px 0 0", paddingLeft: 16 }}>
+                            {row.e2e_anchors.map((a, i) => (
+                              <li key={`${row.id}-e2e-${i}`}>
+                                <small style={mutedTextStyle}>{a}</small>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null}
                     </td>
                     <td style={tdStyle}>
                       <textarea
                         value={row.note}
                         onChange={(e) => setKioskUatRow(row.id, { note: e.target.value })}
-                        rows={2}
+                        rows={4}
                         style={textareaStyle}
-                        placeholder="ticket, vídeo, cenário executado, observação"
+                        placeholder="ticket, vídeo, order_id, path, HAR, screenshot — exportado no ZIP com o protocolo"
                       />
                     </td>
                   </tr>
