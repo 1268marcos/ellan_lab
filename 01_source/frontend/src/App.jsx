@@ -36,7 +36,10 @@ const RegionPage = lazy(() => import("./pages/RegionPage"));
 const DevLockerResetPage = lazy(() => import("./pages/DevLockerResetPage"));
 const DevSlotAllocationPage = lazy(() => import("./pages/DevSlotAllocationPage"));
 const DevBaseCatalogPage = lazy(() => import("./pages/DevBaseCatalogPage"));
-const PickupHealthPage = lazy(() => import("./pages/PickupHealthPage"));
+const OrderPickupExecutiveSummaryPage = lazy(() => import("./pages/OrderPickupExecutiveSummaryPage"));
+const OrderPickupHealthPage = lazy(() => import("./pages/OrderPickupHealthPage"));
+const OrderDomainEventsPage = lazy(() => import("./pages/OrderDomainEventsPage"));
+const OrderDeadlinesPage = lazy(() => import("./pages/OrderDeadlinesPage"));
 const OpsAuthorizationPolicyPage = lazy(() => import("./pages/OpsAuthorizationPolicyPage"));
 const OpsVersioningPolicyPage = lazy(() => import("./pages/OpsVersioningPolicyPage"));
 const OpsReconciliationPage = lazy(() => import("./pages/OpsReconciliationPage"));
@@ -330,7 +333,30 @@ function TopNav() {
     { to: "/ops/dev/errors", label: "ops /dev/errors", aria: "Visualizacao interna de erros 4xx/5xx", group: "Dashboards" },
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
-    { to: "/ops/analytics/pickup", label: "ops /analytics/pickup", aria: "Analytics de retirada", group: "Dashboards" },
+    {
+      to: "/ops/order/executive-summary",
+      label: "ops /order/executive-summary",
+      aria: "Resumo executivo pickup (order lifecycle)",
+      group: "Order / Pickup",
+    },
+    {
+      to: "/ops/order/pickup-health",
+      label: "ops /order/pickup-health",
+      aria: "Saúde analytics pickup (order lifecycle)",
+      group: "Order / Pickup",
+    },
+    {
+      to: "/ops/order/domain-events",
+      label: "ops /order/domain-events",
+      aria: "Eventos de domínio pendentes (order lifecycle)",
+      group: "Order / Pickup",
+    },
+    {
+      to: "/ops/order/deadlines",
+      label: "ops /order/deadlines",
+      aria: "Deadlines lifecycle (documentação / gap listagem)",
+      group: "Order / Pickup",
+    },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
@@ -357,6 +383,7 @@ function TopNav() {
   const opsGroupOrder = [
     "Visão Geral",
     "Dashboards",
+    "Order / Pickup",
     "Runtime",
     "Logística",
     "Produtos & Fiscal",
@@ -1458,11 +1485,36 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+            <Route path="/ops/analytics/pickup" element={<Navigate to="/ops/order/pickup-health" replace />} />
             <Route
-              path="/ops/analytics/pickup"
+              path="/ops/order/executive-summary"
               element={
                 <OpsRoute>
-                  <PickupHealthPage />
+                  <OrderPickupExecutiveSummaryPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/order/pickup-health"
+              element={
+                <OpsRoute>
+                  <OrderPickupHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/order/domain-events"
+              element={
+                <OpsRoute>
+                  <OrderDomainEventsPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/order/deadlines"
+              element={
+                <OpsRoute>
+                  <OrderDeadlinesPage />
                 </OpsRoute>
               }
             />

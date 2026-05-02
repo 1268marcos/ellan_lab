@@ -2,9 +2,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { getOrderLifecycleBase } from "../utils/orderLifecycleInternalApi";
 
-const ORDER_LIFECYCLE_BASE =
-  import.meta.env.VITE_ORDER_LIFECYCLE_BASE_URL || "http://localhost:8010";
+const ORDER_LIFECYCLE_BASE = getOrderLifecycleBase();
 const PICKUP_HEALTH_TREND_WINDOW_PREF_KEY = "pickup_health:trend_days_window";
 const PICKUP_HEALTH_TREND_WINDOW_PRESETS = [1, 3, 7, 14, 30];
 
