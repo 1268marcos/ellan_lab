@@ -36,6 +36,7 @@ class ProductStatusHistoryListOut(BaseModel):
 class ProductListItemOut(BaseModel):
     id: str
     name: str
+    amount_cents: int
     category_id: str | None = None
     status: str
     is_active: bool

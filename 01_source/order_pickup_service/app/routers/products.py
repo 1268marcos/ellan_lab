@@ -48,6 +48,7 @@ products_table = table(
     "products",
     column("id"),
     column("name"),
+    column("amount_cents"),
     column("category_id"),
     column("status"),
     column("is_active"),
@@ -175,6 +176,7 @@ def list_products(
         select(
             products_table.c.id,
             products_table.c.name,
+            products_table.c.amount_cents,
             products_table.c.category_id,
             func.coalesce(products_table.c.status, "DRAFT").label("status"),
             func.coalesce(products_table.c.is_active, False).label("is_active"),
@@ -194,6 +196,7 @@ def list_products(
         ProductListItemOut(
             id=str(row.get("id") or ""),
             name=str(row.get("name") or ""),
+            amount_cents=int(row.get("amount_cents") or 0),
             category_id=(str(row.get("category_id")) if row.get("category_id") is not None else None),
             status=str(row.get("status") or "DRAFT"),
             is_active=bool(row.get("is_active")),

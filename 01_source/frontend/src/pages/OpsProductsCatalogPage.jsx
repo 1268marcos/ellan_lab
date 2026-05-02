@@ -13,6 +13,26 @@ const OPS_PRODUCTS_CATALOG_WINDOW_PRESETS = [1, 6, 24, 24 * 7, 24 * 30];
 
 const STATUS_OPTIONS = ["", "DRAFT", "ACTIVE", "INACTIVE", "DISCONTINUED"];
 
+/** Mirrors order_pickup `products` router `_ALLOWED_PRODUCT_TRANSITIONS`. */
+const ALLOWED_STATUS_TRANSITIONS = {
+  DRAFT: ["ACTIVE", "DISCONTINUED"],
+  ACTIVE: ["INACTIVE", "DISCONTINUED"],
+  INACTIVE: ["ACTIVE", "DISCONTINUED"],
+  DISCONTINUED: [],
+};
+
+const STATUS_ACTION_LABEL = {
+  ACTIVE: "Ativar",
+  INACTIVE: "Inativar",
+  DISCONTINUED: "Descontinuar",
+};
+
+function formatBrlFromCents(amountCents) {
+  const n = Number(amountCents);
+  if (!Number.isFinite(n)) return "—";
+  return (n / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 function toLocalInputValue(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -156,6 +176,7 @@ export default function OpsProductsCatalogPage() {
   const [error, setError] = useState("");
   const [current, setCurrent] = useState(null);
   const [previous, setPrevious] = useState(null);
+  const [statusPatchingId, setStatusPatchingId] = useState(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -260,6 +281,27 @@ export default function OpsProductsCatalogPage() {
       setPrevious(null);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function patchProductStatus(productId, toStatus) {
+    if (!token || !productId) return;
+    setStatusPatchingId(productId);
+    setError("");
+    try {
+      const endpoint = `${ORDER_PICKUP_BASE}/products/${encodeURIComponent(productId)}/status`;
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({ to_status: String(toStatus).trim().toUpperCase() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseError(data, "Nao foi possivel alterar o status do produto."));
+      await loadCatalog({});
+    } catch (err) {
+      setError(normalizeNetworkError(err, `${ORDER_PICKUP_BASE}/products/.../status`));
+    } finally {
+      setStatusPatchingId(null);
     }
   }
 
@@ -454,25 +496,52 @@ export default function OpsProductsCatalogPage() {
                 <tr>
                   <th style={thStyle}>Product ID</th>
                   <th style={thStyle}>Nome</th>
+                  <th style={thStyle}>Preço</th>
                   <th style={thStyle}>Category</th>
                   <th style={thStyle}>Status</th>
                   <th style={thStyle}>is_active</th>
                   <th style={thStyle}>Updated at</th>
+                  <th style={thStyle}>Ações</th>
                 </tr>
               </thead>
               <tbody>
-                {pageItems.map((row) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>{row.id}</td>
-                    <td style={tdStyle}>{row.name}</td>
-                    <td style={tdStyle}>{row.category_id || "-"}</td>
-                    <td style={tdStyle}>
-                      <span style={getSeverityBadgeStyle(severityByProductStatus(row.status))}>{row.status}</span>
-                    </td>
-                    <td style={tdStyle}>{String(!!row.is_active)}</td>
-                    <td style={tdStyle}>{row.updated_at}</td>
-                  </tr>
-                ))}
+                {pageItems.map((row) => {
+                  const fromSt = String(row?.status || "DRAFT").toUpperCase();
+                  const nextStatuses = ALLOWED_STATUS_TRANSITIONS[fromSt] || [];
+                  const rowBusy = statusPatchingId === row.id;
+                  return (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.id}</td>
+                      <td style={tdStyle}>{row.name}</td>
+                      <td style={tdStyle}>{formatBrlFromCents(row.amount_cents)}</td>
+                      <td style={tdStyle}>{row.category_id || "-"}</td>
+                      <td style={tdStyle}>
+                        <span style={getSeverityBadgeStyle(severityByProductStatus(row.status))}>{row.status}</span>
+                      </td>
+                      <td style={tdStyle}>{String(!!row.is_active)}</td>
+                      <td style={tdStyle}>{row.updated_at}</td>
+                      <td style={{ ...tdStyle, whiteSpace: "nowrap" }}>
+                        {nextStatuses.length === 0 ? (
+                          <span style={mutedStyleSmall}>—</span>
+                        ) : (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxWidth: 280 }}>
+                            {nextStatuses.map((target) => (
+                              <button
+                                key={target}
+                                type="button"
+                                style={statusActionButtonStyle}
+                                disabled={Boolean(loading || rowBusy)}
+                                onClick={() => void patchProductStatus(row.id, target)}
+                              >
+                                {rowBusy ? "…" : STATUS_ACTION_LABEL[target] || target}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -496,7 +565,17 @@ const errorStyle = { marginTop: 12, background: "rgba(220, 38, 38, 0.12)", color
 const kpiGridStyle = { marginTop: 16, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 };
 const kpiCardStyle = { background: "#0B1220", border: "1px solid #334155", borderRadius: 12, padding: 12 };
 const tableWrapStyle = { marginTop: 16, overflowX: "auto", border: "1px solid #1E293B", borderRadius: 12 };
-const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 900 };
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 1040 };
+const statusActionButtonStyle = {
+  padding: "4px 8px",
+  borderRadius: 8,
+  border: "1px solid #475569",
+  background: "#1E293B",
+  color: "#E2E8F0",
+  fontSize: 11,
+  fontWeight: 600,
+  cursor: "pointer",
+};
 const thStyle = { textAlign: "left", padding: 10, fontSize: 12, color: "#94A3B8", borderBottom: "1px solid #1E293B", background: "#020617" };
 const tdStyle = { padding: 10, fontSize: 12, color: "#E2E8F0", borderBottom: "1px solid #1E293B" };
 const presetSectionStyle = { marginTop: 12, background: "#0B1220", border: "1px solid #1E293B", borderRadius: 10, padding: 10 };
