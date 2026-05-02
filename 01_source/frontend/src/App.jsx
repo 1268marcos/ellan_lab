@@ -69,6 +69,7 @@ const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInv
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
 const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
 const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
+const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
@@ -388,6 +389,13 @@ function TopNav() {
       to: "/ops/lockers/slots",
       label: "ops /lockers/slots",
       aria: "Grade locker_slots + configs e force-release admin",
+      group: "Lockers",
+      opsSubGroup: "Lockers",
+    },
+    {
+      to: "/ops/lockers/operators",
+      label: "ops /lockers/operators",
+      aria: "CRUD locker_operators (comissao, contrato, status)",
       group: "Lockers",
       opsSubGroup: "Lockers",
     },
@@ -1552,6 +1560,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerSlotsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/operators"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsLockerOperatorsPage />)}
                 </OpsRoute>
               }
             />
