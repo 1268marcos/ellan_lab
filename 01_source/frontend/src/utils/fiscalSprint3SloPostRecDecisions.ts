@@ -3,7 +3,7 @@
  */
 
 export const SPRINT3_SLO_POST_REC_DECISIONS_KEY = "ellan_fiscal_sprint3_slo_post_rec_decisions_v1";
-export const SPRINT3_SLO_POST_REC_VERSION = "sprint3-p02-decisions-v1";
+export const SPRINT3_SLO_POST_REC_VERSION = "sprint3-p02-decisions-v2";
 
 export type SloPostRecDecisionEntry = Record<string, unknown>;
 
@@ -44,7 +44,8 @@ export function clearSloPostRecommendationDecisions() {
 export function buildSloPostRecommendationDecisionsPayload(
   nowIso: string,
   decisions: SloPostRecDecisionEntry[],
-  sourcePage: string
+  sourcePage: string,
+  scorecardSnapshot?: Record<string, unknown> | null
 ) {
   const timeline = decisions.slice(-25);
   return {
@@ -52,8 +53,12 @@ export function buildSloPostRecommendationDecisionsPayload(
     generated_at: nowIso,
     source: String(sourcePage || "fiscal/slo-alerts"),
     sprint3_version: SPRINT3_SLO_POST_REC_VERSION,
+    export_schema: "sprint3-p0-2-post-rec-v2",
     decisions_count: timeline.length,
     decisions_last_3: timeline.slice(-3),
     decisions: timeline,
+    ...(scorecardSnapshot && Object.keys(scorecardSnapshot).length
+      ? { attached_scorecard_digest: scorecardSnapshot }
+      : {}),
   };
 }

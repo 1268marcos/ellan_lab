@@ -14,10 +14,15 @@ import {
   loadSloPostRecommendationDecisions,
   SPRINT3_SLO_POST_REC_VERSION,
 } from "../utils/fiscalSprint3SloPostRecDecisions";
+import {
+  buildCountrySloScorecardRows,
+  computeSloFiscalOpsReadinessScore,
+  SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
+} from "../utils/fiscalSprint3SloScorecardRollup";
 
 const BILLING_BASE = import.meta.env.VITE_BILLING_FISCAL_BASE_URL || "http://localhost:8020";
 const INTERNAL_TOKEN = import.meta.env.VITE_INTERNAL_TOKEN || "";
-const PAGE_VERSION = "fiscal/slo-alerts v1.4.0-p02-decisions";
+const PAGE_VERSION = "fiscal/slo-alerts v1.5.0-p02-scorecard-ops";
 
 const POST_REC_DECISION_OPTIONS = [
   { value: "FOLLOW_RECOMMENDATION", label: "Seguir recomendação (ação alinhada)" },
@@ -27,7 +32,7 @@ const POST_REC_DECISION_OPTIONS = [
   { value: "INVESTIGATE_FIRST", label: "Investigar antes de mudar threshold" },
 ];
 const DAILY_AUDIT_PREFIX = "ELLAN_FISCAL_DAILY";
-const SLO_THRESHOLD_VERSION = "sprint3-v4-br-pt-calibration";
+const SLO_THRESHOLD_VERSION = "sprint3-v5-ops-fiscal-scorecard";
 
 const SLO_THRESHOLDS_BY_PERIOD = Object.freeze({
   "24H": {
@@ -525,6 +530,38 @@ export default function FiscalSloAlertsPage() {
     [sloSeverity, sloAssessment.reasons, adjustmentRecommendations]
   );
 
+  const countryScorecardAll = useMemo(() => buildCountrySloScorecardRows(providers), [providers]);
+
+  const sloReadinessScore = useMemo(
+    () =>
+      computeSloFiscalOpsReadinessScore({
+        sloSeverity,
+        errorRate,
+        latencyP95,
+        thresholds: activeThresholds,
+        auditMaterializedRate,
+      }),
+    [sloSeverity, errorRate, latencyP95, activeThresholds, auditMaterializedRate]
+  );
+
+  function buildPostRecScorecardDigest() {
+    return {
+      export_schema: SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
+      page_version: PAGE_VERSION,
+      threshold_bundle: SLO_THRESHOLD_VERSION,
+      filters: {
+        country: countryFilter,
+        partner: partnerFilter,
+        period: periodFilter,
+        calibration_applied: effectiveCalibrationProfile,
+      },
+      slo_readiness_0_100: sloReadinessScore,
+      slo_severity: sloSeverity,
+      scorecard_by_country: countryScorecardAll,
+      e2e_audit_trail_rollups: auditTrail?.trail_rollups ?? null,
+    };
+  }
+
   async function loadData(periodOverride = null) {
     if (!INTERNAL_TOKEN) {
       setError("Token interno ausente/inválido. Configure VITE_INTERNAL_TOKEN.");
@@ -577,6 +614,7 @@ export default function FiscalSloAlertsPage() {
   function buildSloPayload(nowIso) {
     return {
       scope: "SPRINT3_SLO_SCORECARD",
+      export_schema: SPRINT3_SLO_SCORECARD_EXPORT_SCHEMA,
       generated_at: nowIso,
       filters: {
         country: countryFilter,
@@ -611,6 +649,13 @@ export default function FiscalSloAlertsPage() {
         approvals_in_period: approvals.length,
         e2e_audit_rows: auditMaterializedTotal,
       },
+      scorecard_rollups: {
+        by_country: countryScorecardAll,
+        slo_readiness_0_100: sloReadinessScore,
+        fiscal_ops_note:
+          "Agregado por país sobre `providers/status`; readiness combina severidade SLO, erro, latência p95 vs limiares da janela e cobertura E2E.",
+      },
+      e2e_audit_trail_rollups: auditTrail?.trail_rollups ?? null,
       alerts: {
         severity: sloSeverity,
         triggered_reasons: sloAssessment.reasons,
@@ -706,7 +751,12 @@ export default function FiscalSloAlertsPage() {
     const nowIso = new Date().toISOString();
     const day = toAuditDayStamp(nowIso);
     const ts = nowIso.replace(/[:.]/g, "-");
-    const payload = buildSloPostRecommendationDecisionsPayload(nowIso, postRecDecisions, "fiscal/slo-alerts");
+    const payload = buildSloPostRecommendationDecisionsPayload(
+      nowIso,
+      postRecDecisions,
+      "fiscal/slo-alerts",
+      buildPostRecScorecardDigest()
+    );
     const signed = await buildSignedPayload(payload);
     downloadJsonFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_P0_2_POST_REC_DECISIONS_${ts}.json`, signed);
     setStatus("Decisões P0-2 exportadas (.json assinado).");
@@ -759,6 +809,8 @@ export default function FiscalSloAlertsPage() {
       generated_at: nowIso,
       raw: {
         providers_filtered: filteredProviders,
+        country_scorecard_all: countryScorecardAll,
+        slo_readiness_0_100: sloReadinessScore,
         divergence_health: divergenceHealth,
         latest_approval: latestApproval,
         auto_adjustment_recommendations: adjustmentRecommendations,
@@ -767,10 +819,11 @@ export default function FiscalSloAlertsPage() {
           selected: calibrationProfile,
           applied: effectiveCalibrationProfile,
         },
+        e2e_audit_trail_rollups: auditTrail?.trail_rollups ?? null,
       },
     });
     const signedPostRec = await buildSignedPayload(
-      buildSloPostRecommendationDecisionsPayload(nowIso, postRecDecisions, "fiscal/slo-alerts")
+      buildSloPostRecommendationDecisionsPayload(nowIso, postRecDecisions, "fiscal/slo-alerts", buildPostRecScorecardDigest())
     );
     downloadZipFile(`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_SLO_PACKAGE_${ts}.zip`, {
       [`${DAILY_AUDIT_PREFIX}_${day}_SPRINT3_SLO_SCORECARD_${ts}.json`]: strToU8(JSON.stringify(signedScorecard, null, 2)),
@@ -853,6 +906,17 @@ export default function FiscalSloAlertsPage() {
           <>
             <div style={gridStyle}>
               <section style={boxStyle}>
+                <h3 style={boxTitleStyle}>Scorecard OPS/Fiscal — readiness</h3>
+                <div style={kpiRowStyle}>
+                  <span style={chipStyle}>Índice 0–100: {sloReadinessScore}</span>
+                  <span style={chipStyle}>Países no agregado: {countryScorecardAll.length}</span>
+                </div>
+                <small style={mutedTextStyle}>
+                  Incluído no JSON/ZIP como <code>scorecard_rollups</code> e anexado às decisões P0-2 como{" "}
+                  <code>attached_scorecard_digest</code>.
+                </small>
+              </section>
+              <section style={boxStyle}>
                 <h3 style={boxTitleStyle}>Alertas ativos</h3>
                 <div style={kpiRowStyle}>
                   <span style={severityBadgeStyle(sloSeverity)}>Severidade: {sloSeverity}</span>
@@ -882,6 +946,36 @@ export default function FiscalSloAlertsPage() {
                 <small style={mutedTextStyle}>Evidência: {String(auditTrail?.handoff_evidence?.evidence_id || "-")}</small>
               </section>
             </div>
+
+            <section style={boxStyle}>
+              <h3 style={boxTitleStyle}>SLO por país (todos os providers carregados)</h3>
+              {countryScorecardAll.length === 0 ? (
+                <small style={mutedTextStyle}>Sem linhas de provider para agregar.</small>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr>
+                      <th style={thStyle}>País</th>
+                      <th style={thStyle}>Linhas</th>
+                      <th style={thStyle}>Erros</th>
+                      <th style={thStyle}>Taxa erro</th>
+                      <th style={thStyle}>Latência p95 (ms)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {countryScorecardAll.map((r) => (
+                      <tr key={r.country}>
+                        <td style={tdStyle}>{r.country}</td>
+                        <td style={tdStyle}>{r.rows}</td>
+                        <td style={tdStyle}>{r.errors}</td>
+                        <td style={tdStyle}>{(r.error_rate * 100).toFixed(1)}%</td>
+                        <td style={tdStyle}>{Math.round(r.latency_p95_ms)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </section>
 
             <section style={boxStyle}>
               <h3 style={boxTitleStyle}>Playbook de calibragem (P0-2b)</h3>
@@ -1048,3 +1142,5 @@ const severityBadgeStyle = (severity) => {
 const barRowStyle = { display: "flex", gap: 8, alignItems: "center" };
 const barTrackStyle = { flex: 1, height: 10, borderRadius: 999, background: "rgba(148,163,184,0.25)", overflow: "hidden" };
 const barFillStyle = { height: "100%", borderRadius: 999, background: "linear-gradient(90deg, rgba(59,130,246,0.85), rgba(239,68,68,0.85))" };
+const thStyle = { textAlign: "left", padding: "6px 8px", borderBottom: "1px solid var(--fiscal-link-border)", color: "var(--fiscal-soft-text)" };
+const tdStyle = { padding: "6px 8px", borderBottom: "1px solid rgba(148,163,184,0.25)" };
