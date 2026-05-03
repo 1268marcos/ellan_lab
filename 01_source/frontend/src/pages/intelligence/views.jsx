@@ -371,3 +371,104 @@ export function PartnerChurnPage() {
     </FiscalPageLayout>
   );
 }
+
+export function DynamicPricingPage() {
+  const [lockerId, setLockerId] = useState("");
+  const [productId, setProductId] = useState("");
+  const [sessionId, setSessionId] = useState("");
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const run = () => {
+    if (!lockerId.trim() || !productId.trim()) {
+      setErr("Informe locker_id e product_id (SKU).");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    const body = {
+      locker_id: lockerId.trim(),
+      product_id: productId.trim(),
+      ...(sessionId.trim() ? { session_id: sessionId.trim() } : {}),
+    };
+    mlIntelligenceApi
+      .dynamicPricingSuggest(body)
+      .then(setD)
+      .catch((e) => setErr(String(e.message || e)))
+      .finally(() => setBusy(false));
+  };
+  const shap = d?.explainability?.linear_shap?.feature_values;
+  return (
+    <FiscalPageLayout>
+      <div style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "#e2e8f0" }}>
+        <h1 style={{ fontSize: 22 }}>Preços dinâmicos</h1>
+        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+          Bandit contextual (Thompson) + elasticidade histórica. POST <code style={{ color: "#cbd5e1" }}>/pricing/dynamic-suggest</code>
+        </p>
+        <div style={{ ...G, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <label style={{ fontSize: 13, flex: "1 1 140px" }}>
+            locker_id
+            <input value={lockerId} onChange={(e) => setLockerId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          </label>
+          <label style={{ fontSize: 13, flex: "1 1 140px" }}>
+            product_id (SKU)
+            <input value={productId} onChange={(e) => setProductId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          </label>
+          <label style={{ fontSize: 13, flex: "1 1 160px" }}>
+            session_id (A/B, opcional)
+            <input value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          </label>
+          <button type="button" disabled={busy} onClick={run} style={{ padding: "10px 16px", borderRadius: 8, background: busy ? "#334155" : "#475569", color: "#fff", border: "none", cursor: busy ? "not-allowed" : "pointer" }}>
+            {busy ? "…" : "Sugerir preço"}
+          </button>
+        </div>
+        {err ? <p style={{ color: "#f87171", marginTop: 12 }}>{err}</p> : null}
+        {d ? (
+          <>
+            <div style={{ ...G, marginTop: 16 }}>
+              <p style={{ margin: "0 0 8px", fontSize: 13 }}>
+                Variante A/B: <strong>{d.ab_variant}</strong>
+                {d.ab_note ? <span style={{ color: "#94a3b8" }}> — {d.ab_note}</span> : null}
+              </p>
+              <p style={{ margin: 0, fontSize: 14 }}>
+                Ajuste sugerido: <strong>{d.suggested_price_adjust_pct}%</strong> · multiplicador {d.suggested_price_multiplier} ·{" "}
+                <strong>{d.suggested_unit_amount_cents}</strong> centavos (base {d.context?.base_price_cents})
+              </p>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "#94a3b8" }}>
+                Desconto estoque: {d.recommended_discount_pct_clear_stock}% · braço {d.arm_index} · proxy receita {d.revenue_proxy_cents}
+              </p>
+            </div>
+            {d.bundle_recommendation ? (
+              <Card title="Bundle sugerido">
+                <p style={{ margin: 0, fontSize: 13 }}>
+                  {d.bundle_recommendation.name} ({d.bundle_recommendation.code}) — {d.bundle_recommendation.amount_cents}{" "}
+                  {d.bundle_recommendation.currency}
+                </p>
+              </Card>
+            ) : null}
+            {shap ? (
+              <Card title="Explainability (SHAP linear no score do braço)">
+                <table style={TBL}>
+                  <thead>
+                    <tr>
+                      <th style={TH}>feature</th>
+                      <th style={TH}>contribuição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(shap).map(([k, v]) => (
+                      <tr key={k}>
+                        <td style={TD}>{k}</td>
+                        <td style={TD}>{typeof v === "number" ? v.toFixed(4) : String(v)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+            ) : null}
+          </>
+        ) : null}
+      </div>
+    </FiscalPageLayout>
+  );
+}

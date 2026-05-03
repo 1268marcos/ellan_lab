@@ -105,6 +105,9 @@ const PredictionHistoryPage = lazy(() =>
 const PartnerChurnPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.PartnerChurnPage }))
 );
+const DynamicPricingPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.DynamicPricingPage }))
+);
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -1099,8 +1102,11 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/history" onClick={() => setIsMobileMenuOpen(false)}>
                         Histórico
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/dynamic-pricing" onClick={() => setIsMobileMenuOpen(false)}>
+                        Preços dinâmicos
+                      </Link>
                       <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
-                        Churn Parceiros
+                        Churn parceiros
                       </Link>
                     </div>
                   ) : null}
@@ -1385,6 +1391,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <PartnerChurnPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/dynamic-pricing"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <DynamicPricingPage />)}
                 </IntelligenceRoute>
               }
             />

@@ -1,13 +1,14 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Brain, BarChart3, TrendingUp, Activity, Users } from "lucide-react";
+import { Brain, BarChart3, TrendingUp, Activity, Users, CircleDollarSign } from "lucide-react";
 
 const LINKS = [
   { to: "/intelligence/dashboard", label: "Dashboard de ML", Icon: Brain },
   { to: "/intelligence/models", label: "Monitor de Modelos", Icon: BarChart3 },
   { to: "/intelligence/at-risk", label: "Lockers em Risco", Icon: Activity },
   { to: "/intelligence/history", label: "Histórico de Predições", Icon: TrendingUp },
-  { to: "/intelligence/partner-churn", label: "Churn Parceiros Logísticos", Icon: Users },
+  { to: "/intelligence/dynamic-pricing", label: "Preços dinâmicos (ROI)", Icon: CircleDollarSign },
+  { to: "/intelligence/partner-churn", label: "Churn parceiros logísticos", Icon: Users },
 ];
 
 export default function InteligenciaMenu({ isOpen, setOpen, atRiskCount, pathname, menuRef, buttonRef }) {
