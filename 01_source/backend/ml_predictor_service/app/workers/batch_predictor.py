@@ -20,14 +20,25 @@ SELECT id::text FROM lockers
 WHERE COALESCE(active, true) = true
 ORDER BY id
 """
+# _LATEST_FEATURES = """
+# SELECT temperature_avg_70d, humidity_avg_70d, battery_min_70d,
+#        door_failures_70d, usage_events_70d, uptime_hours_70d
+# FROM ml_features_daily
+# WHERE locker_id = %s
+# ORDER BY feature_date DESC
+# LIMIT 1
+# """
 _LATEST_FEATURES = """
-SELECT temperature_avg_70d, humidity_avg_70d, battery_min_70d,
-       door_failures_70d, usage_events_70d, uptime_hours_70d
+SELECT temperature_mean, humidity_mean, battery_min,
+       door_failures_7d, usage_events_7d, uptime_hours_7d
 FROM ml_features_daily
 WHERE locker_id = %s
+  AND temperature_mean IS NOT NULL
 ORDER BY feature_date DESC
 LIMIT 1
 """
+
+
 _GLOBAL_MEANS = """
 SELECT
   AVG(temperature_avg_70d)::float,

@@ -798,6 +798,61 @@ services:
       start_period: 60s
 
 
+  # =========================
+  # ML PREDICTOR SERVICE
+  # =========================
+  ml_predictor_service:
+    build:
+      context: ../01_source/backend/ml_predictor_service
+      dockerfile: Dockerfile
+    container_name: ml_predictor_service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql://admin:admin123@postgres_central:5432/locker_central
+      - ML_DATABASE_URL=postgresql://admin:admin123@postgres_central:5432/locker_central
+      - MODEL_ARTIFACT_PATH=/app/artifacts/rf_failure.joblib
+      - ML_MODEL_DIR=/app/artifacts
+      - ENABLE_TRAIN_SCHEDULER=false
+      - ENABLE_BATCH_PREDICT_SCHEDULER=false
+      - SCHEDULER_HOUR=2
+      - SCHEDULER_TIMEZONE=America/Sao_Paulo
+      - BATCH_PREDICT_HOUR=2
+      - BATCH_PREDICT_MINUTE=30
+      - PREDICT_COMMIT_BATCH_SIZE=100
+      - CHURN_MODEL_PATH=/app/artifacts/churn_model.pkl
+      - PRICING_BANDIT_STATE_PATH=/app/artifacts/pricing_bandit_state.pkl
+      - LSTM_OCCUPANCY_MODEL_PATH=/app/artifacts/lstm_occupancy.keras
+      - LSTM_OCCUPANCY_SCALERS_PATH=/app/artifacts/lstm_occupancy_scalers.joblib
+      - LSTM_OCCUPANCY_META_PATH=/app/artifacts/lstm_occupancy.meta.json
+      - FRAUD_MODEL_DIR=/app/artifacts/fraud
+      - FRAUD_MODEL_BUNDLE_PATH=/app/artifacts/fraud/fraud_bundle.joblib
+      - FRAUD_MODEL_META_PATH=/app/artifacts/fraud/fraud_bundle.meta.json
+      - ROUTING_TRAVEL_RF_PATH=/app/artifacts/routing_travel_rf.joblib
+      # NLP: Forçar TF-IDF para evitar download de modelo pesado (mais leve, offline)
+      - FEEDBACK_USE_TFIDF_ONLY=true  # ← Forçar TF-IDF (mais leve, offline)
+      # - FEEDBACK_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
+      # - FEEDBACK_USE_TFIDF_ONLY=false
+    volumes:
+      - ../03_data/artifacts:/app/artifacts
+      - ../04_logs/ml_predictor:/app/logs
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      # redis_central:
+      #   condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+
 
   # =========================
   # PGADMIN - Interface Web gráfica (provisório na fase desenvolvimento)

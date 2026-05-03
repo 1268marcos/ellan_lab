@@ -61,9 +61,9 @@ def ml_dashboard() -> dict:
         """
         WITH lf AS (
             SELECT DISTINCT ON (locker_id)
-                locker_id, feature_date, battery_min_70d, door_failures_70d
+                locker_id, feature_date, battery_min, door_failures_7d
             FROM ml_features_daily
-            WHERE battery_min_70d IS NOT NULL
+            WHERE battery_min IS NOT NULL
             ORDER BY locker_id, feature_date DESC
         ),
         lp AS (
@@ -74,12 +74,12 @@ def ml_dashboard() -> dict:
         )
         SELECT lf.locker_id,
                lp.health_score,
-               lf.battery_min_70d AS battery_min,
-               lf.door_failures_70d,
+               lf.battery_min AS battery_min,
+               lf.door_failures_7d,
                lp.failure_probability
         FROM lf
         INNER JOIN lp ON lp.locker_id = lf.locker_id
-        WHERE lp.health_score < 30 AND lf.battery_min_70d <= 20
+        WHERE lp.health_score < 30 AND lf.battery_min <= 20
         ORDER BY lp.health_score ASC
         LIMIT 200
         """
@@ -96,22 +96,22 @@ def ml_dashboard() -> dict:
     )
     top_doors = db.fetch_all(
         """
-        SELECT locker_id, door_failures_70d
+        SELECT locker_id, door_failures_7d
         FROM (
             SELECT DISTINCT ON (locker_id)
-                locker_id, door_failures_70d, feature_date
+                locker_id, door_failures_7d, feature_date
             FROM ml_features_daily
-            WHERE door_failures_70d IS NOT NULL
+            WHERE door_failures_7d IS NOT NULL
             ORDER BY locker_id, feature_date DESC
         ) u
-        ORDER BY door_failures_70d DESC NULLS LAST
+        ORDER BY door_failures_7d DESC NULLS LAST
         LIMIT 10
         """
     )
     return {
         "at_risk_lockers": at_risk,
         "avg_health_score_series": series,
-        "top_door_failures_70d": top_doors,
+        "top_door_failures_7d": top_doors,
     }
 
 

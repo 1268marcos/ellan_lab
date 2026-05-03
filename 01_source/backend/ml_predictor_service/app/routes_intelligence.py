@@ -20,7 +20,7 @@ _LF = """SELECT DISTINCT ON (locker_id) locker_id, battery_min_70d, door_failure
 FROM ml_features_daily WHERE battery_min_70d IS NOT NULL ORDER BY locker_id, feature_date DESC"""
 
 
-@router.get("/dashboard")
+@router.get("/dashboard") # Caminho completo: /intelligence/dashboard
 def intelligence_dashboard() -> dict[str, Any]:
     try:
         at_risk = db.fetch_all(

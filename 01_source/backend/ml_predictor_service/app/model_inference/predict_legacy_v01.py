@@ -11,29 +11,25 @@ import psycopg2.extensions
 from app.db_ml import ml_connection
 from app.model_training.save_model import load_model_from_disk
 
-# CORRIGIDO: Usando nomes de colunas que existem no schema
 FEATURE_COLS = (
-    "temperature_mean",
-    "humidity_mean",
-    "battery_min",
-    "door_failures_7d",
-    "usage_events_7d",
-    "uptime_hours_7d",
+    "temperature_avg_70d",
+    "humidity_avg_70d",
+    "battery_min_70d",
+    "door_failures_70d",
+    "usage_events_70d",
+    "uptime_hours_70d",
 )
 
-# CORRIGIDO: SQL agora busca as colunas que existem
+
+
 _PREDICT_SQL = """
-SELECT m.temperature_mean, m.humidity_mean, m.battery_min,
-       m.door_failures_7d, m.usage_events_7d, m.uptime_hours_7d
+SELECT m.temperature_avg_70d, m.humidity_avg_70d, m.battery_min_70d,
+       m.door_failures_70d, m.usage_events_70d, m.uptime_hours_70d
 FROM public.ml_features_daily m
 WHERE m.locker_id = %s
-  AND m.temperature_mean IS NOT NULL
-  AND m.humidity_mean IS NOT NULL
-  AND m.battery_min IS NOT NULL
 ORDER BY m.feature_date DESC
 LIMIT 1
 """
-
 _ACTIVE_SQL = """
 SELECT model_version, metrics_json::text
 FROM public.ml_model_metadata
@@ -41,7 +37,6 @@ WHERE status = 'ACTIVE'
 ORDER BY trained_at DESC
 LIMIT 1
 """
-
 _LOG_SQL = """
 INSERT INTO public.ml_predictions_log
   (locker_id, failure_probability, health_score, model_version)
@@ -60,7 +55,6 @@ def _active_model(conn: psycopg2.extensions.connection) -> tuple[str, dict | Non
 
 
 def _row_to_x(row: tuple[Any, ...]) -> np.ndarray:
-    """Converte tupla do banco em array numpy, tratando None como 0"""
     def f(i: int) -> float:
         v = row[i]
         return float(v) if v is not None else 0.0
@@ -69,7 +63,6 @@ def _row_to_x(row: tuple[Any, ...]) -> np.ndarray:
 
 
 def _proba_health(model: object, X: np.ndarray) -> tuple[float, float]:
-    """Calcula probabilidade de falha e health_score"""
     pr = model.predict_proba(X)[0]
     cl = np.asarray(getattr(model, "classes_", np.arange(len(pr))))
     if not np.any(cl == 1):
@@ -117,7 +110,7 @@ def predict_failure(
 ) -> tuple[float, float, str]:
     """
     Última linha de features → (failure_probability, health_score, model_version).
-    Registra em ml_predictions_log (commit automático se conn não for passado).
+    Regista em ml_predictions_log (commit automático se conn não for passado).
     """
     mdir = model_dir or os.environ.get("ML_MODEL_DIR")
 
@@ -126,12 +119,9 @@ def predict_failure(
         with c.cursor() as cur:
             cur.execute(_PREDICT_SQL, (locker_id,))
             frow = cur.fetchone()
-        if not frow:
-            raise ValueError(f"Sem features para locker_id={locker_id}")
-        # Verifica se algum valor é None e faz logging
-        if any(x is None for x in frow):
-            raise ValueError(f"Features incompletas para locker_id={locker_id}")
-        vals = tuple(float(frow[i]) for i in range(len(FEATURE_COLS)))
+        if not frow or any(x is None for x in frow):
+            raise ValueError(f"Sem features completas para locker_id={locker_id}")
+        vals = tuple(float(frow[i]) for i in range(6))
         return predict_from_values(c, locker_id, vals, model, ver, skip_log=skip_log)
 
     if conn is not None:
