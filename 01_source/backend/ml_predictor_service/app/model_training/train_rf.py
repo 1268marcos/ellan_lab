@@ -115,21 +115,32 @@ def train(rows: list[tuple], col_names: list[str]) -> tuple[RandomForestClassifi
     return clf, metrics
 
 
+def run_sklearn_training(
+    days: int = 90, model_dir: str | None = None
+) -> dict[str, object]:
+    """API/CLI: treina RF 70d, grava pkl + metadata; retorna métricas e versão."""
+    end = datetime.now(timezone.utc).date()
+    start = end - timedelta(days=days - 1)
+    with ml_connection() as conn:
+        rows, cols = _fetch_frame(conn, start)
+    rows = _filter_lockers(rows, cols)
+    if len(rows) < 50:
+        raise RuntimeError(
+            f"Poucos dados após filtro (>={MIN_SAMPLES_PER_LOCKER}/locker): {len(rows)}"
+        )
+    model, metrics = train(rows, cols)
+    plain = {k: (v.item() if hasattr(v, "item") else v) for k, v in metrics.items()}
+    ver = save_trained_model(model, plain, model_dir=model_dir)
+    log.info("model_version=%s", ver)
+    return {"model_version": ver, "metrics": plain, "n_rows": len(rows)}
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--days", type=int, default=90)
     p.add_argument("--model-dir", type=str, default=None)
     args = p.parse_args()
-    end = datetime.now(timezone.utc).date()
-    start = end - timedelta(days=args.days - 1)
-    with ml_connection() as conn:
-        rows, cols = _fetch_frame(conn, start)
-    rows = _filter_lockers(rows, cols)
-    if len(rows) < 50:
-        raise RuntimeError(f"Poucos dados após filtro (>={MIN_SAMPLES_PER_LOCKER}/locker): {len(rows)}")
-    model, metrics = train(rows, cols)
-    ver = save_trained_model(model, metrics, model_dir=args.model_dir)
-    log.info("model_version=%s", ver)
+    run_sklearn_training(days=args.days, model_dir=args.model_dir)
 
 
 if __name__ == "__main__":

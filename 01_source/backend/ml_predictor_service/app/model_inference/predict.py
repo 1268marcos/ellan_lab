@@ -66,14 +66,14 @@ def predict_failure(
     conn: psycopg2.extensions.connection | None = None,
     model_dir: str | None = None,
     skip_log: bool = False,
-) -> tuple[float, float]:
+) -> tuple[float, float, str]:
     """
-    Última linha de features do locker → probabilidade de falha e health_score.
+    Última linha de features → (failure_probability, health_score, model_version).
     Regista em ml_predictions_log (commit automático se conn não for passado).
     """
     mdir = model_dir or os.environ.get("ML_MODEL_DIR")
 
-    def _run(c: psycopg2.extensions.connection) -> tuple[float, float]:
+    def _run(c: psycopg2.extensions.connection) -> tuple[float, float, str]:
         ver, mj = _active_model(c)
         model = load_model_from_disk(ver, mj, mdir)
         with c.cursor() as cur:
@@ -92,7 +92,7 @@ def predict_failure(
         if not skip_log:
             with c.cursor() as cur:
                 cur.execute(_LOG_SQL, (locker_id, proba, health, ver))
-        return proba, health
+        return proba, health, ver
 
     if conn is not None:
         return _run(conn)

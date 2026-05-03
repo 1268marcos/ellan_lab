@@ -7,10 +7,12 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.config import settings
 from app import db
+from app.routes_ml import router as ml_router
 from app.model_rf import health_score, predict_failure_prob
 from app.train_job import load_active_classifier, run_training_job
 
@@ -58,6 +60,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ml_predictor_service", version="0.1.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(ml_router)
 
 
 class TrainResponse(BaseModel):
