@@ -99,9 +99,9 @@ app.add_middleware(
 )
 
 
-# @app.get("/intelligence/dashboard")
-# async def intelligence_dashboard_http():
-#     return {"at_risk": [], "series": []}
+@app.get("/intelligence/dashboard")
+async def intelligence_dashboard_http():
+    return {"at_risk": [], "series": []}
 
 
 @app.get("/intelligence/models")

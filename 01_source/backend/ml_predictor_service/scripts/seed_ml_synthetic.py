@@ -24,16 +24,21 @@ N_DAYS = 90
 
 
 def main() -> None:
-    url = os.environ.get("DATABASE_URL", "postgresql://admin:admin@localhost:5432/ellan")
+    # url = os.environ.get("DATABASE_URL", "postgresql://admin:admin@localhost:5432/ellan")
+    url = os.environ.get("DATABASE_URL", "postgresql://admin:admin123@postgres_central:5432/locker_central")
     random.seed(42)
     conn = psycopg2.connect(_pg_dsn(url))
     conn.autocommit = True
     cur = conn.cursor()
     cur.execute(
         """
-        INSERT INTO locker_operators (id, name, operator_type, country, active)
-        VALUES (%s, %s, 'OWN', 'BR', TRUE)
-        ON CONFLICT (id) DO NOTHING
+        INSERT INTO locker_operators (
+            id, name, operator_type, country, active,
+            created_at, updated_at, currency
+        )
+        VALUES (%s, %s, 'OWN', 'BR', TRUE, NOW(), NOW(), 'BRL')
+        ON CONFLICT (id) DO UPDATE 
+        SET name = EXCLUDED.name, updated_at = NOW()
         """,
         (OPERATOR_ID, "ML Synthetic Operator"),
     )

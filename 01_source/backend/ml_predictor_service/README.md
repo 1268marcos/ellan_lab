@@ -6,7 +6,8 @@ Manutenção preditiva (Fase 1): RandomForest sobre `ml_features_daily`, prediç
 
 | Variável | Default |
 |----------|---------|
-| `DATABASE_URL` | `postgresql://admin:admin@localhost:5432/ellan` |
+| `DATABASE_URL` | `postgresql://admin:admin@localhost:5432/ellan ERRADO` |
+| `DATABASE_URL` | `postgresql://admin:admin123@postgres_central:5432/locker_central` |
 | `MODEL_ARTIFACT_PATH` | `./artifacts/rf_failure.joblib` |
 | `ENABLE_TRAIN_SCHEDULER` | `false` — se `true`, treino diário às 02:00 (`SCHEDULER_TIMEZONE`, default `America/Sao_Paulo`) |
 | `SCHEDULER_HOUR` | `2` |
