@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -30,6 +31,17 @@ def map_runtime_state_to_pg_status(runtime_state: str) -> str:
     if s in ("OUT_OF_STOCK",):
         return "AVAILABLE"
     return "AVAILABLE"
+
+
+def _parse_slot_number(slot_label: str) -> int:
+    raw = str(slot_label or "").strip()
+    try:
+        return int(raw)
+    except ValueError:
+        m = re.search(r"\d+", raw)
+        if not m:
+            raise ValueError(f"invalid slot_label: {slot_label!r}")
+        return int(m.group(0))
 
 
 def _slot_label_matches_runtime_slot(slot_label: str, rt_slot: int) -> bool:
@@ -109,6 +121,107 @@ def compute_slot_divergences(db: Session, locker_id: str, region: Optional[str])
                 }
             )
     return out
+
+
+def apply_slot_state_change_webhook(
+    db: Session,
+    *,
+    locker_id: str,
+    slot_label: str,
+    current_state: str,
+    previous_state: Optional[str] = None,
+    occurred_at: Optional[str] = None,
+    allocation_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Atualiza uma linha em locker_slots a partir do payload do runtime (webhook).
+    Registra runtime_sync_queue com status WEBHOOK_TRIGGERED para auditoria.
+    """
+    locker_id = str(locker_id or "").strip().upper()
+    try:
+        slot_num = _parse_slot_number(slot_label)
+    except ValueError as exc:
+        return {"ok": False, "error": "INVALID_SLOT_LABEL", "message": str(exc)}
+
+    target_status = map_runtime_state_to_pg_status(current_state)
+    pg_rows = _load_pg_slots(db, locker_id)
+    match = next(
+        (p for p in pg_rows if _slot_label_matches_runtime_slot(str(p.get("slot_label") or ""), slot_num)),
+        None,
+    )
+    if not match:
+        return {"ok": False, "error": "SLOT_NOT_FOUND", "locker_id": locker_id, "slot_label": slot_label}
+
+    now = datetime.now(timezone.utc)
+    cur_status = str(match.get("status") or "").strip().upper()
+    occ = match.get("occupied_since")
+    alloc_id = match.get("current_allocation_id")
+
+    if target_status == "AVAILABLE":
+        alloc_id = None
+        occ = None
+    elif target_status == "OCCUPIED":
+        if allocation_id:
+            alloc_id = str(allocation_id).strip() or None
+        if occ is None:
+            occ = now
+
+    res = db.execute(
+        text(
+            """
+            UPDATE locker_slots
+            SET status = :st,
+                occupied_since = :occ,
+                current_allocation_id = :aid,
+                updated_at = :now
+            WHERE id = :sid
+            """
+        ),
+        {
+            "st": target_status,
+            "occ": occ,
+            "aid": alloc_id,
+            "now": now,
+            "sid": str(match["id"]),
+        },
+    )
+    rows_touched = int(res.rowcount or 0)
+
+    qid = str(uuid.uuid4())
+    audit = json.dumps(
+        {
+            "source": "runtime_webhook",
+            "previous_state": previous_state,
+            "current_state": current_state,
+            "occurred_at": occurred_at,
+            "mapped_status": target_status,
+            "prior_pg_status": cur_status,
+        },
+        ensure_ascii=False,
+    )[:7999]
+    db.add(
+        RuntimeSyncQueue(
+            id=qid,
+            locker_id=locker_id,
+            operation="WEBHOOK_SLOT_STATE",
+            status="WEBHOOK_TRIGGERED",
+            retry_count=0,
+            max_retries=3,
+            last_error=audit,
+            created_at=now,
+            updated_at=now,
+            processed_at=now,
+        )
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "locker_id": locker_id,
+        "slot_label": str(match.get("slot_label") or slot_label),
+        "queue_id": qid,
+        "mapped_status": target_status,
+        "rows_updated": rows_touched,
+    }
 
 
 def sync_locker_slots_from_runtime(db: Session, locker_id: str, region: Optional[str] = None) -> dict[str, Any]:

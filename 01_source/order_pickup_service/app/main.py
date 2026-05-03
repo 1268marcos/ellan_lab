@@ -46,6 +46,7 @@ from app.routers import (
     products,
     rentals_ops,
     runtime_sync,
+    webhooks,
 )
 
 from app.routers.public_auth import router as public_auth_router
@@ -153,6 +154,7 @@ app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
 app.include_router(runtime_sync.router)
+app.include_router(webhooks.router)
 app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)

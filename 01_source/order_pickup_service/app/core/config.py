@@ -274,6 +274,12 @@ class Settings(BaseSettings):
         alias="RUNTIME_SLOT_SYNC_ENABLED",
         description="Liga/desliga o loop de sync automático no startup.",
     )
+
+    runtime_slot_state_webhook_secret: str = Field(
+        default="",
+        alias="RUNTIME_SLOT_STATE_WEBHOOK_SECRET",
+        description="Segredo compartilhado com o runtime (header X-Webhook-Secret) para POST /webhooks/runtime/slot-state-change.",
+    )
     order_lifecycle_timeout_sec: int = Field(default=5, alias="ORDER_LIFECYCLE_TIMEOUT_SEC")
     
     # Timeouts regionais

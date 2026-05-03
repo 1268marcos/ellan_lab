@@ -44,8 +44,7 @@ from app.core.locker_runtime_resolver import resolve_runtime_locker
 from app.core.slot_topology import get_valid_slot_ids, ensure_valid_slot
 from app.core.constants.slot_states import SLOT_STATES, SlotState
 
-from app.core.datetime_utils import to_iso_utc
-
+from app.services.slot_state_webhook_notify import notify_slot_state_change_async
 
 
 router = APIRouter(prefix="/locker", tags=["locker"])
@@ -301,7 +300,18 @@ def set_slot_state(
     try:
         conn = get_conn()
         prev = _get_slot(conn, machine_id, slot)
+        prev_state = prev["state"] if prev else None
         new_row = _upsert_slot(conn, machine_id, slot, payload.state, payload.product_id)
+        new_state = str(new_row["state"])
+        if prev_state != new_state:
+            notify_slot_state_change_async(
+                locker_id=str(locker_ctx["locker_id"]),
+                slot_label=str(int(slot)),
+                previous_state=prev_state,
+                current_state=new_state,
+                occurred_at=str(new_row["updated_at"]),
+                allocation_id=None,
+            )
 
         return {
             "ok": True,

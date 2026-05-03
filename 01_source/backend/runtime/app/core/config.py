@@ -45,5 +45,12 @@ class Settings:
         True,
     )
 
+    # Webhook outbound: notificar order_pickup (ou outro) imediatamente após mudança de estado do slot
+    slot_state_webhook_url: str = os.getenv("SLOT_STATE_WEBHOOK_URL", "").strip()
+    slot_state_webhook_secret: str = (
+        os.getenv("SLOT_STATE_WEBHOOK_SECRET") or os.getenv("RUNTIME_SLOT_STATE_WEBHOOK_SECRET") or ""
+    ).strip()
+    slot_state_webhook_timeout_sec: float = float(os.getenv("SLOT_STATE_WEBHOOK_TIMEOUT_SEC", "2"))
+
 
 settings = Settings()
