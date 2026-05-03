@@ -73,6 +73,7 @@ const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInv
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
 const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
 const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
+const OpsLockerOccupancyForecastPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
@@ -108,6 +109,7 @@ const PartnerChurnPage = lazy(() =>
 const DynamicPricingPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.DynamicPricingPage }))
 );
+const OccupancyForecastIntelPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -468,6 +470,13 @@ function TopNav() {
       to: "/ops/lockers/slots",
       label: "ops /lockers/slots",
       aria: "Grade locker_slots + configs e force-release admin",
+      group: "Lockers",
+      opsSubGroup: "Lockers",
+    },
+    {
+      to: "/ops/lockers/occupancy-forecast",
+      label: "ops /lockers/occupancy-forecast",
+      aria: "Heatmap de ocupação prevista (LSTM) + alertas",
       group: "Lockers",
       opsSubGroup: "Lockers",
     },
@@ -1105,6 +1114,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/dynamic-pricing" onClick={() => setIsMobileMenuOpen(false)}>
                         Preços dinâmicos
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/occupancy-forecast" onClick={() => setIsMobileMenuOpen(false)}>
+                        Previsão de ocupação
+                      </Link>
                       <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
                         Churn parceiros
                       </Link>
@@ -1399,6 +1411,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <DynamicPricingPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/occupancy-forecast"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <OccupancyForecastIntelPage />)}
                 </IntelligenceRoute>
               }
             />
@@ -1792,6 +1812,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerSlotsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/occupancy-forecast"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsLockerOccupancyForecastPage />)}
                 </OpsRoute>
               }
             />

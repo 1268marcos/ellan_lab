@@ -15,11 +15,18 @@ import FiscalPageLayout from "../../components/FiscalPageLayout";
 import { useAuth } from "../../context/AuthContext";
 import { mlIntelligenceApi } from "../../api/mlIntelligenceClient";
 
-const G = { background: "linear-gradient(145deg,#1e293b 0%,#0f172a 100%)", border: "1px solid #334155", borderRadius: 14, padding: 16, color: "#e2e8f0" };
-const H = { fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: "#f8fafc" };
+const G = {
+  background: "var(--fiscal-card-bg)",
+  border: "1px solid var(--fiscal-card-border)",
+  borderRadius: 14,
+  padding: 16,
+  color: "var(--fiscal-soft-text)",
+  boxShadow: "0 4px 20px rgba(2, 6, 23, 0.32)",
+};
+const H = { fontSize: 14, fontWeight: 700, margin: "0 0 10px", color: "var(--fiscal-text)" };
 const TBL = { width: "100%", borderCollapse: "collapse", fontSize: 12 };
-const TH = { textAlign: "left", padding: 8, borderBottom: "1px solid #475569", color: "#94a3b8" };
-const TD = { padding: 8, borderTop: "1px solid #1e293b" };
+const TH = { textAlign: "left", padding: 8, borderBottom: "1px solid var(--fiscal-table-separator-strong)", color: "var(--fiscal-muted)" };
+const TD = { padding: 8, borderTop: "1px solid var(--fiscal-table-separator-soft)", color: "var(--fiscal-soft-text)" };
 
 function Card({ title, children }) {
   return (
@@ -327,21 +334,35 @@ export function PartnerChurnPage() {
   const high = d?.high_risk || [];
   return (
     <FiscalPageLayout>
-      <div style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "#e2e8f0" }}>
-        <h1 style={{ fontSize: 22 }}>Churn — parceiros logísticos</h1>
-        <p style={{ fontSize: 12, color: "#94a3b8" }}>
-          risk_score = P(churn)×100. Treino: <code style={{ color: "#cbd5e1" }}>PYTHONPATH=. python -m app.ml_churn.train_churn_model</code>
+      <div className="intel-ml-surface" style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "var(--fiscal-text)" }}>
+        <h1 className="intel-ml-pageTitle" style={{ fontSize: 22 }}>
+          Churn — parceiros logísticos
+        </h1>
+        <p className="intel-ml-pageSub" style={{ fontSize: 12, marginBottom: 12 }}>
+          risk_score = P(churn)×100. Treino: <span className="intel-ml-code">PYTHONPATH=. python -m app.ml_churn.train_churn_model</span>
         </p>
-        <div style={{ ...G, display: "flex", gap: 10, alignItems: "center" }}>
-          <label style={{ fontSize: 13 }}>
-            Limiar mínimo
-            <input type="number" value={thr} min={0} max={100} onChange={(e) => setThr(Number(e.target.value))} style={{ width: 64, marginLeft: 8, padding: 6, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ gap: 10, alignItems: "center" }}>
+          <label className="intel-ml-field" style={{ fontSize: 13 }}>
+            <span className="intel-ml-fieldLabel">Limiar mínimo</span>
+            <input
+              type="number"
+              className="intel-ml-input"
+              value={thr}
+              min={0}
+              max={100}
+              onChange={(e) => setThr(Number(e.target.value))}
+              style={{ width: 88, marginTop: 4 }}
+            />
           </label>
-          <button type="button" onClick={() => mlIntelligenceApi.churnRisk({ min_risk: thr }).then(setD).catch((e) => setErr(String(e.message || e)))} style={{ padding: "8px 12px", borderRadius: 8, background: "#475569", color: "#fff", border: "none", cursor: "pointer" }}>
+          <button
+            type="button"
+            className="intel-ml-btn intel-ml-btn--primary"
+            onClick={() => mlIntelligenceApi.churnRisk({ min_risk: thr }).then(setD).catch((e) => setErr(String(e.message || e)))}
+          >
             Atualizar
           </button>
         </div>
-        {err ? <p style={{ color: "#f87171" }}>{err}</p> : null}
+        {err ? <p className="intel-ml-error">{err}</p> : null}
         <Card title={`Parceiros com risk_score ≥ ${thr} (${high.length})`}>
           <table style={TBL}>
             <thead>
@@ -400,41 +421,43 @@ export function DynamicPricingPage() {
   const shap = d?.explainability?.linear_shap?.feature_values;
   return (
     <FiscalPageLayout>
-      <div style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "#e2e8f0" }}>
-        <h1 style={{ fontSize: 22 }}>Preços dinâmicos</h1>
-        <p style={{ fontSize: 12, color: "#94a3b8" }}>
-          Bandit contextual (Thompson) + elasticidade histórica. POST <code style={{ color: "#cbd5e1" }}>/pricing/dynamic-suggest</code>
+      <div className="intel-ml-surface" style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "var(--fiscal-text)" }}>
+        <h1 className="intel-ml-pageTitle" style={{ fontSize: 22 }}>
+          Preços dinâmicos
+        </h1>
+        <p className="intel-ml-pageSub" style={{ fontSize: 12, marginBottom: 12 }}>
+          Bandit contextual (Thompson) + elasticidade histórica. POST <span className="intel-ml-code">/pricing/dynamic-suggest</span>
         </p>
-        <div style={{ ...G, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-          <label style={{ fontSize: 13, flex: "1 1 140px" }}>
-            locker_id
-            <input value={lockerId} onChange={(e) => setLockerId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <label className="intel-ml-field" style={{ fontSize: 13, flex: "1 1 140px" }}>
+            <span className="intel-ml-fieldLabel">locker_id</span>
+            <input className="intel-ml-input" value={lockerId} onChange={(e) => setLockerId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 13, flex: "1 1 140px" }}>
-            product_id (SKU)
-            <input value={productId} onChange={(e) => setProductId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          <label className="intel-ml-field" style={{ fontSize: 13, flex: "1 1 140px" }}>
+            <span className="intel-ml-fieldLabel">product_id (SKU)</span>
+            <input className="intel-ml-input" value={productId} onChange={(e) => setProductId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4 }} />
           </label>
-          <label style={{ fontSize: 13, flex: "1 1 160px" }}>
-            session_id (A/B, opcional)
-            <input value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4, padding: 8, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          <label className="intel-ml-field" style={{ fontSize: 13, flex: "1 1 160px" }}>
+            <span className="intel-ml-fieldLabel">session_id (A/B, opcional)</span>
+            <input className="intel-ml-input" value={sessionId} onChange={(e) => setSessionId(e.target.value)} style={{ display: "block", width: "100%", marginTop: 4 }} />
           </label>
-          <button type="button" disabled={busy} onClick={run} style={{ padding: "10px 16px", borderRadius: 8, background: busy ? "#334155" : "#475569", color: "#fff", border: "none", cursor: busy ? "not-allowed" : "pointer" }}>
+          <button type="button" disabled={busy} className="intel-ml-btn intel-ml-btn--primary" onClick={run}>
             {busy ? "…" : "Sugerir preço"}
           </button>
         </div>
-        {err ? <p style={{ color: "#f87171", marginTop: 12 }}>{err}</p> : null}
+        {err ? <p className="intel-ml-error" style={{ marginTop: 12 }}>{err}</p> : null}
         {d ? (
           <>
             <div style={{ ...G, marginTop: 16 }}>
               <p style={{ margin: "0 0 8px", fontSize: 13 }}>
                 Variante A/B: <strong>{d.ab_variant}</strong>
-                {d.ab_note ? <span style={{ color: "#94a3b8" }}> — {d.ab_note}</span> : null}
+                {d.ab_note ? <span style={{ color: "var(--fiscal-muted)" }}> — {d.ab_note}</span> : null}
               </p>
               <p style={{ margin: 0, fontSize: 14 }}>
                 Ajuste sugerido: <strong>{d.suggested_price_adjust_pct}%</strong> · multiplicador {d.suggested_price_multiplier} ·{" "}
                 <strong>{d.suggested_unit_amount_cents}</strong> centavos (base {d.context?.base_price_cents})
               </p>
-              <p style={{ margin: "8px 0 0", fontSize: 13, color: "#94a3b8" }}>
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--fiscal-muted)" }}>
                 Desconto estoque: {d.recommended_discount_pct_clear_stock}% · braço {d.arm_index} · proxy receita {d.revenue_proxy_cents}
               </p>
             </div>

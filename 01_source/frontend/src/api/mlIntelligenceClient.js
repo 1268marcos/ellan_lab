@@ -39,4 +39,6 @@ export const mlIntelligenceApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     }),
+  occupancyForecast: (lockerId, hours = 24) =>
+    _j(`/ops/lockers/${encodeURIComponent(lockerId)}/occupancy-forecast?hours=${hours}`),
 };

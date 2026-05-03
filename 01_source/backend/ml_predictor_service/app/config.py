@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     ml_model_dir: str | None = None  # ML_MODEL_DIR env overrides via model_dir param
     churn_model_path: str = "./artifacts/churn_model.pkl"
     pricing_bandit_state_path: str = "./artifacts/pricing_bandit_state.pkl"
+    lstm_occupancy_model_path: str = "./artifacts/lstm_occupancy.keras"
+    lstm_occupancy_scalers_path: str = "./artifacts/lstm_occupancy_scalers.joblib"
+    lstm_occupancy_meta_path: str = "./artifacts/lstm_occupancy.meta.json"
 
 
 settings = Settings()
