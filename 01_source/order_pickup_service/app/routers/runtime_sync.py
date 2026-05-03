@@ -39,6 +39,16 @@ def get_runtime_sync_divergences(db: Session = Depends(get_db)):
     return {"items": rss.divergences_report(db)}
 
 
+@router.get("/validate/{locker_id}")
+def get_runtime_sync_validate(locker_id: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+    _require_pg()
+    lid = str(locker_id).strip().upper()
+    out = rss.validate_sync_consistency(db, lid)
+    if not out.get("ok"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=out)
+    return out
+
+
 @router.post("/run/{locker_id}", dependencies=[_write_dep])
 def post_runtime_sync_run(locker_id: str = Path(..., min_length=1), db: Session = Depends(get_db)):
     _require_pg()

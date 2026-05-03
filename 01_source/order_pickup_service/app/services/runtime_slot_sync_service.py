@@ -129,6 +129,86 @@ def compute_slot_divergences(db: Session, locker_id: str, region: Optional[str])
     return out
 
 
+def validate_sync_consistency(db: Session, locker_id: str) -> dict[str, Any]:
+    """
+    Pós-sync: compara runtime (GET /locker/slots) vs locker_slots no Postgres slot a slot.
+    Se restarem divergências, marca o último registro SYNC_SLOTS (SUCCESS/PARTIAL_SUCCESS) como PARTIAL_SUCCESS
+    e grava os slots em last_error (JSON).
+    """
+    lid = str(locker_id or "").strip().upper()
+    reg = db.execute(text("SELECT region FROM lockers WHERE id = :id LIMIT 1"), {"id": lid}).mappings().first()
+    if not reg:
+        return {"ok": False, "error": "LOCKER_NOT_FOUND", "locker_id": lid}
+
+    region = str(reg.get("region") or "").strip() or None
+    residual = compute_slot_divergences(db, lid, region)
+    now = datetime.now(timezone.utc)
+    queue_id: Optional[str] = None
+    marked = False
+
+    if residual:
+        payload = json.dumps(
+            {"type": "RESIDUAL_DIVERGENCES", "slots": residual},
+            ensure_ascii=False,
+        )[:7999]
+        qrow = db.execute(
+            text(
+                """
+                SELECT id FROM runtime_sync_queue
+                WHERE locker_id = :lid AND operation = 'SYNC_SLOTS'
+                  AND status IN ('SUCCESS', 'PARTIAL_SUCCESS')
+                ORDER BY COALESCE(processed_at, created_at) DESC NULLS LAST
+                LIMIT 1
+                """
+            ),
+            {"lid": lid},
+        ).mappings().first()
+        if qrow:
+            queue_id = str(qrow["id"])
+            db.execute(
+                text(
+                    """
+                    UPDATE runtime_sync_queue
+                    SET status = 'PARTIAL_SUCCESS',
+                        last_error = :err,
+                        updated_at = :n
+                    WHERE id = :qid
+                    """
+                ),
+                {"err": payload, "n": now, "qid": queue_id},
+            )
+            marked = True
+        else:
+            queue_id = str(uuid.uuid4())
+            db.add(
+                RuntimeSyncQueue(
+                    id=queue_id,
+                    locker_id=lid,
+                    operation="SYNC_SLOTS",
+                    status="PARTIAL_SUCCESS",
+                    retry_count=0,
+                    max_retries=3,
+                    last_error=payload,
+                    created_at=now,
+                    updated_at=now,
+                    processed_at=now,
+                    next_retry_at=None,
+                )
+            )
+            marked = True
+        db.commit()
+
+    return {
+        "ok": True,
+        "locker_id": lid,
+        "consistent": len(residual) == 0,
+        "residual_divergences": residual,
+        "residual_count": len(residual),
+        "sync_marked_partial": marked,
+        "queue_id": queue_id,
+    }
+
+
 def apply_slot_state_change_webhook(
     db: Session,
     *,

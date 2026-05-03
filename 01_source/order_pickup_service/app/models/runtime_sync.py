@@ -20,7 +20,7 @@ class RuntimeSyncQueue(Base):
     id = Column(String(36), primary_key=True)
     locker_id = Column(String(64), nullable=False, index=True)
     operation = Column(String(32), nullable=False)  # SYNC_SLOTS | WEBHOOK_SLOT_STATE | SYNC_DOOR_STATE | SYNC_FEATURES
-    status = Column(String(20), nullable=False, index=True)  # PENDING | PROCESSING | SUCCESS | FAILED | WEBHOOK_TRIGGERED
+    status = Column(String(20), nullable=False, index=True)  # PENDING | PROCESSING | SUCCESS | PARTIAL_SUCCESS | FAILED | WEBHOOK_TRIGGERED
     retry_count = Column(Integer, nullable=False, default=0)
     max_retries = Column(Integer, nullable=False, default=3)
     last_error = Column(Text, nullable=True)
