@@ -87,6 +87,7 @@ const BillingInvoiceQueuePage = lazy(() => import("./pages/BillingInvoiceQueuePa
 const BillingReconciliationGapsPage = lazy(() => import("./pages/BillingReconciliationGapsPage"));
 const BillingKpiDailyPage = lazy(() => import("./pages/BillingKpiDailyPage"));
 const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
+const OpsIntelligencePage = lazy(() => import("./pages/OpsIntelligencePage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -375,6 +376,14 @@ function TopNav() {
       label: "ops /order/pickup-health",
       aria: "Saúde analytics pickup (order lifecycle)",
       group: "Order / Pickup",
+    },
+    {
+      to: "/ops/intelligence",
+      label: "ops /intelligence",
+      aria: "Manutenção preditiva e ML (dashboard)",
+      group: "Inteligência",
+      opsSubGroup: "ML",
+      isNew: true,
     },
     {
       to: "/ops/order/domain-events",
@@ -1811,6 +1820,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OrderPickupHealthPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/intelligence"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsIntelligencePage />)}
                 </OpsRoute>
               }
             />

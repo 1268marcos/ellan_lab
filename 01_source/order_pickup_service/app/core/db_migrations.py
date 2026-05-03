@@ -927,6 +927,186 @@ def _create_locker_telemetry(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_door_state(conn, applied: list[str]) -> None:
+    """Estado por porta (hardware) — usado pela MV de features ML e integrações runtime."""
+    name = "door_state.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS door_state (
+            machine_id VARCHAR(120) NOT NULL,
+            door_id      INTEGER      NOT NULL,
+            state         VARCHAR(40)  NOT NULL,
+            product_id    VARCHAR(120),
+            updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (machine_id, door_id)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_door_state_machine ON door_state (machine_id)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_door_state_machine_state ON door_state (machine_id, state)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_ml_predictive_maintenance(conn, applied: list[str]) -> None:
+    """Tabelas + MV para manutenção preditiva (features diárias, predições, metadados do modelo)."""
+    name = "ml_predictive_maintenance.create_v1"
+    if _migration_applied(conn, name):
+        return
+    jsonb = _jsonb_or_text(conn)
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ml_features_daily (
+            id                   BIGSERIAL PRIMARY KEY,
+            locker_id            VARCHAR(36)  NOT NULL REFERENCES lockers(id) ON DELETE CASCADE,
+            feature_date         DATE         NOT NULL,
+            temperature_mean     NUMERIC(10,4),
+            humidity_mean        NUMERIC(10,4),
+            battery_min            NUMERIC(10,2),
+            door_failures_7d       INTEGER      NOT NULL DEFAULT 0,
+            usage_events_7d      INTEGER      NOT NULL DEFAULT 0,
+            uptime_hours_7d      NUMERIC(10,2) NOT NULL DEFAULT 0,
+            failure_label_7d     SMALLINT     NOT NULL DEFAULT 0,
+            created_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_ml_features_daily_locker_day UNIQUE (locker_id, feature_date),
+            CONSTRAINT ck_ml_features_failure_label CHECK (failure_label_7d IN (0, 1))
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ml_features_daily_locker_date "
+        "ON ml_features_daily (locker_id, feature_date DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ml_features_daily_date "
+        "ON ml_features_daily (feature_date DESC)"
+    ))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS ml_predictions_log (
+            id                   BIGSERIAL PRIMARY KEY,
+            locker_id            VARCHAR(36)  NOT NULL,
+            predicted_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            failure_probability  NUMERIC(8,6) NOT NULL,
+            health_score         NUMERIC(8,2) NOT NULL,
+            model_version        VARCHAR(64)  NOT NULL
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ml_predictions_locker_time "
+        "ON ml_predictions_log (locker_id, predicted_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ml_predictions_time "
+        "ON ml_predictions_log (predicted_at DESC)"
+    ))
+
+    conn.execute(text(f"""
+        CREATE TABLE IF NOT EXISTS ml_model_metadata (
+            id            BIGSERIAL PRIMARY KEY,
+            model_version VARCHAR(64)  NOT NULL UNIQUE,
+            trained_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+            metrics_json  {jsonb}      NOT NULL DEFAULT '{{}}'::jsonb,
+            status        VARCHAR(32)  NOT NULL DEFAULT 'ACTIVE',
+            CONSTRAINT ck_ml_model_status CHECK (status IN ('ACTIVE', 'STALE', 'FAILED'))
+        )
+    """))
+
+    conn.execute(text("DROP MATERIALIZED VIEW IF EXISTS ml_features_daily_mv CASCADE"))
+    conn.execute(text("""
+        CREATE MATERIALIZED VIEW ml_features_daily_mv AS
+        WITH td AS (
+            SELECT
+                locker_id,
+                (date_trunc('day', occurred_at AT TIME ZONE 'UTC'))::date AS feature_date,
+                AVG(temperature_celsius)::numeric(10,4) AS temperature_mean,
+                AVG(humidity_pct)::numeric(10,4) AS humidity_mean,
+                MIN(battery_pct)::numeric(10,2) AS battery_min,
+                COUNT(*)::numeric AS tel_pts
+            FROM locker_telemetry
+            GROUP BY locker_id, (date_trunc('day', occurred_at AT TIME ZONE 'UTC'))::date
+        ),
+        dd AS (
+            SELECT
+                l.id AS locker_id,
+                (date_trunc('day', ds.updated_at AT TIME ZONE 'UTC'))::date AS feature_date,
+                COUNT(*) FILTER (
+                    WHERE upper(ds.state) SIMILAR TO '%(FAIL|ERROR|FAULT|JAM|TAMPER|LOCK)%'
+                )::bigint AS door_fail_day
+            FROM door_state ds
+            INNER JOIN lockers l
+                ON l.machine_id IS NOT NULL AND l.machine_id <> '' AND l.machine_id = ds.machine_id
+            GROUP BY l.id, (date_trunc('day', ds.updated_at AT TIME ZONE 'UTC'))::date
+        ),
+        sd AS (
+            SELECT
+                locker_id,
+                (date_trunc('day', last_opened_at AT TIME ZONE 'UTC'))::date AS feature_date,
+                COUNT(*)::bigint AS usage_day
+            FROM locker_slots
+            WHERE last_opened_at IS NOT NULL
+            GROUP BY locker_id, (date_trunc('day', last_opened_at AT TIME ZONE 'UTC'))::date
+        ),
+        keys AS (
+            SELECT locker_id, feature_date FROM td
+            UNION
+            SELECT locker_id, feature_date FROM dd
+            UNION
+            SELECT locker_id, feature_date FROM sd
+        ),
+        base AS (
+            SELECT
+                k.locker_id,
+                k.feature_date,
+                COALESCE(td.temperature_mean, 0::numeric) AS temperature_mean,
+                COALESCE(td.humidity_mean, 0::numeric) AS humidity_mean,
+                COALESCE(td.battery_min, 0::numeric) AS battery_min,
+                COALESCE(dd.door_fail_day, 0::bigint) AS door_fail_day,
+                COALESCE(sd.usage_day, 0::bigint) AS usage_day,
+                COALESCE(td.tel_pts, 0::numeric) AS tel_pts
+            FROM keys k
+            LEFT JOIN td
+                ON td.locker_id = k.locker_id AND td.feature_date = k.feature_date
+            LEFT JOIN dd
+                ON dd.locker_id = k.locker_id AND dd.feature_date = k.feature_date
+            LEFT JOIN sd
+                ON sd.locker_id = k.locker_id AND sd.feature_date = k.feature_date
+        ),
+        rolled AS (
+            SELECT
+                locker_id,
+                feature_date,
+                temperature_mean,
+                humidity_mean,
+                battery_min,
+                (SUM(door_fail_day) OVER w7)::integer AS door_failures_7d,
+                (SUM(usage_day) OVER w7)::integer AS usage_events_7d,
+                SUM(
+                    CASE
+                        WHEN tel_pts > 0 THEN LEAST(24::numeric, tel_pts / 8.0)
+                        ELSE 0::numeric
+                    END
+                ) OVER w7 AS uptime_hours_7d
+            FROM base
+            WINDOW w7 AS (
+                PARTITION BY locker_id
+                ORDER BY feature_date
+                ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+            )
+        )
+        SELECT * FROM rolled
+    """))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_ml_features_daily_mv_locker_date "
+        "ON ml_features_daily_mv (locker_id, feature_date)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ---------------------------------------------------------------------------
 # ══════════════════════════════════════════════════════════════════════════
 # BLOCO 3 — Produtos e Regras de Compatibilidade
@@ -4261,6 +4441,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_runtime_sync_queue,
     _migrate_runtime_sync_queue_next_retry_at_v1,
     _create_locker_telemetry,
+    _create_door_state,
+    _create_ml_predictive_maintenance,
     _create_product_categories,
     _create_product_locker_configs,
     _create_rental_plans,
@@ -4414,6 +4596,8 @@ def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
     columns = { "coluna": "TIPO SQL" }
     """
     inspector = inspect(conn)
+    if not _has_table(inspector, table):
+        return
 
     existing = {col["name"] for col in inspector.get_columns(table)}
 
