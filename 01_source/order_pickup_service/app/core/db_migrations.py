@@ -825,6 +825,41 @@ def _create_locker_slots(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_runtime_sync_queue(conn, applied: list[str]) -> None:
+    """Fila de auditoria: sync runtime (hardware) → locker_slots (Postgres)."""
+    name = "runtime_sync_queue.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(
+        text(
+            """
+            CREATE TABLE IF NOT EXISTS runtime_sync_queue (
+                id             VARCHAR(36)  PRIMARY KEY,
+                locker_id      VARCHAR(64)  NOT NULL,
+                operation      VARCHAR(32)  NOT NULL,
+                status         VARCHAR(20)  NOT NULL,
+                retry_count    INTEGER      NOT NULL DEFAULT 0,
+                max_retries    INTEGER      NOT NULL DEFAULT 3,
+                last_error     TEXT,
+                created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                processed_at   TIMESTAMPTZ
+            )
+            """
+        )
+    )
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_runtime_sync_queue_locker ON runtime_sync_queue (locker_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_runtime_sync_queue_status ON runtime_sync_queue (status)"))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_runtime_sync_queue_pending "
+            "ON runtime_sync_queue (created_at) WHERE status IN ('PENDING','PROCESSING')"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_locker_telemetry(conn, applied: list[str]) -> None:
     """Eventos de sensor/IoT por locker — série temporal, append-only."""
     name = "locker_telemetry.create_table_v1"
@@ -4196,6 +4231,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_tenant_fiscal_config,
     _create_locker_slot_configs,
     _create_locker_slots,
+    _create_runtime_sync_queue,
     _create_locker_telemetry,
     _create_product_categories,
     _create_product_locker_configs,

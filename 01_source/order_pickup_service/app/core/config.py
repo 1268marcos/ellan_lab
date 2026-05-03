@@ -263,6 +263,17 @@ class Settings(BaseSettings):
     )
 
     backend_client_timeout_sec: int = Field(default=5, alias="BACKEND_CLIENT_TIMEOUT_SEC")
+
+    runtime_slot_sync_poll_sec: int = Field(
+        default=30,
+        alias="RUNTIME_SLOT_SYNC_POLL_SEC",
+        description="Intervalo do worker de reconciliação locker_slots ← runtime (segundos).",
+    )
+    runtime_slot_sync_enabled: bool = Field(
+        default=True,
+        alias="RUNTIME_SLOT_SYNC_ENABLED",
+        description="Liga/desliga o loop de sync automático no startup.",
+    )
     order_lifecycle_timeout_sec: int = Field(default=5, alias="ORDER_LIFECYCLE_TIMEOUT_SEC")
     
     # Timeouts regionais

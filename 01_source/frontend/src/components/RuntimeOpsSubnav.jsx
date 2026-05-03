@@ -6,6 +6,7 @@ const LINKS = [
   { to: "/ops/runtime/health", label: "Runtime health" },
   { to: "/ops/runtime/events", label: "Event log" },
   { to: "/ops/runtime/slots", label: "Slots monitor" },
+  { to: "/ops/runtime/sync", label: "Postgres sync" },
 ];
 
 export default function RuntimeOpsSubnav() {

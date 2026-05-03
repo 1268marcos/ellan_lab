@@ -24,6 +24,7 @@ from app.jobs.inventory_reserved_reconciliation import run_inventory_reserved_re
 from app.jobs.inventory_reservations_expiry import run_inventory_reservations_expiry_once
 from app.jobs.lifecycle_events_consumer import run_lifecycle_events_consumer_once
 from app.jobs.reconciliation_retry import run_reconciliation_retry_once
+from app.workers.runtime_sync_worker import runtime_sync_loop
 from app.routers import (
     dev_admin,
     dev_base_catalog,
@@ -44,6 +45,7 @@ from app.routers import (
     product_categories,
     products,
     rentals_ops,
+    runtime_sync,
 )
 
 from app.routers.public_auth import router as public_auth_router
@@ -150,6 +152,7 @@ app.include_router(product_categories.router)
 app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
+app.include_router(runtime_sync.router)
 app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
@@ -356,6 +359,7 @@ reconciliation_retry_task: asyncio.Task | None = None
 inventory_reservation_expiry_task: asyncio.Task | None = None
 inventory_reserved_reconciliation_task: asyncio.Task | None = None
 integration_order_events_outbox_task: asyncio.Task | None = None
+runtime_sync_task: asyncio.Task | None = None
 
 
 @app.on_event("startup")
@@ -420,6 +424,10 @@ async def startup():
             name="integration_order_events_outbox_loop",
         )
 
+    global runtime_sync_task
+    if runtime_sync_task is None:
+        runtime_sync_task = asyncio.create_task(runtime_sync_loop(), name="runtime_sync_loop")
+
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -476,6 +484,15 @@ async def shutdown():
         except asyncio.CancelledError:
             pass
         integration_order_events_outbox_task = None
+
+    global runtime_sync_task
+    if runtime_sync_task:
+        runtime_sync_task.cancel()
+        try:
+            await runtime_sync_task
+        except asyncio.CancelledError:
+            pass
+        runtime_sync_task = None
 
 
 async def expiry_loop():

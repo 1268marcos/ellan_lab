@@ -48,6 +48,7 @@ const OpsHealthPage = lazy(() => import("./pages/OpsHealthPage"));
 const OpsRuntimeHealthPage = lazy(() => import("./pages/OpsRuntimeHealthPage"));
 const OpsRuntimeEventLogPage = lazy(() => import("./pages/OpsRuntimeEventLogPage"));
 const OpsRuntimeSlotsMonitorPage = lazy(() => import("./pages/OpsRuntimeSlotsMonitorPage"));
+const OpsRuntimeSyncPage = lazy(() => import("./pages/OpsRuntimeSyncPage"));
 const OpsQuickEnablementPage = lazy(() => import("./pages/OpsQuickEnablementPage"));
 const OpsKioskTouchModelsPage = lazy(() => import("./pages/OpsKioskTouchModelsPage"));
 const OpsAuditPage = lazy(() => import("./pages/OpsAuditPage"));
@@ -340,6 +341,12 @@ function TopNav() {
     { to: "/ops/runtime/health", label: "ops /runtime/health", aria: "Health do backend runtime (8200)", group: "Runtime" },
     { to: "/ops/runtime/events", label: "ops /runtime/events", aria: "Log de eventos SQLite do runtime", group: "Runtime" },
     { to: "/ops/runtime/slots", label: "ops /runtime/slots", aria: "Monitor de slots do locker runtime", group: "Runtime" },
+    {
+      to: "/ops/runtime/sync",
+      label: "ops /runtime/sync",
+      aria: "Reconciliação locker_slots (Postgres) com runtime",
+      group: "Runtime",
+    },
     {
       to: "/ops/quick-enablement",
       label: "ops /quick-enablement",
@@ -1483,6 +1490,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsRuntimeSlotsMonitorPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/runtime/sync"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRuntimeSyncPage />)}
                 </OpsRoute>
               }
             />

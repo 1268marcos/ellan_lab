@@ -670,6 +670,7 @@ def init_db():
 
     # 🔥 LOCKERS (EXPLÍCITO — ESSENCIAL)
     from app.models.locker import Locker, LockerSlotConfig, LockerOperator  # noqa: F401
+    from app.models.runtime_sync import RuntimeSyncQueue  # noqa: F401
 
     # 🔥 PRODUCT CONFIG
     from app.models.product_locker_config import ProductLockerConfig, ProductCategory  # noqa: F401
