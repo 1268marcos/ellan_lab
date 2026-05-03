@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     fraud_model_meta_path: str = "./artifacts/fraud/fraud_bundle.meta.json"
     routing_travel_rf_path: str = "./artifacts/routing_travel_rf.joblib"
     ltv_model_dir: str | None = None  # LTV_MODEL_DIR; default artifacts via ml_model_dir
+    # NLP feedback (SentenceTransformers multilingue; desligar com FEEDBACK_USE_TFIDF_ONLY=true)
+    feedback_embedding_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    feedback_use_tfidf_only: bool = False  # FEEDBACK_USE_TFIDF_ONLY
 
 
 settings = Settings()

@@ -3,6 +3,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
   LineChart,
@@ -717,6 +718,258 @@ export function PickupFraudDashboardPage() {
           <Card title="Resposta POST /pickups/…/fraud-check">
             <pre style={{ ...TD, fontSize: 11, overflow: "auto", background: "var(--fiscal-code-bg)", padding: 12, borderRadius: 8 }}>
               {JSON.stringify(postRes, null, 2)}
+            </pre>
+          </Card>
+        ) : null}
+      </div>
+    </FiscalPageLayout>
+  );
+}
+
+export function FeedbackNlpDashboardPage() {
+  const [days, setDays] = useState(30);
+  const [dash, setDash] = useState(null);
+  const [text, setText] = useState("");
+  const [orderId, setOrderId] = useState("");
+  const [rating, setRating] = useState("");
+  const [persist, setPersist] = useState(false);
+  const [analyzeOut, setAnalyzeOut] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const loadDash = () => {
+    setErr("");
+    mlIntelligenceApi
+      .feedbackOpsDashboard(days)
+      .then(setDash)
+      .catch((e) => setErr(String(e.message || e)));
+  };
+
+  useEffect(() => {
+    loadDash();
+  }, [days]);
+
+  const runAnalyze = async () => {
+    const t = text.trim();
+    if (!t) {
+      setErr("Informe o texto do feedback.");
+      return;
+    }
+    setBusy(true);
+    setErr("");
+    setAnalyzeOut(null);
+    try {
+      const r = parseInt(rating, 10);
+      const body = {
+        text: t,
+        order_id: orderId.trim() || undefined,
+        persist,
+        source: "ops_dashboard",
+      };
+      if (rating.trim() !== "" && !Number.isNaN(r)) {
+        body.rating = r;
+      }
+      const o = await mlIntelligenceApi.feedbackAnalyze(body);
+      setAnalyzeOut(o);
+      if (persist) loadDash();
+    } catch (e) {
+      setErr(String(e.message || e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const wc = dash?.word_cloud || [];
+  const maxWc = wc.reduce((m, x) => Math.max(m, x.value || 0), 0) || 1;
+
+  return (
+    <FiscalPageLayout>
+      <div className="intel-ml-surface" style={{ padding: 20, maxWidth: 1100, margin: "0 auto", color: "var(--fiscal-text)" }}>
+        <h1 className="intel-ml-pageTitle" style={{ fontSize: 22 }}>
+          Feedback &amp; NLP (NPS / sentimentos)
+        </h1>
+        <p className="intel-ml-pageSub" style={{ fontSize: 12, marginBottom: 12 }}>
+          <span className="intel-ml-code">POST /feedback/analyze</span> · embeddings multilingues ou TF‑IDF · LDA em lote no
+          dashboard · alertas <span className="intel-ml-code">rating ≤ 2</span> via{" "}
+          <span className="intel-ml-code">audit_logs</span> (<span className="intel-ml-code">FEEDBACK_NEGATIVE_ALERT</span>
+          ).
+        </p>
+        {err ? <p className="intel-ml-error">{err}</p> : null}
+
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <label className="intel-ml-field">
+            <span className="intel-ml-fieldLabel">Janela (dias)</span>
+            <select className="intel-ml-select" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+              {[7, 14, 30, 60, 90].map((d) => (
+                <option key={d} value={d}>
+                  {d}d
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="button" className="intel-ml-btn intel-ml-btn--primary" onClick={() => loadDash()}>
+            Atualizar painel
+          </button>
+        </div>
+
+        {!dash?.table_ready ? (
+          <div className="intel-ml-card" style={{ marginTop: 12 }}>
+            <p style={{ fontSize: 13, color: "var(--fiscal-soft-text)" }}>
+              Tabela <span className="intel-ml-code">customer_feedback</span> ainda não existe neste banco. Rode as migrações do{" "}
+              <span className="intel-ml-code">order_pickup_service</span> (PostgreSQL).
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 10, marginTop: 12 }}>
+              <Card title="NPS (janela)">
+                <b style={{ fontSize: 26 }}>{dash.nps != null ? dash.nps : "—"}</b>
+              </Card>
+              <Card title="Alertas neg. (7d)">
+                <b style={{ fontSize: 26 }}>{dash.negative_alerts_7d ?? 0}</b>
+              </Card>
+              <Card title="Registros (amostra)">
+                <b style={{ fontSize: 26 }}>{(dash.recent || []).length}</b>
+              </Card>
+            </div>
+            <div style={{ ...G, marginTop: 12, height: 280 }}>
+              <h3 style={H}>Evolução — NPS por dia</h3>
+              <ResponsiveContainer width="100%" height="85%">
+                <LineChart data={dash.nps_series || []}>
+                  <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                  <XAxis dataKey="d" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <YAxis domain={[-100, 100]} tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+                  <Line type="monotone" dataKey="nps" stroke="#a78bfa" strokeWidth={2} dot={false} connectNulls />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ ...G, marginTop: 12, height: 260 }}>
+              <h3 style={H}>Evolução — sentimento (média score + volume pos/neg)</h3>
+              <ResponsiveContainer width="100%" height="85%">
+                <ComposedChart data={dash.sentiment_series || []}>
+                  <CartesianGrid stroke="#334155" strokeDasharray="3 3" />
+                  <XAxis dataKey="d" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <YAxis yAxisId="l" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <YAxis yAxisId="r" orientation="right" tick={{ fill: "#94a3b8", fontSize: 10 }} />
+                  <Tooltip contentStyle={{ background: "#0f172a", border: "1px solid #334155" }} />
+                  <Legend />
+                  <Bar yAxisId="l" dataKey="positive_count" name="positivo" stackId="a" fill="#34d399" />
+                  <Bar yAxisId="l" dataKey="negative_count" name="negativo" stackId="a" fill="#f87171" />
+                  <Line yAxisId="r" type="monotone" dataKey="avg_sentiment_score" name="média score" stroke="#38bdf8" dot={false} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <Card title="Nuvem de palavras (comentários na janela)">
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px 14px",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  minHeight: 120,
+                  padding: "8px 0",
+                }}
+              >
+                {wc.length === 0 ? (
+                  <span style={{ color: "var(--fiscal-muted)", fontSize: 13 }}>Sem comentários na janela.</span>
+                ) : (
+                  wc.map((w) => (
+                    <span
+                      key={w.text}
+                      style={{
+                        fontSize: 11 + Math.round((14 * (w.value || 1)) / maxWc),
+                        color: "#e2e8f0",
+                        fontWeight: (w.value || 0) > maxWc * 0.4 ? 700 : 500,
+                        opacity: 0.75 + (0.25 * (w.value || 1)) / maxWc,
+                      }}
+                      title={`${w.text}: ${w.value}`}
+                    >
+                      {w.text}
+                    </span>
+                  ))
+                )}
+              </div>
+            </Card>
+            {dash.lda_topics?.ok ? (
+              <Card title="LDA (tópicos no corpus da janela)">
+                <ul style={{ margin: 0, paddingLeft: 18, color: "var(--fiscal-soft-text)", fontSize: 13 }}>
+                  {(dash.lda_topics.topics || []).map((t) => (
+                    <li key={t.topic_id}>
+                      <span className="intel-ml-code">T{t.topic_id}</span>: {(t.words || []).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            ) : null}
+            <Card title="Últimos registros">
+              <table style={TBL}>
+                <thead>
+                  <tr>
+                    <th style={TH}>quando</th>
+                    <th style={TH}>order</th>
+                    <th style={TH}>rating</th>
+                    <th style={TH}>sentimento</th>
+                    <th style={TH}>intenção</th>
+                    <th style={TH}>comentário</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dash.recent || []).map((r) => (
+                    <tr key={r.id}>
+                      <td style={TD}>{r.created_at ? String(r.created_at).slice(0, 19) : ""}</td>
+                      <td style={TD}>{r.order_id || "—"}</td>
+                      <td style={TD}>{r.rating != null ? r.rating : "—"}</td>
+                      <td style={TD}>{r.sentiment_label || "—"}</td>
+                      <td style={TD}>{r.user_intent || "—"}</td>
+                      <td style={{ ...TD, maxWidth: 360, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {r.comment || ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          </>
+        )}
+
+        <h2 className="intel-ml-pageTitle" style={{ fontSize: 16, marginTop: 24 }}>
+          Analisar texto (API)
+        </h2>
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ flexDirection: "column", alignItems: "stretch", gap: 10 }}>
+          <label className="intel-ml-field">
+            <span className="intel-ml-fieldLabel">Texto</span>
+            <textarea
+              className="intel-ml-input"
+              rows={4}
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              style={{ width: "100%", marginTop: 4, resize: "vertical" }}
+            />
+          </label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+            <label className="intel-ml-field" style={{ flex: "1 1 200px" }}>
+              <span className="intel-ml-fieldLabel">order_id (opcional)</span>
+              <input className="intel-ml-input" value={orderId} onChange={(e) => setOrderId(e.target.value)} style={{ width: "100%", marginTop: 4 }} />
+            </label>
+            <label className="intel-ml-field" style={{ width: 100 }}>
+              <span className="intel-ml-fieldLabel">rating 1–5</span>
+              <input className="intel-ml-input" value={rating} onChange={(e) => setRating(e.target.value)} style={{ width: "100%", marginTop: 4 }} placeholder="opc." />
+            </label>
+            <label className="intel-ml-field" style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 22 }}>
+              <input type="checkbox" checked={persist} onChange={(e) => setPersist(e.target.checked)} />
+              <span style={{ fontSize: 13 }}>Persistir em customer_feedback</span>
+            </label>
+          </div>
+          <button type="button" className="intel-ml-btn intel-ml-btn--primary" disabled={busy} onClick={() => void runAnalyze()}>
+            {busy ? "Analisando…" : "POST /feedback/analyze"}
+          </button>
+        </div>
+        {analyzeOut ? (
+          <Card title="Resposta">
+            <pre style={{ ...TD, fontSize: 11, overflow: "auto", background: "var(--fiscal-code-bg)", padding: 12, borderRadius: 8 }}>
+              {JSON.stringify(analyzeOut, null, 2)}
             </pre>
           </Card>
         ) : null}

@@ -46,6 +46,16 @@ def execute(sql: str, params: tuple | None = None) -> None:
         conn.commit()
 
 
+def execute_returning(sql: str, params: tuple | None = None) -> dict[str, Any] | None:
+    """INSERT/UPDATE … RETURNING em uma transação."""
+    with get_conn() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params or ())
+            row = cur.fetchone()
+        conn.commit()
+        return dict(row) if row else None
+
+
 def refresh_materialized_view_concurrent() -> None:
     conn = psycopg2.connect(_pg_dsn(settings.database_url))
     conn.set_session(autocommit=True)

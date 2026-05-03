@@ -71,4 +71,12 @@ export const mlIntelligenceApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     }),
+  /** POST { text, order_id?, rating?, persist?, source? } */
+  feedbackAnalyze: (body) =>
+    _j("/feedback/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }),
+  feedbackOpsDashboard: (days = 30) => _j(`/feedback/ops-dashboard?days=${encodeURIComponent(String(days))}`),
 };

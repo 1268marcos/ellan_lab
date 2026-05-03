@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Brain, BarChart3, TrendingUp, Activity, Users, CircleDollarSign, LayoutGrid, ShieldAlert, MapPinned, Wallet } from "lucide-react";
+import { Brain, BarChart3, TrendingUp, Activity, Users, CircleDollarSign, LayoutGrid, ShieldAlert, MapPinned, Wallet, MessagesSquare } from "lucide-react";
 
 const LINKS = [
   { to: "/intelligence/dashboard", label: "Dashboard de ML", Icon: Brain },
@@ -13,6 +13,7 @@ const LINKS = [
   { to: "/intelligence/pickup-fraud", label: "Fraude em pickups (ML)", Icon: ShieldAlert },
   { to: "/intelligence/partner-churn", label: "Churn parceiros logísticos", Icon: Users },
   { to: "/intelligence/ltv-scores", label: "LTV clientes (BG/NBD)", Icon: Wallet },
+  { to: "/intelligence/feedback-nlp", label: "Feedback & NLP (NPS)", Icon: MessagesSquare },
 ];
 
 export default function InteligenciaMenu({ isOpen, setOpen, atRiskCount, pathname, menuRef, buttonRef }) {

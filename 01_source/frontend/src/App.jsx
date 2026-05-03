@@ -115,6 +115,9 @@ const DynamicPricingPage = lazy(() =>
 const PickupFraudDashboardPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.PickupFraudDashboardPage }))
 );
+const FeedbackNlpDashboardPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.FeedbackNlpDashboardPage }))
+);
 const OccupancyForecastIntelPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const RouteOptimizePage = lazy(() => import("./pages/RouteOptimizePage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
@@ -453,6 +456,13 @@ function TopNav() {
       group: "Inteligência",
       opsSubGroup: "ML",
       isNew: true,
+    },
+    {
+      to: "/ops/feedback-nlp",
+      label: "ops /feedback-nlp",
+      aria: "NPS, sentimentos e nuvem de palavras (customer_feedback + NLP)",
+      group: "Inteligência",
+      opsSubGroup: "ML",
     },
     {
       to: "/intelligence/ltv-scores",
@@ -1150,6 +1160,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/route-optimize" onClick={() => setIsMobileMenuOpen(false)}>
                         Roteirização ML
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/feedback-nlp" onClick={() => setIsMobileMenuOpen(false)}>
+                        Feedback &amp; NLP
+                      </Link>
                     </div>
                   ) : null}
                 </div>
@@ -1473,6 +1486,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <RouteOptimizePage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/feedback-nlp"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <FeedbackNlpDashboardPage />)}
                 </IntelligenceRoute>
               }
             />
@@ -2099,6 +2120,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsIntelligencePage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/feedback-nlp"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <FeedbackNlpDashboardPage />)}
                 </OpsRoute>
               }
             />

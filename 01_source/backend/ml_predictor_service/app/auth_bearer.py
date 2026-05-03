@@ -18,6 +18,16 @@ _LTV_PRIVILEGED_ROLES = frozenset(
     }
 )
 
+# Dashboard / análise de feedback (OPS + Inteligência)
+_FEEDBACK_OPS_ROLES = frozenset(
+    {
+        "admin_operacao",
+        "admin_financeiro",
+        "auditoria",
+        "suporte",
+    }
+)
+
 
 def _utc_naive_now() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -59,6 +69,21 @@ def resolve_user_from_bearer(authorization: str | None) -> dict[str, Any] | None
     return dict(row) if row else None
 
 
+def user_has_feedback_ops_role(user_id: str) -> bool:
+    rows = db.fetch_all(
+        """
+        SELECT lower(trim(role)) AS role
+        FROM user_roles
+        WHERE user_id::text = %s
+          AND COALESCE(is_active, true) = true
+          AND revoked_at IS NULL
+        """,
+        (user_id,),
+    )
+    roles = {str(r.get("role") or "") for r in rows}
+    return bool(roles & _FEEDBACK_OPS_ROLES)
+
+
 def user_has_ltv_privileged_role(user_id: str) -> bool:
     rows = db.fetch_all(
         """
@@ -81,6 +106,16 @@ def require_session_user(authorization: str | None = Header(default=None)) -> di
             status_code=401,
             detail="missing_or_invalid_session",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    return u
+
+
+def require_feedback_ops_user(authorization: str | None = Header(default=None)) -> dict[str, Any]:
+    u = require_session_user(authorization)
+    if not user_has_feedback_ops_role(str(u["user_id"])):
+        raise HTTPException(
+            status_code=403,
+            detail="forbidden: roles necessários para feedback/NLP (admin_operacao, admin_financeiro, auditoria, suporte)",
         )
     return u
 

@@ -3445,6 +3445,50 @@ def _create_ops_action_audit(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_customer_feedback(conn, applied: list[str]) -> None:
+    name = "customer_feedback.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS customer_feedback (
+            id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_id            VARCHAR(64),
+            rating              INTEGER,
+            comment             TEXT,
+            sentiment_score     DOUBLE PRECISION,
+            sentiment_label     VARCHAR(20),
+            topics              TEXT[],
+            user_intent           VARCHAR(32),
+            source              VARCHAR(64) NOT NULL DEFAULT 'api',
+            embedding_model     VARCHAR(160),
+            alert_notified_at   TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT ck_customer_feedback_rating
+                CHECK (rating IS NULL OR (rating >= 1 AND rating <= 5))
+        )
+    """))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_customer_feedback_created_at "
+            "ON customer_feedback (created_at DESC)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_customer_feedback_order_id "
+            "ON customer_feedback (order_id)"
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_customer_feedback_sentiment "
+            "ON customer_feedback (sentiment_label, created_at DESC)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_ui_error_events(conn, applied: list[str]) -> None:
     name = "ui_error_events.create_table_v1"
     if _migration_applied(conn, name):
@@ -4511,6 +4555,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_domain_event_outbox,
     _create_reconciliation_pending,
     _create_ops_action_audit,
+    _create_customer_feedback,
     _create_ui_error_events,
     _create_privacy_consents,
     _create_data_deletion_requests,
