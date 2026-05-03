@@ -28,4 +28,8 @@ export const mlIntelligenceApi = {
     return _j(`/intelligence/history?${p.toString()}`);
   },
   train: () => _j("/train", { method: "POST" }),
+  churnRisk: (q) => {
+    const p = new URLSearchParams(q || {});
+    return _j(`/ops/partners/churn-risk?${p.toString()}`);
+  },
 };

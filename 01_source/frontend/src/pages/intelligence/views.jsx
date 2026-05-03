@@ -313,3 +313,61 @@ export function PredictionHistoryPage() {
     </FiscalPageLayout>
   );
 }
+
+export function PartnerChurnPage() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  const [thr, setThr] = useState(70);
+  useEffect(() => {
+    mlIntelligenceApi
+      .churnRisk({ min_risk: thr })
+      .then(setD)
+      .catch((e) => setErr(String(e.message || e)));
+  }, [thr]);
+  const high = d?.high_risk || [];
+  return (
+    <FiscalPageLayout>
+      <div style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "#e2e8f0" }}>
+        <h1 style={{ fontSize: 22 }}>Churn — parceiros logísticos</h1>
+        <p style={{ fontSize: 12, color: "#94a3b8" }}>
+          risk_score = P(churn)×100. Treino: <code style={{ color: "#cbd5e1" }}>PYTHONPATH=. python -m app.ml_churn.train_churn_model</code>
+        </p>
+        <div style={{ ...G, display: "flex", gap: 10, alignItems: "center" }}>
+          <label style={{ fontSize: 13 }}>
+            Limiar mínimo
+            <input type="number" value={thr} min={0} max={100} onChange={(e) => setThr(Number(e.target.value))} style={{ width: 64, marginLeft: 8, padding: 6, borderRadius: 6, background: "#020617", color: "#fff", border: "1px solid #475569" }} />
+          </label>
+          <button type="button" onClick={() => mlIntelligenceApi.churnRisk({ min_risk: thr }).then(setD).catch((e) => setErr(String(e.message || e)))} style={{ padding: "8px 12px", borderRadius: 8, background: "#475569", color: "#fff", border: "none", cursor: "pointer" }}>
+            Atualizar
+          </button>
+        </div>
+        {err ? <p style={{ color: "#f87171" }}>{err}</p> : null}
+        <Card title={`Parceiros com risk_score ≥ ${thr} (${high.length})`}>
+          <table style={TBL}>
+            <thead>
+              <tr>
+                {["partner_id", "name", "code", "active", "risk_score", "churn_probability"].map((c) => (
+                  <th key={c} style={TH}>
+                    {c}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {high.map((r) => (
+                <tr key={r.partner_id}>
+                  <td style={TD}>{r.partner_id}</td>
+                  <td style={TD}>{r.name}</td>
+                  <td style={TD}>{r.code}</td>
+                  <td style={TD}>{r.active ? "sim" : "não"}</td>
+                  <td style={TD}>{r.risk_score}</td>
+                  <td style={TD}>{r.churn_probability != null ? Number(r.churn_probability).toFixed(4) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      </div>
+    </FiscalPageLayout>
+  );
+}

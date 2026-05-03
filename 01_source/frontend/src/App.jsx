@@ -102,6 +102,9 @@ const AtRiskLockersPage = lazy(() =>
 const PredictionHistoryPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.PredictionHistoryPage }))
 );
+const PartnerChurnPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.PartnerChurnPage }))
+);
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -1096,6 +1099,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/history" onClick={() => setIsMobileMenuOpen(false)}>
                         Histórico
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
+                        Churn Parceiros
+                      </Link>
                     </div>
                   ) : null}
                 </div>
@@ -1371,6 +1377,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <PredictionHistoryPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/partner-churn"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <PartnerChurnPage />)}
                 </IntelligenceRoute>
               }
             />
