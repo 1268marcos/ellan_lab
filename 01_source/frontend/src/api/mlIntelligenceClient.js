@@ -49,4 +49,11 @@ export const mlIntelligenceApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
     }),
+  /** POST body: { locker_ids[], vehicle_capacity_parcels?, time_window_*?, service_time_minutes_default?, k_clusters? } */
+  optimizeRoute: (body) =>
+    _j("/logistics/optimize-route", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }),
 };

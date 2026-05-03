@@ -113,6 +113,7 @@ const PickupFraudDashboardPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.PickupFraudDashboardPage }))
 );
 const OccupancyForecastIntelPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
+const RouteOptimizePage = lazy(() => import("./pages/RouteOptimizePage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -515,6 +516,12 @@ function TopNav() {
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
     { to: "/ops/logistics/returns", label: "ops /logistics/returns", aria: "Dashboard OPS de Returns", group: "Logística" },
     { to: "/ops/returns/tracking", label: "ops /returns/tracking", aria: "Eventos de tracking por return leg", group: "Logística" },
+    {
+      to: "/ops/logistics/route-optimize",
+      label: "ops /logistics/route-optimize",
+      aria: "Roteirização ML com mapa (K-means + OR-Tools + RF)",
+      group: "Logística",
+    },
     {
       to: "/ops/logistics/inventory",
       label: "ops /logistics/inventory",
@@ -1126,6 +1133,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
                         Churn parceiros
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/route-optimize" onClick={() => setIsMobileMenuOpen(false)}>
+                        Roteirização ML
+                      </Link>
                     </div>
                   ) : null}
                 </div>
@@ -1433,6 +1443,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <PickupFraudDashboardPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/route-optimize"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <RouteOptimizePage />)}
                 </IntelligenceRoute>
               }
             />
@@ -1810,6 +1828,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLogisticsInventoryPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/logistics/route-optimize"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <RouteOptimizePage />)}
                 </OpsRoute>
               }
             />

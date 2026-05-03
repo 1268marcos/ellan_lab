@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     fraud_model_dir: str = "./artifacts/fraud"
     fraud_model_bundle_path: str = "./artifacts/fraud/fraud_bundle.joblib"
     fraud_model_meta_path: str = "./artifacts/fraud/fraud_bundle.meta.json"
+    routing_travel_rf_path: str = "./artifacts/routing_travel_rf.joblib"
 
 
 settings = Settings()

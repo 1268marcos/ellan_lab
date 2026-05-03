@@ -9,3 +9,4 @@ uvicorn[standard]>=0.27.0,<1
 pydantic-settings>=2.0.0,<3
 apscheduler>=3.10.0,<4
 tensorflow>=2.14.0,<2.18.0
+ortools>=9.8.0,<10
