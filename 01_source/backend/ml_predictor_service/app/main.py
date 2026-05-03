@@ -17,6 +17,7 @@ from app.routes_intelligence import router as intelligence_router
 from app.routes_churn import router as churn_router
 from app.routes_pricing import router as pricing_router
 from app.routes_ops_demand import router as ops_demand_router
+from app.routes_pickup_fraud import router as pickup_fraud_router
 from app.model_rf import health_score, predict_failure_prob
 from app.train_job import load_active_classifier, run_training_job
 from app.workers.batch_predictor import run_batch_predict_with_retry
@@ -98,6 +99,7 @@ app.include_router(intelligence_router)
 app.include_router(churn_router)
 app.include_router(pricing_router)
 app.include_router(ops_demand_router)
+app.include_router(pickup_fraud_router)
 
 
 class TrainResponse(BaseModel):

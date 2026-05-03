@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 
 from app import db
 
@@ -152,3 +152,46 @@ def intelligence_history(days: int = Query(30, ge=1, le=120), locker_id: str | N
         (days, lid) if lid else (days,),
     )
     return {"stacked_daily": stacked, "predictions": tbl, "days": days}
+
+
+@router.get("/pickup-fraud-hotspots")
+def intelligence_pickup_fraud_hotspots(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
+    """Lockers com maior concentração de pickups marcados como fraude (fraud_flag)."""
+    rows = db.fetch_all(
+        """
+        SELECT p.locker_id, COUNT(*)::int AS fraud_pickups
+        FROM pickups p
+        WHERE p.fraud_flag = true
+          AND p.locker_id IS NOT NULL
+          AND p.updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day'))
+        GROUP BY p.locker_id
+        ORDER BY fraud_pickups DESC
+        LIMIT 80
+        """,
+        (days,),
+    )
+    total = db.fetch_one(
+        """
+        SELECT COUNT(*)::int AS c FROM pickups
+        WHERE fraud_flag = true AND updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day'))
+        """,
+        (days,),
+    )
+    return {
+        "days": days,
+        "lockers": rows,
+        "fraud_pickups_total_window": int(total["c"] or 0) if total else 0,
+    }
+
+
+@router.get("/pickup-fraud-check/{pickup_id}")
+def intelligence_pickup_fraud_score_readonly(pickup_id: str) -> dict[str, Any]:
+    """Score sem bloquear (útil para painel OPS)."""
+    from app.ml_fraud.score_pickup import score_pickup_realtime
+
+    try:
+        return score_pickup_realtime(pickup_id.strip())
+    except FileNotFoundError as exc:
+        raise HTTPException(503, "fraud model not trained") from exc
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc

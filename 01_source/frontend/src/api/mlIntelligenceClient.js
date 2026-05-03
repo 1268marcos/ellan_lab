@@ -41,4 +41,12 @@ export const mlIntelligenceApi = {
     }),
   occupancyForecast: (lockerId, hours = 24) =>
     _j(`/ops/lockers/${encodeURIComponent(lockerId)}/occupancy-forecast?hours=${hours}`),
+  pickupFraudHotspots: (days = 30) => _j(`/intelligence/pickup-fraud-hotspots?days=${days}`),
+  pickupFraudScore: (pickupId) => _j(`/intelligence/pickup-fraud-check/${encodeURIComponent(pickupId)}`),
+  pickupFraudCheckPost: (pickupId, body) =>
+    _j(`/pickups/${encodeURIComponent(pickupId)}/fraud-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }),
 };

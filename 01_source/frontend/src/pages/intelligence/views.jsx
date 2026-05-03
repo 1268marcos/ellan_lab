@@ -495,3 +495,125 @@ export function DynamicPricingPage() {
     </FiscalPageLayout>
   );
 }
+
+export function PickupFraudDashboardPage() {
+  const [days, setDays] = useState(30);
+  const [hot, setHot] = useState(null);
+  const [pickupId, setPickupId] = useState("");
+  const [score, setScore] = useState(null);
+  const [postRes, setPostRes] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    mlIntelligenceApi
+      .pickupFraudHotspots(days)
+      .then(setHot)
+      .catch((e) => setErr(String(e.message || e)));
+  }, [days]);
+  const runScore = () => {
+    const id = pickupId.trim();
+    if (!id) {
+      setErr("Informe pickup_id.");
+      return;
+    }
+    setErr("");
+    mlIntelligenceApi
+      .pickupFraudScore(id)
+      .then(setScore)
+      .catch((e) => setErr(String(e.message || e)));
+  };
+  const runPost = () => {
+    const id = pickupId.trim();
+    if (!id) {
+      setErr("Informe pickup_id.");
+      return;
+    }
+    setErr("");
+    mlIntelligenceApi
+      .pickupFraudCheckPost(id, { apply_block: true })
+      .then(setPostRes)
+      .catch((e) => setErr(String(e.message || e)));
+  };
+  const rows = hot?.lockers || [];
+  return (
+    <FiscalPageLayout>
+      <div className="intel-ml-surface" style={{ padding: 20, maxWidth: 960, margin: "0 auto", color: "var(--fiscal-text)" }}>
+        <h1 className="intel-ml-pageTitle" style={{ fontSize: 22 }}>
+          Fraude / anomalia em pickups
+        </h1>
+        <p className="intel-ml-pageSub" style={{ fontSize: 12, marginBottom: 12 }}>
+          Isolation Forest + Autoencoder · score ≥0.9 marca <span className="intel-ml-code">fraud_flag</span> +{" "}
+          <span className="intel-ml-code">audit_logs</span>. Hotspots por locker na janela.
+        </p>
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+          <label className="intel-ml-field">
+            <span className="intel-ml-fieldLabel">Janela (dias)</span>
+            <select className="intel-ml-select" value={days} onChange={(e) => setDays(Number(e.target.value))}>
+              {[7, 14, 30, 60, 90].map((d) => (
+                <option key={d} value={d}>
+                  {d}d
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="intel-ml-btn intel-ml-btn--primary"
+            onClick={() =>
+              mlIntelligenceApi
+                .pickupFraudHotspots(days)
+                .then(setHot)
+                .catch((e) => setErr(String(e.message || e)))
+            }
+          >
+            Atualizar hotspots
+          </button>
+        </div>
+        <Card title={`Lockers com mais fraud_flag na janela (${days}d) — ${rows.length} lockers`}>
+          <table style={TBL}>
+            <thead>
+              <tr>
+                <th style={TH}>locker_id</th>
+                <th style={TH}>fraud_pickups</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.locker_id}>
+                  <td style={TD}>{r.locker_id}</td>
+                  <td style={TD}>{r.fraud_pickups}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ marginTop: 16, flexWrap: "wrap", gap: 10 }}>
+          <label className="intel-ml-field" style={{ flex: "1 1 220px" }}>
+            <span className="intel-ml-fieldLabel">pickup_id (score em tempo real)</span>
+            <input className="intel-ml-input" value={pickupId} onChange={(e) => setPickupId(e.target.value)} style={{ width: "100%", marginTop: 4 }} />
+          </label>
+          <button type="button" className="intel-ml-btn" onClick={runScore}>
+            Score (sem bloquear)
+          </button>
+          <button type="button" className="intel-ml-btn intel-ml-btn--primary" onClick={runPost}>
+            POST fraud-check (bloquear se ≥0.9)
+          </button>
+        </div>
+        {err ? <p className="intel-ml-error">{err}</p> : null}
+        {score ? (
+          <Card title="Score (somente leitura)">
+            <pre style={{ ...TD, fontSize: 11, overflow: "auto", background: "var(--fiscal-code-bg)", padding: 12, borderRadius: 8 }}>
+              {JSON.stringify(score, null, 2)}
+            </pre>
+          </Card>
+        ) : null}
+        {postRes ? (
+          <Card title="Resposta POST /pickups/…/fraud-check">
+            <pre style={{ ...TD, fontSize: 11, overflow: "auto", background: "var(--fiscal-code-bg)", padding: 12, borderRadius: 8 }}>
+              {JSON.stringify(postRes, null, 2)}
+            </pre>
+          </Card>
+        ) : null}
+      </div>
+    </FiscalPageLayout>
+  );
+}

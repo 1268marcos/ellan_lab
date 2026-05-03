@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Brain, BarChart3, TrendingUp, Activity, Users, CircleDollarSign, LayoutGrid } from "lucide-react";
+import { Brain, BarChart3, TrendingUp, Activity, Users, CircleDollarSign, LayoutGrid, ShieldAlert } from "lucide-react";
 
 const LINKS = [
   { to: "/intelligence/dashboard", label: "Dashboard de ML", Icon: Brain },
@@ -9,6 +9,7 @@ const LINKS = [
   { to: "/intelligence/history", label: "Histórico de Predições", Icon: TrendingUp },
   { to: "/intelligence/dynamic-pricing", label: "Preços dinâmicos (ROI)", Icon: CircleDollarSign },
   { to: "/intelligence/occupancy-forecast", label: "Previsão de ocupação (slots)", Icon: LayoutGrid },
+  { to: "/intelligence/pickup-fraud", label: "Fraude em pickups (ML)", Icon: ShieldAlert },
   { to: "/intelligence/partner-churn", label: "Churn parceiros logísticos", Icon: Users },
 ];
 

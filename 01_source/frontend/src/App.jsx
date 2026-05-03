@@ -109,6 +109,9 @@ const PartnerChurnPage = lazy(() =>
 const DynamicPricingPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.DynamicPricingPage }))
 );
+const PickupFraudDashboardPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.PickupFraudDashboardPage }))
+);
 const OccupancyForecastIntelPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
@@ -1117,6 +1120,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/occupancy-forecast" onClick={() => setIsMobileMenuOpen(false)}>
                         Previsão de ocupação
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/pickup-fraud" onClick={() => setIsMobileMenuOpen(false)}>
+                        Fraude pickups
+                      </Link>
                       <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
                         Churn parceiros
                       </Link>
@@ -1419,6 +1425,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <OccupancyForecastIntelPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/pickup-fraud"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <PickupFraudDashboardPage />)}
                 </IntelligenceRoute>
               }
             />

@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     lstm_occupancy_model_path: str = "./artifacts/lstm_occupancy.keras"
     lstm_occupancy_scalers_path: str = "./artifacts/lstm_occupancy_scalers.joblib"
     lstm_occupancy_meta_path: str = "./artifacts/lstm_occupancy.meta.json"
+    fraud_model_dir: str = "./artifacts/fraud"
+    fraud_model_bundle_path: str = "./artifacts/fraud/fraud_bundle.joblib"
+    fraud_model_meta_path: str = "./artifacts/fraud/fraud_bundle.meta.json"
 
 
 settings = Settings()
