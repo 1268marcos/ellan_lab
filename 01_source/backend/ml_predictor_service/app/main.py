@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.config import settings
 from app import db
 from app.routes_ml import router as ml_router
+from app.routes_intelligence import router as intelligence_router
 from app.model_rf import health_score, predict_failure_prob
 from app.train_job import load_active_classifier, run_training_job
 from app.workers.batch_predictor import run_batch_predict_with_retry
@@ -90,6 +91,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(ml_router)
+app.include_router(intelligence_router)
 
 
 class TrainResponse(BaseModel):

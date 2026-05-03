@@ -303,6 +303,51 @@ body {
   z-index: 1200;
 }
 
+.nav-intelligence-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 260px;
+  max-width: min(92vw, 420px);
+  max-height: 65vh;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(167, 139, 250, 0.45);
+  background: linear-gradient(155deg, #1e1b2e, #0f172a);
+  box-shadow: 0 12px 24px rgba(2, 6, 23, 0.5);
+  z-index: 1200;
+}
+
+.nav-intelligence-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #e2e8f0;
+  text-decoration: none;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(167, 139, 250, 0.25);
+  background: rgba(88, 28, 135, 0.2);
+  font-size: 0.8125rem;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.nav-intelligence-item:hover {
+  background: rgba(139, 92, 246, 0.25);
+}
+
+.nav-intelligence-item--active {
+  border-color: rgba(56, 189, 248, 0.65);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.nav-link--intel {
+  color: #ddd6fe !important;
+}
+
 .nav-ops-item {
   color: #fff;
   text-decoration: none;

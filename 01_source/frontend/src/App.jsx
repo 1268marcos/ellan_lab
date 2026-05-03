@@ -2,6 +2,8 @@
 import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import InteligenciaMenu from "./components/intelligence/InteligenciaMenu";
+import { mlIntelligenceApi } from "./api/mlIntelligenceClient";
 import FiscalPageLayout from "./components/FiscalPageLayout";
 import DomainErrorBoundary from "./components/DomainErrorBoundary.tsx";
 import { reportUiErrorTelemetry } from "./services/errorTelemetry.ts";
@@ -88,6 +90,18 @@ const BillingReconciliationGapsPage = lazy(() => import("./pages/BillingReconcil
 const BillingKpiDailyPage = lazy(() => import("./pages/BillingKpiDailyPage"));
 const OpsPartnersHypertablesPage = lazy(() => import("./pages/OpsPartnersHypertablesPage"));
 const OpsIntelligencePage = lazy(() => import("./pages/OpsIntelligencePage"));
+const InteligenciaDashboardPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.InteligenciaDashboardPage }))
+);
+const ModelMonitorPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.ModelMonitorPage }))
+);
+const AtRiskLockersPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.AtRiskLockersPage }))
+);
+const PredictionHistoryPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.PredictionHistoryPage }))
+);
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
 const FiscalGlobalPage = lazy(() => import("./pages/FiscalGlobalPage"));
 const FiscalCountriesPage = lazy(() => import("./pages/FiscalCountriesPage"));
@@ -138,14 +152,19 @@ function TopNav() {
   const opsEnabled = isOpsEnabled();
   const canAccessOps =
     isAuthenticated && (hasRole("admin_operacao") || hasRole("suporte") || hasRole("auditoria"));
-  
+  const canAccessIntelligence =
+    isAuthenticated && (hasRole("admin_operacao") || hasRole("admin_financeiro"));
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOpsMenuOpen, setIsOpsMenuOpen] = useState(false);
+  const [isIntelMenuOpen, setIsIntelMenuOpen] = useState(false);
   const [isFiscalMenuOpen, setIsFiscalMenuOpen] = useState(false);
   const [isMyAreaMenuOpen, setIsMyAreaMenuOpen] = useState(false);
   const [isMobileOpsOpen, setIsMobileOpsOpen] = useState(false);
   const [isMobileFiscalOpen, setIsMobileFiscalOpen] = useState(false);
+  const [isMobileIntelOpen, setIsMobileIntelOpen] = useState(false);
   const [isMobileMyAreaOpen, setIsMobileMyAreaOpen] = useState(false);
+  const [intelAtRiskBadge, setIntelAtRiskBadge] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const [tenantOverride, setTenantOverride] = useState("");
   const menuRef = useRef(null);
@@ -154,12 +173,15 @@ function TopNav() {
   const opsButtonRef = useRef(null);
   const fiscalMenuRef = useRef(null);
   const fiscalButtonRef = useRef(null);
+  const intelMenuRef = useRef(null);
+  const intelButtonRef = useRef(null);
   const myAreaMenuRef = useRef(null);
   const myAreaButtonRef = useRef(null);
   const envTenant = String(import.meta.env.VITE_GEO_SCOPE_TENANT || "").trim().toUpperCase();
   const hasTenantOverride = Boolean(tenantOverride);
   const isOpsRoute = location.pathname.startsWith("/ops");
   const isFiscalRoute = location.pathname.startsWith("/fiscal");
+  const isIntelligenceRoute = location.pathname.startsWith("/intelligence");
 
   // Detectar tamanho da tela
   useEffect(() => {
@@ -226,6 +248,22 @@ function TopNav() {
   }, [isFiscalMenuOpen]);
 
   useEffect(() => {
+    const handleIntelClickOutside = (event) => {
+      if (
+        isIntelMenuOpen &&
+        intelMenuRef.current &&
+        !intelMenuRef.current.contains(event.target) &&
+        intelButtonRef.current &&
+        !intelButtonRef.current.contains(event.target)
+      ) {
+        setIsIntelMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleIntelClickOutside);
+    return () => document.removeEventListener("mousedown", handleIntelClickOutside);
+  }, [isIntelMenuOpen]);
+
+  useEffect(() => {
     const handleMyAreaClickOutside = (event) => {
       if (
         isMyAreaMenuOpen &&
@@ -278,6 +316,9 @@ function TopNav() {
   };
 
   const getNavBackground = () => {
+    if (location.pathname.startsWith("/intelligence")) {
+      return "linear-gradient(90deg, #0f172a 0%, #1e1b2e 100%)";
+    }
     if (location.pathname.startsWith("/ops")) {
       return "var(--nav-ops-bg)";
     }
@@ -294,12 +335,25 @@ function TopNav() {
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsOpsMenuOpen(false);
+    setIsIntelMenuOpen(false);
     setIsFiscalMenuOpen(false);
     setIsMyAreaMenuOpen(false);
     setIsMobileOpsOpen(false);
+    setIsMobileIntelOpen(false);
     setIsMobileFiscalOpen(false);
     setIsMobileMyAreaOpen(false);
   }, [location]);
+
+  useEffect(() => {
+    if (!opsEnabled || !canAccessIntelligence) {
+      setIntelAtRiskBadge(0);
+      return;
+    }
+    mlIntelligenceApi
+      .dashboard()
+      .then((d) => setIntelAtRiskBadge(Number(d.at_risk_count) || 0))
+      .catch(() => setIntelAtRiskBadge(0));
+  }, [opsEnabled, canAccessIntelligence, location.pathname]);
 
   useEffect(() => {
     const syncTenantOverride = () => {
@@ -701,6 +755,20 @@ function TopNav() {
             </>
           )}
 
+          {opsEnabled && canAccessIntelligence && (
+            <>
+              <div className="nav-divider" aria-hidden="true">|</div>
+              <InteligenciaMenu
+                menuRef={intelMenuRef}
+                buttonRef={intelButtonRef}
+                isOpen={isIntelMenuOpen}
+                setOpen={setIsIntelMenuOpen}
+                atRiskCount={intelAtRiskBadge}
+                pathname={location.pathname}
+              />
+            </>
+          )}
+
           {opsEnabled && canAccessOps && fiscalLinks.length > 0 && (
             <>
               <div className="nav-divider" aria-hidden="true">|</div>
@@ -796,7 +864,7 @@ function TopNav() {
         </div>
       </nav>
 
-      {(isOpsRoute || isFiscalRoute) && (
+      {(isOpsRoute || isFiscalRoute || isIntelligenceRoute) && (
         <div
           style={{
             margin: "8px 16px 0",
@@ -819,6 +887,11 @@ function TopNav() {
             {isFiscalRoute ? (
               <span className="context-fiscal-badge">
                 Contexto Fiscal
+              </span>
+            ) : null}
+            {isIntelligenceRoute ? (
+              <span style={{ padding: "2px 8px", borderRadius: 8, border: "1px solid rgba(167,139,250,0.5)", color: "#ddd6fe", fontWeight: 700 }}>
+                ML / Inteligência
               </span>
             ) : null}
             <span>Tenant env: <b style={{ color: "#e2e8f0" }}>{envTenant || "-"}</b></span>
@@ -999,6 +1072,35 @@ function TopNav() {
                 </div>
               )}
 
+              {opsEnabled && canAccessIntelligence && (
+                <div className="mobile-menu-section">
+                  <button
+                    type="button"
+                    className="mobile-ops-toggle"
+                    onClick={() => setIsMobileIntelOpen((value) => !value)}
+                    aria-expanded={isMobileIntelOpen}
+                  >
+                    Inteligência ML {intelAtRiskBadge > 0 ? `(${intelAtRiskBadge})` : ""} {isMobileIntelOpen ? "▲" : "▼"}
+                  </button>
+                  {isMobileIntelOpen ? (
+                    <div className="mobile-ops-list">
+                      <Link className="mobile-nav-link" to="/intelligence/dashboard" onClick={() => setIsMobileMenuOpen(false)}>
+                        Dashboard ML
+                      </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/models" onClick={() => setIsMobileMenuOpen(false)}>
+                        Monitor de Modelos
+                      </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/at-risk" onClick={() => setIsMobileMenuOpen(false)}>
+                        Lockers em Risco
+                      </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/history" onClick={() => setIsMobileMenuOpen(false)}>
+                        Histórico
+                      </Link>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
               {opsEnabled && canAccessOps && fiscalLinks.length > 0 && (
                 <div className="mobile-menu-section">
                   <button
@@ -1073,6 +1175,24 @@ function OpsRoute({ children }) {
   }
   const allowed =
     hasRole("admin_operacao") || hasRole("suporte") || hasRole("auditoria");
+  if (!allowed) {
+    return <Navigate to="/acesso-negado" replace />;
+  }
+  return children;
+}
+
+function IntelligenceRoute({ children }) {
+  const { isAuthenticated, loading, hasRole } = useAuth();
+  if (!isOpsEnabled()) {
+    return <Navigate to="/" replace />;
+  }
+  if (loading) {
+    return <PageLoader />;
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  const allowed = hasRole("admin_operacao") || hasRole("admin_financeiro");
   if (!allowed) {
     return <Navigate to="/acesso-negado" replace />;
   }
@@ -1221,6 +1341,39 @@ function AppContent() {
             />
             <Route path="/verificar-email" element={<PublicEmailVerificationPage />} />
             <Route path="/acesso-negado" element={<PublicAccessDeniedPage />} />
+            <Route path="/intelligence" element={<Navigate to="/intelligence/dashboard" replace />} />
+            <Route
+              path="/intelligence/dashboard"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <InteligenciaDashboardPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/models"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <ModelMonitorPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/at-risk"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <AtRiskLockersPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/history"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <PredictionHistoryPage />)}
+                </IntelligenceRoute>
+              }
+            />
             <Route
               path="/fiscal"
               element={
