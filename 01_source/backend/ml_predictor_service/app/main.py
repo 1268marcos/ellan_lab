@@ -15,6 +15,7 @@ from app import db
 from app.routes_ml import router as ml_router
 from app.model_rf import health_score, predict_failure_prob
 from app.train_job import load_active_classifier, run_training_job
+from app.workers.batch_predictor import run_batch_predict_with_retry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,18 +25,39 @@ _scheduler: BackgroundScheduler | None = None
 
 def _start_scheduler() -> None:
     global _scheduler
-    if not settings.enable_train_scheduler:
+    if not settings.enable_train_scheduler and not settings.enable_batch_predict_scheduler:
         return
     tz = ZoneInfo(settings.scheduler_timezone)
     _scheduler = BackgroundScheduler(timezone=tz)
-    _scheduler.add_job(
-        lambda: run_training_job_safe(),
-        "cron",
-        hour=settings.scheduler_hour,
-        minute=0,
-    )
+    if settings.enable_train_scheduler:
+        _scheduler.add_job(
+            lambda: run_training_job_safe(),
+            "cron",
+            hour=settings.scheduler_hour,
+            minute=0,
+        )
+        logger.info("scheduler: train cron hour=%s tz=%s", settings.scheduler_hour, settings.scheduler_timezone)
+    if settings.enable_batch_predict_scheduler:
+        _scheduler.add_job(
+            lambda: run_batch_predict_safe(),
+            "cron",
+            hour=settings.batch_predict_hour,
+            minute=settings.batch_predict_minute,
+        )
+        logger.info(
+            "scheduler: batch_predict cron hour=%s minute=%s tz=%s",
+            settings.batch_predict_hour,
+            settings.batch_predict_minute,
+            settings.scheduler_timezone,
+        )
     _scheduler.start()
-    logger.info("scheduler: daily train at %s:00 %s", settings.scheduler_hour, settings.scheduler_timezone)
+
+
+def run_batch_predict_safe() -> None:
+    try:
+        run_batch_predict_with_retry()
+    except Exception:
+        logger.exception("scheduled batch_predict failed after retries")
 
 
 def run_training_job_safe() -> None:

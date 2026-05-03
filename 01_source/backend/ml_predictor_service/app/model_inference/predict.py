@@ -60,6 +60,45 @@ def _row_to_x(row: tuple[Any, ...]) -> np.ndarray:
     return np.array([[f(i) for i in range(len(FEATURE_COLS))]], dtype=np.float64)
 
 
+def _proba_health(model: object, X: np.ndarray) -> tuple[float, float]:
+    pr = model.predict_proba(X)[0]
+    cl = np.asarray(getattr(model, "classes_", np.arange(len(pr))))
+    if not np.any(cl == 1):
+        raise RuntimeError("Modelo sem classe 1 (falha)")
+    pos = int(np.flatnonzero(cl == 1)[0])
+    proba = float(pr[pos])
+    health = round((1.0 - proba) * 100.0, 2)
+    return proba, health
+
+
+def load_active_model_bundle(
+    conn: psycopg2.extensions.connection, model_dir: str | None = None
+) -> tuple[object, str]:
+    """Carrega artefato ACTIVE uma vez (batch)."""
+    mdir = model_dir or os.environ.get("ML_MODEL_DIR")
+    ver, mj = _active_model(conn)
+    model = load_model_from_disk(ver, mj, mdir)
+    return model, ver
+
+
+def predict_from_values(
+    conn: psycopg2.extensions.connection,
+    locker_id: str,
+    values: tuple[float, float, float, float, float, float],
+    model: object,
+    ver: str,
+    *,
+    skip_log: bool = False,
+) -> tuple[float, float, str]:
+    """Mesma lógica de inferência que predict_failure, com vetor de features já resolvido."""
+    X = _row_to_x(values)
+    proba, health = _proba_health(model, X)
+    if not skip_log:
+        with conn.cursor() as cur:
+            cur.execute(_LOG_SQL, (locker_id, proba, health, ver))
+    return proba, health, ver
+
+
 def predict_failure(
     locker_id: str,
     *,
@@ -74,25 +113,14 @@ def predict_failure(
     mdir = model_dir or os.environ.get("ML_MODEL_DIR")
 
     def _run(c: psycopg2.extensions.connection) -> tuple[float, float, str]:
-        ver, mj = _active_model(c)
-        model = load_model_from_disk(ver, mj, mdir)
+        model, ver = load_active_model_bundle(c, mdir)
         with c.cursor() as cur:
             cur.execute(_PREDICT_SQL, (locker_id,))
             frow = cur.fetchone()
         if not frow or any(x is None for x in frow):
             raise ValueError(f"Sem features completas para locker_id={locker_id}")
-        X = _row_to_x(frow)
-        pr = model.predict_proba(X)[0]
-        cl = np.asarray(getattr(model, "classes_", np.arange(len(pr))))
-        if not np.any(cl == 1):
-            raise RuntimeError("Modelo sem classe 1 (falha)")
-        pos = int(np.flatnonzero(cl == 1)[0])
-        proba = float(pr[pos])
-        health = round((1.0 - proba) * 100.0, 2)
-        if not skip_log:
-            with c.cursor() as cur:
-                cur.execute(_LOG_SQL, (locker_id, proba, health, ver))
-        return proba, health, ver
+        vals = tuple(float(frow[i]) for i in range(6))
+        return predict_from_values(c, locker_id, vals, model, ver, skip_log=skip_log)
 
     if conn is not None:
         return _run(conn)
