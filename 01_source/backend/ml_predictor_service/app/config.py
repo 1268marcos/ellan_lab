@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     predict_commit_batch_size: int = 100
     ml_model_dir: str | None = None  # ML_MODEL_DIR env overrides via model_dir param
     churn_model_path: str = "./artifacts/churn_model.pkl"
+    pricing_bandit_state_path: str = "./artifacts/pricing_bandit_state.pkl"
 
 
 settings = Settings()
