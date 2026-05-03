@@ -23,8 +23,9 @@ import {
   tdStyle,
   thStyle,
 } from "../utils/runtimeOpsPageChrome";
+import { mlIntelligenceApi } from "../api/mlIntelligenceClient";
 
-const ML_BASE = import.meta.env.VITE_ML_PREDICTOR_BASE_URL || "http://localhost:8047";
+const mlBase = () => mlIntelligenceApi.baseUrl();
 const PAGE_VERSION = "ops/intelligence v0.2";
 
 export default function OpsIntelligencePage() {
@@ -38,7 +39,7 @@ export default function OpsIntelligencePage() {
   const loadDash = useCallback(async () => {
     setError("");
     try {
-      const r = await fetch(`${ML_BASE}/ml/dashboard`);
+      const r = await fetch(`${mlBase()}/ml/dashboard`);
       if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
       setDash(await r.json());
     } catch (e) {
@@ -49,7 +50,7 @@ export default function OpsIntelligencePage() {
 
   const loadMetrics = useCallback(async () => {
     try {
-      const r = await fetch(`${ML_BASE}/metrics`);
+      const r = await fetch(`${mlBase()}/metrics`);
       if (r.ok) setMetrics(await r.json());
       else setMetrics(null);
     } catch {
@@ -72,7 +73,7 @@ export default function OpsIntelligencePage() {
     setTrainOut(null);
     setError("");
     try {
-      const r = await fetch(`${ML_BASE}/ml/train`, { method: "POST" });
+      const r = await fetch(`${mlBase()}/ml/train`, { method: "POST" });
       const body = await r.json();
       setTrainOut(body);
       if (!r.ok || body.ok === false) {
@@ -98,7 +99,8 @@ export default function OpsIntelligencePage() {
       <section style={cardStyle}>
         <OpsPageTitleHeader title="OPS — Intelligence (ML)" versionLabel={PAGE_VERSION} />
         <p style={mutedStyle}>
-          API <code style={{ color: "#E2E8F0" }}>{ML_BASE}</code> — <code>VITE_ML_PREDICTOR_BASE_URL</code>
+          API <code style={{ color: "#E2E8F0" }}>{mlBase()}</code> —{" "}
+          <code>VITE_ML_PREDICTOR_BASE_URL</code> (dev: omissão → <code>/api/ml</code> via proxy)
         </p>
         <div style={actionsStyle}>
           <OpsActionButton type="button" variant="primary" onClick={() => void loadAll()} disabled={loading}>

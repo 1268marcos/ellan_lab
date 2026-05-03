@@ -2,6 +2,12 @@
    DESIGN SYSTEM - ELLAN Lab Locker
    ============================================ */
 
+/* LastPass: injeção no DOM (inofensiva); esconder evita ruído visual em dev */
+[data-lastpass-root],
+[data-lastpass-icon-root] {
+  display: none !important;
+}
+
 :root {
   /* Cores Primárias */
   --color-primary: #667eea;

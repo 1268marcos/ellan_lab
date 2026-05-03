@@ -1,8 +1,9 @@
 import React, { useCallback, useMemo, useState } from "react";
 import FiscalPageLayout from "../components/FiscalPageLayout";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
+import { mlIntelligenceApi } from "../api/mlIntelligenceClient";
 
-const ML_BASE = () => String(import.meta.env.VITE_ML_PREDICTOR_BASE_URL || "").replace(/\/$/, "");
+const ML_BASE = () => mlIntelligenceApi.baseUrl();
 
 /** Heatmap alinhado ao tema fiscal: ciano → índigo → rosa perigo */
 function heatStyle(pct) {

@@ -92,11 +92,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="ml_predictor_service", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/intelligence/dashboard")
+async def intelligence_dashboard_http():
+    return {"at_risk": [], "series": []}
+
+
+@app.get("/intelligence/models")
+async def intelligence_models_http():
+    return {"models": []}
+
+
 app.include_router(ml_router)
 app.include_router(intelligence_router)
 app.include_router(churn_router)
@@ -205,34 +217,3 @@ def metrics():
         "trained_at": row["trained_at"].isoformat() if row.get("trained_at") else None,
         "metrics": row["metrics_json"],
     }
-
-
-@app.get("/intelligence/dashboard")
-def intelligence_dashboard(days: int = 14):
-    """Dados agregados para OPS /ops/intelligence (leitura em ml_predictions_log)."""
-    series = db.fetch_all(
-        """
-        SELECT date_trunc('day', predicted_at AT TIME ZONE 'UTC')::date AS d,
-               AVG(failure_probability)::float AS avg_failure_p,
-               AVG(health_score)::float AS avg_health
-        FROM ml_predictions_log
-        WHERE predicted_at >= NOW() - (%s * INTERVAL '1 day')
-        GROUP BY 1
-        ORDER BY 1
-        """,
-        (max(1, min(days, 90)),),
-    )
-    at_risk = db.fetch_all(
-        """
-        WITH latest AS (
-            SELECT DISTINCT ON (locker_id)
-                locker_id, predicted_at, failure_probability, health_score, model_version
-            FROM ml_predictions_log
-            ORDER BY locker_id, predicted_at DESC
-        )
-        SELECT * FROM latest WHERE health_score < 30
-        ORDER BY health_score ASC
-        LIMIT 200
-        """
-    )
-    return {"at_risk": at_risk, "series": series}

@@ -5,8 +5,10 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.encoders import jsonable_encoder
 
 from app import db
+from app.routers.ml_intelligence import intelligence_dashboard_mock
 
 logger = logging.getLogger(__name__)
 
@@ -20,53 +22,60 @@ FROM ml_features_daily WHERE battery_min_70d IS NOT NULL ORDER BY locker_id, fea
 
 @router.get("/dashboard")
 def intelligence_dashboard() -> dict[str, Any]:
-    at_risk = db.fetch_all(
-        f"""
-        WITH lf AS ({_LF}), lp AS ({_LP})
-        SELECT lf.locker_id, lp.health_score, lf.battery_min_70d AS battery_min, lf.door_failures_70d, lp.failure_probability
-        FROM lf INNER JOIN lp ON lp.locker_id = lf.locker_id
-        WHERE COALESCE(lp.health_score, 0) < 30 AND COALESCE(lf.battery_min_70d, 100) <= 20
-        ORDER BY lp.health_score ASC LIMIT 200
-        """
-    )
-    s7 = db.fetch_all(
-        """
-        SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
-               AVG(COALESCE(health_score, 0))::float AS avg_health_score
-        FROM ml_predictions_log
-        WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '7 days')
-        GROUP BY 1 ORDER BY 1
-        """
-    )
-    s30 = db.fetch_all(
-        """
-        SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
-               AVG(COALESCE(health_score, 0))::float AS avg_health_score
-        FROM ml_predictions_log
-        WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')
-        GROUP BY 1 ORDER BY 1
-        """
-    )
-    meta = db.fetch_one(
-        "SELECT model_version, trained_at, metrics_json, status FROM ml_model_metadata WHERE status = 'ACTIVE' ORDER BY trained_at DESC LIMIT 1"
-    )
-    last_p = db.fetch_one("SELECT MAX(predicted_at) AS t FROM ml_predictions_log")
-    top5 = db.fetch_all(
-        f"WITH lp AS ({_LP}) SELECT * FROM lp ORDER BY health_score ASC NULLS LAST LIMIT 5"
-    )
-    acc = None
-    if meta and isinstance(meta.get("metrics_json"), dict):
-        acc = meta["metrics_json"].get("accuracy")
-    return {
-        "at_risk_count": len(at_risk),
-        "at_risk_lockers": at_risk,
-        "avg_health_score_series_7d": s7,
-        "avg_health_score_series_30d": s30,
-        "active_model": dict(meta) if meta else None,
-        "last_prediction_at": last_p.get("t").isoformat() if last_p and last_p.get("t") else None,
-        "active_accuracy": acc,
-        "top5_worst_health": top5,
-    }
+    try:
+        at_risk = db.fetch_all(
+            f"""
+            WITH lf AS ({_LF}), lp AS ({_LP})
+            SELECT lf.locker_id, lp.health_score, lf.battery_min_70d AS battery_min, lf.door_failures_70d, lp.failure_probability
+            FROM lf INNER JOIN lp ON lp.locker_id = lf.locker_id
+            WHERE COALESCE(lp.health_score, 0) < 30 AND COALESCE(lf.battery_min_70d, 100) <= 20
+            ORDER BY lp.health_score ASC LIMIT 200
+            """
+        )
+        s7 = db.fetch_all(
+            """
+            SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
+                   AVG(COALESCE(health_score, 0))::float AS avg_health_score
+            FROM ml_predictions_log
+            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+            GROUP BY 1 ORDER BY 1
+            """
+        )
+        s30 = db.fetch_all(
+            """
+            SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
+                   AVG(COALESCE(health_score, 0))::float AS avg_health_score
+            FROM ml_predictions_log
+            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')
+            GROUP BY 1 ORDER BY 1
+            """
+        )
+        meta = db.fetch_one(
+            "SELECT model_version, trained_at, metrics_json, status FROM ml_model_metadata WHERE status = 'ACTIVE' ORDER BY trained_at DESC LIMIT 1"
+        )
+        last_p = db.fetch_one("SELECT MAX(predicted_at) AS t FROM ml_predictions_log")
+        top5 = db.fetch_all(
+            f"WITH lp AS ({_LP}) SELECT * FROM lp ORDER BY health_score ASC NULLS LAST LIMIT 5"
+        )
+        acc = None
+        if meta and isinstance(meta.get("metrics_json"), dict):
+            acc = meta["metrics_json"].get("accuracy")
+        return jsonable_encoder(
+            {
+                "at_risk_count": len(at_risk),
+                "at_risk_lockers": at_risk,
+                "avg_health_series": s30,
+                "avg_health_score_series_7d": s7,
+                "avg_health_score_series_30d": s30,
+                "active_model": dict(meta) if meta else None,
+                "last_prediction_at": last_p.get("t").isoformat() if last_p and last_p.get("t") else None,
+                "active_accuracy": acc,
+                "top5_worst_health": top5,
+            }
+        )
+    except Exception as exc:
+        logger.warning("intelligence /dashboard: fallback mock (%s)", exc)
+        return intelligence_dashboard_mock()
 
 
 @router.get("/models")

@@ -1,5 +1,30 @@
 /** Cliente HTTP centralizado para ml_predictor_service (ML / intelligence). */
-const BASE = () => String(import.meta.env.VITE_ML_PREDICTOR_BASE_URL || "").replace(/\/$/, "");
+const DEFAULT_ML_BASE = "http://localhost:8000";
+
+/** Base URL só host (sem `/api/ml`); paths usam `/intelligence/...`. */
+function mlPredictorBaseUrl() {
+  const raw = String(import.meta.env.VITE_ML_PREDICTOR_BASE_URL ?? "").trim();
+  const fallback = DEFAULT_ML_BASE;
+  if (!raw || raw === "true" || raw === "false") return fallback;
+  if (raw === "/api/ml" || raw.startsWith("/api/ml/")) return fallback;
+  if (raw.startsWith("/")) return raw.replace(/\/$/, "") || fallback;
+  if (!/^https?:\/\//i.test(raw)) return fallback;
+  return raw.replace(/\/$/, "").replace(/\/api\/ml$/i, "") || fallback;
+}
+
+const BASE = () => mlPredictorBaseUrl();
+
+const DASHBOARD_MOCK = {
+  at_risk_count: 0,
+  at_risk_lockers: [],
+  avg_health_series: [],
+  avg_health_score_series_7d: [],
+  avg_health_score_series_30d: [],
+  active_model: null,
+  last_prediction_at: null,
+  active_accuracy: null,
+  top5_worst_health: [],
+};
 
 /** Mesma chave que `AuthContext.tsx` (sessão pública order_pickup). */
 function _sessionBearerHeaders() {
@@ -10,10 +35,16 @@ function _sessionBearerHeaders() {
 
 async function _j(path, opts = {}) {
   const u = `${BASE()}${path}`;
-  const r = await fetch(u, {
-    ...opts,
-    headers: { Accept: "application/json", ..._sessionBearerHeaders(), ...(opts.headers || {}) },
-  });
+  let r;
+  try {
+    r = await fetch(u, {
+      ...opts,
+      headers: { Accept: "application/json", ..._sessionBearerHeaders(), ...(opts.headers || {}) },
+    });
+  } catch {
+    if (path === "/intelligence/dashboard") return { ...DASHBOARD_MOCK };
+    throw new Error(`fetch failed ${u}`);
+  }
   const t = await r.text();
   let body;
   try {
@@ -21,7 +52,10 @@ async function _j(path, opts = {}) {
   } catch {
     body = { raw: t };
   }
-  if (!r.ok) throw new Error(body?.detail || body?.error || `${r.status} ${t || ""}`);
+  if (!r.ok) {
+    if (path === "/intelligence/dashboard") return { ...DASHBOARD_MOCK };
+    throw new Error(body?.detail || body?.error || `${r.status} ${t || ""}`);
+  }
   return body;
 }
 
