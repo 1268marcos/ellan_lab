@@ -678,3 +678,155 @@ def divergences_report(db: Session) -> list[dict[str, Any]]:
             }
         )
     return out
+
+
+def map_pg_status_to_runtime_override_state(pg_status: str) -> str:
+    """Converte status canônico de locker_slots (Postgres) para estado aceito pelo runtime door_state."""
+    s = str(pg_status or "").strip().upper()
+    allowed = {"AVAILABLE", "OCCUPIED", "RESERVED", "MAINTENANCE", "FAULT", "BLOCKED"}
+    if s not in allowed:
+        raise ValueError(f"unsupported target_status: {pg_status!r}")
+    if s == "OCCUPIED":
+        return "RESERVED"
+    return s
+
+
+def apply_ops_runtime_override_push_runtime(
+    db: Session,
+    *,
+    locker_id: str,
+    slot_label: str,
+    target_status: str,
+    reason: str,
+) -> dict[str, Any]:
+    """
+    Atualiza locker_slots no Postgres e envia o mesmo estado (mapeado) ao runtime (POST set-state).
+    Registra runtime_sync_queue com operation=OVERRIDE_SENT.
+    """
+    lid = str(locker_id or "").strip().upper()
+    reg = db.execute(text("SELECT region FROM lockers WHERE id = :id LIMIT 1"), {"id": lid}).mappings().first()
+    if not reg:
+        return {"ok": False, "error": "LOCKER_NOT_FOUND", "locker_id": lid}
+    region = str(reg.get("region") or "").strip() or None
+
+    slot_num = _parse_slot_number(slot_label)
+    pg_rows = _load_pg_slots(db, lid)
+    match = next(
+        (p for p in pg_rows if _slot_label_matches_runtime_slot(str(p.get("slot_label") or ""), slot_num)),
+        None,
+    )
+    if not match:
+        return {"ok": False, "error": "SLOT_NOT_FOUND", "locker_id": lid, "slot_label": slot_label}
+
+    st_pg = str(target_status or "").strip().upper()
+    try:
+        rt_state = map_pg_status_to_runtime_override_state(st_pg)
+    except ValueError as exc:
+        return {"ok": False, "error": "INVALID_TARGET_STATUS", "message": str(exc)}
+
+    prev_pg = str(match.get("status") or "").strip().upper()
+    sid = str(match["id"])
+    now = datetime.now(timezone.utc)
+
+    db.execute(
+        text(
+            """
+            UPDATE locker_slots
+            SET status = :st, updated_at = :now
+            WHERE id = :sid
+            """
+        ),
+        {"st": st_pg, "now": now, "sid": sid},
+    )
+    db.flush()
+
+    qid = str(uuid.uuid4())
+    audit = json.dumps(
+        {
+            "reason": str(reason or "")[:4000],
+            "target_status_pg": st_pg,
+            "runtime_state": rt_state,
+            "slot": slot_num,
+            "slot_label": str(match.get("slot_label") or slot_label),
+            "previous_pg_status": prev_pg,
+        },
+        ensure_ascii=False,
+    )[:7999]
+
+    try:
+        rt_resp = runtime_client.send_override(lid, slot_num, rt_state, region=region, reason=str(reason or ""))
+    except Exception as exc:
+        err = str(exc)
+        logger.exception("runtime override push failed locker_id=%s slot=%s", lid, slot_num)
+        db.execute(
+            text(
+                """
+                UPDATE locker_slots
+                SET status = :prev, updated_at = :now
+                WHERE id = :sid
+                """
+            ),
+            {"prev": prev_pg, "now": datetime.now(timezone.utc), "sid": sid},
+        )
+        fail_q = str(uuid.uuid4())
+        fail_body = (audit[:4000] + " | runtime_error=" + err)[:7999]
+        n2 = datetime.now(timezone.utc)
+        db.execute(
+            text(
+                """
+                INSERT INTO runtime_sync_queue
+                (id, locker_id, operation, status, retry_count, max_retries, last_error, created_at, updated_at, processed_at, next_retry_at)
+                VALUES
+                (:id, :lid, 'OVERRIDE_SENT', 'FAILED', 0, 3, :err, :n, :n, :n, NULL)
+                """
+            ),
+            {"id": fail_q, "lid": lid, "err": fail_body, "n": n2},
+        )
+        db.commit()
+        return {
+            "ok": False,
+            "locker_id": lid,
+            "error": "RUNTIME_PUSH_FAILED",
+            "message": err,
+            "postgres_reverted": True,
+        }
+
+    done = datetime.now(timezone.utc)
+    db.execute(
+        text(
+            """
+            INSERT INTO runtime_sync_queue
+            (id, locker_id, operation, status, retry_count, max_retries, last_error, created_at, updated_at, processed_at, next_retry_at)
+            VALUES
+            (:id, :lid, 'OVERRIDE_SENT', 'SUCCESS', 0, 3, :err, :d, :d, :d, NULL)
+            """
+        ),
+        {"id": qid, "lid": lid, "err": audit, "d": done},
+    )
+    db.commit()
+    return {
+        "ok": True,
+        "locker_id": lid,
+        "slot": slot_num,
+        "target_status_pg": st_pg,
+        "runtime_state": rt_state,
+        "runtime_response": rt_resp,
+        "queue_id": qid,
+        "operation": "OVERRIDE_SENT",
+    }
+
+
+def list_override_history(db: Session, *, limit: int = 200) -> list[dict[str, Any]]:
+    rows = db.execute(
+        text(
+            """
+            SELECT id, locker_id, operation, status, retry_count, last_error, created_at, updated_at, processed_at, next_retry_at
+            FROM runtime_sync_queue
+            WHERE operation = 'OVERRIDE_SENT'
+            ORDER BY created_at DESC
+            LIMIT :lim
+            """
+        ),
+        {"lim": max(1, min(int(limit), 500))},
+    ).mappings().all()
+    return [dict(r) for r in rows]

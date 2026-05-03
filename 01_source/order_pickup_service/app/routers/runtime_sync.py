@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -17,6 +18,13 @@ router = APIRouter(
 )
 
 _write_dep = Depends(require_user_roles(allowed_roles={"admin_operacao"}))
+
+
+class OpsRuntimeOverrideBody(BaseModel):
+    locker_id: str = Field(..., min_length=1)
+    slot_label: str = Field(..., min_length=1)
+    target_status: str = Field(..., min_length=1)
+    reason: str = Field("", max_length=4000)
 
 
 def _require_pg() -> None:
@@ -79,3 +87,33 @@ def post_runtime_sync_retry_queue(queue_id: str = Path(..., min_length=1), db: S
         if msg == "ALREADY_SUCCESS":
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"type": msg, "queue_id": qid}) from exc
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"type": "BAD_REQUEST", "message": msg}) from exc
+
+
+@router.post("/override", dependencies=[_write_dep])
+def post_ops_runtime_override(body: OpsRuntimeOverrideBody, db: Session = Depends(get_db)):
+    _require_pg()
+    out = rss.apply_ops_runtime_override_push_runtime(
+        db,
+        locker_id=body.locker_id,
+        slot_label=body.slot_label,
+        target_status=body.target_status,
+        reason=body.reason,
+    )
+    if out.get("ok"):
+        return out
+    err = str(out.get("error") or "FAILED")
+    if err == "LOCKER_NOT_FOUND":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=out)
+    if err == "SLOT_NOT_FOUND":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=out)
+    if err == "INVALID_TARGET_STATUS":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=out)
+    if err == "RUNTIME_PUSH_FAILED":
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=out)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=out)
+
+
+@router.get("/override-history")
+def get_ops_runtime_override_history(limit: int = Query(200, ge=1, le=500), db: Session = Depends(get_db)):
+    _require_pg()
+    return {"items": rss.list_override_history(db, limit=limit)}

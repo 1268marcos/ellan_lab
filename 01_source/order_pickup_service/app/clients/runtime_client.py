@@ -84,3 +84,27 @@ def post_set_state(
     if not isinstance(out, dict):
         raise ValueError("runtime set-state: expected JSON object")
     return out
+
+
+def send_override(
+    locker_id: str,
+    slot: int,
+    runtime_state: str,
+    *,
+    region: Optional[str] = None,
+    reason: Optional[str] = None,
+    timeout_sec: Optional[float] = None,
+) -> dict[str, Any]:
+    """
+    Postgres → runtime: aplica estado no door_state via POST /locker/slots/{slot}/set-state.
+    `reason` é apenas para log local (não enviado ao runtime).
+    """
+    if reason:
+        logger.info(
+            "runtime send_override locker_id=%s slot=%s state=%s reason=%s",
+            locker_id,
+            int(slot),
+            runtime_state,
+            str(reason)[:500],
+        )
+    return post_set_state(locker_id, int(slot), runtime_state, region=region, timeout_sec=timeout_sec)

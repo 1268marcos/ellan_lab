@@ -35,6 +35,9 @@ SLOT_STATES: Final[Tuple[str, ...]] = (
     "RESERVED",            # há produto, mas reservado
     "PAID_PENDING_PICKUP", # há produto, pago, aguardando retirada
     "OUT_OF_STOCK",        # a gaveta ficou sem item vendável porque o item unitário saiu dali
+    "MAINTENANCE",         # override OPS / manutenção programada
+    "FAULT",               # falha de hardware reportada
+    "BLOCKED",             # bloqueio operacional (ex.: segurança)
 )
 
 SlotState = Literal[
@@ -42,6 +45,9 @@ SlotState = Literal[
     "RESERVED",
     "PAID_PENDING_PICKUP",
     "OUT_OF_STOCK",
+    "MAINTENANCE",
+    "FAULT",
+    "BLOCKED",
 ]
 
 DOOR_ACTIVE_STATES: Final[Tuple[str, ...]] = (
