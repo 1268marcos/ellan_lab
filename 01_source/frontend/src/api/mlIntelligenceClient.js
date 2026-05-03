@@ -1,9 +1,19 @@
 /** Cliente HTTP centralizado para ml_predictor_service (ML / intelligence). */
 const BASE = () => String(import.meta.env.VITE_ML_PREDICTOR_BASE_URL || "").replace(/\/$/, "");
 
+/** Mesma chave que `AuthContext.tsx` (sessão pública order_pickup). */
+function _sessionBearerHeaders() {
+  const raw = typeof localStorage !== "undefined" ? localStorage.getItem("ellan_public_auth_token") : null;
+  if (!raw) return {};
+  return { Authorization: `Bearer ${raw}` };
+}
+
 async function _j(path, opts = {}) {
   const u = `${BASE()}${path}`;
-  const r = await fetch(u, { ...opts, headers: { Accept: "application/json", ...(opts.headers || {}) } });
+  const r = await fetch(u, {
+    ...opts,
+    headers: { Accept: "application/json", ..._sessionBearerHeaders(), ...(opts.headers || {}) },
+  });
   const t = await r.text();
   let body;
   try {

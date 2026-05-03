@@ -40,16 +40,31 @@ def load_ltv_bundle() -> dict[str, Any]:
     return joblib.load(path)
 
 
-def _churn_30d_proxy(bgf: BetaGeoFitter, frequency: float, recency: float, T: float) -> tuple[float, float]:
-    """P(alive) BG/NBD e proxy de 'sem recompra em 30d' via Poisson(lambda=E[N])."""
+def _churn_30d_model(bgf: BetaGeoFitter, frequency: float, recency: float, T: float) -> dict[str, float]:
+    """
+    Risco 30d combinando (i) P(alive) BG/NBD e (ii) inatividade de recompras esperadas em 30d.
+
+    lambda_repeat_30d = E[nº recompras em 30d | histórico] (BG/NBD).
+    p_no_repeat_in_30d_poisson ≈ exp(-lambda) (aprox. Poisson para eventos de recompra).
+    p_engaged_30d_approx = P(alive) * (1 - p_no_repeat) — “ativo e com fluxo esperado”.
+    churn_probability_30d = 1 - p_engaged (0=baixo risco, 1=alto).
+    """
     f, r, t = float(frequency), float(recency), float(T)
     p_alive = float(np.asarray(bgf.conditional_probability_alive(f, r, t), dtype=float).ravel()[0])
     p_alive = float(np.clip(p_alive, 0.0, 1.0))
     lam = float(np.asarray(bgf.conditional_expected_number_of_purchases_up_to_time(30.0, f, r, t), dtype=float).ravel()[0])
     lam = max(lam, 0.0)
-    prob_no_rep = float(math.exp(-min(lam, 50.0)))
-    churn_probability_30d = float(np.clip(prob_no_rep, 0.0, 1.0))
-    return churn_probability_30d, p_alive
+    p_no_repeat = float(math.exp(-min(lam, 50.0)))
+    p_no_repeat = float(np.clip(p_no_repeat, 0.0, 1.0))
+    p_engaged = float(np.clip(p_alive * (1.0 - p_no_repeat), 0.0, 1.0))
+    churn_combined = float(np.clip(1.0 - p_engaged, 0.0, 1.0))
+    return {
+        "churn_probability_30d": churn_combined,
+        "p_alive": p_alive,
+        "lambda_repeat_30d": lam,
+        "p_no_repeat_in_30d_poisson": p_no_repeat,
+        "p_engaged_30d_approx": p_engaged,
+    }
 
 
 def _approximate_ltv_quantiles_mle_bayes(
@@ -194,7 +209,7 @@ def predict_row_from_summary(
     if m <= 0:
         m = float(bundle.get("population_mean_monetary", 1.0))
     ltv_cents = _point_clv_cents(bgf, ggf, f, r, t, m)
-    churn_30d, p_alive = _churn_30d_proxy(bgf, f, r, t)
+    churn = _churn_30d_model(bgf, f, r, t)
     t33, t66 = tertiles
     seg = _segment_from_tertiles(ltv_cents, t33, t66)
     p05, p95 = _approximate_ltv_quantiles_mle_bayes(bgf, ggf, f, r, t, m, sigma_lognormal)
@@ -204,8 +219,16 @@ def predict_row_from_summary(
         "predicted_ltv_12m_cents": int(round(ltv_cents)),
         "ltv_p05_cents": p05_cents,
         "ltv_p95_cents": p95_cents,
-        "churn_probability_30d": round(churn_30d, 6),
-        "p_alive": round(p_alive, 6),
+        "churn_probability_30d": round(churn["churn_probability_30d"], 6),
+        "p_alive": round(churn["p_alive"], 6),
+        "churn_breakdown": {
+            "lambda_repeat_30d": round(churn["lambda_repeat_30d"], 6),
+            "p_no_repeat_in_30d_poisson": round(churn["p_no_repeat_in_30d_poisson"], 6),
+            "p_engaged_30d_approx": round(churn["p_engaged_30d_approx"], 6),
+            "p_alive_bgnbd": round(churn["p_alive"], 6),
+            "churn_probability_30d": round(churn["churn_probability_30d"], 6),
+            "note": "churn_30d = 1 - p_alive * (1 - exp(-lambda)); proxy operacional, não P(churn) causal único.",
+        },
         "segmento_cliente": seg,
         "frequency": f,
         "recency_days": r,
@@ -328,10 +351,11 @@ def predict_customer_ltv_payload(user_id: str, require_consent: bool = True) -> 
         "ltv_credible_interval_90_cents": {"low": pred["ltv_p05_cents"], "high": pred["ltv_p95_cents"]},
         "churn_probability_30d": pred["churn_probability_30d"],
         "p_alive_bgnbd": pred["p_alive"],
+        "churn_model": pred.get("churn_breakdown"),
         "segmento_cliente": pred["segmento_cliente"],
         "campaign_segment": campaign,
         "model_version": bundle.get("model_version"),
-        "inference": "BG/NBD + Gamma-Gamma (lifetimes); intervalos por propagação assintótica + ruído lognormal empírico",
+        "inference": "BG/NBD + Gamma-Gamma (lifetimes); churn_30d = 1 - P(alive)*(1-exp(-λ)); λ=recompras esperadas em 30d; intervalos LTV por propagação assintótica + ruído lognormal empírico",
         "features_90d": {
             "total_gasto_cents": int(frd.get("total_gasto_cents", 0) or 0),
             "frequencia_compras": int(frd.get("frequencia_compras", 0) or 0),
