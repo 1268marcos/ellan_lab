@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     fraud_model_bundle_path: str = "./artifacts/fraud/fraud_bundle.joblib"
     fraud_model_meta_path: str = "./artifacts/fraud/fraud_bundle.meta.json"
     routing_travel_rf_path: str = "./artifacts/routing_travel_rf.joblib"
+    ltv_model_dir: str | None = None  # LTV_MODEL_DIR; default artifacts via ml_model_dir
 
 
 settings = Settings()

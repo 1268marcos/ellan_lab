@@ -106,6 +106,9 @@ const PredictionHistoryPage = lazy(() =>
 const PartnerChurnPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.PartnerChurnPage }))
 );
+const CustomerLTVScoresPage = lazy(() =>
+  import("./pages/intelligence/views").then((m) => ({ default: m.CustomerLTVScoresPage }))
+);
 const DynamicPricingPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.DynamicPricingPage }))
 );
@@ -447,6 +450,14 @@ function TopNav() {
       to: "/ops/intelligence",
       label: "ops /intelligence",
       aria: "Manutenção preditiva e ML (dashboard)",
+      group: "Inteligência",
+      opsSubGroup: "ML",
+      isNew: true,
+    },
+    {
+      to: "/intelligence/ltv-scores",
+      label: "intelligence /ltv-scores",
+      aria: "LTV preditivo clientes (BG/NBD + Gamma-Gamma, campanhas)",
       group: "Inteligência",
       opsSubGroup: "ML",
       isNew: true,
@@ -1133,6 +1144,9 @@ function TopNav() {
                       <Link className="mobile-nav-link" to="/intelligence/partner-churn" onClick={() => setIsMobileMenuOpen(false)}>
                         Churn parceiros
                       </Link>
+                      <Link className="mobile-nav-link" to="/intelligence/ltv-scores" onClick={() => setIsMobileMenuOpen(false)}>
+                        LTV clientes
+                      </Link>
                       <Link className="mobile-nav-link" to="/intelligence/route-optimize" onClick={() => setIsMobileMenuOpen(false)}>
                         Roteirização ML
                       </Link>
@@ -1419,6 +1433,14 @@ function AppContent() {
               element={
                 <IntelligenceRoute>
                   {withBoundary("intelligence", <PartnerChurnPage />)}
+                </IntelligenceRoute>
+              }
+            />
+            <Route
+              path="/intelligence/ltv-scores"
+              element={
+                <IntelligenceRoute>
+                  {withBoundary("intelligence", <CustomerLTVScoresPage />)}
                 </IntelligenceRoute>
               }
             />

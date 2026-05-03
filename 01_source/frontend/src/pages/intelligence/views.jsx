@@ -393,6 +393,113 @@ export function PartnerChurnPage() {
   );
 }
 
+export function CustomerLTVScoresPage() {
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  const [seg, setSeg] = useState("");
+  const [page, setPage] = useState(1);
+  const load = () => {
+    const q = { page, page_size: 25 };
+    if (seg.trim()) q.segment = seg.trim();
+    mlIntelligenceApi
+      .ltvScores(q)
+      .then(setD)
+      .catch((e) => setErr(String(e.message || e)));
+  };
+  useEffect(() => {
+    void load();
+  }, [page]);
+  const rows = d?.rows || [];
+  const dist = d?.segment_distribution || [];
+  return (
+    <FiscalPageLayout>
+      <div className="intel-ml-surface" style={{ padding: 20, maxWidth: 1100, margin: "0 auto", color: "var(--fiscal-text)" }}>
+        <h1 className="intel-ml-pageTitle" style={{ fontSize: 22 }}>
+          LTV preditivo (clientes)
+        </h1>
+        <p className="intel-ml-pageSub" style={{ fontSize: 12, marginBottom: 12 }}>
+          BG/NBD + Gamma-Gamma (lifetimes). Treino:{" "}
+          <span className="intel-ml-code">PYTHONPATH=. python -m app.ml_ltv.ltv_model_train --materialize</span> · API:{" "}
+          <span className="intel-ml-code">GET /customers/&#123;id&#125;/ltv</span>
+        </p>
+        <div className="intel-ml-card intel-ml-card--toolbar" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <label className="intel-ml-field" style={{ fontSize: 13 }}>
+            <span className="intel-ml-fieldLabel">Segmento (exato)</span>
+            <input
+              className="intel-ml-input"
+              placeholder="High Value | Medium Value | Low Value"
+              value={seg}
+              onChange={(e) => setSeg(e.target.value)}
+              style={{ width: 260, marginTop: 4 }}
+            />
+          </label>
+          <button type="button" className="intel-ml-btn intel-ml-btn--primary" onClick={() => { setPage(1); void load(); }}>
+            Filtrar
+          </button>
+          <span style={{ fontSize: 12, color: "var(--fiscal-muted)" }}>
+            Total: {d?.total ?? "—"} · Distribuição: {dist.map((x) => `${x.segmento_cliente}=${x.n}`).join(", ") || "—"}
+          </span>
+        </div>
+        {err ? <p className="intel-ml-error">{err}</p> : null}
+        <Card title="customer_ltv_scores (materializado)">
+          <div style={{ overflow: "auto" }}>
+            <table style={TBL}>
+              <thead>
+                <tr>
+                  {[
+                    "user_id",
+                    "LTV 12m (¢)",
+                    "P5–P95 (¢)",
+                    "churn_30d",
+                    "p_alive",
+                    "segmento",
+                    "campanha",
+                    "notif 90d",
+                    "scored_at",
+                  ].map((c) => (
+                    <th key={c} style={TH}>
+                      {c}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.user_id}>
+                    <td style={TD}>{r.user_id}</td>
+                    <td style={TD}>{r.predicted_ltv_12m_cents}</td>
+                    <td style={TD}>
+                      {r.ltv_p05_cents}–{r.ltv_p95_cents}
+                    </td>
+                    <td style={TD}>{r.churn_probability_30d != null ? Number(r.churn_probability_30d).toFixed(4) : ""}</td>
+                    <td style={TD}>{r.p_alive != null ? Number(r.p_alive).toFixed(4) : ""}</td>
+                    <td style={TD}>{r.segmento_cliente}</td>
+                    <td style={TD} title={r.campaign_segment}>
+                      {(r.campaign_segment || "").slice(0, 42)}
+                      {(r.campaign_segment || "").length > 42 ? "…" : ""}
+                    </td>
+                    <td style={TD}>{r.notification_engagement_90d}</td>
+                    <td style={TD}>{r.scored_at ? String(r.scored_at).slice(0, 19) : ""}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center" }}>
+            <button type="button" className="intel-ml-btn" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+              Anterior
+            </button>
+            <span style={{ fontSize: 12 }}>Página {page}</span>
+            <button type="button" className="intel-ml-btn" disabled={!d || rows.length < 25} onClick={() => setPage((p) => p + 1)}>
+              Próxima
+            </button>
+          </div>
+        </Card>
+      </div>
+    </FiscalPageLayout>
+  );
+}
+
 export function DynamicPricingPage() {
   const [lockerId, setLockerId] = useState("");
   const [productId, setProductId] = useState("");

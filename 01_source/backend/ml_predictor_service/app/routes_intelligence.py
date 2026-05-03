@@ -1,11 +1,14 @@
 """GET /intelligence/* — agregados ML para o frontend."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 
 from app import db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/intelligence", tags=["intelligence"])
 
@@ -181,6 +184,63 @@ def intelligence_pickup_fraud_hotspots(days: int = Query(30, ge=7, le=365)) -> d
         "days": days,
         "lockers": rows,
         "fraud_pickups_total_window": int(total["c"] or 0) if total else 0,
+    }
+
+
+@router.get("/ltv-scores")
+def intelligence_ltv_scores(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(25, ge=1, le=200),
+    segment: str | None = None,
+    campaign_prefix: str | None = None,
+) -> dict[str, Any]:
+    """Lista materializada em customer_ltv_scores (campanhas / OPS)."""
+    off = (page - 1) * page_size
+    wh: list[str] = ["1=1"]
+    prm: list[Any] = []
+    if segment:
+        wh.append("segmento_cliente = %s")
+        prm.append(segment.strip())
+    if campaign_prefix:
+        wh.append("campaign_segment LIKE %s")
+        prm.append(campaign_prefix.strip() + "%")
+    wsql = " AND ".join(wh)
+    try:
+        rows = db.fetch_all(
+            f"""
+            SELECT user_id, predicted_ltv_12m_cents, ltv_p05_cents, ltv_p95_cents,
+                   churn_probability_30d, p_alive, segmento_cliente, campaign_segment,
+                   features_90d, notification_engagement_90d, consent_marketing, consent_analytics,
+                   model_version, scored_at
+            FROM customer_ltv_scores
+            WHERE {wsql}
+            ORDER BY predicted_ltv_12m_cents DESC NULLS LAST
+            LIMIT %s OFFSET %s
+            """,
+            tuple(prm + [page_size, off]),
+        )
+        cnt = db.fetch_one(f"SELECT COUNT(*)::int AS c FROM customer_ltv_scores WHERE {wsql}", tuple(prm))
+        dist = db.fetch_all(
+            """
+            SELECT segmento_cliente, COUNT(*)::int AS n
+            FROM customer_ltv_scores
+            GROUP BY 1 ORDER BY n DESC
+            """
+        )
+    except Exception as exc:
+        logger.warning("ltv-scores query failed: %s", exc)
+        if "customer_ltv_scores" in str(exc).lower() or "does not exist" in str(exc).lower():
+            raise HTTPException(
+                503,
+                "Tabela customer_ltv_scores ausente ou inacessível. Aplique 02_docker/sql/customer_ltv_scores.sql e rode o treino com --materialize.",
+            ) from exc
+        raise
+    return {
+        "rows": rows,
+        "page": page,
+        "page_size": page_size,
+        "total": int(cnt["c"]) if cnt else 0,
+        "segment_distribution": dist,
     }
 
 

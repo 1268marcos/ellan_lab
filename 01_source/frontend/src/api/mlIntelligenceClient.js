@@ -32,6 +32,11 @@ export const mlIntelligenceApi = {
     const p = new URLSearchParams(q || {});
     return _j(`/ops/partners/churn-risk?${p.toString()}`);
   },
+  ltvScores: (q) => {
+    const p = new URLSearchParams(q || {});
+    return _j(`/intelligence/ltv-scores?${p.toString()}`);
+  },
+  customerLtv: (userId) => _j(`/customers/${encodeURIComponent(userId)}/ltv`),
   /** POST body: { locker_id, product_id, session_id?, apply_proxy_learning?, persist_bandit?, random_seed? } */
   dynamicPricingSuggest: (body) =>
     _j("/pricing/dynamic-suggest", {
