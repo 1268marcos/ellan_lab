@@ -38,6 +38,11 @@ async def runtime_sync_loop() -> None:
 
 
 def _run_tick(db) -> None:
+    try:
+        rss.process_ready_runtime_sync_queue_batch(db, batch_limit=8)
+    except Exception:
+        logger.exception("runtime_sync queue batch failed")
+
     rows = db.execute(
         text(
             """

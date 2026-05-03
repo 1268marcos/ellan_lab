@@ -843,7 +843,8 @@ def _create_runtime_sync_queue(conn, applied: list[str]) -> None:
                 last_error     TEXT,
                 created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
                 updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-                processed_at   TIMESTAMPTZ
+                processed_at   TIMESTAMPTZ,
+                next_retry_at  TIMESTAMPTZ
             )
             """
         )
@@ -854,6 +855,32 @@ def _create_runtime_sync_queue(conn, applied: list[str]) -> None:
         text(
             "CREATE INDEX IF NOT EXISTS ix_runtime_sync_queue_pending "
             "ON runtime_sync_queue (created_at) WHERE status IN ('PENDING','PROCESSING')"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_runtime_sync_queue_next_retry_at_v1(conn, applied: list[str]) -> None:
+    """Coluna next_retry_at + índice para backoff da fila de sync."""
+    name = "runtime_sync_queue.next_retry_at_v1"
+    if _migration_applied(conn, name):
+        return
+    if _dialect(conn) != "postgresql":
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    insp = inspect(conn)
+    if not _has_table(insp, "runtime_sync_queue"):
+        _mark_migration(conn, name)
+        applied.append(name)
+        return
+    if not _has_column(insp, "runtime_sync_queue", "next_retry_at"):
+        conn.execute(text("ALTER TABLE runtime_sync_queue ADD COLUMN next_retry_at TIMESTAMPTZ"))
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_runtime_sync_queue_next_retry "
+            "ON runtime_sync_queue (next_retry_at) WHERE status = 'PENDING'"
         )
     )
     _mark_migration(conn, name)
@@ -4232,6 +4259,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_locker_slot_configs,
     _create_locker_slots,
     _create_runtime_sync_queue,
+    _migrate_runtime_sync_queue_next_retry_at_v1,
     _create_locker_telemetry,
     _create_product_categories,
     _create_product_locker_configs,

@@ -6,7 +6,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from sqlalchemy import text
@@ -16,6 +16,12 @@ from app.clients import runtime_client
 from app.models.runtime_sync import RuntimeSyncQueue
 
 logger = logging.getLogger(__name__)
+
+
+def _backoff_delay_seconds(retry_count_after_increment: int) -> int:
+    """Próximo atraso = min(2^retry_count, 3600) segundos; retry_count >= 1."""
+    rc = int(max(1, retry_count_after_increment))
+    return min(2**rc, 3600)
 
 
 def map_runtime_state_to_pg_status(runtime_state: str) -> str:
@@ -211,6 +217,7 @@ def apply_slot_state_change_webhook(
             created_at=now,
             updated_at=now,
             processed_at=now,
+            next_retry_at=None,
         )
     )
     db.commit()
@@ -224,10 +231,16 @@ def apply_slot_state_change_webhook(
     }
 
 
-def sync_locker_slots_from_runtime(db: Session, locker_id: str, region: Optional[str] = None) -> dict[str, Any]:
+def sync_locker_slots_from_runtime(
+    db: Session,
+    locker_id: str,
+    region: Optional[str] = None,
+    *,
+    existing_queue_id: Optional[str] = None,
+) -> dict[str, Any]:
     """
     GET runtime slots, compara com locker_slots e aplica UPDATEs nas divergências de status.
-    Registra RuntimeSyncQueue (audit trail) em transação atômica com os UPDATEs.
+    Registra ou atualiza runtime_sync_queue. Com existing_queue_id, assume fila PENDING e faz claim PROCESSING.
     """
     locker_id = str(locker_id or "").strip().upper()
     now = datetime.now(timezone.utc)
@@ -236,6 +249,30 @@ def sync_locker_slots_from_runtime(db: Session, locker_id: str, region: Optional
     divergences_before = 0
     divergences_after = 0
     runtime_len = 0
+
+    if existing_queue_id:
+        res = db.execute(
+            text(
+                """
+                UPDATE runtime_sync_queue
+                SET status = 'PROCESSING', updated_at = :n
+                WHERE id = :qid
+                  AND operation = 'SYNC_SLOTS'
+                  AND status = 'PENDING'
+                  AND (next_retry_at IS NULL OR next_retry_at <= :n)
+                """
+            ),
+            {"qid": str(existing_queue_id), "n": now},
+        )
+        if (res.rowcount or 0) != 1:
+            db.rollback()
+            return {
+                "ok": False,
+                "locker_id": locker_id,
+                "skipped": True,
+                "reason": "queue_item_not_claimable",
+                "queue_id": str(existing_queue_id),
+            }
 
     try:
         runtime_rows = runtime_client.get_slots(locker_id, region=region)
@@ -290,26 +327,43 @@ def sync_locker_slots_from_runtime(db: Session, locker_id: str, region: Optional
             match["current_allocation_id"] = alloc_id
 
         done = datetime.now(timezone.utc)
-        db.add(
-            RuntimeSyncQueue(
-                id=qid,
-                locker_id=locker_id,
-                operation="SYNC_SLOTS",
-                status="SUCCESS",
-                retry_count=0,
-                max_retries=3,
-                last_error=None,
-                created_at=done,
-                updated_at=done,
-                processed_at=done,
+        if existing_queue_id:
+            db.execute(
+                text(
+                    """
+                    UPDATE runtime_sync_queue
+                    SET status = 'SUCCESS',
+                        processed_at = :d,
+                        updated_at = :d,
+                        next_retry_at = NULL,
+                        last_error = NULL
+                    WHERE id = :qid
+                    """
+                ),
+                {"d": done, "qid": str(existing_queue_id)},
             )
-        )
+        else:
+            db.add(
+                RuntimeSyncQueue(
+                    id=qid,
+                    locker_id=locker_id,
+                    operation="SYNC_SLOTS",
+                    status="SUCCESS",
+                    retry_count=0,
+                    max_retries=3,
+                    last_error=None,
+                    created_at=done,
+                    updated_at=done,
+                    processed_at=done,
+                    next_retry_at=None,
+                )
+            )
         db.commit()
         divergences_after = len(compute_slot_divergences(db, locker_id, region))
         return {
             "ok": True,
             "locker_id": locker_id,
-            "queue_id": qid,
+            "queue_id": str(existing_queue_id or qid),
             "runtime_slots": runtime_len,
             "updated_rows": updated,
             "divergences_before": divergences_before,
@@ -319,36 +373,148 @@ def sync_locker_slots_from_runtime(db: Session, locker_id: str, region: Optional
         err = str(exc)
         logger.exception("runtime slot sync failed locker_id=%s", locker_id)
         db.rollback()
-        fail_id = str(uuid.uuid4())
         fail_at = datetime.now(timezone.utc)
         try:
-            db.add(
-                RuntimeSyncQueue(
-                    id=fail_id,
-                    locker_id=locker_id,
-                    operation="SYNC_SLOTS",
-                    status="FAILED",
-                    retry_count=1,
-                    max_retries=3,
-                    last_error=err[:8000] if err else "error",
-                    created_at=fail_at,
-                    updated_at=fail_at,
-                    processed_at=fail_at,
+            if existing_queue_id:
+                qrow = db.execute(
+                    text("SELECT retry_count, max_retries FROM runtime_sync_queue WHERE id = :id LIMIT 1"),
+                    {"id": str(existing_queue_id)},
+                ).mappings().first()
+                new_rc = int(qrow["retry_count"] or 0) + 1 if qrow else 1
+                max_r = int(qrow["max_retries"] or 3) if qrow else 3
+                delay = _backoff_delay_seconds(new_rc)
+                next_at = fail_at + timedelta(seconds=delay)
+                err_trunc = err[:8000] if err else "error"
+                if new_rc > max_r:
+                    db.execute(
+                        text(
+                            """
+                            UPDATE runtime_sync_queue
+                            SET status = 'FAILED',
+                                retry_count = :rc,
+                                last_error = :err,
+                                processed_at = :ft,
+                                updated_at = :ft,
+                                next_retry_at = NULL
+                            WHERE id = :qid
+                            """
+                        ),
+                        {"rc": new_rc, "err": err_trunc, "ft": fail_at, "qid": str(existing_queue_id)},
+                    )
+                else:
+                    db.execute(
+                        text(
+                            """
+                            UPDATE runtime_sync_queue
+                            SET status = 'PENDING',
+                                retry_count = :rc,
+                                last_error = :err,
+                                processed_at = NULL,
+                                updated_at = :ft,
+                                next_retry_at = :nxt
+                            WHERE id = :qid
+                            """
+                        ),
+                        {"rc": new_rc, "err": err_trunc, "ft": fail_at, "nxt": next_at, "qid": str(existing_queue_id)},
+                    )
+            else:
+                fail_id = str(uuid.uuid4())
+                next_at = fail_at + timedelta(seconds=_backoff_delay_seconds(1))
+                db.add(
+                    RuntimeSyncQueue(
+                        id=fail_id,
+                        locker_id=locker_id,
+                        operation="SYNC_SLOTS",
+                        status="PENDING",
+                        retry_count=1,
+                        max_retries=3,
+                        last_error=err[:8000] if err else "error",
+                        created_at=fail_at,
+                        updated_at=fail_at,
+                        processed_at=None,
+                        next_retry_at=next_at,
+                    )
                 )
-            )
             db.commit()
         except Exception:
             logger.exception("failed to persist runtime_sync_queue failure row")
             db.rollback()
+        fail_qid = str(existing_queue_id) if existing_queue_id else fail_id
         return {
             "ok": False,
             "locker_id": locker_id,
-            "queue_id": fail_id,
+            "queue_id": fail_qid,
             "error": err,
             "updated_rows": updated,
             "runtime_slots": runtime_len,
             "divergences_before": divergences_before,
         }
+
+
+def process_ready_runtime_sync_queue_batch(db: Session, *, batch_limit: int = 8) -> int:
+    """Processa itens SYNC_SLOTS em PENDING com next_retry_at <= agora (ou NULL)."""
+    rows = db.execute(
+        text(
+            """
+            SELECT id, locker_id
+            FROM runtime_sync_queue
+            WHERE operation = 'SYNC_SLOTS'
+              AND status = 'PENDING'
+              AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+            ORDER BY next_retry_at NULLS FIRST, created_at ASC
+            LIMIT :lim
+            """
+        ),
+        {"lim": int(batch_limit)},
+    ).mappings().all()
+    processed = 0
+    for r in rows:
+        qid = str(r["id"])
+        lid = str(r["locker_id"])
+        reg = db.execute(
+            text("SELECT region FROM lockers WHERE id = :id LIMIT 1"),
+            {"id": lid},
+        ).mappings().first()
+        region = str(reg.get("region") or "").strip() or None if reg else None
+        try:
+            out = sync_locker_slots_from_runtime(db, lid, region=region, existing_queue_id=qid)
+            if not out.get("skipped"):
+                processed += 1
+        except Exception:
+            logger.exception("runtime_sync queue item failed queue_id=%s locker_id=%s", qid, lid)
+    return processed
+
+
+def retry_runtime_sync_queue_item_by_id(db: Session, queue_id: str) -> dict[str, Any]:
+    """OPS: re-enfileira e executa imediatamente um item SYNC_SLOTS."""
+    qid = str(queue_id or "").strip()
+    row = db.execute(
+        text("SELECT id, locker_id, operation, status FROM runtime_sync_queue WHERE id = :id LIMIT 1"),
+        {"id": qid},
+    ).mappings().first()
+    if not row or str(row.get("operation") or "") != "SYNC_SLOTS":
+        raise ValueError("QUEUE_ITEM_NOT_FOUND")
+    if str(row.get("status") or "").upper() == "SUCCESS":
+        raise ValueError("ALREADY_SUCCESS")
+    lid = str(row["locker_id"])
+    now = datetime.now(timezone.utc)
+    db.execute(
+        text(
+            """
+            UPDATE runtime_sync_queue
+            SET status = 'PENDING',
+                next_retry_at = :n,
+                processed_at = NULL,
+                updated_at = :n
+            WHERE id = :id
+            """
+        ),
+        {"id": qid, "n": now},
+    )
+    db.commit()
+    reg = db.execute(text("SELECT region FROM lockers WHERE id = :id LIMIT 1"), {"id": lid}).mappings().first()
+    region = str(reg.get("region") or "").strip() or None if reg else None
+    return sync_locker_slots_from_runtime(db, lid, region=region, existing_queue_id=qid)
 
 
 def sync_all_active_lockers(db: Session) -> dict[str, Any]:
@@ -372,7 +538,7 @@ def fetch_queue_status(db: Session, *, pending_limit: int = 100) -> dict[str, An
     pending = db.execute(
         text(
             """
-            SELECT id, locker_id, operation, status, retry_count, last_error, created_at, updated_at, processed_at
+            SELECT id, locker_id, operation, status, retry_count, last_error, created_at, updated_at, processed_at, next_retry_at
             FROM runtime_sync_queue
             WHERE status IN ('PENDING', 'PROCESSING')
             ORDER BY created_at DESC

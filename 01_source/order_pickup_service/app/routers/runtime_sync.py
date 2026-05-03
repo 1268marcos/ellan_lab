@@ -54,3 +54,18 @@ def post_runtime_sync_run(locker_id: str = Path(..., min_length=1), db: Session 
 def post_runtime_sync_reconcile_all(db: Session = Depends(get_db)):
     _require_pg()
     return rss.sync_all_active_lockers(db)
+
+
+@router.post("/retry/{queue_id}", dependencies=[_write_dep])
+def post_runtime_sync_retry_queue(queue_id: str = Path(..., min_length=1), db: Session = Depends(get_db)):
+    _require_pg()
+    qid = str(queue_id).strip()
+    try:
+        return rss.retry_runtime_sync_queue_item_by_id(db, qid)
+    except ValueError as exc:
+        msg = str(exc)
+        if msg == "QUEUE_ITEM_NOT_FOUND":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail={"type": msg, "queue_id": qid}) from exc
+        if msg == "ALREADY_SUCCESS":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail={"type": msg, "queue_id": qid}) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"type": "BAD_REQUEST", "message": msg}) from exc
