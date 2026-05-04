@@ -1,8 +1,10 @@
 import React, { useCallback, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+const PAGE_VERSION = "ops/lockers/slots v0.2-health-shell";
 
 const STATUS_BG = {
   AVAILABLE: { bg: "rgba(22,163,74,0.35)", border: "rgba(34,197,94,0.55)", fg: "#BBF7D0" },
@@ -91,42 +93,73 @@ export default function OpsLockerSlotsPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <OpsPageTitleHeader title="OPS — Slots do locker (configs + status)" />
-        <p style={muted}>
-          <code style={codeInline}>{BASE}/locker/slots/config|status</code> e{" "}
-          <code style={codeInline}>POST .../locker/slots/&#123;slot&#125;/force-release</code> — role{" "}
-          <code style={codeInline}>admin_operacao</code>.
-        </p>
-        <div style={toolbar}>
-          <label style={lbl}>
-            locker_id
-            <input value={lockerId} onChange={(e) => setLockerId(e.target.value)} style={{ ...inp, minWidth: 260 }} />
-          </label>
-          <button type="button" style={{ ...btnPrimary, opacity: loading || !lockerId.trim() ? 0.45 : 1 }} onClick={load} disabled={loading || !lockerId.trim()}>
-            {loading ? "Carregando…" : "Carregar"}
-          </button>
+        <div style={crossShortcutStyle}>
+          <Link to="/ops/health" style={crossShortcutLinkStyle}>
+            Ir para saúde operacional
+          </Link>
         </div>
-        <div style={{ ...toolbar, marginTop: 8 }}>
-          <span style={{ fontSize: 11, color: "#94A3B8" }}>Legenda:</span>
-          {["AVAILABLE", "OCCUPIED", "MAINTENANCE"].map((s) => (
-            <span key={s} style={{ ...legendSwatch, ...cellStyle(s) }}>
-              {s}
-            </span>
-          ))}
+        <div style={headerRowStyle}>
+          <div>
+            <OpsPageTitleHeader
+              title="OPS — Slots do locker (configs + status)"
+              versionLabel={PAGE_VERSION}
+              versionTo="/ops/auth/policy/versioning"
+              containerStyle={{ marginBottom: 0 }}
+              titleStyle={{ margin: 0 }}
+            />
+            <p style={mutedTextStyle}>
+              <code style={{ color: "#e2e8f0" }}>{BASE}/locker/slots/config|status</code> e{" "}
+              <code style={{ color: "#e2e8f0" }}>POST .../locker/slots/&#123;slot&#125;/force-release</code> — role{" "}
+              <code style={{ color: "#e2e8f0" }}>admin_operacao</code>.
+            </p>
+          </div>
         </div>
-        {err ? <pre style={errBox}>{err}</pre> : null}
-        {msg ? <pre style={okBox}>{msg}</pre> : null}
-        {!token ? <p style={muted}>Faça login com perfil admin_operacao.</p> : null}
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Locker</h3>
+          </div>
+          <div style={healthLocalFilterRowStyle}>
+            <label style={healthLocalFilterFieldStyle}>
+              locker_id
+              <input value={lockerId} onChange={(e) => setLockerId(e.target.value)} style={healthLocalFilterInputStyle} />
+            </label>
+          </div>
+          <div style={toolbarStyle}>
+            <button type="button" style={buttonGhostStyle} onClick={() => void load()} disabled={loading || !lockerId.trim()}>
+              {loading ? "Atualizando..." : "Carregar"}
+            </button>
+          </div>
+          <div style={{ ...toolbarStyle, marginTop: 4 }}>
+            <span style={summary24hHintStyle}>Legenda:</span>
+            {["AVAILABLE", "OCCUPIED", "MAINTENANCE"].map((s) => (
+              <span key={s} style={{ ...legendSwatch, ...cellStyle(s) }}>
+                {s}
+              </span>
+            ))}
+          </div>
+        </section>
+
+        {err ? (
+          <div style={criticalBannerStyle} role="alert">
+            {err}
+          </div>
+        ) : null}
+        {msg ? <small style={predictiveReviewStatusStyle}>{msg}</small> : null}
+
+        {!token ? <p style={summary24hHintStyle}>Faça login com perfil admin_operacao.</p> : null}
 
         {configs.length > 0 ? (
-          <div style={{ marginTop: 16 }}>
-            <h3 style={h3}>locker_slot_configs</h3>
-            <div style={tableWrap}>
-              <table style={table}>
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>locker_slot_configs</h3>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
                 <thead>
                   <tr>
                     {["slot_size", "slot_count", "avail", "W×H×D mm"].map((h) => (
-                      <th key={h} style={th}>
+                      <th key={h} style={thStyle}>
                         {h}
                       </th>
                     ))}
@@ -144,18 +177,20 @@ export default function OpsLockerSlotsPage() {
                 </tbody>
               </table>
             </div>
-          </div>
+          </section>
         ) : null}
 
         {slots.length > 0 ? (
-          <div style={{ marginTop: 20 }}>
-            <h3 style={h3}>locker_slots (grade)</h3>
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>locker_slots (grade)</h3>
+            </div>
             <div
               style={{
                 display: "grid",
                 gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))",
                 gap: 10,
-                marginTop: 10,
+                marginTop: 4,
               }}
             >
               {slots.map((s) => {
@@ -166,10 +201,12 @@ export default function OpsLockerSlotsPage() {
                       <strong>{s.slot_label}</strong>
                       <div style={{ fontSize: 10, opacity: 0.9 }}>{s.slot_size}</div>
                       <div style={{ fontSize: 10, opacity: 0.85 }}>{String(s.status || "").toUpperCase()}</div>
-                      {s.current_allocation_id ? <div style={{ fontSize: 9, opacity: 0.75 }}>alloc: {String(s.current_allocation_id).slice(0, 8)}…</div> : null}
+                      {s.current_allocation_id ? (
+                        <div style={{ fontSize: 9, opacity: 0.75 }}>alloc: {String(s.current_allocation_id).slice(0, 8)}...</div>
+                      ) : null}
                     </div>
                     {busy ? (
-                      <button type="button" style={btnSmWarn} onClick={() => forceRelease(s.slot_label || s.id)}>
+                      <button type="button" style={warnButtonStyle} onClick={() => void forceRelease(s.slot_label || s.id)}>
                         Force release
                       </button>
                     ) : (
@@ -179,37 +216,169 @@ export default function OpsLockerSlotsPage() {
                 );
               })}
             </div>
-          </div>
+          </section>
         ) : null}
-        {token && !loading && lockerId.trim() && !slots.length && !configs.length && !err ? <p style={muted}>Nenhum dado para este locker.</p> : null}
+        {token && !loading && lockerId.trim() && !slots.length && !configs.length && !err ? (
+          <p style={summary24hHintStyle}>Nenhum dado para este locker.</p>
+        ) : null}
       </section>
     </div>
   );
 }
 
-const pageStyle = { width: "100%", padding: 24, boxSizing: "border-box", color: "#E2E8F0", fontFamily: "system-ui, sans-serif" };
-const cardStyle = { background: "#111827", border: "1px solid #334155", borderRadius: 16, padding: 16 };
-const muted = { color: "#94A3B8", marginTop: 8 };
-const codeInline = { color: "#CBD5E1", fontSize: 12 };
-const toolbar = { display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12, alignItems: "flex-end" };
-const lbl = { display: "grid", gap: 4, fontSize: 12, color: "#CBD5E1" };
-const inp = { padding: "8px 10px", borderRadius: 8, border: "1px solid #475569", background: "#0B1220", color: "#E2E8F0" };
-const btnPrimary = { padding: "10px 14px", borderRadius: 10, border: "none", background: "#1D4ED8", color: "#F8FAFC", fontWeight: 700, cursor: "pointer" };
-const errBox = { marginTop: 12, background: "rgba(220,38,38,0.12)", color: "#FCA5A5", border: "1px solid rgba(220,38,38,0.45)", borderRadius: 10, padding: 10, whiteSpace: "pre-wrap" };
-const okBox = { marginTop: 12, background: "rgba(22,163,74,0.12)", color: "#BBF7D0", border: "1px solid rgba(34,197,94,0.35)", borderRadius: 10, padding: 10, whiteSpace: "pre-wrap" };
-const tableWrap = { marginTop: 8, overflowX: "auto", border: "1px solid #1E293B", borderRadius: 12 };
-const table = { width: "100%", borderCollapse: "collapse", minWidth: 400 };
-const th = { textAlign: "left", padding: 10, fontSize: 12, color: "#94A3B8", borderBottom: "1px solid #1E293B", background: "#020617" };
-const tdStyle = { padding: 10, fontSize: 12, color: "#E2E8F0", borderBottom: "1px solid #1E293B" };
-const h3 = { fontSize: 14, color: "#BFDBFE", margin: 0 };
-const legendSwatch = { padding: "6px 10px", borderRadius: 8, minHeight: "auto", fontWeight: 700 };
-const btnSmWarn = {
-  padding: "4px 8px",
-  borderRadius: 8,
-  border: "1px solid rgba(251,191,36,0.5)",
-  background: "rgba(120,53,15,0.45)",
-  color: "#FEF3C7",
-  fontSize: 11,
+const pageStyle = {
+  width: "100%",
+  maxWidth: "none",
+  padding: 24,
+  boxSizing: "border-box",
+  color: "#f5f7fa",
+  fontFamily: "system-ui, sans-serif",
+};
+
+const cardStyle = {
+  width: "100%",
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 16,
+  boxSizing: "border-box",
+};
+
+const headerRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const crossShortcutStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const crossShortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const mutedTextStyle = {
+  color: "rgba(245, 247, 250, 0.8)",
+  marginTop: 8,
+  marginBottom: 0,
+};
+
+const labelStyle = {
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+};
+
+const inputStyle = {
+  width: 90,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
+
+const healthLocalFilterRowStyle = {
+  marginTop: 10,
+  marginBottom: 8,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  alignItems: "end",
+};
+
+const healthLocalFilterFieldStyle = {
+  ...labelStyle,
+  color: "#cbd5e1",
+};
+
+const healthLocalFilterInputStyle = {
+  ...inputStyle,
+  width: "100%",
+  border: "1px solid rgba(148,163,184,0.5)",
+};
+
+const toolbarStyle = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const buttonGhostStyle = {
+  padding: "8px 12px",
   cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "transparent",
+  color: "#e2e8f0",
+  fontWeight: 600,
+};
+
+const warnButtonStyle = {
+  ...buttonGhostStyle,
+  border: "1px solid rgba(251,191,36,0.5)",
+  background: "rgba(120,53,15,0.26)",
+  color: "#fde68a",
+  fontSize: 11,
+  padding: "4px 8px",
   alignSelf: "flex-start",
 };
+
+const opsSanityCardStyle = {
+  marginTop: 6,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const summary24hHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summary24hHintStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+};
+
+const predictiveReviewStatusStyle = {
+  color: "#e2e8f0",
+  fontSize: 12,
+  fontWeight: 700,
+};
+
+const criticalBannerStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,0.72)",
+  background: "linear-gradient(180deg, rgba(127,29,29,0.58) 0%, rgba(127,29,29,0.3) 100%)",
+  color: "#fecaca",
+  padding: "10px 12px",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const tableStyle = { width: "100%", borderCollapse: "collapse", minWidth: 400, fontSize: 12 };
+const thStyle = { textAlign: "left", borderBottom: "1px solid #444", padding: 8, color: "#cbd5e1" };
+const tdStyle = { padding: 8, borderTop: "1px solid #333", color: "#e2e8f0" };
+
+const legendSwatch = { padding: "6px 10px", borderRadius: 8, minHeight: "auto", fontWeight: 700 };

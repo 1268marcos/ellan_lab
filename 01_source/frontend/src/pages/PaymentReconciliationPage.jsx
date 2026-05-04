@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
 const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "http://localhost:8003";
+const PAGE_VERSION = "ops/payments/reconciliation v0.2-health-shell";
 
 const RECON_STATUS_PRESETS = ["", "PENDING", "MATCHED", "MISMATCH", "MANUAL_REVIEW"];
 const PAYMENT_STATUS_PRESETS = ["", "INITIATED", "PENDING", "APPROVED", "DECLINED", "REFUNDED", "ERROR"];
@@ -86,6 +87,7 @@ export default function PaymentReconciliationPage() {
   ]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch when URL/query changes
     void load();
   }, [load]);
 
@@ -97,175 +99,202 @@ export default function PaymentReconciliationPage() {
   return (
     <div style={pageStyle}>
       <section style={cardStyle}>
-        <OpsPageTitleHeader title="OPS — Pagamentos — Conciliação (transações & splits)" />
-        <p style={mutedTextStyle}>
-          Dados de <code>payment_transactions</code> (<code>reconciliation_status</code>, <code>reconciliation_batch_id</code>) e{" "}
-          <code>payment_splits</code> (<code>status</code>, <code>settled_at</code>) via{" "}
-          <code>GET /dev-admin/payment-reconciliation</code>. Para compensação por pedido, use{" "}
-          <Link to="/ops/reconciliation" style={linkStyle}>
-            /ops/reconciliation
+        <div style={crossShortcutStyle}>
+          <Link to="/ops/health" style={crossShortcutLinkStyle}>
+            Ir para saúde operacional
           </Link>
-          .
-        </p>
-
-        <div style={filtersGridStyle}>
-          <label style={labelStyle}>
-            reconciliation_status
-            <select
-              style={inputStyle}
-              value={reconciliationStatus}
-              onChange={(e) => setFilters({ reconciliation_status: e.target.value })}
-            >
-              {RECON_STATUS_PRESETS.map((v) => (
-                <option key={v || "ALL"} value={v}>
-                  {v || "(todos)"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            reconciliation_batch_id
-            <input
-              style={inputStyle}
-              value={reconciliationBatchId}
-              placeholder="ex.: batch-2026-05-01"
-              onChange={(e) => setFilters({ reconciliation_batch_id: e.target.value })}
+        </div>
+        <div style={headerRowStyle}>
+          <div>
+            <OpsPageTitleHeader
+              title="OPS — Pagamentos — Conciliação (transações & splits)"
+              versionLabel={PAGE_VERSION}
+              versionTo="/ops/auth/policy/versioning"
+              containerStyle={{ marginBottom: 0 }}
+              titleStyle={{ margin: 0 }}
             />
-          </label>
-          <label style={labelStyle}>
-            payment_transactions.status
-            <select style={inputStyle} value={paymentStatus} onChange={(e) => setFilters({ payment_status: e.target.value })}>
-              {PAYMENT_STATUS_PRESETS.map((v) => (
-                <option key={v || "ALL"} value={v}>
-                  {v || "(todos)"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={labelStyle}>
-            payment_splits.status
-            <select style={inputStyle} value={splitStatus} onChange={(e) => setFilters({ split_status: e.target.value })}>
-              {SPLIT_STATUS_PRESETS.map((v) => (
-                <option key={v || "ALL"} value={v}>
-                  {v || "(todos)"}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        <div style={toolbarStyle}>
-          <button type="button" style={buttonStyle} onClick={() => void load()} disabled={loading}>
-            {loading ? "Carregando…" : "Atualizar"}
-          </button>
-          <span style={mutedTextStyle}>
-            Total: <strong>{total}</strong>
-            {data?.payment_splits_available === false ? (
-              <>
-                {" "}
-                · <em>tabela payment_splits indisponível neste schema</em>
-              </>
-            ) : null}
-          </span>
-        </div>
-
-        <div style={pagerStyle}>
-          <button
-            type="button"
-            style={buttonGhostStyle}
-            disabled={loading || offset <= 0}
-            onClick={() => setFilters({ offset: String(Math.max(0, offset - limit)) })}
-          >
-            Página anterior
-          </button>
-          <button
-            type="button"
-            style={buttonGhostStyle}
-            disabled={loading || !hasMore}
-            onClick={() => setFilters({ offset: String(offset + limit) })}
-          >
-            Próxima página
-          </button>
-          <span style={metaStyle}>
-            offset={offset} limit={limit}
-          </span>
-        </div>
-
-        {error ? <pre style={errorStyle}>{error}</pre> : null}
-      </section>
-
-      <section style={cardStyle}>
-        <h3 style={h3Style}>payment_transactions</h3>
-        {transactions.length === 0 && !loading ? (
-          <p style={mutedTextStyle}>Nenhuma transação para os filtros atuais.</p>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>id</th>
-                  <th style={thStyle}>order_id</th>
-                  <th style={thStyle}>gateway</th>
-                  <th style={thStyle}>status</th>
-                  <th style={thStyle}>recon_status</th>
-                  <th style={thStyle}>batch_id</th>
-                  <th style={thStyle}>amount</th>
-                  <th style={thStyle}>updated_at</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((row) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>{row.id}</td>
-                    <td style={tdStyle}>{row.order_id}</td>
-                    <td style={tdStyle}>{row.gateway}</td>
-                    <td style={tdStyle}>{row.status}</td>
-                    <td style={tdStyle}>{row.reconciliation_status ?? "—"}</td>
-                    <td style={tdStyle}>{row.reconciliation_batch_id ?? "—"}</td>
-                    <td style={tdStyle}>{row.amount_cents}</td>
-                    <td style={tdStyle}>{row.updated_at ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <p style={mutedTextStyle}>
+              Dados de <code style={{ color: "#e2e8f0" }}>payment_transactions</code> (
+              <code style={{ color: "#e2e8f0" }}>reconciliation_status</code>, <code style={{ color: "#e2e8f0" }}>reconciliation_batch_id</code>) e{" "}
+              <code style={{ color: "#e2e8f0" }}>payment_splits</code> (<code style={{ color: "#e2e8f0" }}>status</code>,{" "}
+              <code style={{ color: "#e2e8f0" }}>settled_at</code>) via <code style={{ color: "#e2e8f0" }}>GET /dev-admin/payment-reconciliation</code>.
+              Para compensação por pedido, use{" "}
+              <Link to="/ops/reconciliation" style={gateDrilldownLinkStyle}>
+                /ops/reconciliation
+              </Link>
+              .
+            </p>
           </div>
-        )}
-      </section>
-
-      <section style={cardStyle}>
-        <h3 style={h3Style}>payment_splits (pedidos da página atual)</h3>
-        {splits.length === 0 && !loading ? (
-          <p style={mutedTextStyle}>Nenhum split retornado (ou nenhum pedido na página).</p>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>id</th>
-                  <th style={thStyle}>order_id</th>
-                  <th style={thStyle}>recipient</th>
-                  <th style={thStyle}>status</th>
-                  <th style={thStyle}>amount</th>
-                  <th style={thStyle}>settled_at</th>
-                </tr>
-              </thead>
-              <tbody>
-                {splits.map((row) => (
-                  <tr key={row.id}>
-                    <td style={tdStyle}>{row.id}</td>
-                    <td style={tdStyle}>{row.order_id}</td>
-                    <td style={tdStyle}>
-                      {row.recipient_type}:{row.recipient_id}
-                    </td>
-                    <td style={tdStyle}>{row.status}</td>
-                    <td style={tdStyle}>{row.amount_cents}</td>
-                    <td style={tdStyle}>{row.settled_at ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={toolbarStyle}>
+            <button type="button" style={buttonGhostStyle} onClick={() => void load()} disabled={loading}>
+              {loading ? "Atualizando..." : "Atualizar"}
+            </button>
           </div>
-        )}
+        </div>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Filtros</h3>
+          </div>
+          <div style={healthLocalFilterRowStyle}>
+            <label style={healthLocalFilterFieldStyle}>
+              reconciliation_status
+              <select
+                style={healthLocalFilterInputStyle}
+                value={reconciliationStatus}
+                onChange={(e) => setFilters({ reconciliation_status: e.target.value })}
+              >
+                {RECON_STATUS_PRESETS.map((v) => (
+                  <option key={v || "ALL"} value={v}>
+                    {v || "(todos)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={healthLocalFilterFieldStyle}>
+              reconciliation_batch_id
+              <input
+                style={healthLocalFilterInputStyle}
+                value={reconciliationBatchId}
+                placeholder="ex.: batch-2026-05-01"
+                onChange={(e) => setFilters({ reconciliation_batch_id: e.target.value })}
+              />
+            </label>
+            <label style={healthLocalFilterFieldStyle}>
+              payment_transactions.status
+              <select style={healthLocalFilterInputStyle} value={paymentStatus} onChange={(e) => setFilters({ payment_status: e.target.value })}>
+                {PAYMENT_STATUS_PRESETS.map((v) => (
+                  <option key={v || "ALL"} value={v}>
+                    {v || "(todos)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={healthLocalFilterFieldStyle}>
+              payment_splits.status
+              <select style={healthLocalFilterInputStyle} value={splitStatus} onChange={(e) => setFilters({ split_status: e.target.value })}>
+                {SPLIT_STATUS_PRESETS.map((v) => (
+                  <option key={v || "ALL"} value={v}>
+                    {v || "(todos)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div style={pagerStyle}>
+            <button
+              type="button"
+              style={buttonGhostStyle}
+              disabled={loading || offset <= 0}
+              onClick={() => setFilters({ offset: String(Math.max(0, offset - limit)) })}
+            >
+              Página anterior
+            </button>
+            <button
+              type="button"
+              style={buttonGhostStyle}
+              disabled={loading || !hasMore}
+              onClick={() => setFilters({ offset: String(offset + limit) })}
+            >
+              Próxima página
+            </button>
+            <span style={summary24hHintStyle}>
+              Total: <strong style={{ color: "#e2e8f0" }}>{total}</strong>
+              {data?.payment_splits_available === false ? (
+                <>
+                  {" "}
+                  · <em>tabela payment_splits indisponível neste schema</em>
+                </>
+              ) : null}
+              {" · "}
+              offset={offset} limit={limit}
+            </span>
+          </div>
+        </section>
+
+        {error ? (
+          <div style={criticalBannerStyle} role="alert">
+            {error}
+          </div>
+        ) : null}
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>payment_transactions</h3>
+          </div>
+          {transactions.length === 0 && !loading ? (
+            <p style={{ ...summary24hHintStyle, margin: 0 }}>Nenhuma transação para os filtros atuais.</p>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>id</th>
+                    <th style={thStyle}>order_id</th>
+                    <th style={thStyle}>gateway</th>
+                    <th style={thStyle}>status</th>
+                    <th style={thStyle}>recon_status</th>
+                    <th style={thStyle}>batch_id</th>
+                    <th style={thStyle}>amount</th>
+                    <th style={thStyle}>updated_at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.id}</td>
+                      <td style={tdStyle}>{row.order_id}</td>
+                      <td style={tdStyle}>{row.gateway}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>{row.reconciliation_status ?? "—"}</td>
+                      <td style={tdStyle}>{row.reconciliation_batch_id ?? "—"}</td>
+                      <td style={tdStyle}>{row.amount_cents}</td>
+                      <td style={tdStyle}>{row.updated_at ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>payment_splits (pedidos da página atual)</h3>
+          </div>
+          {splits.length === 0 && !loading ? (
+            <p style={{ ...summary24hHintStyle, margin: 0 }}>Nenhum split retornado (ou nenhum pedido na página).</p>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>id</th>
+                    <th style={thStyle}>order_id</th>
+                    <th style={thStyle}>recipient</th>
+                    <th style={thStyle}>status</th>
+                    <th style={thStyle}>amount</th>
+                    <th style={thStyle}>settled_at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {splits.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.id}</td>
+                      <td style={tdStyle}>{row.order_id}</td>
+                      <td style={tdStyle}>
+                        {row.recipient_type}:{row.recipient_id}
+                      </td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>{row.amount_cents}</td>
+                      <td style={tdStyle}>{row.settled_at ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </section>
     </div>
   );
@@ -287,83 +316,140 @@ const cardStyle = {
   borderRadius: 16,
   padding: 16,
   boxSizing: "border-box",
-  marginBottom: 16,
+};
+
+const headerRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const crossShortcutStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const crossShortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
 };
 
 const mutedTextStyle = {
   color: "rgba(245, 247, 250, 0.8)",
-  marginTop: 0,
-  marginBottom: 14,
-  fontSize: 14,
-  lineHeight: 1.45,
+  marginTop: 8,
+  marginBottom: 0,
 };
 
-const labelStyle = { display: "grid", gap: 6, fontSize: 13 };
+const toolbarStyle = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const labelStyle = {
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+};
 
 const inputStyle = {
-  padding: "10px 12px",
+  width: 90,
+  padding: "8px 10px",
   borderRadius: 10,
   border: "1px solid rgba(255,255,255,0.14)",
   background: "#0b0f14",
   color: "#f5f7fa",
 };
 
-const filtersGridStyle = {
+const healthLocalFilterRowStyle = {
+  marginTop: 10,
+  marginBottom: 8,
   display: "grid",
-  gap: 12,
-  gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-  maxWidth: 960,
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  alignItems: "end",
 };
 
-const toolbarStyle = { display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 8 };
+const healthLocalFilterFieldStyle = {
+  ...labelStyle,
+  color: "#cbd5e1",
+};
 
-const buttonStyle = {
-  padding: "10px 16px",
-  borderRadius: 10,
-  border: "1px solid rgba(59,130,246,0.55)",
-  background: "rgba(59,130,246,0.22)",
-  color: "#e2e8f0",
-  fontWeight: 700,
-  cursor: "pointer",
+const healthLocalFilterInputStyle = {
+  ...inputStyle,
+  width: "100%",
+  border: "1px solid rgba(148,163,184,0.5)",
 };
 
 const buttonGhostStyle = {
-  ...buttonStyle,
-  background: "transparent",
-  border: "1px solid rgba(255,255,255,0.2)",
-};
-
-const pagerStyle = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 12 };
-
-const metaStyle = { color: "rgba(245,247,250,0.65)", fontSize: 13 };
-
-const errorStyle = {
-  marginTop: 12,
-  padding: 12,
+  padding: "8px 12px",
+  cursor: "pointer",
   borderRadius: 10,
-  background: "rgba(127,29,29,0.35)",
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "transparent",
+  color: "#e2e8f0",
+  fontWeight: 600,
+};
+
+const opsSanityCardStyle = {
+  marginTop: 6,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const summary24hHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summary24hHintStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+};
+
+const gateDrilldownLinkStyle = {
+  marginTop: 0,
+  display: "inline",
+  color: "#93c5fd",
+  textDecoration: "underline",
+  fontSize: 12,
+  fontWeight: 600,
+};
+
+const pagerStyle = { display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 4 };
+
+const criticalBannerStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,0.72)",
+  background: "linear-gradient(180deg, rgba(127,29,29,0.58) 0%, rgba(127,29,29,0.3) 100%)",
   color: "#fecaca",
-  whiteSpace: "pre-wrap",
+  padding: "10px 12px",
+  fontWeight: 700,
+  fontSize: 13,
 };
 
-const linkStyle = { color: "#93c5fd" };
+const tableWrapStyle = { overflowX: "auto" };
 
-const h3Style = { marginTop: 0, fontSize: 16 };
+const tableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 12 };
 
-const tableWrapStyle = { overflowX: "auto", marginTop: 8 };
+const thStyle = { textAlign: "left", borderBottom: "1px solid #444", padding: 8, color: "#cbd5e1" };
 
-const tableStyle = { width: "100%", borderCollapse: "collapse", fontSize: 13 };
-
-const thStyle = {
-  textAlign: "left",
-  padding: "8px 10px",
-  borderBottom: "1px solid rgba(255,255,255,0.12)",
-  color: "rgba(226,232,240,0.9)",
-};
-
-const tdStyle = {
-  padding: "8px 10px",
-  borderBottom: "1px solid rgba(255,255,255,0.06)",
-  verticalAlign: "top",
-  wordBreak: "break-all",
-};
+const tdStyle = { padding: 8, borderTop: "1px solid #333", color: "#e2e8f0", verticalAlign: "top", wordBreak: "break-all" };

@@ -1,5 +1,6 @@
 // 01_source/frontend/src/pages/PickupHealthPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import useOpsWindowPreset from "../hooks/useOpsWindowPreset";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { getOrderLifecycleBase } from "../utils/orderLifecycleInternalApi";
@@ -365,6 +366,359 @@ function buildFilterChipStyle(active, accent) {
   };
 }
 
+const pageStyle = {
+  width: "100%",
+  maxWidth: "none",
+  padding: 24,
+  boxSizing: "border-box",
+  color: "#f5f7fa",
+  fontFamily: "system-ui, sans-serif",
+};
+
+const cardStyle = {
+  width: "100%",
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 16,
+  boxSizing: "border-box",
+};
+
+const headerRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const crossShortcutStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const crossShortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const mutedTextStyle = {
+  color: "rgba(245, 247, 250, 0.8)",
+  marginTop: 8,
+  marginBottom: 0,
+};
+
+const toolbarStyle = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const labelStyle = {
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+};
+
+const inputStyle = {
+  width: 90,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
+
+const buttonGhostStyle = {
+  padding: "8px 12px",
+  cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "transparent",
+  color: "#e2e8f0",
+  fontWeight: 600,
+};
+
+const toolbarCheckboxLabelStyle = {
+  display: "flex",
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+  alignSelf: "flex-end",
+};
+
+const opsSanityCardStyle = {
+  marginTop: 6,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const summary24hHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summary24hGridStyle = {
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+};
+
+const summary24hItemStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(148,163,184,0.3)",
+  background: "rgba(15,23,42,0.35)",
+  padding: "8px 10px",
+  display: "grid",
+  gap: 2,
+};
+
+const summary24hValueStyle = {
+  color: "#f8fafc",
+  fontSize: 18,
+  fontWeight: 800,
+};
+
+const summary24hLabelStyle = {
+  color: "#cbd5e1",
+  fontSize: 12,
+};
+
+const summary24hHintStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+};
+
+const healthLocalFilterRowStyle = {
+  marginTop: 10,
+  marginBottom: 8,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  alignItems: "end",
+};
+
+const healthLocalFilterFieldStyle = {
+  ...labelStyle,
+  color: "#cbd5e1",
+};
+
+const healthLocalFilterInputStyle = {
+  ...inputStyle,
+  width: "100%",
+  border: "1px solid rgba(148,163,184,0.5)",
+};
+
+const presetRowStyle = {
+  marginTop: 10,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 8,
+};
+
+const presetLabelStyle = {
+  color: "rgba(245,247,250,0.72)",
+  fontSize: 12,
+  marginRight: 2,
+};
+
+const presetButtonStyle = (active) => ({
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: active ? "1px solid rgba(29,78,216,0.95)" : "1px solid rgba(255,255,255,0.14)",
+  background: active ? "rgba(29,78,216,0.22)" : "#0b0f14",
+  color: active ? "#bfdbfe" : "#e2e8f0",
+  fontWeight: 700,
+  cursor: "pointer",
+});
+
+const filterToolbarStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+  gap: 12,
+  flexWrap: "wrap",
+  marginTop: 12,
+  paddingTop: 12,
+  borderTop: "1px solid rgba(255,255,255,0.10)",
+};
+
+const quickActionInfoButtonStyle = {
+  ...buttonGhostStyle,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(30,64,175,0.2)",
+  color: "#bfdbfe",
+};
+
+const priorityStripStyle = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const priorityPillStyle = {
+  display: "grid",
+  gap: 4,
+  padding: "10px 12px",
+  borderRadius: 14,
+  border: "2px solid rgba(255,255,255,0.18)",
+  cursor: "pointer",
+  textAlign: "left",
+  color: "#f5f7fa",
+  minWidth: 200,
+};
+
+const dashboardGridStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+  gap: 10,
+  alignItems: "start",
+};
+
+const rankingItemStyle = {
+  borderRadius: 14,
+  padding: 12,
+  textAlign: "left",
+  color: "#f5f7fa",
+  cursor: "pointer",
+  display: "grid",
+  gap: 8,
+};
+
+const rankingHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "start",
+  gap: 10,
+  flexWrap: "wrap",
+};
+
+const metricRowStyle = {
+  display: "grid",
+  gap: 6,
+  fontSize: 13,
+};
+
+const chipsRowStyle = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const badgeStyle = {
+  display: "inline-flex",
+  padding: "4px 8px",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.08)",
+  border: "1px solid rgba(255,255,255,0.14)",
+  fontSize: 11,
+  fontWeight: 700,
+};
+
+const badgeMutedStyle = {
+  background: "rgba(15,23,42,0.55)",
+  border: "1px solid rgba(148,163,184,0.35)",
+  color: "rgba(226,232,240,0.92)",
+  fontWeight: 600,
+};
+
+const detailPanelStyle = {
+  ...summary24hItemStyle,
+  gap: 6,
+  fontSize: 13,
+};
+
+const preStyle = {
+  background: "#0b0f14",
+  border: "1px solid rgba(255,255,255,0.14)",
+  borderRadius: 10,
+  padding: 12,
+  overflow: "auto",
+  margin: 0,
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  color: "#e2e8f0",
+  fontSize: 12,
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+};
+
+const criticalBannerStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,0.72)",
+  background: "linear-gradient(180deg, rgba(127,29,29,0.58) 0%, rgba(127,29,29,0.3) 100%)",
+  color: "#fecaca",
+  padding: "10px 12px",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+function SummaryCard({ title, value, accent }) {
+  return (
+    <article
+      style={{
+        ...summary24hItemStyle,
+        ...(accent
+          ? {
+              borderLeft: `6px solid ${accent}`,
+            }
+          : {}),
+      }}
+    >
+      <strong style={summary24hValueStyle}>{value ?? "-"}</strong>
+      <small style={summary24hLabelStyle}>{title}</small>
+    </article>
+  );
+}
+
+function Badge({ children, variant = "default" }) {
+  if (variant === "muted") {
+    return <span style={{ ...badgeStyle, ...badgeMutedStyle }}>{children}</span>;
+  }
+  return <span style={badgeStyle}>{children}</span>;
+}
+
+function ClassificationChip({ label, accent }) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "6px 12px",
+        borderRadius: 999,
+        border: `2px solid ${accent}`,
+        background: `linear-gradient(180deg, ${accent} 0%, ${accent}cc 100%)`,
+        color: "#0b0f14",
+        fontSize: 11,
+        fontWeight: 900,
+        letterSpacing: 0.35,
+        textTransform: "uppercase",
+        boxShadow: `0 8px 18px ${accent}55`,
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 export default function PickupHealthPage() {
   const [entityType, setEntityType] = useState("locker");
   const [region, setRegion] = useState("SP");
@@ -457,7 +811,8 @@ export default function PickupHealthPage() {
   }
 
   useEffect(() => {
-    fetchPickupHealth();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- refetch when query params change
+    void fetchPickupHealth();
   }, [endpointUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -495,6 +850,7 @@ export default function PickupHealthPage() {
   const topThree = useMemo(() => filteredRanking.slice(0, 3), [filteredRanking]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- clear selection when filtered list no longer contains item
     setSelectedItem((prev) => {
       if (!prev?.entity_id) return prev;
       const still = filteredRanking.some(
@@ -518,45 +874,31 @@ export default function PickupHealthPage() {
   }
 
   return (
-    <div className="ops-page" style={pageStyle}>
-      <section style={headerCardStyle}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+    <div style={pageStyle}>
+      <section style={cardStyle}>
+        <div style={crossShortcutStyle}>
+          <Link to="/ops/order/executive-summary" style={crossShortcutLinkStyle}>
+            Ir para resumo executivo
+          </Link>
+        </div>
+        <div style={headerRowStyle}>
           <div>
             <OpsPageTitleHeader
               title="Pickup Health Dashboard"
-              versionLabel="ops/order/pickup-health v0.1"
+              versionLabel="ops/order/pickup-health v0.2"
+              versionTo="/ops/auth/policy/versioning"
               containerStyle={{ marginBottom: 0 }}
               titleStyle={{ margin: 0 }}
             />
-            <div style={subtleStyle}>
+            <p style={mutedTextStyle}>
               Priorizacao de risco por entidade, com sinais operacionais e acao recomendada.
-            </div>
+            </p>
           </div>
-
-          <div style={{ display: "grid", gap: 6, textAlign: "right" }}>
-            <div style={subtleStyle}>
-              <b>Base:</b> {ORDER_LIFECYCLE_BASE}
-            </div>
-            <div style={subtleStyle}>
-              <b>Endpoint:</b> /internal/analytics/pickup-health
-            </div>
-            <div style={subtleStyle}>
-              <b>Status:</b> {loading ? "atualizando..." : "pronto"}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={h2Style}>Filtros operacionais</h2>
-
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button onClick={fetchPickupHealth} disabled={loading} style={buttonSecondaryStyle}>
+          <div style={toolbarStyle}>
+            <button type="button" onClick={() => void fetchPickupHealth()} disabled={loading} style={buttonGhostStyle}>
               {loading ? "Atualizando..." : "Atualizar agora"}
             </button>
-
-            <label style={checkboxLabelStyle}>
+            <label style={toolbarCheckboxLabelStyle}>
               <input
                 type="checkbox"
                 checked={autoRefresh}
@@ -570,756 +912,510 @@ export default function PickupHealthPage() {
           </div>
         </div>
 
-        <div style={fieldGridStyle}>
-          <label style={labelStyle}>
-            Entidade
-            <select
-              value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
-              style={inputStyle}
-            >
-              {ENTITY_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={labelStyle}>
-            Região
-            <select
-              value={region}
-              onChange={(e) => setRegion(e.target.value)}
-              style={inputStyle}
-            >
-              {REGION_OPTIONS.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label style={labelStyle}>
-            Limite do ranking
-            <input
-              type="number"
-              min={1}
-              max={100}
-              value={rankingLimit}
-              onChange={(e) => setRankingLimit(Number(e.target.value || 20))}
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            Janela de tendência (dias)
-            <input
-              type="number"
-              min={1}
-              max={90}
-              value={trendDaysWindow}
-              onChange={(e) => setTrendDaysWindow(Number(e.target.value || 7))}
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={labelStyle}>
-            Intervalo auto-refresh (seg)
-            <input
-              type="number"
-              min={5}
-              max={120}
-              value={refreshIntervalSec}
-              onChange={(e) => {
-                const value = Number(e.target.value || 15);
-                setRefreshIntervalSec(value);
-                setRefreshCountdown(value);
-              }}
-              style={inputStyle}
-            />
-          </label>
-
-          <label style={checkboxLabelStyle}>
-            <input
-              type="checkbox"
-              checked={includeAlerts}
-              onChange={(e) => setIncludeAlerts(e.target.checked)}
-            />
-            Incluir alertas
-          </label>
-        </div>
-
-        <div style={trendPresetRowStyle}>
-          <span style={trendPresetLabelStyle}>Presets janela (dias)</span>
-          {PICKUP_HEALTH_TREND_WINDOW_PRESETS.map((days) => (
-            <button
-              key={days}
-              type="button"
-              onClick={() => applyTrendWindowPreset(days)}
-              style={trendPresetButtonStyle(trendDaysWindow === days)}
-            >
-              {days}d
-            </button>
-          ))}
-        </div>
-      </section>
-
-      {err ? (
-        <section style={cardStyle}>
-          <h2 style={h2Style}>Erro rico</h2>
-          <pre style={errorBoxStyle}>{err}</pre>
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Contexto da API</h3>
+          </div>
+          <div style={summary24hGridStyle}>
+            <article style={summary24hItemStyle}>
+              <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{ORDER_LIFECYCLE_BASE}</strong>
+              <small style={summary24hLabelStyle}>Base</small>
+            </article>
+            <article style={summary24hItemStyle}>
+              <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>/internal/analytics/pickup-health</strong>
+              <small style={summary24hLabelStyle}>Endpoint</small>
+            </article>
+            <article style={summary24hItemStyle}>
+              <strong style={{ ...summary24hValueStyle, fontSize: 13 }}>{loading ? "Atualizando..." : "pronto"}</strong>
+              <small style={summary24hLabelStyle}>Status</small>
+            </article>
+          </div>
         </section>
-      ) : null}
 
-      <section style={summaryGridStyle}>
-        <SummaryCard title="Entidades" value={summary.total_entities} accent="#64748b" />
-        <SummaryCard title="Saudavel" value={summary.healthy_count} accent={CLASSIFICATION_VISUAL.healthy.accent} />
-        <SummaryCard title="Atencao" value={summary.attention_count} accent={CLASSIFICATION_VISUAL.attention.accent} />
-        <SummaryCard title="Alerta" value={summary.warning_count} accent={CLASSIFICATION_VISUAL.warning.accent} />
-        <SummaryCard title="Critico" value={summary.critical_count} accent={CLASSIFICATION_VISUAL.critical.accent} />
-        <SummaryCard title="Colapsado" value={summary.collapsed_count} accent={CLASSIFICATION_VISUAL.collapsed.accent} />
-      </section>
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Filtros operacionais</h3>
+          </div>
+          <div style={healthLocalFilterRowStyle}>
+            <label style={healthLocalFilterFieldStyle}>
+              Entidade
+              <select
+                value={entityType}
+                onChange={(e) => setEntityType(e.target.value)}
+                style={healthLocalFilterInputStyle}
+              >
+                {ENTITY_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-      <section style={queueCardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={h2Style}>Fila e ordenacao</h2>
-          <div style={subtleStyle}>Ordena o ranking e o destaque abaixo</div>
-        </div>
-        <div style={queueControlsStyle}>
-          <label style={labelStyle}>
-            Ordenar ranking por
-            <select
-              value={rankingSort}
-              onChange={(e) => setRankingSort(e.target.value)}
-              style={inputStyle}
-            >
-              {RANKING_SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+            <label style={healthLocalFilterFieldStyle}>
+              Região
+              <select value={region} onChange={(e) => setRegion(e.target.value)} style={healthLocalFilterInputStyle}>
+                {REGION_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <div style={filterToolbarStyle}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-            <button
-              type="button"
-              onClick={() => toggleRankingFilter("alerta_plus")}
-              style={buildFilterChipStyle(rankingFilter === "alerta_plus", CLASSIFICATION_VISUAL.warning.accent)}
-              title="Classificacao warning/critical/collapsed (e buckets equivalentes quando classificacao nao veio)"
-            >
-              So alerta+
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleRankingFilter("with_alerts")}
-              style={buildFilterChipStyle(rankingFilter === "with_alerts", "#38bdf8")}
-              title="Itens com alertas operacionais ou sinais preditivos (chips na lista)"
-            >
-              So com alertas
-            </button>
-            {rankingFilter ? (
-              <button type="button" onClick={() => setRankingFilter(null)} style={filterClearButtonStyle}>
-                Limpar filtro
+            <label style={healthLocalFilterFieldStyle}>
+              Limite do ranking
+              <input
+                type="number"
+                min={1}
+                max={100}
+                value={rankingLimit}
+                onChange={(e) => setRankingLimit(Number(e.target.value || 20))}
+                style={healthLocalFilterInputStyle}
+              />
+            </label>
+
+            <label style={healthLocalFilterFieldStyle}>
+              Janela de tendência (dias)
+              <input
+                type="number"
+                min={1}
+                max={90}
+                value={trendDaysWindow}
+                onChange={(e) => setTrendDaysWindow(Number(e.target.value || 7))}
+                style={healthLocalFilterInputStyle}
+              />
+            </label>
+
+            <label style={healthLocalFilterFieldStyle}>
+              Intervalo auto-refresh (seg)
+              <input
+                type="number"
+                min={5}
+                max={120}
+                value={refreshIntervalSec}
+                onChange={(e) => {
+                  const value = Number(e.target.value || 15);
+                  setRefreshIntervalSec(value);
+                  setRefreshCountdown(value);
+                }}
+                style={healthLocalFilterInputStyle}
+              />
+            </label>
+
+            <label style={{ ...toolbarCheckboxLabelStyle, alignSelf: "end", paddingTop: 0 }}>
+              <input type="checkbox" checked={includeAlerts} onChange={(e) => setIncludeAlerts(e.target.checked)} />
+              Incluir alertas
+            </label>
+          </div>
+
+          <div style={presetRowStyle}>
+            <span style={presetLabelStyle}>Presets janela (dias)</span>
+            {PICKUP_HEALTH_TREND_WINDOW_PRESETS.map((days) => (
+              <button
+                key={days}
+                type="button"
+                onClick={() => applyTrendWindowPreset(days)}
+                style={presetButtonStyle(trendDaysWindow === days)}
+              >
+                {days}d
               </button>
-            ) : null}
+            ))}
           </div>
-
-          <button
-            type="button"
-            onClick={handleExportRankingCsv}
-            disabled={filteredRanking.length === 0}
-            style={{
-              ...exportCsvButtonStyle,
-              opacity: filteredRanking.length === 0 ? 0.45 : 1,
-              cursor: filteredRanking.length === 0 ? "not-allowed" : "pointer",
-            }}
-            title="Exporta o ranking visivel (ordenacao + filtro) em CSV com BOM para Excel"
-          >
-            Exportar CSV
-          </button>
-        </div>
-
-        {rankingFilter ? (
-          <div style={{ ...subtleStyle, marginTop: 10 }}>
-            Filtro ativo:{" "}
-            <b>
-              {rankingFilter === "alerta_plus"
-                ? "So alerta+ (warning/critical/collapsed + fallback de bucket)"
-                : "So com alertas (chips nao vazios)"}
-            </b>
-            {" · "}
-            mostrando <b>{filteredRanking.length}</b> de <b>{sortedRanking.length}</b>
-          </div>
-        ) : null}
-
-        {sortedRanking.length > 0 ? (
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>
-              Destaque (3 primeiros na ordenacao{rankingFilter ? " e filtro" : ""})
-            </div>
-            <div style={priorityStripStyle}>
-              {topThree.map((item, idx) => {
-                const v = buildRowVisual(item);
-                return (
-                  <button
-                    key={`top-${item?.entity_type}-${item?.entity_id}-${idx}`}
-                    type="button"
-                    onClick={() => setSelectedItem(item)}
-                    style={{
-                      ...priorityPillStyle,
-                      borderColor: v.border,
-                      background: v.bg,
-                      boxShadow: `0 0 0 1px ${v.accent}33`,
-                    }}
-                  >
-                    <span style={{ fontWeight: 900, color: v.accent }}>#{idx + 1}</span>
-                    <span style={{ fontWeight: 800 }}>{item?.entity_id || "N/D"}</span>
-                    <span style={subtleStyle}>
-                      P {formatScore(item?.priority_score)} · S {formatScore(item?.health_score)}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
-      </section>
-
-      <div style={dashboardGridStyle}>
-        <section style={cardStyle}>
-          <div style={sectionHeaderStyle}>
-            <h2 style={h2Style}>Ranking operacional</h2>
-            <div style={subtleStyle}>
-              {rankingFilter
-                ? `${filteredRanking.length} exibidos de ${sortedRanking.length} (filtro ativo)`
-                : `${filteredRanking.length} itens`}
-              {rankingSort !== "api" ? ` · ordenado: ${RANKING_SORT_OPTIONS.find((o) => o.value === rankingSort)?.label || rankingSort}` : null}
-            </div>
-          </div>
-
-          {!loading && sortedRanking.length === 0 ? (
-            <div style={subtleStyle}>Nenhum dado retornado.</div>
-          ) : !loading && filteredRanking.length === 0 ? (
-            <div style={subtleStyle}>Nenhum item corresponde ao filtro rapido.</div>
-          ) : (
-            <div style={{ display: "grid", gap: 10 }}>
-              {filteredRanking.map((item, index) => {
-                const rowVisual = buildRowVisual(item);
-                const alertChips = buildAlertChips(item);
-                const isSelected =
-                  Boolean(selectedItem?.entity_id) &&
-                  selectedItem?.entity_id === item?.entity_id &&
-                  selectedItem?.entity_type === item?.entity_type;
-
-                return (
-                  <button
-                    key={`${item?.entity_type}-${item?.entity_id || index}`}
-                    type="button"
-                    onClick={() => setSelectedItem(item)}
-                    style={{
-                      ...rankingItemStyle,
-                      background: rowVisual.bg,
-                      border: `2px solid ${rowVisual.border}`,
-                      borderLeft: `8px solid ${rowVisual.accent}`,
-                      boxShadow: isSelected
-                        ? `0 0 0 2px #f8fafc, 0 0 0 6px ${rowVisual.accent}, 0 12px 28px rgba(0,0,0,0.35)`
-                        : `0 10px 22px rgba(0,0,0,0.22)`,
-                      outline: "none",
-                    }}
-                  >
-                    <div style={rankingHeaderStyle}>
-                      <div>
-                        <div style={{ fontWeight: 800, fontSize: 15 }}>
-                          {item?.entity_type || "-"} • {item?.entity_id || "N/D"}
-                        </div>
-                        {String(item?.entity_type || "").toLowerCase() === "slot" ? (
-                          <div
-                            style={{
-                              marginTop: 6,
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: "#bae6fd",
-                              lineHeight: 1.35,
-                            }}
-                          >
-                            Equipamento:{" "}
-                            <span style={{ fontWeight: 600, color: "#e0f2fe" }}>{formatSlotEquipmentLine(item)}</span>
-                          </div>
-                        ) : null}
-                        <div style={subtleStyle}>
-                          tenant: <b>{item?.tenant_id || "-"}</b> • operador: <b>{item?.operator_id || "-"}</b> • regiao: <b>{item?.region || "-"}</b>
-                        </div>
-                        {buildClassificationVisual(item?.classification) ? (
-                          <div style={{ ...subtleStyle, marginTop: 4, fontSize: 11 }}>
-                            Bucket derivado: <b>{item?.severity_bucket || "-"}</b>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                        <ClassificationChip label={rowVisual.label} accent={rowVisual.accent} />
-                        {buildClassificationVisual(item?.classification) ? (
-                          <Badge variant="muted">{buildSeverityMeta(item?.severity_bucket).label}</Badge>
-                        ) : null}
-                        <Badge>prioridade {formatScore(item?.priority_score)}</Badge>
-                        <Badge>saude {formatScore(item?.health_score)}</Badge>
-                      </div>
-                    </div>
-
-                    <div style={metricRowStyle}>
-                      <div><b>acao sugerida:</b> {item?.recommended_action || "-"}</div>
-                      <div><b>playbook:</b> {item?.suggested_playbook || "-"}</div>
-                      <div><b>tendencia:</b> {item?.trend?.direction || item?.signals?.trend_direction || "-"}</div>
-                      <div><b>delta tendencia:</b> {formatDelta(item?.trend?.delta)}</div>
-                    </div>
-
-                    <div style={metricRowStyle}>
-                      <div><b>volume:</b> {item?.metrics?.total_terminal_pickups ?? "-"}</div>
-                      <div><b>expiracao:</b> {formatPercent(item?.metrics?.expiration_rate)}</div>
-                      <div><b>cancelamento:</b> {formatPercent(item?.metrics?.cancellation_rate)}</div>
-                      <div><b>SLA ready→redeemed:</b> {formatMinutes(item?.metrics?.avg_minutes_ready_to_redeemed)}</div>
-                    </div>
-
-                    {alertChips.length > 0 ? (
-                      <div style={chipsRowStyle}>
-                        {alertChips.map((alert) => (
-                          <Badge key={alert}>{toAlertLabel(alert)}</Badge>
-                        ))}
-                      </div>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          )}
         </section>
 
-        <section style={cardStyle}>
-          <div style={sectionHeaderStyle}>
-            <h2 style={h2Style}>Drill-down da entidade</h2>
-            <div style={subtleStyle}>
-              {selectedItem ? `${selectedItem.entity_type} • ${selectedItem.entity_id}` : "Selecione um item"}
-            </div>
+        {err ? (
+          <div style={criticalBannerStyle} role="alert">
+            <pre
+              style={{
+                margin: 0,
+                fontFamily: "inherit",
+                fontSize: 12,
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                background: "transparent",
+                border: "none",
+                color: "inherit",
+                fontWeight: 600,
+              }}
+            >
+              {err}
+            </pre>
+          </div>
+        ) : null}
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Resumo por classificacao</h3>
+          </div>
+          <div style={summary24hGridStyle}>
+            <SummaryCard title="Entidades" value={summary.total_entities} accent="#64748b" />
+            <SummaryCard title="Saudavel" value={summary.healthy_count} accent={CLASSIFICATION_VISUAL.healthy.accent} />
+            <SummaryCard title="Atencao" value={summary.attention_count} accent={CLASSIFICATION_VISUAL.attention.accent} />
+            <SummaryCard title="Alerta" value={summary.warning_count} accent={CLASSIFICATION_VISUAL.warning.accent} />
+            <SummaryCard title="Critico" value={summary.critical_count} accent={CLASSIFICATION_VISUAL.critical.accent} />
+            <SummaryCard title="Colapsado" value={summary.collapsed_count} accent={CLASSIFICATION_VISUAL.collapsed.accent} />
+          </div>
+        </section>
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Fila e ordenacao</h3>
+            <small style={summary24hHintStyle}>Ordena o ranking e o destaque abaixo</small>
+          </div>
+          <div style={healthLocalFilterRowStyle}>
+            <label style={healthLocalFilterFieldStyle}>
+              Ordenar ranking por
+              <select value={rankingSort} onChange={(e) => setRankingSort(e.target.value)} style={healthLocalFilterInputStyle}>
+                {RANKING_SORT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
 
-          {!selectedItem ? (
-            <div style={subtleStyle}>
-              Clique em um item do ranking para abrir detalhes operacionais, sinais, baseline e anomalias.
-            </div>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={detailCardStyle}>
-                <h3 style={h3Style}>Resumo operacional</h3>
-                <div><b>entidade:</b> {selectedItem.entity_type} • {selectedItem.entity_id}</div>
-                {String(selectedItem.entity_type || "").toLowerCase() === "slot" ? (
-                  <>
-                    <div><b>slot (id):</b> {selectedItem.slot_id || selectedItem.entity_id}</div>
-                    <div>
-                      <b>equipamento (dominante no periodo):</b> {formatSlotEquipmentLine(selectedItem)}
-                    </div>
-                    <div><b>armario:</b> {selectedItem.locker_id || "-"}</div>
-                    <div><b>maquina:</b> {selectedItem.machine_id || "-"}</div>
-                    <div><b>site:</b> {selectedItem.site_id || "-"}</div>
-                  </>
-                ) : null}
-                <div><b>regiao:</b> {selectedItem.region || "-"}</div>
-                <div><b>classificacao:</b> {selectedItem.classification || "-"}</div>
-                <div><b>bucket derivado:</b> {selectedItem.severity_bucket || "-"}</div>
-                <div><b>saude:</b> {formatScore(selectedItem.health_score)}</div>
-                <div><b>prioridade:</b> {formatScore(selectedItem.priority_score)}</div>
-                <div><b>acao recomendada:</b> {selectedItem.recommended_action || "-"}</div>
-                <div><b>playbook:</b> {selectedItem.suggested_playbook || "-"}</div>
-              </div>
-
-              <div style={detailCardStyle}>
-                <h3 style={h3Style}>Sinais chave</h3>
-                <div><b>taxa sucesso pickup:</b> {formatPercent((selectedItem?.signals?.pickup_success_rate ?? 0) * 100)}</div>
-                <div><b>expiracao:</b> {formatPercent((selectedItem?.signals?.expiration_rate ?? 0) * 100)}</div>
-                <div><b>cancelamento:</b> {formatPercent((selectedItem?.signals?.cancel_rate ?? 0) * 100)}</div>
-                <div><b>tempo medio pickup:</b> {formatMinutes(selectedItem?.signals?.avg_pickup_minutes)}</div>
-                <div><b>tamanho da amostra:</b> {selectedItem?.signals?.sample_size ?? "-"}</div>
-              </div>
-
-              <div style={detailCardStyle}>
-                <h3 style={h3Style}>Anomalias e baseline</h3>
-                <div><b>queda abrupta:</b> {selectedItem?.anomaly?.abrupt_drop ? "sim" : "nao"}</div>
-                <div><b>fora do padrao:</b> {selectedItem?.anomaly?.out_of_pattern ? "sim" : "nao"}</div>
-                <div><b>risco preditivo:</b> {selectedItem?.anomaly?.predictive_risk ? "sim" : "nao"}</div>
-                <div><b>media baseline:</b> {formatPercent(selectedItem?.baseline?.mean_rate)}</div>
-                <div><b>desvio baseline:</b> {formatScore(selectedItem?.baseline?.stddev_rate)}</div>
-                <div><b>historico baseline:</b> {selectedItem?.baseline?.history_count ?? "-"}</div>
-              </div>
-
-              <div style={detailCardStyle}>
-                <button
-                  type="button"
-                  onClick={() => setShowSelectedItemJson((v) => !v)}
-                  style={buttonSecondaryStyle}
-                >
-                  {showSelectedItemJson ? "Ocultar JSON tecnico do item" : "Mostrar JSON tecnico do item"}
+          <div style={filterToolbarStyle}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={() => toggleRankingFilter("alerta_plus")}
+                style={buildFilterChipStyle(rankingFilter === "alerta_plus", CLASSIFICATION_VISUAL.warning.accent)}
+                title="Classificacao warning/critical/collapsed (e buckets equivalentes quando classificacao nao veio)"
+              >
+                So alerta+
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleRankingFilter("with_alerts")}
+                style={buildFilterChipStyle(rankingFilter === "with_alerts", "#38bdf8")}
+                title="Itens com alertas operacionais ou sinais preditivos (chips na lista)"
+              >
+                So com alertas
+              </button>
+              {rankingFilter ? (
+                <button type="button" onClick={() => setRankingFilter(null)} style={buttonGhostStyle}>
+                  Limpar filtro
                 </button>
-                {showSelectedItemJson ? <pre style={preStyle}>{prettyJson(selectedItem)}</pre> : null}
+              ) : null}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleExportRankingCsv}
+              disabled={filteredRanking.length === 0}
+              style={{
+                ...quickActionInfoButtonStyle,
+                opacity: filteredRanking.length === 0 ? 0.45 : 1,
+                cursor: filteredRanking.length === 0 ? "not-allowed" : "pointer",
+              }}
+              title="Exporta o ranking visivel (ordenacao + filtro) em CSV com BOM para Excel"
+            >
+              Exportar CSV
+            </button>
+          </div>
+
+          {rankingFilter ? (
+            <div style={{ ...summary24hHintStyle, marginTop: 4 }}>
+              Filtro ativo:{" "}
+              <strong style={{ color: "#e2e8f0" }}>
+                {rankingFilter === "alerta_plus"
+                  ? "So alerta+ (warning/critical/collapsed + fallback de bucket)"
+                  : "So com alertas (chips nao vazios)"}
+              </strong>
+              {" · "}
+              mostrando <strong style={{ color: "#e2e8f0" }}>{filteredRanking.length}</strong> de{" "}
+              <strong style={{ color: "#e2e8f0" }}>{sortedRanking.length}</strong>
+            </div>
+          ) : null}
+
+          {sortedRanking.length > 0 ? (
+            <div style={{ marginTop: 4 }}>
+              <div style={{ fontWeight: 800, marginBottom: 8, fontSize: 13, color: "#e2e8f0" }}>
+                Destaque (3 primeiros na ordenacao{rankingFilter ? " e filtro" : ""})
+              </div>
+              <div style={priorityStripStyle}>
+                {topThree.map((item, idx) => {
+                  const v = buildRowVisual(item);
+                  return (
+                    <button
+                      key={`top-${item?.entity_type}-${item?.entity_id}-${idx}`}
+                      type="button"
+                      onClick={() => setSelectedItem(item)}
+                      style={{
+                        ...priorityPillStyle,
+                        borderColor: v.border,
+                        background: v.bg,
+                        boxShadow: `0 0 0 1px ${v.accent}33`,
+                      }}
+                    >
+                      <span style={{ fontWeight: 900, color: v.accent }}>#{idx + 1}</span>
+                      <span style={{ fontWeight: 800 }}>{item?.entity_id || "N/D"}</span>
+                      <span style={summary24hHintStyle}>
+                        P {formatScore(item?.priority_score)} · S {formatScore(item?.health_score)}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
+          ) : null}
         </section>
-      </div>
 
-      <section style={cardStyle}>
-        <div style={sectionHeaderStyle}>
-          <h2 style={h2Style}>Ranking por entidade</h2>
-          <div style={subtleStyle}>Visao tecnica consolidada</div>
+        <div style={dashboardGridStyle}>
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Ranking operacional</h3>
+              <small style={summary24hHintStyle}>
+                {rankingFilter
+                  ? `${filteredRanking.length} exibidos de ${sortedRanking.length} (filtro ativo)`
+                  : `${filteredRanking.length} itens`}
+                {rankingSort !== "api"
+                  ? ` · ordenado: ${RANKING_SORT_OPTIONS.find((o) => o.value === rankingSort)?.label || rankingSort}`
+                  : null}
+              </small>
+            </div>
+
+            {!loading && sortedRanking.length === 0 ? (
+              <div style={summary24hHintStyle}>Nenhum dado retornado.</div>
+            ) : !loading && filteredRanking.length === 0 ? (
+              <div style={summary24hHintStyle}>Nenhum item corresponde ao filtro rapido.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {filteredRanking.map((item, index) => {
+                  const rowVisual = buildRowVisual(item);
+                  const alertChips = buildAlertChips(item);
+                  const isSelected =
+                    Boolean(selectedItem?.entity_id) &&
+                    selectedItem?.entity_id === item?.entity_id &&
+                    selectedItem?.entity_type === item?.entity_type;
+
+                  return (
+                    <button
+                      key={`${item?.entity_type}-${item?.entity_id || index}`}
+                      type="button"
+                      onClick={() => setSelectedItem(item)}
+                      style={{
+                        ...rankingItemStyle,
+                        background: rowVisual.bg,
+                        border: `2px solid ${rowVisual.border}`,
+                        borderLeft: `8px solid ${rowVisual.accent}`,
+                        boxShadow: isSelected
+                          ? `0 0 0 2px #f8fafc, 0 0 0 6px ${rowVisual.accent}, 0 12px 28px rgba(0,0,0,0.35)`
+                          : `0 10px 22px rgba(0,0,0,0.22)`,
+                        outline: "none",
+                      }}
+                    >
+                      <div style={rankingHeaderStyle}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: 15 }}>
+                            {item?.entity_type || "-"} • {item?.entity_id || "N/D"}
+                          </div>
+                          {String(item?.entity_type || "").toLowerCase() === "slot" ? (
+                            <div
+                              style={{
+                                marginTop: 6,
+                                fontSize: 12,
+                                fontWeight: 700,
+                                color: "#bae6fd",
+                                lineHeight: 1.35,
+                              }}
+                            >
+                              Equipamento:{" "}
+                              <span style={{ fontWeight: 600, color: "#e0f2fe" }}>{formatSlotEquipmentLine(item)}</span>
+                            </div>
+                          ) : null}
+                          <div style={summary24hHintStyle}>
+                            tenant: <strong style={{ color: "#e2e8f0" }}>{item?.tenant_id || "-"}</strong> • operador:{" "}
+                            <strong style={{ color: "#e2e8f0" }}>{item?.operator_id || "-"}</strong> • regiao:{" "}
+                            <strong style={{ color: "#e2e8f0" }}>{item?.region || "-"}</strong>
+                          </div>
+                          {buildClassificationVisual(item?.classification) ? (
+                            <div style={{ ...summary24hHintStyle, marginTop: 4, fontSize: 11 }}>
+                              Bucket derivado: <strong style={{ color: "#e2e8f0" }}>{item?.severity_bucket || "-"}</strong>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                          <ClassificationChip label={rowVisual.label} accent={rowVisual.accent} />
+                          {buildClassificationVisual(item?.classification) ? (
+                            <Badge variant="muted">{buildSeverityMeta(item?.severity_bucket).label}</Badge>
+                          ) : null}
+                          <Badge>prioridade {formatScore(item?.priority_score)}</Badge>
+                          <Badge>saude {formatScore(item?.health_score)}</Badge>
+                        </div>
+                      </div>
+
+                      <div style={metricRowStyle}>
+                        <div>
+                          <b>acao sugerida:</b> {item?.recommended_action || "-"}
+                        </div>
+                        <div>
+                          <b>playbook:</b> {item?.suggested_playbook || "-"}
+                        </div>
+                        <div>
+                          <b>tendencia:</b> {item?.trend?.direction || item?.signals?.trend_direction || "-"}
+                        </div>
+                        <div>
+                          <b>delta tendencia:</b> {formatDelta(item?.trend?.delta)}
+                        </div>
+                      </div>
+
+                      <div style={metricRowStyle}>
+                        <div>
+                          <b>volume:</b> {item?.metrics?.total_terminal_pickups ?? "-"}
+                        </div>
+                        <div>
+                          <b>expiracao:</b> {formatPercent(item?.metrics?.expiration_rate)}
+                        </div>
+                        <div>
+                          <b>cancelamento:</b> {formatPercent(item?.metrics?.cancellation_rate)}
+                        </div>
+                        <div>
+                          <b>SLA ready→redeemed:</b> {formatMinutes(item?.metrics?.avg_minutes_ready_to_redeemed)}
+                        </div>
+                      </div>
+
+                      {alertChips.length > 0 ? (
+                        <div style={chipsRowStyle}>
+                          {alertChips.map((alert) => (
+                            <Badge key={alert}>{toAlertLabel(alert)}</Badge>
+                          ))}
+                        </div>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Drill-down da entidade</h3>
+              <small style={summary24hHintStyle}>
+                {selectedItem ? `${selectedItem.entity_type} • ${selectedItem.entity_id}` : "Selecione um item"}
+              </small>
+            </div>
+
+            {!selectedItem ? (
+              <div style={summary24hHintStyle}>
+                Clique em um item do ranking para abrir detalhes operacionais, sinais, baseline e anomalias.
+              </div>
+            ) : (
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={detailPanelStyle}>
+                  <h3 style={{ margin: 0, marginBottom: 8, fontSize: 14, color: "#f8fafc" }}>Resumo operacional</h3>
+                  <div>
+                    <b>entidade:</b> {selectedItem.entity_type} • {selectedItem.entity_id}
+                  </div>
+                  {String(selectedItem.entity_type || "").toLowerCase() === "slot" ? (
+                    <>
+                      <div>
+                        <b>slot (id):</b> {selectedItem.slot_id || selectedItem.entity_id}
+                      </div>
+                      <div>
+                        <b>equipamento (dominante no periodo):</b> {formatSlotEquipmentLine(selectedItem)}
+                      </div>
+                      <div>
+                        <b>armario:</b> {selectedItem.locker_id || "-"}
+                      </div>
+                      <div>
+                        <b>maquina:</b> {selectedItem.machine_id || "-"}
+                      </div>
+                      <div>
+                        <b>site:</b> {selectedItem.site_id || "-"}
+                      </div>
+                    </>
+                  ) : null}
+                  <div>
+                    <b>regiao:</b> {selectedItem.region || "-"}
+                  </div>
+                  <div>
+                    <b>classificacao:</b> {selectedItem.classification || "-"}
+                  </div>
+                  <div>
+                    <b>bucket derivado:</b> {selectedItem.severity_bucket || "-"}
+                  </div>
+                  <div>
+                    <b>saude:</b> {formatScore(selectedItem.health_score)}
+                  </div>
+                  <div>
+                    <b>prioridade:</b> {formatScore(selectedItem.priority_score)}
+                  </div>
+                  <div>
+                    <b>acao recomendada:</b> {selectedItem.recommended_action || "-"}
+                  </div>
+                  <div>
+                    <b>playbook:</b> {selectedItem.suggested_playbook || "-"}
+                  </div>
+                </div>
+
+                <div style={detailPanelStyle}>
+                  <h3 style={{ margin: 0, marginBottom: 8, fontSize: 14, color: "#f8fafc" }}>Sinais chave</h3>
+                  <div>
+                    <b>taxa sucesso pickup:</b> {formatPercent((selectedItem?.signals?.pickup_success_rate ?? 0) * 100)}
+                  </div>
+                  <div>
+                    <b>expiracao:</b> {formatPercent((selectedItem?.signals?.expiration_rate ?? 0) * 100)}
+                  </div>
+                  <div>
+                    <b>cancelamento:</b> {formatPercent((selectedItem?.signals?.cancel_rate ?? 0) * 100)}
+                  </div>
+                  <div>
+                    <b>tempo medio pickup:</b> {formatMinutes(selectedItem?.signals?.avg_pickup_minutes)}
+                  </div>
+                  <div>
+                    <b>tamanho da amostra:</b> {selectedItem?.signals?.sample_size ?? "-"}
+                  </div>
+                </div>
+
+                <div style={detailPanelStyle}>
+                  <h3 style={{ margin: 0, marginBottom: 8, fontSize: 14, color: "#f8fafc" }}>Anomalias e baseline</h3>
+                  <div>
+                    <b>queda abrupta:</b> {selectedItem?.anomaly?.abrupt_drop ? "sim" : "nao"}
+                  </div>
+                  <div>
+                    <b>fora do padrao:</b> {selectedItem?.anomaly?.out_of_pattern ? "sim" : "nao"}
+                  </div>
+                  <div>
+                    <b>risco preditivo:</b> {selectedItem?.anomaly?.predictive_risk ? "sim" : "nao"}
+                  </div>
+                  <div>
+                    <b>media baseline:</b> {formatPercent(selectedItem?.baseline?.mean_rate)}
+                  </div>
+                  <div>
+                    <b>desvio baseline:</b> {formatScore(selectedItem?.baseline?.stddev_rate)}
+                  </div>
+                  <div>
+                    <b>historico baseline:</b> {selectedItem?.baseline?.history_count ?? "-"}
+                  </div>
+                </div>
+
+                <div style={detailPanelStyle}>
+                  <button type="button" onClick={() => setShowSelectedItemJson((v) => !v)} style={buttonGhostStyle}>
+                    {showSelectedItemJson ? "Ocultar JSON tecnico do item" : "Mostrar JSON tecnico do item"}
+                  </button>
+                  {showSelectedItemJson ? <pre style={preStyle}>{prettyJson(selectedItem)}</pre> : null}
+                </div>
+              </div>
+            )}
+          </section>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowRankingByEntityJson((v) => !v)}
-          style={buttonSecondaryStyle}
-        >
-          {showRankingByEntityJson ? "Ocultar JSON estrutural" : "Mostrar JSON estrutural"}
-        </button>
-        {showRankingByEntityJson ? <pre style={{ ...preStyle, marginTop: 12 }}>{prettyJson(rankingByEntity)}</pre> : null}
+
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Ranking por entidade</h3>
+            <small style={summary24hHintStyle}>Visao tecnica consolidada</small>
+          </div>
+          <button type="button" onClick={() => setShowRankingByEntityJson((v) => !v)} style={buttonGhostStyle}>
+            {showRankingByEntityJson ? "Ocultar JSON estrutural" : "Mostrar JSON estrutural"}
+          </button>
+          {showRankingByEntityJson ? <pre style={{ ...preStyle, marginTop: 12 }}>{prettyJson(rankingByEntity)}</pre> : null}
+        </section>
       </section>
     </div>
   );
 }
-
-function SummaryCard({ title, value, accent }) {
-  return (
-    <div
-      style={{
-        ...summaryCardStyle,
-        ...(accent
-          ? {
-              borderLeft: `6px solid ${accent}`,
-            }
-          : {}),
-      }}
-    >
-      <div style={summaryTitleStyle}>{title}</div>
-      <div style={summaryValueStyle}>{value ?? "-"}</div>
-    </div>
-  );
-}
-
-function Badge({ children, variant = "default" }) {
-  if (variant === "muted") {
-    return <span style={{ ...badgeStyle, ...badgeMutedStyle }}>{children}</span>;
-  }
-  return <span style={badgeStyle}>{children}</span>;
-}
-
-function ClassificationChip({ label, accent }) {
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        padding: "6px 12px",
-        borderRadius: 999,
-        border: `2px solid ${accent}`,
-        background: `linear-gradient(180deg, ${accent} 0%, ${accent}cc 100%)`,
-        color: "#0b0f14",
-        fontSize: 11,
-        fontWeight: 900,
-        letterSpacing: 0.35,
-        textTransform: "uppercase",
-        boxShadow: `0 8px 18px ${accent}55`,
-      }}
-    >
-      {label}
-    </span>
-  );
-}
-
-const pageStyle = {
-  padding: "1rem",
-  maxWidth: 1200,
-  margin: "0 auto",
-  boxSizing: "border-box",
-  color: "#f5f7fa",
-  fontFamily: "system-ui, sans-serif",
-};
-
-const headerCardStyle = {
-  background: "#11161c",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
-  marginBottom: 16,
-};
-
-const cardStyle = {
-  background: "#11161c",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 16,
-  padding: 16,
-  boxShadow: "0 8px 24px rgba(0,0,0,0.22)",
-  marginBottom: 16,
-};
-
-const sectionHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: 12,
-  flexWrap: "wrap",
-};
-
-const h2Style = {
-  marginTop: 0,
-  marginBottom: 12,
-  fontSize: 18,
-};
-
-const h3Style = {
-  marginTop: 0,
-  marginBottom: 8,
-  fontSize: 15,
-};
-
-const subtleStyle = {
-  opacity: 0.78,
-  fontSize: 12,
-};
-
-const fieldGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: 12,
-  marginTop: 12,
-};
-
-const labelStyle = {
-  display: "grid",
-  gap: 6,
-  fontSize: 14,
-};
-
-const checkboxLabelStyle = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  fontSize: 14,
-  paddingTop: 26,
-};
-
-const trendPresetRowStyle = {
-  marginTop: 10,
-  display: "flex",
-  gap: 8,
-  alignItems: "center",
-  flexWrap: "wrap",
-};
-
-const trendPresetLabelStyle = {
-  color: "rgba(245,247,250,0.78)",
-  fontSize: 12,
-};
-
-const trendPresetButtonStyle = (active) => ({
-  padding: "6px 10px",
-  borderRadius: 999,
-  border: active ? "1px solid rgba(59,130,246,0.92)" : "1px solid rgba(255,255,255,0.16)",
-  background: active ? "rgba(59,130,246,0.24)" : "transparent",
-  color: active ? "#dbeafe" : "#e2e8f0",
-  fontWeight: 700,
-  fontSize: 12,
-  cursor: "pointer",
-});
-
-const inputStyle = {
-  padding: "10px 12px",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "#0b0f14",
-  color: "#f5f7fa",
-};
-
-const buttonSecondaryStyle = {
-  padding: "10px 14px",
-  cursor: "pointer",
-  borderRadius: 10,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "#1b5883",
-  color: "white",
-  fontWeight: 600,
-};
-
-const queueCardStyle = {
-  ...cardStyle,
-  border: "1px solid rgba(255,255,255,0.14)",
-  background: "linear-gradient(180deg, rgba(17,22,28,0.98), rgba(11,15,20,0.98))",
-};
-
-const queueControlsStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: 12,
-  marginTop: 4,
-};
-
-const filterToolbarStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: 12,
-  flexWrap: "wrap",
-  marginTop: 12,
-  paddingTop: 12,
-  borderTop: "1px solid rgba(255,255,255,0.10)",
-};
-
-const filterClearButtonStyle = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid rgba(148,163,184,0.35)",
-  background: "rgba(15,23,42,0.55)",
-  color: "rgba(226,232,240,0.95)",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const exportCsvButtonStyle = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid rgba(56, 189, 248, 0.45)",
-  background: "rgba(14, 165, 233, 0.22)",
-  color: "#e0f2fe",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const priorityStripStyle = {
-  display: "flex",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const priorityPillStyle = {
-  display: "grid",
-  gap: 4,
-  padding: "10px 12px",
-  borderRadius: 14,
-  border: "2px solid rgba(255,255,255,0.18)",
-  cursor: "pointer",
-  textAlign: "left",
-  color: "#f5f7fa",
-  minWidth: 200,
-};
-
-const summaryGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
-  gap: 12,
-  marginBottom: 16,
-};
-
-const summaryCardStyle = {
-  background: "#11161c",
-  border: "1px solid rgba(255,255,255,0.10)",
-  borderRadius: 16,
-  padding: 16,
-};
-
-const summaryTitleStyle = {
-  fontSize: 12,
-  opacity: 0.72,
-};
-
-const summaryValueStyle = {
-  fontSize: 24,
-  fontWeight: 800,
-  marginTop: 6,
-};
-
-const dashboardGridStyle = {
-  display: "grid",
-  gridTemplateColumns: "1.2fr 0.9fr",
-  gap: 16,
-  alignItems: "start",
-};
-
-const rankingItemStyle = {
-  borderRadius: 14,
-  padding: 12,
-  textAlign: "left",
-  color: "#f5f7fa",
-  cursor: "pointer",
-  display: "grid",
-  gap: 8,
-};
-
-const rankingHeaderStyle = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "start",
-  gap: 10,
-  flexWrap: "wrap",
-};
-
-const metricRowStyle = {
-  display: "grid",
-  gap: 6,
-  fontSize: 13,
-};
-
-const chipsRowStyle = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-};
-
-const badgeStyle = {
-  display: "inline-flex",
-  padding: "4px 8px",
-  borderRadius: 999,
-  background: "rgba(255,255,255,0.08)",
-  border: "1px solid rgba(255,255,255,0.14)",
-  fontSize: 11,
-  fontWeight: 700,
-};
-
-const badgeMutedStyle = {
-  background: "rgba(15,23,42,0.55)",
-  border: "1px solid rgba(148,163,184,0.35)",
-  color: "rgba(226,232,240,0.92)",
-  fontWeight: 600,
-};
-
-const detailCardStyle = {
-  padding: 12,
-  borderRadius: 12,
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  display: "grid",
-  gap: 6,
-  fontSize: 13,
-};
-
-const preStyle = {
-  background: "#0b0f14",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 12,
-  padding: 12,
-  overflow: "auto",
-  margin: 0,
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};
-
-const errorBoxStyle = {
-  margin: 0,
-  background: "#2b1d1d",
-  color: "#ffb4b4",
-  padding: 12,
-  borderRadius: 12,
-  overflow: "auto",
-  whiteSpace: "pre-wrap",
-  wordBreak: "break-word",
-};

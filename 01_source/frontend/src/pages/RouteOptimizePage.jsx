@@ -1,10 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import FiscalPageLayout from "../components/FiscalPageLayout";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { mlIntelligenceApi } from "../api/mlIntelligenceClient";
+
+const OPS_ROUTE_VERSION = "ops/logistics/route-optimize v0.2-health-shell";
 
 /** Mapa Leaflet: rota depósito (centróide) → lockers otimizada. */
 export default function RouteOptimizePage() {
@@ -129,14 +131,137 @@ export default function RouteOptimizePage() {
     };
   }, [res]);
 
-  const subtitle = isOps
-    ? "OPS · K-means + RF (tempo) + OR-Tools VRP — POST /logistics/optimize-route"
-    : "Inteligência · mesma API — redução típica de km 15–20% vs ordem de entrada";
+  const intelSubtitle = "Inteligência · mesma API — redução típica de km 15–20% vs ordem de entrada";
+  const opsMuted =
+    "OPS · K-means + RF (tempo) + OR-Tools VRP — POST /logistics/optimize-route. Configure VITE_ML_PREDICTOR_BASE_URL no build do frontend.";
+
+  if (isOps) {
+    return (
+      <div style={pageStyle}>
+        <section style={cardStyle}>
+          <div style={crossShortcutStyle}>
+            <Link to="/ops/health" style={crossShortcutLinkStyle}>
+              Ir para saúde operacional
+            </Link>
+          </div>
+          <div style={headerRowStyle}>
+            <div>
+              <OpsPageTitleHeader
+                title="Roteirização ML (lockers)"
+                versionLabel={OPS_ROUTE_VERSION}
+                versionTo="/ops/auth/policy/versioning"
+                containerStyle={{ marginBottom: 0 }}
+                titleStyle={{ margin: 0 }}
+              />
+              <p style={mutedTextStyle}>{opsMuted}</p>
+            </div>
+          </div>
+
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>Parâmetros</h3>
+            </div>
+            <label style={{ ...healthLocalFilterFieldStyle, gridColumn: "1 / -1" }}>
+              locker_ids (vírgula ou linha)
+              <textarea
+                rows={4}
+                value={rawIds}
+                onChange={(e) => setRawIds(e.target.value)}
+                style={textareaStyle}
+                placeholder={"id-locker-1\nid-locker-2"}
+              />
+            </label>
+            <div style={healthLocalFilterRowStyle}>
+              <label style={healthLocalFilterFieldStyle}>
+                Capacidade
+                <input
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={capacity}
+                  onChange={(e) => setCapacity(Number(e.target.value) || 80)}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                TW início (min)
+                <input
+                  type="number"
+                  value={twStart}
+                  onChange={(e) => setTwStart(Number(e.target.value) || 0)}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                TW fim (min)
+                <input
+                  type="number"
+                  value={twEnd}
+                  onChange={(e) => setTwEnd(Number(e.target.value) || 0)}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+            </div>
+            <div style={toolbarStyle}>
+              <button type="button" disabled={busy} style={buttonGhostStyle} onClick={() => void run()}>
+                {busy ? "Atualizando..." : "Otimizar rota"}
+              </button>
+            </div>
+          </section>
+
+          {!baseOk ? <p style={summary24hHintStyle}>Defina VITE_ML_PREDICTOR_BASE_URL no build do frontend.</p> : null}
+
+          {err ? (
+            <div style={criticalBannerStyle} role="alert">
+              {err}
+            </div>
+          ) : null}
+
+          {res ? (
+            <>
+              <section style={opsSanityCardStyle}>
+                <div style={summary24hHeaderStyle}>
+                  <h3 style={{ margin: 0, fontSize: 14 }}>Resultado</h3>
+                </div>
+                <p style={{ ...summary24hHintStyle, margin: 0, lineHeight: 1.55 }}>
+                  km ingênuo (ordem de entrada): <strong style={{ color: "#e2e8f0" }}>{res.total_km_naive_haversine}</strong> · otimizado:{" "}
+                  <strong style={{ color: "#e2e8f0" }}>{res.total_km_optimized_haversine}</strong> · redução:{" "}
+                  <strong style={{ color: "#e2e8f0" }}>{res.reduction_pct_vs_input_order}%</strong> · faixa típica operacional:{" "}
+                  <strong style={{ color: "#e2e8f0" }}>{res.estimated_reduction_band_typical}</strong>
+                </p>
+                <p style={{ ...summary24hHintStyle, margin: 0 }}>
+                  Clusters K-means: {res.k_clusters} · visita: {res.ordered_locker_ids?.join(" → ")}
+                </p>
+              </section>
+              <div
+                ref={mapRef}
+                style={{
+                  height: 420,
+                  marginTop: 6,
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  overflow: "hidden",
+                  background: "#0b0f14",
+                }}
+              />
+            </>
+          ) : (
+            <section style={opsSanityCardStyle}>
+              <p style={{ ...summary24hHintStyle, margin: 0, lineHeight: 1.55 }}>
+                Informe lockers com coordenadas no banco. Restrições: capacidade do veículo, janela de duração da rota, prioridade via prazos em{" "}
+                <code style={{ color: "#e2e8f0" }}>inbound_deliveries</code>.
+              </p>
+            </section>
+          )}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <FiscalPageLayout>
       <div className="intel-ml-surface ops-page">
-        <OpsPageTitleHeader title="Roteirização ML (lockers)" subtitle={subtitle} />
+        <OpsPageTitleHeader title="Roteirização ML (lockers)" subtitle={intelSubtitle} />
 
         {!baseOk ? <p className="intel-ml-error">Defina VITE_ML_PREDICTOR_BASE_URL no build do frontend.</p> : null}
 
@@ -225,3 +350,146 @@ export default function RouteOptimizePage() {
     </FiscalPageLayout>
   );
 }
+
+const pageStyle = {
+  width: "100%",
+  maxWidth: "none",
+  padding: 24,
+  boxSizing: "border-box",
+  color: "#f5f7fa",
+  fontFamily: "system-ui, sans-serif",
+};
+
+const cardStyle = {
+  width: "100%",
+  background: "#11161c",
+  border: "1px solid rgba(255,255,255,0.10)",
+  borderRadius: 16,
+  padding: 16,
+  boxSizing: "border-box",
+};
+
+const headerRowStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 10,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const crossShortcutStyle = {
+  display: "flex",
+  justifyContent: "flex-end",
+  marginBottom: 10,
+};
+
+const crossShortcutLinkStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid rgba(96,165,250,0.55)",
+  background: "rgba(96,165,250,0.15)",
+  color: "#bfdbfe",
+  textDecoration: "none",
+  fontWeight: 700,
+  fontSize: 13,
+};
+
+const mutedTextStyle = {
+  color: "rgba(245, 247, 250, 0.8)",
+  marginTop: 8,
+  marginBottom: 0,
+};
+
+const labelStyle = {
+  display: "grid",
+  gap: 4,
+  fontSize: 12,
+  color: "rgba(245,247,250,0.86)",
+};
+
+const inputStyle = {
+  width: 90,
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.14)",
+  background: "#0b0f14",
+  color: "#f5f7fa",
+};
+
+const healthLocalFilterFieldStyle = {
+  ...labelStyle,
+  color: "#cbd5e1",
+};
+
+const healthLocalFilterRowStyle = {
+  marginTop: 10,
+  marginBottom: 8,
+  display: "grid",
+  gap: 8,
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  alignItems: "end",
+};
+
+const healthLocalFilterInputStyle = {
+  ...inputStyle,
+  width: "100%",
+  border: "1px solid rgba(148,163,184,0.5)",
+};
+
+const textareaStyle = {
+  ...healthLocalFilterInputStyle,
+  minHeight: 88,
+  resize: "vertical",
+  fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+  fontSize: 12,
+};
+
+const toolbarStyle = {
+  display: "flex",
+  gap: 10,
+  alignItems: "flex-end",
+  flexWrap: "wrap",
+};
+
+const buttonGhostStyle = {
+  padding: "8px 12px",
+  cursor: "pointer",
+  borderRadius: 10,
+  border: "1px solid rgba(255,255,255,0.16)",
+  background: "transparent",
+  color: "#e2e8f0",
+  fontWeight: 600,
+};
+
+const opsSanityCardStyle = {
+  marginTop: 6,
+  borderRadius: 12,
+  border: "1px solid rgba(59,130,246,0.45)",
+  background: "rgba(30,58,138,0.2)",
+  padding: 12,
+  display: "grid",
+  gap: 10,
+};
+
+const summary24hHeaderStyle = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+};
+
+const summary24hHintStyle = {
+  color: "rgba(191,219,254,0.95)",
+  fontSize: 11,
+};
+
+const criticalBannerStyle = {
+  borderRadius: 10,
+  border: "1px solid rgba(248,113,113,0.72)",
+  background: "linear-gradient(180deg, rgba(127,29,29,0.58) 0%, rgba(127,29,29,0.3) 100%)",
+  color: "#fecaca",
+  padding: "10px 12px",
+  fontWeight: 700,
+  fontSize: 13,
+};
