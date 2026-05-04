@@ -1,5 +1,7 @@
 import { NavLink, Route, Routes } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
+import Catalog from './pages/partners/Catalog'
+import Webhooks from './pages/partners/Webhooks'
 
 const navCls = ({ isActive }: { isActive: boolean }) =>
   `rounded-md px-3 py-2 text-sm font-medium transition-colors ${
@@ -21,6 +23,9 @@ export default function App() {
           <NavLink to="/fiscal" className={navCls}>
             Fiscal
           </NavLink>
+          <NavLink to="/partners/catalog" className={navCls}>
+            Parceiros
+          </NavLink>
         </div>
       </nav>
 
@@ -36,6 +41,8 @@ export default function App() {
           path="/fiscal"
           element={<Placeholder title="Fiscal" body="Faturação e conciliação — MVP em evolução." />}
         />
+        <Route path="/partners/catalog" element={<Catalog />} />
+        <Route path="/partners/webhooks" element={<Webhooks />} />
       </Routes>
     </div>
   )
