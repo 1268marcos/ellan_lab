@@ -952,6 +952,24 @@ class OrderPickupService:
 
 ---
 
+## 15. Pendências Verificadas em 2026-05-04
+
+Verificação no repositório `ellan_lab` (código + testes locais). **Não altera** os status `[x]` / `[~]` / `[ ]` das secções anteriores; apenas regista o que foi **confirmado com evidência** nesta data.
+
+| Item | Evidência |
+|---|---|
+| Créditos no monólito renomeados / consolidados em `wallet_credits.py` (sem ficheiro `wallet_credits_bridge.py` no `order_pickup_service`) | Presença de `01_source/order_pickup_service/app/services/wallet_credits.py`; ausência de `wallet_credits_bridge.py`; imports no serviço apontam para `wallet_credits` |
+| Router de parceiros no monólito (`/api/v1/partners/...` + `/internal/partners/shadow-compare`) | `01_source/order_pickup_service/app/routers/partners.py`; inclusão em `app/main.py` |
+| Testes do comparador shadow (async) | `01_source/order_pickup_service/tests/test_shadow.py` — `pytest` local: **3 passed** |
+| Hardening de entrega (rate limit + DLQ) no `notification-service` | `01_source/notification_service/app/workers/production_hardening.py`; `delivery_worker.py` reexporta; `tests/test_delivery_worker.py` — **9 passed** |
+| Kafka — DLQ em constantes / helper de consumo | `01_source/shared/kafka/topics.py` (`DLQ_SUFFIX`, `dlq_stream`), `01_source/shared/kafka/consumers.py`, sufixos `*_STREAM_DLQ` em `01_source/inventory_service/infra/kafka/topics.py` |
+| mTLS — exemplo de env para `catalog` e `partner` | `01_source/catalog_service/.env.example` e `01_source/partner_service/.env.example` com `MTLS_ENFORCE=1` |
+| Scripts de migração / validação / congelamento / consistência / import observabilidade | `01_source/order_pickup_service/scripts/migrate_wallet.py`, `validate_cleanup.sh`, `freeze_monolith.sh`; `scripts/consistency_checker.py`, `scripts/import_trilha_c.sh` (raiz do lab) |
+| Artefactos Grafana + runbooks no repositório | `dashboards/migration.json`; `runbooks/rollback.md`, `reconcile.md`, `incident.md` |
+| `SHADOW_MODE_ENABLED` por defeito no settings do monólito | `01_source/order_pickup_service/app/core/config.py` — `shadow_mode_enabled` com `default=True` (`alias="SHADOW_MODE_ENABLED"`) |
+
+---
+
 ## Avaliação do Documento
 
 **Nota: 9.5 / 10** — Documento **aprovado para iniciar a implementação**.
