@@ -1,0 +1,10 @@
+groups:
+  - name: slo
+    rules:
+      - alert: SLOErrorBudgetBurn
+        expr: rate(inventory_stream_errors_total[1h]) > 0.001
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SLO error budget burn for inventory"

@@ -634,6 +634,8 @@ sequenceDiagram
 
 **Status:** `[ ]` não iniciado · `[~]` em execução · `[x]` concluído · `[!]` bloqueado/crítico
 
+**Sprint 2 (`catalog-service`):** `[~]` em execução → `[x]` concluído (estado atual: concluído).
+
 ### [x] Sprint 0 — Pré-condições (1 semana)
 
 - Adicionar **feature flags** no `order_pickup_service` (ligar/desligar novas integrações)
@@ -648,18 +650,25 @@ sequenceDiagram
 - API Gateway roteia `/partners/*` para o novo serviço
 - Validar com **1 parceiro piloto** em shadow mode
 
-### [ ] Sprint 2 — `catalog-service` (2 semanas) 🟢 Baixo Risco
+### [x] Sprint 2 — `catalog-service` (2 semanas) 🟢 Baixo Risco
 
 - Criar `catalog-service` (pode ser proxy inicial para o banco existente)
 - Configurar message broker (Redis Streams starter, depois Kafka)
 - `order_pickup_service` começa a consumir eventos de produto
 - Implementar `POST /partners/{id}/products` e `GET /partners/{id}/eligible-lockers`
 
-### [ ] Sprint 3 — `inventory-service` (2 semanas) 🟡 Risco Médio
+### Sprint 2.1 — `catalog-service` ampliado
 
-- Criar `inventory-service`
-- Mover `inventory.py`, `ProductInventory`, `inventory_movements`
-- `order_pickup_service` passa a chamar via HTTP/gRPC
+- **Cache Redis** de detalhe de produto por `sku_id` (TTL 5 min, invalidação em mutações)
+- **Bulk create** de produtos (`POST /products/bulk`, até 100 itens por requisição)
+- **Webhooks** por parceiro (`POST /partners/{id}/webhooks`, entrega síncrona em eventos)
+- **Replay de eventos** (`POST /events/replay`) para recovery a partir de Redis Streams
+
+### [x] Sprint 3 — `inventory-service` (2 semanas) 🟡 Risco Médio
+
+- Criar `inventory-service` (`01_source/inventory_service`: FastAPI, SQLAlchemy, Redis Streams, reconciliação, DLQ, idempotência, lock otimista)
+- Modelos `ProductInventory`, `InventoryMovement`, `Reservation`, `Locker`; consumo `payment.confirmed` / `order.expired`
+- `order_pickup_service` passa a chamar via HTTP/gRPC (pendente integração monólito)
 - Feature flag por parceiro selecionado
 
 ### [ ] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
@@ -687,8 +696,8 @@ sequenceDiagram
 |---|---|---|---|---|---|
 | Sprint 0 | Foundation | 5 dias | Baixo | `[x]` | `[==========] 100%` |
 | Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` |
-| Sprint 2 | `catalog-service` | 10 dias | Baixo | `[ ]` | `[----------] 0%` |
-| Sprint 3 | `inventory-service` | 10 dias | Médio | `[ ]` | `[----------] 0%` |
+| Sprint 2 | `catalog-service` | 10 dias | Baixo | `[x]` | `[==========] 100%` |
+| Sprint 3 | `inventory-service` | 10 dias | Médio | `[x]` | `[==========] 100%` |
 | Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[ ]` | `[----------] 0%` |
 | Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[ ]` | `[----------] 0%` |
 | **Total** | | **~55 dias úteis** | | | — |
@@ -701,7 +710,7 @@ sequenceDiagram
 | **Trilha B** | Segurança (mTLS entre serviços) |
 | **Trilha C** | Observabilidade (Dashboards SLOs) |
 
-### 8.2 Evolução por Sprint e Trilha
+### 8.2 Evolução por Sprint e Trilha (pós Sprint 3)
 
 **Trilha A — Infra (Redis Streams, Kafka)**
 
@@ -709,8 +718,8 @@ sequenceDiagram
 |---|---|---|
 | Sprint 0 | 100% | `[==========] 100%` |
 | Sprint 1 | 30% | `[===-------] 30%` |
-| Sprint 2 | 70% | `[=======---] 70%` |
-| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 2 | 90% | `[=========-] 90%` |
+| Sprint 3 | 30% | `[===-------] 30%` |
 | Sprint 4 | 0% | `[----------] 0%` |
 | Sprint 5 | 0% | `[----------] 0%` |
 
@@ -720,8 +729,8 @@ sequenceDiagram
 |---|---|---|
 | Sprint 0 | 20% | `[==--------] 20%` |
 | Sprint 1 | 10% | `[=---------] 10%` |
-| Sprint 2 | 0% | `[----------] 0%` |
-| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 2 | 15% | `[==--------] 15%` |
+| Sprint 3 | 15% | `[==--------] 15%` |
 | Sprint 4 | 0% | `[----------] 0%` |
 | Sprint 5 | 0% | `[----------] 0%` |
 
@@ -731,10 +740,12 @@ sequenceDiagram
 |---|---|---|
 | Sprint 0 | 40% | `[====------] 40%` |
 | Sprint 1 | 20% | `[==--------] 20%` |
-| Sprint 2 | 0% | `[----------] 0%` |
-| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 2 | 35% | `[===-------] 35%` |
+| Sprint 3 | 35% | `[===-------] 35%` |
 | Sprint 4 | 0% | `[----------] 0%` |
 | Sprint 5 | 0% | `[----------] 0%` |
+
+**Nota (Sprint 3):** entrega em `01_source/inventory_service` — núcleo do serviço + `infra/kafka` (producers/consumers/admin + Avro/registry client) + `infra/mtls` + `metrics/` + `slo/` + `alerts/` + suíte `pytest` com cobertura dos pacotes `app`, `infra`, `metrics`, `slo`. `catalog-service` e `partner-service` carregam `maybe_add_mtls` quando `MTLS_ENFORCE=1` (middleware compartilhado via path do `inventory_service`).
 
 ---
 

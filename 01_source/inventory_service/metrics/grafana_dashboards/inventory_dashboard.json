@@ -1,0 +1,19 @@
+{
+  "title": "Inventory Service",
+  "panels": [
+    {
+      "title": "Reservations",
+      "targets": [{ "expr": "rate(inventory_reservations_created_total[5m])" }]
+    },
+    {
+      "title": "Stream errors",
+      "targets": [{ "expr": "rate(inventory_stream_errors_total[5m])" }]
+    },
+    {
+      "title": "Reconciliation divergences",
+      "targets": [{ "expr": "inventory_reconciliation_divergences" }]
+    }
+  ],
+  "schemaVersion": 38,
+  "version": 1
+}

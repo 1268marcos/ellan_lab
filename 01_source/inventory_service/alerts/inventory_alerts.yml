@@ -1,0 +1,10 @@
+groups:
+  - name: inventory
+    rules:
+      - alert: InventoryStreamErrors
+        expr: rate(inventory_stream_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Elevated inventory stream errors"

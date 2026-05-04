@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 import redis
@@ -34,6 +37,23 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="catalog-service", lifespan=lifespan)
+
+
+def _maybe_mtls(app_: FastAPI) -> None:
+    if os.getenv("MTLS_ENFORCE", "0") != "1":
+        return
+    path = Path(__file__).resolve().parents[2] / "inventory_service" / "infra" / "mtls" / "middleware.py"
+    if not path.is_file():
+        return
+    spec = importlib.util.spec_from_file_location("inv_mtls_middleware", path)
+    if spec is None or spec.loader is None:
+        return
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    mod.maybe_add_mtls(app_, ca_file=os.getenv("MTLS_CA_FILE"))
+
+
+_maybe_mtls(app)
 app.add_middleware(CacheStatusMiddleware)
 app.include_router(products.router, prefix="/api/v1")
 app.include_router(categories.router, prefix="/api/v1")
