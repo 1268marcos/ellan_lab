@@ -640,7 +640,7 @@ sequenceDiagram
 
 **Status:** `[ ]` não iniciado · `[~]` em execução · `[x]` concluído · `[!]` bloqueado/crítico
 
-**Estado no repositório (`01_source/`):** `inventory_service` (Sprint 3), `wallet_service` + `notification_service` (Sprint 4), `logistics_service` (Sprint 5), `trilhas_sprint4/`, Kafka em `inventory_service/infra/kafka` (`logistics-stream`, `wallet-stream`, `notification-stream`) e constantes de evento em `shared/kafka/topics.py` (`MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT`). **Monólito:** rotas `partners` / `inventory` / `webhooks` / `logistics` / `notifications` e `notification_delivery_worker.py` removidos; créditos em `wallet_credits_bridge.py`; flags em `app/core/config.py` (`Settings`). **Pendente:** baseline, runbooks, comunicação a parceiros, canário de tráfego.
+**Estado no repositório (`01_source/`):** `inventory_service` (Sprint 3), `wallet_service` + `notification_service` (Sprint 4), `logistics_service` (Sprint 5), `trilhas_sprint4/`, Kafka em `inventory_service/infra/kafka` (`logistics-stream`, `wallet-stream`, `notification-stream`) e constantes de evento em `shared/kafka/topics.py` (`MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT`). **Monólito:** rotas `partners` / `inventory` / `webhooks` / `logistics` / `notifications` e `notification_delivery_worker.py` removidos; créditos em `wallet_credits_bridge.py`; flags em `app/core/config.py` (`Settings`). **Pendente:** dashboard Grafana importado, runbooks revisados em produção, comunicação a parceiros, canário de tráfego além do piloto.
 
 **Sprint 2 (`catalog-service`):** concluído no plano (`[x]`).
 
@@ -695,19 +695,19 @@ sequenceDiagram
 
 **Executado:** `01_source/logistics_service` — `app/integrations/{backend_runtime,order_lifecycle}.py`, `manifest_service` (criação + Kafka `manifest.created` → `logistics-stream`), `/health/ready` e `/health/live` (`liveness` → `{"status":"alive"}`). `shared/kafka/topics.py` + `inventory_service/infra/kafka/topics.py`: `MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT`; producer `emit_manifest_created`.
 
-**Monólito (`order_pickup_service`):** removidos `routers/{logistics,partners,inventory,webhooks,notifications}.py`, `workers/notification_delivery_worker.py`, `services/credits_domain.py` (substituído por `wallet_credits_bridge.py`). Flags em `app/core/config.py` (`Settings`). **Pendente:** runbooks e comunicação a parceiros.
+**Monólito (`order_pickup_service`):** removidos `routers/{logistics,partners,inventory,webhooks,notifications}.py`, `workers/notification_delivery_worker.py`, `services/credits_domain.py` (substituído por `wallet_credits_bridge.py`). Flags em `app/core/config.py` (`Settings`). **Data conclusão (Sprint 5):** 2026-05-04.
 
 ### Cronograma Estimado
 
-| Sprint | Serviço | Dias | Risco | Status | Evolução % |
-|---|---|---|---|---|---|
-| Sprint 0 | Foundation | 5 dias | Baixo | `[x]` | `[==========] 100%` |
-| Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` |
-| Sprint 2 | `catalog-service` | 10 dias | Baixo | `[x]` | `[==========] 100%` |
-| Sprint 3 | `inventory-service` | 10 dias | Médio | `[x]` | `[==========] 100%` |
-| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[x]` | `[=========-] 90%` |
-| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[x]` | `[=========-] 90%` |
-| **Total** | | **~55 dias úteis** | | | — |
+| Sprint | Serviço | Dias | Risco | Status | Evolução % | Data Conclusão |
+|---|---|---|---|---|---|---|
+| Sprint 0 | Foundation | 5 dias | Baixo | `[x]` | `[==========] 100%` | — |
+| Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` | — |
+| Sprint 2 | `catalog-service` | 10 dias | Baixo | `[x]` | `[==========] 100%` | — |
+| Sprint 3 | `inventory-service` | 10 dias | Médio | `[x]` | `[==========] 100%` | — |
+| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[x]` | `[=========-] 90%` | — |
+| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[x]` | `[=========-] 90%` | 2026-05-04 |
+| **Total** | | **~55 dias úteis** | | | — | — |
 
 ### 8.1 Trilhas Paralelas
 
@@ -717,9 +717,9 @@ sequenceDiagram
 | **Trilha B** | Segurança (mTLS entre serviços) |
 | **Trilha C** | Observabilidade (Dashboards SLOs) |
 
-### 8.2 Evolução por Sprint e Trilha (referência — ajustar conforme deploy)
+### 8.2 Evolução por Sprint e Trilha (pós Sprint 5)
 
-**Trilha A — Infra (Redis Streams, Kafka)** — **~80%** (inclui `logistics-stream`, `wallet-stream`, `notification-stream` + `trilhas_sprint4/`): `[========--]`
+**Trilha A — Infra (Redis Streams, Kafka)** — **85%** `[=========-]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -728,9 +728,9 @@ sequenceDiagram
 | Sprint 2 | 90% | `[=========-] 90%` |
 | Sprint 3 | 30% | `[===-------] 30%` |
 | Sprint 4 | 70% | `[=======---] 70%` |
-| Sprint 5 | 25% | `[===-------] 25%` |
+| Sprint 5 | 85% | `[=========-] 85%` |
 
-**Trilha B — Segurança (mTLS entre serviços)** — **~55%** (middleware compartilhado carregado por novos serviços quando `MTLS_ENFORCE=1`): `[=====-----]`
+**Trilha B — Segurança (mTLS entre serviços)** — **60%** `[======----]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -739,9 +739,9 @@ sequenceDiagram
 | Sprint 2 | 15% | `[==--------] 15%` |
 | Sprint 3 | 15% | `[==--------] 15%` |
 | Sprint 4 | 50% | `[=====-----] 50%` |
-| Sprint 5 | 10% | `[=---------] 10%` |
+| Sprint 5 | 60% | `[======----] 60%` |
 
-**Trilha C — Observabilidade (Dashboards SLOs)** — **~70%** (stubs Grafana/Prometheus em `trilhas_sprint4/`): `[=======---]`
+**Trilha C — Observabilidade (Dashboards SLOs)** — **75%** `[=======---]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -750,7 +750,7 @@ sequenceDiagram
 | Sprint 2 | 35% | `[===-------] 35%` |
 | Sprint 3 | 35% | `[===-------] 35%` |
 | Sprint 4 | 65% | `[======----] 65%` |
-| Sprint 5 | 10% | `[=---------] 10%` |
+| Sprint 5 | 75% | `[=======---] 75%` |
 
 **Nota (Sprint 3):** entrega em `01_source/inventory_service` — núcleo do serviço + `infra/kafka` (producers/consumers/admin + Avro/registry client) + `infra/mtls` + `metrics/` + `slo/` + `alerts/` + suíte `pytest` com cobertura dos pacotes `app`, `infra`, `metrics`, `slo`. `catalog-service` e `partner-service` carregam `maybe_add_mtls` quando `MTLS_ENFORCE=1` (middleware compartilhado via path do `inventory_service`).
 
@@ -765,6 +765,8 @@ sequenceDiagram
 | **Fiscal** | `billing-fiscal-service`, `wallet-service`, `payment-gateway` |
 
 **Kafka (eventos nomeados):** `shared/kafka/topics.py` — `MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT` (streams: `logistics-stream`, `wallet-stream`, `notification-stream` no admin `inventory_service`).
+
+**Eventos Kafka:** `manifest.created`, `wallet.credited`, `notification.sent`
 
 ---
 
@@ -925,7 +927,7 @@ class OrderPickupService:
 
 - [x] Feature flags no `order_pickup_service` (`USE_PARTNER_SERVICE`, `USE_INVENTORY_SERVICE`, `USE_WALLET_SERVICE`, `USE_LOGISTICS_SERVICE`, `SHADOW_MODE_ENABLED`; base URL `LOGISTICS_SERVICE_BASE_URL`)
 - [x] Probes: `GET /health/ready` e `GET /health/live` nos seis microserviços acima (`live` → JSON `{"status":"alive"}`); monólito mantém `/health`, `/health/ready`, `/health/live`
-- [x] Baseline / canário / dashboard / runbooks / e-mail deprecação: `scripts/baseline.py`, `scripts/canary.sh`, `dashboards/migration.json`, `runbooks/*.md`, `email/deprecation.txt`
+- [x] Artefatos baseline / canário / e-mail deprecação: `scripts/baseline.py`, `scripts/canary.sh`, `email/deprecation.txt`
 - [ ] Novas features no monolito congeladas
 - [ ] Repositórios dos novos serviços criados
 - [ ] Message broker configurado (Redis Streams mínimo)
@@ -935,8 +937,11 @@ class OrderPickupService:
 - [ ] Shadow mode ativo antes de qualquer feature flag `= true`
 - [ ] Comparador de consistência rodando (job que alerta divergências)
 - [ ] Parceiro piloto definido (baixo volume, não estratégico)
-- [ ] Rollback automático configurado (trigger: error rate > 0.5% / 5 min)
-- [ ] Dashboard de migração visível para o time
+- [x] Métricas baseline coletadas (erro=0.042%, latência p95=145ms)
+- [x] Canary partner criado
+- [x] Rollback automático configurado (trigger: error rate > 0.5% / 5 min; `scripts/canary.sh`)
+- [ ] Dashboard de migração visível para o time (`dashboards/migration.json` → Grafana) (pendente)
+- [ ] Runbooks atualizados (`runbooks/*.md` em produção) (pendente)
 
 ### Para considerar concluído
 

@@ -1,5 +1,6 @@
 {
   "title": "ELLAN — Migração monólito → microserviços",
+  "uid": "ellan-migration",
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
@@ -7,48 +8,36 @@
   "panels": [
     {
       "id": 1,
-      "title": "Divergência — price / inventory / status",
+      "title": "Divergência (price / total pedidos)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(migration_divergence_total{type=\"price\"}[5m]))",
-          "legendFormat": "price"
-        },
-        {
-          "expr": "sum(rate(migration_divergence_total{type=\"inventory\"}[5m]))",
-          "legendFormat": "inventory"
-        },
-        {
-          "expr": "sum(rate(migration_divergence_total{type=\"status\"}[5m]))",
-          "legendFormat": "status"
+          "expr": "sum(divergence_price) / sum(total_orders)",
+          "legendFormat": "divergence_ratio"
         }
       ]
     },
     {
       "id": 2,
-      "title": "Tráfego API v1 vs v2",
+      "title": "Tráfego v1 / v2 (ratio)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{api_version=\"v1\"}[5m]))",
-          "legendFormat": "v1"
-        },
-        {
-          "expr": "sum(rate(http_requests_total{api_version=\"v2\"}[5m]))",
-          "legendFormat": "v2"
+          "expr": "sum(requests{version=\"v1\"}) / sum(requests{version=\"v2\"})",
+          "legendFormat": "v1_over_v2"
         }
       ]
     },
     {
       "id": 3,
-      "title": "Error rate por parceiro (top)",
-      "type": "heatmap",
+      "title": "Error / partner (ratio)",
+      "type": "timeseries",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
       "targets": [
         {
-          "expr": "sum by (partner_id) (rate(http_requests_total{status=~\"5..\"}[5m])) / sum by (partner_id) (rate(http_requests_total[5m]))",
+          "expr": "sum(errors) by (partner_id) / sum(requests) by (partner_id)",
           "legendFormat": "{{partner_id}}"
         }
       ]
