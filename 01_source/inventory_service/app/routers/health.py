@@ -24,4 +24,4 @@ def ready(request: Request) -> dict[str, str]:
 
 @router.get("/health/live")
 def live() -> dict[str, str]:
-    return {"status": "live"}
+    return {"status": "alive"}

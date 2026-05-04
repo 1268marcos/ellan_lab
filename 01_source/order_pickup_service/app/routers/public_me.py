@@ -13,7 +13,7 @@ from app.core.db import get_db
 from app.models.credit import Credit, CreditStatus
 from app.models.user import User
 from app.schemas.orders import OnlineRegion
-from app.services.credits_domain import (
+from app.services.wallet_credits_bridge import (
     checkout_wallet_currency_matches_order,
     get_user_wallet_currency,
     select_checkout_credit_candidate,

@@ -32,13 +32,11 @@ from app.routers import (
     dev_base_catalog,
     integration_ops,
     internal,
-    inventory,
     kiosk,
     locker_product_configs,
     locker_slots_ops,
     operators,
     orders,
-    partners,
     pickup,
     pricing_fiscal,
     pricing_rules,
@@ -47,7 +45,6 @@ from app.routers import (
     rentals_ops,
     runtime_sync,
     v1_ops,
-    webhooks,
 )
 
 from app.routers.public_auth import router as public_auth_router
@@ -151,18 +148,15 @@ app.include_router(orders.router, prefix="/v1")
 app.include_router(v1_ops.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)
-app.include_router(partners.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
 app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
 app.include_router(runtime_sync.router)
-app.include_router(webhooks.router)
 app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
-app.include_router(inventory.router)
 app.include_router(internal.router)
 app.include_router(rentals_ops.router, prefix="/internal")
 app.include_router(dev_admin.router)

@@ -84,10 +84,17 @@ def test_emit_manifest_no_servers() -> None:
 
 
 def test_shared_topics_import() -> None:
-    from shared.kafka.topics import LOGISTICS_STREAM, MANIFEST_CREATED
+    from shared.kafka.topics import (
+        LOGISTICS_STREAM,
+        MANIFEST_CREATED,
+        NOTIFICATION_SENT,
+        WALLET_CREDITED,
+    )
 
     assert LOGISTICS_STREAM == "logistics-stream"
     assert MANIFEST_CREATED == "manifest.created"
+    assert WALLET_CREDITED == "wallet.credited"
+    assert NOTIFICATION_SENT == "notification.sent"
 
 
 def test_order_lifecycle_non_200(monkeypatch: pytest.MonkeyPatch) -> None:

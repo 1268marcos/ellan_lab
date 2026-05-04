@@ -15,7 +15,7 @@ from app.workers import sla_monitor
 def test_health_and_sla_route(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/health/ready").status_code == 200
-    assert client.get("/health/live").json()["status"] == "live"
+    assert client.get("/health/live").json()["status"] == "alive"
     monkeypatch.setattr(delivery_router.sla_service, "fetch_compliance", lambda: {"ok": True, "via": "route"})
     assert client.get("/api/v1/sla/compliance").json()["via"] == "route"
 

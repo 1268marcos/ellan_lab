@@ -119,7 +119,7 @@ def health_ready(request: Request):
 
 @app.get("/health/live")
 def health_live():
-    return {"status": "live"}
+    return {"status": "alive"}
 
 
 @app.get("/metrics")

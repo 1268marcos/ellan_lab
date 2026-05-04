@@ -63,7 +63,7 @@ class PartnerPerformanceMetric(Base): ...
 # Sistema de partner management completo dentro do serviço de pedidos.
 ```
 
-**Gestão de Créditos e Wallet** — `app/services/credits_domain.py` (legado no monólito; alvo `wallet-service`):
+**Gestão de Créditos e Wallet** — `app/services/wallet_credits_bridge.py` (legado no monólito; alvo `wallet-service`):
 ```python
 class Credit(Base): ...
 def apply_credit_for_checkout(...): ...
@@ -103,7 +103,7 @@ def queue_pickup_whatsapp(...): ...
 | `logistics.py` | 3.500+ | Manifestos, entregas, SLA |
 | `pickup_payment_fulfillment_service.py` | 1.500+ | Fluxo completo KIOSK + ONLINE |
 | `inventory.py` | 800+ | Gestão de estoque |
-| `credits_domain.py` | 600+ | Wallet e créditos (transição) |
+| `wallet_credits_bridge.py` | 600+ | Wallet e créditos (transição) |
 | `public_orders.py` | 800+ | API pública de pedidos |
 | `pricing_fiscal.py` | 700+ | Promoções e regras fiscais |
 | **Total estimado** | **15.000+** | **Um "ERP" em um único container** |
@@ -696,7 +696,7 @@ sequenceDiagram
 
 **Executado:** `01_source/logistics_service` — `app/integrations/{backend_runtime,order_lifecycle}.py`, `manifest_service` (criação + evento Kafka `manifest.created` em `logistics-stream`), readiness/liveness em `/health/ready` e `/health/live`. Tópico `logistics-stream` + constante `MANIFEST_CREATED` em `01_source/shared/kafka/topics.py` e `inventory_service/infra/kafka/topics.py` / `emit_manifest_created` no producer.
 
-**Monólito (`order_pickup_service`):** removidos `app/routers/logistics.py`, `app/routers/notifications.py`; créditos renomeados para `app/services/credits_domain.py` (flags `USE_*` acima no `Settings` + `USE_LOGISTICS_SERVICE` / `LOGISTICS_SERVICE_BASE_URL`). **Pendente:** runbooks, comunicação a parceiros e remoção de modelos/workers legados ainda referenciados por outros módulos.
+**Monólito (`order_pickup_service`):** removidos `routers/{logistics,partners,inventory,webhooks,notifications}.py`, `workers/notification_delivery_worker.py`, `services/credits_domain.py` (substituído por `wallet_credits_bridge.py`). Flags em `app/core/config.py` (`Settings`). **Pendente:** runbooks e comunicação a parceiros.
 
 ### Cronograma Estimado
 
@@ -865,7 +865,7 @@ NÃO RESPONSABILIDADES:
   - Persistência/master de produtos     → catalog-service
   - Gestão de estoque físico            → inventory-service
   - Gestão de parceiros                 → partner-service
-  - Gestão de créditos/wallet           → wallet-service (`credits_domain.py` temporário no monólito)
+  - Gestão de créditos/wallet           → wallet-service (`wallet_credits_bridge.py` temporário no monólito)
   - Envio de notificações               → notification-service (apenas enfileirar)
   - Manifestos / tracking / SLA pickup  → logistics-service
   - Processamento de webhooks           → partner-service

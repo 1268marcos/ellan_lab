@@ -14,7 +14,7 @@ from app.models.order import Order, OrderStatus
 from app.models.pickup import Pickup, PickupLifecycleStage, PickupStatus
 from app.models.pickup_token import PickupToken
 from app.services import backend_client
-from app.services.credits_domain import (
+from app.services.wallet_credits_bridge import (
     grant_expired_pickup_credit,
 )
 from app.services.order_reconciliation_service import (

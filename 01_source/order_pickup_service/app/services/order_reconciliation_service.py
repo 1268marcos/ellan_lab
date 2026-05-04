@@ -8,7 +8,7 @@ from app.models.allocation import Allocation
 from app.models.order import Order
 from app.models.pickup import Pickup, PickupStatus
 from app.services import backend_client
-from app.services.credits_domain import restore_credit_after_failed_order_creation
+from app.services.wallet_credits_bridge import restore_credit_after_failed_order_creation
 
 
 @dataclass

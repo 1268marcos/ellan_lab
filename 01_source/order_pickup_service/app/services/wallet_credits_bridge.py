@@ -1,4 +1,4 @@
-# 01_source/order_pickup_service/app/services/credits_domain.py
+# app/services/wallet_credits_bridge.py (ex-credits_domain)
 # 21/04/2026 - emissão e expiração de crédito 50% por pickup expirado
 
 from __future__ import annotations

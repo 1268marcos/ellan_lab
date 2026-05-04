@@ -2,3 +2,5 @@
 
 LOGISTICS_STREAM = "logistics-stream"
 MANIFEST_CREATED = "manifest.created"
+WALLET_CREDITED = "wallet.credited"
+NOTIFICATION_SENT = "notification.sent"
