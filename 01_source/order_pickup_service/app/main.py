@@ -37,6 +37,7 @@ from app.routers import (
     locker_slots_ops,
     operators,
     orders,
+    partners,
     pickup,
     pricing_fiscal,
     pricing_rules,
@@ -145,6 +146,8 @@ app.add_middleware(ShadowModeMiddleware)
 # Routers principais
 app.include_router(orders.router)
 app.include_router(orders.router, prefix="/v1")
+app.include_router(partners.router)
+app.include_router(partners.internal_router)
 app.include_router(v1_ops.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)

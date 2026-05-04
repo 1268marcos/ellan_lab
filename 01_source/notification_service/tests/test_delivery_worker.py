@@ -30,7 +30,7 @@ def test_process_queue_rate_limited(monkeypatch):
         def fake_rl(_r, _k):
             return True
 
-        monkeypatch.setattr(delivery_worker, "rate_limited", fake_rl)
+        monkeypatch.setattr("app.workers.production_hardening.rate_limited", fake_rl)
         assert delivery_worker.process_queue(db, None, "o") == 0
         db.refresh(n)
         assert n.status == "rate_limited"
@@ -46,8 +46,8 @@ def test_deliver_failure_dlq(monkeypatch):
         db.add(n)
         db.commit()
         db.refresh(n)
-        monkeypatch.setattr(delivery_worker, "rate_limited", lambda r, k: False)
-        monkeypatch.setattr("app.workers.delivery_worker.email.send_email", lambda *a, **k: False)
+        monkeypatch.setattr("app.workers.production_hardening.rate_limited", lambda r, k: False)
+        monkeypatch.setattr("app.workers.production_hardening.email.send_email", lambda *a, **k: False)
         import fakeredis
 
         r = fakeredis.FakeRedis(decode_responses=False)
@@ -108,7 +108,7 @@ def test_deliver_sms_fail(monkeypatch):
         db.add(n)
         db.commit()
         db.refresh(n)
-        monkeypatch.setattr("app.workers.delivery_worker.sms.send_sms", lambda *a, **k: False)
+        monkeypatch.setattr("app.workers.production_hardening.sms.send_sms", lambda *a, **k: False)
         assert delivery_worker.deliver_one(db, None, n, "o") is False
     finally:
         db.close()
@@ -122,7 +122,7 @@ def test_deliver_whatsapp_fail(monkeypatch):
         db.add(n)
         db.commit()
         db.refresh(n)
-        monkeypatch.setattr("app.workers.delivery_worker.whatsapp.send_whatsapp", lambda *a, **k: False)
+        monkeypatch.setattr("app.workers.production_hardening.whatsapp.send_whatsapp", lambda *a, **k: False)
         assert delivery_worker.deliver_one(db, None, n, "o") is False
     finally:
         db.close()

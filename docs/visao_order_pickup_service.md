@@ -980,6 +980,3 @@ class OrderPickupService:
 | Custos de migração | Decisão de negócio |
 | Plano de comunicação com parceiros | Documento de produto/GTM |
 
----
-
-> **Próximo passo imediato:** Criar o repositório `partner-service`, copiar `app/routers/partners.py`, configurar `USE_PARTNER_SERVICE=false` no monolito e rodar shadow mode por 1 semana antes de ativar para qualquer parceiro.

@@ -33,7 +33,7 @@ from app.services.payment_capability_service import get_payment_capabilities
 from app.services.payment_resolution_service import resolve_payment_ui_code
 
 from app.services.capability_constraint_service import get_capability_constraint
-from app.services.wallet_credits_bridge import apply_credit_for_checkout, restore_credit_after_failed_order_creation
+from app.services.wallet_credits import apply_credit_for_checkout, restore_credit_after_failed_order_creation
 from app.schemas.orders import OnlineRegion
 
 

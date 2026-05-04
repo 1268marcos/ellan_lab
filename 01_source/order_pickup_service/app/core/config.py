@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     use_inventory_service: bool = Field(default=True, alias="USE_INVENTORY_SERVICE")
     use_wallet_service: bool = Field(default=True, alias="USE_WALLET_SERVICE")
     use_logistics_service: bool = Field(default=True, alias="USE_LOGISTICS_SERVICE")
-    shadow_mode_enabled: bool = Field(default=False, alias="SHADOW_MODE_ENABLED")
+    shadow_mode_enabled: bool = Field(default=True, alias="SHADOW_MODE_ENABLED")
     auto_rollback_enabled: bool = Field(default=False, alias="AUTO_ROLLBACK_ENABLED")
 
     catalog_service_base_url: str = Field(
