@@ -26,6 +26,7 @@ def test_emit_wallet_and_notification_streams(mock_kp):
     mock_kp.return_value = p
     assert producers.emit_wallet_event("localhost:1", "wallet.credited", {"user_id": "u"}) is True
     assert producers.emit_notification_event("localhost:1", "queued", {"id": "1"}) is True
+    assert producers.emit_manifest_created("localhost:1", {"manifest_id": "m"}) is True
 
 
 @patch("infra.kafka.producers.KafkaProducer")

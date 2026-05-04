@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     backend_runtime_base_url: str = Field(
         default="http://localhost:9200", alias="BACKEND_RUNTIME_BASE_URL"
     )
+    kafka_bootstrap_servers: str | None = Field(default=None, alias="KAFKA_BOOTSTRAP_SERVERS")
 
 
 @lru_cache

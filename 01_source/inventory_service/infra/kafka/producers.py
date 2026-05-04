@@ -59,3 +59,7 @@ def emit_wallet_event(bootstrap_servers: str, event_type: str, payload: dict[str
 
 def emit_notification_event(bootstrap_servers: str, event_type: str, payload: dict[str, Any]) -> bool:
     return _emit("notification-stream", bootstrap_servers, event_type, payload)
+
+
+def emit_manifest_created(bootstrap_servers: str, payload: dict[str, Any]) -> bool:
+    return _emit("logistics-stream", bootstrap_servers, "manifest.created", payload)

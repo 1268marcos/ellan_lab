@@ -62,9 +62,10 @@ class Settings(BaseSettings):
 
     # Sprint 0 — microserviços (Estrangler)
     use_catalog_service: bool = Field(default=False, alias="USE_CATALOG_SERVICE")
-    use_partner_service: bool = Field(default=False, alias="USE_PARTNER_SERVICE")
-    use_inventory_service: bool = Field(default=False, alias="USE_INVENTORY_SERVICE")
-    use_wallet_service: bool = Field(default=False, alias="USE_WALLET_SERVICE")
+    use_partner_service: bool = Field(default=True, alias="USE_PARTNER_SERVICE")
+    use_inventory_service: bool = Field(default=True, alias="USE_INVENTORY_SERVICE")
+    use_wallet_service: bool = Field(default=True, alias="USE_WALLET_SERVICE")
+    use_logistics_service: bool = Field(default=True, alias="USE_LOGISTICS_SERVICE")
     shadow_mode_enabled: bool = Field(default=False, alias="SHADOW_MODE_ENABLED")
     auto_rollback_enabled: bool = Field(default=False, alias="AUTO_ROLLBACK_ENABLED")
 
@@ -83,6 +84,10 @@ class Settings(BaseSettings):
     wallet_service_base_url: str = Field(
         default="http://localhost:8004",
         alias="WALLET_SERVICE_BASE_URL",
+    )
+    logistics_service_base_url: str = Field(
+        default="http://localhost:8005",
+        alias="LOGISTICS_SERVICE_BASE_URL",
     )
     catalog_redis_url: str = Field(default="redis://localhost:6379/0", alias="CATALOG_REDIS_URL")
     catalog_stream_key: str = Field(default="catalog:events", alias="CATALOG_STREAM_KEY")

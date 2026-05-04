@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import redis
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -65,6 +65,20 @@ app.include_router(webhooks.router, prefix="/api/v1")
 @app.get("/api/v1/health")
 def health():
     return health_payload()
+
+
+@app.get("/health/ready")
+def health_ready(request: Request):
+    try:
+        request.app.state.redis_sync.ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="redis_unavailable") from exc
+    return {"status": "ready"}
+
+
+@app.get("/health/live")
+def health_live():
+    return {"status": "live"}
 
 
 def get_redis(request: Request) -> Any:

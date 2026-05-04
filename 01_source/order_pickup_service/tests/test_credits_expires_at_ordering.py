@@ -12,7 +12,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.db import Base
 from app.models.credit import Credit, CreditStatus
-from app.services.credits_service import select_checkout_credit_candidate
+from app.services.credits_domain import select_checkout_credit_candidate
 
 
 def _utc_now():

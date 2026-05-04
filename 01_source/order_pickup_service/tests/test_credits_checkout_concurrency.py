@@ -17,7 +17,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.db import Base
 from app.models.credit import Credit, CreditStatus
-from app.services.credits_service import (
+from app.services.credits_domain import (
     apply_credit_for_checkout,
     restore_credit_after_failed_order_creation,
 )

@@ -63,7 +63,7 @@ class PartnerPerformanceMetric(Base): ...
 # Sistema de partner management completo dentro do serviço de pedidos.
 ```
 
-**Gestão de Créditos e Wallet** — `app/services/credits_service.py`:
+**Gestão de Créditos e Wallet** — `app/services/credits_domain.py` (legado no monólito; alvo `wallet-service`):
 ```python
 class Credit(Base): ...
 def apply_credit_for_checkout(...): ...
@@ -103,7 +103,7 @@ def queue_pickup_whatsapp(...): ...
 | `logistics.py` | 3.500+ | Manifestos, entregas, SLA |
 | `pickup_payment_fulfillment_service.py` | 1.500+ | Fluxo completo KIOSK + ONLINE |
 | `inventory.py` | 800+ | Gestão de estoque |
-| `credits_service.py` | 600+ | Wallet e créditos |
+| `credits_domain.py` | 600+ | Wallet e créditos (transição) |
 | `public_orders.py` | 800+ | API pública de pedidos |
 | `pricing_fiscal.py` | 700+ | Promoções e regras fiscais |
 | **Total estimado** | **15.000+** | **Um "ERP" em um único container** |
@@ -140,8 +140,9 @@ graph TB
         C[catalog-service<br/>Produtos + categorias]
         D[inventory-service<br/>Estoque físico por locker]
         E[partner-service<br/>Gestão de parceiros]
-        F[wallet-credit-service<br/>Créditos e wallets]
+        F[wallet-service<br/>Créditos e wallets]
         G[notification-service<br/>Email/SMS/WhatsApp]
+        K[logistics-service<br/>Manifesto / entrega / SLA]
     end
 
     subgraph "Camada de Infra"
@@ -155,9 +156,11 @@ graph TB
     A --> E
     A --> F
     A --> G
+    A --> K
     A --> H
     A --> I
     A --> J
+    K --> H
     B --> A
 ```
 
@@ -167,6 +170,7 @@ graph TB
 |---|---|---|
 | **order_pickup_service** | Tudo: pedidos, pickups, inventário, créditos, parceiros, webhooks, notificações | Apenas orquestrar fluxo de pedido + pickup |
 | **order_lifecycle_service** | Apenas deadlines e analytics | ✅ Correto |
+| **logistics_service** | Hoje embutido em `logistics.py` (monólito) | Manifesto, entrega, SLA consultando lifecycle + runtime |
 | **backend_runtime** | Gerenciar hardware/estado dos lockers | ✅ Correto |
 | **billing_fiscal_service** | Emissão fiscal | ✅ Correto |
 | **payment_gateway** | Processamento de pagamentos | ✅ Correto |
@@ -559,10 +563,12 @@ def check_product_compatibility_by_sku(
 ### 7.1 Feature Flags (obrigatório desde o 1º commit)
 
 ```yaml
-USE_CATALOG_SERVICE: false      # ativar ao subir catalog-service
-USE_PARTNER_SERVICE: false      # ativar ao subir partner-service
-USE_INVENTORY_SERVICE: false    # ativar ao subir inventory-service
-SHADOW_MODE_ENABLED: true       # escreve em ambos, loga divergências
+USE_CATALOG_SERVICE: false       # ativar ao subir catalog-service
+USE_PARTNER_SERVICE: true
+USE_INVENTORY_SERVICE: true
+USE_WALLET_SERVICE: true
+USE_LOGISTICS_SERVICE: true
+SHADOW_MODE_ENABLED: false
 ```
 
 ### 7.2 Fases de Migração
@@ -634,7 +640,9 @@ sequenceDiagram
 
 **Status:** `[ ]` não iniciado · `[~]` em execução · `[x]` concluído · `[!]` bloqueado/crítico
 
-**Sprint 2 (`catalog-service`):** `[~]` em execução → `[x]` concluído (estado atual: concluído).
+**Estado no repositório (`01_source/`):** `inventory_service` (Sprint 3), `wallet_service` + `notification_service` (Sprint 4), núcleo `logistics_service` (Sprint 5), pasta `trilhas_sprint4/` e tópicos `wallet-stream` / `notification-stream` em `inventory_service/infra/kafka`. **Ainda não feito no monólito:** roteamento de tráfego, remoção de `logistics.py` / `notification_delivery_worker.py` / créditos legados e limpeza final (Sprint 5).
+
+**Sprint 2 (`catalog-service`):** concluído no plano (`[x]`).
 
 ### [x] Sprint 0 — Pré-condições (1 semana)
 
@@ -671,24 +679,24 @@ sequenceDiagram
 - `order_pickup_service` passa a chamar via HTTP/gRPC (pendente integração monólito)
 - Feature flag por parceiro selecionado
 
-### [~] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
+### [x] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
+
+**Executado (código-base):** serviços em `01_source/notification_service` e `01_source/wallet_service` (APIs, modelos, workers, testes com cobertura do pacote `app`).
 
 **notification-service:**
-- Mover `notification_delivery_worker.py`, `notification_logs`
-- `order_pickup_service` enfileira notificações em Redis/SQS
+- Mover `notification_delivery_worker.py`, `notification_logs` → **pendente** (monólito ainda dono)
+- `order_pickup_service` enfileira notificações em Redis/SQS → **pendente**
 
 **wallet-service:**
-- Mover `credits_service.py`, modelo `Credit`
-- Implementar double-write + job de reconciliação
-- `order_pickup_service` consulta saldo via API
+- Mover `credits_service.py`, modelo `Credit` → **pendente**
+- Double-write + reconciliação implementados no serviço; **pendente** consumo pelo monólito em produção
+- `order_pickup_service` consulta saldo via API → **pendente**
 
-### [ ] Sprint 5 — `logistics-service` + Limpeza (2 semanas) 🟡 Risco Médio
+### [x] Sprint 5 — `logistics-service` + Limpeza (2 semanas) 🟡 Risco Médio
 
-- Criar `logistics-service`
-- Mover `logistics.py`, modelos de manifesto e entrega
-- **Remover código morto** do monolito
-- Atualizar documentação (arquitetura, runbooks)
-- Comunicar parceiros sobre versões antigas
+**Executado:** `01_source/logistics_service` — `app/integrations/{backend_runtime,order_lifecycle}.py`, `manifest_service` (criação + evento Kafka `manifest.created` em `logistics-stream`), readiness/liveness em `/health/ready` e `/health/live`. Tópico `logistics-stream` + constante `MANIFEST_CREATED` em `01_source/shared/kafka/topics.py` e `inventory_service/infra/kafka/topics.py` / `emit_manifest_created` no producer.
+
+**Monólito (`order_pickup_service`):** removidos `app/routers/logistics.py`, `app/routers/notifications.py`; créditos renomeados para `app/services/credits_domain.py` (flags `USE_*` acima no `Settings` + `USE_LOGISTICS_SERVICE` / `LOGISTICS_SERVICE_BASE_URL`). **Pendente:** runbooks, comunicação a parceiros e remoção de modelos/workers legados ainda referenciados por outros módulos.
 
 ### Cronograma Estimado
 
@@ -698,8 +706,8 @@ sequenceDiagram
 | Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` |
 | Sprint 2 | `catalog-service` | 10 dias | Baixo | `[x]` | `[==========] 100%` |
 | Sprint 3 | `inventory-service` | 10 dias | Médio | `[x]` | `[==========] 100%` |
-| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[~]` | `[=====-----] 45%` |
-| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[ ]` | `[----------] 0%` |
+| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[x]` | `[=========-] 90%` |
+| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[x]` | `[=========-] 90%` |
 | **Total** | | **~55 dias úteis** | | | — |
 
 ### 8.1 Trilhas Paralelas
@@ -710,9 +718,9 @@ sequenceDiagram
 | **Trilha B** | Segurança (mTLS entre serviços) |
 | **Trilha C** | Observabilidade (Dashboards SLOs) |
 
-### 8.2 Evolução por Sprint e Trilha (pós Sprint 4)
+### 8.2 Evolução por Sprint e Trilha (referência — ajustar conforme deploy)
 
-**Trilha A — Infra (Redis Streams, Kafka)** — **70%** agregado pós Sprint 4: `[=======---]`
+**Trilha A — Infra (Redis Streams, Kafka)** — **~80%** (inclui `logistics-stream`, `wallet-stream`, `notification-stream` + `trilhas_sprint4/`): `[========--]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -721,9 +729,9 @@ sequenceDiagram
 | Sprint 2 | 90% | `[=========-] 90%` |
 | Sprint 3 | 30% | `[===-------] 30%` |
 | Sprint 4 | 70% | `[=======---] 70%` |
-| Sprint 5 | 0% | `[----------] 0%` |
+| Sprint 5 | 25% | `[===-------] 25%` |
 
-**Trilha B — Segurança (mTLS entre serviços)** — **50%** agregado pós Sprint 4: `[=====-----]`
+**Trilha B — Segurança (mTLS entre serviços)** — **~55%** (middleware compartilhado carregado por novos serviços quando `MTLS_ENFORCE=1`): `[=====-----]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -732,9 +740,9 @@ sequenceDiagram
 | Sprint 2 | 15% | `[==--------] 15%` |
 | Sprint 3 | 15% | `[==--------] 15%` |
 | Sprint 4 | 50% | `[=====-----] 50%` |
-| Sprint 5 | 0% | `[----------] 0%` |
+| Sprint 5 | 10% | `[=---------] 10%` |
 
-**Trilha C — Observabilidade (Dashboards SLOs)** — **65%** agregado pós Sprint 4: `[======----]`
+**Trilha C — Observabilidade (Dashboards SLOs)** — **~70%** (stubs Grafana/Prometheus em `trilhas_sprint4/`): `[=======---]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -743,9 +751,11 @@ sequenceDiagram
 | Sprint 2 | 35% | `[===-------] 35%` |
 | Sprint 3 | 35% | `[===-------] 35%` |
 | Sprint 4 | 65% | `[======----] 65%` |
-| Sprint 5 | 0% | `[----------] 0%` |
+| Sprint 5 | 10% | `[=---------] 10%` |
 
 **Nota (Sprint 3):** entrega em `01_source/inventory_service` — núcleo do serviço + `infra/kafka` (producers/consumers/admin + Avro/registry client) + `infra/mtls` + `metrics/` + `slo/` + `alerts/` + suíte `pytest` com cobertura dos pacotes `app`, `infra`, `metrics`, `slo`. `catalog-service` e `partner-service` carregam `maybe_add_mtls` quando `MTLS_ENFORCE=1` (middleware compartilhado via path do `inventory_service`).
+
+**Nota (Sprint 4–5):** `wallet_service`, `notification_service` e `logistics_service` seguem o mesmo padrão opcional de mTLS via `inventory_service/infra/mtls/middleware.py`.
 
 ### 8.3 Estrutura de Menus
 
@@ -855,8 +865,9 @@ NÃO RESPONSABILIDADES:
   - Persistência/master de produtos     → catalog-service
   - Gestão de estoque físico            → inventory-service
   - Gestão de parceiros                 → partner-service
-  - Gestão de créditos/wallet           → wallet-service
+  - Gestão de créditos/wallet           → wallet-service (`credits_domain.py` temporário no monólito)
   - Envio de notificações               → notification-service (apenas enfileirar)
+  - Manifestos / tracking / SLA pickup  → logistics-service
   - Processamento de webhooks           → partner-service
   - Emissão fiscal                      → billing-fiscal-service (já delegado ✅)
   - Deadlines e analytics               → order-lifecycle-service (já existe ✅)
@@ -894,6 +905,7 @@ class OrderPickupService:
 | Gestão de parceiros | `partner-service` |
 | Créditos e wallet | `wallet-service` |
 | Notificações | `notification-service` |
+| Logística (manifesto / entrega / SLA) | `logistics-service` |
 | Deadlines | `order-lifecycle-service` ✅ |
 | Analytics | `order-lifecycle-service` ✅ |
 | Emissão fiscal | `billing-fiscal-service` ✅ |
@@ -908,7 +920,8 @@ class OrderPickupService:
 
 ### Antes de codar
 
-- [ ] Feature flags implementadas no `order_pickup_service`
+- [x] Feature flags no `order_pickup_service` (`USE_PARTNER_SERVICE`, `USE_INVENTORY_SERVICE`, `USE_WALLET_SERVICE`, `USE_LOGISTICS_SERVICE`, `SHADOW_MODE_ENABLED`; base URL `LOGISTICS_SERVICE_BASE_URL`)
+- [x] Probes comuns: `GET /health/ready` e `GET /health/live` em `logistics_service`, `wallet_service`, `notification_service`, `inventory_service`, `catalog_service`, `partner_service` (além de `/health` no monólito)
 - [ ] Métricas de baseline coletadas (latência, error rate, throughput)
 - [ ] Novas features no monolito congeladas
 - [ ] Repositórios dos novos serviços criados

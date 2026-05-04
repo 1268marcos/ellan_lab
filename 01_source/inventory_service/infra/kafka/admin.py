@@ -22,6 +22,7 @@ DEFAULT_TOPICS: tuple[TopicSpec, ...] = (
     TopicSpec("order-stream"),
     TopicSpec("wallet-stream"),
     TopicSpec("notification-stream"),
+    TopicSpec("logistics-stream"),
 )
 
 

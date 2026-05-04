@@ -12,6 +12,7 @@ class FeatureFlagSnapshot:
     use_partner_service: bool
     use_inventory_service: bool
     use_wallet_service: bool
+    use_logistics_service: bool
     shadow_mode_enabled: bool
     auto_rollback_enabled: bool
 
@@ -48,6 +49,10 @@ def use_wallet_service() -> bool:
     return _get_bool("USE_WALLET_SERVICE", bool(settings.use_wallet_service))
 
 
+def use_logistics_service() -> bool:
+    return _get_bool("USE_LOGISTICS_SERVICE", bool(settings.use_logistics_service))
+
+
 def shadow_mode_enabled() -> bool:
     return _get_bool("SHADOW_MODE_ENABLED", bool(settings.shadow_mode_enabled))
 
@@ -62,6 +67,7 @@ def snapshot() -> FeatureFlagSnapshot:
         use_partner_service=use_partner_service(),
         use_inventory_service=use_inventory_service(),
         use_wallet_service=use_wallet_service(),
+        use_logistics_service=use_logistics_service(),
         shadow_mode_enabled=shadow_mode_enabled(),
         auto_rollback_enabled=auto_rollback_enabled(),
     )
@@ -74,6 +80,7 @@ def as_public_dict() -> dict[str, Any]:
         "USE_PARTNER_SERVICE": s.use_partner_service,
         "USE_INVENTORY_SERVICE": s.use_inventory_service,
         "USE_WALLET_SERVICE": s.use_wallet_service,
+        "USE_LOGISTICS_SERVICE": s.use_logistics_service,
         "SHADOW_MODE_ENABLED": s.shadow_mode_enabled,
         "AUTO_ROLLBACK_ENABLED": s.auto_rollback_enabled,
     }
@@ -85,6 +92,7 @@ def apply_rollback_all_off() -> None:
         "USE_PARTNER_SERVICE",
         "USE_INVENTORY_SERVICE",
         "USE_WALLET_SERVICE",
+        "USE_LOGISTICS_SERVICE",
         "SHADOW_MODE_ENABLED",
     ):
         _runtime_overrides[k] = False

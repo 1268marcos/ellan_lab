@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import redis
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
@@ -22,7 +22,15 @@ logger = logging.getLogger(__name__)
 
 
 def _should_skip_rate_limit(path: str) -> bool:
-    skip = ("/api/v1/health", "/metrics", "/docs", "/openapi.json", "/redoc")
+    skip = (
+        "/api/v1/health",
+        "/health/ready",
+        "/health/live",
+        "/metrics",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+    )
     return any(path.startswith(p) for p in skip)
 
 
@@ -98,6 +106,20 @@ app.include_router(compatibility.router, prefix="/api/v1")
 @app.get("/api/v1/health")
 def health_check():
     return health_payload()
+
+
+@app.get("/health/ready")
+def health_ready(request: Request):
+    try:
+        request.app.state.redis_sync.ping()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="redis_unavailable") from exc
+    return {"status": "ready"}
+
+
+@app.get("/health/live")
+def health_live():
+    return {"status": "live"}
 
 
 @app.get("/metrics")

@@ -14,6 +14,8 @@ from app.workers import sla_monitor
 
 def test_health_and_sla_route(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health/ready").status_code == 200
+    assert client.get("/health/live").json()["status"] == "live"
     monkeypatch.setattr(delivery_router.sla_service, "fetch_compliance", lambda: {"ok": True, "via": "route"})
     assert client.get("/api/v1/sla/compliance").json()["via"] == "route"
 
@@ -121,18 +123,16 @@ def test_fetch_locker_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_fetch_locker_bad_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    class R:
-        status_code = 404
+    from app.integrations import backend_runtime
 
-        def json(self):
-            return {}
-
-    monkeypatch.setattr(httpx.Client, "get", lambda self, url: R())
+    monkeypatch.setattr(backend_runtime, "get_locker_status", lambda lid, c=None: {"ok": False, "data": None})
     assert logistics_service.fetch_locker_status("L8", httpx.Client())["ok"] is False
 
 
 def test_fetch_locker_exception(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(httpx.Client, "get", lambda *a, **k: (_ for _ in ()).throw(OSError("n")))
+    from app.integrations import backend_runtime
+
+    monkeypatch.setattr(backend_runtime, "get_locker_status", lambda lid, c=None: {"ok": False, "data": None})
     assert logistics_service.fetch_locker_status("L7")["ok"] is False
 
 
@@ -215,6 +215,54 @@ def test_main_lifespan_close_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with TestClient(app2):
         pass
+
+
+def test_post_manifest_value_error(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services import manifest_service
+
+    def boom(*a, **k):
+        raise ValueError("bad")
+
+    monkeypatch.setattr(manifest_service, "create_manifest_with_events", boom)
+    r = client.post("/api/v1/manifest", json={"shipments": [], "locker_id": "Lx"})
+    assert r.status_code == 400
+
+
+def test_health_ready_ping_fails(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
+    m = MagicMock()
+    m.ping.side_effect = RuntimeError("ping")
+    monkeypatch.setattr(client.app.state, "redis", m)
+    assert client.get("/health/ready").status_code == 503
+
+
+def test_health_ready_db_fails() -> None:
+    from app.core.database import get_db
+    from app.main import app as app2
+
+    def override_get_db():
+        db = MagicMock()
+        db.execute.side_effect = RuntimeError("db")
+        yield db
+
+    app2.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app2) as c:
+            assert c.get("/health/ready").status_code == 503
+    finally:
+        app2.dependency_overrides.clear()
+
+
+def test_health_ready_redis_down(monkeypatch: pytest.MonkeyPatch) -> None:
+    import redis as redis_mod
+
+    def boom(*a, **k):
+        raise RuntimeError("down")
+
+    monkeypatch.setattr(redis_mod.Redis, "from_url", staticmethod(boom))
+    from app.main import app as app2
+
+    with TestClient(app2) as c:
+        assert c.get("/health/ready").status_code == 503
 
 
 def test_track_delivery_update_manifest_id(client: TestClient) -> None:

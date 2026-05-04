@@ -36,8 +36,6 @@ from app.routers import (
     kiosk,
     locker_product_configs,
     locker_slots_ops,
-    logistics,
-    notifications,
     operators,
     orders,
     partners,
@@ -154,7 +152,6 @@ app.include_router(v1_ops.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(partners.router)
-app.include_router(logistics.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
 app.include_router(operators.router)
@@ -166,7 +163,6 @@ app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
 app.include_router(inventory.router)
-app.include_router(notifications.router)
 app.include_router(internal.router)
 app.include_router(rentals_ops.router, prefix="/internal")
 app.include_router(dev_admin.router)
