@@ -1,0 +1,1 @@
+"""partner-service FastAPI application."""

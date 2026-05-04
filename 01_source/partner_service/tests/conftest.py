@@ -1,28 +1,39 @@
+from __future__ import annotations
+
 import os
-import tempfile
 
-_fd, _DB_PATH = tempfile.mkstemp(suffix="partner_api_test.db")
-os.close(_fd)
-os.environ["DATABASE_URL"] = f"sqlite+pysqlite:///{_DB_PATH}"
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("REDIS_URL", "redis://localhost:6379/0")
+os.environ.setdefault("RATE_LIMIT_PER_MINUTE", "5000")
 
-import pytest
-from fastapi.testclient import TestClient
+import fakeredis  # noqa: E402
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
 
-from database import Base, engine
-from main import app
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture
-def client():
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+def fake_redis():
+    return fakeredis.FakeRedis(decode_responses=True)
+
+
+@pytest.fixture
+def client(monkeypatch, fake_redis):
+    import redis
+
+    monkeypatch.setattr(redis.Redis, "from_url", lambda *a, **k: fake_redis)
+    from app.core.config import get_settings
+    from app.main import app
+
+    get_settings.cache_clear()
     with TestClient(app) as c:
         yield c
-    Base.metadata.drop_all(bind=engine)
-
-
-def pytest_sessionfinish(session, exitstatus) -> None:
-    try:
-        os.unlink(_DB_PATH)
-    except OSError:
-        pass
+    fake_redis.flushall()

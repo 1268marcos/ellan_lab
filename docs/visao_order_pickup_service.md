@@ -632,35 +632,37 @@ sequenceDiagram
 
 ## 8. Plano de Implementação (Sprints)
 
-### Sprint 0 — Pré-condições (1 semana)
+**Status:** `[ ]` não iniciado · `[~]` em execução · `[x]` concluído · `[!]` bloqueado/crítico
+
+### [x] Sprint 0 — Pré-condições (1 semana)
 
 - Adicionar **feature flags** no `order_pickup_service` (ligar/desligar novas integrações)
 - Criar **métricas de baseline** (latência, error rate, throughput por funcionalidade)
 - **Congelar novas features** no monolito (apenas bugs críticos)
 - Criar repositórios dos novos serviços
 
-### Sprint 1 — `partner-service` (2 semanas) 🟢 Baixo Risco
+### [~] Sprint 1 — `partner-service` (2 semanas) 🟢 Baixo Risco
 
 - Criar `partner-service`
 - Mover `partners.py`, modelos de parceiro, webhooks
 - API Gateway roteia `/partners/*` para o novo serviço
 - Validar com **1 parceiro piloto** em shadow mode
 
-### Sprint 2 — `catalog-service` (2 semanas) 🟢 Baixo Risco
+### [ ] Sprint 2 — `catalog-service` (2 semanas) 🟢 Baixo Risco
 
 - Criar `catalog-service` (pode ser proxy inicial para o banco existente)
 - Configurar message broker (Redis Streams starter, depois Kafka)
 - `order_pickup_service` começa a consumir eventos de produto
 - Implementar `POST /partners/{id}/products` e `GET /partners/{id}/eligible-lockers`
 
-### Sprint 3 — `inventory-service` (2 semanas) 🟡 Risco Médio
+### [ ] Sprint 3 — `inventory-service` (2 semanas) 🟡 Risco Médio
 
 - Criar `inventory-service`
 - Mover `inventory.py`, `ProductInventory`, `inventory_movements`
 - `order_pickup_service` passa a chamar via HTTP/gRPC
 - Feature flag por parceiro selecionado
 
-### Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
+### [ ] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
 
 **notification-service:**
 - Mover `notification_delivery_worker.py`, `notification_logs`
@@ -671,7 +673,7 @@ sequenceDiagram
 - Implementar double-write + job de reconciliação
 - `order_pickup_service` consulta saldo via API
 
-### Sprint 5 — `logistics-service` + Limpeza (2 semanas) 🟡 Risco Médio
+### [ ] Sprint 5 — `logistics-service` + Limpeza (2 semanas) 🟡 Risco Médio
 
 - Criar `logistics-service`
 - Mover `logistics.py`, modelos de manifesto e entrega
@@ -681,15 +683,58 @@ sequenceDiagram
 
 ### Cronograma Estimado
 
-| Sprint | Serviço | Dias | Risco |
-|---|---|---|---|
-| Sprint 0 | Foundation | 5 dias | Baixo |
-| Sprint 1 | `partner-service` | 10 dias | Baixo |
-| Sprint 2 | `catalog-service` | 10 dias | Baixo |
-| Sprint 3 | `inventory-service` | 10 dias | Médio |
-| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto |
-| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio |
-| **Total** | | **~55 dias úteis** | |
+| Sprint | Serviço | Dias | Risco | Status | Evolução % |
+|---|---|---|---|---|---|
+| Sprint 0 | Foundation | 5 dias | Baixo | `[x]` | `[==========] 100%` |
+| Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` |
+| Sprint 2 | `catalog-service` | 10 dias | Baixo | `[ ]` | `[----------] 0%` |
+| Sprint 3 | `inventory-service` | 10 dias | Médio | `[ ]` | `[----------] 0%` |
+| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[ ]` | `[----------] 0%` |
+| Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[ ]` | `[----------] 0%` |
+| **Total** | | **~55 dias úteis** | | | — |
+
+### 8.1 Trilhas Paralelas
+
+| Trilha | Foco |
+|---|---|
+| **Trilha A** | Infra (Redis Streams, Kafka) |
+| **Trilha B** | Segurança (mTLS entre serviços) |
+| **Trilha C** | Observabilidade (Dashboards SLOs) |
+
+### 8.2 Evolução por Sprint e Trilha
+
+**Trilha A — Infra (Redis Streams, Kafka)**
+
+| Sprint | Conclusão | Barra |
+|---|---|---|
+| Sprint 0 | 100% | `[==========] 100%` |
+| Sprint 1 | 30% | `[===-------] 30%` |
+| Sprint 2 | 70% | `[=======---] 70%` |
+| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 5 | 0% | `[----------] 0%` |
+
+**Trilha B — Segurança (mTLS entre serviços)**
+
+| Sprint | Conclusão | Barra |
+|---|---|---|
+| Sprint 0 | 20% | `[==--------] 20%` |
+| Sprint 1 | 10% | `[=---------] 10%` |
+| Sprint 2 | 0% | `[----------] 0%` |
+| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 5 | 0% | `[----------] 0%` |
+
+**Trilha C — Observabilidade (Dashboards SLOs)**
+
+| Sprint | Conclusão | Barra |
+|---|---|---|
+| Sprint 0 | 40% | `[====------] 40%` |
+| Sprint 1 | 20% | `[==--------] 20%` |
+| Sprint 2 | 0% | `[----------] 0%` |
+| Sprint 3 | 0% | `[----------] 0%` |
+| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 5 | 0% | `[----------] 0%` |
 
 ---
 
