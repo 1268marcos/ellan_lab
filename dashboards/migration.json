@@ -1,0 +1,57 @@
+{
+  "title": "ELLAN — Migração monólito → microserviços",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Divergência — price / inventory / status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(migration_divergence_total{type=\"price\"}[5m]))",
+          "legendFormat": "price"
+        },
+        {
+          "expr": "sum(rate(migration_divergence_total{type=\"inventory\"}[5m]))",
+          "legendFormat": "inventory"
+        },
+        {
+          "expr": "sum(rate(migration_divergence_total{type=\"status\"}[5m]))",
+          "legendFormat": "status"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Tráfego API v1 vs v2",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(http_requests_total{api_version=\"v1\"}[5m]))",
+          "legendFormat": "v1"
+        },
+        {
+          "expr": "sum(rate(http_requests_total{api_version=\"v2\"}[5m]))",
+          "legendFormat": "v2"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Error rate por parceiro (top)",
+      "type": "heatmap",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (partner_id) (rate(http_requests_total{status=~\"5..\"}[5m])) / sum by (partner_id) (rate(http_requests_total[5m]))",
+          "legendFormat": "{{partner_id}}"
+        }
+      ]
+    }
+  ]
+}

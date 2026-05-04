@@ -54,7 +54,7 @@ O `order_pickup_service` atual é responsável por **10 domínios diferentes**:
 
 ### 1.3 Evidências no Código
 
-**Gestão de Parceiros** — `app/routers/partners.py` (~2.500+ linhas):
+**Gestão de Parceiros** — ~~`app/routers/partners.py`~~ removido do monólito; referência histórica (~2.500+ linhas no legado):
 ```python
 class PartnerApiKey(Base): ...
 class PartnerServiceArea(Base): ...
@@ -71,7 +71,7 @@ def grant_expired_pickup_credit(...): ...
 # Sistema financeiro dentro do serviço.
 ```
 
-**Inventário Físico** — `app/routers/inventory.py`:
+**Inventário Físico** — ~~`app/routers/inventory.py`~~ removido do monólito; referência histórica:
 ```python
 class ProductInventory(Base): ...
 class ProductLockerConfig(Base): ...
@@ -87,7 +87,7 @@ def _deliver_one(...): ...
 # Sistema de webhook gateway dentro do serviço.
 ```
 
-**Notificações Multi-canal** — `app/workers/notification_delivery_worker.py`:
+**Notificações Multi-canal** — ~~`app/workers/notification_delivery_worker.py`~~ removido; filas/canais via `app/services/notification_dispatch_service.py` e `notification-service`:
 ```python
 def queue_pickup_email(...): ...
 def queue_pickup_sms(...): ...
@@ -99,10 +99,10 @@ def queue_pickup_whatsapp(...): ...
 
 | Arquivo | Linhas | O que faz |
 |---|---|---|
-| `partners.py` | 5.000+ | CRUD de parceiros, settlements, webhooks |
-| `logistics.py` | 3.500+ | Manifestos, entregas, SLA |
+| ~~`partners.py`~~ | — | Migrado para `partner-service` (router removido do monólito) |
+| ~~`logistics.py`~~ | — | Migrado para `logistics-service` (router removido) |
 | `pickup_payment_fulfillment_service.py` | 1.500+ | Fluxo completo KIOSK + ONLINE |
-| `inventory.py` | 800+ | Gestão de estoque |
+| ~~`inventory.py`~~ | — | Migrado para `inventory-service` (router removido) |
 | `wallet_credits_bridge.py` | 600+ | Wallet e créditos (transição) |
 | `public_orders.py` | 800+ | API pública de pedidos |
 | `pricing_fiscal.py` | 700+ | Promoções e regras fiscais |
@@ -640,7 +640,7 @@ sequenceDiagram
 
 **Status:** `[ ]` não iniciado · `[~]` em execução · `[x]` concluído · `[!]` bloqueado/crítico
 
-**Estado no repositório (`01_source/`):** `inventory_service` (Sprint 3), `wallet_service` + `notification_service` (Sprint 4), núcleo `logistics_service` (Sprint 5), pasta `trilhas_sprint4/` e tópicos `wallet-stream` / `notification-stream` em `inventory_service/infra/kafka`. **Ainda não feito no monólito:** roteamento de tráfego, remoção de `logistics.py` / `notification_delivery_worker.py` / créditos legados e limpeza final (Sprint 5).
+**Estado no repositório (`01_source/`):** `inventory_service` (Sprint 3), `wallet_service` + `notification_service` (Sprint 4), `logistics_service` (Sprint 5), `trilhas_sprint4/`, Kafka em `inventory_service/infra/kafka` (`logistics-stream`, `wallet-stream`, `notification-stream`) e constantes de evento em `shared/kafka/topics.py` (`MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT`). **Monólito:** rotas `partners` / `inventory` / `webhooks` / `logistics` / `notifications` e `notification_delivery_worker.py` removidos; créditos em `wallet_credits_bridge.py`; flags em `app/core/config.py` (`Settings`). **Pendente:** baseline, runbooks, comunicação a parceiros, canário de tráfego.
 
 **Sprint 2 (`catalog-service`):** concluído no plano (`[x]`).
 
@@ -684,17 +684,16 @@ sequenceDiagram
 **Executado (código-base):** serviços em `01_source/notification_service` e `01_source/wallet_service` (APIs, modelos, workers, testes com cobertura do pacote `app`).
 
 **notification-service:**
-- Mover `notification_delivery_worker.py`, `notification_logs` → **pendente** (monólito ainda dono)
-- `order_pickup_service` enfileira notificações em Redis/SQS → **pendente**
+- Worker legado `notification_delivery_worker.py` removido do monólito
+- `order_pickup_service` → filas via `notification_dispatch_service` + microserviço → **pendente** hardening produção
 
 **wallet-service:**
-- Mover `credits_service.py`, modelo `Credit` → **pendente**
-- Double-write + reconciliação implementados no serviço; **pendente** consumo pelo monólito em produção
-- `order_pickup_service` consulta saldo via API → **pendente**
+- `credits_domain` removido; bridge `wallet_credits_bridge.py` no monólito até HTTP total ao `wallet-service`
+- Double-write + reconciliação no microserviço; **pendente** desligar bridge e usar só API wallet em produção
 
 ### [x] Sprint 5 — `logistics-service` + Limpeza (2 semanas) 🟡 Risco Médio
 
-**Executado:** `01_source/logistics_service` — `app/integrations/{backend_runtime,order_lifecycle}.py`, `manifest_service` (criação + evento Kafka `manifest.created` em `logistics-stream`), readiness/liveness em `/health/ready` e `/health/live`. Tópico `logistics-stream` + constante `MANIFEST_CREATED` em `01_source/shared/kafka/topics.py` e `inventory_service/infra/kafka/topics.py` / `emit_manifest_created` no producer.
+**Executado:** `01_source/logistics_service` — `app/integrations/{backend_runtime,order_lifecycle}.py`, `manifest_service` (criação + Kafka `manifest.created` → `logistics-stream`), `/health/ready` e `/health/live` (`liveness` → `{"status":"alive"}`). `shared/kafka/topics.py` + `inventory_service/infra/kafka/topics.py`: `MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT`; producer `emit_manifest_created`.
 
 **Monólito (`order_pickup_service`):** removidos `routers/{logistics,partners,inventory,webhooks,notifications}.py`, `workers/notification_delivery_worker.py`, `services/credits_domain.py` (substituído por `wallet_credits_bridge.py`). Flags em `app/core/config.py` (`Settings`). **Pendente:** runbooks e comunicação a parceiros.
 
@@ -765,6 +764,8 @@ sequenceDiagram
 | **Inteligência** | `catalog-service`, `inventory-service`, `notification-service` |
 | **Fiscal** | `billing-fiscal-service`, `wallet-service`, `payment-gateway` |
 
+**Kafka (eventos nomeados):** `shared/kafka/topics.py` — `MANIFEST_CREATED`, `WALLET_CREDITED`, `NOTIFICATION_SENT` (streams: `logistics-stream`, `wallet-stream`, `notification-stream` no admin `inventory_service`).
+
 ---
 
 ## 9. Versionamento de API
@@ -820,6 +821,8 @@ Dashboards obrigatórios:
   - Percentual de tráfego por versão de API
   - Error rate por parceiro
 ```
+
+**Artefatos (repo):** `scripts/baseline.py` (Prometheus), `scripts/canary.sh` (canário + rollback), `dashboards/migration.json` (Grafana), `runbooks/rollback.md`, `runbooks/reconcile.md`, `runbooks/incident.md`, `email/deprecation.txt` (90 dias antes de 2026-12-31).
 
 ---
 
@@ -921,8 +924,8 @@ class OrderPickupService:
 ### Antes de codar
 
 - [x] Feature flags no `order_pickup_service` (`USE_PARTNER_SERVICE`, `USE_INVENTORY_SERVICE`, `USE_WALLET_SERVICE`, `USE_LOGISTICS_SERVICE`, `SHADOW_MODE_ENABLED`; base URL `LOGISTICS_SERVICE_BASE_URL`)
-- [x] Probes comuns: `GET /health/ready` e `GET /health/live` em `logistics_service`, `wallet_service`, `notification_service`, `inventory_service`, `catalog_service`, `partner_service` (além de `/health` no monólito)
-- [ ] Métricas de baseline coletadas (latência, error rate, throughput)
+- [x] Probes: `GET /health/ready` e `GET /health/live` nos seis microserviços acima (`live` → JSON `{"status":"alive"}`); monólito mantém `/health`, `/health/ready`, `/health/live`
+- [x] Baseline / canário / dashboard / runbooks / e-mail deprecação: `scripts/baseline.py`, `scripts/canary.sh`, `dashboards/migration.json`, `runbooks/*.md`, `email/deprecation.txt`
 - [ ] Novas features no monolito congeladas
 - [ ] Repositórios dos novos serviços criados
 - [ ] Message broker configurado (Redis Streams mínimo)
