@@ -671,7 +671,7 @@ sequenceDiagram
 - `order_pickup_service` passa a chamar via HTTP/gRPC (pendente integração monólito)
 - Feature flag por parceiro selecionado
 
-### [ ] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
+### [~] Sprint 4 — `notification-service` + `wallet-service` (2 semanas) 🟠 Risco Alto (wallet)
 
 **notification-service:**
 - Mover `notification_delivery_worker.py`, `notification_logs`
@@ -698,7 +698,7 @@ sequenceDiagram
 | Sprint 1 | `partner-service` | 10 dias | Baixo | `[~]` | `[=====-----] 45%` |
 | Sprint 2 | `catalog-service` | 10 dias | Baixo | `[x]` | `[==========] 100%` |
 | Sprint 3 | `inventory-service` | 10 dias | Médio | `[x]` | `[==========] 100%` |
-| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[ ]` | `[----------] 0%` |
+| Sprint 4 | `notification-service` + `wallet-service` | 10 dias | Alto | `[~]` | `[=====-----] 45%` |
 | Sprint 5 | `logistics-service` + Limpeza | 10 dias | Médio | `[ ]` | `[----------] 0%` |
 | **Total** | | **~55 dias úteis** | | | — |
 
@@ -710,9 +710,9 @@ sequenceDiagram
 | **Trilha B** | Segurança (mTLS entre serviços) |
 | **Trilha C** | Observabilidade (Dashboards SLOs) |
 
-### 8.2 Evolução por Sprint e Trilha (pós Sprint 3)
+### 8.2 Evolução por Sprint e Trilha (pós Sprint 4)
 
-**Trilha A — Infra (Redis Streams, Kafka)**
+**Trilha A — Infra (Redis Streams, Kafka)** — **70%** agregado pós Sprint 4: `[=======---]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -720,10 +720,10 @@ sequenceDiagram
 | Sprint 1 | 30% | `[===-------] 30%` |
 | Sprint 2 | 90% | `[=========-] 90%` |
 | Sprint 3 | 30% | `[===-------] 30%` |
-| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 4 | 70% | `[=======---] 70%` |
 | Sprint 5 | 0% | `[----------] 0%` |
 
-**Trilha B — Segurança (mTLS entre serviços)**
+**Trilha B — Segurança (mTLS entre serviços)** — **50%** agregado pós Sprint 4: `[=====-----]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -731,10 +731,10 @@ sequenceDiagram
 | Sprint 1 | 10% | `[=---------] 10%` |
 | Sprint 2 | 15% | `[==--------] 15%` |
 | Sprint 3 | 15% | `[==--------] 15%` |
-| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 4 | 50% | `[=====-----] 50%` |
 | Sprint 5 | 0% | `[----------] 0%` |
 
-**Trilha C — Observabilidade (Dashboards SLOs)**
+**Trilha C — Observabilidade (Dashboards SLOs)** — **65%** agregado pós Sprint 4: `[======----]`
 
 | Sprint | Conclusão | Barra |
 |---|---|---|
@@ -742,10 +742,18 @@ sequenceDiagram
 | Sprint 1 | 20% | `[==--------] 20%` |
 | Sprint 2 | 35% | `[===-------] 35%` |
 | Sprint 3 | 35% | `[===-------] 35%` |
-| Sprint 4 | 0% | `[----------] 0%` |
+| Sprint 4 | 65% | `[======----] 65%` |
 | Sprint 5 | 0% | `[----------] 0%` |
 
 **Nota (Sprint 3):** entrega em `01_source/inventory_service` — núcleo do serviço + `infra/kafka` (producers/consumers/admin + Avro/registry client) + `infra/mtls` + `metrics/` + `slo/` + `alerts/` + suíte `pytest` com cobertura dos pacotes `app`, `infra`, `metrics`, `slo`. `catalog-service` e `partner-service` carregam `maybe_add_mtls` quando `MTLS_ENFORCE=1` (middleware compartilhado via path do `inventory_service`).
+
+### 8.3 Estrutura de Menus
+
+| Menu | Serviços |
+|---|---|
+| **OPS** | `order-pickup-service`, `order-lifecycle-service`, `logistics-service` |
+| **Inteligência** | `catalog-service`, `inventory-service`, `notification-service` |
+| **Fiscal** | `billing-fiscal-service`, `wallet-service`, `payment-gateway` |
 
 ---
 
