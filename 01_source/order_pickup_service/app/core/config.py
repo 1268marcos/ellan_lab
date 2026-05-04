@@ -60,6 +60,38 @@ class Settings(BaseSettings):
         alias="RUN_DB_MIGRATIONS_ON_STARTUP",
     )
 
+    # Sprint 0 — microserviços (Estrangler)
+    use_catalog_service: bool = Field(default=False, alias="USE_CATALOG_SERVICE")
+    use_partner_service: bool = Field(default=False, alias="USE_PARTNER_SERVICE")
+    use_inventory_service: bool = Field(default=False, alias="USE_INVENTORY_SERVICE")
+    use_wallet_service: bool = Field(default=False, alias="USE_WALLET_SERVICE")
+    shadow_mode_enabled: bool = Field(default=False, alias="SHADOW_MODE_ENABLED")
+    auto_rollback_enabled: bool = Field(default=False, alias="AUTO_ROLLBACK_ENABLED")
+
+    catalog_service_base_url: str = Field(
+        default="http://localhost:8001",
+        alias="CATALOG_SERVICE_BASE_URL",
+    )
+    partner_service_base_url: str = Field(
+        default="http://localhost:8002",
+        alias="PARTNER_SERVICE_BASE_URL",
+    )
+    inventory_service_base_url: str = Field(
+        default="http://localhost:8003",
+        alias="INVENTORY_SERVICE_BASE_URL",
+    )
+    wallet_service_base_url: str = Field(
+        default="http://localhost:8004",
+        alias="WALLET_SERVICE_BASE_URL",
+    )
+    catalog_redis_url: str = Field(default="redis://localhost:6379/0", alias="CATALOG_REDIS_URL")
+    catalog_stream_key: str = Field(default="catalog:events", alias="CATALOG_STREAM_KEY")
+    catalog_consumer_group: str = Field(default="order_pickup", alias="CATALOG_CONSUMER_GROUP")
+
+    rollback_error_rate_threshold: float = Field(default=0.005, alias="ROLLBACK_ERROR_RATE_THRESHOLD")
+    rollback_window_seconds: int = Field(default=300, alias="ROLLBACK_WINDOW_SECONDS")
+    rollback_min_samples: int = Field(default=20, alias="ROLLBACK_MIN_SAMPLES")
+
     # =========================================================
     # 🔥 FRONTEND (CORREÇÃO DO BUG DE EMAIL)
     # =========================================================

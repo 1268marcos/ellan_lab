@@ -94,6 +94,7 @@ def _assert_required_schema() -> None:
         "capability_profile_constraint",
         "capability_profile_target",
         "capability_profile_snapshot",
+        "products_cache",
     }
 
     if dialect == "postgresql":
@@ -687,6 +688,7 @@ def init_db():
     from app.models.order_fulfillment_tracking import OrderFulfillmentTracking  # noqa: F401
 
     # 🔥 CAPABILITY CATALOG (BLOCO 12)
+    from app.models.products_cache import ProductsCache  # noqa: F401
     from app.models.capability import (  # noqa: F401
         CapabilityRegion,
         CapabilityChannel,

@@ -17,6 +17,7 @@ from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup
 from app.schemas.orders import CreateOrderIn, OrderListItemOut, OrderListOut, OrderOut
 from app.services.order_creation_service import create_order_core
+from app.services.v1_order_bridge import maybe_validate_with_catalog_service
 
 from app.services import backend_client
 from app.schemas.integration_ops import (
@@ -105,6 +106,8 @@ def create_order(
 
     resolved_user_id = getattr(user, "id", None)
     resolved_user_id = str(resolved_user_id) if resolved_user_id is not None else None
+
+    maybe_validate_with_catalog_service(payload.sku_id)
 
     desired_slot = payload.desired_slot
     if desired_slot is None and payload.slot is not None:

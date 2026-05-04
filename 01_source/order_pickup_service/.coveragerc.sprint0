@@ -1,0 +1,20 @@
+[run]
+omit =
+    */tests/*
+    */.venv/*
+    */.venv_test/*
+include =
+    app/config/*
+    app/services/catalog_client.py
+    app/services/partner_client.py
+    app/services/inventory_client.py
+    app/services/wallet_client.py
+    app/services/catalog_sync_service.py
+    app/services/rollback_service.py
+    app/services/v1_order_bridge.py
+    app/services/v1_payment_bridge.py
+    app/middleware/*
+    app/workers/consistency_checker.py
+    app/workers/redis_streams_consumer.py
+    app/schemas/order_pickup_product_cache.py
+    app/models/products_cache.py

@@ -3596,6 +3596,49 @@ def _create_data_deletion_requests(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_products_cache(conn, applied: list[str]) -> None:
+    name = "products_cache.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    ts = _ts(conn)
+    js = _jsonb_or_text(conn)
+    conn.execute(
+        text(
+            f"""
+        CREATE TABLE IF NOT EXISTS products_cache (
+            sku_id               VARCHAR(255) PRIMARY KEY,
+            partner_id           VARCHAR(36),
+            partner_sku          VARCHAR(255),
+            name                 VARCHAR(255) NOT NULL,
+            description          TEXT,
+            category_id          VARCHAR(64) NOT NULL,
+            amount_cents         INTEGER NOT NULL,
+            currency             VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            width_mm             INTEGER,
+            height_mm            INTEGER,
+            depth_mm             INTEGER,
+            weight_g             INTEGER,
+            is_active            BOOLEAN NOT NULL DEFAULT TRUE,
+            requires_signature   BOOLEAN NOT NULL DEFAULT FALSE,
+            is_hazardous         BOOLEAN NOT NULL DEFAULT FALSE,
+            temperature_zone     VARCHAR(32) NOT NULL DEFAULT 'AMBIENT',
+            payload_json         {js},
+            created_at           {ts} NOT NULL DEFAULT NOW(),
+            updated_at           {ts} NOT NULL DEFAULT NOW(),
+            synced_at            {ts}
+        )
+    """
+        )
+    )
+    conn.execute(
+        text(
+            "CREATE INDEX IF NOT EXISTS ix_products_cache_partner ON products_cache (partner_id)"
+        )
+    )
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ---------------------------------------------------------------------------
 # ══════════════════════════════════════════════════════════════════════════
 # BLOCO 12 — Capability Catalog (Payment / Channel / Context)
@@ -4405,6 +4448,35 @@ def _kiosk_sqlite_ensure_core_tables(conn, applied: list[str]) -> None:
     """))
 
     # pickup_tokens
+    conn.execute(
+        text(
+            """
+        CREATE TABLE IF NOT EXISTS products_cache (
+            sku_id               TEXT PRIMARY KEY,
+            partner_id           TEXT,
+            partner_sku          TEXT,
+            name                 TEXT NOT NULL,
+            description          TEXT,
+            category_id          TEXT NOT NULL,
+            amount_cents         INTEGER NOT NULL,
+            currency             TEXT NOT NULL DEFAULT 'BRL',
+            width_mm             INTEGER,
+            height_mm            INTEGER,
+            depth_mm             INTEGER,
+            weight_g             INTEGER,
+            is_active            INTEGER NOT NULL DEFAULT 1,
+            requires_signature   INTEGER NOT NULL DEFAULT 0,
+            is_hazardous         INTEGER NOT NULL DEFAULT 0,
+            temperature_zone     TEXT NOT NULL DEFAULT 'AMBIENT',
+            payload_json         TEXT,
+            created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            synced_at            TIMESTAMP
+        )
+    """
+        )
+    )
+
     conn.execute(text("""
         CREATE TABLE IF NOT EXISTS pickup_tokens (
             id            TEXT PRIMARY KEY,
@@ -4559,6 +4631,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_ui_error_events,
     _create_privacy_consents,
     _create_data_deletion_requests,
+    _create_products_cache,
 
     # BLOCO 12
     _create_capability_region,

@@ -175,28 +175,30 @@ graph TB
 
 ```mermaid
 graph TB
-    subgraph "Camada de Produto (Serviço Central)"
-        A[Catalog Service<br/>Dono do Produto]
-        B[(Products DB<br/>SKU, preço, atributos)]
+    subgraph "Fonte de verdade — Catalog Service"
+        A[Catalog Service<br/>Dono canônico: SKU, preço, atributos, compatibilidade declarada]
+        B[(Catálogo persistente<br/>products, categories, dimensions, rules)]
     end
 
     subgraph "Camada de Compatibilidade"
-        C[Product Locker Compatibility<br/>Regras por canal/partner]
+        C[Compatibilidade produto–locker<br/>Avaliada no catalog e/ou replicada no pickup]
     end
 
     subgraph "Order Pickup Service"
-        D[Consumidor do Catálogo]
-        E[(Cache Local<br/>+ Inventory)]
+        D[Consumidor do catálogo<br/>somente leitura + cache derivado]
+        E[(Cache local read-model<br/>+ inventário físico)]
     end
 
     subgraph "Parceiros (E-commerces)"
         F[Shopee / Mercado Livre / Amazon]
     end
 
-    F -->|Cria produto via API| A
-    A -->|Dispara evento| C
-    C -->|Regras de compatibilidade| D
-    D -->|Consulta catálogo| A
+    A --> B
+    F -->|POST produto / preço| A
+    A -->|Redis Streams: product.*| D
+    A -->|HTTP GET + DTO estável| D
+    C --> A
+    D -->|Não escreve no catálogo canônico| A
     D -->|Gerencia inventário local| E
 ```
 
@@ -240,7 +242,7 @@ class ProductDeprecatedEvent:
 ```
 
 > O `order_pickup_service` **consome** esses eventos e atualiza seu cache local.
-> Message broker recomendado: Redis Pub/Sub (starter) → Kafka (produção).
+> Message broker recomendado: Redis Streams (starter) → Kafka (produção).
 
 ### 4.2 Compatibilidade Produto-Locker (Regras de Negócio)
 
@@ -324,6 +326,61 @@ class CatalogSyncService:
 
         # 4. Atualiza compatibilidade se necessário
         self._recalculate_compatibility(sku_id)
+```
+
+### 4.4 Anti-Corruption Layer
+
+O `catalog-service` expõe o modelo interno (ORM / agregados) apenas dentro do bounded context do catálogo. Para o `order_pickup_service`, a resposta de leitura inclui um **DTO estável** (`order_pickup_cache`) alinhado ao contrato do cache local do pickup — assim mudanças internas no catálogo não vazam para o consumidor.
+
+```python
+# catalog-service — mapeamento interno → DTO consumido pelo order_pickup_service
+
+from pydantic import BaseModel
+from datetime import datetime
+
+
+class OrderPickupProductCacheDTO(BaseModel):
+    sku_id: str
+    partner_id: str | None
+    partner_sku: str | None
+    name: str
+    category_id: str
+    amount_cents: int
+    currency: str
+    width_mm: int | None
+    height_mm: int | None
+    depth_mm: int | None
+    weight_g: int | None
+    is_active: bool
+    requires_signature: bool
+    is_hazardous: bool
+    temperature_zone: str
+    created_at: datetime
+    updated_at: datetime
+    synced_at: datetime | None = None
+
+
+def to_order_pickup_cache_dto(product, dimensions) -> OrderPickupProductCacheDTO:
+    return OrderPickupProductCacheDTO(
+        sku_id=product.sku_id,
+        partner_id=product.partner_id,
+        partner_sku=product.partner_sku,
+        name=product.name,
+        category_id=product.category_id,
+        amount_cents=product.amount_cents,
+        currency=product.currency,
+        width_mm=dimensions.width_mm if dimensions else None,
+        height_mm=dimensions.height_mm if dimensions else None,
+        depth_mm=dimensions.depth_mm if dimensions else None,
+        weight_g=dimensions.weight_g if dimensions else None,
+        is_active=product.is_active,
+        requires_signature=product.requires_signature,
+        is_hazardous=product.is_hazardous,
+        temperature_zone=product.temperature_zone,
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        synced_at=None,
+    )
 ```
 
 ---
@@ -461,6 +518,38 @@ def check_product_compatibility(
     }
 ```
 
+```http
+POST /api/v1/products/{sku_id}/check-compatibility
+```
+
+```python
+# Verificação pelo sku_id canônico (catalog-service)
+
+@router.post("/api/v1/products/{sku_id}/check-compatibility")
+def check_product_compatibility_by_sku(
+    sku_id: str,
+    payload: LockerCompatibilityCheckIn,
+    db: Session = Depends(get_db),
+):
+    """
+    Mesma semântica da verificação por parceiro+partner_sku, porém endereçada pelo SKU canônico.
+    Útil para o order_pickup_service após resolver o produto no catálogo.
+    """
+    product = db.query(Product).filter(Product.sku_id == sku_id).first()
+    if not product:
+        return {"compatible": False, "reason": "PRODUCT_NOT_REGISTERED", "recommended_slot_size": None}
+
+    result = compatibility_service.is_product_compatible_with_locker(
+        product, payload.locker_spec, partner_rule_for(product, db)
+    )
+
+    return {
+        "compatible": result.compatible,
+        "reason": result.reason if not result.compatible else None,
+        "recommended_slot_size": result.recommended_slot_size,
+    }
+```
+
 ---
 
 ## 7. Estratégia de Migração
@@ -560,7 +649,7 @@ sequenceDiagram
 ### Sprint 2 — `catalog-service` (2 semanas) 🟢 Baixo Risco
 
 - Criar `catalog-service` (pode ser proxy inicial para o banco existente)
-- Configurar message broker (Redis Pub/Sub starter, depois Kafka)
+- Configurar message broker (Redis Streams starter, depois Kafka)
 - `order_pickup_service` começa a consumir eventos de produto
 - Implementar `POST /partners/{id}/products` e `GET /partners/{id}/eligible-lockers`
 
@@ -759,7 +848,7 @@ class OrderPickupService:
 - [ ] Métricas de baseline coletadas (latência, error rate, throughput)
 - [ ] Novas features no monolito congeladas
 - [ ] Repositórios dos novos serviços criados
-- [ ] Message broker configurado (Redis Pub/Sub mínimo)
+- [ ] Message broker configurado (Redis Streams mínimo)
 
 ### Durante a migração
 

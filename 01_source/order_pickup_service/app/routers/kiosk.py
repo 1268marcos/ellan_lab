@@ -49,6 +49,7 @@ from app.services.lifecycle_integration import (
     register_prepayment_timeout_deadline,
 )
 
+from app.services.v1_payment_bridge import post_confirm_side_effects
 from app.services.payment_confirm_service import (
     confirm_payment_and_emit_event,
     apply_payment_confirmation,
@@ -716,6 +717,8 @@ def _finalize_kiosk_payment(
 
     db.commit()
     db.refresh(order)
+
+    post_confirm_side_effects(order.id)
 
     return KioskPaymentApprovedOut(
         order_id=order.id,

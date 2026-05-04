@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.middleware.shadow_mode import ShadowModeMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -46,6 +48,7 @@ from app.routers import (
     products,
     rentals_ops,
     runtime_sync,
+    v1_ops,
     webhooks,
 )
 
@@ -142,8 +145,12 @@ app = FastAPI(
 )
 
 
+app.add_middleware(ShadowModeMiddleware)
+
 # Routers principais
 app.include_router(orders.router)
+app.include_router(orders.router, prefix="/v1")
+app.include_router(v1_ops.router)
 app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(partners.router)
@@ -346,7 +353,7 @@ async def internal_mock_webhook_fail():
 
 
 
-# CORS
+# CORS (inner stack)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_resolve_cors_origins(),
