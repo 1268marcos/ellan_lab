@@ -1,0 +1,1 @@
+{"title": "Notification", "panels": [{"title": "Failure rate", "targets": [{"expr": "notification_delivery_fail_ratio"}]}], "schemaVersion": 38, "version": 1}

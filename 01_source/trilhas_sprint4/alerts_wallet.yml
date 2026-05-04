@@ -1,0 +1,9 @@
+groups:
+  - name: wallet
+    rules:
+      - alert: WalletDivergenceHigh
+        expr: wallet_reconciliation_divergence_ratio > 0.0001
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Wallet divergence above 0.01%"

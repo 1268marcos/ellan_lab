@@ -1,0 +1,9 @@
+services:
+  - name: wallet-service
+    mtls: optional
+  - name: notification-service
+    mtls: optional
+  - name: catalog-service
+    mtls: optional
+  - name: partner-service
+    mtls: optional

@@ -1,0 +1,9 @@
+groups:
+  - name: notification
+    rules:
+      - alert: NotificationFailureHigh
+        expr: notification_delivery_fail_ratio > 0.05
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Notification failures above 5%"

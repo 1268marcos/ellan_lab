@@ -51,3 +51,11 @@ def emit_payment_event(bootstrap_servers: str, event_type: str, payload: dict[st
 
 def emit_order_event(bootstrap_servers: str, event_type: str, payload: dict[str, Any]) -> bool:
     return _emit("order-stream", bootstrap_servers, event_type, payload)
+
+
+def emit_wallet_event(bootstrap_servers: str, event_type: str, payload: dict[str, Any]) -> bool:
+    return _emit("wallet-stream", bootstrap_servers, event_type, payload)
+
+
+def emit_notification_event(bootstrap_servers: str, event_type: str, payload: dict[str, Any]) -> bool:
+    return _emit("notification-stream", bootstrap_servers, event_type, payload)

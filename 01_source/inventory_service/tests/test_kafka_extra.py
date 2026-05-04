@@ -21,6 +21,14 @@ def test_emit_product_flush_fails(mock_kp):
 
 
 @patch("infra.kafka.producers.KafkaProducer")
+def test_emit_wallet_and_notification_streams(mock_kp):
+    p = MagicMock()
+    mock_kp.return_value = p
+    assert producers.emit_wallet_event("localhost:1", "wallet.credited", {"user_id": "u"}) is True
+    assert producers.emit_notification_event("localhost:1", "queued", {"id": "1"}) is True
+
+
+@patch("infra.kafka.producers.KafkaProducer")
 def test_emit_close_fails(mock_kp):
     p = MagicMock()
     p.send.return_value = None

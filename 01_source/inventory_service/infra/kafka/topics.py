@@ -1,3 +1,5 @@
 CATALOG_STREAM = "catalog-stream"
 PAYMENT_STREAM = "payment-stream"
 ORDER_STREAM = "order-stream"
+WALLET_STREAM = "wallet-stream"
+NOTIFICATION_STREAM = "notification-stream"
