@@ -28,6 +28,9 @@ const groups: Group[] = [
       { to: '/partners/catalog', label: 'Catálogo' },
       { to: '/partners/webhooks', label: 'Webhooks' },
       { to: '/intelligence/compatibility', label: 'Compatibilidade' },
+      { to: '/intelligence/predictive-health', label: 'Saúde preditiva' },
+      { to: '/intelligence/occupancy-forecast', label: 'Previsão de ocupação' },
+      { to: '/intelligence/feedback-insights', label: 'Insights de feedback' },
     ],
   },
   {
@@ -61,7 +64,14 @@ export default function Menu() {
       if (profile === 'admin') return g
       if (profile === 'partner') {
         if (g.key === 'ops') return { ...g, items: [] }
-        if (g.key === 'intelligence') return { ...g, items: g.items.filter((i) => i.to.startsWith('/partners')) }
+        if (g.key === 'intelligence') {
+          return {
+            ...g,
+            items: g.items.filter(
+              (i) => i.to.startsWith('/partners') || i.to.startsWith('/intelligence/'),
+            ),
+          }
+        }
         if (g.key === 'fiscal') return { ...g, items: g.items.filter((i) => i.to.startsWith('/finance')) }
       }
       if (profile === 'ops') {
@@ -130,4 +140,3 @@ export default function Menu() {
     </aside>
   )
 }
-

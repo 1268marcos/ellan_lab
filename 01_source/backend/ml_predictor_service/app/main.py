@@ -99,14 +99,15 @@ app.add_middleware(
 )
 
 
-@app.get("/intelligence/dashboard")
-async def intelligence_dashboard_http():
-    return {"at_risk": [], "series": []}
+# STUBS ao serem REMOVIDOS liberam O ROUTER OFICIAL
+# @app.get("/intelligence/dashboard")
+# async def intelligence_dashboard_http():
+#     return {"at_risk": [], "series": []}
 
 
-@app.get("/intelligence/models")
-async def intelligence_models_http():
-    return {"models": []}
+# @app.get("/intelligence/models")
+# async def intelligence_models_http():
+#     return {"models": []}
 
 
 app.include_router(ml_router)

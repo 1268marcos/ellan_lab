@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import PrivateRoute from '../PrivateRoute'
 import Dashboard from '../pages/Dashboard'
 import Login from '../pages/Login'
@@ -13,6 +13,9 @@ import SLOReport from '../pages/analytics/SLOReport'
 import Lockers from '../pages/ops/Lockers'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
+import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
+import OccupancyForecast from '../pages/intelligence/OccupancyForecast'
+import FeedbackInsights from '../pages/intelligence/FeedbackInsights'
 import Reconcile from '../pages/fiscal/Reconcile'
 import Profile from '../pages/settings/Profile'
 import NotFound from '../pages/NotFound'
@@ -32,6 +35,10 @@ function Protected({ children }: { children: JSX.Element }) {
       {children}
     </PrivateRoute>
   )
+}
+
+function IntelligenceOutlet() {
+  return <Outlet />
 }
 
 export default function AppRouter() {
@@ -93,7 +100,21 @@ export default function AppRouter() {
 
       <Route path="/ops/lockers" element={<Protected><Lockers /></Protected>} />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />
-      <Route path="/intelligence/compatibility" element={<Protected><Compatibility /></Protected>} />
+
+      <Route
+        path="/intelligence/*"
+        element={
+          <Protected>
+            <IntelligenceOutlet />
+          </Protected>
+        }
+      >
+        <Route path="compatibility" element={<Compatibility />} />
+        <Route path="predictive-health" element={<PredictiveHealth />} />
+        <Route path="occupancy-forecast" element={<OccupancyForecast />} />
+        <Route path="feedback-insights" element={<FeedbackInsights />} />
+      </Route>
+
       <Route path="/fiscal/reconcile" element={<Protected><Reconcile /></Protected>} />
       <Route path="/finance/reconcile" element={<Protected><Reconcile /></Protected>} />
       <Route path="/settings/profile" element={<Protected><Profile /></Protected>} />

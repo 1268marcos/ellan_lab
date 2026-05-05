@@ -3,10 +3,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app import db
+from app.middleware.partner_scope import PartnerLockerScope, get_partner_lockers, scope_sql_predicate
 from app.model_inference.predict import predict_failure
 from app.model_training.train_rf import run_sklearn_training
 
@@ -30,7 +31,8 @@ class MlTrainOut(BaseModel):
 
 
 @router.get("/predict/{locker_id}", response_model=MlPredictOut)
-def ml_predict(locker_id: str) -> MlPredictOut:
+def ml_predict(locker_id: str, scope: PartnerLockerScope = Depends(get_partner_lockers)) -> MlPredictOut:
+    scope.raise_if_locker_forbidden(locker_id)
     row = db.fetch_one(
         """
         SELECT id FROM lockers
@@ -56,9 +58,10 @@ def ml_predict(locker_id: str) -> MlPredictOut:
 
 
 @router.get("/dashboard")
-def ml_dashboard() -> dict:
+def ml_dashboard(scope: PartnerLockerScope = Depends(get_partner_lockers)) -> dict:
+    j_sc, j_prm = scope_sql_predicate(scope.locker_ids, "lp.locker_id")
     at_risk = db.fetch_all(
-        """
+        f"""
         WITH lf AS (
             SELECT DISTINCT ON (locker_id)
                 locker_id, feature_date, battery_min, door_failures_7d
@@ -79,34 +82,39 @@ def ml_dashboard() -> dict:
                lp.failure_probability
         FROM lf
         INNER JOIN lp ON lp.locker_id = lf.locker_id
-        WHERE lp.health_score < 30 AND lf.battery_min <= 20
+        WHERE lp.health_score < 30 AND lf.battery_min <= 20{j_sc}
         ORDER BY lp.health_score ASC
         LIMIT 200
-        """
+        """,
+        tuple(j_prm),
     )
+    s_sc, s_prm = scope_sql_predicate(scope.locker_ids, "locker_id")
     series = db.fetch_all(
-        """
+        f"""
         SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
                AVG(health_score)::float AS avg_health_score
         FROM ml_predictions_log
-        WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'
+        WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC') - INTERVAL '7 days'{s_sc}
         GROUP BY 1
         ORDER BY 1
-        """
+        """,
+        tuple(s_prm),
     )
+    u_sc, u_prm = scope_sql_predicate(scope.locker_ids, "locker_id")
     top_doors = db.fetch_all(
-        """
+        f"""
         SELECT locker_id, door_failures_7d
         FROM (
             SELECT DISTINCT ON (locker_id)
                 locker_id, door_failures_7d, feature_date
             FROM ml_features_daily
-            WHERE door_failures_7d IS NOT NULL
+            WHERE door_failures_7d IS NOT NULL{u_sc}
             ORDER BY locker_id, feature_date DESC
         ) u
         ORDER BY door_failures_7d DESC NULLS LAST
         LIMIT 10
-        """
+        """,
+        tuple(u_prm),
     )
     return {
         "at_risk_lockers": at_risk,

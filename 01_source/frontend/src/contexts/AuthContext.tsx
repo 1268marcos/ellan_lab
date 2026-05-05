@@ -24,6 +24,7 @@ const PROFILE_ROUTES: Record<UserProfile, string[]> = {
   partner: [
     '/dashboard/partner',
     '/partners',
+    '/intelligence',
     '/finance/wallet',
     '/finance/transactions',
     '/finance/billing/cycles',

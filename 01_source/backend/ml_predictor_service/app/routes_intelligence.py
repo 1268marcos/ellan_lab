@@ -4,10 +4,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.encoders import jsonable_encoder
 
 from app import db
+from app.middleware.partner_scope import PartnerLockerScope, get_partner_lockers, scope_sql_predicate
 from app.routers.ml_intelligence import intelligence_dashboard_mock
 
 logger = logging.getLogger(__name__)
@@ -20,42 +21,61 @@ _LF = """SELECT DISTINCT ON (locker_id) locker_id, battery_min_70d, door_failure
 FROM ml_features_daily WHERE battery_min_70d IS NOT NULL ORDER BY locker_id, feature_date DESC"""
 
 
+def _history_params(scope: PartnerLockerScope, days: int, lid: str | None) -> tuple[Any, ...]:
+    prm: list[Any] = [days]
+    if lid:
+        prm.append(lid)
+    if scope.locker_ids is not None:
+        prm.append(scope.locker_ids)
+    return tuple(prm)
+
+
 @router.get("/dashboard") # Caminho completo: /intelligence/dashboard
-def intelligence_dashboard() -> dict[str, Any]:
+def intelligence_dashboard(scope: PartnerLockerScope = Depends(get_partner_lockers)) -> dict[str, Any]:
     try:
+        d_sc, d_prm = scope_sql_predicate(scope.locker_ids, "lp.locker_id")
         at_risk = db.fetch_all(
             f"""
             WITH lf AS ({_LF}), lp AS ({_LP})
             SELECT lf.locker_id, lp.health_score, lf.battery_min_70d AS battery_min, lf.door_failures_70d, lp.failure_probability
             FROM lf INNER JOIN lp ON lp.locker_id = lf.locker_id
-            WHERE COALESCE(lp.health_score, 0) < 30 AND COALESCE(lf.battery_min_70d, 100) <= 20
+            WHERE COALESCE(lp.health_score, 0) < 30 AND COALESCE(lf.battery_min_70d, 100) <= 20{d_sc}
             ORDER BY lp.health_score ASC LIMIT 200
-            """
+            """,
+            tuple(d_prm),
         )
+        s_sc, s_prm = scope_sql_predicate(scope.locker_ids, "locker_id")
         s7 = db.fetch_all(
-            """
+            f"""
             SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
                    AVG(COALESCE(health_score, 0))::float AS avg_health_score
             FROM ml_predictions_log
-            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '7 days')
+            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '7 days'){s_sc}
             GROUP BY 1 ORDER BY 1
-            """
+            """,
+            tuple(s_prm),
         )
         s30 = db.fetch_all(
-            """
+            f"""
             SELECT (date_trunc('day', predicted_at AT TIME ZONE 'UTC'))::date AS d,
                    AVG(COALESCE(health_score, 0))::float AS avg_health_score
             FROM ml_predictions_log
-            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days')
+            WHERE predicted_at >= (NOW() AT TIME ZONE 'UTC' - INTERVAL '30 days'){s_sc}
             GROUP BY 1 ORDER BY 1
-            """
+            """,
+            tuple(s_prm),
         )
         meta = db.fetch_one(
             "SELECT model_version, trained_at, metrics_json, status FROM ml_model_metadata WHERE status = 'ACTIVE' ORDER BY trained_at DESC LIMIT 1"
         )
-        last_p = db.fetch_one("SELECT MAX(predicted_at) AS t FROM ml_predictions_log")
+        lp_sc, lp_prm = scope_sql_predicate(scope.locker_ids, "locker_id")
+        last_p = db.fetch_one(
+            f"SELECT MAX(predicted_at) AS t FROM ml_predictions_log WHERE 1=1{lp_sc}",
+            tuple(lp_prm),
+        )
         top5 = db.fetch_all(
-            f"WITH lp AS ({_LP}) SELECT * FROM lp ORDER BY health_score ASC NULLS LAST LIMIT 5"
+            f"WITH lp AS ({_LP}) SELECT * FROM lp WHERE 1=1{lp_sc} ORDER BY health_score ASC NULLS LAST LIMIT 5",
+            tuple(lp_prm),
         )
         acc = None
         if meta and isinstance(meta.get("metrics_json"), dict):
@@ -96,6 +116,7 @@ def intelligence_models() -> dict[str, Any]:
 
 @router.get("/at-risk")
 def intelligence_at_risk(
+    scope: PartnerLockerScope = Depends(get_partner_lockers),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     health_max: float = Query(30),
@@ -111,6 +132,9 @@ def intelligence_at_risk(
     if operator_id:
         wh.append("COALESCE(l.operator_id, '') = %s")
         prm.append(operator_id)
+    if scope.locker_ids is not None:
+        wh.append("lp.locker_id = ANY(%s)")
+        prm.append(scope.locker_ids)
     wsql = " AND ".join(wh)
     q = f"""
         WITH lf AS ({_LF}), lp AS ({_LP})
@@ -131,10 +155,15 @@ def intelligence_at_risk(
 
 
 @router.get("/history")
-def intelligence_history(days: int = Query(30, ge=1, le=120), locker_id: str | None = None) -> dict[str, Any]:
+def intelligence_history(
+    scope: PartnerLockerScope = Depends(get_partner_lockers),
+    days: int = Query(30, ge=1, le=120),
+    locker_id: str | None = None,
+) -> dict[str, Any]:
     lid = (locker_id or "").strip() or None
     win = "p.predicted_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day'))"
     lid_clause = " AND p.locker_id = %s" if lid else ""
+    sc_clause, _ = scope_sql_predicate(scope.locker_ids, "p.locker_id")
     stacked = db.fetch_all(
         f"""
         SELECT (date_trunc('day', p.predicted_at AT TIME ZONE 'UTC'))::date AS d,
@@ -149,45 +178,49 @@ def intelligence_history(days: int = Query(30, ge=1, le=120), locker_id: str | N
         FROM ml_predictions_log p
         LEFT JOIN ml_features_daily f ON f.locker_id = p.locker_id
           AND f.feature_date = (p.predicted_at AT TIME ZONE 'UTC')::date
-        WHERE {win}{lid_clause}
+        WHERE {win}{lid_clause}{sc_clause}
         GROUP BY 1 ORDER BY 1
         """,
-        (days, lid) if lid else (days,),
+        _history_params(scope, days, lid),
     )
     tbl = db.fetch_all(
         f"""
         SELECT p.locker_id, p.predicted_at, p.failure_probability, p.health_score, p.model_version
         FROM ml_predictions_log p
-        WHERE {win}{lid_clause}
+        WHERE {win}{lid_clause}{sc_clause}
         ORDER BY p.predicted_at DESC LIMIT 500
         """,
-        (days, lid) if lid else (days,),
+        _history_params(scope, days, lid),
     )
     return {"stacked_daily": stacked, "predictions": tbl, "days": days}
 
 
 @router.get("/pickup-fraud-hotspots")
-def intelligence_pickup_fraud_hotspots(days: int = Query(30, ge=7, le=365)) -> dict[str, Any]:
+def intelligence_pickup_fraud_hotspots(
+    scope: PartnerLockerScope = Depends(get_partner_lockers),
+    days: int = Query(30, ge=7, le=365),
+) -> dict[str, Any]:
     """Lockers com maior concentração de pickups marcados como fraude (fraud_flag)."""
+    sc, pr = scope_sql_predicate(scope.locker_ids, "p.locker_id")
     rows = db.fetch_all(
-        """
+        f"""
         SELECT p.locker_id, COUNT(*)::int AS fraud_pickups
         FROM pickups p
         WHERE p.fraud_flag = true
           AND p.locker_id IS NOT NULL
-          AND p.updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day'))
+          AND p.updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day')){sc}
         GROUP BY p.locker_id
         ORDER BY fraud_pickups DESC
         LIMIT 80
         """,
-        (days,),
+        (days, *pr),
     )
     total = db.fetch_one(
-        """
-        SELECT COUNT(*)::int AS c FROM pickups
-        WHERE fraud_flag = true AND updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day'))
+        f"""
+        SELECT COUNT(*)::int AS c FROM pickups p
+        WHERE p.fraud_flag = true AND p.updated_at >= (NOW() AT TIME ZONE 'UTC' - (%s * INTERVAL '1 day')){sc}
         """,
-        (days,),
+        (days, *pr),
     )
     return {
         "days": days,
@@ -254,10 +287,16 @@ def intelligence_ltv_scores(
 
 
 @router.get("/pickup-fraud-check/{pickup_id}")
-def intelligence_pickup_fraud_score_readonly(pickup_id: str) -> dict[str, Any]:
+def intelligence_pickup_fraud_score_readonly(
+    pickup_id: str,
+    scope: PartnerLockerScope = Depends(get_partner_lockers),
+) -> dict[str, Any]:
     """Score sem bloquear (útil para painel OPS)."""
     from app.ml_fraud.score_pickup import score_pickup_realtime
 
+    pl = db.fetch_one("SELECT locker_id::text AS locker_id FROM pickups WHERE id::text = %s LIMIT 1", (pickup_id.strip(),))
+    if pl:
+        scope.raise_if_locker_forbidden(pl.get("locker_id"))
     try:
         return score_pickup_realtime(pickup_id.strip())
     except FileNotFoundError as exc:
