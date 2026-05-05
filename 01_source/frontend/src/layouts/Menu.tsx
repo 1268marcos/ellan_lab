@@ -37,6 +37,10 @@ const groups: Group[] = [
     items: [
       { to: '/finance/wallet', label: 'Wallet' },
       { to: '/finance/transactions', label: 'Transações' },
+      { to: '/finance/billing/cycles', label: 'Ciclos' },
+      { to: '/finance/invoices', label: 'Notas B2B' },
+      { to: '/finance/credit-notes', label: 'Créditos' },
+      { to: '/finance/disputes', label: 'Disputas' },
       { to: '/fiscal/reconcile', label: 'Reconciliação' },
     ],
   },

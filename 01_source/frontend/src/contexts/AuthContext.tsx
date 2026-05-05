@@ -21,7 +21,17 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const PROFILE_ROUTES: Record<UserProfile, string[]> = {
   admin: ['/dashboard', '/partners', '/finance', '/ops', '/analytics', '/settings', '/fiscal', '/intelligence'],
-  partner: ['/dashboard/partner', '/partners', '/finance/wallet', '/finance/transactions', '/settings/profile'],
+  partner: [
+    '/dashboard/partner',
+    '/partners',
+    '/finance/wallet',
+    '/finance/transactions',
+    '/finance/billing/cycles',
+    '/finance/invoices',
+    '/finance/credit-notes',
+    '/finance/disputes',
+    '/settings/profile',
+  ],
   ops: ['/dashboard/ops', '/ops', '/analytics', '/settings/profile'],
 }
 

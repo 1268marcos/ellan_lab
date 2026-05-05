@@ -4,6 +4,11 @@ import react from '@vitejs/plugin-react'
 /** Docker compose expõe partner_service em :8402; uvicorn local costuma usar :8002. */
 const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localhost:8402'
 
+/** billing_fiscal_service / stub de integração: MOCK_BILLING=true → 127.0.0.1:8020 por padrão. */
+const billingServiceProxy =
+  process.env.BILLING_SERVICE_PROXY ??
+  (process.env.MOCK_BILLING === 'true' ? 'http://127.0.0.1:8020' : 'http://localhost:8020')
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -34,6 +39,11 @@ export default defineConfig({
         target: partnerServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/auth/, ''),
+      },
+      '/api/billing-svc': {
+        target: billingServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/billing-svc/, ''),
       },
       '/api': partnerServiceProxy,
     },

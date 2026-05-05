@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import PrivateRoute from '../PrivateRoute'
 import Dashboard from '../pages/Dashboard'
@@ -15,6 +16,15 @@ import Compatibility from '../pages/intelligence/Compatibility'
 import Reconcile from '../pages/fiscal/Reconcile'
 import Profile from '../pages/settings/Profile'
 import NotFound from '../pages/NotFound'
+
+const BillingCycles = lazy(() => import('../pages/finance/BillingCycles'))
+const PartnerInvoices = lazy(() => import('../pages/finance/PartnerInvoices'))
+const CreditNotes = lazy(() => import('../pages/finance/CreditNotes'))
+const Disputes = lazy(() => import('../pages/finance/Disputes'))
+
+const financeLazyFallback = (
+  <div className="p-6 text-center text-sm text-slate-400">Carregando...</div>
+)
 
 function Protected({ children }: { children: JSX.Element }) {
   return (
@@ -38,6 +48,46 @@ export default function AppRouter() {
       <Route path="/partners/webhooks" element={<Protected><Webhooks /></Protected>} />
       <Route path="/finance/wallet" element={<Protected><Wallet /></Protected>} />
       <Route path="/finance/transactions" element={<Protected><Transactions /></Protected>} />
+      <Route
+        path="/finance/billing/cycles"
+        element={
+          <Protected>
+            <Suspense fallback={financeLazyFallback}>
+              <BillingCycles />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finance/invoices"
+        element={
+          <Protected>
+            <Suspense fallback={financeLazyFallback}>
+              <PartnerInvoices />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finance/credit-notes"
+        element={
+          <Protected>
+            <Suspense fallback={financeLazyFallback}>
+              <CreditNotes />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/finance/disputes"
+        element={
+          <Protected>
+            <Suspense fallback={financeLazyFallback}>
+              <Disputes />
+            </Suspense>
+          </Protected>
+        }
+      />
       <Route path="/analytics/dashboard" element={<Protected><DashboardMetrics /></Protected>} />
       <Route path="/analytics/slo-report" element={<Protected><SLOReport /></Protected>} />
 
@@ -52,4 +102,3 @@ export default function AppRouter() {
     </Routes>
   )
 }
-
