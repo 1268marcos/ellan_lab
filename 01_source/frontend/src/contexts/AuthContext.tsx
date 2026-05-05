@@ -26,6 +26,8 @@ const PROFILE_ROUTES: Record<UserProfile, string[]> = {
     '/partners',
     '/intelligence',
     '/lifecycle',
+    '/runtime',
+    '/runtime/*',
     '/finance/wallet',
     '/finance/transactions',
     '/finance/billing/cycles',
@@ -58,7 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       canAccess: (path: string) => {
         if (!auth?.profile) return false
         const routes = PROFILE_ROUTES[auth.profile]
-        return routes.some((p) => path === p || path.startsWith(`${p}/`))
+        return routes.some((p) => {
+          if (p.endsWith('/*')) {
+            const base = p.slice(0, -2)
+            return path === base || path.startsWith(`${base}/`)
+          }
+          return path === p || path.startsWith(`${p}/`)
+        })
       },
     }),
     [auth],

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { Link, NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
 
 type Group = {
@@ -44,6 +44,15 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'runtime',
+    icon: '⚙️',
+    label: 'Runtime / Operacional',
+    items: [
+      { to: '/runtime/slots', label: 'Slots e ocupação' },
+      { to: '/runtime/allocations', label: 'Alocações' },
+    ],
+  },
+  {
     key: 'fiscal',
     icon: '💼',
     label: 'Fiscal',
@@ -61,16 +70,18 @@ const groups: Group[] = [
 
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
-    ops: true,
-    lifecycle: true,
-    intelligence: true,
-    fiscal: true,
+    ops: false,
+    lifecycle: false,
+    intelligence: false,
+    runtime: false,
+    fiscal: false,
   })
-  const { auth, logout } = useAuth()
+  const { auth, logout, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const profile = auth?.profile ?? 'partner'
 
   const filteredGroups = groups
+    .filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
     .map((g) => {
       if (profile === 'admin') return g
       if (profile === 'partner') {
@@ -84,6 +95,7 @@ export default function Menu() {
             ),
           }
         }
+        if (g.key === 'runtime') return g
         if (g.key === 'fiscal') return { ...g, items: g.items.filter((i) => i.to.startsWith('/finance')) }
       }
       if (profile === 'ops') {
@@ -98,21 +110,32 @@ export default function Menu() {
 
   return (
     <aside className="w-72 shrink-0 border-r border-gray-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <div className="mb-4 flex items-center justify-between rounded-lg bg-indigo-50 px-3 py-2 dark:bg-slate-800">
+      <div className="mb-4 flex items-center justify-between gap-2 rounded-lg bg-indigo-50 px-3 py-2 dark:bg-slate-800">
         <div>
           <p className="text-xs font-bold tracking-wide text-indigo-600 dark:text-indigo-300">ELLAN LAB</p>
-          <p className="text-[11px] text-gray-500 dark:text-slate-400">{auth?.partnerName || 'Parceiro'}</p>
+          <p className="text-[11px] text-gray-500 dark:text-slate-400">
+            {isAuthenticated ? auth?.partnerName || 'Parceiro' : 'Visitante'}
+          </p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            logout()
-            navigate('/login', { replace: true })
-          }}
-          className="rounded bg-red-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-600"
-        >
-          Sair
-        </button>
+        {isAuthenticated ? (
+          <button
+            type="button"
+            onClick={() => {
+              logout()
+              navigate('/login', { replace: true })
+            }}
+            className="rounded bg-red-500 px-2 py-1 text-[11px] font-medium text-white hover:bg-red-600"
+          >
+            Sair
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            className="shrink-0 rounded bg-indigo-600 px-2 py-1 text-[11px] font-medium text-white hover:bg-indigo-500"
+          >
+            Entrar
+          </Link>
+        )}
       </div>
 
       {filteredGroups.map((group) => (

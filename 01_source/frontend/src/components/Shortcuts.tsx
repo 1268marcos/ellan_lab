@@ -11,9 +11,10 @@ const hints = [
 
 export default function Shortcuts() {
   const navigate = useNavigate()
-  const { logout } = useAuth()
+  const { logout, isAuthenticated } = useAuth()
 
   useEffect(() => {
+    if (!isAuthenticated) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'F1') {
         e.preventDefault()
@@ -32,7 +33,11 @@ export default function Shortcuts() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [logout, navigate])
+  }, [isAuthenticated, logout, navigate])
+
+  if (!isAuthenticated) {
+    return null
+  }
 
   return (
     <div className="fixed bottom-4 right-4 z-50 hidden gap-2 md:flex">

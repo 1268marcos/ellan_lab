@@ -58,6 +58,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/order-lifecycle/, ''),
       },
+      '/api/runtime': {
+        target: partnerServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/runtime/, '/api'),
+      },
       '/api': partnerServiceProxy,
     },
   },

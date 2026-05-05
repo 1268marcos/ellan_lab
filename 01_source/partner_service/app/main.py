@@ -15,7 +15,7 @@ from starlette.responses import JSONResponse, Response
 from app.core.config import get_settings
 from app.core.database import init_db
 from app.core.health import health_payload
-from app.routers import auth, compatibility, lockers, partners, webhooks
+from app.routers import auth, compatibility, inventory, lockers, partners, webhooks
 from app.services.rate_limiter import sync_check_and_increment
 
 logger = logging.getLogger(__name__)
@@ -99,12 +99,14 @@ def _maybe_mtls(app_: FastAPI) -> None:
 
 
 _maybe_mtls(app)
+inventory.install_inventory_middleware(app)
 app.add_middleware(RateLimitMiddleware)
 app.include_router(partners.router, prefix="/api/v1")
 app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(lockers.router, prefix="/api/v1")
 app.include_router(compatibility.router, prefix="/api/v1")
 app.include_router(auth.router)
+app.include_router(inventory.router)
 
 
 @app.get("/api/v1/health")

@@ -19,6 +19,9 @@ import FeedbackInsights from '../pages/intelligence/FeedbackInsights'
 import Reconcile from '../pages/fiscal/Reconcile'
 import Profile from '../pages/settings/Profile'
 import NotFound from '../pages/NotFound'
+import PrivacyPolicy from '../pages/legal/PrivacyPolicy'
+import TermsOfUse from '../pages/legal/TermsOfUse'
+import SupportCenter from '../pages/support/SupportCenter'
 
 const BillingCycles = lazy(() => import('../pages/finance/BillingCycles'))
 const PartnerInvoices = lazy(() => import('../pages/finance/PartnerInvoices'))
@@ -27,6 +30,8 @@ const Disputes = lazy(() => import('../pages/finance/Disputes'))
 const LifecycleMetrics = lazy(() => import('../pages/lifecycle/Metrics'))
 const LifecycleRanking = lazy(() => import('../pages/lifecycle/Ranking'))
 const LifecycleHealth = lazy(() => import('../pages/lifecycle/Health'))
+const RuntimeDashboard = lazy(() => import('../pages/runtime/Dashboard'))
+const RuntimeAllocations = lazy(() => import('../pages/runtime/Allocations'))
 
 const financeLazyFallback = (
   <div className="p-6 text-center text-sm text-slate-400">Carregando...</div>
@@ -34,6 +39,10 @@ const financeLazyFallback = (
 
 const lifecycleLazyFallback = (
   <div className="p-6 text-center text-sm text-slate-400">Carregando ciclo de vida...</div>
+)
+
+const runtimeLazyFallback = (
+  <div className="p-6 text-center text-sm text-slate-400">Carregando runtime…</div>
 )
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -52,6 +61,9 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+      <Route path="/legal/terms" element={<TermsOfUse />} />
+      <Route path="/support" element={<SupportCenter />} />
       <Route path="/login" element={<Login />} />
 
       <Route path="/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
@@ -131,6 +143,27 @@ export default function AppRouter() {
           <Protected>
             <Suspense fallback={lifecycleLazyFallback}>
               <LifecycleHealth />
+            </Suspense>
+          </Protected>
+        }
+      />
+
+      <Route
+        path="/runtime/slots"
+        element={
+          <Protected>
+            <Suspense fallback={runtimeLazyFallback}>
+              <RuntimeDashboard />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/runtime/allocations"
+        element={
+          <Protected>
+            <Suspense fallback={runtimeLazyFallback}>
+              <RuntimeAllocations />
             </Suspense>
           </Protected>
         }

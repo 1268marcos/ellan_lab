@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     shadow_mode_enabled: bool = Field(default=False, alias="SHADOW_MODE_ENABLED")
     shadow_legacy_base_url: str = Field(default="", alias="SHADOW_LEGACY_BASE_URL")
     rate_limit_per_minute: int = Field(default=100, alias="RATE_LIMIT_PER_MINUTE")
+    inventory_database_url: str | None = Field(default=None, alias="INVENTORY_DATABASE_URL")
 
 
 @lru_cache
