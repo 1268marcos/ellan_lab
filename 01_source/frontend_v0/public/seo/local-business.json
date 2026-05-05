@@ -1,0 +1,10 @@
+
+{
+  "@context": "https://schema.org",
+  "@type": "LocalBusiness",
+  "name": "ELLAN Lab Locker",
+  "description": "Sistema de lockers para retirada de produtos",
+  "areaServed": ["BR", "PT"],
+  "availableLanguage": ["pt-BR", "pt-PT"]
+}
+

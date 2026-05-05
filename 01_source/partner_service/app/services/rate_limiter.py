@@ -15,8 +15,12 @@ def sync_check_and_increment(redis: Any, *, partner_id: str, limit_per_minute: i
     now = int(time.time())
     window = now // 60
     key = _window_key(partner_id, window)
-    count = int(redis.incr(key))
-    if count == 1:
-        redis.expire(key, 120)
+    try:
+        count = int(redis.incr(key))
+        if count == 1:
+            redis.expire(key, 120)
+    except Exception:
+        # Fail-open when Redis is unavailable (common in local dev).
+        return True, 0
     allowed = count <= limit_per_minute
     return allowed, count

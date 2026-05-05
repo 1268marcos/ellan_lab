@@ -1,0 +1,525 @@
+
+/**
+ * OPS — KIOSK touch models (`/ops/kiosk-touch-models`).
+ * Sprint 1: trilha **F2** (ficheiro dedicado) + trilha **D** (refino visual, mobile, focus-visible).
+ * Escopo: classes `ops-kiosk-touch-chrome__*` apenas nesta rota.
+ */
+
+.ops-kiosk-touch-chrome__page {
+  padding: var(--spacing-5) var(--spacing-5) var(--spacing-9);
+  max-width: 1100px;
+  margin: 0 auto;
+  color: var(--color-text);
+  background: #f8fafc;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__intro {
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: #334155;
+  margin-top: 0;
+  margin-bottom: var(--spacing-4);
+}
+
+.ops-kiosk-touch-chrome__definitions-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-4);
+  padding: var(--spacing-3) 14px;
+  border-radius: var(--radius-lg);
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.ops-kiosk-touch-chrome__reload-btn {
+  padding: 10px var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #64748b;
+  background: #f1f5f9;
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  min-height: 44px;
+  font-family: inherit;
+}
+
+.ops-kiosk-touch-chrome__reload-btn:hover {
+  background: #e2e8f0;
+}
+
+.ops-kiosk-touch-chrome__reload-btn:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.ops-kiosk-touch-chrome__toolbar-hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+  flex: 1 1 200px;
+}
+
+.ops-kiosk-touch-chrome__toolbar-code {
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: #e2e8f0;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__model-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--spacing-3);
+  margin-bottom: var(--spacing-5);
+}
+
+.ops-kiosk-touch-chrome__model-card {
+  min-height: 96px;
+  padding: 14px var(--spacing-4);
+  border-radius: 14px;
+  border: 1px solid #cbd5e1;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  font: inherit;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  transition:
+    border-color var(--transition-base),
+    background var(--transition-base),
+    box-shadow var(--transition-base);
+}
+
+.ops-kiosk-touch-chrome__model-card:hover {
+  border-color: #94a3b8;
+}
+
+.ops-kiosk-touch-chrome__model-card--active {
+  border-color: #0284c7;
+  background: #e0f2fe;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.25);
+}
+
+.ops-kiosk-touch-chrome__model-card:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.ops-kiosk-touch-chrome__model-card--active:focus-visible {
+  outline-color: #0369a1;
+}
+
+.ops-kiosk-touch-chrome__model-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 6px;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__model-card-sub {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #475569;
+}
+
+.ops-kiosk-touch-chrome__detail {
+  padding: var(--spacing-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.ops-kiosk-touch-chrome__detail h2 {
+  margin-top: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__detail-list {
+  margin: 0 0 var(--spacing-4);
+  padding-left: 20px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #334155;
+}
+
+.ops-kiosk-touch-chrome__detail-list li {
+  margin-bottom: 6px;
+}
+
+.ops-kiosk-touch-chrome__cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.ops-kiosk-touch-chrome__link-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-lg);
+  background: #1d4ed8;
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__link-primary:hover {
+  background: #1e40af;
+}
+
+.ops-kiosk-touch-chrome__link-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px 18px;
+  border-radius: var(--radius-lg);
+  background: #f1f5f9;
+  border: 1px solid #94a3b8;
+  color: var(--color-text);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__link-secondary:hover {
+  background: #e2e8f0;
+}
+
+.ops-kiosk-touch-chrome__link-primary:focus-visible,
+.ops-kiosk-touch-chrome__link-secondary:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.ops-kiosk-touch-chrome__footer-note {
+  margin-top: var(--spacing-5);
+  font-size: 12px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.ops-kiosk-touch-chrome__checklist {
+  margin-top: 22px;
+  padding: var(--spacing-4);
+  border-radius: var(--radius-xl);
+  border: 1px solid #6ee7b7;
+  background: #ecfdf5;
+  box-shadow: 0 1px 3px rgba(6, 78, 59, 0.08);
+}
+
+.ops-kiosk-touch-chrome__checklist h2 {
+  margin-top: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.ops-kiosk-touch-chrome__checklist-intro {
+  margin-top: 0;
+  margin-bottom: var(--spacing-2);
+  font-size: 13px;
+  line-height: 1.55;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__checklist-meter {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(20, 83, 45, 0.12);
+  overflow: hidden;
+  margin-bottom: var(--spacing-3);
+  border: 1px solid rgba(5, 150, 105, 0.35);
+}
+
+.ops-kiosk-touch-chrome__checklist-meter-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #059669, #34d399);
+  transition: width var(--transition-base, 0.2s ease);
+}
+
+.ops-kiosk-touch-chrome__checklist-ul {
+  margin: 0 0 14px;
+  padding-left: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.ops-kiosk-touch-chrome__checklist-li {
+  margin: 0;
+}
+
+.ops-kiosk-touch-chrome__check-label {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13px;
+  line-height: 1.45;
+  cursor: pointer;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__check-input {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.ops-kiosk-touch-chrome__export-btn {
+  padding: 10px var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #047857;
+  background: #059669;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+}
+
+.ops-kiosk-touch-chrome__export-btn:hover {
+  background: #047857;
+}
+
+.ops-kiosk-touch-chrome__export-btn:focus-visible {
+  outline: 2px solid #065f46;
+  outline-offset: 2px;
+}
+
+/* --- Trilha D — sessão moderada n≥8 (export no mesmo JSON) --- */
+
+.ops-kiosk-touch-chrome__moderated {
+  margin-top: var(--spacing-5);
+  padding: var(--spacing-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid #bae6fd;
+  background: #f0f9ff;
+}
+
+.ops-kiosk-touch-chrome__moderated-intro {
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+  color: #334155;
+  margin-top: 0;
+  margin-bottom: var(--spacing-3);
+}
+
+.ops-kiosk-touch-chrome__session-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-bottom: var(--spacing-3);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid #7dd3fc;
+  background: linear-gradient(135deg, #fff, #f0f9ff);
+}
+
+.ops-kiosk-touch-chrome__session-strip-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #0c4a6e;
+}
+
+.ops-kiosk-touch-chrome__session-strip-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  flex: 1 1 220px;
+}
+
+.ops-kiosk-touch-chrome__chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid transparent;
+}
+
+.ops-kiosk-touch-chrome__chip--pass {
+  background: #dcfce7;
+  border-color: #86efac;
+  color: #14532d;
+}
+
+.ops-kiosk-touch-chrome__chip--fail {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #7f1d1d;
+}
+
+.ops-kiosk-touch-chrome__chip--skip {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: #334155;
+}
+
+.ops-kiosk-touch-chrome__chip--pending {
+  background: #fef9c3;
+  border-color: #fde047;
+  color: #713f12;
+}
+
+.ops-kiosk-touch-chrome__moderated-table {
+  display: grid;
+  gap: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: #fff;
+}
+
+.ops-kiosk-touch-chrome__moderated-head-row,
+.ops-kiosk-touch-chrome__moderated-data-row {
+  display: grid;
+  grid-template-columns: 48px minmax(120px, 1fr) minmax(140px, 2fr);
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+
+.ops-kiosk-touch-chrome__moderated-head-row {
+  background: #e2e8f0;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.ops-kiosk-touch-chrome__moderated-data-row:nth-child(even) {
+  background: #f8fafc;
+}
+
+.ops-kiosk-touch-chrome__moderated-cell-index {
+  font-weight: 700;
+  color: #475569;
+}
+
+.ops-kiosk-touch-chrome__moderated-select,
+.ops-kiosk-touch-chrome__moderated-note-input {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  padding: 8px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  min-height: 44px;
+}
+
+.ops-kiosk-touch-chrome__moderated-select:focus-visible,
+.ops-kiosk-touch-chrome__moderated-note-input:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+
+.ops-kiosk-touch-chrome__moderated-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .ops-kiosk-touch-chrome__moderated-head-row,
+  .ops-kiosk-touch-chrome__moderated-data-row {
+    grid-template-columns: 40px 1fr;
+    grid-template-rows: auto auto;
+  }
+
+  .ops-kiosk-touch-chrome__moderated-head-row span:nth-child(3),
+  .ops-kiosk-touch-chrome__moderated-data-row .ops-kiosk-touch-chrome__moderated-cell-note {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ops-kiosk-touch-chrome__model-card {
+    transition: none;
+  }
+
+  .ops-kiosk-touch-chrome__checklist-meter-fill {
+    transition: none;
+  }
+}
+
+/* --- Trilha D — protótipo: mobile + empilhamento de CTAs --- */
+
+@media (max-width: 640px) {
+  .ops-kiosk-touch-chrome__page {
+    padding: var(--spacing-4) var(--spacing-3) var(--spacing-6);
+    border-radius: var(--radius-lg);
+  }
+
+  .ops-kiosk-touch-chrome__model-grid {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-2);
+  }
+
+  .ops-kiosk-touch-chrome__detail {
+    padding: var(--spacing-3);
+  }
+
+  .ops-kiosk-touch-chrome__cta-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ops-kiosk-touch-chrome__link-primary,
+  .ops-kiosk-touch-chrome__link-secondary {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .ops-kiosk-touch-chrome__checklist {
+    margin-top: var(--spacing-4);
+    padding: var(--spacing-3);
+  }
+}
+
+@media (max-width: 480px) {
+  .ops-kiosk-touch-chrome__definitions-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ops-kiosk-touch-chrome__reload-btn {
+    width: 100%;
+  }
+
+  .ops-kiosk-touch-chrome__model-card {
+    min-height: 88px;
+    padding: var(--spacing-3);
+  }
+}
+

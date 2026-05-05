@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
 from app.services import partner_client
 from app.workers.consistency_checker import compare_schemas
@@ -30,12 +34,83 @@ class ShadowCompareOut(BaseModel):
     divergences: list[str]
 
 
+class PartnerLoginIn(BaseModel):
+    partner_id: str = Field(min_length=1, max_length=64)
+    api_key: str = Field(min_length=8, max_length=256)
+
+
+class PartnerLoginOut(BaseModel):
+    token: str
+    access_token: str
+    partner_name: str
+    profile: str
+    role: str
+
+
+def _infer_profile(partner_id: str) -> str:
+    pid = str(partner_id or "").lower()
+    if "admin" in pid:
+        return "admin"
+    if "ops" in pid:
+        return "ops"
+    return "partner"
+
+
 async def async_compare_partner_payloads(
     legacy: dict[str, Any],
     remote: dict[str, Any],
     keys: tuple[str, ...] = SHADOW_KEYS,
 ) -> list[str]:
     return await asyncio.to_thread(compare_schemas, legacy, remote, keys)
+
+
+@router.post("/partners/login", response_model=PartnerLoginOut)
+def partner_login(payload: PartnerLoginIn, db: Session = Depends(get_db)) -> PartnerLoginOut:
+    partner_id = str(payload.partner_id or "").strip()
+    api_key = str(payload.api_key or "").strip()
+    if not partner_id or not api_key:
+        raise HTTPException(status_code=422, detail="partner_id and api_key are required")
+
+    key_hash = hashlib.sha256(api_key.encode("utf-8")).hexdigest()
+    key_row = db.execute(
+        text(
+            """
+            SELECT id
+            FROM partner_api_keys
+            WHERE partner_id = :partner_id
+              AND key_hash = :key_hash
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id, "key_hash": key_hash},
+    ).mappings().first()
+    if not key_row:
+        raise HTTPException(status_code=401, detail="invalid partner_id/api_key")
+
+    partner_name_row = db.execute(
+        text(
+            """
+            SELECT name
+            FROM ecommerce_partners
+            WHERE id = :partner_id
+            LIMIT 1
+            """
+        ),
+        {"partner_id": partner_id},
+    ).mappings().first()
+    partner_name = str((partner_name_row or {}).get("name") or partner_id)
+
+    profile = _infer_profile(partner_id)
+    return PartnerLoginOut(
+        token=api_key,
+        access_token=api_key,
+        partner_name=partner_name,
+        profile=profile,
+        role=profile,
+    )
 
 
 @router.get("/partners/{partner_id}")

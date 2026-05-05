@@ -1,0 +1,41 @@
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+/** Docker compose expõe partner_service em :8402; uvicorn local costuma usar :8002. */
+const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localhost:8402'
+
+function redirectRootToV1() {
+  const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
+    if (req.url === '/' || req.url === '/index.html') {
+      res.statusCode = 302
+      res.setHeader('Location', '/v1/')
+      res.end()
+      return
+    }
+    next()
+  }
+
+  return {
+    name: 'redirect-root-to-v1',
+    configureServer(server: { middlewares: { use: (handler: typeof handle) => void } }) {
+      server.middlewares.use(handle)
+    },
+    configurePreviewServer(server: { middlewares: { use: (handler: typeof handle) => void } }) {
+      server.middlewares.use(handle)
+    },
+  }
+}
+
+export default defineConfig({
+  plugins: [redirectRootToV1(), react()],
+  server: {
+    proxy: {
+      '/auth': {
+        target: partnerServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/auth/, ''),
+      },
+      '/api': partnerServiceProxy,
+    },
+  },
+})

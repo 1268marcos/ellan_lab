@@ -1,0 +1,48 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "typecheck:strict-core": "tsc -p tsconfig.strict-core.json --noEmit",
+    "e2e:payment-ui": "playwright test",
+    "e2e:payment-ui:ui": "playwright test --ui",
+    "sprint3:p03-sim": "node ./scripts/runP03Sim.mjs"
+  },
+  "dependencies": {
+    "fflate": "^0.8.2",
+    "leaflet": "^1.9.4",
+    "lucide-react": "^0.468.0",
+    "qrcode.react": "^4.2.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.13.1",
+    "recharts": "^2.15.4",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.52.0",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "eslint": "^10.0.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "happy-dom": "^20.9.0",
+    "jsdom": "^29.0.2",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vitest": "^4.1.5"
+  }
+}

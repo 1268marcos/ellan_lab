@@ -351,6 +351,30 @@ services:
       - locker-network
 
   # =========================
+  # PARTNER SERVICE
+  # =========================
+  partner_service:
+    image: python:3.12-slim
+    container_name: partner_service
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -c "pip install --no-cache-dir -r requirements.txt &&
+             python -m uvicorn app.main:app --host 0.0.0.0 --port 8002"
+    ports:
+      - "8402:8002"
+    environment:
+      - TZ=UTC
+      - REDIS_URL=redis://redis_central:6379/0
+    volumes:
+      - ../01_source/partner_service:/app
+    depends_on:
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+
+  # =========================
   # ORDER LIFECYCLE SERVICE
   # =========================
   order_lifecycle_service:
@@ -649,26 +673,59 @@ services:
       - locker-network
 
   # =========================
-  # ORDER PICKUP NOTIFICATION DELIVERY WORKER
+  # NOTIFICATION SERVICE
   # =========================
-  notification_delivery_worker:
+  notification_service:
     build:
-      context: ../01_source/order_pickup_service
+      context: ../01_source/notification_service
       dockerfile: Dockerfile
-    container_name: notification_delivery_worker
-    command: ["python", "-m", "app.workers.notification_delivery_worker"]
+    container_name: notification_service
     restart: unless-stopped
-    env_file:
-      - ../01_source/order_pickup_service/.env
+    ports:
+      - "8011:8011"
     environment:
       - TZ=UTC
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
-      - RUN_DB_MIGRATIONS_ON_STARTUP=true
-      - FRONTEND_BASE_URL=http://localhost:5173
-    volumes:
-      - ../01_source/order_pickup_service/app:/app/app
+      - REDIS_URL=redis://redis_central:6379/2
+      - RATE_LIMIT_PER_HOUR=10
+      - MAX_RETRIES=3
     depends_on:
-      order_pickup_service:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8011/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================
+  # NOTIFICATION DELIVERY WORKER
+  # =========================
+  notification_delivery_worker:
+    build:
+      context: ../01_source/notification_service
+      dockerfile: Dockerfile
+    container_name: notification_delivery_worker
+    command: ["python", "-m", "app.workers.delivery_runner"]
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - REDIS_URL=redis://redis_central:6379/2
+      - NOTIFICATION_DELIVERY_POLL_SEC=1
+      - RATE_LIMIT_PER_HOUR=10
+      - MAX_RETRIES=3
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      redis_central:
+        condition: service_healthy
+      notification_service:
         condition: service_started
     networks:
       - locker-network

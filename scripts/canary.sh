@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PARTNER_URL="${PARTNER_URL:-http://localhost:8002}"
+PARTNER_URL="${PARTNER_URL:-http://localhost:8402}"
 OPS_URL="${OPS_URL:-http://localhost:8080}"
 PROM="${PROMETHEUS_URL:-http://localhost:9090}"
 SERVICE="${BASELINE_SERVICE:-order_pickup_service}"

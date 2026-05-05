@@ -1,52 +1,17 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- CSP: placeholder substituído em dev por vite.config (ellan-frontend-csp.mjs); removido no build; gateway/produção: mesmo valor em header (ver 02_docker/nginx). -->
-    <meta http-equiv="Content-Security-Policy" content="ELLAN_FRONTEND_CSP_PLACEHOLDER" />
-    <meta http-equiv="Referrer-Policy" content="strict-origin-when-cross-origin" />
-    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" />
-    <meta name="description" content="Compre online e retire em locker. ELLAN Lab Locker - Reserva de gavetas, pagamento seguro e retirada rápida em SP e Portugal." />
-    <meta name="keywords" content="locker, retirada, e-commerce, SP, Portugal, compra online" />
-    <meta name="author" content="ELLAN Lab" />
-    <meta name="robots" content="index, follow" />
-    
-    <!-- Open Graph / Social -->
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="ELLAN Lab Locker - Compre e Retire" />
-    <meta property="og:description" content="Reserva de gavetas com pagamento seguro. Retire quando quiser." />
-    <meta property="og:image" content="/og-image.jpg" />
-    <meta property="og:url" content="https://ellanlab.com" />
-    
-    <!-- Twitter Card -->
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="ELLAN Lab Locker" />
-    <meta name="twitter:description" content="Compre online, retire no locker" />
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    
-    <!-- Preconnect para performance -->
-    <link rel="preconnect" href="http://localhost:8003" />
-    <link rel="preconnect" href="http://localhost:8020" />
-    <link rel="preconnect" href="http://localhost:8201" />
-    
-    <!-- Schema.org LocalBusiness (ficheiro estático — compatível com script-src 'self' sem hash) -->
-    <script type="application/ld+json" src="/seo/local-business.json"></script>
-    
-    <title>ELLAN Lab Locker - Compre Online e Retire no Locker</title>
+    <title>ELLAN — PARTNER</title>
   </head>
   <body>
-    <div id="root">
-      <!-- Loading skeleton para melhor perceived performance -->
-      <div class="loading-skeleton" aria-label="Carregando aplicação">
-        <div class="skeleton-header"></div>
-        <div class="skeleton-content"></div>
-      </div>
-    </div>
-    <script type="module" src="/src/main.jsx"></script>
+    <div id="root"></div>
+    <script>
+      if (window.location.pathname === '/') {
+        window.location.replace('/v1/');
+      }
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
