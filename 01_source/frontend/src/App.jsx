@@ -118,6 +118,8 @@ const PickupFraudDashboardPage = lazy(() =>
 const FeedbackNlpDashboardPage = lazy(() =>
   import("./pages/intelligence/views").then((m) => ({ default: m.FeedbackNlpDashboardPage }))
 );
+const FinanceWalletPage = lazy(() => import("./pages/finance/WalletPage.jsx"));
+const FinanceReconcilePage = lazy(() => import("./pages/finance/ReconcilePage.jsx"));
 const OccupancyForecastIntelPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const RouteOptimizePage = lazy(() => import("./pages/RouteOptimizePage"));
 const PartnerSettlementPage = lazy(() => import("./pages/PartnerSettlementPage"));
@@ -2171,6 +2173,9 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+
+            <Route path="/finance/wallet" element={withBoundary("finance", <FinanceWalletPage />)} />
+            <Route path="/finance/reconcile" element={withBoundary("finance", <FinanceReconcilePage />)} />
 
             {/* Rota 404 - Página não encontrada */}
             <Route path="*" element={<RecoverFiscalRoute />} />

@@ -16,6 +16,7 @@
     "sprint3:p03-sim": "node ./scripts/runP03Sim.mjs"
   },
   "dependencies": {
+    "axios": "^1.16.0",
     "fflate": "^0.8.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.468.0",

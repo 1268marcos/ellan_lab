@@ -28,6 +28,12 @@ export default defineConfig({
     ellanCspIndexHtml(),
     // plugin mkcert REMOVIDO
   ],
+  /** Evita postcss-load-config a subir pastas (ex.: outro frontend no monorepo) e falhar ao dar parse JSON. */
+  css: {
+    postcss: {
+      plugins: [],
+    },
+  },
   preview: {
     headers: {
       "Content-Security-Policy": ELLAN_FRONTEND_CSP,
@@ -79,6 +85,11 @@ export default defineConfig({
         target: "http://localhost:8020",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/bf/, ""),
+      },
+      "/api/wallet-svc": {
+        target: "http://localhost:8004",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/wallet-svc/, "/api"),
       },
     },
   },

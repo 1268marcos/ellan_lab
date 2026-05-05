@@ -1,4 +1,6 @@
-import { api } from './client'
+import { financeApi } from './financeClient'
+
+const api = financeApi
 
 export type BalanceOut = { user_id?: string; partner_id?: string; balance: number; version?: number }
 
