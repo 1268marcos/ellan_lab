@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { walletApi, type BalanceOut, type TxRow } from '../../api/wallet'
+import { walletApi, type BalanceOut, type DivergenceRow } from '../../api/wallet'
 import { BalanceCard } from '../../components/BalanceCard'
-import { TransactionsTable } from '../../components/TransactionsTable'
 
 const DEFAULT_ID =
   (typeof import.meta.env.VITE_WALLET_USER_ID === 'string' && import.meta.env.VITE_WALLET_USER_ID) ||
@@ -13,14 +12,14 @@ export default function Wallet() {
   const [balance, setBalance] = useState<BalanceOut | null>(null)
   const prevBal = useRef<number | null>(null)
   const [deltaPct, setDeltaPct] = useState<number | null>(null)
-  const [txs, setTxs] = useState<TxRow[]>([])
   const [expired, setExpired] = useState<unknown>(null)
-  const [amount, setAmount] = useState('1000')
-  const [orderId, setOrderId] = useState('order-manual-1')
-  const [busy, setBusy] = useState(false)
+  const [divergences, setDivergences] = useState<DivergenceRow[]>([])
+  const [loading, setLoading] = useState(false)
+  const [reconcileBusy, setReconcileBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
 
   const load = useCallback(async () => {
+    setLoading(true)
     setMsg(null)
     try {
       const { data } = await walletApi.getBalance(partnerId)
@@ -35,16 +34,18 @@ export default function Wallet() {
       setDeltaPct(null)
     }
     try {
-      const { data } = await walletApi.getTransactions(partnerId, {})
-      setTxs(Array.isArray(data) ? data : [])
-    } catch {
-      setTxs([])
-    }
-    try {
       const { data } = await walletApi.getExpiredCredits(partnerId)
       setExpired(data)
     } catch {
       setExpired(null)
+    }
+    try {
+      const { data } = await walletApi.getDivergences()
+      setDivergences(Array.isArray(data) ? data : [])
+    } catch {
+      setDivergences([])
+    } finally {
+      setLoading(false)
     }
   }, [partnerId])
 
@@ -54,18 +55,23 @@ export default function Wallet() {
     void load()
   }, [partnerId, load])
 
-  async function apply(e: React.FormEvent) {
-    e.preventDefault()
-    setBusy(true)
+  const maxDivergence = divergences.reduce((acc, row) => {
+    const raw = row.divergence_percent ?? row.percent ?? row.divergence_ratio ?? 0
+    const percent = raw > 1 ? raw : raw * 100
+    return Math.max(acc, percent)
+  }, 0)
+
+  async function runReconcile() {
+    setReconcileBusy(true)
     setMsg(null)
     try {
-      await walletApi.applyCredit(partnerId, Number(amount), orderId)
-      setMsg('Crédito aplicado / oferta criada.')
+      await walletApi.reconcile()
+      setMsg('Reconciliação manual executada.')
       await load()
     } catch (err: unknown) {
-      setMsg(err instanceof Error ? err.message : 'Erro')
+      setMsg(err instanceof Error ? err.message : 'Falha ao reconciliar')
     } finally {
-      setBusy(false)
+      setReconcileBusy(false)
     }
   }
 
@@ -74,10 +80,10 @@ export default function Wallet() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-white">Wallet</h1>
-          <p className="text-sm text-slate-400">Saldo · transações · créditos expirados</p>
+          <p className="text-sm text-slate-400">Saldo · créditos expirados · reconciliação manual</p>
         </div>
-        <Link to="/finance/reconcile" className="text-sm text-emerald-400 hover:underline">
-          Reconciliação →
+        <Link to="/finance/transactions" className="text-sm text-emerald-400 hover:underline">
+          Ver transações →
         </Link>
       </div>
 
@@ -93,10 +99,13 @@ export default function Wallet() {
 
       {balance && <BalanceCard label="Saldo" balanceCents={balance.balance} pctChange={deltaPct} />}
 
-      <section>
-        <h2 className="mb-2 text-sm font-semibold text-slate-200">Transações</h2>
-        <TransactionsTable rows={txs} />
-      </section>
+      {loading && <p className="text-sm text-slate-400">Carregando painel financeiro...</p>}
+
+      {maxDivergence > 0.01 && (
+        <div className="rounded border border-red-800 bg-red-950/30 px-3 py-2 text-sm text-red-300">
+          Alerta: divergência acima de 0.01% detectada ({maxDivergence.toFixed(4)}%).
+        </div>
+      )}
 
       <section className="rounded-xl border border-slate-700 bg-slate-900/60 p-4">
         <h2 className="text-sm font-semibold text-slate-200">Créditos expirados (JSON)</h2>
@@ -105,30 +114,18 @@ export default function Wallet() {
         </pre>
       </section>
 
-      <form onSubmit={apply} className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
-        <h2 className="text-sm font-semibold text-slate-200">Aplicar crédito manual</h2>
-        <input
-          type="number"
-          min={1}
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          className="w-full max-w-xs rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
-        />
-        <input
-          value={orderId}
-          onChange={(e) => setOrderId(e.target.value)}
-          placeholder="order_id"
-          className="w-full max-w-md rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
-        />
+      <section className="space-y-3 rounded-xl border border-slate-700 bg-slate-900/60 p-4">
+        <h2 className="text-sm font-semibold text-slate-200">Reconciliação manual (admin)</h2>
         <button
-          type="submit"
-          disabled={busy}
+          type="button"
+          onClick={() => void runReconcile()}
+          disabled={reconcileBusy}
           className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50"
         >
-          {busy ? 'Enviando…' : 'POST apply-credit'}
+          {reconcileBusy ? 'Executando...' : 'POST /api/v1/wallet/reconcile'}
         </button>
         {msg && <p className="text-xs text-slate-400">{msg}</p>}
-      </form>
+      </section>
     </div>
   )
 }

@@ -14,32 +14,36 @@ export type TxRow = {
   occurred_at?: string
 }
 
-export const walletApi = {
-  getBalance: (partnerId: string) =>
-    api.get<BalanceOut>(`/wallet/${partnerId}/balance`).catch(() => api.get<BalanceOut>(`/v1/balance/${partnerId}`)),
+export type DivergenceRow = {
+  metric?: string
+  divergence_percent?: number
+  divergence_ratio?: number
+  percent?: number
+  details?: string
+}
 
-  getTransactions: (partnerId: string, params?: Record<string, string>) =>
-    api.get<TxRow[]>(`/wallet/${partnerId}/transactions`, { params }),
+export type TransactionsFilter = {
+  date_start?: string
+  date_end?: string
+  type?: 'credit' | 'debit' | ''
+  status?: string
+}
+
+export const walletApi = {
+  getBalance: (partnerId: string) => api.get<BalanceOut>(`/v1/wallet/${partnerId}/balance`),
+
+  getTransactions: (partnerId: string, params?: TransactionsFilter) =>
+    api.get<TxRow[]>(`/v1/wallet/${partnerId}/transactions`, { params }),
 
   getExpiredCredits: (partnerId: string) =>
-    api
-      .get<unknown>(`/wallet/${partnerId}/credits/expired`)
-      .catch(() => api.get(`/v1/wallet/${partnerId}/credits/expired`).catch(() => ({ data: [] as unknown }))),
+    api.get<unknown>(`/v1/wallet/${partnerId}/credits/expired`).catch(() => ({ data: [] as unknown })),
 
   applyCredit: (partnerId: string, amount: number, orderId: string) =>
-    api
-      .post(`/wallet/${partnerId}/apply-credit`, { amount, order_id: orderId })
-      .catch(() =>
-        api.post(`/v1/credit-offer`, {
-          user_id: partnerId,
-          amount,
-          promotional: false,
-        }),
-      ),
+    api.post(`/v1/wallet/${partnerId}/apply-credit`, { amount, order_id: orderId }),
 
-  reconcile: () => api.post(`/wallet/reconcile`).catch(() => api.post(`/v1/reconcile`)),
+  reconcile: () => api.post(`/v1/wallet/reconcile`),
 
-  getDivergences: () => api.get(`/wallet/divergences`),
+  getDivergences: () => api.get<DivergenceRow[]>(`/v1/wallet/divergences`),
 
-  getReconcileHistory: () => api.get(`/wallet/reconcile/history`),
+  getReconcileHistory: () => api.get<unknown>(`/v1/wallet/reconcile/history`),
 }

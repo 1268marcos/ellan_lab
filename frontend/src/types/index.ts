@@ -4,9 +4,16 @@ export interface Locker {
   status: 'active' | 'maintenance'
 }
 
-export interface Pickup {
+export interface Manifest {
   id: string
-  status: 'ready' | 'opened' | 'redeemed'
+  status: string
+}
+
+export interface SLAMetrics {
+  compliance_percent?: number
+  sla_percent?: number
+  percent?: number
+  value?: number
 }
 
 export interface OpsDashboardSummary {

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { api } from '../api/client'
+import { opsApi } from '../api/ops'
 import { LockerMap } from '../components/LockerMap'
-import type { Locker, OpsDashboardSummary } from '../types'
+import type { Locker, Manifest, OpsDashboardSummary, SLAMetrics } from '../types'
 
 const MOCK: OpsDashboardSummary = {
   lockersAtivos: 42,
@@ -17,6 +17,8 @@ const MOCK: OpsDashboardSummary = {
 
 export default function Dashboard() {
   const [data, setData] = useState<OpsDashboardSummary>(MOCK)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const slaSeries = useMemo(
     () => [
       { h: '06', v: data.slaPercent - 2 },
@@ -31,11 +33,42 @@ export default function Dashboard() {
   useEffect(() => {
     let cancelled = false
     ;(async () => {
+      setLoading(true)
+      setError(null)
       try {
-        const { data: d } = await api.get<OpsDashboardSummary>('/ops/dashboard')
-        if (!cancelled && d) setData({ ...MOCK, ...d, lockers: d.lockers?.length ? d.lockers : MOCK.lockers })
+        const [lockersRes, manifestsRes, slaRes] = await Promise.all([
+          opsApi.getLockers(),
+          opsApi.getPendingManifests(),
+          opsApi.getSlaCompliance(),
+        ])
+        const lockersRaw = lockersRes.data ?? []
+        const manifests = (manifestsRes.data ?? []) as Manifest[]
+        const sla = (slaRes.data ?? {}) as SLAMetrics
+
+        const lockers = lockersRaw.map((lk: Locker) => ({
+          ...lk,
+          occupancy: lk.occupancy > 1 ? lk.occupancy / 100 : lk.occupancy,
+        }))
+        const lockersAtivos = lockers.filter((lk) => lk.status === 'active').length
+        const pickupsHoje = manifests.length
+        const slaPercentRaw = sla.compliance_percent ?? sla.sla_percent ?? sla.percent ?? sla.value ?? 0
+        const slaPercent = slaPercentRaw > 1 ? slaPercentRaw : slaPercentRaw * 100
+
+        if (!cancelled) {
+          setData({
+            lockersAtivos,
+            pickupsHoje,
+            slaPercent,
+            lockers: lockers.length ? lockers : MOCK.lockers,
+          })
+        }
       } catch {
-        if (!cancelled) setData(MOCK)
+        if (!cancelled) {
+          setData(MOCK)
+          setError('Falha ao carregar dados reais das APIs')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
       }
     })()
     return () => {
@@ -48,6 +81,8 @@ export default function Dashboard() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Dashboard OPS</h1>
         <p className="mt-1 text-sm text-slate-400">Resumo operacional · lockers e pickups</p>
+        {loading && <p className="mt-2 text-xs text-slate-500">Carregando dados reais...</p>}
+        {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
       </header>
 
       <div className="grid gap-4 sm:grid-cols-3">
