@@ -1,0 +1,125 @@
+networks:
+  lc_int:
+    driver: bridge
+
+volumes:
+  lifecycle_int_pg:
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: lifecycle_int_postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: locker_central
+    ports:
+      - "${LIFECYCLE_INT_PG_PORT:-15432}:5432"
+    volumes:
+      - lifecycle_int_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d locker_central"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    networks:
+      - lc_int
+
+  order_lifecycle_service:
+    build:
+      context: ../01_source/backend/order_lifecycle_service
+    container_name: lifecycle_int_ols_a
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    environment:
+      SERVICE_NAME: order_lifecycle_service
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      HOST: 0.0.0.0
+      PORT: "8010"
+      INTERNAL_TOKEN: dev-internal-token
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      TZ: UTC
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8010"]
+    ports:
+      - "${LIFECYCLE_INT_OLS_PORT:-18010}:8010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lc_int
+
+  order_lifecycle_service_b:
+    build:
+      context: ../01_source/backend/order_lifecycle_service
+    container_name: lifecycle_int_ols_b
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/health', timeout=3)",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    environment:
+      SERVICE_NAME: order_lifecycle_service_b
+      APP_ENV: dev
+      LOG_LEVEL: INFO
+      HOST: 0.0.0.0
+      PORT: "8011"
+      INTERNAL_TOKEN: dev-internal-token
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: locker_central
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      TZ: UTC
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8011"]
+    ports:
+      - "${LIFECYCLE_INT_OLS_B_PORT:-18011}:8011"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      order_lifecycle_service:
+        condition: service_healthy
+    networks:
+      - lc_int
+
+  frontend:
+    image: node:20-bookworm-slim
+    container_name: lifecycle_int_frontend
+    working_dir: /app
+    volumes:
+      - ../01_source/frontend:/app
+    environment:
+      NPM_CONFIG_UPDATE_NOTIFIER: "false"
+      ORDER_LIFECYCLE_SERVICE_PROXY: http://order_lifecycle_service:8010
+      VITE_INTERNAL_TOKEN: dev-internal-token
+    command: >-
+      bash -lc "set -e; npm ci; npx vite --host 0.0.0.0 --port 5173"
+    ports:
+      - "${LIFECYCLE_INT_FE_PORT:-15173}:5173"
+    depends_on:
+      order_lifecycle_service:
+        condition: service_healthy
+    networks:
+      - lc_int

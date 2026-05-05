@@ -177,6 +177,7 @@ MANIFEST
 # Ignora qualquer arquivo ou pasta com "lighthouse" dentro do frontend
 01_source/frontend/**/*lighthouse*
 01_source/frontend/**/*lighthouse*/
+01_source/frontend/.vite-cache/
 
 
 

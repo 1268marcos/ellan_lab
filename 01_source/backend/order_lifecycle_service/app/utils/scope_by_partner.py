@@ -1,0 +1,18 @@
+from __future__ import annotations
+
+from sqlalchemy import exists, select
+from sqlalchemy.orm import Query, Session
+
+from app.models.core_order import CoreOrder
+from app.models.lifecycle import AnalyticsFact
+
+
+def apply_partner_filter(db: Session, query: Query, partner_id: str | None) -> Query:
+    if partner_id is None or not str(partner_id).strip():
+        return query
+    pid = str(partner_id).strip()
+    partner_rows = select(1).select_from(CoreOrder).where(
+        CoreOrder.id == AnalyticsFact.order_id,
+        CoreOrder.ecommerce_partner_id == pid,
+    )
+    return query.filter(exists(partner_rows))

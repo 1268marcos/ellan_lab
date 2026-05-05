@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import Numeric, func
 from sqlalchemy.orm import Query
 
+from app.models.core_order import CoreOrder
 from app.models.lifecycle import AnalyticsFact
 from app.schemas.analytics_executive_summary import (
     ExecutiveActionItem,
@@ -36,6 +37,7 @@ def _apply_filters(
     operator_id: str | None,
     tenant_id: str | None,
     site_id: str | None,
+    ecommerce_partner_id: str | None = None,
 ) -> Query:
     if start_at is not None:
         query = query.filter(AnalyticsFact.occurred_at >= start_at)
@@ -66,6 +68,13 @@ def _apply_filters(
 
     if site_id:
         query = query.filter(AnalyticsFact.payload["site_id"].astext == site_id)
+
+    if ecommerce_partner_id:
+        query = (
+            query.join(CoreOrder, CoreOrder.id == AnalyticsFact.order_id).filter(
+                CoreOrder.ecommerce_partner_id == ecommerce_partner_id
+            )
+        )
 
     return query
 
@@ -413,6 +422,7 @@ def build_pickup_executive_summary(
     site_id: str | None = None,
     ranking_limit: int = 5,
     trend_days_window: int = 7,
+    ecommerce_partner_id: str | None = None,
 ) -> PickupExecutiveSummaryResponse:
     now = end_at or _utc_now()
 
@@ -425,6 +435,7 @@ def build_pickup_executive_summary(
         "operator_id": operator_id,
         "tenant_id": tenant_id,
         "site_id": site_id,
+        "ecommerce_partner_id": ecommerce_partner_id,
     }
 
     filters_with_window = {

@@ -21,6 +21,16 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'lifecycle',
+    icon: '♻️',
+    label: 'Ciclo de Vida',
+    items: [
+      { to: '/lifecycle/metrics', label: 'Métricas' },
+      { to: '/lifecycle/ranking', label: 'Ranking' },
+      { to: '/lifecycle/health', label: 'Saúde' },
+    ],
+  },
+  {
     key: 'intelligence',
     icon: '🧠',
     label: 'Inteligência',
@@ -52,6 +62,7 @@ const groups: Group[] = [
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
+    lifecycle: true,
     intelligence: true,
     fiscal: true,
   })
@@ -64,6 +75,7 @@ export default function Menu() {
       if (profile === 'admin') return g
       if (profile === 'partner') {
         if (g.key === 'ops') return { ...g, items: [] }
+        if (g.key === 'lifecycle') return g
         if (g.key === 'intelligence') {
           return {
             ...g,
@@ -76,6 +88,7 @@ export default function Menu() {
       }
       if (profile === 'ops') {
         if (g.key === 'ops') return g
+        if (g.key === 'lifecycle') return g
         if (g.key === 'intelligence') return { ...g, items: [] }
         if (g.key === 'fiscal') return { ...g, items: [] }
       }

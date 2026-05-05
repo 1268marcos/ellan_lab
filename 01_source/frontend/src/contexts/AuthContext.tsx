@@ -20,11 +20,12 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const PROFILE_ROUTES: Record<UserProfile, string[]> = {
-  admin: ['/dashboard', '/partners', '/finance', '/ops', '/analytics', '/settings', '/fiscal', '/intelligence'],
+  admin: ['/dashboard', '/partners', '/finance', '/ops', '/analytics', '/settings', '/fiscal', '/intelligence', '/lifecycle'],
   partner: [
     '/dashboard/partner',
     '/partners',
     '/intelligence',
+    '/lifecycle',
     '/finance/wallet',
     '/finance/transactions',
     '/finance/billing/cycles',
@@ -33,7 +34,7 @@ const PROFILE_ROUTES: Record<UserProfile, string[]> = {
     '/finance/disputes',
     '/settings/profile',
   ],
-  ops: ['/dashboard/ops', '/ops', '/analytics', '/settings/profile'],
+  ops: ['/dashboard/ops', '/ops', '/analytics', '/settings/profile', '/lifecycle'],
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

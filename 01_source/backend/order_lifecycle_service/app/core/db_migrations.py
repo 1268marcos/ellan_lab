@@ -28,6 +28,7 @@ def run_startup_migrations(engine: Engine) -> None:
     """
 
     from app.models.base import Base
+    from app.models.core_order import CoreOrder  # noqa: F401
     from app.models.lifecycle import AnalyticsFact, DomainEvent, LifecycleDeadline  # noqa: F401
 
     inspector = inspect(engine)

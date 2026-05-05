@@ -6,7 +6,11 @@ from datetime import datetime, timedelta, timezone
 from math import isnan
 from typing import Any, Dict, List, Optional
 
+from sqlalchemy.orm import Session
+
+from app.models.lifecycle import AnalyticsFact
 from app.services.pickup_ranking_service import build_pickup_ranking
+from app.utils.scope_by_partner import apply_partner_filter
 
 
 WEIGHTS = {
@@ -307,7 +311,7 @@ def build_entity_context(
 
 def compute_trend_from_ranking(
     *,
-    db,
+    db: Session,
     dimension: str,
     start_at: datetime | None,
     end_at: datetime | None,
@@ -321,7 +325,9 @@ def compute_trend_from_ranking(
     site_id: str | None,
     days_window: int,
     limit: int,
+    ecommerce_partner_id: str | None = None,
 ) -> dict[str | None, dict[str, Any]]:
+    apply_partner_filter(db, db.query(AnalyticsFact), ecommerce_partner_id)
     now = end_at or datetime.now(timezone.utc)
 
     current_start = start_at or (now - timedelta(days=days_window))
@@ -345,6 +351,7 @@ def compute_trend_from_ranking(
         operator_id=operator_id,
         tenant_id=tenant_id,
         site_id=site_id,
+        ecommerce_partner_id=ecommerce_partner_id,
     )
 
     previous = build_pickup_ranking(
@@ -364,6 +371,7 @@ def compute_trend_from_ranking(
         operator_id=operator_id,
         tenant_id=tenant_id,
         site_id=site_id,
+        ecommerce_partner_id=ecommerce_partner_id,
     )
 
     previous_map = {item.dimension_value: item for item in previous.items}
@@ -399,7 +407,7 @@ def compute_trend_from_ranking(
 
 def compute_historical_baseline_from_ranking(
     *,
-    db,
+    db: Session,
     dimension: str,
     end_at: datetime | None,
     region: str | None,
@@ -413,7 +421,9 @@ def compute_historical_baseline_from_ranking(
     history_windows: int,
     window_days: int,
     limit: int,
+    ecommerce_partner_id: str | None = None,
 ) -> dict[str | None, dict[str, Any]]:
+    apply_partner_filter(db, db.query(AnalyticsFact), ecommerce_partner_id)
     now = end_at or datetime.now(timezone.utc)
 
     history: dict[str | None, list[float]] = {}
@@ -439,6 +449,7 @@ def compute_historical_baseline_from_ranking(
             operator_id=operator_id,
             tenant_id=tenant_id,
             site_id=site_id,
+            ecommerce_partner_id=ecommerce_partner_id,
         )
 
         for item in ranking.items:

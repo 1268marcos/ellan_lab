@@ -1,5 +1,9 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const projectDir = path.dirname(fileURLToPath(import.meta.url))
 
 /** Docker compose expõe partner_service em :8402; uvicorn local costuma usar :8002. */
 const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localhost:8402'
@@ -8,6 +12,9 @@ const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localho
 const billingServiceProxy =
   process.env.BILLING_SERVICE_PROXY ??
   (process.env.MOCK_BILLING === 'true' ? 'http://127.0.0.1:8020' : 'http://localhost:8020')
+
+const orderLifecycleServiceProxy =
+  process.env.ORDER_LIFECYCLE_SERVICE_PROXY ?? 'http://localhost:8010'
 
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
@@ -32,6 +39,7 @@ function redirectRootToV1() {
 }
 
 export default defineConfig({
+  cacheDir: path.join(projectDir, '.vite-cache'),
   plugins: [redirectRootToV1(), react()],
   server: {
     proxy: {
@@ -44,6 +52,11 @@ export default defineConfig({
         target: billingServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/billing-svc/, ''),
+      },
+      '/api/order-lifecycle': {
+        target: orderLifecycleServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/order-lifecycle/, ''),
       },
       '/api': partnerServiceProxy,
     },

@@ -11,12 +11,14 @@ from sqlalchemy.orm import Query, Session
 
 from app.models.lifecycle import AnalyticsFact
 from app.schemas.analytics import PickupMetricsResponse
+from app.utils.scope_by_partner import apply_partner_filter
 
 from app.core.datetime_utils import to_iso_utc
 
 
 
 def _apply_filters(
+    db: Session,
     query: Query,
     *,
     start_at: datetime | None,
@@ -29,6 +31,7 @@ def _apply_filters(
     operator_id: str | None,
     tenant_id: str | None,
     site_id: str | None,
+    ecommerce_partner_id: str | None = None,
 ) -> Query:
     if start_at is not None:
         query = query.filter(AnalyticsFact.occurred_at >= start_at)
@@ -60,7 +63,7 @@ def _apply_filters(
     if site_id:
         query = query.filter(AnalyticsFact.payload["site_id"].astext == site_id)
 
-    return query
+    return apply_partner_filter(db, query, ecommerce_partner_id)
 
 
 def _avg_minutes(db: Session, fact_name: str, **filters: Any) -> float | None:
@@ -72,7 +75,7 @@ def _avg_minutes(db: Session, fact_name: str, **filters: Any) -> float | None:
         AnalyticsFact.fact_name == fact_name
     )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     value = query.scalar()
 
     if value is None:
@@ -86,7 +89,7 @@ def _count_terminal_state(db: Session, terminal_state: str, **filters: Any) -> i
         AnalyticsFact.fact_name == "pickup_terminal_state",
         AnalyticsFact.payload["terminal_state"].astext == terminal_state,
     )
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     return query.count()
 
 
@@ -103,6 +106,7 @@ def build_pickup_metrics(
     operator_id: str | None = None,
     tenant_id: str | None = None,
     site_id: str | None = None,
+    ecommerce_partner_id: str | None = None,
 ) -> PickupMetricsResponse:
     filters = dict(
         start_at=start_at,
@@ -115,6 +119,7 @@ def build_pickup_metrics(
         operator_id=operator_id,
         tenant_id=tenant_id,
         site_id=site_id,
+        ecommerce_partner_id=ecommerce_partner_id,
     )
 
     redeemed_pickups = _count_terminal_state(db, "redeemed", **filters)
@@ -159,5 +164,6 @@ def build_pickup_metrics(
             "operator_id": operator_id,
             "tenant_id": tenant_id,
             "site_id": site_id,
+            "ecommerce_partner_id": ecommerce_partner_id,
         },
     )

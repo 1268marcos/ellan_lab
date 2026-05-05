@@ -13,6 +13,7 @@ from app.core.db import init_db
 from app.core.logging import configure_logging
 from app.routers.health import router as health_router
 from app.routers.internal import router as internal_router
+from app.routers.partner import router as partner_router
 
 from app.api.routes_domain_events import router as domain_events_router
 
@@ -47,6 +48,7 @@ def on_startup() -> None:
 
 app.include_router(health_router)
 app.include_router(internal_router)
+app.include_router(partner_router)
 app.include_router(domain_events_router)
 
 app.add_middleware(
@@ -64,6 +66,16 @@ def root():
         "status": "ok",
         "environment": settings.app_env,
     }
+
+
+@app.middleware("http")
+async def partner_scope_middleware(request: Request, call_next):
+    path = str(request.url.path)
+    if path == "/partner" or path.startswith("/partner/"):
+        raw = request.headers.get("X-Partner-Id") or request.headers.get("x-partner-id")
+        if raw is not None and str(raw).strip():
+            request.state.partner_id = str(raw).strip()
+    return await call_next(request)
 
 
 @app.middleware("http")

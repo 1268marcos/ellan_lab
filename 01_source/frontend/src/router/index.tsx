@@ -24,9 +24,16 @@ const BillingCycles = lazy(() => import('../pages/finance/BillingCycles'))
 const PartnerInvoices = lazy(() => import('../pages/finance/PartnerInvoices'))
 const CreditNotes = lazy(() => import('../pages/finance/CreditNotes'))
 const Disputes = lazy(() => import('../pages/finance/Disputes'))
+const LifecycleMetrics = lazy(() => import('../pages/lifecycle/Metrics'))
+const LifecycleRanking = lazy(() => import('../pages/lifecycle/Ranking'))
+const LifecycleHealth = lazy(() => import('../pages/lifecycle/Health'))
 
 const financeLazyFallback = (
   <div className="p-6 text-center text-sm text-slate-400">Carregando...</div>
+)
+
+const lifecycleLazyFallback = (
+  <div className="p-6 text-center text-sm text-slate-400">Carregando ciclo de vida...</div>
 )
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -97,6 +104,37 @@ export default function AppRouter() {
       />
       <Route path="/analytics/dashboard" element={<Protected><DashboardMetrics /></Protected>} />
       <Route path="/analytics/slo-report" element={<Protected><SLOReport /></Protected>} />
+
+      <Route
+        path="/lifecycle/metrics"
+        element={
+          <Protected>
+            <Suspense fallback={lifecycleLazyFallback}>
+              <LifecycleMetrics />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/lifecycle/ranking"
+        element={
+          <Protected>
+            <Suspense fallback={lifecycleLazyFallback}>
+              <LifecycleRanking />
+            </Suspense>
+          </Protected>
+        }
+      />
+      <Route
+        path="/lifecycle/health"
+        element={
+          <Protected>
+            <Suspense fallback={lifecycleLazyFallback}>
+              <LifecycleHealth />
+            </Suspense>
+          </Protected>
+        }
+      />
 
       <Route path="/ops/lockers" element={<Protected><Lockers /></Protected>} />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />

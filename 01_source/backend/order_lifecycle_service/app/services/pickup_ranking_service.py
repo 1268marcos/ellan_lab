@@ -11,6 +11,7 @@ from sqlalchemy.orm import Query, Session
 
 from app.models.lifecycle import AnalyticsFact
 from app.schemas.analytics_ranking import PickupRankingItem, PickupRankingResponse
+from app.utils.scope_by_partner import apply_partner_filter
 
 from app.core.datetime_utils import to_iso_utc
 
@@ -61,6 +62,7 @@ _METRIC_TO_FACT = {
 
 
 def _apply_filters(
+    db: Session,
     query: Query,
     *,
     start_at: datetime | None,
@@ -73,6 +75,7 @@ def _apply_filters(
     operator_id: str | None,
     tenant_id: str | None,
     site_id: str | None,
+    ecommerce_partner_id: str | None = None,
 ) -> Query:
     if start_at is not None:
         query = query.filter(AnalyticsFact.occurred_at >= start_at)
@@ -104,7 +107,7 @@ def _apply_filters(
     if site_id:
         query = query.filter(AnalyticsFact.payload["site_id"].astext == site_id)
 
-    return query
+    return apply_partner_filter(db, query, ecommerce_partner_id)
 
 
 def _dimension_expr(dimension: str):
@@ -148,7 +151,7 @@ def _grouped_terminal_counts(
             AnalyticsFact.payload["terminal_state"].astext == terminal_state
         )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     query = query.group_by(dim)
 
     return {row.dimension_value: int(row.count_value) for row in query.all()}
@@ -170,7 +173,7 @@ def _grouped_avg_minutes(
         AnalyticsFact.fact_name == fact_name,
     )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     query = query.group_by(dim)
 
     result: dict[str | None, float | None] = {}
@@ -226,6 +229,7 @@ def build_pickup_ranking(
     operator_id: str | None = None,
     tenant_id: str | None = None,
     site_id: str | None = None,
+    ecommerce_partner_id: str | None = None,
 ) -> PickupRankingResponse:
     if category not in _ALLOWED_CATEGORIES:
         raise ValueError(f"unsupported category: {category}")
@@ -256,6 +260,7 @@ def build_pickup_ranking(
         operator_id=operator_id,
         tenant_id=tenant_id,
         site_id=site_id,
+        ecommerce_partner_id=ecommerce_partner_id,
     )
 
     total_terminal = _grouped_terminal_counts(db, dimension=dimension, terminal_state=None, **filters)
@@ -396,6 +401,7 @@ def build_pickup_ranking(
             "operator_id": operator_id,
             "tenant_id": tenant_id,
             "site_id": site_id,
+            "ecommerce_partner_id": ecommerce_partner_id,
         },
     )
 
@@ -414,6 +420,7 @@ def resolve_equipment_bundle_for_slot(
     operator_id: str | None,
     tenant_id: str | None,
     site_id: str | None,
+    ecommerce_partner_id: str | None = None,
 ) -> dict[str, str | None]:
     """
     Para ranking por slot_id: retorna o trio (locker_id, machine_id, site_id) mais frequente
@@ -439,6 +446,7 @@ def resolve_equipment_bundle_for_slot(
     )
 
     query = _apply_filters(
+        db,
         query,
         start_at=start_at,
         end_at=end_at,
@@ -450,6 +458,7 @@ def resolve_equipment_bundle_for_slot(
         operator_id=operator_id,
         tenant_id=tenant_id,
         site_id=site_id,
+        ecommerce_partner_id=ecommerce_partner_id,
     )
 
     query = query.group_by(locker_expr, machine_expr, site_expr).order_by(cnt.desc())
