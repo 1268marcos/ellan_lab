@@ -53,6 +53,15 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'operacional',
+    icon: '📡',
+    label: 'Operacional',
+    items: [
+      { to: '/partners/ops/lockers', label: 'Lockers' },
+      { to: '/partners/ops/pickups', label: 'Pickups ativos' },
+    ],
+  },
+  {
     key: 'fiscal',
     icon: '💼',
     label: 'Fiscal',
@@ -74,6 +83,7 @@ export default function Menu() {
     lifecycle: false,
     intelligence: false,
     runtime: false,
+    operacional: false,
     fiscal: false,
   })
   const { auth, logout, isAuthenticated } = useAuth()
@@ -101,9 +111,11 @@ export default function Menu() {
       if (profile === 'ops') {
         if (g.key === 'ops') return g
         if (g.key === 'lifecycle') return g
+        if (g.key === 'operacional') return g
         if (g.key === 'intelligence') return { ...g, items: [] }
         if (g.key === 'fiscal') return { ...g, items: [] }
       }
+      if (g.key === 'operacional') return { ...g, items: [] }
       return { ...g, items: [] }
     })
     .filter((g) => g.items.length > 0)

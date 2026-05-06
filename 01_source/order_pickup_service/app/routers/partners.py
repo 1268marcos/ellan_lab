@@ -6,7 +6,9 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -14,12 +16,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.internal_auth import require_internal_token
+from app.services import partner_data_service
 from app.services import partner_client
 from app.workers.consistency_checker import compare_schemas
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["partners"])
+partner_v1_router = APIRouter(prefix="/api/partner/v1", tags=["partners"])
 internal_router = APIRouter(prefix="/internal/partners", tags=["partners-shadow"])
 
 SHADOW_KEYS = ("id", "name", "partner_type", "legal_name", "contact_email", "status")
@@ -45,6 +49,14 @@ class PartnerLoginOut(BaseModel):
     partner_name: str
     profile: str
     role: str
+
+
+def _require_partner_auth(
+    partner_id: str,
+    db: Session,
+    x_api_key: str | None,
+) -> partner_data_service.PartnerAuthContext:
+    return partner_data_service.validate_partner_access(db=db, partner_id=partner_id, raw_api_key=str(x_api_key or ""))
 
 
 def _infer_profile(partner_id: str) -> str:
@@ -130,6 +142,36 @@ async def get_partner_via_service(partner_id: str) -> dict[str, Any]:
     if not data:
         raise HTTPException(status_code=404, detail="partner not found")
     return data
+
+
+@partner_v1_router.get("/lockers/{locker_id}/summary")
+def get_partner_locker_summary(
+    locker_id: str,
+    partner_id: Annotated[str, Query(min_length=1, max_length=64)],
+    db: Session = Depends(get_db),
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> dict[str, Any]:
+    auth_ctx = _require_partner_auth(partner_id=partner_id, db=db, x_api_key=x_api_key)
+    return partner_data_service.get_locker_summary(
+        db=db,
+        locker_id=locker_id,
+        partner_id=auth_ctx.partner_id,
+    )
+
+
+@partner_v1_router.get("/pickups/active")
+def get_partner_active_pickups(
+    partner_id: Annotated[str, Query(min_length=1, max_length=64)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    db: Session = Depends(get_db),
+    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+) -> dict[str, Any]:
+    auth_ctx = _require_partner_auth(partner_id=partner_id, db=db, x_api_key=x_api_key)
+    return partner_data_service.get_active_pickups(
+        db=db,
+        partner_id=auth_ctx.partner_id,
+        limit=limit,
+    )
 
 
 @internal_router.post("/shadow-compare", response_model=ShadowCompareOut)

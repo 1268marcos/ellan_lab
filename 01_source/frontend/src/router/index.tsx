@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Outlet, Route, Routes } from 'react-router-dom'
 import PrivateRoute from '../PrivateRoute'
+import { useAuth } from '../contexts/AuthContext'
 import Dashboard from '../pages/Dashboard'
 import Login from '../pages/Login'
 import Landing from '../pages/Landing'
@@ -32,6 +33,8 @@ const LifecycleRanking = lazy(() => import('../pages/lifecycle/Ranking'))
 const LifecycleHealth = lazy(() => import('../pages/lifecycle/Health'))
 const RuntimeDashboard = lazy(() => import('../pages/runtime/Dashboard'))
 const RuntimeAllocations = lazy(() => import('../pages/runtime/Allocations'))
+const OpsLockerStatus = lazy(() => import('../pages/partners/OpsLockerStatus'))
+const OpsPickupFlow = lazy(() => import('../pages/partners/OpsPickupFlow'))
 
 const financeLazyFallback = (
   <div className="p-6 text-center text-sm text-slate-400">Carregando...</div>
@@ -45,6 +48,10 @@ const runtimeLazyFallback = (
   <div className="p-6 text-center text-sm text-slate-400">Carregando runtime…</div>
 )
 
+const opsPartnersLazyFallback = (
+  <div className="p-6 text-center text-sm text-slate-400">Carregando operacional...</div>
+)
+
 function Protected({ children }: { children: JSX.Element }) {
   return (
     <PrivateRoute>
@@ -55,6 +62,22 @@ function Protected({ children }: { children: JSX.Element }) {
 
 function IntelligenceOutlet() {
   return <Outlet />
+}
+
+function AccessDenied() {
+  return (
+    <div className="p-6 text-center text-sm text-red-400">
+      Acesso Negado
+    </div>
+  )
+}
+
+function OpsOnly({ children }: { children: JSX.Element }) {
+  const { profile } = useAuth()
+  if (profile !== 'admin' && profile !== 'ops') {
+    return <AccessDenied />
+  }
+  return children
 }
 
 export default function AppRouter() {
@@ -72,6 +95,30 @@ export default function AppRouter() {
       <Route path="/dashboard/ops" element={<Protected><Lockers /></Protected>} />
       <Route path="/partners/catalog" element={<Protected><Catalog /></Protected>} />
       <Route path="/partners/webhooks" element={<Protected><Webhooks /></Protected>} />
+      <Route
+        path="/partners/ops/lockers"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Suspense fallback={opsPartnersLazyFallback}>
+                <OpsLockerStatus />
+              </Suspense>
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/partners/ops/pickups"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Suspense fallback={opsPartnersLazyFallback}>
+                <OpsPickupFlow />
+              </Suspense>
+            </OpsOnly>
+          </Protected>
+        }
+      />
       <Route path="/finance/wallet" element={<Protected><Wallet /></Protected>} />
       <Route path="/finance/transactions" element={<Protected><Transactions /></Protected>} />
       <Route

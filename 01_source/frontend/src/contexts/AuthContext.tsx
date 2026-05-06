@@ -6,7 +6,7 @@ type LoginInput = {
   apiKey: string
 }
 
-type UserProfile = 'admin' | 'partner' | 'ops'
+export type UserProfile = 'admin' | 'partner' | 'ops'
 
 type AuthContextValue = {
   auth: AuthPartner | null
@@ -20,23 +20,54 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const PROFILE_ROUTES: Record<UserProfile, string[]> = {
-  admin: ['/dashboard', '/partners', '/finance', '/ops', '/analytics', '/settings', '/fiscal', '/intelligence', '/lifecycle'],
+  admin: ['*'],
   partner: [
     '/dashboard/partner',
     '/partners',
-    '/intelligence',
-    '/lifecycle',
-    '/runtime',
-    '/runtime/*',
     '/finance/wallet',
-    '/finance/transactions',
     '/finance/billing/cycles',
     '/finance/invoices',
-    '/finance/credit-notes',
-    '/finance/disputes',
+    '/intelligence/compatibility',
     '/settings/profile',
   ],
-  ops: ['/dashboard/ops', '/ops', '/analytics', '/settings/profile', '/lifecycle'],
+  ops: [
+    '/dashboard/ops',
+    '/ops',
+    '/analytics',
+    '/settings/profile',
+    '/intelligence/predictive-health',
+    '/partners/ops',
+  ],
+}
+
+function normalizePath(path: string): string {
+  const raw = String(path || '').trim()
+  if (!raw) return '/'
+  const collapsed = raw.replace(/\/+/g, '/')
+  const withLeading = collapsed.startsWith('/') ? collapsed : `/${collapsed}`
+  if (withLeading.length > 1 && withLeading.endsWith('/')) {
+    return withLeading.slice(0, -1)
+  }
+  return withLeading
+}
+
+function matchesRoute(path: string, route: string): boolean {
+  const normalizedPath = normalizePath(path)
+  const normalizedRoute = normalizePath(route)
+  if (normalizedRoute === '*') return true
+  if (normalizedRoute.endsWith('/*')) {
+    const base = normalizedRoute.slice(0, -2)
+    return normalizedPath === base || normalizedPath.startsWith(`${base}/`)
+  }
+  return normalizedPath === normalizedRoute || normalizedPath.startsWith(`${normalizedRoute}/`)
+}
+
+export function canAccess(path: string, profile: UserProfile | null | undefined): boolean {
+  if (!profile) return false
+  if (profile === 'admin') return true
+  const routes = PROFILE_ROUTES[profile] || []
+  const normalizedPath = normalizePath(path)
+  return routes.some((route) => matchesRoute(normalizedPath, route))
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -58,15 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearAuth()
       },
       canAccess: (path: string) => {
-        if (!auth?.profile) return false
-        const routes = PROFILE_ROUTES[auth.profile]
-        return routes.some((p) => {
-          if (p.endsWith('/*')) {
-            const base = p.slice(0, -2)
-            return path === base || path.startsWith(`${base}/`)
-          }
-          return path === p || path.startsWith(`${p}/`)
-        })
+        return canAccess(path, auth?.profile)
       },
     }),
     [auth],

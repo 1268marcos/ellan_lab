@@ -15,8 +15,51 @@ export type BulkProductItem = {
   }
 }
 
+export type LockerSummaryResponse = {
+  locker_id: string
+  display_name?: string | null
+  region?: string | null
+  city?: string | null
+  state?: string | null
+  active: boolean
+  slots_count: number
+  slots_available: number
+  active_pickups: number
+  updated_at?: string | null
+}
+
+export type ActivePickupItem = {
+  pickup_id: string
+  order_id: string
+  locker_id?: string | null
+  slot?: string | null
+  status?: string | null
+  lifecycle_stage?: string | null
+  ready_at?: string | null
+  expires_at?: string | null
+  updated_at?: string | null
+}
+
+export type ActivePickupsResponse = {
+  partner_id: string
+  total: number
+  limit: number
+  items: ActivePickupItem[]
+}
+
 export const partnersApi = {
   getProducts: (id: string) => api.get<unknown>(`/v1/partners/${id}/products`),
+
+  getLockerSummary: (lockerId: string, partnerId: string) =>
+    api.get<LockerSummaryResponse>(
+      `/partner/v1/lockers/${encodeURIComponent(lockerId)}/summary`,
+      { params: { partner_id: partnerId } },
+    ),
+
+  getActivePickups: (partnerId: string, limit = 50) =>
+    api.get<ActivePickupsResponse>('/partner/v1/pickups/active', {
+      params: { partner_id: partnerId, limit },
+    }),
 
   createProduct: (id: string, data: Record<string, unknown>) =>
     api.post(`/v1/partners/${id}/products`, data),
