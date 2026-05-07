@@ -28,10 +28,29 @@ import { NOCDashboard } from '../pages/noc/Dashboard'
 import { OrderLookup } from '../pages/support/OrderLookup'
 import MvpAccessPage from '../pages/mvp/Access'
 import CeoDashboard from '../pages/executive/CeoDashboard'
+import { COOLayout } from '../pages/coo/COOLayout'
+import { COODashboard } from '../pages/coo/Dashboard'
+import {
+  ActiveManifests,
+  ComplianceReports,
+  ExpansionRequests,
+  FleetEfficiency,
+  InventoryByDepot,
+  MTTR,
+  NetworkUptime,
+  PenaltiesApplied,
+  PendingApprovals,
+  PickupHealth,
+  RealtimeRouting,
+  SLAAjustments,
+  SupplierSLA,
+  UrgentDeadlines,
+} from '../pages/coo/CooSubpages'
 
 function DashboardRedirect() {
   const { profile } = useAuth()
   if (profile === 'ceo') return <Navigate to="/dashboard/ceo" replace />
+  if (profile === 'coo') return <Navigate to="/coo/dashboard" replace />
   return <Navigate to="/dashboard/admin" replace />
 }
 
@@ -99,6 +118,15 @@ function CeoOnly({ children }: { children: JSX.Element }) {
   return children
 }
 
+/** Portal COO: apenas perfil `coo` (MVP). CEO/admin não entram pelo UI — usem login COO para testar. */
+function CooPortalGate({ children }: { children: JSX.Element }) {
+  const { profile } = useAuth()
+  if (profile !== 'coo') {
+    return <AccessDenied />
+  }
+  return children
+}
+
 export default function AppRouter() {
   return (
     <Routes>
@@ -129,6 +157,34 @@ export default function AppRouter() {
       />
       <Route path="/dashboard/partner" element={<Protected><Catalog /></Protected>} />
       <Route path="/dashboard/ops" element={<Protected><Lockers /></Protected>} />
+
+      <Route
+        path="/coo"
+        element={
+          <Protected>
+            <CooPortalGate>
+              <COOLayout />
+            </CooPortalGate>
+          </Protected>
+        }
+      >
+        <Route index element={<COODashboard />} />
+        <Route path="dashboard" element={<COODashboard />} />
+        <Route path="health/pickups" element={<PickupHealth />} />
+        <Route path="deadlines/urgent" element={<UrgentDeadlines />} />
+        <Route path="logistics/manifests" element={<ActiveManifests />} />
+        <Route path="logistics/routing" element={<RealtimeRouting />} />
+        <Route path="logistics/inventory" element={<InventoryByDepot />} />
+        <Route path="suppliers/sla" element={<SupplierSLA />} />
+        <Route path="suppliers/penalties" element={<PenaltiesApplied />} />
+        <Route path="suppliers/compliance" element={<ComplianceReports />} />
+        <Route path="kpis/uptime" element={<NetworkUptime />} />
+        <Route path="kpis/mttr" element={<MTTR />} />
+        <Route path="kpis/fleet" element={<FleetEfficiency />} />
+        <Route path="approvals/pending" element={<PendingApprovals />} />
+        <Route path="approvals/sla" element={<SLAAjustments />} />
+        <Route path="approvals/expansion" element={<ExpansionRequests />} />
+      </Route>
       <Route path="/partners/catalog" element={<Protected><Catalog /></Protected>} />
       <Route path="/partners/webhooks" element={<Protected><Webhooks /></Protected>} />
       <Route

@@ -7,7 +7,7 @@ export type AuthPartner = {
   partnerName: string
   apiKey: string
   token: string
-  profile: 'admin' | 'partner' | 'ops' | 'ceo'
+  profile: 'admin' | 'partner' | 'ops' | 'ceo' | 'coo'
 }
 
 export type LoginPayload = {
@@ -23,16 +23,17 @@ export type LoginResponse = {
   partner?: {
     id?: string
     name?: string
-    role?: 'admin' | 'partner' | 'ops' | 'ceo'
+    role?: 'admin' | 'partner' | 'ops' | 'ceo' | 'coo'
   }
-  profile?: 'admin' | 'partner' | 'ops' | 'ceo'
-  role?: 'admin' | 'partner' | 'ops' | 'ceo'
+  profile?: 'admin' | 'partner' | 'ops' | 'ceo' | 'coo'
+  role?: 'admin' | 'partner' | 'ops' | 'ceo' | 'coo'
 }
 
-function inferProfile(partnerId: string): 'admin' | 'partner' | 'ops' | 'ceo' {
+function inferProfile(partnerId: string): 'admin' | 'partner' | 'ops' | 'ceo' | 'coo' {
   const p = partnerId.toLowerCase()
   if (p.includes('admin')) return 'admin'
   if (p.includes('ceo')) return 'ceo'
+  if (p.includes('coo')) return 'coo'
   if (p.includes('ops')) return 'ops'
   return 'partner'
 }

@@ -1,0 +1,385 @@
+/* Portal COO — identidade (variáveis injetadas em `.coo-layout` via theme.ts) */
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes border-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--coo-status-critical) 45%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--coo-status-critical) 25%, transparent);
+  }
+}
+
+.coo-nav-section {
+  margin-bottom: var(--coo-space-component, 16px);
+}
+
+.coo-layout {
+  display: flex;
+  min-height: 100vh;
+  font-family: var(--coo-font-body, 'Inter', system-ui, sans-serif);
+  font-size: var(--coo-size-body, 15px);
+  font-weight: var(--coo-weight-body, 400);
+  color: var(--coo-text-primary, #1a202c);
+  /* defaults se variáveis ainda não injetadas */
+  --coo-primary: #2c5282;
+  --coo-secondary: #4a5568;
+  --coo-accent: #dd6b20;
+  --coo-background: #ffffff;
+  --coo-warning: #d69e2e;
+  --coo-status-operational: #10b981;
+  --coo-status-attention: #f59e0b;
+  --coo-status-critical: #ef4444;
+  --coo-status-maintenance: #6b7280;
+  --coo-text-primary: #1a202c;
+  --coo-text-secondary: #4a5568;
+  --coo-text-tertiary: #718096;
+  --coo-font-heading: Inter, system-ui, sans-serif;
+  --coo-font-body: Inter, system-ui, sans-serif;
+  --coo-space-layout: 24px;
+  --coo-space-component: 16px;
+  --coo-space-element: 8px;
+}
+
+.coo-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background-color: var(--coo-primary);
+  color: var(--coo-background);
+  transition: width 0.3s ease;
+  z-index: 40;
+  box-shadow: 2px 0 12px rgba(15, 23, 42, 0.14);
+}
+
+.coo-sidebar--collapsed {
+  width: 80px;
+}
+
+.coo-sidebar--expanded {
+  width: 280px;
+}
+
+@media (min-width: 1024px) {
+  .coo-sidebar--expanded {
+    width: 300px;
+  }
+}
+
+.coo-sidebar__header {
+  padding: 1.25rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--coo-space-element);
+  border-bottom: 1px solid color-mix(in srgb, var(--coo-background) 14%, transparent);
+}
+
+.coo-sidebar__title {
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-h4, 18px);
+  font-weight: var(--coo-weight-heading, 700);
+  letter-spacing: 0.02em;
+}
+
+.coo-sidebar__toggle {
+  cursor: pointer;
+  padding: 0.35rem;
+  border-radius: 6px;
+  flex-shrink: 0;
+  color: inherit;
+  background: transparent;
+  border: none;
+}
+
+.coo-sidebar__toggle:hover {
+  background: color-mix(in srgb, var(--coo-background) 12%, transparent);
+}
+
+.coo-sidebar__toggle:focus-visible {
+  outline: 2px solid var(--coo-accent);
+  outline-offset: 2px;
+}
+
+.coo-sidebar__section-label {
+  padding: 0.5rem 1.25rem;
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-status, 13px);
+  font-weight: var(--coo-weight-status, 500);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: color-mix(in srgb, var(--coo-background) 72%, transparent);
+}
+
+.coo-navlink {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1.25rem;
+  color: var(--coo-background);
+  text-decoration: none;
+  font-size: 0.9rem;
+  line-height: 1.35;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.coo-navlink:hover {
+  background: color-mix(in srgb, var(--coo-background) 10%, transparent);
+}
+
+.coo-navlink--active {
+  background-color: var(--coo-accent);
+  border-left-color: color-mix(in srgb, var(--coo-background) 35%, var(--coo-accent));
+}
+
+.coo-navlink--active:hover {
+  background-color: color-mix(in srgb, var(--coo-accent) 88%, #000);
+}
+
+.coo-main {
+  flex: 1;
+  background: color-mix(in srgb, var(--coo-secondary) 5.5%, var(--coo-background));
+  min-height: 100vh;
+  transition: margin-left 0.3s ease;
+}
+
+.coo-main--collapsed {
+  margin-left: 80px;
+}
+
+.coo-main--expanded {
+  margin-left: 280px;
+}
+
+@media (min-width: 1024px) {
+  .coo-main--expanded {
+    margin-left: 300px;
+  }
+}
+
+.coo-main__inner {
+  padding: var(--coo-space-layout, 24px);
+  max-width: 1280px;
+}
+
+@media (max-width: 767px) {
+  .coo-sidebar {
+    width: 100%;
+    max-width: min(100vw, 280px);
+    height: 100vh;
+  }
+
+  .coo-sidebar--collapsed {
+    width: 72px;
+    max-width: 72px;
+  }
+
+  .coo-main--collapsed,
+  .coo-main--expanded {
+    margin-left: 72px;
+  }
+
+  .coo-sidebar--expanded:not(.coo-sidebar--collapsed) {
+    width: 260px;
+    max-width: 260px;
+  }
+
+  .coo-main--expanded {
+    margin-left: 260px;
+  }
+}
+
+/* Tipografia portal */
+.coo-heading-page {
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-h2, 24px);
+  font-weight: var(--coo-weight-heading, 700);
+  color: var(--coo-text-primary);
+  margin: 0 0 var(--coo-space-component, 16px);
+  letter-spacing: -0.02em;
+}
+
+.coo-heading-section {
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-h3, 20px);
+  font-weight: var(--coo-weight-heading, 700);
+  color: var(--coo-text-primary);
+  margin: 0 0 var(--coo-space-element, 8px);
+}
+
+.coo-card__title {
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-h4, 18px);
+  font-weight: var(--coo-weight-heading, 700);
+  color: var(--coo-text-primary);
+  margin: 0;
+}
+
+.coo-text-muted {
+  color: var(--coo-text-tertiary);
+  font-size: var(--coo-size-body, 15px);
+}
+
+.coo-text-error {
+  color: var(--coo-status-critical);
+  font-size: var(--coo-size-body, 15px);
+}
+
+.coo-metric-pill__label {
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-status, 13px);
+  font-weight: var(--coo-weight-status, 500);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--coo-text-secondary);
+}
+
+.coo-metric-pill__value {
+  font-family: var(--coo-font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--coo-text-primary);
+  margin-top: var(--coo-space-element, 8px);
+}
+
+/* Cartões e código */
+.coo-card {
+  background: var(--coo-background);
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--coo-secondary) 18%, var(--coo-background));
+  padding: var(--coo-space-component, 16px);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+}
+
+.coo-card--kpi:hover {
+  border-color: color-mix(in srgb, var(--coo-primary) 35%, var(--coo-background));
+}
+
+.coo-pre {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 0.8rem;
+  overflow: auto;
+  max-height: 70vh;
+  background: var(--coo-text-primary);
+  color: color-mix(in srgb, var(--coo-background) 92%, transparent);
+  padding: var(--coo-space-component);
+  border-radius: 8px;
+}
+
+/* Estados operacionais (badges / indicadores) */
+.coo-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  font-size: var(--coo-size-status, 13px);
+  font-weight: var(--coo-weight-status, 500);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.coo-status--operational {
+  background: color-mix(in srgb, var(--coo-status-operational) 18%, var(--coo-background));
+  color: color-mix(in srgb, var(--coo-status-operational) 85%, #000);
+}
+
+.coo-status--attention {
+  background: color-mix(in srgb, var(--coo-status-attention) 22%, var(--coo-background));
+  color: color-mix(in srgb, var(--coo-status-attention) 90%, #000);
+  animation: var(--coo-anim-pulse, pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite);
+}
+
+.coo-status--critical {
+  background: color-mix(in srgb, var(--coo-status-critical) 14%, var(--coo-background));
+  color: var(--coo-status-critical);
+  border: 1px solid color-mix(in srgb, var(--coo-status-critical) 45%, transparent);
+  animation: var(--coo-anim-border-pulse, border-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite);
+}
+
+.coo-status--maintenance {
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--coo-status-maintenance) 12%, var(--coo-background)),
+    color-mix(in srgb, var(--coo-status-maintenance) 12%, var(--coo-background)) 4px,
+    color-mix(in srgb, var(--coo-status-maintenance) 22%, var(--coo-background)) 4px,
+    color-mix(in srgb, var(--coo-status-maintenance) 22%, var(--coo-background)) 8px
+  );
+  color: var(--coo-text-secondary);
+}
+
+/* Botão primário (laranja ação) */
+.coo-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 1.1rem;
+  font-family: var(--coo-font-heading);
+  font-size: var(--coo-size-body);
+  font-weight: 600;
+  color: var(--coo-background);
+  background: var(--coo-accent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.1s ease;
+}
+
+.coo-btn-primary:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.coo-btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.coo-btn-primary:focus-visible {
+  outline: 2px solid var(--coo-primary);
+  outline-offset: 2px;
+}
+
+.coo-input,
+.coo-textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--coo-secondary) 28%, var(--coo-background));
+  padding: 0.5rem 0.75rem;
+  font-size: var(--coo-size-body);
+  font-family: var(--coo-font-body);
+  color: var(--coo-text-primary);
+  background: var(--coo-background);
+}
+
+.coo-input:focus-visible,
+.coo-textarea:focus-visible {
+  outline: 2px solid var(--coo-primary);
+  outline-offset: 1px;
+  border-color: var(--coo-primary);
+}
+
+.coo-label {
+  display: block;
+  font-size: 0.875rem;
+  color: var(--coo-text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.coo-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--coo-space-component, 16px);
+}

@@ -16,6 +16,10 @@ const billingServiceProxy =
 const orderLifecycleServiceProxy =
   process.env.ORDER_LIFECYCLE_SERVICE_PROXY ?? 'http://localhost:8010'
 
+/** order_pickup_service (rotas /api/v1/coo, executive, etc.) — local típico :8002 */
+const orderPickupServiceProxy =
+  process.env.ORDER_PICKUP_SERVICE_PROXY ?? 'http://localhost:8002'
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -62,6 +66,10 @@ export default defineConfig({
         target: partnerServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/runtime/, '/api'),
+      },
+      '/api/v1/coo': {
+        target: orderPickupServiceProxy,
+        changeOrigin: true,
       },
       '/api': partnerServiceProxy,
     },

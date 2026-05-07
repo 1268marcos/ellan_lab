@@ -30,6 +30,7 @@ from app.workers.runtime_sync_worker import runtime_sync_loop
 from app.routers import (
     dev_admin,
     dev_base_catalog,
+    coo,
     executive_dashboard,
     integration_ops,
     internal,
@@ -158,6 +159,7 @@ app.include_router(pickup.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
 app.include_router(executive_dashboard.router)
+app.include_router(coo.router)
 app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)

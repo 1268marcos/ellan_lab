@@ -1,1 +1,1 @@
-export { AuthProvider, useAuth } from './contexts/AuthContext'
+export { AuthProvider, useAuth, canAccess, type UserProfile } from './contexts/AuthContext'

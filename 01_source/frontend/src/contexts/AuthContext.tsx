@@ -6,7 +6,7 @@ type LoginInput = {
   apiKey: string
 }
 
-export type UserProfile = 'admin' | 'partner' | 'ops' | 'ceo'
+export type UserProfile = 'admin' | 'partner' | 'ops' | 'ceo' | 'coo'
 
 type AuthContextValue = {
   auth: AuthPartner | null
@@ -22,6 +22,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 const PROFILE_ROUTES: Record<UserProfile, string[]> = {
   admin: ['*'],
   ceo: ['*'],
+  coo: ['/coo/*'],
   partner: [
     '/dashboard/partner',
     '/partners',
@@ -65,9 +66,17 @@ function matchesRoute(path: string, route: string): boolean {
 
 export function canAccess(path: string, profile: UserProfile | null | undefined): boolean {
   if (!profile) return false
+  const normalizedPath = normalizePath(path)
+  const isCooPath = normalizedPath === '/coo' || normalizedPath.startsWith('/coo/')
+  if (isCooPath) {
+    if (profile !== 'coo') return false
+    return PROFILE_ROUTES.coo.some((route) => matchesRoute(normalizedPath, route))
+  }
+  if (profile === 'coo') {
+    return PROFILE_ROUTES.coo.some((route) => matchesRoute(normalizedPath, route))
+  }
   if (profile === 'admin' || profile === 'ceo') return true
   const routes = PROFILE_ROUTES[profile] || []
-  const normalizedPath = normalizePath(path)
   return routes.some((route) => matchesRoute(normalizedPath, route))
 }
 

@@ -61,3 +61,11 @@ body {
     color: var(--brand-alert);
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ceo-shimmer,
+  .animate-ceo-check,
+  .animate-ceo-toast-in {
+    animation: none !important;
+  }
+}

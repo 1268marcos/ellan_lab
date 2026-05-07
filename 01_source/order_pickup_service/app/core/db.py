@@ -636,10 +636,8 @@ def _run_startup_migrations_if_enabled() -> None:
         logger.info("Nenhuma migração pendente foi aplicada.")
 
 
-def init_db():
-    # =========================
-    # IMPORTS EXPLÍCITOS (CRÍTICO)
-    # =========================
+def import_all_sqlalchemy_models() -> None:
+    """Registra todos os mappers no ``Base.metadata`` (init_db, testes COO/smoke, etc.)."""
     from app.models.allocation import Allocation  # noqa: F401
     from app.models.credit import Credit  # noqa: F401
     from app.models.kiosk_antifraud_event import KioskAntifraudEvent  # noqa: F401
@@ -653,13 +651,16 @@ def init_db():
     from app.models.domain_event_outbox import DomainEventOutbox  # noqa: F401
     from app.models.fiscal_document import FiscalDocument  # noqa: F401
     from app.models.logistics_tracking import (  # noqa: F401
+        InboundDelivery,
         LogisticsCarrierAuthConfig,
         LogisticsCarrierStatusMap,
         LogisticsDeliveryAttempt,
+        LogisticsPartner,
         LogisticsReturn,
         LogisticsReturnEvent,
         LogisticsShipmentLabel,
         LogisticsTrackingEvent,
+        SlaBreachEvent,
     )
     from app.models.logistics_manifest import (  # noqa: F401
         LogisticsCapacityAllocation,
@@ -686,6 +687,7 @@ def init_db():
     )
     from app.models.partner_order_events_outbox import PartnerOrderEventOutbox  # noqa: F401
     from app.models.order_fulfillment_tracking import OrderFulfillmentTracking  # noqa: F401
+    from app.models.ops_action_audit import OpsActionAudit  # noqa: F401
 
     # 🔥 CAPABILITY CATALOG (BLOCO 12)
     from app.models.products_cache import ProductsCache  # noqa: F401
@@ -706,6 +708,10 @@ def init_db():
         CapabilityProfileTarget,
         CapabilityProfileSnapshot,
     )
+
+
+def init_db():
+    import_all_sqlalchemy_models()
 
     # =========================
     # 1. MIGRATIONS PRIMEIRO
