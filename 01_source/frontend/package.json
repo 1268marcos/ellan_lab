@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:ceo": "vite --port 5180 --strictPort",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },

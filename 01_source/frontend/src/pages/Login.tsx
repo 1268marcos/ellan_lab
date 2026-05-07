@@ -20,11 +20,13 @@ export default function Login() {
     try {
       const user = await login({ partnerId: partnerId.trim(), apiKey: apiKey.trim() })
       const target =
-        user.profile === 'admin'
-          ? '/dashboard/admin'
-          : user.profile === 'ops'
-            ? '/dashboard/ops'
-            : '/dashboard/partner'
+        user.profile === 'ceo'
+          ? '/dashboard/ceo'
+          : user.profile === 'admin'
+            ? '/dashboard/admin'
+            : user.profile === 'ops'
+              ? '/dashboard/ops'
+              : '/dashboard/partner'
       navigate(from || target, { replace: true })
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha no login')

@@ -16,8 +16,13 @@ const groups: Group[] = [
     label: 'OPS',
     items: [
       { to: '/dashboard', label: 'Dashboard' },
+      { to: '/dashboard/ceo', label: 'CEO 360°' },
+      { to: '/mvp/access', label: 'Acessos MVP' },
       { to: '/ops/lockers', label: 'Lockers' },
       { to: '/ops/manifests', label: 'Manifestos' },
+      { to: '/field/checklist', label: 'App Campo' },
+      { to: '/noc/dashboard', label: 'NOC/SIMT' },
+      { to: '/support/order/ORDER-MVP-001', label: 'Suporte N1/N2' },
     ],
   },
   {
@@ -93,7 +98,7 @@ export default function Menu() {
   const filteredGroups = groups
     .filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
     .map((g) => {
-      if (profile === 'admin') return g
+      if (profile === 'admin' || profile === 'ceo') return g
       if (profile === 'partner') {
         if (g.key === 'ops') return { ...g, items: [] }
         if (g.key === 'lifecycle') return g

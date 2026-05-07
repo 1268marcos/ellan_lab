@@ -23,6 +23,17 @@ import NotFound from '../pages/NotFound'
 import PrivacyPolicy from '../pages/legal/PrivacyPolicy'
 import TermsOfUse from '../pages/legal/TermsOfUse'
 import SupportCenter from '../pages/support/SupportCenter'
+import { FieldChecklist } from '../pages/field/Checklist'
+import { NOCDashboard } from '../pages/noc/Dashboard'
+import { OrderLookup } from '../pages/support/OrderLookup'
+import MvpAccessPage from '../pages/mvp/Access'
+import CeoDashboard from '../pages/executive/CeoDashboard'
+
+function DashboardRedirect() {
+  const { profile } = useAuth()
+  if (profile === 'ceo') return <Navigate to="/dashboard/ceo" replace />
+  return <Navigate to="/dashboard/admin" replace />
+}
 
 const BillingCycles = lazy(() => import('../pages/finance/BillingCycles'))
 const PartnerInvoices = lazy(() => import('../pages/finance/PartnerInvoices'))
@@ -74,7 +85,15 @@ function AccessDenied() {
 
 function OpsOnly({ children }: { children: JSX.Element }) {
   const { profile } = useAuth()
-  if (profile !== 'admin' && profile !== 'ops') {
+  if (profile !== 'admin' && profile !== 'ops' && profile !== 'ceo') {
+    return <AccessDenied />
+  }
+  return children
+}
+
+function CeoOnly({ children }: { children: JSX.Element }) {
+  const { profile } = useAuth()
+  if (profile !== 'ceo') {
     return <AccessDenied />
   }
   return children
@@ -84,13 +103,30 @@ export default function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Landing />} />
+      <Route path="/mvp/access" element={<MvpAccessPage />} />
       <Route path="/legal/privacy" element={<PrivacyPolicy />} />
       <Route path="/legal/terms" element={<TermsOfUse />} />
       <Route path="/support" element={<SupportCenter />} />
+      <Route
+        path="/support/order/:id"
+        element={
+          <OrderLookup />
+        }
+      />
       <Route path="/login" element={<Login />} />
 
-      <Route path="/dashboard" element={<Navigate to="/dashboard/admin" replace />} />
+      <Route path="/dashboard" element={<DashboardRedirect />} />
       <Route path="/dashboard/admin" element={<Protected><Dashboard /></Protected>} />
+      <Route
+        path="/dashboard/ceo"
+        element={
+          <Protected>
+            <CeoOnly>
+              <CeoDashboard />
+            </CeoOnly>
+          </Protected>
+        }
+      />
       <Route path="/dashboard/partner" element={<Protected><Catalog /></Protected>} />
       <Route path="/dashboard/ops" element={<Protected><Lockers /></Protected>} />
       <Route path="/partners/catalog" element={<Protected><Catalog /></Protected>} />
@@ -218,6 +254,26 @@ export default function AppRouter() {
 
       <Route path="/ops/lockers" element={<Protected><Lockers /></Protected>} />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />
+      <Route
+        path="/field/checklist"
+        element={
+          <Protected>
+            <OpsOnly>
+              <FieldChecklist />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/noc/dashboard"
+        element={
+          <Protected>
+            <OpsOnly>
+              <NOCDashboard />
+            </OpsOnly>
+          </Protected>
+        }
+      />
 
       <Route
         path="/intelligence/*"

@@ -21,6 +21,8 @@ from app.routers.hardware import router as hardware_router
 from app.routers.catalog import router as catalog_router
 from app.routers.dev_catalog import router as dev_catalog_router
 from app.routers.audit import router as audit_router
+from app.routers.field_app import router as field_app_router
+from app.routers.noc import router as noc_router
 from app.services.runtime_bootstrap_service import safe_bootstrap_runtime_on_startup
 
 logging.basicConfig(level=logging.INFO)
@@ -91,6 +93,8 @@ app.include_router(locker_state_router)
 app.include_router(hardware_router)
 app.include_router(catalog_router)
 app.include_router(dev_catalog_router)
+app.include_router(field_app_router)
+app.include_router(noc_router)
 
 
 app.add_middleware(

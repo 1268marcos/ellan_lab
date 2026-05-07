@@ -30,6 +30,7 @@ from app.workers.runtime_sync_worker import runtime_sync_loop
 from app.routers import (
     dev_admin,
     dev_base_catalog,
+    executive_dashboard,
     integration_ops,
     internal,
     kiosk,
@@ -45,6 +46,8 @@ from app.routers import (
     products,
     rentals_ops,
     runtime_sync,
+    support,
+    support_mvp,
     v1_ops,
 )
 
@@ -73,7 +76,7 @@ def _resolve_cors_origins() -> list[str]:
     if raw:
         return [item.strip() for item in raw.split(",") if item.strip()]
     if _is_dev_env():
-        return ["http://localhost:5173", "http://localhost:3000"]
+        return ["http://localhost:5173", "http://localhost:5180", "http://localhost:3000"]
     return []
 
 
@@ -154,10 +157,13 @@ app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
+app.include_router(executive_dashboard.router)
 app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
 app.include_router(runtime_sync.router)
+app.include_router(support.router)
+app.include_router(support_mvp.router)
 app.include_router(pricing_fiscal.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)

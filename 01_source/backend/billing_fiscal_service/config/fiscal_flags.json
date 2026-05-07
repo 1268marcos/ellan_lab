@@ -1,0 +1,18 @@
+{
+  "brazil": {
+    "sefaz_provider": "stub",
+    "sefaz_homologation_ready": false,
+    "certificate_a1_obtained": false,
+    "fallback_enabled": true
+  },
+  "portugal": {
+    "at_provider": "stub",
+    "at_real_ready": false,
+    "fallback_enabled": true
+  },
+  "global": {
+    "default_provider": "stub",
+    "audit_fallback": true,
+    "retry_count": 3
+  }
+}

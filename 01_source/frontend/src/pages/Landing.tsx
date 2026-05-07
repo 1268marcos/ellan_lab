@@ -92,6 +92,12 @@ export default function Landing() {
           >
             Acessar Plataforma
           </Link>
+          <Link
+            to="/mvp/access"
+            className="inline-flex shrink-0 items-center justify-center rounded-xl border border-cyan-300 bg-cyan-50 px-6 py-3 text-sm font-semibold text-cyan-800 transition hover:bg-cyan-100 dark:border-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-100 dark:hover:bg-cyan-900/50"
+          >
+            Acessos MVP
+          </Link>
         </header>
 
         <section className="mt-12 space-y-10">

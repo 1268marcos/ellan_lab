@@ -1,0 +1,91 @@
+name: MVP Smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - sprint-mvp
+
+jobs:
+  frontend_build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: 01_source/frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+        working-directory: 01_source/frontend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: 01_source/frontend
+
+  backend_smoke:
+    name: Backend fiscal smoke
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install billing fiscal dependencies
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/backend/billing_fiscal_service
+
+      - name: Run fiscal routes smoke
+        run: bash 02_docker/run_fiscal_routes_smoke.sh
+
+  e2e_minimal:
+    name: Minimal backend test collect
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: billing_fiscal_service - venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/backend/billing_fiscal_service
+
+      - name: order_pickup_service - venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/order_pickup_service
+
+      - name: payment_gateway - venv + deps
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -U pip
+          .venv/bin/pip install -r requirements.txt
+        working-directory: 01_source/payment_gateway
+
+      - name: Run backend test collect
+        run: bash 07_tests/run_backend_test_collect.sh

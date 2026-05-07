@@ -63,6 +63,8 @@ def _infer_profile(partner_id: str) -> str:
     pid = str(partner_id or "").lower()
     if "admin" in pid:
         return "admin"
+    if "ceo" in pid:
+        return "ceo"
     if "ops" in pid:
         return "ops"
     return "partner"

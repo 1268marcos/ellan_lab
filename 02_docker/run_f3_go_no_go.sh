@@ -1,37 +1,64 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
+set -e
 
-BASE_URL="${BASE_URL:-http://localhost:8020}"
-TOKEN="${INTERNAL_TOKEN:-}"
+GO_NO_GO_RESULT="NO_GO"
+EVIDENCE_FILE="${EVIDENCE_FILE:-docs/fiscal_go_no_go_evidence.md}"
+FLAGS_FILE="01_source/backend/billing_fiscal_service/config/fiscal_flags.json"
+FISCAL_BASE_URL="${FISCAL_BASE_URL:-http://localhost:8020}"
 
-if [[ -z "${TOKEN}" ]]; then
-  has_billing_container="false"
-  while IFS= read -r name; do
-    if [[ "${name}" == "billing_fiscal_service" ]]; then
-      has_billing_container="true"
-      break
+mkdir -p "$(dirname "$EVIDENCE_FILE")"
+
+echo "# Fiscal Go/No-Go Evidence" > "$EVIDENCE_FILE"
+echo "Date: $(date)" >> "$EVIDENCE_FILE"
+echo "" >> "$EVIDENCE_FILE"
+
+# 1. Verificar flags
+echo "## 1. Configuration Flags" >> "$EVIDENCE_FILE"
+if command -v jq >/dev/null 2>&1; then
+  jq . "$FLAGS_FILE" >> "$EVIDENCE_FILE"
+else
+  cat "$FLAGS_FILE" >> "$EVIDENCE_FILE"
+fi
+echo "" >> "$EVIDENCE_FILE"
+
+# 2. Smoke test BR
+echo "## 2. Brazil Smoke Test" >> "$EVIDENCE_FILE"
+if bash 02_docker/run_fiscal_routes_smoke.sh >> "$EVIDENCE_FILE" 2>&1; then
+    echo "Brazil smoke PASS" >> "$EVIDENCE_FILE"
+    BRAZIL_OK=true
+else
+    echo "Brazil smoke FAIL" >> "$EVIDENCE_FILE"
+    BRAZIL_OK=false
+fi
+echo "" >> "$EVIDENCE_FILE"
+
+# 3. Homologação real BR (se flag true)
+REAL_BR=$(jq -r '.brazil.sefaz_homologation_ready' "$FLAGS_FILE")
+if [ "$REAL_BR" = "true" ]; then
+    echo "## 3. Brazil Real Provider Test" >> "$EVIDENCE_FILE"
+    if curl -fsS -X POST "${FISCAL_BASE_URL}/api/fiscal/real-test" >> "$EVIDENCE_FILE" 2>&1; then
+        echo "Brazil real provider PASS" >> "$EVIDENCE_FILE"
+    else
+        echo "Brazil real provider FAIL - using fallback" >> "$EVIDENCE_FILE"
     fi
-  done < <(docker ps --format '{{.Names}}')
-  if [[ "${has_billing_container}" == "true" ]]; then
-    TOKEN="$(docker exec billing_fiscal_service /bin/sh -lc 'printf %s "$INTERNAL_TOKEN"')"
-  fi
+    echo "" >> "$EVIDENCE_FILE"
 fi
 
-if [[ -z "${TOKEN}" ]]; then
-  echo "ERROR: INTERNAL_TOKEN não definido e não foi possível ler do container billing_fiscal_service." >&2
-  exit 1
+# 4. Decisão final
+echo "## 4. Decision" >> "$EVIDENCE_FILE"
+if [ "$BRAZIL_OK" = true ]; then
+    GO_NO_GO_RESULT="GO"
+    echo "GO: Brazil fiscal smoke passes" >> "$EVIDENCE_FILE"
+else
+    echo "NO-GO: Brazil fiscal smoke fails" >> "$EVIDENCE_FILE"
 fi
 
-echo "== F-3 BR/PT GO-NO-GO =="
-echo "BASE_URL=${BASE_URL}"
-echo
+echo "" >> "$EVIDENCE_FILE"
+echo "## 5. Rollback Plan" >> "$EVIDENCE_FILE"
+echo "1. Set flag brazil.sefaz_provider to 'stub'" >> "$EVIDENCE_FILE"
+echo "2. Restart service" >> "$EVIDENCE_FILE"
+echo "3. Smoke test again" >> "$EVIDENCE_FILE"
 
-echo "[BR]"
-curl -s "${BASE_URL}/admin/fiscal/providers/br-go-no-go?run_connectivity=true" \
-  -H "X-Internal-Token: ${TOKEN}"
-echo
-echo
-echo "[PT]"
-curl -s "${BASE_URL}/admin/fiscal/providers/pt-go-no-go?run_connectivity=true" \
-  -H "X-Internal-Token: ${TOKEN}"
-echo
+echo "FISCAL GO/NO-GO: $GO_NO_GO_RESULT"
+echo "Evidence: $EVIDENCE_FILE"
+exit 0

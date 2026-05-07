@@ -6,7 +6,7 @@ type LoginInput = {
   apiKey: string
 }
 
-export type UserProfile = 'admin' | 'partner' | 'ops'
+export type UserProfile = 'admin' | 'partner' | 'ops' | 'ceo'
 
 type AuthContextValue = {
   auth: AuthPartner | null
@@ -21,6 +21,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined)
 
 const PROFILE_ROUTES: Record<UserProfile, string[]> = {
   admin: ['*'],
+  ceo: ['*'],
   partner: [
     '/dashboard/partner',
     '/partners',
@@ -64,7 +65,7 @@ function matchesRoute(path: string, route: string): boolean {
 
 export function canAccess(path: string, profile: UserProfile | null | undefined): boolean {
   if (!profile) return false
-  if (profile === 'admin') return true
+  if (profile === 'admin' || profile === 'ceo') return true
   const routes = PROFILE_ROUTES[profile] || []
   const normalizedPath = normalizePath(path)
   return routes.some((route) => matchesRoute(normalizedPath, route))
