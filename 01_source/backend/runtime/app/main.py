@@ -87,7 +87,7 @@ app.include_router(health_router)
 app.include_router(audit_router)
 app.include_router(internal_runtime_router)
 app.include_router(allocations_router)
-app.include_router(locker_state_router)
+app.include_router(locker_state_router) # Isso já funciona, paths serão /locker/slots, /locker/slots/{slot}, etc.
 app.include_router(hardware_router)
 app.include_router(catalog_router)
 app.include_router(dev_catalog_router)

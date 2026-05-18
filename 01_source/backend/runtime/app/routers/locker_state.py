@@ -347,4 +347,6 @@ def set_slot_state(
         ) from exc
         
 
-
+@router.get("/test")
+def test():
+    return {"ok": True, "message": "locker_state router is working"}

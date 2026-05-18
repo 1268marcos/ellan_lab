@@ -1,3 +1,5 @@
+# 01_source/order_pickup_service/app/clients/runtime_client.py
+
 """Cliente HTTP tipado para o backend regional de runtime (door_state / slots)."""
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ def _headers(locker_id: Optional[str] = None) -> dict[str, str]:
     h = {"X-Internal-Token": settings.internal_token, "Accept": "application/json"}
     lid = str(locker_id or "").strip().upper()
     if lid:
-        h["X-Locker-Id"] = lid
+        h["X-Locker-Id"] = lid   # ← Isso está correto, mas...
     return h
 
 
@@ -34,9 +36,24 @@ def get_slots(locker_id: str, *, region: Optional[str] = None, timeout_sec: Opti
     lid = str(locker_id or "").strip().upper()
     if not lid:
         raise ValueError("locker_id is required")
+    
+    # Log para debug
+    logger.info(f"Getting slots for locker_id={lid}, region={region}")
+
     to = timeout_sec if timeout_sec is not None else float(settings.backend_client_timeout_sec)
     url = f"{_base_url_for_region(region)}/locker/slots"
-    resp = requests.get(url, headers=_headers(lid), timeout=to)
+
+    # Log para debug
+    headers = _headers(lid)
+    logger.debug(f"Request to {url} with headers: {headers}")
+
+    # resp = requests.get(url, headers=_headers(lid), timeout=to)
+    resp = requests.get(url, headers=headers, timeout=to)
+
+    # Log do erro específico
+    if resp.status_code == 404:
+        logger.error(f"Route not found. Check if /locker/slots is registered. Headers sent: {headers}")
+
     resp.raise_for_status()
     data = resp.json()
     if not isinstance(data, list):

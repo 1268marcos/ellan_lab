@@ -97,6 +97,12 @@ def _list_active_lockers(db: Session) -> list[dict[str, Any]]:
 
 
 def compute_slot_divergences(db: Session, locker_id: str, region: Optional[str]) -> list[dict[str, Any]]:
+    
+    # Antes da chamada
+    if not locker_id:
+        logger.error(f"Cannot sync slots: locker_id is empty/None")
+        return
+    
     runtime_rows = runtime_client.get_slots(locker_id, region=region)
     pg_rows = _load_pg_slots(db, locker_id)
     out: list[dict[str, Any]] = []
@@ -355,6 +361,14 @@ def sync_locker_slots_from_runtime(
             }
 
     try:
+
+        logger.error(f"🔍 SYNC DEBUG - locker_id={locker_id!r}, region={region!r}, type={type(locker_id)}")
+        
+        # Antes da chamada
+        if not locker_id:
+            logger.error(f"❌ EMPTY LOCKER_ID! Cannot sync. Check caller.")
+            return
+
         runtime_rows = runtime_client.get_slots(locker_id, region=region)
         runtime_len = len(runtime_rows)
         pg_rows = _load_pg_slots(db, locker_id)
