@@ -19,6 +19,9 @@ const orderLifecycleServiceProxy =
 const lockerCreateServiceProxy =
   process.env.LOCKER_CREATE_SERVICE_PROXY ?? 'http://localhost:8015'
 
+const partnerAdminServiceProxy =
+  process.env.PARTNER_ADMIN_SERVICE_PROXY ?? 'http://localhost:8016'
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -65,6 +68,11 @@ export default defineConfig({
         target: lockerCreateServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/locker-create/, '/api'),
+      },
+      '/api/partner-admin': {
+        target: partnerAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/partner-admin/, '/api'),
       },
       '/api/runtime': {
         target: partnerServiceProxy,

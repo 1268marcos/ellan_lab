@@ -22,6 +22,15 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'acesso',
+    icon: '🔐',
+    label: 'Acesso & Parceiros',
+    items: [
+      { to: '/ops/partners/admin', label: 'Parceiros' },
+      { to: '/ops/access/user-roles', label: 'Papéis (user_roles)' },
+    ],
+  },
+  {
     key: 'lifecycle',
     icon: '♻️',
     label: 'Ciclo de Vida',
@@ -81,6 +90,7 @@ const groups: Group[] = [
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
+    acesso: false,
     lifecycle: false,
     intelligence: false,
     runtime: false,
@@ -111,6 +121,7 @@ export default function Menu() {
       }
       if (profile === 'ops') {
         if (g.key === 'ops') return g
+        if (g.key === 'acesso') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g
         if (g.key === 'intelligence') return { ...g, items: [] }

@@ -77,6 +77,8 @@ const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
 const OpsLockerOccupancyForecastPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage"));
 const OpsLockerCreatePage = lazy(() => import("./pages/OpsLockerCreatePage"));
+const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
+const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -517,6 +519,22 @@ function TopNav() {
       isNew: true,
     },
     {
+      to: "/ops/partners/admin",
+      label: "ops /partners/admin",
+      aria: "CRUD parceiros e-commerce e logistica, webhook, API key",
+      group: "Acesso",
+      opsSubGroup: "Parceiros",
+      isNew: true,
+    },
+    {
+      to: "/ops/access/user-roles",
+      label: "ops /access/user-roles",
+      aria: "Gerenciar tabela user_roles e associacoes",
+      group: "Acesso",
+      opsSubGroup: "Parceiros",
+      isNew: true,
+    },
+    {
       to: "/ops/lockers/slots",
       label: "ops /lockers/slots",
       aria: "Grade locker_slots + configs e force-release admin",
@@ -649,6 +667,7 @@ function TopNav() {
     "Dashboards",
     "Order / Pickup",
     "Lockers",
+    "Acesso",
     "Rentals",
     "Runtime",
     "Logística",
@@ -1919,6 +1938,22 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerCreatePage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/partners/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsPartnersAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/access/user-roles"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsUserRolesPage />)}
                 </OpsRoute>
               }
             />

@@ -21,6 +21,15 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'acesso',
+    icon: '🔐',
+    label: 'Acesso & Parceiros',
+    items: [
+      { to: '/ops/partners/admin', label: 'Parceiros' },
+      { to: '/ops/access/user-roles', label: 'Papéis (user_roles)' },
+    ],
+  },
+  {
     key: 'inteligencia',
     icon: '🧠',
     label: 'Inteligência',
@@ -45,6 +54,7 @@ const groups: Group[] = [
 export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
+    acesso: true,
     inteligencia: true,
     fiscal: true,
   })

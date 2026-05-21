@@ -13,6 +13,8 @@ import DashboardMetrics from '../pages/analytics/DashboardMetrics'
 import SLOReport from '../pages/analytics/SLOReport'
 import Lockers from '../pages/ops/Lockers'
 import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
+import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
+import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -229,6 +231,26 @@ export default function AppRouter() {
         }
       />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />
+      <Route
+        path="/ops/partners/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsPartnersAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/access/user-roles"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsUserRoles />
+            </OpsOnly>
+          </Protected>
+        }
+      />
 
       <Route
         path="/intelligence/*"
