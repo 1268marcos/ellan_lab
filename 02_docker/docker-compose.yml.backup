@@ -43,10 +43,7 @@ services:
   # =========================
   postgres_central:
     # image: postgis/postgis:15-3.4  # Mude de postgres:15 para postgis/postgis:15-3.4
-    # image: timescale/timescaledb:2.11.0-pg15-postgis
-    build:  # ← Substitui "image:"
-      context: .
-      dockerfile: Dockerfile.postgres
+    build: .  # ← Substitui "image:"
     container_name: postgres_central
     restart: unless-stopped
     environment:
@@ -56,24 +53,23 @@ services:
       TZ: UTC
       POSTGRES_HOST_AUTH_METHOD: trust
       # Variáveis adicionais para PostGIS e outros em postgresql.conf
-      POSTGRES_SHARED_PRELOAD_LIBRARIES: 'timescaledb,pg_cron'  # ← Obrigatório
-      POSTGRES_CRON_DATABASE_NAME: locker_central
-      POSTGRES_SHARED_BUFFERS: 256MB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      # POSTGRES_SHARED_PRELOAD_LIBRARIES: 'timescaledb,pg_cron'  # ← Obrigatório
+      # POSTGRES_CRON_DATABASE_NAME: locker_central
+      # POSTGRES_SHARED_BUFFERS: 256MB
+      # POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
     ports:
       - "5435:5432"
     volumes:
       - ../03_data/postgres_central:/var/lib/postgresql/data   # ← Dados persistentes
       # - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
       - ./postgres_central/init:/docker-entrypoint-initdb.d     # ← Scripts init
-      # - ./postgres_central/postgresql.conf:/etc/postgresql/15/main/postgresql.conf:ro  # Opcional    # ← Arquivo conf 'postgresql.conf' precisa existir   
+      - ./postgres_central/postgresql.conf:/etc/postgresql/15/main/postgresql.conf:ro  # Opcional    # ← Arquivo conf 'postgresql.conf' precisa existir   
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d locker_central || exit 1"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d locker_central"]
       # test: ["CMD-SHELL", "pg_isready -U admin -d locker_central && psql -U admin -d locker_central -c 'SELECT PostGIS_version();' || exit 1"]
-      # test: ["CMD-SHELL", "pg_isready -U admin"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
       start_period: 30s
     networks:
       - locker-network

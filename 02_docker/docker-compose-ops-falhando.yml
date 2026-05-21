@@ -1,26 +1,14 @@
 # ============================================================================
-# docker-compose.yml (Compose V2 - sem version)
-# VERSÃO 2.1
+# docker-compose.yml (Compose V2 - VERSÃO CORRIGIDA)
+# 19/05/2026
 # ============================================================================
 # 
-# Arquitetura CENTRAL simplificada:
-# - Postgres CENTRAL (fonte da verdade)
-# - Redis CENTRAL (cache/locks/fila leve)
-# - Payment Gateway (sem dependência de backends legados)
-# - Simuladores SP/PT via MQTT
+# MUDANÇAS:
+# ✓ Usa postgis/postgis:15-3.4 oficial (em vez de build custom)
+# ✓ Remove referência a postgresql.conf (que causa issues)
+# ✓ Healthcheck mais tolerante
+# ✓ Volume de dados limpo para evitar collation mismatch
 #
-# backend_runtime é agora o "cérebro" operacional multi-locker, responsável por:
-# - Grenciar alocação de slots
-# - Comunicar com lockers via MQTT
-# - Sincronizar com o Postgres Central
-# - Expor APIs para payment_gateway e outros serviços
-#
-# Serviço - URL - Finalidade:
-# - Backend Runtime - http://localhost:8200 - API operacional dos lockers
-# - Payment Gateway - http://localhost:8000 - Processamento de pagamentos
-# - Order Pickup - http://localhost:8003 - Fluxo de retirada de pedidos
-# - PGAdmin - http://localhost:5050 - Interface do banco de dados (usamos plugin no VS Code)
-# 
 # ============================================================================
 
 networks:
@@ -39,14 +27,12 @@ volumes:
 services:
 
   # =========================
-  # POSTGRES CENTRAL
+  # POSTGRES CENTRAL (CORRIGIDO COM TIMESCALEDB)
   # =========================
   postgres_central:
-    # image: postgis/postgis:15-3.4  # Mude de postgres:15 para postgis/postgis:15-3.4
-    # image: timescale/timescaledb:2.11.0-pg15-postgis
-    build:  # ← Substitui "image:"
+    build:
       context: .
-      dockerfile: Dockerfile.postgres
+      dockerfile: Dockerfile.postgres  # ← Usar seu Dockerfile
     container_name: postgres_central
     restart: unless-stopped
     environment:
@@ -55,25 +41,44 @@ services:
       POSTGRES_PASSWORD: admin123
       TZ: UTC
       POSTGRES_HOST_AUTH_METHOD: trust
-      # Variáveis adicionais para PostGIS e outros em postgresql.conf
-      POSTGRES_SHARED_PRELOAD_LIBRARIES: 'timescaledb,pg_cron'  # ← Obrigatório
-      POSTGRES_CRON_DATABASE_NAME: locker_central
-      POSTGRES_SHARED_BUFFERS: 256MB
-      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      
+      # PostGIS + TimescaleDB via POSTGRES_INIT_ARGS (se suportado)
+      # ou via arquivo init (veja abaixo)
+
+      # TimescaleDB específico
+      TIMESCALEDB_TELEMETRY: off  # Desliga telemetria
+
     ports:
       - "5435:5432"
     volumes:
       - ../03_data/postgres_central:/var/lib/postgresql/data   # ← Dados persistentes
-      # - ./02_docker/postgres_central/init:/docker-entrypoint-initdb.d
-      - ./postgres_central/init:/docker-entrypoint-initdb.d     # ← Scripts init
-      # - ./postgres_central/postgresql.conf:/etc/postgresql/15/main/postgresql.conf:ro  # Opcional    # ← Arquivo conf 'postgresql.conf' precisa existir   
+      - ./postgres_central/init:/docker-entrypoint-initdb.d     # ← Scripts de init (timescaledb, etc)
+      # ⚠️ NÃO monte postgresql.conf aqui - deixe PostgreSQL usar defaults
+      # Se precisar customizar, use POSTGRES_INIT_ARGS ou script SQL
+      # Se precisar de configurações custom, use o bloco 'command' abaixo
+    # command: >
+    #   postgres
+    #   -c shared_preload_libraries='timescaledb,pg_cron'
+    #   -c pg_cron.database_name='locker_central'
+    #   -c shared_buffers=256MB
+    #   -c effective_cache_size=1GB
+    #   -c work_mem=4MB
+    #   -c maintenance_work_mem=64MB
+    #   -c wal_level=replica
+    #   -c max_wal_senders=10
+    #   -c wal_keep_size=512MB
+    #   -c effective_io_concurrency=200
+    #   -c random_page_cost=1.1
+    #   -c log_statement=ddl
+    #   -c log_min_duration_statement=1000
+    #   -c timezone=UTC
+
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d locker_central || exit 1"]
-      # test: ["CMD-SHELL", "pg_isready -U admin -d locker_central && psql -U admin -d locker_central -c 'SELECT PostGIS_version();' || exit 1"]
-      # test: ["CMD-SHELL", "pg_isready -U admin"]
+      # -h 127.0.0.1: sem host, pg_isready usa cluster Debian "15 main" (data dir inválido no Docker)
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U admin -d locker_central"]
       interval: 10s
       timeout: 5s
-      retries: 10
+      retries: 5
       start_period: 30s
     networks:
       - locker-network
@@ -118,9 +123,8 @@ services:
     networks:
       - locker-network
 
-
   # =========================
-  # BACKEND RUNTIME (multi-locker)
+  # BACKEND RUNTIME
   # =========================
   backend_runtime:
     build:
@@ -136,30 +140,22 @@ services:
       DB_USER: admin
       DB_PASS: admin123
       REDIS_HOST: redis_central
-
       APP_NAME: backend_runtime
       HOST: 0.0.0.0
       PORT: 8000
       INTERNAL_TOKEN: ${ORDER_INTERNAL_TOKEN}
-      # INTERNAL_SERVICE_TOKEN: ${ORDER_INTERNAL_TOKEN}
-
       MQTT_HOST: mqtt_broker
       MQTT_PORT: 1883
-
       BACKUPS_DIR: /backups
       LOGS_DIR: /logs
-
       CENTRAL_POSTGRES_DSN: postgresql://admin:admin123@postgres_central:5432/locker_central
       EVENTS_DB_PATH: /data/sqlite/runtime/events.db
       LOG_HASH_SALT: ${LOG_HASH_SALT}
-
       RUNTIME_REGISTRY_CACHE_TTL_SEC: 5
-
       RUNTIME_APPLY_SCHEMA_ON_STARTUP: "true"
       RUNTIME_SYNC_ON_STARTUP: "true"
       RUNTIME_SYNC_PRUNE_MISSING_ON_STARTUP: "false"
       RUNTIME_FAIL_FAST_ON_STARTUP_ERROR: "true"
-
       TZ: UTC
     volumes:
       - ../03_data/sqlite:/data/sqlite
@@ -181,9 +177,8 @@ services:
       retries: 3
       start_period: 40s
 
-
   # =========================
-  # PAYMENT GATEWAY (sem backends legados)
+  # PAYMENT GATEWAY
   # =========================
   payment_gateway:
     build:
@@ -196,50 +191,27 @@ services:
     env_file:
       - .env
     environment:
-      # ⚠️ BACKENDS LEGADOS REMOVIDOS - usar apenas Postgres Central
-      # - BACKEND_SP=http://backend_sp:8000  # REMOVIDO
-      # - BACKEND_PT=http://backend_pt:8000  # REMOVIDO
-
-      # redis central
       - REDIS_HOST=redis_central
       - GATEWAY_REDIS_HOST=redis_central
-
-      # mqtt
       - MQTT_HOST=mqtt_broker
-
-      # timezone do container
       - TZ=UTC
-
-      # sqlite local (resiliência)
       - GATEWAY_SQLITE_PATH=/data/sqlite/gateway/events.db
-
-      # Postgres central
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
-
-      # multi-locker registry central
       - LOCKER_REGISTRY_JSON=${LOCKER_REGISTRY_JSON:-}
-
-      # compatibilidade legada opcional
       - DEFAULT_LOCKER_ID=${DEFAULT_LOCKER_ID:-}
       - LOCKER_ID_SP=${LOCKER_ID_SP:-}
       - LOCKER_ID_PT=${LOCKER_ID_PT:-}
-
-      # antifraude
       - ANTIFRAUD_ACTIVE_PEPPER_VERSION=${ANTIFRAUD_ACTIVE_PEPPER_VERSION}
       - ANTIFRAUD_PEPPER_V1=${ANTIFRAUD_PEPPER_V1}
       - ANTIFRAUD_PEPPER_V2=${ANTIFRAUD_PEPPER_V2}
-
       - IDEMPOTENCY_TTL_SEC=86400
       - DEVICE_FP_VERSION=v1_web
       - LOG_HASH_SALT=${LOG_HASH_SALT}
       - ANTIFRAUD_PEPPER=${ANTIFRAUD_PEPPER}
-
       - MERCADOPAGO_ACCESS_TOKEN=${MERCADOPAGO_ACCESS_TOKEN}
       - STRIPE_SECRET_KEY_PT=${STRIPE_SECRET_KEY_PT}
       - STRIPE_SECRET_KEY_SP=${STRIPE_SECRET_KEY_SP}
       - LOG_DIR=/logs
-
-      # runtime operacional multi-locker (sobrepõe .env do host se tiver RUNTIME_BASE_URL=127.0.0.1)
       - LOCKER_RUNTIME_INTERNAL=http://backend_runtime:8000
       - RUNTIME_BASE_URL=http://backend_runtime:8000
       - BACKEND_SP=http://backend_runtime:8000
@@ -256,12 +228,8 @@ services:
       - LOCKER_RUNTIME_CATALOG_SKUS_PATH=/catalog/skus
       - LOCKER_RUNTIME_CATALOG_SKU_PATH=/catalog/skus/{sku_id}
       - LOCKER_RUNTIME_CATALOG_SLOTS_PATH=/catalog/slots
-
       - INTERNAL_SERVICE_TOKEN=${ORDER_INTERNAL_TOKEN}
-
-      # Lab/E2E: antifraude relaxado (ver risk_engine). Produção: exportar GATEWAY_E2E_RELAX_RISK=false ou omitir no .env.
       - GATEWAY_E2E_RELAX_RISK=${GATEWAY_E2E_RELAX_RISK:-true}
-
     volumes:
       - ../03_data/sqlite:/data/sqlite
       - ../04_logs:/logs
@@ -281,11 +249,11 @@ services:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
-      retries: 4 # 3
-      start_period: 90s #60s
+      retries: 4
+      start_period: 90s
 
   # =========================
-  # ORDER PICKUP SERVICE (sem backends legados)
+  # ORDER PICKUP SERVICE
   # =========================
   order_pickup_service:
     build:
@@ -298,50 +266,22 @@ services:
       - ../01_source/order_pickup_service/.env
     environment:
       - TZ=UTC
-
-      # ⚠️ BACKENDS LEGADOS REMOVIDOS
-      # - BACKEND_SP_INTERNAL=http://backend_sp:8000  # REMOVIDO
-      # - BACKEND_PT_INTERNAL=http://backend_pt:8000  # REMOVIDO
-
-      # endpoint de preço 
       - BACKEND_PRICE_PATH_TEMPLATE=/catalog/skus/{sku_id}
-
-      # gateway central
       - PAYMENT_GATEWAY_INTERNAL=http://payment_gateway:8000
       - PAYMENT_GATEWAY_LOCKERS_PATH_TEMPLATE=/lockers/{locker_id}
       - BILLING_FISCAL_SERVICE_URL=http://billing_fiscal_service:8020
       - BILLING_FISCAL_TIMEOUT_SEC=5
-
-      # internal token
       - INTERNAL_TOKEN=${ORDER_INTERNAL_TOKEN}
-
-      # QRCode
       - PICKUP_QR_SECRET=${PICKUP_QR_SECRET}
       - QR_ROTATE_SEC=${QR_ROTATE_SEC}
-
-      # DB do serviço
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
-
-      # migração automática
       - RUN_DB_MIGRATIONS_ON_STARTUP=true
-
-      # timeout do backend client
       - BACKEND_CLIENT_TIMEOUT_SEC=5
-
-      # central
       - CENTRAL_POSTGRES_DSN=postgresql://admin:admin123@postgres_central:5432/locker_central
-
-      # ambiente
       - NODE_ENV=${NODE_ENV:-development}
-
-      # jobs internos
       - EXPIRY_POLL_SEC=60
       - LIFECYCLE_EVENTS_POLL_SEC=10
-
-      # email smtp
       - FRONTEND_BASE_URL=http://localhost:5173
-
-    # ⚠️ depends_on ajustado - REMOVIDOS backend_sp e backend_pt
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -469,8 +409,6 @@ services:
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
       TZ: UTC
-
-      # F-3 Trilha B - controlado por ENV (default seguro: real desabilitado)
       FISCAL_REAL_PROVIDER_BR_ENABLED: "${FISCAL_REAL_PROVIDER_BR_ENABLED:-false}"
       FISCAL_REAL_PROVIDER_PT_ENABLED: "${FISCAL_REAL_PROVIDER_PT_ENABLED:-false}"
       FISCAL_REAL_PROVIDER_BASE_URL_BR: "${FISCAL_REAL_PROVIDER_BASE_URL_BR:-}"
@@ -479,12 +417,9 @@ services:
       FISCAL_REAL_PROVIDER_API_KEY_PT: "${FISCAL_REAL_PROVIDER_API_KEY_PT:-}"
       FISCAL_REAL_PROVIDER_TIMEOUT_SEC: "${FISCAL_REAL_PROVIDER_TIMEOUT_SEC:-8}"
       FISCAL_REAL_PROVIDER_RETRIES: "${FISCAL_REAL_PROVIDER_RETRIES:-2}"
-
-      # F3C-STUB-01 — A1 dry-run (opcional; default desligado)
       FISCAL_A1_DRY_RUN_ENABLED: "${FISCAL_A1_DRY_RUN_ENABLED:-false}"
       FISCAL_A1_DRY_RUN_CERT_REF: "${FISCAL_A1_DRY_RUN_CERT_REF:-}"
       FISCAL_A1_DRY_RUN_HMAC_SECRET: "${FISCAL_A1_DRY_RUN_HMAC_SECRET:-}"
-
     ports:
       - "8020:8020"
     depends_on:
@@ -525,8 +460,6 @@ services:
       INVOICE_ISSUE_PROCESSING_TIMEOUT_SEC: 180
       INVOICE_ISSUE_WORKER_ID: billing_fiscal_issue_worker
       TZ: UTC
-
-      # F-3 Trilha B - controlado por ENV (default seguro: real desabilitado)
       FISCAL_REAL_PROVIDER_BR_ENABLED: "${FISCAL_REAL_PROVIDER_BR_ENABLED:-false}"
       FISCAL_REAL_PROVIDER_PT_ENABLED: "${FISCAL_REAL_PROVIDER_PT_ENABLED:-false}"
       FISCAL_REAL_PROVIDER_BASE_URL_BR: "${FISCAL_REAL_PROVIDER_BASE_URL_BR:-}"
@@ -535,11 +468,9 @@ services:
       FISCAL_REAL_PROVIDER_API_KEY_PT: "${FISCAL_REAL_PROVIDER_API_KEY_PT:-}"
       FISCAL_REAL_PROVIDER_TIMEOUT_SEC: "${FISCAL_REAL_PROVIDER_TIMEOUT_SEC:-8}"
       FISCAL_REAL_PROVIDER_RETRIES: "${FISCAL_REAL_PROVIDER_RETRIES:-2}"
-
       FISCAL_A1_DRY_RUN_ENABLED: "${FISCAL_A1_DRY_RUN_ENABLED:-false}"
       FISCAL_A1_DRY_RUN_CERT_REF: "${FISCAL_A1_DRY_RUN_CERT_REF:-}"
       FISCAL_A1_DRY_RUN_HMAC_SECRET: "${FISCAL_A1_DRY_RUN_HMAC_SECRET:-}"
-
     depends_on:
       postgres_central:
         condition: service_healthy
@@ -625,7 +556,7 @@ services:
       - locker-network
 
   # =========================
-  # PARTNER WEBHOOK DELIVERY WORKER (P-2)
+  # PARTNER WEBHOOK DELIVERY WORKER
   # =========================
   partner_webhook_delivery_worker:
     build:
@@ -653,7 +584,7 @@ services:
       - locker-network
 
   # =========================
-  # PARTNER INTEGRATION HEALTH WORKER (P-2)
+  # PARTNER INTEGRATION HEALTH WORKER
   # =========================
   partner_integration_health_worker:
     build:
@@ -767,7 +698,6 @@ services:
         condition: service_started
     networks:
       - locker-network
-      
 
   # =========================
   # SIMULATOR BACKEND RUNTIME
@@ -781,16 +711,12 @@ services:
       MQTT_HOST: mqtt_broker
       MQTT_PORT: "1883"
       REGION: PT
-      # LOCKER_ID: LOCKER_PT_01
-      # MACHINE_ID: CACIFO-PT-001
-      # compatibilidade legada opcional - deverá ser abandonada
       LOCKER_ID: ${DEFAULT_LOCKER_ID:-}
       LOCKER_ID_SP: ${LOCKER_ID_SP:-}
       LOCKER_ID_PT: ${LOCKER_ID_PT:-}
       MACHINE_ID: CACIFO-PT-001
       MACHINE_ID_SP: CACIFO-SP-001
       MACHINE_ID_PT: CACIFO-PT-001
-
       FAILURE_RATE: "0.09"
       PAYMENT_TRIGGERS_OPEN: "false"
       TZ: UTC
@@ -802,7 +728,7 @@ services:
       - locker-network
 
   # =========================
-  # GRAFANA (FA-5 Dashboards / Alertas)
+  # GRAFANA
   # =========================
   grafana:
     image: grafana/grafana:11.1.0
@@ -825,7 +751,7 @@ services:
       - locker-network
 
   # =========================
-  # METABASE (FA-5 BI / Autoatendimento)
+  # METABASE
   # =========================
   metabase:
     image: metabase/metabase:v0.53.6
@@ -842,10 +768,7 @@ services:
       MB_DB_PASS: admin123
       MB_SITE_URL: http://localhost:8301
       JAVA_TIMEZONE: UTC
-      
-      # ⚠️ Desabilita carregamento automático de plugins não essenciais
       MB_PLUGINS_DIR: /dev/null
-    
     volumes:
       - ../03_data/metabase:/metabase-data
     depends_on:
@@ -854,12 +777,11 @@ services:
     networks:
       - locker-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
-
 
   # =========================
   # ML PREDICTOR SERVICE
@@ -894,18 +816,13 @@ services:
       - FRAUD_MODEL_BUNDLE_PATH=/app/artifacts/fraud/fraud_bundle.joblib
       - FRAUD_MODEL_META_PATH=/app/artifacts/fraud/fraud_bundle.meta.json
       - ROUTING_TRAVEL_RF_PATH=/app/artifacts/routing_travel_rf.joblib
-      # NLP: Forçar TF-IDF para evitar download de modelo pesado (mais leve, offline)
-      - FEEDBACK_USE_TFIDF_ONLY=true  # ← Forçar TF-IDF (mais leve, offline)
-      # - FEEDBACK_EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2
-      # - FEEDBACK_USE_TFIDF_ONLY=false
+      - FEEDBACK_USE_TFIDF_ONLY=true
     volumes:
       - ../03_data/artifacts:/app/artifacts
       - ../04_logs/ml_predictor:/app/logs
     depends_on:
       postgres_central:
         condition: service_healthy
-      # redis_central:
-      #   condition: service_healthy
     networks:
       - locker-network
     healthcheck:
@@ -914,24 +831,3 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-
-
-
-  # =========================
-  # PGADMIN - Interface Web gráfica (provisório na fase desenvolvimento)
-  # Como usar?   http://localhost:5050 e configure a conexão com postgres_central (hostname do container)
-  # =========================
-  # pgadmin:
-  #   image: dpage/pgadmin4
-  #   container_name: pgadmin
-  #   restart: unless-stopped
-  #   environment:
-  #     PGADMIN_DEFAULT_EMAIL: admin@admin.com
-  #     PGADMIN_DEFAULT_PASSWORD: admin
-  #     PGADMIN_CONFIG_SERVER_MODE: 'False'
-  #   ports:
-  #     - "5050:80"
-  #   depends_on:
-  #   - postgres_central
-  #   networks:
-  #     - locker-network

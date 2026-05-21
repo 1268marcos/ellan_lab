@@ -686,7 +686,7 @@ export default function PublicCatalogPage() {
           >
             <div className="form-group">
               <label htmlFor="region-select" className="form-label">
-                🌎 Região
+                🌎 Região (País e Cidade)
               </label>
               <select
                 id="region-select"

@@ -14,7 +14,7 @@ pg_dump: hint: Consider using a full dump instead of a --data-only dump to avoid
 -- PostgreSQL database dump
 --
 
--- Dumped from database version 15.17 (Debian 15.17-1.pgdg11+1)
+-- Dumped from database version 15.18 (Debian 15.18-1.pgdg11+1)
 -- Dumped by pg_dump version 15.8 (Debian 15.8-1.pgdg110+1)
 
 SET statement_timeout = 0;
@@ -50,6 +50,20 @@ CREATE SCHEMA analytics_analytics;
 
 
 ALTER SCHEMA analytics_analytics OWNER TO admin;
+
+--
+-- Name: pg_cron; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION pg_cron; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pg_cron IS 'Job scheduler for PostgreSQL';
+
 
 --
 -- Name: topology; Type: SCHEMA; Schema: -; Owner: admin
@@ -107,6 +121,20 @@ CREATE EXTENSION IF NOT EXISTS fuzzystrmatch WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION fuzzystrmatch IS 'determine similarities and distance between strings';
+
+
+--
+-- Name: pgcrypto; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pgcrypto; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pgcrypto IS 'cryptographic functions';
 
 
 --
@@ -497,6 +525,112 @@ CREATE TYPE public.walletprovider AS ENUM (
 ALTER TYPE public.walletprovider OWNER TO admin;
 
 --
+-- Name: calculate_gateway_fee(integer, character varying, character varying, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.calculate_gateway_fee(p_amount_cents integer, p_payment_method character varying, p_card_brand character varying, p_installments integer DEFAULT 1) RETURNS integer
+    LANGUAGE plpgsql IMMUTABLE
+    AS $$
+DECLARE
+    v_fee_pct DECIMAL(5,4);
+    v_fee_cents INTEGER;
+    v_installment_fee_cents INTEGER := 0;
+BEGIN
+    -- Taxa percentual base (modelo simplificado)
+    v_fee_pct := CASE 
+        WHEN p_payment_method IN ('creditCard', 'CARTAO_CREDITO') THEN 
+            CASE 
+                WHEN p_card_brand IN ('amex', 'elite') THEN 0.045 -- 4.5% para Amex
+                ELSE 0.039  -- 3.9% para outras bandeiras
+            END
+        WHEN p_payment_method IN ('debitCard', 'CARTAO_DEBITO') THEN 0.025  -- 2.5%
+        WHEN p_payment_method = 'pix' THEN 0.008  -- 0.8%
+        WHEN p_payment_method = 'boleto' THEN 0.025  -- 2.5%
+        WHEN p_payment_method IN ('apple_pay', 'google_pay') THEN 0.035  -- 3.5%
+        ELSE 0.03  -- 3% padrão
+    END;
+    
+    -- Taxa por parcela (ex: 0.5% por parcela além da 1ª)
+    IF p_installments > 1 THEN
+        v_installment_fee_cents := ROUND(p_amount_cents * 0.005 * (p_installments - 1));
+    END IF;
+    
+    v_fee_cents := ROUND(p_amount_cents * v_fee_pct) + v_installment_fee_cents;
+    
+    RETURN LEAST(v_fee_cents, p_amount_cents * 0.1); -- Limite de 10% do valor
+END;
+$$;
+
+
+ALTER FUNCTION public.calculate_gateway_fee(p_amount_cents integer, p_payment_method character varying, p_card_brand character varying, p_installments integer) OWNER TO admin;
+
+--
+-- Name: calculate_locker_gateway_fees(character varying, date); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.calculate_locker_gateway_fees(p_locker_id character varying, p_month date DEFAULT (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date) RETURNS bigint
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_total_fee_cents BIGINT;
+BEGIN
+    -- Calcula o total de gateway fees para o locker no mês
+    SELECT COALESCE(SUM(pt.gateway_fee_cents), 0)
+    INTO v_total_fee_cents
+    FROM public.payment_transactions pt
+    JOIN public.orders o ON o.id = pt.order_id
+    JOIN public.allocations a ON a.order_id = o.id
+    WHERE a.locker_id = p_locker_id
+        AND pt.status = 'APPROVED'
+        AND DATE_TRUNC('month', pt.approved_at)::DATE = p_month;
+    
+    RETURN v_total_fee_cents;
+END;
+$$;
+
+
+ALTER FUNCTION public.calculate_locker_gateway_fees(p_locker_id character varying, p_month date) OWNER TO admin;
+
+--
+-- Name: FUNCTION calculate_locker_gateway_fees(p_locker_id character varying, p_month date); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.calculate_locker_gateway_fees(p_locker_id character varying, p_month date) IS 'Calcula o total de gateway fees para um locker em um determinado mês';
+
+
+--
+-- Name: create_future_order_partitions(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.create_future_order_partitions() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    future_months INT := 3;  -- Criar 3 meses à frente
+    base_date DATE;
+    partition_name TEXT;
+    start_date DATE;
+    end_date DATE;
+BEGIN
+    FOR i IN 1..future_months LOOP
+        base_date := DATE_TRUNC('month', CURRENT_DATE + (i || ' months')::INTERVAL);
+        partition_name := 'orders_' || TO_CHAR(base_date, 'YYYY_MM');
+        start_date := base_date;
+        end_date := base_date + INTERVAL '1 month';
+        
+        EXECUTE format('
+            CREATE TABLE IF NOT EXISTS %I PARTITION OF orders_partitioned
+            FOR VALUES FROM (%L) TO (%L)',
+            partition_name, start_date, end_date
+        );
+    END LOOP;
+END;
+$$;
+
+
+ALTER FUNCTION public.create_future_order_partitions() OWNER TO admin;
+
+--
 -- Name: find_lockers_by_distance(numeric, numeric, numeric, integer, boolean); Type: FUNCTION; Schema: public; Owner: admin
 --
 
@@ -539,6 +673,195 @@ $$;
 ALTER FUNCTION public.find_lockers_by_distance(ref_lat numeric, ref_lon numeric, radius_meters numeric, max_results integer, ble_only boolean) OWNER TO admin;
 
 --
+-- Name: fn_allocate_fulfillment_inventory(character varying, character varying, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_allocate_fulfillment_inventory(p_order_id character varying, p_product_id character varying, p_quantity integer) RETURNS boolean
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_center_id VARCHAR;
+    v_current_qty INTEGER;
+BEGIN
+    -- Encontrar centro mais próximo (baseado no locker do pedido)
+    SELECT fc.id INTO v_center_id
+    FROM fulfillment_centers fc
+    CROSS JOIN orders o
+    CROSS JOIN lockers l
+    WHERE o.id = p_order_id
+        AND l.id = o.locker_id
+        AND fc.active = true
+    ORDER BY fc.latitude <-> l.latitude, fc.longitude <-> l.longitude
+    LIMIT 1;
+    
+    IF v_center_id IS NULL THEN
+        RETURN false;
+    END IF;
+    
+    -- Reservar estoque
+    UPDATE fulfillment_inventory
+    SET quantity_reserved = quantity_reserved + p_quantity,
+        updated_at = now()
+    WHERE fulfillment_center_id = v_center_id
+        AND product_id = p_product_id
+        AND quantity_available >= p_quantity;
+    
+    IF NOT FOUND THEN
+        RETURN false;
+    END IF;
+    
+    -- Criar ordem de fulfillment
+    INSERT INTO fulfillment_orders (order_id, fulfillment_center_id, status)
+    VALUES (p_order_id, v_center_id, 'PENDING');
+    
+    RETURN true;
+END $$;
+
+
+ALTER FUNCTION public.fn_allocate_fulfillment_inventory(p_order_id character varying, p_product_id character varying, p_quantity integer) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_allocate_fulfillment_inventory(p_order_id character varying, p_product_id character varying, p_quantity integer); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_allocate_fulfillment_inventory(p_order_id character varying, p_product_id character varying, p_quantity integer) IS 'Aloca inventário para um pedido no fulfillment center mais próximo';
+
+
+--
+-- Name: fn_calculate_dynamic_price(character varying, character varying, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_calculate_dynamic_price(p_product_id character varying, p_locker_id character varying, p_base_price_cents integer) RETURNS integer
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_final_price INTEGER;
+    v_demand_factor DECIMAL;
+    v_inventory_factor DECIMAL;
+    v_time_factor DECIMAL;
+    v_demand_7d INTEGER;
+    v_inventory_count INTEGER;
+    v_hour INTEGER;
+BEGIN
+    -- Demanda últimos 7 dias
+    SELECT COUNT(*) INTO v_demand_7d
+    FROM order_items oi
+    JOIN orders o ON o.id = oi.order_id
+    WHERE oi.sku_id = p_product_id
+        AND o.created_at >= CURRENT_DATE - 7
+        AND o.status = 'PICKED_UP';
+    
+    -- Inventário atual
+    SELECT quantity_available INTO v_inventory_count
+    FROM product_inventory
+    WHERE product_id = p_product_id AND locker_id = p_locker_id;
+    
+    -- Fator de demanda
+    v_demand_factor := CASE 
+        WHEN v_demand_7d > 100 THEN 1.15
+        WHEN v_demand_7d > 50 THEN 1.10
+        WHEN v_demand_7d > 20 THEN 1.05
+        ELSE 1.00
+    END;
+    
+    -- Fator de inventário (quanto menor o estoque, maior o preço)
+    v_inventory_factor := CASE 
+        WHEN v_inventory_count < 5 THEN 1.20
+        WHEN v_inventory_count < 10 THEN 1.10
+        WHEN v_inventory_count < 20 THEN 1.05
+        ELSE 1.00
+    END;
+    
+    -- Fator horário (horário de pico)
+    v_hour := EXTRACT(HOUR FROM CURRENT_TIME);
+    v_time_factor := CASE 
+        WHEN v_hour BETWEEN 17 AND 20 THEN 1.08  -- Horário de pico
+        WHEN v_hour BETWEEN 12 AND 14 THEN 1.05  -- Almoço
+        ELSE 1.00
+    END;
+    
+    -- Preço final
+    v_final_price := ROUND(p_base_price_cents * v_demand_factor * v_inventory_factor * v_time_factor);
+    
+    -- Aplicar limites
+    v_final_price := GREATEST(v_final_price, p_base_price_cents * 0.7); -- -30% mínimo
+    v_final_price := LEAST(v_final_price, p_base_price_cents * 1.5);    -- +50% máximo
+    
+    RETURN v_final_price;
+END $$;
+
+
+ALTER FUNCTION public.fn_calculate_dynamic_price(p_product_id character varying, p_locker_id character varying, p_base_price_cents integer) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_calculate_dynamic_price(p_product_id character varying, p_locker_id character varying, p_base_price_cents integer); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_calculate_dynamic_price(p_product_id character varying, p_locker_id character varying, p_base_price_cents integer) IS 'Calcula preço baseado em demanda, estoque e horário';
+
+
+--
+-- Name: fn_calculate_seller_net(integer, numeric); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_calculate_seller_net(p_price_cents integer, p_commission_pct numeric) RETURNS TABLE(commission_cents integer, ellan_fee_cents integer, gateway_fee_cents integer, net_cents integer)
+    LANGUAGE sql IMMUTABLE
+    AS $$
+    SELECT 
+        ROUND(p_price_cents * p_commission_pct / 100)::INTEGER,
+        ROUND(p_price_cents * 2.99 / 100)::INTEGER, -- Ellan platform fee
+        ROUND(p_price_cents * 2.5 / 100)::INTEGER,  -- Gateway fee estimado
+        p_price_cents - ROUND(p_price_cents * (p_commission_pct + 2.99 + 2.5) / 100)::INTEGER
+$$;
+
+
+ALTER FUNCTION public.fn_calculate_seller_net(p_price_cents integer, p_commission_pct numeric) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_calculate_seller_net(p_price_cents integer, p_commission_pct numeric); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_calculate_seller_net(p_price_cents integer, p_commission_pct numeric) IS 'Calcula splits do marketplace';
+
+
+--
+-- Name: fn_check_subscription_benefit(character varying, character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_check_subscription_benefit(p_user_id character varying, p_benefit_type character varying) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_has_benefit BOOLEAN;
+BEGIN
+    SELECT EXISTS(
+        SELECT 1 FROM customer_subscriptions cs
+        WHERE cs.user_id = p_user_id
+            AND cs.status = 'ACTIVE'
+            AND cs.current_period_start <= now()
+            AND cs.current_period_end >= now()
+            AND CASE p_benefit_type
+                WHEN 'FREE_SHIPPING' THEN cs.free_shipping
+                WHEN 'PRIORITY_SHELF' THEN cs.priority_shelf
+                WHEN 'EXCLUSIVE_DEAL' THEN cs.exclusive_deals
+                ELSE false
+            END = true
+    ) INTO v_has_benefit;
+    
+    RETURN COALESCE(v_has_benefit, false);
+END $$;
+
+
+ALTER FUNCTION public.fn_check_subscription_benefit(p_user_id character varying, p_benefit_type character varying) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_check_subscription_benefit(p_user_id character varying, p_benefit_type character varying); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_check_subscription_benefit(p_user_id character varying, p_benefit_type character varying) IS 'Verifica se usuário tem direito a benefício da assinatura';
+
+
+--
 -- Name: fn_derive_evidence_strength(integer); Type: FUNCTION; Schema: public; Owner: admin
 --
 
@@ -557,6 +880,414 @@ $$;
 
 
 ALTER FUNCTION public.fn_derive_evidence_strength(p_score integer) OWNER TO admin;
+
+--
+-- Name: fn_find_nearest_store(character varying, numeric, numeric, numeric); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_find_nearest_store(p_product_id character varying, p_latitude numeric, p_longitude numeric, p_radius_km numeric DEFAULT 10) RETURNS TABLE(store_id character varying, store_name character varying, distance_km numeric, quantity integer, price_cents integer)
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT 
+        ps.id,
+        ps.name,
+        ROUND(CAST(ST_Distance(
+            ST_SetSRID(ST_MakePoint(p_longitude, p_latitude), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(ps.longitude, ps.latitude), 4326)::geography
+        ) / 1000 AS NUMERIC), 2) AS distance_km,
+        si.quantity,
+        COALESCE(si.price_cents, p.amount_cents) AS price_cents
+    FROM partner_stores ps
+    JOIN store_inventory si ON si.store_id = ps.id AND si.product_id = p_product_id
+    JOIN products p ON p.id = p_product_id
+    WHERE ps.active = true
+        AND si.quantity > 0
+        AND ST_DWithin(
+            ST_SetSRID(ST_MakePoint(ps.longitude, ps.latitude), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(p_longitude, p_latitude), 4326)::geography,
+            p_radius_km * 1000
+        )
+    ORDER BY distance_km
+    LIMIT 5;
+$$;
+
+
+ALTER FUNCTION public.fn_find_nearest_store(p_product_id character varying, p_latitude numeric, p_longitude numeric, p_radius_km numeric) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_find_nearest_store(p_product_id character varying, p_latitude numeric, p_longitude numeric, p_radius_km numeric); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_find_nearest_store(p_product_id character varying, p_latitude numeric, p_longitude numeric, p_radius_km numeric) IS 'Encontra lojas mais próximas com estoque do produto';
+
+
+--
+-- Name: fn_get_tenant_by_domain(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_get_tenant_by_domain(p_domain character varying) RETURNS character varying
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT tenant_id
+    FROM custom_domains
+    WHERE domain = p_domain AND verified = true
+    UNION ALL
+    SELECT 'default' WHERE NOT EXISTS (SELECT 1 FROM custom_domains WHERE domain = p_domain)
+    LIMIT 1
+$$;
+
+
+ALTER FUNCTION public.fn_get_tenant_by_domain(p_domain character varying) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_get_tenant_by_domain(p_domain character varying); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_get_tenant_by_domain(p_domain character varying) IS 'Resolve tenant a partir do domínio para white label';
+
+
+--
+-- Name: fn_init_locker_costs(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_init_locker_costs() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Dispara apenas na inserção com active=true ou na mudança de false -> true
+  IF (TG_OP = 'INSERT' AND NEW.active = true) OR 
+     (TG_OP = 'UPDATE' AND OLD.active = false AND NEW.active = true) THEN
+    
+    -- Evita duplicatas em caso de re-execução ou atualização acidental
+    IF NOT EXISTS (SELECT 1 FROM cost_centers WHERE locker_id = NEW.id) THEN
+      INSERT INTO cost_centers (
+        id, locker_id, operational_cost_monthly_cents, 
+        maintenance_cost_annual_cents, depreciation_cost_annual_cents, 
+        utilities_cost_monthly_cents, created_at, updated_at
+      ) VALUES (
+        gen_random_uuid(),
+        NEW.id,
+        0, 0, 0, 0, 
+        now(), now()
+      );
+    END IF;
+  END IF;
+  
+  RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_init_locker_costs() OWNER TO admin;
+
+--
+-- Name: fn_locker_health(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_locker_health(p_locker_id character varying) RETURNS TABLE(health_score numeric, status character varying, last_telemetry_at timestamp without time zone)
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT 
+        100 - COALESCE(SUM(CASE WHEN event_type IN ('DOOR_FAILURE', 'SIGNAL_LOST') THEN 10 ELSE 0 END), 0),
+        CASE 
+            WHEN 100 - COALESCE(SUM(CASE WHEN event_type IN ('DOOR_FAILURE', 'SIGNAL_LOST') THEN 10 ELSE 0 END), 0) >= 80 THEN 'SAUDAVEL'
+            WHEN 100 - COALESCE(SUM(CASE WHEN event_type IN ('DOOR_FAILURE', 'SIGNAL_LOST') THEN 10 ELSE 0 END), 0) >= 50 THEN 'ATENCAO'
+            ELSE 'CRITICO'
+        END,
+        MAX(occurred_at)
+    FROM locker_telemetry
+    WHERE locker_id = p_locker_id AND occurred_at >= CURRENT_DATE - INTERVAL '7 days'
+$$;
+
+
+ALTER FUNCTION public.fn_locker_health(p_locker_id character varying) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_locker_health(p_locker_id character varying); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_locker_health(p_locker_id character varying) IS 'Retorna score de saúde baseado em telemetria dos últimos 7 dias.';
+
+
+--
+-- Name: fn_locker_heartbeat(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_locker_heartbeat(p_locker_id character varying) RETURNS timestamp without time zone
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT MAX(occurred_at)
+    FROM locker_telemetry
+    WHERE locker_id = p_locker_id AND event_type = 'HEARTBEAT'
+$$;
+
+
+ALTER FUNCTION public.fn_locker_heartbeat(p_locker_id character varying) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_locker_heartbeat(p_locker_id character varying); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_locker_heartbeat(p_locker_id character varying) IS 'Retorna timestamp do último heartbeat recebido do locker.';
+
+
+--
+-- Name: fn_locker_occupancy(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_locker_occupancy(p_locker_id character varying) RETURNS TABLE(total_slots integer, occupied_slots integer, available_slots integer, occupancy_pct numeric)
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT 
+        COUNT(*)::INTEGER,
+        COUNT(CASE WHEN status = 'OCCUPIED' THEN 1 END)::INTEGER,
+        COUNT(CASE WHEN status = 'AVAILABLE' THEN 1 END)::INTEGER,
+        ROUND(COUNT(CASE WHEN status = 'OCCUPIED' THEN 1 END)::NUMERIC / NULLIF(COUNT(*), 0) * 100, 2)
+    FROM locker_slots
+    WHERE locker_id = p_locker_id
+$$;
+
+
+ALTER FUNCTION public.fn_locker_occupancy(p_locker_id character varying) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_locker_occupancy(p_locker_id character varying); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_locker_occupancy(p_locker_id character varying) IS 'Retorna ocupação atual de um locker específico.';
+
+
+--
+-- Name: fn_mrr(date); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_mrr(p_month date DEFAULT (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date) RETURNS numeric
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT COALESCE(SUM(total_cents) / 100, 0)::NUMERIC
+    FROM partner_billing_line_items
+    WHERE line_type = 'BASE_FEE'
+        AND period_from <= p_month
+        AND period_to >= p_month
+$$;
+
+
+ALTER FUNCTION public.fn_mrr(p_month date) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_mrr(p_month date); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_mrr(p_month date) IS 'Calcula MRR baseado em ciclos de faturamento aprovados.';
+
+
+--
+-- Name: fn_predict_demand(character varying, date); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_predict_demand(p_locker_id character varying, p_forecast_date date) RETURNS integer
+    LANGUAGE plpgsql STABLE
+    AS $$
+DECLARE
+    v_prediction INTEGER;
+BEGIN
+    -- Usar previsão existente ou calcular baseada em histórico
+    SELECT predicted_orders INTO v_prediction
+    FROM demand_forecast
+    WHERE locker_id = p_locker_id AND forecast_date = p_forecast_date;
+    
+    IF v_prediction IS NOT NULL THEN
+        RETURN v_prediction;
+    END IF;
+    
+    -- Fallback: média dos últimos 30 dias
+    SELECT COALESCE(ROUND(AVG(daily_orders)), 10) INTO v_prediction
+    FROM (
+        SELECT COUNT(*) AS daily_orders
+        FROM orders o
+        WHERE o.locker_id = p_locker_id
+            AND o.created_at >= p_forecast_date - INTERVAL '30 days'
+            AND o.created_at < p_forecast_date
+        GROUP BY DATE_TRUNC('day', o.created_at)
+    ) daily;
+    
+    RETURN COALESCE(v_prediction, 10);
+END $$;
+
+
+ALTER FUNCTION public.fn_predict_demand(p_locker_id character varying, p_forecast_date date) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_predict_demand(p_locker_id character varying, p_forecast_date date); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_predict_demand(p_locker_id character varying, p_forecast_date date) IS 'Prevê demanda para um locker em uma data específica';
+
+
+--
+-- Name: fn_recommend_products(character varying, character varying, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_recommend_products(p_user_id character varying, p_locker_id character varying, p_limit integer DEFAULT 10) RETURNS TABLE(product_id character varying, product_name character varying, score numeric, price_cents integer)
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT 
+        pr.product_id,
+        p.name AS product_name,
+        pr.score,
+        p.amount_cents AS price_cents
+    FROM product_recommendations pr
+    JOIN products p ON p.id = pr.product_id AND p.is_active = true
+    WHERE (pr.user_id = p_user_id OR pr.user_id IS NULL)
+        AND (pr.locker_id = p_locker_id OR pr.locker_id IS NULL)
+        AND pr.expires_at > now()
+        AND p.is_active = true
+    ORDER BY pr.score DESC
+    LIMIT p_limit;
+$$;
+
+
+ALTER FUNCTION public.fn_recommend_products(p_user_id character varying, p_locker_id character varying, p_limit integer) OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_recommend_products(p_user_id character varying, p_locker_id character varying, p_limit integer); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_recommend_products(p_user_id character varying, p_locker_id character varying, p_limit integer) IS 'Retorna recomendações de produtos para um usuário/locker';
+
+
+--
+-- Name: fn_refresh_realtime_kpis(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_refresh_realtime_kpis() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    REFRESH MATERIALIZED VIEW CONCURRENTLY mv_realtime_kpis;
+    RAISE NOTICE '✅ mv_realtime_kpis atualizado em %', now();
+END $$;
+
+
+ALTER FUNCTION public.fn_refresh_realtime_kpis() OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_refresh_realtime_kpis(); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_refresh_realtime_kpis() IS 'Atualiza a materialized view de KPIs em tempo real';
+
+
+--
+-- Name: fn_renew_subscriptions(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_renew_subscriptions() RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_renewed_count INTEGER := 0;
+    v_subscription RECORD;
+    v_plan_fee INTEGER;
+BEGIN
+    FOR v_subscription IN
+        SELECT cs.*
+        FROM customer_subscriptions cs
+        WHERE cs.status = 'ACTIVE'
+            AND cs.cancel_at_period_end = false
+            AND cs.current_period_end < now()
+    LOOP
+        -- Determinar fee baseado no plan_type
+        v_plan_fee := CASE v_subscription.plan_type
+            WHEN 'BASIC' THEN 0
+            WHEN 'PREMIUM' THEN 2990
+            WHEN 'PRO' THEN 4990
+            WHEN 'ENTERPRISE' THEN 9990
+            ELSE 2990
+        END;
+        
+        -- Atualizar período
+        UPDATE customer_subscriptions
+        SET 
+            current_period_start = current_period_end,
+            current_period_end = CASE 
+                WHEN billing_cycle = 'MONTHLY' THEN current_period_end + INTERVAL '1 month'
+                ELSE current_period_end + INTERVAL '1 year'
+            END,
+            next_billing_at = CASE 
+                WHEN billing_cycle = 'MONTHLY' THEN next_billing_at + INTERVAL '1 month'
+                ELSE next_billing_at + INTERVAL '1 year'
+            END,
+            updated_at = now()
+        WHERE id = v_subscription.id;
+        
+        v_renewed_count := v_renewed_count + 1;
+        
+        -- Registrar renovação no financial_ledger
+        INSERT INTO financial_ledger (order_id, entry_type, amount_cents, currency, metadata)
+        VALUES (
+            NULL,
+            'SUBSCRIPTION_RENEWAL',
+            v_plan_fee,
+            'BRL',
+            jsonb_build_object('subscription_id', v_subscription.id, 'user_id', v_subscription.user_id, 'plan_type', v_subscription.plan_type)
+        );
+    END LOOP;
+    
+    RETURN v_renewed_count;
+END $$;
+
+
+ALTER FUNCTION public.fn_renew_subscriptions() OWNER TO admin;
+
+--
+-- Name: FUNCTION fn_renew_subscriptions(); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.fn_renew_subscriptions() IS 'Job diário para renovar assinaturas ativas';
+
+
+--
+-- Name: generate_locker_financial_report(character varying, date, date); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.generate_locker_financial_report(p_locker_id character varying DEFAULT NULL::character varying, p_start_month date DEFAULT NULL::date, p_end_month date DEFAULT NULL::date) RETURNS TABLE(locker_id character varying, locker_name character varying, city character varying, month date, revenue_brl numeric, costs_brl numeric, profit_brl numeric, margin_pct numeric, pickups integer, payback_months numeric, roi_annual_pct numeric, viability character varying)
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+    RETURN QUERY
+    SELECT 
+        mp.locker_id,
+        l.display_name AS locker_name,
+        l.city,
+        mp.month,
+        mp.sales_revenue_cents / 100.0 AS revenue_brl,
+        mp.total_costs_cents / 100.0 AS costs_brl,
+        mp.net_profit_cents / 100.0 AS profit_brl,
+        mp.net_margin_pct AS margin_pct,
+        mp.total_pickups::INTEGER,
+        ra.payback_months,
+        ra.annual_roi_pct,
+        ra.viability_classification AS viability
+    FROM public.mv_locker_monthly_profitability mp
+    JOIN public.lockers l ON l.id = mp.locker_id
+    LEFT JOIN public.v_locker_roi_analysis ra ON ra.locker_id = mp.locker_id
+    WHERE (p_locker_id IS NULL OR mp.locker_id = p_locker_id)
+        AND (p_start_month IS NULL OR mp.month >= p_start_month)
+        AND (p_end_month IS NULL OR mp.month <= p_end_month)
+    ORDER BY mp.locker_id, mp.month DESC;
+END;
+$$;
+
+
+ALTER FUNCTION public.generate_locker_financial_report(p_locker_id character varying, p_start_month date, p_end_month date) OWNER TO admin;
+
+--
+-- Name: FUNCTION generate_locker_financial_report(p_locker_id character varying, p_start_month date, p_end_month date); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.generate_locker_financial_report(p_locker_id character varying, p_start_month date, p_end_month date) IS 'Gera relatório financeiro detalhado para lockers específicos ou todos';
+
 
 --
 -- Name: get_active_fiscal_document(text); Type: FUNCTION; Schema: public; Owner: admin
@@ -581,6 +1312,45 @@ $$;
 
 
 ALTER FUNCTION public.get_active_fiscal_document(p_order_id text) OWNER TO admin;
+
+--
+-- Name: get_current_partner_id(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.get_current_partner_id() RETURNS character varying
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT NULLIF(current_setting('app.current_partner_id', TRUE), '')::VARCHAR;
+$$;
+
+
+ALTER FUNCTION public.get_current_partner_id() OWNER TO admin;
+
+--
+-- Name: get_current_tenant_id(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.get_current_tenant_id() RETURNS character varying
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT NULLIF(current_setting('app.current_tenant_id', TRUE), '')::VARCHAR;
+$$;
+
+
+ALTER FUNCTION public.get_current_tenant_id() OWNER TO admin;
+
+--
+-- Name: get_current_user_role(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.get_current_user_role() RETURNS character varying
+    LANGUAGE sql STABLE
+    AS $$
+    SELECT NULLIF(current_setting('app.user_role', TRUE), '')::VARCHAR;
+$$;
+
+
+ALTER FUNCTION public.get_current_user_role() OWNER TO admin;
 
 --
 -- Name: get_latest_fiscal_attempt(text); Type: FUNCTION; Schema: public; Owner: admin
@@ -794,6 +1564,384 @@ $$;
 ALTER FUNCTION public.set_row_updated_at() OWNER TO admin;
 
 --
+-- Name: simulate_expansion_scenario(character varying, integer, integer, integer, integer, integer); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.simulate_expansion_scenario(p_target_city character varying, p_estimated_monthly_revenue_cents integer, p_estimated_monthly_opex_cents integer, p_installation_cost_cents integer, p_hardware_cost_cents integer, p_useful_life_months integer DEFAULT 60) RETURNS TABLE(scenario_metric character varying, value numeric)
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_total_investment_cents INTEGER;
+    v_monthly_depreciation_cents INTEGER;
+    v_monthly_profit_cents INTEGER;
+    v_payback_months NUMERIC;
+    v_annual_roi_pct NUMERIC;
+    v_breakeven_occupancy_rate NUMERIC;
+BEGIN
+    -- Cálculo do investimento total
+    v_total_investment_cents := p_installation_cost_cents + p_hardware_cost_cents;
+    
+    -- Depreciação mensal (linear)
+    v_monthly_depreciation_cents := v_total_investment_cents / p_useful_life_months;
+    
+    -- Lucro mensal projetado
+    v_monthly_profit_cents := p_estimated_monthly_revenue_cents - p_estimated_monthly_opex_cents - v_monthly_depreciation_cents;
+    
+    -- Payback em meses
+    IF v_monthly_profit_cents > 0 THEN
+        v_payback_months := ROUND(v_total_investment_cents::NUMERIC / v_monthly_profit_cents, 1);
+    ELSE
+        v_payback_months := NULL;
+    END IF;
+    
+    -- ROI anual
+    IF v_total_investment_cents > 0 THEN
+        v_annual_roi_pct := ROUND((v_monthly_profit_cents * 12 * 100.0) / v_total_investment_cents, 2);
+    ELSE
+        v_annual_roi_pct := NULL;
+    END IF;
+    
+    -- Taxa de ocupação necessária para breakeven
+    v_breakeven_occupancy_rate := ROUND(
+        (p_estimated_monthly_opex_cents + v_monthly_depreciation_cents)::NUMERIC / 
+        NULLIF(p_estimated_monthly_revenue_cents, 0) * 100, 2
+    );
+    
+    -- Retorno da tabela
+    RETURN QUERY SELECT 'target_city'::VARCHAR, p_target_city::NUMERIC;
+    RETURN QUERY SELECT 'total_investment_brl', ROUND(v_total_investment_cents / 100.0, 2);
+    RETURN QUERY SELECT 'estimated_monthly_revenue_brl', ROUND(p_estimated_monthly_revenue_cents / 100.0, 2);
+    RETURN QUERY SELECT 'estimated_monthly_opex_brl', ROUND(p_estimated_monthly_opex_cents / 100.0, 2);
+    RETURN QUERY SELECT 'monthly_depreciation_brl', ROUND(v_monthly_depreciation_cents / 100.0, 2);
+    RETURN QUERY SELECT 'estimated_monthly_profit_brl', ROUND(v_monthly_profit_cents / 100.0, 2);
+    RETURN QUERY SELECT 'payback_months', v_payback_months;
+    RETURN QUERY SELECT 'annual_roi_pct', v_annual_roi_pct;
+    RETURN QUERY SELECT 'breakeven_occupancy_rate_pct', v_breakeven_occupancy_rate;
+    RETURN QUERY SELECT 'viability', 
+        CASE WHEN v_monthly_profit_cents > 0 AND v_payback_months <= 24 THEN 1::NUMERIC ELSE 0::NUMERIC END;
+END;
+$$;
+
+
+ALTER FUNCTION public.simulate_expansion_scenario(p_target_city character varying, p_estimated_monthly_revenue_cents integer, p_estimated_monthly_opex_cents integer, p_installation_cost_cents integer, p_hardware_cost_cents integer, p_useful_life_months integer) OWNER TO admin;
+
+--
+-- Name: simulate_expansion_scenario_v2(character varying, integer, integer, integer, integer, integer, integer, numeric); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.simulate_expansion_scenario_v2(p_target_city character varying, p_lockers_count integer, p_estimated_monthly_revenue_per_locker_cents integer, p_estimated_monthly_opex_per_locker_cents integer, p_installation_cost_per_locker_cents integer, p_hardware_cost_per_locker_cents integer, p_useful_life_months integer DEFAULT 60, p_expected_occupancy_rate_pct numeric DEFAULT 70) RETURNS TABLE(scenario_metric character varying, value numeric, description text)
+    LANGUAGE plpgsql
+    AS $_$
+DECLARE
+    v_total_investment_cents BIGINT;
+    v_monthly_depreciation_cents BIGINT;
+    v_total_monthly_revenue_cents BIGINT;
+    v_total_monthly_opex_cents BIGINT;
+    v_monthly_profit_cents BIGINT;
+    v_payback_months NUMERIC;
+    v_annual_roi_pct NUMERIC;
+    v_breakeven_occupancy_rate NUMERIC;
+    v_npv_36_months NUMERIC;
+    v_irr_pct NUMERIC;
+    v_daily_revenue_target_cents BIGINT;
+BEGIN
+    -- Cálculos base
+    v_total_investment_cents := (p_installation_cost_per_locker_cents + p_hardware_cost_per_locker_cents) * p_lockers_count;
+    v_monthly_depreciation_cents := v_total_investment_cents / p_useful_life_months;
+    v_total_monthly_revenue_cents := p_estimated_monthly_revenue_per_locker_cents * p_lockers_count;
+    v_total_monthly_opex_cents := p_estimated_monthly_opex_per_locker_cents * p_lockers_count;
+    
+    -- Ajuste pela ocupação esperada
+    v_total_monthly_revenue_cents := (v_total_monthly_revenue_cents * p_expected_occupancy_rate_pct / 100)::BIGINT;
+    
+    -- Lucro mensal
+    v_monthly_profit_cents := v_total_monthly_revenue_cents - v_total_monthly_opex_cents - v_monthly_depreciation_cents;
+    
+    -- Payback
+    IF v_monthly_profit_cents > 0 THEN
+        v_payback_months := ROUND(v_total_investment_cents::NUMERIC / v_monthly_profit_cents, 1);
+    ELSE
+        v_payback_months := NULL;
+    END IF;
+    
+    -- ROI Anual
+    IF v_total_investment_cents > 0 THEN
+        v_annual_roi_pct := ROUND((v_monthly_profit_cents * 12 * 100.0) / v_total_investment_cents, 2);
+    ELSE
+        v_annual_roi_pct := NULL;
+    END IF;
+    
+    -- Breakeven occupancy
+    v_breakeven_occupancy_rate := ROUND(
+        (v_total_monthly_opex_cents + v_monthly_depreciation_cents)::NUMERIC / 
+        NULLIF((p_estimated_monthly_revenue_per_locker_cents * p_lockers_count)::NUMERIC, 0) * 100, 2
+    );
+    
+    -- NPV para 36 meses (3 anos)
+    v_npv_36_months := ROUND(
+        v_monthly_profit_cents * (1 - POWER(1 / (1 + 0.10/12), 36)) / (0.10/12) - v_total_investment_cents,
+        0
+    );
+    
+    -- IRR aproximada (simplificada)
+    IF v_total_investment_cents > 0 AND v_monthly_profit_cents > 0 THEN
+        v_irr_pct := ROUND((v_monthly_profit_cents * 12 * 100.0) / v_total_investment_cents, 2);
+    ELSE
+        v_irr_pct := NULL;
+    END IF;
+    
+    -- Receita diária necessária para breakeven
+    v_daily_revenue_target_cents := (v_total_monthly_opex_cents + v_monthly_depreciation_cents) / 30;
+    
+    -- Retorno da tabela
+    RETURN QUERY SELECT 'target_city'::VARCHAR, p_target_city::NUMERIC, 'Cidade alvo da expansão'::TEXT;
+    RETURN QUERY SELECT 'lockers_count'::VARCHAR, p_lockers_count::NUMERIC, 'Número de lockers no cenário'::TEXT;
+    RETURN QUERY SELECT 'expected_occupancy_rate_pct'::VARCHAR, p_expected_occupancy_rate_pct, 'Taxa de ocupação esperada (%)'::TEXT;
+    RETURN QUERY SELECT 'total_investment_brl'::VARCHAR, ROUND(v_total_investment_cents / 100.0, 2), 'Investimento total (R$)'::TEXT;
+    RETURN QUERY SELECT 'estimated_monthly_revenue_brl'::VARCHAR, ROUND(v_total_monthly_revenue_cents / 100.0, 2), 'Receita mensal estimada (R$)'::TEXT;
+    RETURN QUERY SELECT 'estimated_monthly_opex_brl'::VARCHAR, ROUND(v_total_monthly_opex_cents / 100.0, 2), 'Custo operacional mensal (R$)'::TEXT;
+    RETURN QUERY SELECT 'monthly_depreciation_brl'::VARCHAR, ROUND(v_monthly_depreciation_cents / 100.0, 2), 'Depreciação mensal (R$)'::TEXT;
+    RETURN QUERY SELECT 'estimated_monthly_profit_brl'::VARCHAR, ROUND(v_monthly_profit_cents / 100.0, 2), 'Lucro mensal estimado (R$)'::TEXT;
+    RETURN QUERY SELECT 'payback_months'::VARCHAR, COALESCE(v_payback_months, 0), 'Payback em meses'::TEXT;
+    RETURN QUERY SELECT 'annual_roi_pct'::VARCHAR, COALESCE(v_annual_roi_pct, 0), 'ROI anual (%)'::TEXT;
+    RETURN QUERY SELECT 'breakeven_occupancy_rate_pct'::VARCHAR, v_breakeven_occupancy_rate, 'Taxa de ocupação mínima para breakeven (%)'::TEXT;
+    RETURN QUERY SELECT 'npv_36_months_brl'::VARCHAR, ROUND(v_npv_36_months / 100.0, 2), 'VPL em 36 meses (R$ - taxa 10% a.a.)'::TEXT;
+    RETURN QUERY SELECT 'irr_pct'::VARCHAR, COALESCE(v_irr_pct, 0), 'Taxa interna de retorno anual estimada (%)'::TEXT;
+    RETURN QUERY SELECT 'daily_revenue_target_brl'::VARCHAR, ROUND(v_daily_revenue_target_cents / 100.0, 2), 'Receita diária necessária para breakeven (R$)'::TEXT;
+    RETURN QUERY SELECT 'viability'::VARCHAR, 
+        CASE WHEN v_monthly_profit_cents > 0 AND v_payback_months <= 24 THEN 1::NUMERIC ELSE 0::NUMERIC END,
+        'Viabilidade do cenário (1=Viável, 0=Inviável)'::TEXT;
+END;
+$_$;
+
+
+ALTER FUNCTION public.simulate_expansion_scenario_v2(p_target_city character varying, p_lockers_count integer, p_estimated_monthly_revenue_per_locker_cents integer, p_estimated_monthly_opex_per_locker_cents integer, p_installation_cost_per_locker_cents integer, p_hardware_cost_per_locker_cents integer, p_useful_life_months integer, p_expected_occupancy_rate_pct numeric) OWNER TO admin;
+
+--
+-- Name: FUNCTION simulate_expansion_scenario_v2(p_target_city character varying, p_lockers_count integer, p_estimated_monthly_revenue_per_locker_cents integer, p_estimated_monthly_opex_per_locker_cents integer, p_installation_cost_per_locker_cents integer, p_hardware_cost_per_locker_cents integer, p_useful_life_months integer, p_expected_occupancy_rate_pct numeric); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.simulate_expansion_scenario_v2(p_target_city character varying, p_lockers_count integer, p_estimated_monthly_revenue_per_locker_cents integer, p_estimated_monthly_opex_per_locker_cents integer, p_installation_cost_per_locker_cents integer, p_hardware_cost_per_locker_cents integer, p_useful_life_months integer, p_expected_occupancy_rate_pct numeric) IS 'Simulação avançada de expansão com NPV, IRR e breakeven analysis';
+
+
+--
+-- Name: sp_refresh_financial_materialized_views(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.sp_refresh_financial_materialized_views() RETURNS text
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_start_time TIMESTAMPTZ;
+    v_end_time TIMESTAMPTZ;
+    v_duration TEXT;
+BEGIN
+    v_start_time := NOW();
+    
+    -- Atualiza a view de rentabilidade
+    REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_profitability;
+    RAISE NOTICE '✅ mv_locker_monthly_profitability atualizada';
+    
+    -- Atualiza outras views financeiras existentes
+    REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_realtime_kpis;
+    RAISE NOTICE '✅ mv_realtime_kpis atualizada';
+    
+    -- Atualiza view de PnL se existir
+    IF EXISTS (SELECT 1 FROM pg_matviews WHERE matviewname = 'mv_locker_monthly_pnl') THEN
+        REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_pnl;
+        RAISE NOTICE '✅ mv_locker_monthly_pnl atualizada';
+    END IF;
+    
+    v_end_time := NOW();
+    v_duration := EXTRACT(EPOCH FROM (v_end_time - v_start_time))::TEXT || ' segundos';
+    
+    RAISE NOTICE '✅ Todas as materialized views financeiras atualizadas em %', v_duration;
+    
+    RETURN 'Atualização concluída em ' || v_duration;
+END;
+$$;
+
+
+ALTER FUNCTION public.sp_refresh_financial_materialized_views() OWNER TO admin;
+
+--
+-- Name: FUNCTION sp_refresh_financial_materialized_views(); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.sp_refresh_financial_materialized_views() IS 'Atualiza todas as materialized views financeiras do sistema';
+
+
+--
+-- Name: sp_refresh_locker_pnl_view(); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.sp_refresh_locker_pnl_view()
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY mv_locker_monthly_pnl;
+  RAISE NOTICE 'MV mv_locker_monthly_pnl atualizada com sucesso.';
+END;
+$$;
+
+
+ALTER PROCEDURE public.sp_refresh_locker_pnl_view() OWNER TO admin;
+
+--
+-- Name: sp_sync_locker_monthly_costs(date); Type: PROCEDURE; Schema: public; Owner: admin
+--
+
+CREATE PROCEDURE public.sp_sync_locker_monthly_costs(IN p_target_month date)
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  -- Atualização em lote (set-based) para performance e atomicidade
+  WITH opex_agg AS (
+    SELECT 
+      locker_id,
+      COALESCE(SUM(CASE WHEN category IN ('RENT', 'LOGISTICS', 'OTHER') THEN amount_cents ELSE 0 END), 0) AS operational_cents,
+      COALESCE(SUM(CASE WHEN category IN ('MAINTENANCE', 'REPAIR', 'SUPPORT') THEN amount_cents ELSE 0 END), 0) AS maint_cents,
+      COALESCE(SUM(CASE WHEN category IN ('ENERGY', 'CONNECTIVITY') THEN amount_cents ELSE 0 END), 0) AS utilities_cents
+    FROM ellanlab_opex_entries
+    WHERE expense_month = p_target_month 
+      AND locker_id IS NOT NULL
+    GROUP BY locker_id
+  ),
+  depr_agg AS (
+    SELECT 
+      ha.locker_id,
+      COALESCE(SUM(ds.depreciation_amount_cents), 0) AS depr_cents
+    FROM ellanlab_depreciation_schedule ds
+    JOIN ellanlab_hardware_assets ha ON ds.asset_id = ha.id
+    WHERE ds.depreciation_month = p_target_month 
+      AND ha.locker_id IS NOT NULL
+    GROUP BY ha.locker_id
+  )
+  UPDATE cost_centers cc
+  SET 
+    operational_cost_monthly_cents  = COALESCE(op.operational_cents, 0),
+    maintenance_cost_annual_cents   = COALESCE(op.maint_cents, 0) * 12,   -- Projeção anual
+    utilities_cost_monthly_cents    = COALESCE(op.utilities_cents, 0),
+    depreciation_cost_annual_cents  = COALESCE(d.depr_cents, 0) * 12,     -- Projeção anual
+    updated_at                      = now()
+  FROM opex_agg op
+  LEFT JOIN depr_agg d ON cc.locker_id = d.locker_id
+  WHERE cc.locker_id = op.locker_id;
+  
+  RAISE NOTICE 'Custos atualizados para o mês: %', p_target_month;
+END;
+$$;
+
+
+ALTER PROCEDURE public.sp_sync_locker_monthly_costs(IN p_target_month date) OWNER TO admin;
+
+--
+-- Name: sp_sync_monthly_costs_from_entries(date); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.sp_sync_monthly_costs_from_entries(p_target_month date DEFAULT (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date) RETURNS integer
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_updated_count INTEGER := 0;
+    v_locker_record RECORD;
+BEGIN
+    -- Sincroniza custos a partir das tabelas existentes
+    FOR v_locker_record IN
+        SELECT DISTINCT locker_id 
+        FROM public.ellanlab_opex_entries 
+        WHERE expense_month = p_target_month AND locker_id IS NOT NULL
+        UNION
+        SELECT locker_id 
+        FROM public.locker_opex 
+        WHERE reference_month = p_target_month AND locker_id IS NOT NULL
+        UNION
+        SELECT ha.locker_id 
+        FROM public.ellanlab_depreciation_schedule ds
+        JOIN public.ellanlab_hardware_assets ha ON ha.id = ds.asset_id
+        WHERE ds.depreciation_month = p_target_month AND ha.locker_id IS NOT NULL
+    LOOP
+        -- UPSERT dos custos mensais
+        INSERT INTO public.cost_center_monthly (
+            locker_id, month,
+            maintenance_preventive_cents, maintenance_corrective_cents,
+            connectivity_cents, energy_cents, rent_cents,
+            insurance_cents, depreciation_cents,
+            updated_at
+        )
+        SELECT 
+            v_locker_record.locker_id,
+            p_target_month,
+            -- Manutenção preventiva (de opex_entries)
+            COALESCE(SUM(CASE WHEN oe.category = 'MAINTENANCE' AND oe.metadata_json->>'type' = 'preventive' 
+                THEN oe.amount_cents ELSE 0 END), 0),
+            -- Manutenção corretiva
+            COALESCE(SUM(CASE WHEN oe.category = 'MAINTENANCE' AND (oe.metadata_json->>'type' = 'corrective' OR oe.metadata_json->>'type' IS NULL)
+                THEN oe.amount_cents ELSE 0 END), 0),
+            -- Conectividade
+            COALESCE(SUM(CASE WHEN oe.category = 'CONNECTIVITY' THEN oe.amount_cents ELSE 0 END), 0),
+            -- Energia
+            COALESCE(SUM(CASE WHEN oe.category = 'ENERGY' THEN oe.amount_cents ELSE 0 END), 0),
+            -- Aluguel (RENT)
+            COALESCE(SUM(CASE WHEN oe.category = 'RENT' THEN oe.amount_cents ELSE 0 END), 0),
+            -- Seguro (de locker_opex)
+            COALESCE(SUM(CASE WHEN lo.cost_type = 'INSURANCE' THEN lo.amount_cents ELSE 0 END), 0),
+            -- Depreciação
+            COALESCE(SUM(ds.depreciation_amount_cents), 0),
+            NOW()
+        FROM public.ellanlab_opex_entries oe
+        FULL JOIN public.locker_opex lo ON lo.locker_id = oe.locker_id AND lo.reference_month = oe.expense_month
+        FULL JOIN public.ellanlab_depreciation_schedule ds ON ds.locker_id = oe.locker_id AND ds.depreciation_month = oe.expense_month
+        WHERE (oe.locker_id = v_locker_record.locker_id AND oe.expense_month = p_target_month)
+           OR (lo.locker_id = v_locker_record.locker_id AND lo.reference_month = p_target_month)
+           OR (ds.locker_id = v_locker_record.locker_id AND ds.depreciation_month = p_target_month)
+        GROUP BY v_locker_record.locker_id
+        ON CONFLICT (locker_id, month) DO UPDATE SET
+            maintenance_preventive_cents = EXCLUDED.maintenance_preventive_cents,
+            maintenance_corrective_cents = EXCLUDED.maintenance_corrective_cents,
+            connectivity_cents = EXCLUDED.connectivity_cents,
+            energy_cents = EXCLUDED.energy_cents,
+            rent_cents = EXCLUDED.rent_cents,
+            insurance_cents = EXCLUDED.insurance_cents,
+            depreciation_cents = EXCLUDED.depreciation_cents,
+            updated_at = EXCLUDED.updated_at;
+        
+        v_updated_count := v_updated_count + 1;
+    END LOOP;
+    
+    RAISE NOTICE '✅ Custos sincronizados para % lockers no mês %', v_updated_count, p_target_month;
+    
+    RETURN v_updated_count;
+END;
+$$;
+
+
+ALTER FUNCTION public.sp_sync_monthly_costs_from_entries(p_target_month date) OWNER TO admin;
+
+--
+-- Name: FUNCTION sp_sync_monthly_costs_from_entries(p_target_month date); Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON FUNCTION public.sp_sync_monthly_costs_from_entries(p_target_month date) IS 'Sincroniza custos operacionais das tabelas de origem para cost_center_monthly';
+
+
+--
+-- Name: trg_cost_center_monthly_updated(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.trg_cost_center_monthly_updated() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.trg_cost_center_monthly_updated() OWNER TO admin;
+
+--
 -- Name: trg_log_slot_state_change(); Type: FUNCTION; Schema: public; Owner: admin
 --
 
@@ -827,6 +1975,30 @@ $$;
 
 
 ALTER FUNCTION public.trg_log_slot_state_change() OWNER TO admin;
+
+--
+-- Name: trg_payment_transactions_calc_fees(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.trg_payment_transactions_calc_fees() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    IF NEW.status = 'APPROVED' AND NEW.gateway_fee_cents IS NULL THEN
+        NEW.gateway_fee_cents := public.calculate_gateway_fee(
+            NEW.amount_cents,
+            NEW.payment_method,
+            NEW.card_brand,
+            COALESCE(NEW.installments, 1)
+        );
+        NEW.net_amount_cents := NEW.amount_cents - NEW.gateway_fee_cents;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION public.trg_payment_transactions_calc_fees() OWNER TO admin;
 
 --
 -- Name: trg_pickups_sync_v2_derived(); Type: FUNCTION; Schema: public; Owner: admin
@@ -899,9 +2071,81 @@ $$;
 
 ALTER FUNCTION public.update_updated_at_column() OWNER TO admin;
 
+--
+-- Name: validate_ml_predictions(); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.validate_ml_predictions() RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+  rows_affected INTEGER;
+BEGIN
+  INSERT INTO ml_prediction_feedback (prediction_id, actual_value, error_pct, model_performance_status)
+  SELECT 
+    mlp.id,
+    ROUND(COALESCE(AVG(CASE WHEN lt.is_occupied THEN 100 ELSE 0 END), 0), 2) as actual_value,
+    CASE 
+      WHEN mlp.failure_probability > 0 AND COUNT(lt.id) > 0 THEN 
+        ROUND(ABS((mlp.failure_probability - AVG(CASE WHEN lt.is_occupied THEN 100 ELSE 0 END)) / mlp.failure_probability) * 100, 2)
+      ELSE 
+        NULL
+    END as error_pct,
+    CASE 
+      WHEN COUNT(lt.id) = 0 THEN 'NO_OCCUPANCY_DATA'
+      WHEN AVG(CASE WHEN lt.is_occupied THEN 100 ELSE 0 END) = 0 THEN 'NO_ACTUAL_DATA'
+      WHEN ABS((mlp.failure_probability - AVG(CASE WHEN lt.is_occupied THEN 100 ELSE 0 END)) / NULLIF(mlp.failure_probability, 0)) * 100 < 10 THEN 'GOOD'
+      WHEN ABS((mlp.failure_probability - AVG(CASE WHEN lt.is_occupied THEN 100 ELSE 0 END)) / NULLIF(mlp.failure_probability, 0)) * 100 < 30 THEN 'ACCEPTABLE'
+      ELSE 'POOR'
+    END as performance_status
+  FROM ml_predictions_log mlp
+  LEFT JOIN locker_slot_hourly_occupancy lt 
+    ON mlp.locker_id = lt.locker_id 
+    AND DATE(mlp.predicted_at) = DATE(lt.hour_bucket)
+  WHERE mlp.model_version = 'current'
+    AND mlp.predicted_at < NOW() - INTERVAL '24 hours'
+    AND NOT EXISTS (
+      SELECT 1 FROM ml_prediction_feedback 
+      WHERE prediction_id = mlp.id
+    )
+  GROUP BY mlp.id, mlp.failure_probability;
+    
+  GET DIAGNOSTICS rows_affected = ROW_COUNT;
+  
+  IF rows_affected > 0 THEN
+    RAISE NOTICE '✓ Processed % predictions with feedback', rows_affected;
+  ELSE
+    RAISE NOTICE 'ℹ No new predictions to process (waiting 24h after prediction)';
+  END IF;
+END;
+$$;
+
+
+ALTER FUNCTION public.validate_ml_predictions() OWNER TO admin;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
+
+--
+-- Name: _compressed_hypertable_12; Type: TABLE; Schema: _timescaledb_internal; Owner: admin
+--
+
+CREATE TABLE _timescaledb_internal._compressed_hypertable_12 (
+);
+
+
+ALTER TABLE _timescaledb_internal._compressed_hypertable_12 OWNER TO admin;
+
+--
+-- Name: _compressed_hypertable_14; Type: TABLE; Schema: _timescaledb_internal; Owner: admin
+--
+
+CREATE TABLE _timescaledb_internal._compressed_hypertable_14 (
+);
+
+
+ALTER TABLE _timescaledb_internal._compressed_hypertable_14 OWNER TO admin;
 
 --
 -- Name: _compressed_hypertable_7; Type: TABLE; Schema: _timescaledb_internal; Owner: admin
@@ -2835,6 +4079,122 @@ ALTER TABLE public.core_user ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTIT
 
 
 --
+-- Name: cost_center_monthly; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.cost_center_monthly (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    locker_id character varying NOT NULL,
+    month date NOT NULL,
+    rent_cents bigint DEFAULT 0,
+    maintenance_preventive_cents bigint DEFAULT 0,
+    maintenance_corrective_cents bigint DEFAULT 0,
+    connectivity_cents bigint DEFAULT 0,
+    energy_cents bigint DEFAULT 0,
+    insurance_cents bigint DEFAULT 0,
+    payment_gateway_fee_cents bigint DEFAULT 0,
+    depreciation_cents bigint DEFAULT 0,
+    cleaning_cents bigint DEFAULT 0,
+    security_cents bigint DEFAULT 0,
+    marketing_cents bigint DEFAULT 0,
+    other_cents bigint DEFAULT 0,
+    notes text,
+    metadata_json jsonb DEFAULT '{}'::jsonb,
+    created_by character varying(36),
+    updated_by character varying(36),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    total_opex_cents bigint GENERATED ALWAYS AS (((((((((((COALESCE(rent_cents, (0)::bigint) + COALESCE(maintenance_preventive_cents, (0)::bigint)) + COALESCE(maintenance_corrective_cents, (0)::bigint)) + COALESCE(connectivity_cents, (0)::bigint)) + COALESCE(energy_cents, (0)::bigint)) + COALESCE(insurance_cents, (0)::bigint)) + COALESCE(payment_gateway_fee_cents, (0)::bigint)) + COALESCE(cleaning_cents, (0)::bigint)) + COALESCE(security_cents, (0)::bigint)) + COALESCE(marketing_cents, (0)::bigint)) + COALESCE(other_cents, (0)::bigint))) STORED,
+    total_costs_cents bigint GENERATED ALWAYS AS ((((((((((((COALESCE(rent_cents, (0)::bigint) + COALESCE(maintenance_preventive_cents, (0)::bigint)) + COALESCE(maintenance_corrective_cents, (0)::bigint)) + COALESCE(connectivity_cents, (0)::bigint)) + COALESCE(energy_cents, (0)::bigint)) + COALESCE(insurance_cents, (0)::bigint)) + COALESCE(payment_gateway_fee_cents, (0)::bigint)) + COALESCE(cleaning_cents, (0)::bigint)) + COALESCE(security_cents, (0)::bigint)) + COALESCE(marketing_cents, (0)::bigint)) + COALESCE(other_cents, (0)::bigint)) + COALESCE(depreciation_cents, (0)::bigint))) STORED,
+    CONSTRAINT ck_ccm_amounts_non_negative CHECK (((rent_cents >= 0) AND (maintenance_preventive_cents >= 0) AND (maintenance_corrective_cents >= 0) AND (connectivity_cents >= 0) AND (energy_cents >= 0) AND (insurance_cents >= 0) AND (payment_gateway_fee_cents >= 0) AND (depreciation_cents >= 0))),
+    CONSTRAINT ck_ccm_month_start CHECK ((month = (date_trunc('month'::text, (month)::timestamp without time zone))::date))
+);
+
+
+ALTER TABLE public.cost_center_monthly OWNER TO admin;
+
+--
+-- Name: TABLE cost_center_monthly; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.cost_center_monthly IS 'Custos operacionais mensais por locker para cálculo de rentabilidade';
+
+
+--
+-- Name: COLUMN cost_center_monthly.rent_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.rent_cents IS 'Aluguel do espaço (R$ em centavos)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.maintenance_preventive_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.maintenance_preventive_cents IS 'Manutenção preventiva mensal (R$ 200-500 recomendado)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.maintenance_corrective_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.maintenance_corrective_cents IS 'Manutenção corretiva (buffer R$ 500-2000)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.connectivity_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.connectivity_cents IS 'Conectividade 4G (R$ 300 estimado)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.energy_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.energy_cents IS 'Energia elétrica (R$ 200-400)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.insurance_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.insurance_cents IS 'Seguro do equipamento (R$ 500 estimado)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.payment_gateway_fee_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.payment_gateway_fee_cents IS 'Taxa do gateway de pagamento (% do GMV)';
+
+
+--
+-- Name: COLUMN cost_center_monthly.depreciation_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.cost_center_monthly.depreciation_cents IS 'Depreciação mensal do ativo (CAPEX)';
+
+
+--
+-- Name: cost_centers; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.cost_centers (
+    id uuid NOT NULL,
+    locker_id character varying,
+    operational_cost_monthly_cents bigint,
+    maintenance_cost_annual_cents bigint,
+    depreciation_cost_annual_cents bigint,
+    utilities_cost_monthly_cents bigint,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.cost_centers OWNER TO admin;
+
+--
 -- Name: credits; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -2862,6 +4222,30 @@ CREATE TABLE public.credits (
 ALTER TABLE public.credits OWNER TO admin;
 
 --
+-- Name: custom_domains; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.custom_domains (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    tenant_id character varying(100) NOT NULL,
+    domain character varying(255) NOT NULL,
+    verified boolean DEFAULT false,
+    ssl_cert_ref character varying(255),
+    created_at timestamp with time zone DEFAULT now(),
+    verified_at timestamp with time zone
+);
+
+
+ALTER TABLE public.custom_domains OWNER TO admin;
+
+--
+-- Name: TABLE custom_domains; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.custom_domains IS 'Domínios customizados para white label';
+
+
+--
 -- Name: customer_feedback; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -2883,6 +4267,36 @@ CREATE TABLE public.customer_feedback (
 
 
 ALTER TABLE public.customer_feedback OWNER TO admin;
+
+--
+-- Name: customer_subscriptions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.customer_subscriptions (
+    id character varying(36) NOT NULL,
+    user_id character varying(36),
+    plan_type character varying(30) NOT NULL,
+    status character varying(20) DEFAULT 'ACTIVE'::character varying,
+    monthly_fee_cents integer NOT NULL,
+    free_shipping boolean DEFAULT false,
+    priority_shelf boolean DEFAULT false,
+    exclusive_deals boolean DEFAULT false,
+    started_at timestamp without time zone,
+    next_billing_at timestamp without time zone,
+    cancelled_at timestamp without time zone,
+    payment_method_id character varying(36),
+    billing_cycle character varying(20) DEFAULT 'MONTHLY'::character varying,
+    cancel_at_period_end boolean DEFAULT false,
+    trial_start timestamp with time zone,
+    trial_end timestamp with time zone,
+    current_period_start timestamp with time zone,
+    current_period_end timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.customer_subscriptions OWNER TO admin;
 
 --
 -- Name: dashboard_bookmark; Type: TABLE; Schema: public; Owner: admin
@@ -3107,6 +4521,54 @@ CREATE TABLE public.databasechangeloglock (
 ALTER TABLE public.databasechangeloglock OWNER TO admin;
 
 --
+-- Name: demand_forecast; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.demand_forecast (
+    id bigint NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    forecast_date date NOT NULL,
+    predicted_orders integer NOT NULL,
+    predicted_revenue_cents bigint NOT NULL,
+    confidence_lower integer,
+    confidence_upper integer,
+    model_version character varying(50),
+    generated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_forecast_predicted CHECK (((predicted_orders >= 0) AND (predicted_revenue_cents >= 0)))
+);
+
+
+ALTER TABLE public.demand_forecast OWNER TO admin;
+
+--
+-- Name: TABLE demand_forecast; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.demand_forecast IS 'Previsão de demanda por locker gerada por ML';
+
+
+--
+-- Name: demand_forecast_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.demand_forecast_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.demand_forecast_id_seq OWNER TO admin;
+
+--
+-- Name: demand_forecast_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.demand_forecast_id_seq OWNED BY public.demand_forecast.id;
+
+
+--
 -- Name: dependency; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -3248,6 +4710,42 @@ CREATE TABLE public.door_state (
 ALTER TABLE public.door_state OWNER TO admin;
 
 --
+-- Name: dynamic_pricing_rules; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.dynamic_pricing_rules (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    rule_name character varying(128) NOT NULL,
+    product_id character varying(255),
+    category_id character varying(64),
+    locker_id character varying(36),
+    rule_type character varying(30) NOT NULL,
+    trigger_condition jsonb NOT NULL,
+    adjustment_type character varying(20) NOT NULL,
+    adjustment_value numeric(10,4) NOT NULL,
+    min_price_cents integer,
+    max_price_cents integer,
+    priority integer DEFAULT 100,
+    is_active boolean DEFAULT true,
+    valid_from timestamp with time zone,
+    valid_until timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_dpr_adjustment_type CHECK (((adjustment_type)::text = ANY ((ARRAY['PERCENTAGE'::character varying, 'FIXED_AMOUNT'::character varying])::text[]))),
+    CONSTRAINT ck_dpr_rule_type CHECK (((rule_type)::text = ANY ((ARRAY['DEMAND_BASED'::character varying, 'INVENTORY_BASED'::character varying, 'TIME_BASED'::character varying, 'COMPETITOR_BASED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.dynamic_pricing_rules OWNER TO admin;
+
+--
+-- Name: TABLE dynamic_pricing_rules; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.dynamic_pricing_rules IS 'Regras para precificação dinâmica';
+
+
+--
 -- Name: ecommerce_partners; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -3348,6 +4846,10 @@ CREATE TABLE public.ellanlab_hardware_assets (
     metadata_json jsonb DEFAULT '{}'::jsonb NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    installation_cost_cents bigint DEFAULT 0 NOT NULL,
+    supplier_name character varying(140),
+    warranty_ends_at date,
+    notes text,
     CONSTRAINT ck_eha_asset_category CHECK (((asset_category)::text = ANY ((ARRAY['LOCKER'::character varying, 'TOTEM'::character varying, 'SENSOR'::character varying, 'NETWORK'::character varying, 'BATTERY'::character varying, 'OTHER'::character varying])::text[]))),
     CONSTRAINT ck_eha_country_code CHECK (((country_code IS NULL) OR (length((country_code)::text) = 2))),
     CONSTRAINT ck_eha_life CHECK ((useful_life_months > 0)),
@@ -3667,6 +5169,117 @@ CREATE TABLE public.fiscal_reconciliation_gaps (
 ALTER TABLE public.fiscal_reconciliation_gaps OWNER TO admin;
 
 --
+-- Name: fulfillment_centers; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fulfillment_centers (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    name character varying(128) NOT NULL,
+    code character varying(32) NOT NULL,
+    address_line character varying(255) NOT NULL,
+    city character varying(100) NOT NULL,
+    state character varying(50) NOT NULL,
+    postal_code character varying(20) NOT NULL,
+    country character varying(2) DEFAULT 'BR'::character varying,
+    latitude numeric(10,8),
+    longitude numeric(11,8),
+    capacity_slots integer DEFAULT 0,
+    active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.fulfillment_centers OWNER TO admin;
+
+--
+-- Name: TABLE fulfillment_centers; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.fulfillment_centers IS 'Centros de distribuição para fulfillment';
+
+
+--
+-- Name: fulfillment_inventory; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fulfillment_inventory (
+    id bigint NOT NULL,
+    fulfillment_center_id character varying(36) NOT NULL,
+    product_id character varying(255) NOT NULL,
+    quantity_on_hand integer DEFAULT 0 NOT NULL,
+    quantity_reserved integer DEFAULT 0 NOT NULL,
+    quantity_available integer GENERATED ALWAYS AS ((quantity_on_hand - quantity_reserved)) STORED,
+    reorder_point integer DEFAULT 0,
+    last_restocked_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_fulfillment_qty CHECK (((quantity_on_hand >= 0) AND (quantity_reserved >= 0)))
+);
+
+
+ALTER TABLE public.fulfillment_inventory OWNER TO admin;
+
+--
+-- Name: TABLE fulfillment_inventory; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.fulfillment_inventory IS 'Estoque disponível nos centros de distribuição';
+
+
+--
+-- Name: fulfillment_inventory_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.fulfillment_inventory_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.fulfillment_inventory_id_seq OWNER TO admin;
+
+--
+-- Name: fulfillment_inventory_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.fulfillment_inventory_id_seq OWNED BY public.fulfillment_inventory.id;
+
+
+--
+-- Name: fulfillment_orders; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.fulfillment_orders (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    order_id character varying(36) NOT NULL,
+    fulfillment_center_id character varying(36) NOT NULL,
+    status character varying(30) DEFAULT 'PENDING'::character varying NOT NULL,
+    priority integer DEFAULT 100,
+    picked_at timestamp with time zone,
+    packed_at timestamp with time zone,
+    shipped_at timestamp with time zone,
+    delivered_to_locker_at timestamp with time zone,
+    tracking_code character varying(128),
+    carrier character varying(50),
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_fulfillment_order_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PICKING'::character varying, 'PACKING'::character varying, 'SHIPPED'::character varying, 'DELIVERED'::character varying, 'CANCELLED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.fulfillment_orders OWNER TO admin;
+
+--
+-- Name: TABLE fulfillment_orders; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.fulfillment_orders IS 'Ordens de fulfillment processadas nos centros';
+
+
+--
 -- Name: sandboxes; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -3977,7 +5590,8 @@ CREATE TABLE public.invoices (
     consumer_name character varying(140),
     locker_address jsonb,
     items_json jsonb,
-    tax_breakdown_json jsonb
+    tax_breakdown_json jsonb,
+    ecommerce_partner_id character varying(100)
 );
 
 
@@ -4152,6 +5766,102 @@ CREATE TABLE public.lifecycle_deadlines (
 ALTER TABLE public.lifecycle_deadlines OWNER TO admin;
 
 --
+-- Name: locker_capex; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.locker_capex (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    asset_id character varying(36),
+    acquisition_cost_cents bigint NOT NULL,
+    installation_cost_cents bigint DEFAULT 0 NOT NULL,
+    residual_value_cents bigint DEFAULT 0 NOT NULL,
+    useful_life_months integer DEFAULT 60 NOT NULL,
+    depreciation_method character varying(20) DEFAULT 'STRAIGHT_LINE'::character varying NOT NULL,
+    depreciation_start_date date DEFAULT CURRENT_DATE NOT NULL,
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    disposal_date date,
+    disposal_proceeds_cents bigint DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT locker_capex_acquisition_cost_cents_check CHECK ((acquisition_cost_cents >= 0)),
+    CONSTRAINT locker_capex_depreciation_method_check CHECK (((depreciation_method)::text = ANY ((ARRAY['STRAIGHT_LINE'::character varying, 'DEGRESSIVE'::character varying])::text[]))),
+    CONSTRAINT locker_capex_installation_cost_cents_check CHECK ((installation_cost_cents >= 0)),
+    CONSTRAINT locker_capex_residual_value_cents_check CHECK ((residual_value_cents >= 0)),
+    CONSTRAINT locker_capex_status_check CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'DISPOSED'::character varying, 'WRITTEN_OFF'::character varying])::text[]))),
+    CONSTRAINT locker_capex_useful_life_months_check CHECK ((useful_life_months > 0))
+);
+
+
+ALTER TABLE public.locker_capex OWNER TO admin;
+
+--
+-- Name: locker_capex_details; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.locker_capex_details (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    locker_id character varying NOT NULL,
+    equipment_cost_cents bigint DEFAULT 0 NOT NULL,
+    installation_cost_cents bigint DEFAULT 0 NOT NULL,
+    connectivity_setup_cents bigint DEFAULT 0 NOT NULL,
+    go_live_cost_cents bigint DEFAULT 0 NOT NULL,
+    property_rent_cents bigint DEFAULT 0,
+    property_ownership boolean DEFAULT false,
+    property_address text,
+    useful_life_months integer DEFAULT 60,
+    salvage_value_cents bigint DEFAULT 0,
+    depreciation_method character varying(20) DEFAULT 'STRAIGHT_LINE'::character varying,
+    installation_date date,
+    go_live_date date,
+    supplier character varying(255),
+    invoice_ref character varying(255),
+    metadata_json jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_capex_amounts_non_negative CHECK (((equipment_cost_cents >= 0) AND (installation_cost_cents >= 0) AND (connectivity_setup_cents >= 0) AND (go_live_cost_cents >= 0))),
+    CONSTRAINT ck_capex_depreciation_method CHECK (((depreciation_method)::text = ANY ((ARRAY['STRAIGHT_LINE'::character varying, 'DEGRESSIVE'::character varying, 'SUM_OF_YEARS'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.locker_capex_details OWNER TO admin;
+
+--
+-- Name: TABLE locker_capex_details; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.locker_capex_details IS 'Detalhamento CAPEX por locker para investimento e ROI';
+
+
+--
+-- Name: COLUMN locker_capex_details.equipment_cost_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.locker_capex_details.equipment_cost_cents IS 'Custo do equipamento (hardware)';
+
+
+--
+-- Name: COLUMN locker_capex_details.installation_cost_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.locker_capex_details.installation_cost_cents IS 'Custo de instalação física';
+
+
+--
+-- Name: COLUMN locker_capex_details.connectivity_setup_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.locker_capex_details.connectivity_setup_cents IS 'Custo de setup de conectividade';
+
+
+--
+-- Name: COLUMN locker_capex_details.go_live_cost_cents; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.locker_capex_details.go_live_cost_cents IS 'Custos de testes, documentação e go-live';
+
+
+--
 -- Name: locker_operators; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -4180,6 +5890,29 @@ CREATE TABLE public.locker_operators (
 
 
 ALTER TABLE public.locker_operators OWNER TO admin;
+
+--
+-- Name: locker_opex; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.locker_opex (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    reference_month date NOT NULL,
+    cost_type character varying(40) NOT NULL,
+    amount_cents bigint NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    description text,
+    invoice_ref character varying(100),
+    paid_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT locker_opex_amount_cents_check CHECK ((amount_cents >= 0)),
+    CONSTRAINT locker_opex_cost_type_check CHECK (((cost_type)::text = ANY ((ARRAY['RENT'::character varying, 'MAINTENANCE_PREVENTIVE'::character varying, 'MAINTENANCE_CORRECTIVE'::character varying, 'CONNECTIVITY'::character varying, 'ENERGY'::character varying, 'INSURANCE'::character varying, 'CLEANING'::character varying, 'SECURITY'::character varying, 'OTHER'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.locker_opex OWNER TO admin;
 
 --
 -- Name: locker_payment_methods; Type: TABLE; Schema: public; Owner: admin
@@ -4351,6 +6084,43 @@ ALTER TABLE public.locker_telemetry_id_seq OWNER TO admin;
 
 ALTER SEQUENCE public.locker_telemetry_id_seq OWNED BY public.locker_telemetry.id;
 
+
+--
+-- Name: locker_telemetry_partitioned; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.locker_telemetry_partitioned (
+    id bigint NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    event_type character varying(50) NOT NULL,
+    slot_label character varying(20),
+    temperature_celsius numeric(5,2),
+    humidity_pct numeric(5,2),
+    battery_pct numeric(5,2),
+    voltage_mv integer,
+    signal_rssi integer,
+    firmware_version character varying(50),
+    raw_payload_json jsonb,
+    occurred_at timestamp with time zone NOT NULL,
+    received_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.locker_telemetry_partitioned OWNER TO admin;
+
+--
+-- Name: locker_telemetry_partitioned_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.locker_telemetry_partitioned_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.locker_telemetry_partitioned_id_seq OWNER TO admin;
 
 --
 -- Name: locker_utilization_snapshots; Type: TABLE; Schema: public; Owner: admin
@@ -4797,6 +6567,76 @@ CREATE TABLE public.logistics_tracking_events (
 ALTER TABLE public.logistics_tracking_events OWNER TO admin;
 
 --
+-- Name: marketplace_commissions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_commissions (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    order_id character varying(36) NOT NULL,
+    order_item_id bigint,
+    commission_rate_pct numeric(5,2) NOT NULL,
+    commission_amount_cents integer NOT NULL,
+    ellan_fee_cents integer NOT NULL,
+    payment_gateway_fee_cents integer NOT NULL,
+    net_to_seller_cents integer NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    settled_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_mc_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'SETTLED'::character varying, 'DISPUTED'::character varying, 'REFUNDED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.marketplace_commissions OWNER TO admin;
+
+--
+-- Name: TABLE marketplace_commissions; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.marketplace_commissions IS 'Cálculo de comissões do marketplace';
+
+
+--
+-- Name: marketplace_sellers; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_sellers (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    legal_name character varying(140) NOT NULL,
+    trade_name character varying(140),
+    tax_id character varying(32) NOT NULL,
+    email character varying(128) NOT NULL,
+    phone character varying(32),
+    website character varying(255),
+    status character varying(20) DEFAULT 'PENDING_APPROVAL'::character varying NOT NULL,
+    commission_pct numeric(5,2) DEFAULT 5.00 NOT NULL,
+    monthly_fee_cents bigint DEFAULT 0 NOT NULL,
+    seller_rating numeric(3,2) DEFAULT 0,
+    total_sales_cents bigint DEFAULT 0,
+    total_orders integer DEFAULT 0,
+    joined_at timestamp with time zone DEFAULT now(),
+    approved_at timestamp with time zone,
+    suspended_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone,
+    CONSTRAINT ck_seller_commission CHECK (((commission_pct >= (0)::numeric) AND (commission_pct <= (30)::numeric))),
+    CONSTRAINT ck_seller_status CHECK (((status)::text = ANY ((ARRAY['PENDING_APPROVAL'::character varying, 'ACTIVE'::character varying, 'SUSPENDED'::character varying, 'BANNED'::character varying, 'INACTIVE'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.marketplace_sellers OWNER TO admin;
+
+--
+-- Name: TABLE marketplace_sellers; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.marketplace_sellers IS 'Vendedores do marketplace aberto';
+
+
+--
 -- Name: metabase_database; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -5214,6 +7054,23 @@ ALTER SEQUENCE public.ml_model_metadata_id_seq OWNED BY public.ml_model_metadata
 
 
 --
+-- Name: ml_prediction_feedback; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.ml_prediction_feedback (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    prediction_id bigint,
+    actual_value double precision,
+    error_pct numeric(5,2),
+    feedback_at timestamp with time zone DEFAULT now(),
+    model_performance_status character varying(50),
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.ml_prediction_feedback OWNER TO admin;
+
+--
 -- Name: ml_predictions_log; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -5429,6 +7286,475 @@ ALTER TABLE public.moderation_review ALTER COLUMN id ADD GENERATED BY DEFAULT AS
 
 
 --
+-- Name: mv_locker_monthly_pnl; Type: MATERIALIZED VIEW; Schema: public; Owner: admin
+--
+
+CREATE MATERIALIZED VIEW public.mv_locker_monthly_pnl AS
+ WITH rev AS (
+         SELECT (date_trunc('month'::text, (ellanlab_revenue_recognition.recognition_date)::timestamp with time zone))::date AS month_ref,
+            ellanlab_revenue_recognition.locker_id,
+            ellanlab_revenue_recognition.partner_id,
+            sum(ellanlab_revenue_recognition.recognized_amount_cents) AS revenue_cents
+           FROM public.ellanlab_revenue_recognition
+          WHERE (ellanlab_revenue_recognition.locker_id IS NOT NULL)
+          GROUP BY ((date_trunc('month'::text, (ellanlab_revenue_recognition.recognition_date)::timestamp with time zone))::date), ellanlab_revenue_recognition.locker_id, ellanlab_revenue_recognition.partner_id
+        ), opex AS (
+         SELECT ellanlab_opex_entries.expense_month AS month_ref,
+            ellanlab_opex_entries.locker_id,
+            sum(ellanlab_opex_entries.amount_cents) AS opex_cents
+           FROM public.ellanlab_opex_entries
+          WHERE (ellanlab_opex_entries.locker_id IS NOT NULL)
+          GROUP BY ellanlab_opex_entries.expense_month, ellanlab_opex_entries.locker_id
+        ), depr AS (
+         SELECT ds.depreciation_month AS month_ref,
+            ha.locker_id,
+            sum(ds.depreciation_amount_cents) AS depreciation_cents
+           FROM (public.ellanlab_depreciation_schedule ds
+             JOIN public.ellanlab_hardware_assets ha ON (((ds.asset_id)::text = (ha.id)::text)))
+          WHERE (ha.locker_id IS NOT NULL)
+          GROUP BY ds.depreciation_month, ha.locker_id
+        ), all_months AS (
+         SELECT DISTINCT rev.month_ref,
+            rev.locker_id
+           FROM rev
+        UNION
+         SELECT opex.month_ref,
+            opex.locker_id
+           FROM opex
+        UNION
+         SELECT depr.month_ref,
+            depr.locker_id
+           FROM depr
+        )
+ SELECT am.month_ref,
+    am.locker_id,
+    COALESCE(r.revenue_cents, (0)::numeric) AS revenue_cents,
+    COALESCE(o.opex_cents, (0)::numeric) AS opex_cents,
+    COALESCE(d.depreciation_cents, (0)::numeric) AS depreciation_cents,
+    (COALESCE(o.opex_cents, (0)::numeric) + COALESCE(d.depreciation_cents, (0)::numeric)) AS total_cost_cents,
+    ((COALESCE(r.revenue_cents, (0)::numeric) - COALESCE(o.opex_cents, (0)::numeric)) - COALESCE(d.depreciation_cents, (0)::numeric)) AS net_profit_cents,
+        CASE
+            WHEN (COALESCE(r.revenue_cents, (0)::numeric) = (0)::numeric) THEN (0)::numeric
+            ELSE round(((((COALESCE(r.revenue_cents, (0)::numeric) - COALESCE(o.opex_cents, (0)::numeric)) - COALESCE(d.depreciation_cents, (0)::numeric)) / COALESCE(r.revenue_cents, (0)::numeric)) * (100)::numeric), 2)
+        END AS margin_pct
+   FROM (((all_months am
+     LEFT JOIN rev r ON (((am.month_ref = r.month_ref) AND ((am.locker_id)::text = (r.locker_id)::text))))
+     LEFT JOIN opex o ON (((am.month_ref = o.month_ref) AND ((am.locker_id)::text = (o.locker_id)::text))))
+     LEFT JOIN depr d ON (((am.month_ref = d.month_ref) AND ((am.locker_id)::text = (d.locker_id)::text))))
+  WITH NO DATA;
+
+
+ALTER TABLE public.mv_locker_monthly_pnl OWNER TO admin;
+
+--
+-- Name: orders; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false NOT NULL,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders OWNER TO admin;
+
+--
+-- Name: rental_contracts; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.rental_contracts (
+    id character varying(36) NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    slot_label character varying(20) NOT NULL,
+    plan_id character varying(36),
+    tenant_id character varying(100),
+    renter_user_id character varying(36),
+    renter_name character varying(255),
+    renter_document character varying(32),
+    renter_phone character varying(32),
+    renter_email character varying(128),
+    amount_cents integer NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
+    billing_cycle character varying(20) NOT NULL,
+    next_billing_at timestamp with time zone,
+    auto_renew boolean DEFAULT false NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    started_at timestamp with time zone,
+    ends_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    ended_at timestamp with time zone,
+    access_pin_hash character varying(255),
+    access_token_ref character varying(255),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.rental_contracts OWNER TO admin;
+
+--
+-- Name: seller_products; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_products (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    product_id character varying(255) NOT NULL,
+    seller_sku character varying(64),
+    price_cents integer NOT NULL,
+    quantity integer DEFAULT 0 NOT NULL,
+    max_quantity_per_order integer DEFAULT 10,
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    priority integer DEFAULT 100,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    deleted_at timestamp with time zone,
+    CONSTRAINT ck_seller_product_price CHECK ((price_cents > 0)),
+    CONSTRAINT ck_seller_product_quantity CHECK ((quantity >= 0)),
+    CONSTRAINT ck_seller_product_status CHECK (((status)::text = ANY ((ARRAY['ACTIVE'::character varying, 'INACTIVE'::character varying, 'OUT_OF_STOCK'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.seller_products OWNER TO admin;
+
+--
+-- Name: TABLE seller_products; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.seller_products IS 'Produtos oferecidos por cada seller em cada locker';
+
+
+--
+-- Name: mv_locker_monthly_profitability; Type: MATERIALIZED VIEW; Schema: public; Owner: admin
+--
+
+CREATE MATERIALIZED VIEW public.mv_locker_monthly_profitability AS
+ WITH revenue_sales AS (
+         SELECT a.locker_id,
+            (date_trunc('month'::text, o.picked_up_at))::date AS month,
+            sum(o.amount_cents) AS sales_revenue_cents,
+            count(DISTINCT o.id) AS total_pickups
+           FROM (public.allocations a
+             JOIN public.orders o ON (((o.id)::text = (a.order_id)::text)))
+          WHERE ((o.status = ANY (ARRAY['PICKED_UP'::public.orderstatus, 'REFUNDED'::public.orderstatus])) AND (o.picked_up_at IS NOT NULL) AND (o.deleted_at IS NULL) AND (a.locker_id IS NOT NULL))
+          GROUP BY a.locker_id, ((date_trunc('month'::text, o.picked_up_at))::date)
+        ), revenue_openings AS (
+         SELECT a.locker_id,
+            (date_trunc('month'::text, a.allocated_at))::date AS month,
+            count(*) AS total_openings,
+            sum(
+                CASE
+                    WHEN (a.state = ANY (ARRAY['RESERVED_PAID_PENDING_PICKUP'::public.allocationstate, 'OPENED_FOR_PICKUP'::public.allocationstate])) THEN 1
+                    ELSE 0
+                END) AS paid_openings
+           FROM public.allocations a
+          WHERE (a.allocated_at IS NOT NULL)
+          GROUP BY a.locker_id, ((date_trunc('month'::text, a.allocated_at))::date)
+        ), revenue_rental AS (
+         SELECT rc.locker_id,
+            (date_trunc('month'::text, rc.started_at))::date AS month,
+            count(DISTINCT rc.id) AS active_rentals,
+            sum(rc.amount_cents) AS rental_revenue_cents
+           FROM public.rental_contracts rc
+          WHERE (((rc.status)::text = 'ACTIVE'::text) AND (rc.started_at IS NOT NULL))
+          GROUP BY rc.locker_id, ((date_trunc('month'::text, rc.started_at))::date)
+        ), operational_costs AS (
+         SELECT ccm.locker_id,
+            ccm.month,
+            ccm.total_opex_cents,
+            ccm.depreciation_cents,
+            ccm.total_costs_cents
+           FROM public.cost_center_monthly ccm
+        ), marketplace_revenue AS (
+         SELECT sp.locker_id,
+            (date_trunc('month'::text, o.paid_at))::date AS month,
+            sum(mc.commission_amount_cents) AS marketplace_commission_cents,
+            sum(o.amount_cents) AS marketplace_gmv_cents
+           FROM ((public.marketplace_commissions mc
+             JOIN public.orders o ON (((o.id)::text = (mc.order_id)::text)))
+             JOIN public.seller_products sp ON (((sp.product_id)::text = (o.sku_id)::text)))
+          WHERE ((mc.status)::text = 'SETTLED'::text)
+          GROUP BY sp.locker_id, ((date_trunc('month'::text, o.paid_at))::date)
+        ), active_lockers AS (
+         SELECT l.id AS locker_id,
+            (date_trunc('month'::text, l.created_at))::date AS activation_month,
+            (COALESCE(l.deleted_at, (CURRENT_DATE)::timestamp with time zone))::date AS deactivation_date
+           FROM public.lockers l
+          WHERE ((l.active = true) OR (l.deleted_at IS NULL))
+        ), all_months AS (
+         SELECT DISTINCT l.id AS locker_id,
+            (generate_series(((date_trunc('month'::text, min(l.created_at)))::date)::timestamp with time zone, ((date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date)::timestamp with time zone, '1 mon'::interval))::date AS month
+           FROM public.lockers l
+          GROUP BY l.id
+        )
+ SELECT am.locker_id,
+    am.month,
+    COALESCE(rs.sales_revenue_cents, (0)::bigint) AS sales_revenue_cents,
+    COALESCE(ro.total_openings, (0)::bigint) AS pickup_openings,
+    COALESCE(rr.rental_revenue_cents, (0)::bigint) AS rental_revenue_cents,
+    COALESCE(mr.marketplace_commission_cents, (0)::bigint) AS marketplace_commission_cents,
+    COALESCE(mr.marketplace_gmv_cents, (0)::bigint) AS marketplace_gmv_cents,
+    ((COALESCE(rs.sales_revenue_cents, (0)::bigint) + COALESCE(rr.rental_revenue_cents, (0)::bigint)) + COALESCE(mr.marketplace_commission_cents, (0)::bigint)) AS total_revenue_cents,
+    COALESCE(oc.total_opex_cents, (0)::bigint) AS total_opex_cents,
+    COALESCE(oc.depreciation_cents, (0)::bigint) AS depreciation_cents,
+    COALESCE(oc.total_costs_cents, (0)::bigint) AS total_costs_cents,
+    (((COALESCE(rs.sales_revenue_cents, (0)::bigint) + COALESCE(rr.rental_revenue_cents, (0)::bigint)) + COALESCE(mr.marketplace_commission_cents, (0)::bigint)) - COALESCE(oc.total_costs_cents, (0)::bigint)) AS net_profit_cents,
+        CASE
+            WHEN (((COALESCE(rs.sales_revenue_cents, (0)::bigint) + COALESCE(rr.rental_revenue_cents, (0)::bigint)) + COALESCE(mr.marketplace_commission_cents, (0)::bigint)) > 0) THEN round(((100.0 * ((((COALESCE(rs.sales_revenue_cents, (0)::bigint) + COALESCE(rr.rental_revenue_cents, (0)::bigint)) + COALESCE(mr.marketplace_commission_cents, (0)::bigint)) - COALESCE(oc.total_costs_cents, (0)::bigint)))::numeric) / (NULLIF(((COALESCE(rs.sales_revenue_cents, (0)::bigint) + COALESCE(rr.rental_revenue_cents, (0)::bigint)) + COALESCE(mr.marketplace_commission_cents, (0)::bigint)), 0))::numeric), 2)
+            ELSE (0)::numeric
+        END AS net_margin_pct,
+    COALESCE(rs.total_pickups, (0)::bigint) AS total_pickups,
+    COALESCE(rr.active_rentals, (0)::bigint) AS active_rentals,
+        CASE
+            WHEN (COALESCE(rs.total_pickups, (0)::bigint) > 0) THEN round(((COALESCE(rs.sales_revenue_cents, (0)::bigint))::numeric / (NULLIF(rs.total_pickups, 0))::numeric), 2)
+            ELSE (0)::numeric
+        END AS avg_revenue_per_pickup_cents,
+    now() AS computed_at
+   FROM (((((all_months am
+     LEFT JOIN revenue_sales rs ON ((((rs.locker_id)::text = (am.locker_id)::text) AND (rs.month = am.month))))
+     LEFT JOIN revenue_openings ro ON ((((ro.locker_id)::text = (am.locker_id)::text) AND (ro.month = am.month))))
+     LEFT JOIN revenue_rental rr ON ((((rr.locker_id)::text = (am.locker_id)::text) AND (rr.month = am.month))))
+     LEFT JOIN marketplace_revenue mr ON ((((mr.locker_id)::text = (am.locker_id)::text) AND (mr.month = am.month))))
+     LEFT JOIN operational_costs oc ON ((((oc.locker_id)::text = (am.locker_id)::text) AND (oc.month = am.month))))
+  WHERE (am.month <= (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date)
+  ORDER BY am.locker_id, am.month DESC
+  WITH NO DATA;
+
+
+ALTER TABLE public.mv_locker_monthly_profitability OWNER TO admin;
+
+--
+-- Name: MATERIALIZED VIEW mv_locker_monthly_profitability; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON MATERIALIZED VIEW public.mv_locker_monthly_profitability IS 'Rentabilidade mensal por locker - base para análise financeira e ROI';
+
+
+--
+-- Name: pickups; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.pickups (
+    id character varying NOT NULL,
+    order_id character varying NOT NULL,
+    channel public.pickupchannel NOT NULL,
+    region character varying NOT NULL,
+    locker_id character varying,
+    machine_id character varying,
+    slot character varying,
+    operator_id character varying,
+    tenant_id character varying,
+    site_id character varying,
+    status public.pickupstatus NOT NULL,
+    lifecycle_stage public.pickuplifecyclestage NOT NULL,
+    current_token_id character varying,
+    activated_at timestamp with time zone NOT NULL,
+    ready_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    door_opened_at timestamp with time zone,
+    item_removed_at timestamp with time zone,
+    door_closed_at timestamp with time zone,
+    redeemed_at timestamp with time zone,
+    redeemed_via public.pickupredeemvia,
+    expired_at timestamp with time zone,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying,
+    correlation_id character varying,
+    source_event_id character varying,
+    sensor_event_id character varying,
+    notes character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    machine_state character varying(50),
+    pickup_phase public.pickup_phase,
+    evidence_score integer DEFAULT 0,
+    evidence_strength character varying(10) DEFAULT 'NONE'::character varying,
+    dispute_state public.dispute_state DEFAULT 'NONE'::public.dispute_state NOT NULL,
+    verified_at timestamp with time zone,
+    verified_by character varying(255),
+    disputed_at timestamp with time zone,
+    dispute_reason text,
+    reconciled_at timestamp with time zone,
+    reconciled_by character varying(255),
+    aggregate_version bigint DEFAULT 0 NOT NULL,
+    fraud_flag boolean DEFAULT false NOT NULL,
+    fraud_reason text,
+    CONSTRAINT ck_pickups_v2_dispute_requires_disputed_at CHECK (((dispute_state = 'NONE'::public.dispute_state) OR (disputed_at IS NOT NULL))),
+    CONSTRAINT ck_pickups_v2_evidence_score_range CHECK (((evidence_score IS NOT NULL) AND ((evidence_score >= 0) AND (evidence_score <= 100)))),
+    CONSTRAINT ck_pickups_v2_evidence_strength_consistent CHECK (((evidence_strength)::text = (public.fn_derive_evidence_strength(evidence_score))::text)),
+    CONSTRAINT ck_pickups_v2_reconciled_requires_reconciled_at CHECK (((pickup_phase <> 'RECONCILED'::public.pickup_phase) OR (reconciled_at IS NOT NULL))),
+    CONSTRAINT ck_pickups_v2_unverified_requires_weak_evidence CHECK (((pickup_phase <> 'COMPLETED_UNVERIFIED'::public.pickup_phase) OR (evidence_score < 80))),
+    CONSTRAINT ck_pickups_v2_verified_requires_strong_evidence CHECK (((pickup_phase <> 'COMPLETED_VERIFIED'::public.pickup_phase) OR ((evidence_score >= 80) AND (verified_at IS NOT NULL))))
+);
+
+
+ALTER TABLE public.pickups OWNER TO admin;
+
+--
+-- Name: sla_breach_events; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.sla_breach_events (
+    id character varying(36) NOT NULL,
+    delivery_id character varying(36),
+    return_request_id character varying(36),
+    logistics_partner_id character varying(36),
+    breach_type character varying(40) NOT NULL,
+    severity character varying(10) NOT NULL,
+    expected_at timestamp with time zone NOT NULL,
+    detected_at timestamp with time zone DEFAULT now() NOT NULL,
+    notified_at timestamp with time zone,
+    resolved_at timestamp with time zone,
+    notes text,
+    CONSTRAINT sla_breach_events_breach_type_check CHECK (((breach_type)::text = ANY ((ARRAY['PICKUP_TIMEOUT'::character varying, 'RETURN_TIMEOUT'::character varying, 'NOTIFICATION_FAILURE'::character varying, 'DELIVERY_ATTEMPT_EXCEEDED'::character varying, 'RETURN_TRANSIT_TIMEOUT'::character varying])::text[]))),
+    CONSTRAINT sla_breach_events_severity_check CHECK (((severity)::text = ANY ((ARRAY['LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.sla_breach_events OWNER TO admin;
+
+--
+-- Name: mv_realtime_kpis; Type: MATERIALIZED VIEW; Schema: public; Owner: admin
+--
+
+CREATE MATERIALIZED VIEW public.mv_realtime_kpis AS
+ WITH last_hour_stats AS (
+         SELECT count(DISTINCT o.id) AS orders_last_hour,
+            (sum(o.amount_cents) / 100) AS revenue_last_hour
+           FROM public.orders o
+          WHERE ((o.created_at >= (now() - '01:00:00'::interval)) AND (o.deleted_at IS NULL))
+        ), last_24h_stats AS (
+         SELECT count(DISTINCT o.id) AS orders_last_24h,
+            count(DISTINCT o.user_id) AS unique_customers_24h,
+            (sum(o.amount_cents) / 100) AS revenue_last_24h
+           FROM public.orders o
+          WHERE ((o.created_at >= (now() - '24:00:00'::interval)) AND (o.deleted_at IS NULL))
+        ), pickup_stats AS (
+         SELECT (avg((EXTRACT(epoch FROM (p.redeemed_at - p.activated_at)) / (60)::numeric)))::integer AS avg_pickup_minutes
+           FROM public.pickups p
+          WHERE (p.redeemed_at >= (now() - '24:00:00'::interval))
+        ), offline_lockers AS (
+         SELECT count(DISTINCT l.id) AS offline_lockers
+           FROM public.lockers l
+          WHERE ((l.active = false) AND (l.deleted_at IS NULL))
+        ), active_sellers AS (
+         SELECT count(DISTINCT ms.id) AS active_sellers
+           FROM public.marketplace_sellers ms
+          WHERE ((ms.status)::text = 'ACTIVE'::text)
+        ), pending_orders AS (
+         SELECT count(
+                CASE
+                    WHEN (o.status = 'PAYMENT_PENDING'::public.orderstatus) THEN 1
+                    ELSE NULL::integer
+                END) AS pending_payment,
+            count(
+                CASE
+                    WHEN ((o.status = 'PAID_PENDING_PICKUP'::public.orderstatus) AND (o.pickup_deadline_at < now())) THEN 1
+                    ELSE NULL::integer
+                END) AS expired_pickup
+           FROM public.orders o
+          WHERE (o.deleted_at IS NULL)
+        ), alert_summary AS (
+         SELECT count(
+                CASE
+                    WHEN (((sla_breach_events.severity)::text = 'CRITICAL'::text) AND (sla_breach_events.resolved_at IS NULL)) THEN 1
+                    ELSE NULL::integer
+                END) AS critical_alerts,
+            count(
+                CASE
+                    WHEN (((sla_breach_events.severity)::text = 'HIGH'::text) AND (sla_breach_events.resolved_at IS NULL)) THEN 1
+                    ELSE NULL::integer
+                END) AS high_alerts
+           FROM public.sla_breach_events
+          WHERE (sla_breach_events.detected_at >= (now() - '24:00:00'::interval))
+        )
+ SELECT now() AS snapshot_time,
+    lh.orders_last_hour,
+    lh.revenue_last_hour,
+    l24.orders_last_24h,
+    l24.unique_customers_24h,
+    l24.revenue_last_24h,
+    ps.avg_pickup_minutes,
+    ol.offline_lockers,
+    asellers.active_sellers,
+    po.pending_payment,
+    po.expired_pickup,
+    als.critical_alerts,
+    als.high_alerts
+   FROM ((((((last_hour_stats lh
+     CROSS JOIN last_24h_stats l24)
+     CROSS JOIN pickup_stats ps)
+     CROSS JOIN offline_lockers ol)
+     CROSS JOIN active_sellers asellers)
+     CROSS JOIN pending_orders po)
+     CROSS JOIN alert_summary als)
+  WITH NO DATA;
+
+
+ALTER TABLE public.mv_realtime_kpis OWNER TO admin;
+
+--
+-- Name: MATERIALIZED VIEW mv_realtime_kpis; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON MATERIALIZED VIEW public.mv_realtime_kpis IS 'KPIs em tempo real para dashboard executivo';
+
+
+--
 -- Name: native_query_snippet; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -5538,6 +7864,34 @@ CREATE TABLE public.notifications (
 
 
 ALTER TABLE public.notifications OWNER TO admin;
+
+--
+-- Name: omnichannel_orders; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.omnichannel_orders (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    order_id character varying(36) NOT NULL,
+    store_id character varying(36) NOT NULL,
+    pickup_type character varying(20) DEFAULT 'STORE_PICKUP'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    ready_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_omni_pickup_type CHECK (((pickup_type)::text = ANY ((ARRAY['STORE_PICKUP'::character varying, 'LOCKER_DELIVERY'::character varying, 'HOME_DELIVERY'::character varying])::text[]))),
+    CONSTRAINT ck_omni_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'READY'::character varying, 'PICKED_UP'::character varying, 'CANCELLED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.omnichannel_orders OWNER TO admin;
+
+--
+-- Name: TABLE omnichannel_orders; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.omnichannel_orders IS 'Ordens processadas via canal omnichannel';
+
 
 --
 -- Name: ops_action_audit; Type: TABLE; Schema: public; Owner: admin
@@ -5686,10 +8040,10 @@ ALTER SEQUENCE public.order_items_id_seq OWNED BY public.order_items.id;
 
 
 --
--- Name: orders; Type: TABLE; Schema: public; Owner: admin
+-- Name: orders_partitioned; Type: TABLE; Schema: public; Owner: admin
 --
 
-CREATE TABLE public.orders (
+CREATE TABLE public.orders_partitioned (
     id character varying NOT NULL,
     user_id character varying,
     channel public.orderchannel NOT NULL,
@@ -5726,7 +8080,79 @@ CREATE TABLE public.orders (
     card_brand character varying(50),
     installments integer,
     guest_name character varying(255),
-    consent_analytics boolean DEFAULT false NOT NULL,
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+)
+PARTITION BY RANGE (created_at);
+
+
+ALTER TABLE public.orders_partitioned OWNER TO admin;
+
+--
+-- Name: TABLE orders_partitioned; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.orders_partitioned IS 'Tabela orders particionada por mês para escalabilidade';
+
+
+--
+-- Name: orders_2025_06; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_06 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
     cancelled_at timestamp with time zone,
     cancel_reason character varying(255),
     refunded_at timestamp with time zone,
@@ -5747,7 +8173,711 @@ CREATE TABLE public.orders (
 );
 
 
-ALTER TABLE public.orders OWNER TO admin;
+ALTER TABLE public.orders_2025_06 OWNER TO admin;
+
+--
+-- Name: orders_2025_07; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_07 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_07 OWNER TO admin;
+
+--
+-- Name: orders_2025_08; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_08 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_08 OWNER TO admin;
+
+--
+-- Name: orders_2025_09; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_09 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_09 OWNER TO admin;
+
+--
+-- Name: orders_2025_10; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_10 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_10 OWNER TO admin;
+
+--
+-- Name: orders_2025_11; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_11 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_11 OWNER TO admin;
+
+--
+-- Name: orders_2025_12; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2025_12 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2025_12 OWNER TO admin;
+
+--
+-- Name: orders_2026_01; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2026_01 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2026_01 OWNER TO admin;
+
+--
+-- Name: orders_2026_02; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2026_02 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2026_02 OWNER TO admin;
+
+--
+-- Name: orders_2026_03; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2026_03 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2026_03 OWNER TO admin;
+
+--
+-- Name: orders_2026_04; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2026_04 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2026_04 OWNER TO admin;
+
+--
+-- Name: orders_2026_05; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.orders_2026_05 (
+    id character varying NOT NULL,
+    user_id character varying,
+    channel public.orderchannel NOT NULL,
+    region character varying NOT NULL,
+    totem_id character varying NOT NULL,
+    sku_id character varying NOT NULL,
+    amount_cents integer NOT NULL,
+    status public.orderstatus NOT NULL,
+    gateway_transaction_id character varying,
+    payment_method public.paymentmethod,
+    payment_status public.paymentstatus NOT NULL,
+    card_type public.cardtype,
+    payment_updated_at timestamp with time zone,
+    paid_at timestamp with time zone,
+    pickup_deadline_at timestamp with time zone,
+    picked_up_at timestamp with time zone,
+    guest_session_id character varying,
+    public_access_token_hash character varying,
+    receipt_email character varying,
+    receipt_phone character varying,
+    consent_marketing integer NOT NULL,
+    guest_phone character varying,
+    guest_email character varying,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL,
+    currency character varying(8) DEFAULT 'BRL'::character varying,
+    site_id character varying(100),
+    tenant_id character varying(100),
+    ecommerce_partner_id character varying(100),
+    partner_order_ref character varying(255),
+    sku_description text,
+    slot_size character varying(20),
+    card_last4 character varying(8),
+    card_brand character varying(50),
+    installments integer,
+    guest_name character varying(255),
+    consent_analytics boolean DEFAULT false,
+    cancelled_at timestamp with time zone,
+    cancel_reason character varying(255),
+    refunded_at timestamp with time zone,
+    refund_reason character varying(255),
+    payment_interface character varying(32),
+    wallet_provider character varying(64),
+    device_id character varying(128),
+    ip_address character varying(64),
+    user_agent character varying(500),
+    idempotency_key character varying(255),
+    order_metadata jsonb,
+    slot integer,
+    allocation_id character varying,
+    allocation_expires_at timestamp with time zone,
+    created_by character varying(36),
+    updated_by character varying(36),
+    deleted_at timestamp with time zone
+);
+
+
+ALTER TABLE public.orders_2026_05 OWNER TO admin;
 
 --
 -- Name: parameter_card; Type: TABLE; Schema: public; Owner: admin
@@ -6036,6 +9166,21 @@ CREATE TABLE public.partner_billing_plans (
 
 
 ALTER TABLE public.partner_billing_plans OWNER TO admin;
+
+--
+-- Name: partner_commission_structure; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.partner_commission_structure (
+    id uuid NOT NULL,
+    partner_id character varying(36),
+    commission_percentage numeric(5,2),
+    revenue_threshold_cents bigint,
+    effective_from date
+);
+
+
+ALTER TABLE public.partner_commission_structure OWNER TO admin;
 
 --
 -- Name: partner_contacts; Type: TABLE; Schema: public; Owner: admin
@@ -6330,6 +9475,41 @@ CREATE TABLE public.partner_status_history (
 
 
 ALTER TABLE public.partner_status_history OWNER TO admin;
+
+--
+-- Name: partner_stores; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.partner_stores (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    name character varying(128) NOT NULL,
+    legal_name character varying(140),
+    tax_id character varying(32),
+    address_line character varying(255) NOT NULL,
+    city character varying(100) NOT NULL,
+    state character varying(50) NOT NULL,
+    postal_code character varying(20) NOT NULL,
+    phone character varying(32),
+    email character varying(128),
+    latitude numeric(10,8),
+    longitude numeric(11,8),
+    operating_hours jsonb,
+    commission_pct numeric(5,2) DEFAULT 5.00,
+    active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_store_commission CHECK (((commission_pct >= (0)::numeric) AND (commission_pct <= (30)::numeric)))
+);
+
+
+ALTER TABLE public.partner_stores OWNER TO admin;
+
+--
+-- Name: TABLE partner_stores; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.partner_stores IS 'Lojas parceiras para click & collect';
+
 
 --
 -- Name: partner_webhook_deliveries; Type: TABLE; Schema: public; Owner: admin
@@ -6650,7 +9830,10 @@ CREATE TABLE public.payment_transactions (
     arqc character varying(50),
     nsu_sitef character varying(50),
     reconciliation_status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
-    reconciliation_batch_id character varying(100)
+    reconciliation_batch_id character varying(100),
+    gateway_fee_cents integer DEFAULT 0,
+    installment_fee_cents integer DEFAULT 0,
+    net_amount_cents integer
 );
 
 
@@ -6866,64 +10049,51 @@ CREATE TABLE public.pickup_tokens (
 ALTER TABLE public.pickup_tokens OWNER TO admin;
 
 --
--- Name: pickups; Type: TABLE; Schema: public; Owner: admin
+-- Name: price_history; Type: TABLE; Schema: public; Owner: admin
 --
 
-CREATE TABLE public.pickups (
-    id character varying NOT NULL,
-    order_id character varying NOT NULL,
-    channel public.pickupchannel NOT NULL,
-    region character varying NOT NULL,
-    locker_id character varying,
-    machine_id character varying,
-    slot character varying,
-    operator_id character varying,
-    tenant_id character varying,
-    site_id character varying,
-    status public.pickupstatus NOT NULL,
-    lifecycle_stage public.pickuplifecyclestage NOT NULL,
-    current_token_id character varying,
-    activated_at timestamp with time zone NOT NULL,
-    ready_at timestamp with time zone,
-    expires_at timestamp with time zone,
-    door_opened_at timestamp with time zone,
-    item_removed_at timestamp with time zone,
-    door_closed_at timestamp with time zone,
-    redeemed_at timestamp with time zone,
-    redeemed_via public.pickupredeemvia,
-    expired_at timestamp with time zone,
-    cancelled_at timestamp with time zone,
-    cancel_reason character varying,
-    correlation_id character varying,
-    source_event_id character varying,
-    sensor_event_id character varying,
-    notes character varying,
-    created_at timestamp with time zone NOT NULL,
-    updated_at timestamp with time zone NOT NULL,
-    machine_state character varying(50),
-    pickup_phase public.pickup_phase,
-    evidence_score integer DEFAULT 0,
-    evidence_strength character varying(10) DEFAULT 'NONE'::character varying,
-    dispute_state public.dispute_state DEFAULT 'NONE'::public.dispute_state NOT NULL,
-    verified_at timestamp with time zone,
-    verified_by character varying(255),
-    disputed_at timestamp with time zone,
-    dispute_reason text,
-    reconciled_at timestamp with time zone,
-    reconciled_by character varying(255),
-    aggregate_version bigint DEFAULT 0 NOT NULL,
-    fraud_flag boolean DEFAULT false NOT NULL,
-    fraud_reason text,
-    CONSTRAINT ck_pickups_v2_dispute_requires_disputed_at CHECK (((dispute_state = 'NONE'::public.dispute_state) OR (disputed_at IS NOT NULL))),
-    CONSTRAINT ck_pickups_v2_evidence_score_range CHECK (((evidence_score IS NOT NULL) AND ((evidence_score >= 0) AND (evidence_score <= 100)))),
-    CONSTRAINT ck_pickups_v2_evidence_strength_consistent CHECK (((evidence_strength)::text = (public.fn_derive_evidence_strength(evidence_score))::text)),
-    CONSTRAINT ck_pickups_v2_reconciled_requires_reconciled_at CHECK (((pickup_phase <> 'RECONCILED'::public.pickup_phase) OR (reconciled_at IS NOT NULL))),
-    CONSTRAINT ck_pickups_v2_unverified_requires_weak_evidence CHECK (((pickup_phase <> 'COMPLETED_UNVERIFIED'::public.pickup_phase) OR (evidence_score < 80))),
-    CONSTRAINT ck_pickups_v2_verified_requires_strong_evidence CHECK (((pickup_phase <> 'COMPLETED_VERIFIED'::public.pickup_phase) OR ((evidence_score >= 80) AND (verified_at IS NOT NULL))))
+CREATE TABLE public.price_history (
+    id bigint NOT NULL,
+    product_id character varying(255) NOT NULL,
+    locker_id character varying(36),
+    old_price_cents integer NOT NULL,
+    new_price_cents integer NOT NULL,
+    rule_id character varying(36),
+    reason character varying(100),
+    changed_at timestamp with time zone DEFAULT now(),
+    changed_by character varying(36)
 );
 
 
-ALTER TABLE public.pickups OWNER TO admin;
+ALTER TABLE public.price_history OWNER TO admin;
+
+--
+-- Name: TABLE price_history; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.price_history IS 'Histórico de alterações de preço';
+
+
+--
+-- Name: price_history_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.price_history_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.price_history_id_seq OWNER TO admin;
+
+--
+-- Name: price_history_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.price_history_id_seq OWNED BY public.price_history.id;
+
 
 --
 -- Name: pricing_rules; Type: TABLE; Schema: public; Owner: admin
@@ -7076,6 +10246,22 @@ CREATE TABLE public.product_categories (
 ALTER TABLE public.product_categories OWNER TO admin;
 
 --
+-- Name: product_cogs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.product_cogs (
+    id uuid NOT NULL,
+    product_id character varying(255),
+    cogs_per_unit_cents bigint,
+    supplier_id uuid,
+    effective_from date,
+    effective_to date
+);
+
+
+ALTER TABLE public.product_cogs OWNER TO admin;
+
+--
 -- Name: product_fiscal_config; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -7122,6 +10308,26 @@ CREATE TABLE public.product_inventory (
 
 
 ALTER TABLE public.product_inventory OWNER TO admin;
+
+--
+-- Name: product_locker_compatibility; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.product_locker_compatibility (
+    id uuid NOT NULL,
+    product_id character varying(255) NOT NULL,
+    locker_type_id bigint NOT NULL,
+    is_compatible boolean DEFAULT true,
+    rejection_reason character varying(255),
+    rule_version integer,
+    effective_from date,
+    effective_to date,
+    created_by uuid,
+    created_at timestamp with time zone DEFAULT now()
+);
+
+
+ALTER TABLE public.product_locker_compatibility OWNER TO admin;
 
 --
 -- Name: product_locker_configs; Type: TABLE; Schema: public; Owner: admin
@@ -7200,6 +10406,53 @@ CREATE TABLE public.product_media (
 
 
 ALTER TABLE public.product_media OWNER TO admin;
+
+--
+-- Name: product_recommendations; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.product_recommendations (
+    id bigint NOT NULL,
+    user_id character varying(36),
+    locker_id character varying(36),
+    product_id character varying(255) NOT NULL,
+    score numeric(5,4) NOT NULL,
+    context character varying(50),
+    generated_at timestamp with time zone DEFAULT now(),
+    expires_at timestamp with time zone DEFAULT (now() + '24:00:00'::interval),
+    CONSTRAINT ck_recommendation_score CHECK (((score >= (0)::numeric) AND (score <= (1)::numeric)))
+);
+
+
+ALTER TABLE public.product_recommendations OWNER TO admin;
+
+--
+-- Name: TABLE product_recommendations; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.product_recommendations IS 'Recomendações de produtos personalizadas';
+
+
+--
+-- Name: product_recommendations_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.product_recommendations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.product_recommendations_id_seq OWNER TO admin;
+
+--
+-- Name: product_recommendations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.product_recommendations_id_seq OWNED BY public.product_recommendations.id;
+
 
 --
 -- Name: product_status_history; Type: TABLE; Schema: public; Owner: admin
@@ -7889,41 +11142,6 @@ CREATE TABLE public.reconciliation_pending (
 ALTER TABLE public.reconciliation_pending OWNER TO admin;
 
 --
--- Name: rental_contracts; Type: TABLE; Schema: public; Owner: admin
---
-
-CREATE TABLE public.rental_contracts (
-    id character varying(36) NOT NULL,
-    locker_id character varying(36) NOT NULL,
-    slot_label character varying(20) NOT NULL,
-    plan_id character varying(36),
-    tenant_id character varying(100),
-    renter_user_id character varying(36),
-    renter_name character varying(255),
-    renter_document character varying(32),
-    renter_phone character varying(32),
-    renter_email character varying(128),
-    amount_cents integer NOT NULL,
-    currency character varying(8) DEFAULT 'BRL'::character varying NOT NULL,
-    billing_cycle character varying(20) NOT NULL,
-    next_billing_at timestamp with time zone,
-    auto_renew boolean DEFAULT false NOT NULL,
-    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
-    started_at timestamp with time zone,
-    ends_at timestamp with time zone,
-    cancelled_at timestamp with time zone,
-    cancel_reason character varying(255),
-    ended_at timestamp with time zone,
-    access_pin_hash character varying(255),
-    access_token_ref character varying(255),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE public.rental_contracts OWNER TO admin;
-
---
 -- Name: rental_plans; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -8499,6 +11717,36 @@ ALTER TABLE public.segment ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY 
 
 
 --
+-- Name: seller_reviews; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_reviews (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    order_id character varying(36) NOT NULL,
+    user_id character varying(36),
+    rating integer NOT NULL,
+    comment text,
+    delivery_rating integer,
+    product_quality_rating integer,
+    communication_rating integer,
+    verified_purchase boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_seller_review_rating CHECK (((rating >= 1) AND (rating <= 5))),
+    CONSTRAINT ck_seller_review_sub_ratings CHECK ((((delivery_rating IS NULL) OR ((delivery_rating >= 1) AND (delivery_rating <= 5))) AND ((product_quality_rating IS NULL) OR ((product_quality_rating >= 1) AND (product_quality_rating <= 5))) AND ((communication_rating IS NULL) OR ((communication_rating >= 1) AND (communication_rating <= 5)))))
+);
+
+
+ALTER TABLE public.seller_reviews OWNER TO admin;
+
+--
+-- Name: TABLE seller_reviews; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.seller_reviews IS 'Avaliações dos compradores sobre os sellers';
+
+
+--
 -- Name: setting; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -8509,29 +11757,6 @@ CREATE TABLE public.setting (
 
 
 ALTER TABLE public.setting OWNER TO admin;
-
---
--- Name: sla_breach_events; Type: TABLE; Schema: public; Owner: admin
---
-
-CREATE TABLE public.sla_breach_events (
-    id character varying(36) NOT NULL,
-    delivery_id character varying(36),
-    return_request_id character varying(36),
-    logistics_partner_id character varying(36),
-    breach_type character varying(40) NOT NULL,
-    severity character varying(10) NOT NULL,
-    expected_at timestamp with time zone NOT NULL,
-    detected_at timestamp with time zone DEFAULT now() NOT NULL,
-    notified_at timestamp with time zone,
-    resolved_at timestamp with time zone,
-    notes text,
-    CONSTRAINT sla_breach_events_breach_type_check CHECK (((breach_type)::text = ANY ((ARRAY['PICKUP_TIMEOUT'::character varying, 'RETURN_TIMEOUT'::character varying, 'NOTIFICATION_FAILURE'::character varying, 'DELIVERY_ATTEMPT_EXCEEDED'::character varying, 'RETURN_TRANSIT_TIMEOUT'::character varying])::text[]))),
-    CONSTRAINT sla_breach_events_severity_check CHECK (((severity)::text = ANY ((ARRAY['LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[])))
-);
-
-
-ALTER TABLE public.sla_breach_events OWNER TO admin;
 
 --
 -- Name: slot_occupancy_history; Type: TABLE; Schema: public; Owner: admin
@@ -8551,6 +11776,172 @@ CREATE TABLE public.slot_occupancy_history (
 
 
 ALTER TABLE public.slot_occupancy_history OWNER TO admin;
+
+--
+-- Name: store_inventory; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.store_inventory (
+    id bigint NOT NULL,
+    store_id character varying(36) NOT NULL,
+    product_id character varying(255) NOT NULL,
+    quantity integer DEFAULT 0,
+    price_cents integer,
+    last_sync_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_store_qty CHECK ((quantity >= 0))
+);
+
+
+ALTER TABLE public.store_inventory OWNER TO admin;
+
+--
+-- Name: TABLE store_inventory; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.store_inventory IS 'Estoque disponível nas lojas parceiras';
+
+
+--
+-- Name: store_inventory_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.store_inventory_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.store_inventory_id_seq OWNER TO admin;
+
+--
+-- Name: store_inventory_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.store_inventory_id_seq OWNED BY public.store_inventory.id;
+
+
+--
+-- Name: subscription_benefits_usage; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.subscription_benefits_usage (
+    id bigint NOT NULL,
+    subscription_id character varying(36) NOT NULL,
+    usage_month date NOT NULL,
+    benefit_type character varying(30) NOT NULL,
+    usage_count integer DEFAULT 0,
+    usage_limit integer,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_benefit_type CHECK (((benefit_type)::text = ANY ((ARRAY['FREE_SHIPPING'::character varying, 'PRIORITY_SHELF'::character varying, 'EXCLUSIVE_DEAL'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.subscription_benefits_usage OWNER TO admin;
+
+--
+-- Name: TABLE subscription_benefits_usage; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.subscription_benefits_usage IS 'Controle de uso dos benefícios por assinatura';
+
+
+--
+-- Name: subscription_benefits_usage_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.subscription_benefits_usage_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.subscription_benefits_usage_id_seq OWNER TO admin;
+
+--
+-- Name: subscription_benefits_usage_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.subscription_benefits_usage_id_seq OWNED BY public.subscription_benefits_usage.id;
+
+
+--
+-- Name: subscription_plans; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.subscription_plans (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    name character varying(50) NOT NULL,
+    code character varying(20) NOT NULL,
+    description text,
+    monthly_fee_cents integer NOT NULL,
+    yearly_fee_cents integer,
+    free_shipping boolean DEFAULT false,
+    priority_shelf boolean DEFAULT false,
+    exclusive_deals boolean DEFAULT false,
+    priority_support boolean DEFAULT false,
+    max_orders_per_month integer,
+    max_discount_pct numeric(5,2),
+    features_json jsonb DEFAULT '{}'::jsonb,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT ck_plan_code CHECK (((code)::text = ANY ((ARRAY['BASIC'::character varying, 'PREMIUM'::character varying, 'PRO'::character varying, 'ENTERPRISE'::character varying])::text[]))),
+    CONSTRAINT ck_plan_monthly_fee CHECK ((monthly_fee_cents >= 0))
+);
+
+
+ALTER TABLE public.subscription_plans OWNER TO admin;
+
+--
+-- Name: TABLE subscription_plans; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON TABLE public.subscription_plans IS 'Planos de assinatura disponíveis para clientes';
+
+
+--
+-- Name: subscription_usage; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.subscription_usage (
+    id bigint NOT NULL,
+    subscription_id character varying(36),
+    usage_month date,
+    orders_count integer DEFAULT 0,
+    free_shipping_used integer DEFAULT 0,
+    savings_cents integer DEFAULT 0
+);
+
+
+ALTER TABLE public.subscription_usage OWNER TO admin;
+
+--
+-- Name: subscription_usage_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.subscription_usage_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.subscription_usage_id_seq OWNER TO admin;
+
+--
+-- Name: subscription_usage_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.subscription_usage_id_seq OWNED BY public.subscription_usage.id;
+
 
 --
 -- Name: table_privileges; Type: TABLE; Schema: public; Owner: admin
@@ -8675,11 +12066,19 @@ CREATE TABLE public.tenant_fiscal_config (
     crt character(1) NOT NULL,
     cert_a1_ref character varying(255),
     is_active boolean DEFAULT true NOT NULL,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    brand_config jsonb DEFAULT '{"logo_url": null, "accent_color": "#38A169", "company_name": null, "custom_domain": null, "primary_color": "#1A365D", "support_email": null, "support_phone": null, "secondary_color": "#2D3748"}'::jsonb
 );
 
 
 ALTER TABLE public.tenant_fiscal_config OWNER TO admin;
+
+--
+-- Name: COLUMN tenant_fiscal_config.brand_config; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON COLUMN public.tenant_fiscal_config.brand_config IS 'Configurações de branding white label';
+
 
 --
 -- Name: timeline; Type: TABLE; Schema: public; Owner: admin
@@ -8843,7 +12242,9 @@ CREATE TABLE public.users (
     fiscal_address_postal_code character varying(1024),
     fiscal_address_country character varying(2),
     fiscal_profile_updated_at timestamp with time zone,
-    fiscal_data_consent boolean DEFAULT false NOT NULL
+    fiscal_data_consent boolean DEFAULT false NOT NULL,
+    cpf_encrypted bytea,
+    phone_encrypted bytea
 );
 
 
@@ -9118,6 +12519,180 @@ CREATE VIEW public.v_fields AS
 ALTER TABLE public.v_fields OWNER TO admin;
 
 --
+-- Name: v_locker_roi_analysis; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.v_locker_roi_analysis AS
+ WITH locker_investment AS (
+         SELECT l.id AS locker_id,
+            l.external_id,
+            l.display_name,
+            l.city,
+            l.region,
+            l.created_at AS installation_date,
+            (((COALESCE(lcd.equipment_cost_cents, (0)::bigint) + COALESCE(lcd.installation_cost_cents, (0)::bigint)) + COALESCE(lcd.connectivity_setup_cents, (0)::bigint)) + COALESCE(lcd.go_live_cost_cents, (0)::bigint)) AS total_capex_cents,
+            lcd.useful_life_months,
+            lcd.salvage_value_cents
+           FROM (public.lockers l
+             LEFT JOIN public.locker_capex_details lcd ON (((lcd.locker_id)::text = (l.id)::text)))
+          WHERE ((l.active = true) OR (l.deleted_at IS NULL))
+        ), locker_profitability AS (
+         SELECT mv_locker_monthly_profitability.locker_id,
+            avg(mv_locker_monthly_profitability.net_profit_cents) AS avg_monthly_profit_cents,
+            stddev(mv_locker_monthly_profitability.net_profit_cents) AS profit_volatility_cents,
+            min(mv_locker_monthly_profitability.month) AS first_profit_month,
+            count(*) AS months_operating,
+            sum(mv_locker_monthly_profitability.net_profit_cents) AS cumulative_profit_cents
+           FROM public.mv_locker_monthly_profitability
+          WHERE (mv_locker_monthly_profitability.net_profit_cents > 0)
+          GROUP BY mv_locker_monthly_profitability.locker_id
+        ), locker_performance AS (
+         SELECT mv_locker_monthly_profitability.locker_id,
+            count(*) AS total_months,
+            sum(mv_locker_monthly_profitability.sales_revenue_cents) AS lifetime_revenue_cents,
+            sum(mv_locker_monthly_profitability.total_costs_cents) AS lifetime_costs_cents,
+            sum(mv_locker_monthly_profitability.net_profit_cents) AS lifetime_profit_cents,
+            avg(mv_locker_monthly_profitability.net_margin_pct) AS avg_margin_pct,
+            max(
+                CASE
+                    WHEN (mv_locker_monthly_profitability.net_profit_cents > 0) THEN mv_locker_monthly_profitability.month
+                    ELSE NULL::date
+                END) AS last_profitable_month
+           FROM public.mv_locker_monthly_profitability
+          GROUP BY mv_locker_monthly_profitability.locker_id
+        )
+ SELECT li.locker_id,
+    li.external_id,
+    li.display_name,
+    li.city,
+    li.region,
+    li.installation_date,
+    round(((li.total_capex_cents)::numeric / 100.0), 2) AS total_investment_brl,
+    li.useful_life_months AS expected_life_months,
+    round(((COALESCE(li.salvage_value_cents, (0)::bigint))::numeric / 100.0), 2) AS salvage_value_brl,
+    (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) / 100.0) AS avg_monthly_profit_brl,
+    (COALESCE(lp.profit_volatility_cents, (0)::numeric) / 100.0) AS profit_volatility_brl,
+    COALESCE((lp.first_profit_month)::text, 'N/A'::text) AS first_profit_month,
+    COALESCE(lp.months_operating, (0)::bigint) AS months_to_profitability,
+    (COALESCE(lperf.lifetime_revenue_cents, (0)::numeric) / 100.0) AS lifetime_revenue_brl,
+    (COALESCE(lperf.lifetime_costs_cents, (0)::numeric) / 100.0) AS lifetime_costs_brl,
+    (COALESCE(lperf.lifetime_profit_cents, (0)::numeric) / 100.0) AS lifetime_profit_brl,
+    round(COALESCE(lperf.avg_margin_pct, (0)::numeric), 2) AS avg_margin_pct,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) > (0)::numeric) THEN round(((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)), 1)
+            ELSE NULL::numeric
+        END AS payback_months,
+        CASE
+            WHEN (li.total_capex_cents > 0) THEN round(((100.0 * (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) * (12)::numeric)) / (li.total_capex_cents)::numeric), 2)
+            ELSE NULL::numeric
+        END AS annual_roi_pct,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) <= (0)::numeric) THEN 'INVIABLE'::text
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (12)::numeric) THEN 'HIGH_PERFORMANCE'::text
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (24)::numeric) THEN 'MODERATE'::text
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (36)::numeric) THEN 'LOW_PERFORMANCE'::text
+            ELSE 'UNDERPERFORMING'::text
+        END AS viability_classification,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) <= (0)::numeric) THEN 'CONSIDER_RELOCATION_OR_RETIREMENT'::text
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (12)::numeric) THEN 'EXPAND_NETWORK'::text
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (24)::numeric) THEN 'OPTIMIZE_OPERATIONS'::text
+            ELSE 'REVIEW_PRICING_AND_COSTS'::text
+        END AS recommendation,
+        CASE
+            WHEN (lperf.last_profitable_month < ((CURRENT_DATE - '3 mons'::interval))::date) THEN 'CONSECUTIVE_LOSSES'::text
+            WHEN (COALESCE(lperf.avg_margin_pct, (0)::numeric) < (15)::numeric) THEN 'LOW_MARGIN'::text
+            ELSE 'OK'::text
+        END AS alert_status,
+    now() AS computed_at
+   FROM ((locker_investment li
+     LEFT JOIN locker_profitability lp ON (((lp.locker_id)::text = (li.locker_id)::text)))
+     LEFT JOIN locker_performance lperf ON (((lperf.locker_id)::text = (li.locker_id)::text)))
+  ORDER BY
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) <= (0)::numeric) THEN 3
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (12)::numeric) THEN 1
+            WHEN (((li.total_capex_cents)::numeric / NULLIF(lp.avg_monthly_profit_cents, (0)::numeric)) <= (24)::numeric) THEN 2
+            ELSE 4
+        END, COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) DESC;
+
+
+ALTER TABLE public.v_locker_roi_analysis OWNER TO admin;
+
+--
+-- Name: VIEW v_locker_roi_analysis; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.v_locker_roi_analysis IS 'Análise de ROI e viabilidade financeira por locker - para decisões de expansão';
+
+
+--
+-- Name: v_financial_dashboard; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.v_financial_dashboard AS
+ WITH current_month_metrics AS (
+         SELECT (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date AS current_month,
+            sum(mv_locker_monthly_profitability.sales_revenue_cents) AS mtd_revenue_cents,
+            sum(mv_locker_monthly_profitability.total_costs_cents) AS mtd_costs_cents,
+            sum(mv_locker_monthly_profitability.net_profit_cents) AS mtd_profit_cents,
+            avg(mv_locker_monthly_profitability.net_margin_pct) AS avg_margin_pct,
+            count(DISTINCT mv_locker_monthly_profitability.locker_id) AS active_lockers
+           FROM public.mv_locker_monthly_profitability
+          WHERE (mv_locker_monthly_profitability.month = (date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone))::date)
+        ), rolling_12m AS (
+         SELECT sum(mv_locker_monthly_profitability.sales_revenue_cents) AS last_12m_revenue_cents,
+            sum(mv_locker_monthly_profitability.net_profit_cents) AS last_12m_profit_cents,
+            sum(mv_locker_monthly_profitability.total_pickups) AS last_12m_pickups
+           FROM public.mv_locker_monthly_profitability
+          WHERE (mv_locker_monthly_profitability.month >= (date_trunc('month'::text, (CURRENT_DATE - '1 year'::interval)))::date)
+        ), underperforming_lockers AS (
+         SELECT count(*) AS underperforming_count
+           FROM public.v_locker_roi_analysis
+          WHERE (v_locker_roi_analysis.viability_classification = ANY (ARRAY['UNDERPERFORMING'::text, 'INVIABLE'::text]))
+        )
+ SELECT COALESCE((( SELECT current_month_metrics.mtd_revenue_cents
+           FROM current_month_metrics) / 100.0), (0)::numeric) AS revenue_mtd_brl,
+    COALESCE((( SELECT current_month_metrics.mtd_costs_cents
+           FROM current_month_metrics) / 100.0), (0)::numeric) AS costs_mtd_brl,
+    COALESCE((( SELECT current_month_metrics.mtd_profit_cents
+           FROM current_month_metrics) / 100.0), (0)::numeric) AS profit_mtd_brl,
+    COALESCE(round(( SELECT current_month_metrics.avg_margin_pct
+           FROM current_month_metrics), 2), (0)::numeric) AS margin_mtd_pct,
+    COALESCE((( SELECT rolling_12m.last_12m_revenue_cents
+           FROM rolling_12m) / 100.0), (0)::numeric) AS revenue_ltm_brl,
+    COALESCE((( SELECT rolling_12m.last_12m_profit_cents
+           FROM rolling_12m) / 100.0), (0)::numeric) AS profit_ltm_brl,
+    COALESCE(( SELECT rolling_12m.last_12m_pickups
+           FROM rolling_12m), (0)::numeric) AS total_pickups_ltm,
+    COALESCE(round(((( SELECT rolling_12m.last_12m_profit_cents
+           FROM rolling_12m) / NULLIF(( SELECT rolling_12m.last_12m_revenue_cents
+           FROM rolling_12m), (0)::numeric)) * (100)::numeric), 2), (0)::numeric) AS ltm_margin_pct,
+    COALESCE(( SELECT count(*) AS count
+           FROM public.lockers
+          WHERE (lockers.active = true)), (0)::bigint) AS total_active_lockers,
+    COALESCE(( SELECT underperforming_lockers.underperforming_count
+           FROM underperforming_lockers), (0)::bigint) AS underperforming_lockers,
+    COALESCE(round(((100.0 * (( SELECT underperforming_lockers.underperforming_count
+           FROM underperforming_lockers))::numeric) / (NULLIF(( SELECT count(*) AS count
+           FROM public.lockers
+          WHERE (lockers.active = true)), 0))::numeric), 2), (0)::numeric) AS pct_underperforming,
+    40.0 AS target_ebitda_margin_pct,
+    12.0 AS target_payback_months,
+    24.0 AS max_acceptable_payback,
+    now() AS computed_at;
+
+
+ALTER TABLE public.v_financial_dashboard OWNER TO admin;
+
+--
+-- Name: VIEW v_financial_dashboard; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.v_financial_dashboard IS 'Dashboard financeiro executivo - KPIs consolidados e benchmarks';
+
+
+--
 -- Name: v_group_members; Type: VIEW; Schema: public; Owner: admin
 --
 
@@ -9317,6 +12892,235 @@ ALTER TABLE public.view_log ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY
 
 
 --
+-- Name: vw_ceo_occupancy; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_ceo_occupancy AS
+ WITH current_occupancy AS (
+         SELECT l.id AS locker_id,
+            l.external_id,
+            l.region,
+            l.city,
+            l.address_line,
+            count(ls.id) AS total_slots,
+            count(
+                CASE
+                    WHEN ((ls.status)::text = 'OCCUPIED'::text) THEN 1
+                    ELSE NULL::integer
+                END) AS occupied_slots,
+            count(
+                CASE
+                    WHEN ((ls.status)::text = 'MAINTENANCE'::text) THEN 1
+                    ELSE NULL::integer
+                END) AS maintenance_slots,
+            max(
+                CASE
+                    WHEN ((o.status = 'PAID_PENDING_PICKUP'::public.orderstatus) AND (o.picked_up_at IS NULL)) THEN 1
+                    ELSE 0
+                END) AS has_pending_pickup
+           FROM (((public.lockers l
+             LEFT JOIN public.locker_slots ls ON (((ls.locker_id)::text = (l.id)::text)))
+             LEFT JOIN public.allocations a ON ((((a.locker_id)::text = (l.id)::text) AND (a.state = ANY (ARRAY['RESERVED_PAID_PENDING_PICKUP'::public.allocationstate, 'OPENED_FOR_PICKUP'::public.allocationstate])))))
+             LEFT JOIN public.orders o ON ((((o.id)::text = (a.order_id)::text) AND (o.picked_up_at IS NULL))))
+          WHERE ((l.active = true) AND (l.deleted_at IS NULL))
+          GROUP BY l.id, l.external_id, l.region, l.city, l.address_line
+        )
+ SELECT current_occupancy.locker_id,
+    current_occupancy.external_id,
+    current_occupancy.region,
+    current_occupancy.city,
+    current_occupancy.address_line,
+    current_occupancy.total_slots,
+    current_occupancy.occupied_slots,
+    current_occupancy.maintenance_slots,
+    round((((current_occupancy.occupied_slots)::numeric / (NULLIF(current_occupancy.total_slots, 0))::numeric) * (100)::numeric), 2) AS occupancy_pct,
+    (current_occupancy.has_pending_pickup = 1) AS has_urgent_pickup,
+        CASE
+            WHEN (((current_occupancy.occupied_slots)::numeric / (NULLIF(current_occupancy.total_slots, 0))::numeric) >= 0.8) THEN 'HIGH'::text
+            WHEN (((current_occupancy.occupied_slots)::numeric / (NULLIF(current_occupancy.total_slots, 0))::numeric) >= 0.5) THEN 'MEDIUM'::text
+            ELSE 'LOW'::text
+        END AS occupancy_level
+   FROM current_occupancy;
+
+
+ALTER TABLE public.vw_ceo_occupancy OWNER TO admin;
+
+--
+-- Name: VIEW vw_ceo_occupancy; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_ceo_occupancy IS 'CEO Dashboard: Ocupação de cada locker para mapa de rede.';
+
+
+--
+-- Name: vw_ceo_revenue; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_ceo_revenue AS
+ WITH revenue_data AS (
+         SELECT date_trunc('month'::text, o.picked_up_at) AS month_ref,
+            o.region,
+            o.channel,
+            count(DISTINCT o.id) AS total_orders,
+            sum(o.amount_cents) AS gross_revenue_cents,
+            count(DISTINCT o.user_id) AS unique_customers,
+            sum(
+                CASE
+                    WHEN (o.status = 'REFUNDED'::public.orderstatus) THEN o.amount_cents
+                    ELSE 0
+                END) AS refunded_cents
+           FROM public.orders o
+          WHERE ((o.picked_up_at IS NOT NULL) AND (o.deleted_at IS NULL) AND (o.status = ANY (ARRAY['PICKED_UP'::public.orderstatus, 'REFUNDED'::public.orderstatus])))
+          GROUP BY (date_trunc('month'::text, o.picked_up_at)), o.region, o.channel
+        )
+ SELECT revenue_data.month_ref,
+    revenue_data.region,
+    revenue_data.channel,
+    revenue_data.total_orders,
+    (revenue_data.gross_revenue_cents / 100) AS gross_revenue,
+    (revenue_data.refunded_cents / 100) AS refunded_amount,
+    ((revenue_data.gross_revenue_cents - revenue_data.refunded_cents) / 100) AS net_revenue,
+    revenue_data.unique_customers,
+    round(((((revenue_data.gross_revenue_cents - revenue_data.refunded_cents))::numeric / (NULLIF(revenue_data.total_orders, 0))::numeric) / (100)::numeric), 2) AS avg_ticket
+   FROM revenue_data
+  ORDER BY revenue_data.month_ref DESC, revenue_data.region, revenue_data.channel;
+
+
+ALTER TABLE public.vw_ceo_revenue OWNER TO admin;
+
+--
+-- Name: VIEW vw_ceo_revenue; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_ceo_revenue IS 'CEO Dashboard: Receita consolidada por mês/região/canal. Usar para KPIs globais.';
+
+
+--
+-- Name: vw_cfo_financial; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_cfo_financial AS
+ WITH wallet_balance AS (
+         SELECT sum(user_wallets.balance_cents) AS total_wallet_balance_cents,
+            count(DISTINCT user_wallets.user_id) AS users_with_balance
+           FROM public.user_wallets
+          WHERE ((user_wallets.status)::text = 'ACTIVE'::text)
+        ), disputes AS (
+         SELECT count(*) AS open_disputes,
+            sum(partner_payment_holds.hold_amount_cents) AS total_hold_cents
+           FROM public.partner_payment_holds
+          WHERE ((partner_payment_holds.status)::text = 'HELD'::text)
+        ), pending_credits AS (
+         SELECT count(*) AS pending_credit_notes,
+            sum(partner_credit_notes.amount_cents) AS total_credit_cents
+           FROM public.partner_credit_notes
+          WHERE ((partner_credit_notes.status)::text = 'PENDING'::text)
+        )
+ SELECT (COALESCE(sum(o.amount_cents), (0)::bigint) / 100) AS gross_revenue_mtd,
+    (COALESCE(sum(
+        CASE
+            WHEN (o.status = 'REFUNDED'::public.orderstatus) THEN o.amount_cents
+            ELSE 0
+        END), (0)::bigint) / 100) AS refunds_mtd,
+    ((COALESCE(sum(o.amount_cents), (0)::bigint) - COALESCE(sum(
+        CASE
+            WHEN (o.status = 'REFUNDED'::public.orderstatus) THEN o.amount_cents
+            ELSE 0
+        END), (0)::bigint)) / 100) AS net_revenue_mtd,
+    (wb.total_wallet_balance_cents / (100)::numeric) AS total_wallet_balance,
+    wb.users_with_balance,
+    d.open_disputes,
+    (d.total_hold_cents / (100)::numeric) AS total_dispute_holds,
+    pc.pending_credit_notes,
+    (pc.total_credit_cents / (100)::numeric) AS pending_credits_total
+   FROM (((public.orders o
+     CROSS JOIN wallet_balance wb)
+     CROSS JOIN disputes d)
+     CROSS JOIN pending_credits pc)
+  WHERE ((o.picked_up_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)) AND (o.picked_up_at IS NOT NULL) AND (o.deleted_at IS NULL))
+  GROUP BY wb.total_wallet_balance_cents, wb.users_with_balance, d.open_disputes, d.total_hold_cents, pc.pending_credit_notes, pc.total_credit_cents;
+
+
+ALTER TABLE public.vw_cfo_financial OWNER TO admin;
+
+--
+-- Name: VIEW vw_cfo_financial; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_cfo_financial IS 'CFO Dashboard: Métricas financeiras consolidadas (Receita, Wallet, Disputas). NOTA: Sem custos ainda.';
+
+
+--
+-- Name: vw_coo_operations; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_coo_operations AS
+ SELECT CURRENT_DATE AS snapshot_date,
+    count(DISTINCT o.id) FILTER (WHERE (o.created_at >= CURRENT_DATE)) AS orders_created_today,
+    count(DISTINCT o.id) FILTER (WHERE (o.paid_at >= CURRENT_DATE)) AS orders_paid_today,
+    count(DISTINCT o.id) FILTER (WHERE (o.picked_up_at >= CURRENT_DATE)) AS orders_picked_up_today,
+    count(DISTINCT p.id) FILTER (WHERE (p.redeemed_at >= CURRENT_DATE)) AS pickups_completed_today,
+    count(DISTINCT sbe.id) FILTER (WHERE ((sbe.detected_at >= CURRENT_DATE) AND ((sbe.severity)::text = 'CRITICAL'::text))) AS critical_sla_breaches_today,
+    (avg((EXTRACT(epoch FROM (p.redeemed_at - p.activated_at)) / (60)::numeric)))::integer AS avg_pickup_minutes_last_24h,
+    count(DISTINCT l.id) FILTER (WHERE (l.active = false)) AS offline_lockers
+   FROM (((public.orders o
+     LEFT JOIN public.pickups p ON (((p.order_id)::text = (o.id)::text)))
+     LEFT JOIN public.sla_breach_events sbe ON (((sbe.delivery_id)::text = (p.id)::text)))
+     CROSS JOIN public.lockers l)
+  WHERE (o.deleted_at IS NULL);
+
+
+ALTER TABLE public.vw_coo_operations OWNER TO admin;
+
+--
+-- Name: VIEW vw_coo_operations; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_coo_operations IS 'COO Dashboard: Métricas operacionais diárias consolidadas.';
+
+
+--
+-- Name: vw_depot_inventory; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_depot_inventory AS
+ SELECT inbound_deliveries.id AS delivery_id,
+    inbound_deliveries.locker_id,
+    inbound_deliveries.slot_label,
+    inbound_deliveries.tracking_code,
+    inbound_deliveries.status,
+    inbound_deliveries.created_at,
+    inbound_deliveries.pickup_deadline_at,
+    inbound_deliveries.notification_count,
+        CASE
+            WHEN ((inbound_deliveries.pickup_deadline_at < (CURRENT_TIMESTAMP + '06:00:00'::interval)) AND ((inbound_deliveries.status)::text <> ALL ((ARRAY['PICKED_UP'::character varying, 'RETURNED'::character varying])::text[]))) THEN 'URGENTE_6H'::text
+            WHEN ((inbound_deliveries.pickup_deadline_at < (CURRENT_TIMESTAMP + '24:00:00'::interval)) AND ((inbound_deliveries.status)::text <> ALL ((ARRAY['PICKED_UP'::character varying, 'RETURNED'::character varying])::text[]))) THEN 'URGENTE_24H'::text
+            WHEN ((inbound_deliveries.status)::text = 'STORED'::text) THEN 'ARMAZENADO'::text
+            WHEN ((inbound_deliveries.status)::text = 'PENDING'::text) THEN 'AGUARDANDO'::text
+            ELSE 'OUTRO'::text
+        END AS urgency_level,
+        CASE
+            WHEN (inbound_deliveries.pickup_deadline_at < CURRENT_TIMESTAMP) THEN 'ATRASADO'::text
+            WHEN (inbound_deliveries.pickup_deadline_at < (CURRENT_TIMESTAMP + '06:00:00'::interval)) THEN 'CRITICO'::text
+            WHEN (inbound_deliveries.pickup_deadline_at < (CURRENT_TIMESTAMP + '24:00:00'::interval)) THEN 'ALERTA'::text
+            ELSE 'NORMAL'::text
+        END AS deadline_status,
+    (EXTRACT(epoch FROM (COALESCE(inbound_deliveries.pickup_deadline_at, (CURRENT_TIMESTAMP + '1 year'::interval)) - CURRENT_TIMESTAMP)) / (3600)::numeric) AS hours_until_deadline
+   FROM public.inbound_deliveries
+  WHERE (((inbound_deliveries.status)::text <> ALL ((ARRAY['PICKED_UP'::character varying, 'RETURNED'::character varying])::text[])) AND (inbound_deliveries.created_at >= (CURRENT_DATE - '14 days'::interval)))
+  ORDER BY inbound_deliveries.pickup_deadline_at;
+
+
+ALTER TABLE public.vw_depot_inventory OWNER TO admin;
+
+--
+-- Name: VIEW vw_depot_inventory; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_depot_inventory IS 'Depot Manager: Encomendas com priorização por deadline.';
+
+
+--
 -- Name: vw_fiscal_documents_with_attempt; Type: VIEW; Schema: public; Owner: admin
 --
 
@@ -9350,6 +13154,709 @@ CREATE VIEW public.vw_fiscal_documents_with_attempt AS
 
 
 ALTER TABLE public.vw_fiscal_documents_with_attempt OWNER TO admin;
+
+--
+-- Name: vw_fulfillment_metrics; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_fulfillment_metrics AS
+ SELECT date_trunc('day'::text, fo.created_at) AS day_ref,
+    fc.name AS center_name,
+    count(*) AS total_orders,
+    count(
+        CASE
+            WHEN ((fo.status)::text = 'PICKING'::text) THEN 1
+            ELSE NULL::integer
+        END) AS picking,
+    count(
+        CASE
+            WHEN ((fo.status)::text = 'PACKING'::text) THEN 1
+            ELSE NULL::integer
+        END) AS packing,
+    count(
+        CASE
+            WHEN ((fo.status)::text = 'SHIPPED'::text) THEN 1
+            ELSE NULL::integer
+        END) AS shipped,
+    count(
+        CASE
+            WHEN ((fo.status)::text = 'DELIVERED'::text) THEN 1
+            ELSE NULL::integer
+        END) AS delivered,
+    (avg(EXTRACT(epoch FROM (fo.shipped_at - fo.picked_at))) / (3600)::numeric) AS avg_pick_to_ship_hours,
+    (avg(EXTRACT(epoch FROM (fo.delivered_to_locker_at - fo.shipped_at))) / (3600)::numeric) AS avg_ship_to_delivery_hours
+   FROM (public.fulfillment_orders fo
+     JOIN public.fulfillment_centers fc ON (((fc.id)::text = (fo.fulfillment_center_id)::text)))
+  WHERE (fo.created_at >= (CURRENT_DATE - '30 days'::interval))
+  GROUP BY (date_trunc('day'::text, fo.created_at)), fc.name, fc.id
+  ORDER BY (date_trunc('day'::text, fo.created_at)) DESC, fc.name;
+
+
+ALTER TABLE public.vw_fulfillment_metrics OWNER TO admin;
+
+--
+-- Name: VIEW vw_fulfillment_metrics; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_fulfillment_metrics IS 'Métricas de performance do fulfillment';
+
+
+--
+-- Name: vw_locker_monthly_pnl; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_locker_monthly_pnl AS
+ WITH pickup_revenue AS (
+         SELECT l.id AS locker_id,
+            date_trunc('month'::text, o.picked_up_at) AS month_ref,
+            count(DISTINCT o.id) AS total_pickups,
+            sum(o.amount_cents) AS revenue_pickup_cents
+           FROM ((public.lockers l
+             JOIN public.allocations a ON (((a.locker_id)::text = (l.id)::text)))
+             JOIN public.orders o ON (((o.id)::text = (a.order_id)::text)))
+          WHERE ((o.status = 'PICKED_UP'::public.orderstatus) AND (o.picked_up_at IS NOT NULL))
+          GROUP BY l.id, (date_trunc('month'::text, o.picked_up_at))
+        ), rental_revenue AS (
+         SELECT rc.locker_id,
+            date_trunc('month'::text, rc.started_at) AS month_ref,
+            count(DISTINCT rc.id) AS active_rentals,
+            sum(rc.amount_cents) AS revenue_rental_cents
+           FROM public.rental_contracts rc
+          WHERE ((rc.status)::text = 'ACTIVE'::text)
+          GROUP BY rc.locker_id, (date_trunc('month'::text, rc.started_at))
+        ), commission_revenue AS (
+         SELECT sp.locker_id,
+            date_trunc('month'::text, o.paid_at) AS month_ref,
+            sum(mc.commission_amount_cents) AS revenue_commission_cents,
+            sum(o.amount_cents) AS gmv_cents
+           FROM ((public.marketplace_commissions mc
+             JOIN public.orders o ON (((o.id)::text = (mc.order_id)::text)))
+             JOIN public.seller_products sp ON (((sp.product_id)::text = (o.sku_id)::text)))
+          WHERE ((mc.status)::text = 'SETTLED'::text)
+          GROUP BY sp.locker_id, (date_trunc('month'::text, o.paid_at))
+        ), capex_costs AS (
+         SELECT lc.locker_id,
+            (date_trunc('month'::text, (lc.depreciation_start_date)::timestamp with time zone) + ('1 mon'::interval * (s.month_offset)::double precision)) AS month_ref,
+                CASE lc.depreciation_method
+                    WHEN 'STRAIGHT_LINE'::text THEN ((((lc.acquisition_cost_cents + lc.installation_cost_cents) - COALESCE(lc.residual_value_cents, (0)::bigint)) / lc.useful_life_months))::numeric
+                    ELSE ((((lc.acquisition_cost_cents + lc.installation_cost_cents))::numeric * power(0.8, ((s.month_offset)::numeric / 12.0))) / (12)::numeric)
+                END AS depreciation_cents
+           FROM (public.locker_capex lc
+             CROSS JOIN LATERAL generate_series(0, (lc.useful_life_months - 1)) s(month_offset))
+          WHERE ((lc.status)::text = 'ACTIVE'::text)
+        ), opex_costs AS (
+         SELECT locker_opex.locker_id,
+            date_trunc('month'::text, (locker_opex.reference_month)::timestamp with time zone) AS month_ref,
+            sum(locker_opex.amount_cents) AS total_opex_cents
+           FROM public.locker_opex
+          GROUP BY locker_opex.locker_id, (date_trunc('month'::text, (locker_opex.reference_month)::timestamp with time zone))
+        ), gateway_fees AS (
+         SELECT a.locker_id,
+            date_trunc('month'::text, pt.approved_at) AS month_ref,
+            sum(COALESCE(pt.gateway_fee_cents, 0)) AS gateway_fee_cents
+           FROM ((public.payment_transactions pt
+             JOIN public.orders o ON (((o.id)::text = (pt.order_id)::text)))
+             JOIN public.allocations a ON (((a.order_id)::text = (o.id)::text)))
+          WHERE (((pt.status)::text = 'APPROVED'::text) AND (a.locker_id IS NOT NULL))
+          GROUP BY a.locker_id, (date_trunc('month'::text, pt.approved_at))
+        )
+ SELECT COALESCE(pr.locker_id, rr.locker_id, cr.locker_id) AS locker_id,
+    COALESCE(pr.month_ref, rr.month_ref, cr.month_ref) AS month_ref,
+    COALESCE(pr.revenue_pickup_cents, (0)::bigint) AS revenue_pickup_cents,
+    COALESCE(rr.revenue_rental_cents, (0)::bigint) AS revenue_rental_cents,
+    COALESCE(cr.revenue_commission_cents, (0)::bigint) AS revenue_commission_cents,
+    ((COALESCE(pr.revenue_pickup_cents, (0)::bigint) + COALESCE(rr.revenue_rental_cents, (0)::bigint)) + COALESCE(cr.revenue_commission_cents, (0)::bigint)) AS total_revenue_cents,
+    COALESCE(capex.depreciation_cents, (0)::numeric) AS depreciation_cents,
+    COALESCE(opex.total_opex_cents, (0)::numeric) AS opex_cents,
+    COALESCE(gf.gateway_fee_cents, (0)::bigint) AS gateway_fee_cents,
+    ((COALESCE(capex.depreciation_cents, (0)::numeric) + COALESCE(opex.total_opex_cents, (0)::numeric)) + (COALESCE(gf.gateway_fee_cents, (0)::bigint))::numeric) AS total_costs_cents,
+    ((((COALESCE(pr.revenue_pickup_cents, (0)::bigint) + COALESCE(rr.revenue_rental_cents, (0)::bigint)) + COALESCE(cr.revenue_commission_cents, (0)::bigint)))::numeric - ((COALESCE(capex.depreciation_cents, (0)::numeric) + COALESCE(opex.total_opex_cents, (0)::numeric)) + (COALESCE(gf.gateway_fee_cents, (0)::bigint))::numeric)) AS net_profit_cents,
+        CASE
+            WHEN (((COALESCE(pr.revenue_pickup_cents, (0)::bigint) + COALESCE(rr.revenue_rental_cents, (0)::bigint)) + COALESCE(cr.revenue_commission_cents, (0)::bigint)) > 0) THEN round(((((((COALESCE(pr.revenue_pickup_cents, (0)::bigint) + COALESCE(rr.revenue_rental_cents, (0)::bigint)) + COALESCE(cr.revenue_commission_cents, (0)::bigint)))::numeric - ((COALESCE(capex.depreciation_cents, (0)::numeric) + COALESCE(opex.total_opex_cents, (0)::numeric)) + (COALESCE(gf.gateway_fee_cents, (0)::bigint))::numeric)) * 100.0) / (NULLIF(((COALESCE(pr.revenue_pickup_cents, (0)::bigint) + COALESCE(rr.revenue_rental_cents, (0)::bigint)) + COALESCE(cr.revenue_commission_cents, (0)::bigint)), 0))::numeric), 2)
+            ELSE (0)::numeric
+        END AS margin_pct,
+    COALESCE(pr.total_pickups, (0)::bigint) AS total_pickups,
+    COALESCE(cr.gmv_cents, (0)::bigint) AS gmv_cents,
+    COALESCE(rr.active_rentals, (0)::bigint) AS active_rentals,
+        CASE
+            WHEN (COALESCE(pr.total_pickups, (0)::bigint) > 0) THEN ((COALESCE(pr.revenue_pickup_cents, (0)::bigint) - COALESCE(gf.gateway_fee_cents, (0)::bigint)) / COALESCE(pr.total_pickups, (1)::bigint))
+            ELSE (0)::bigint
+        END AS net_revenue_per_pickup_cents,
+    now() AS computed_at
+   FROM (((((pickup_revenue pr
+     FULL JOIN rental_revenue rr ON ((((rr.locker_id)::text = (pr.locker_id)::text) AND (rr.month_ref = pr.month_ref))))
+     FULL JOIN commission_revenue cr ON ((((cr.locker_id)::text = (COALESCE(pr.locker_id, rr.locker_id))::text) AND (cr.month_ref = COALESCE(pr.month_ref, rr.month_ref)))))
+     LEFT JOIN capex_costs capex ON ((((capex.locker_id)::text = (COALESCE(pr.locker_id, rr.locker_id, cr.locker_id))::text) AND (capex.month_ref = COALESCE(pr.month_ref, rr.month_ref, cr.month_ref)))))
+     LEFT JOIN opex_costs opex ON ((((opex.locker_id)::text = (COALESCE(pr.locker_id, rr.locker_id, cr.locker_id))::text) AND (opex.month_ref = COALESCE(pr.month_ref, rr.month_ref, cr.month_ref)))))
+     LEFT JOIN gateway_fees gf ON ((((gf.locker_id)::text = (COALESCE(pr.locker_id, rr.locker_id, cr.locker_id))::text) AND (gf.month_ref = COALESCE(pr.month_ref, rr.month_ref, cr.month_ref)))));
+
+
+ALTER TABLE public.vw_locker_monthly_pnl OWNER TO admin;
+
+--
+-- Name: vw_locker_roi; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_locker_roi AS
+ WITH locker_investment AS (
+         SELECT l.id AS locker_id,
+            l.external_id,
+            l.city,
+            l.region,
+            l.created_at AS installation_date,
+            sum((lc.acquisition_cost_cents + lc.installation_cost_cents)) AS total_investment_cents,
+            avg(lc.useful_life_months) AS expected_life_months
+           FROM (public.lockers l
+             LEFT JOIN public.locker_capex lc ON (((lc.locker_id)::text = (l.id)::text)))
+          GROUP BY l.id, l.external_id, l.city, l.region, l.created_at
+        ), locker_profit AS (
+         SELECT vw_locker_monthly_pnl.locker_id,
+            avg(vw_locker_monthly_pnl.net_profit_cents) AS avg_monthly_profit_cents,
+            stddev(vw_locker_monthly_pnl.net_profit_cents) AS profit_volatility_cents,
+            min(vw_locker_monthly_pnl.month_ref) AS first_profit_month,
+            count(*) AS months_operating
+           FROM public.vw_locker_monthly_pnl
+          WHERE (vw_locker_monthly_pnl.net_profit_cents > (0)::numeric)
+          GROUP BY vw_locker_monthly_pnl.locker_id
+        )
+ SELECT li.locker_id,
+    li.external_id,
+    li.city,
+    li.region,
+    (li.total_investment_cents / 100.0) AS total_investment_brl,
+    (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) / 100.0) AS avg_monthly_profit_brl,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) > (0)::numeric) THEN round((li.total_investment_cents / lp.avg_monthly_profit_cents), 1)
+            ELSE NULL::numeric
+        END AS payback_months,
+        CASE
+            WHEN (li.total_investment_cents > (0)::numeric) THEN round((((COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) * (12)::numeric) * 100.0) / li.total_investment_cents), 2)
+            ELSE NULL::numeric
+        END AS annual_roi_pct,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) <= (0)::numeric) THEN 'INVIABLE'::text
+            WHEN ((li.total_investment_cents / lp.avg_monthly_profit_cents) <= (12)::numeric) THEN 'HIGH_PERFORMANCE'::text
+            WHEN ((li.total_investment_cents / lp.avg_monthly_profit_cents) <= (24)::numeric) THEN 'MODERATE'::text
+            WHEN ((li.total_investment_cents / lp.avg_monthly_profit_cents) <= (36)::numeric) THEN 'LOW_PERFORMANCE'::text
+            ELSE 'UNDERPERFORMING'::text
+        END AS viability_classification,
+        CASE
+            WHEN (COALESCE(lp.avg_monthly_profit_cents, (0)::numeric) <= (0)::numeric) THEN 'CONSIDER_RELOCATION'::text
+            WHEN ((li.total_investment_cents / lp.avg_monthly_profit_cents) <= (12)::numeric) THEN 'EXPAND_NETWORK'::text
+            WHEN ((li.total_investment_cents / lp.avg_monthly_profit_cents) <= (24)::numeric) THEN 'OPTIMIZE_COSTS'::text
+            ELSE 'REVIEW_PRICING_STRATEGY'::text
+        END AS recommendation,
+    lp.months_operating,
+    lp.first_profit_month,
+    now() AS computed_at
+   FROM (locker_investment li
+     LEFT JOIN locker_profit lp ON (((lp.locker_id)::text = (li.locker_id)::text)));
+
+
+ALTER TABLE public.vw_locker_roi OWNER TO admin;
+
+--
+-- Name: vw_maintenance_alerts; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_maintenance_alerts AS
+ WITH telemetry_issues AS (
+         SELECT DISTINCT ON (locker_telemetry.locker_id) locker_telemetry.locker_id,
+            locker_telemetry.event_type,
+            locker_telemetry.occurred_at,
+            locker_telemetry.battery_pct,
+                CASE
+                    WHEN ((locker_telemetry.event_type)::text = 'DOOR_FAILURE'::text) THEN 'CRITICO'::text
+                    WHEN (((locker_telemetry.event_type)::text = 'BATTERY_LOW'::text) AND (COALESCE(locker_telemetry.battery_pct, (100)::numeric) < (10)::numeric)) THEN 'CRITICO'::text
+                    WHEN (((locker_telemetry.event_type)::text = 'BATTERY_LOW'::text) AND (COALESCE(locker_telemetry.battery_pct, (100)::numeric) < (20)::numeric)) THEN 'ALTA'::text
+                    WHEN ((locker_telemetry.event_type)::text = 'SIGNAL_LOST'::text) THEN 'CRITICO'::text
+                    WHEN ((locker_telemetry.event_type)::text = 'TEMPERATURE_ALERT'::text) THEN 'ALTA'::text
+                    ELSE 'NORMAL'::text
+                END AS severity,
+                CASE
+                    WHEN ((locker_telemetry.event_type)::text = 'DOOR_FAILURE'::text) THEN 'Falha na porta do locker'::character varying
+                    WHEN ((locker_telemetry.event_type)::text = 'BATTERY_LOW'::text) THEN ((('Bateria fraca ('::text || (COALESCE(locker_telemetry.battery_pct, (0)::numeric))::integer) || '%)'::text))::character varying
+                    WHEN ((locker_telemetry.event_type)::text = 'SIGNAL_LOST'::text) THEN 'Conexão perdida'::character varying
+                    WHEN ((locker_telemetry.event_type)::text = 'TEMPERATURE_ALERT'::text) THEN 'Temperatura fora da faixa ideal'::character varying
+                    ELSE locker_telemetry.event_type
+                END AS description
+           FROM public.locker_telemetry
+          WHERE ((locker_telemetry.occurred_at >= (CURRENT_DATE - '2 days'::interval)) AND ((locker_telemetry.event_type)::text = ANY ((ARRAY['DOOR_FAILURE'::character varying, 'BATTERY_LOW'::character varying, 'SIGNAL_LOST'::character varying, 'TEMPERATURE_ALERT'::character varying])::text[])))
+          ORDER BY locker_telemetry.locker_id, locker_telemetry.occurred_at DESC
+        )
+ SELECT ti.locker_id,
+    l.display_name AS locker_name,
+    l.address_line,
+    l.city,
+    ti.event_type,
+    ti.severity,
+    ti.description,
+    ti.occurred_at,
+    (EXTRACT(epoch FROM (CURRENT_TIMESTAMP - ti.occurred_at)) / (3600)::numeric) AS hours_ago,
+    'Pendente'::text AS sla_status
+   FROM (telemetry_issues ti
+     LEFT JOIN public.lockers l ON (((l.id)::text = (ti.locker_id)::text)))
+  WHERE (ti.severity = ANY (ARRAY['CRITICO'::text, 'ALTA'::text]))
+  ORDER BY
+        CASE ti.severity
+            WHEN 'CRITICO'::text THEN 1
+            WHEN 'ALTA'::text THEN 2
+            ELSE 3
+        END, ti.occurred_at;
+
+
+ALTER TABLE public.vw_maintenance_alerts OWNER TO admin;
+
+--
+-- Name: VIEW vw_maintenance_alerts; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_maintenance_alerts IS 'Dashboard Técnico Manutenção: Alertas de equipamentos com priorização.';
+
+
+--
+-- Name: vw_ml_dashboard; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_ml_dashboard AS
+ SELECT mmm.model_version,
+    mmm.trained_at,
+    mmm.status,
+    mmm.metrics_json,
+    count(DISTINCT mpl.locker_id) AS active_lockers,
+    avg(mpl.failure_probability) AS avg_failure_probability,
+    avg(mpl.health_score) AS avg_health_score
+   FROM (public.ml_model_metadata mmm
+     LEFT JOIN public.ml_predictions_log mpl ON (((mpl.model_version)::text = (mmm.model_version)::text)))
+  WHERE (((mmm.status)::text = 'ACTIVE'::text) AND (mpl.predicted_at >= (CURRENT_DATE - '7 days'::interval)))
+  GROUP BY mmm.model_version, mmm.trained_at, mmm.status, mmm.metrics_json;
+
+
+ALTER TABLE public.vw_ml_dashboard OWNER TO admin;
+
+--
+-- Name: VIEW vw_ml_dashboard; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_ml_dashboard IS 'Dashboard de performance dos modelos de ML';
+
+
+--
+-- Name: vw_ml_features_complete; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_ml_features_complete AS
+ SELECT mfd.locker_id,
+    mfd.feature_date,
+    mfd.temperature_mean,
+    mfd.humidity_mean,
+    mfd.battery_min,
+    mfd.door_failures_7d,
+    mfd.usage_events_7d,
+    mfd.uptime_hours_7d,
+    mfd.temperature_avg_70d,
+    mfd.humidity_avg_70d,
+    mfd.battery_min_70d,
+    mfd.door_failures_70d,
+    mfd.usage_events_70d,
+    mfd.uptime_hours_70d,
+    round((((mfd.door_failures_7d)::numeric / (NULLIF(mfd.usage_events_7d, 0))::numeric) * (100)::numeric), 2) AS failure_rate_pct,
+    round(((mfd.uptime_hours_7d / (168)::numeric) * (100)::numeric), 2) AS uptime_pct,
+    l.region,
+    l.city,
+    l.temperature_zone,
+    l.security_level
+   FROM (public.ml_features_daily mfd
+     JOIN public.lockers l ON (((l.id)::text = (mfd.locker_id)::text)))
+  WHERE (mfd.feature_date >= (CURRENT_DATE - '30 days'::interval));
+
+
+ALTER TABLE public.vw_ml_features_complete OWNER TO admin;
+
+--
+-- Name: VIEW vw_ml_features_complete; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_ml_features_complete IS 'Features completas para treinamento de modelos ML';
+
+
+--
+-- Name: vw_noc_alerts; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_noc_alerts AS
+ SELECT 'SLA_BREACH'::text AS alert_type,
+    sbe.id AS alert_id,
+    sbe.severity,
+    sbe.breach_type,
+    sbe.detected_at,
+    sbe.expected_at,
+    sbe.resolved_at,
+    COALESCE(ld.display_name, sbe.delivery_id) AS locker_display_name,
+    COALESCE(ld.external_id, sbe.delivery_id) AS reference_id,
+        CASE
+            WHEN (((sbe.severity)::text = ANY ((ARRAY['CRITICAL'::character varying, 'HIGH'::character varying])::text[])) AND (sbe.resolved_at IS NULL)) THEN 1
+            ELSE 2
+        END AS priority
+   FROM ((public.sla_breach_events sbe
+     LEFT JOIN public.inbound_deliveries ind ON (((ind.id)::text = (sbe.delivery_id)::text)))
+     LEFT JOIN public.lockers ld ON (((ld.id)::text = (ind.locker_id)::text)))
+  WHERE ((sbe.resolved_at IS NULL) AND (sbe.detected_at >= (CURRENT_DATE - '7 days'::interval)))
+UNION ALL
+ SELECT 'LOCKER_OFFLINE'::text AS alert_type,
+    l.id AS alert_id,
+    'CRITICAL'::character varying AS severity,
+    'NETWORK_DOWN'::character varying AS breach_type,
+    l.updated_at AS detected_at,
+    (l.updated_at + '01:00:00'::interval) AS expected_at,
+    NULL::timestamp with time zone AS resolved_at,
+    l.display_name AS locker_display_name,
+    l.external_id AS reference_id,
+    1 AS priority
+   FROM public.lockers l
+  WHERE ((l.active = false) AND (l.deleted_at IS NULL))
+UNION ALL
+ SELECT 'RISK_EVENT'::text AS alert_type,
+    pgre.id AS alert_id,
+        CASE
+            WHEN (pgre.decision = 'BLOCK'::text) THEN 'CRITICAL'::text
+            WHEN (pgre.decision = 'CHALLENGE'::text) THEN 'HIGH'::text
+            ELSE 'MEDIUM'::text
+        END AS severity,
+    pgre.event_type AS breach_type,
+    pgre.created_at AS detected_at,
+    NULL::timestamp with time zone AS expected_at,
+    NULL::timestamp with time zone AS resolved_at,
+    COALESCE(l.display_name, pgre.locker_id) AS locker_display_name,
+    pgre.locker_id AS reference_id,
+        CASE
+            WHEN (pgre.decision = 'BLOCK'::text) THEN 1
+            ELSE 2
+        END AS priority
+   FROM (public.payment_gateway_risk_events pgre
+     LEFT JOIN public.lockers l ON (((l.id)::text = (pgre.locker_id)::text)))
+  WHERE ((pgre.created_at >= (CURRENT_DATE - '1 day'::interval)) AND (pgre.decision = ANY (ARRAY['BLOCK'::text, 'CHALLENGE'::text])))
+  ORDER BY 10, 5 DESC;
+
+
+ALTER TABLE public.vw_noc_alerts OWNER TO admin;
+
+--
+-- Name: VIEW vw_noc_alerts; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_noc_alerts IS 'NOC Dashboard: Alertas unificados (SLA, Offline, Risco) ordenados por prioridade.';
+
+
+--
+-- Name: vw_omnichannel_metrics; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_omnichannel_metrics AS
+ SELECT date_trunc('day'::text, oo.created_at) AS day_ref,
+    ps.name AS store_name,
+    count(DISTINCT oo.id) AS total_orders,
+    count(DISTINCT oo.id) FILTER (WHERE ((oo.pickup_type)::text = 'STORE_PICKUP'::text)) AS store_pickup,
+    count(DISTINCT oo.id) FILTER (WHERE ((oo.pickup_type)::text = 'LOCKER_DELIVERY'::text)) AS locker_delivery,
+    count(DISTINCT oo.id) FILTER (WHERE ((oo.status)::text = 'PICKED_UP'::text)) AS completed,
+    (avg(EXTRACT(epoch FROM (oo.picked_up_at - oo.ready_at))) / (3600)::numeric) AS avg_pickup_time_hours
+   FROM (public.omnichannel_orders oo
+     JOIN public.partner_stores ps ON (((ps.id)::text = (oo.store_id)::text)))
+  WHERE (oo.created_at >= (CURRENT_DATE - '30 days'::interval))
+  GROUP BY (date_trunc('day'::text, oo.created_at)), ps.name, ps.id
+  ORDER BY (date_trunc('day'::text, oo.created_at)) DESC, ps.name;
+
+
+ALTER TABLE public.vw_omnichannel_metrics OWNER TO admin;
+
+--
+-- Name: VIEW vw_omnichannel_metrics; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_omnichannel_metrics IS 'Métricas de performance omnichannel';
+
+
+--
+-- Name: vw_proactive_alerts; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_proactive_alerts AS
+ SELECT 'BAIXA_OCUPACAO'::text AS alert_type,
+    l.id AS entity_id,
+    l.display_name AS entity_name,
+    round((((count(
+        CASE
+            WHEN ((ls.status)::text = 'OCCUPIED'::text) THEN 1
+            ELSE NULL::integer
+        END))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric), 2) AS metric_value,
+    'Ocupação abaixo de 30% por mais de 7 dias'::text AS description,
+    'MEDIUM'::text AS severity,
+    now() AS detected_at
+   FROM (public.lockers l
+     JOIN public.locker_slots ls ON (((ls.locker_id)::text = (l.id)::text)))
+  WHERE ((l.active = true) AND (l.created_at <= (CURRENT_DATE - '7 days'::interval)))
+  GROUP BY l.id, l.display_name
+ HAVING ((((count(
+        CASE
+            WHEN ((ls.status)::text = 'OCCUPIED'::text) THEN 1
+            ELSE NULL::integer
+        END))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric) < (30)::numeric)
+UNION ALL
+ SELECT 'ALTA_TAXA_FALHA'::text AS alert_type,
+    l.id AS entity_id,
+    l.display_name AS entity_name,
+    round((((count(
+        CASE
+            WHEN ((lt.event_type)::text = 'DOOR_FAILURE'::text) THEN 1
+            ELSE NULL::integer
+        END))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric), 2) AS metric_value,
+    'Taxa de falha de porta acima de 10% nos últimos 7 dias'::text AS description,
+    'HIGH'::text AS severity,
+    now() AS detected_at
+   FROM (public.lockers l
+     JOIN public.locker_telemetry lt ON (((lt.locker_id)::text = (l.id)::text)))
+  WHERE ((lt.occurred_at >= (CURRENT_DATE - '7 days'::interval)) AND ((lt.event_type)::text = ANY ((ARRAY['DOOR_FAILURE'::character varying, 'SIGNAL_LOST'::character varying])::text[])))
+  GROUP BY l.id, l.display_name
+ HAVING ((((count(
+        CASE
+            WHEN ((lt.event_type)::text = 'DOOR_FAILURE'::text) THEN 1
+            ELSE NULL::integer
+        END))::numeric / (NULLIF(count(*), 0))::numeric) * (100)::numeric) > (10)::numeric)
+UNION ALL
+ SELECT 'CHURN_RISK'::text AS alert_type,
+    ms.id AS entity_id,
+    ms.legal_name AS entity_name,
+    ((100)::numeric - (ms.seller_rating * (20)::numeric)) AS metric_value,
+    'Seller com rating baixo e poucas vendas recentes'::text AS description,
+    'MEDIUM'::text AS severity,
+    now() AS detected_at
+   FROM (public.marketplace_sellers ms
+     LEFT JOIN public.orders o ON ((((o.ecommerce_partner_id)::text = (ms.id)::text) AND (o.created_at >= (CURRENT_DATE - '30 days'::interval)))))
+  WHERE (((ms.status)::text = 'ACTIVE'::text) AND (ms.seller_rating < 3.5))
+  GROUP BY ms.id, ms.legal_name, ms.seller_rating
+ HAVING (count(o.id) < 5);
+
+
+ALTER TABLE public.vw_proactive_alerts OWNER TO admin;
+
+--
+-- Name: VIEW vw_proactive_alerts; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_proactive_alerts IS 'Alertas proativos para equipe de operações';
+
+
+--
+-- Name: vw_realtime_executive; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_realtime_executive AS
+ SELECT mv_realtime_kpis.snapshot_time,
+    mv_realtime_kpis.orders_last_hour,
+    mv_realtime_kpis.revenue_last_hour,
+    mv_realtime_kpis.orders_last_24h,
+    mv_realtime_kpis.unique_customers_24h,
+    mv_realtime_kpis.revenue_last_24h,
+    mv_realtime_kpis.avg_pickup_minutes,
+    mv_realtime_kpis.offline_lockers,
+    mv_realtime_kpis.active_sellers,
+    mv_realtime_kpis.pending_payment,
+    mv_realtime_kpis.expired_pickup,
+    mv_realtime_kpis.critical_alerts,
+    mv_realtime_kpis.high_alerts
+   FROM public.mv_realtime_kpis;
+
+
+ALTER TABLE public.vw_realtime_executive OWNER TO admin;
+
+--
+-- Name: VIEW vw_realtime_executive; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_realtime_executive IS 'Dashboard executivo em tempo real';
+
+
+--
+-- Name: vw_subscription_metrics; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_subscription_metrics AS
+ SELECT date_trunc('month'::text, COALESCE(cs.created_at, (cs.started_at)::timestamp with time zone)) AS month_ref,
+    cs.plan_type,
+    count(DISTINCT cs.user_id) AS active_subscribers,
+    (sum(cs.monthly_fee_cents) / 100) AS mrr,
+    count(
+        CASE
+            WHEN (COALESCE(cs.created_at, (cs.started_at)::timestamp with time zone) >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)) THEN 1
+            ELSE NULL::integer
+        END) AS new_subscribers_month,
+    count(
+        CASE
+            WHEN (cs.cancelled_at >= date_trunc('month'::text, (CURRENT_DATE)::timestamp with time zone)) THEN 1
+            ELSE NULL::integer
+        END) AS churned_month
+   FROM public.customer_subscriptions cs
+  WHERE (((cs.status)::text = 'ACTIVE'::text) AND (cs.current_period_start <= now()) AND (cs.current_period_end >= now()))
+  GROUP BY (date_trunc('month'::text, COALESCE(cs.created_at, (cs.started_at)::timestamp with time zone))), cs.plan_type
+  ORDER BY (date_trunc('month'::text, COALESCE(cs.created_at, (cs.started_at)::timestamp with time zone))) DESC, cs.plan_type;
+
+
+ALTER TABLE public.vw_subscription_metrics OWNER TO admin;
+
+--
+-- Name: VIEW vw_subscription_metrics; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_subscription_metrics IS 'Métricas consolidadas de assinaturas';
+
+
+--
+-- Name: vw_subscription_summary; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_subscription_summary AS
+ SELECT count(DISTINCT customer_subscriptions.user_id) AS total_active_subscribers,
+    (sum(customer_subscriptions.monthly_fee_cents) / 100) AS total_mrr,
+    count(DISTINCT customer_subscriptions.plan_type) AS active_plans,
+    count(
+        CASE
+            WHEN ((customer_subscriptions.plan_type)::text = 'PREMIUM'::text) THEN 1
+            ELSE NULL::integer
+        END) AS premium_count,
+    count(
+        CASE
+            WHEN ((customer_subscriptions.plan_type)::text = 'PRO'::text) THEN 1
+            ELSE NULL::integer
+        END) AS pro_count,
+    count(
+        CASE
+            WHEN ((customer_subscriptions.plan_type)::text = 'ENTERPRISE'::text) THEN 1
+            ELSE NULL::integer
+        END) AS enterprise_count,
+    count(
+        CASE
+            WHEN ((customer_subscriptions.plan_type)::text = 'BASIC'::text) THEN 1
+            ELSE NULL::integer
+        END) AS basic_count
+   FROM public.customer_subscriptions
+  WHERE (((customer_subscriptions.status)::text = 'ACTIVE'::text) AND (customer_subscriptions.current_period_start <= now()) AND (customer_subscriptions.current_period_end >= now()));
+
+
+ALTER TABLE public.vw_subscription_summary OWNER TO admin;
+
+--
+-- Name: VIEW vw_subscription_summary; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_subscription_summary IS 'Resumo rápido de assinaturas';
+
+
+--
+-- Name: vw_support_active_tickets; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_support_active_tickets AS
+ WITH open_tickets AS (
+         SELECT o.id AS ticket_id,
+            ('ORDER_'::text || (o.id)::text) AS ticket_number,
+            o.user_id,
+            (o.status)::text AS status,
+            o.created_at,
+            NULL::timestamp with time zone AS escalated_at,
+            'OPEN'::text AS ticket_status,
+                CASE
+                    WHEN ((o.status = 'PAYMENT_PENDING'::public.orderstatus) AND (o.created_at < (CURRENT_DATE - '1 day'::interval))) THEN 'PAYMENT_OVERDUE'::text
+                    WHEN ((o.status = 'PAID_PENDING_PICKUP'::public.orderstatus) AND (o.pickup_deadline_at < CURRENT_DATE)) THEN 'PICKUP_EXPIRED'::text
+                    ELSE 'ORDER_ISSUE'::text
+                END AS reason,
+            2 AS priority
+           FROM public.orders o
+          WHERE ((o.deleted_at IS NULL) AND (o.status <> ALL (ARRAY['PICKED_UP'::public.orderstatus, 'CANCELLED'::public.orderstatus, 'REFUNDED'::public.orderstatus])) AND (((o.status = 'PAYMENT_PENDING'::public.orderstatus) AND (o.created_at < (CURRENT_DATE - '1 day'::interval))) OR ((o.status = 'PAID_PENDING_PICKUP'::public.orderstatus) AND (o.pickup_deadline_at < CURRENT_DATE))))
+        UNION ALL
+         SELECT sbe.id AS ticket_id,
+            ('SLA_'::text || (sbe.id)::text) AS ticket_number,
+            NULL::character varying AS user_id,
+            sbe.breach_type AS status,
+            sbe.detected_at AS created_at,
+                CASE
+                    WHEN ((sbe.severity)::text = 'CRITICAL'::text) THEN (sbe.detected_at + '00:30:00'::interval)
+                    ELSE NULL::timestamp with time zone
+                END AS escalated_at,
+                CASE
+                    WHEN (sbe.resolved_at IS NULL) THEN 'OPEN'::text
+                    ELSE 'RESOLVED'::text
+                END AS ticket_status,
+            sbe.breach_type AS reason,
+                CASE sbe.severity
+                    WHEN 'CRITICAL'::text THEN 1
+                    WHEN 'HIGH'::text THEN 2
+                    ELSE 3
+                END AS priority
+           FROM public.sla_breach_events sbe
+          WHERE (sbe.resolved_at IS NULL)
+        )
+ SELECT open_tickets.ticket_id,
+    open_tickets.ticket_number,
+    open_tickets.user_id,
+    open_tickets.status,
+    open_tickets.created_at,
+    open_tickets.escalated_at,
+    open_tickets.ticket_status,
+    open_tickets.reason,
+    open_tickets.priority,
+        CASE
+            WHEN (open_tickets.priority = 1) THEN 'CRITICO'::text
+            WHEN (open_tickets.priority = 2) THEN 'ALTA'::text
+            ELSE 'NORMAL'::text
+        END AS priority_label,
+    (EXTRACT(epoch FROM ((CURRENT_DATE)::timestamp with time zone - open_tickets.created_at)) / (3600)::numeric) AS hours_open
+   FROM open_tickets
+  ORDER BY open_tickets.priority, open_tickets.created_at;
+
+
+ALTER TABLE public.vw_support_active_tickets OWNER TO admin;
+
+--
+-- Name: VIEW vw_support_active_tickets; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_support_active_tickets IS 'Suporte N1 Dashboard: Tickets ativos prioritários para triagem.';
+
+
+--
+-- Name: vw_trending_metrics; Type: VIEW; Schema: public; Owner: admin
+--
+
+CREATE VIEW public.vw_trending_metrics AS
+ WITH daily_metrics AS (
+         SELECT date_trunc('day'::text, orders.created_at) AS day_ref,
+            count(*) AS total_orders,
+            (sum(orders.amount_cents) / 100) AS total_revenue,
+            count(DISTINCT orders.user_id) AS unique_users
+           FROM public.orders
+          WHERE ((orders.created_at >= (CURRENT_DATE - '30 days'::interval)) AND (orders.deleted_at IS NULL))
+          GROUP BY (date_trunc('day'::text, orders.created_at))
+        )
+ SELECT daily_metrics.day_ref,
+    daily_metrics.total_orders,
+    daily_metrics.total_revenue,
+    daily_metrics.unique_users,
+    lag(daily_metrics.total_orders, 7) OVER (ORDER BY daily_metrics.day_ref) AS orders_7d_ago,
+    round(((((daily_metrics.total_orders)::numeric / (NULLIF(lag(daily_metrics.total_orders, 7) OVER (ORDER BY daily_metrics.day_ref), 0))::numeric) - (1)::numeric) * (100)::numeric), 2) AS orders_growth_pct,
+    lag(daily_metrics.total_revenue, 7) OVER (ORDER BY daily_metrics.day_ref) AS revenue_7d_ago,
+    round(((((daily_metrics.total_revenue)::numeric / (NULLIF(lag(daily_metrics.total_revenue, 7) OVER (ORDER BY daily_metrics.day_ref), 0))::numeric) - (1)::numeric) * (100)::numeric), 2) AS revenue_growth_pct
+   FROM daily_metrics
+  ORDER BY daily_metrics.day_ref DESC;
+
+
+ALTER TABLE public.vw_trending_metrics OWNER TO admin;
+
+--
+-- Name: VIEW vw_trending_metrics; Type: COMMENT; Schema: public; Owner: admin
+--
+
+COMMENT ON VIEW public.vw_trending_metrics IS 'Métricas de tendência (comparação semana a semana)';
+
 
 --
 -- Name: wallet_provider_catalog; Type: TABLE; Schema: public; Owner: admin
@@ -9454,6 +13961,90 @@ CREATE TABLE public.webhook_endpoints (
 
 
 ALTER TABLE public.webhook_endpoints OWNER TO admin;
+
+--
+-- Name: orders_2025_06; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_06 FOR VALUES FROM ('2025-06-01 00:00:00+00') TO ('2025-07-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_07; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_07 FOR VALUES FROM ('2025-07-01 00:00:00+00') TO ('2025-08-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_08; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_08 FOR VALUES FROM ('2025-08-01 00:00:00+00') TO ('2025-09-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_09; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_09 FOR VALUES FROM ('2025-09-01 00:00:00+00') TO ('2025-10-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_10; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_10 FOR VALUES FROM ('2025-10-01 00:00:00+00') TO ('2025-11-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_11; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_11 FOR VALUES FROM ('2025-11-01 00:00:00+00') TO ('2025-12-01 00:00:00+00');
+
+
+--
+-- Name: orders_2025_12; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2025_12 FOR VALUES FROM ('2025-12-01 00:00:00+00') TO ('2026-01-01 00:00:00+00');
+
+
+--
+-- Name: orders_2026_01; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2026_01 FOR VALUES FROM ('2026-01-01 00:00:00+00') TO ('2026-02-01 00:00:00+00');
+
+
+--
+-- Name: orders_2026_02; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2026_02 FOR VALUES FROM ('2026-02-01 00:00:00+00') TO ('2026-03-01 00:00:00+00');
+
+
+--
+-- Name: orders_2026_03; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2026_03 FOR VALUES FROM ('2026-03-01 00:00:00+00') TO ('2026-04-01 00:00:00+00');
+
+
+--
+-- Name: orders_2026_04; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2026_04 FOR VALUES FROM ('2026-04-01 00:00:00+00') TO ('2026-05-01 00:00:00+00');
+
+
+--
+-- Name: orders_2026_05; Type: TABLE ATTACH; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned ATTACH PARTITION public.orders_2026_05 FOR VALUES FROM ('2026-05-01 00:00:00+00') TO ('2026-06-01 00:00:00+00');
+
 
 --
 -- Name: _hyper_4_1_chunk id; Type: DEFAULT; Schema: _timescaledb_internal; Owner: admin
@@ -9701,6 +14292,13 @@ ALTER TABLE ONLY public.capability_requirement_catalog ALTER COLUMN id SET DEFAU
 
 
 --
+-- Name: demand_forecast id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.demand_forecast ALTER COLUMN id SET DEFAULT nextval('public.demand_forecast_id_seq'::regclass);
+
+
+--
 -- Name: ellanlab_depreciation_schedule id; Type: DEFAULT; Schema: public; Owner: admin
 --
 
@@ -9733,6 +14331,13 @@ ALTER TABLE ONLY public.financial_kpi_daily ALTER COLUMN id SET DEFAULT nextval(
 --
 
 ALTER TABLE ONLY public.fiscal_auto_classification_log ALTER COLUMN id SET DEFAULT nextval('public.fiscal_auto_classification_log_id_seq'::regclass);
+
+
+--
+-- Name: fulfillment_inventory id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_inventory ALTER COLUMN id SET DEFAULT nextval('public.fulfillment_inventory_id_seq'::regclass);
 
 
 --
@@ -9855,6 +14460,13 @@ ALTER TABLE ONLY public.pickup_events ALTER COLUMN id SET DEFAULT nextval('publi
 
 
 --
+-- Name: price_history id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.price_history ALTER COLUMN id SET DEFAULT nextval('public.price_history_id_seq'::regclass);
+
+
+--
 -- Name: product_bundle_items id; Type: DEFAULT; Schema: public; Owner: admin
 --
 
@@ -9866,6 +14478,34 @@ ALTER TABLE ONLY public.product_bundle_items ALTER COLUMN id SET DEFAULT nextval
 --
 
 ALTER TABLE ONLY public.product_locker_configs ALTER COLUMN id SET DEFAULT nextval('public.product_locker_configs_id_seq'::regclass);
+
+
+--
+-- Name: product_recommendations id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_recommendations ALTER COLUMN id SET DEFAULT nextval('public.product_recommendations_id_seq'::regclass);
+
+
+--
+-- Name: store_inventory id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.store_inventory ALTER COLUMN id SET DEFAULT nextval('public.store_inventory_id_seq'::regclass);
+
+
+--
+-- Name: subscription_benefits_usage id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_benefits_usage ALTER COLUMN id SET DEFAULT nextval('public.subscription_benefits_usage_id_seq'::regclass);
+
+
+--
+-- Name: subscription_usage id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_usage ALTER COLUMN id SET DEFAULT nextval('public.subscription_usage_id_seq'::regclass);
 
 
 --
@@ -10332,6 +14972,22 @@ ALTER TABLE ONLY public.core_user
 
 
 --
+-- Name: cost_center_monthly cost_center_monthly_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_center_monthly
+    ADD CONSTRAINT cost_center_monthly_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: cost_centers cost_centers_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_centers
+    ADD CONSTRAINT cost_centers_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: credits credits_order_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -10348,11 +15004,35 @@ ALTER TABLE ONLY public.credits
 
 
 --
+-- Name: custom_domains custom_domains_domain_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.custom_domains
+    ADD CONSTRAINT custom_domains_domain_key UNIQUE (domain);
+
+
+--
+-- Name: custom_domains custom_domains_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.custom_domains
+    ADD CONSTRAINT custom_domains_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: customer_feedback customer_feedback_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.customer_feedback
     ADD CONSTRAINT customer_feedback_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: customer_subscriptions customer_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.customer_subscriptions
+    ADD CONSTRAINT customer_subscriptions_pkey PRIMARY KEY (id);
 
 
 --
@@ -10412,6 +15092,14 @@ ALTER TABLE ONLY public.databasechangeloglock
 
 
 --
+-- Name: demand_forecast demand_forecast_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.demand_forecast
+    ADD CONSTRAINT demand_forecast_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: dependency dependency_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -10465,6 +15153,14 @@ ALTER TABLE ONLY public.domain_events
 
 ALTER TABLE ONLY public.door_state
     ADD CONSTRAINT door_state_pkey PRIMARY KEY (machine_id, door_id);
+
+
+--
+-- Name: dynamic_pricing_rules dynamic_pricing_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.dynamic_pricing_rules
+    ADD CONSTRAINT dynamic_pricing_rules_pkey PRIMARY KEY (id);
 
 
 --
@@ -10601,6 +15297,38 @@ ALTER TABLE ONLY public.fiscal_reconciliation_gaps
 
 ALTER TABLE ONLY public.fiscal_reconciliation_gaps
     ADD CONSTRAINT fiscal_reconciliation_gaps_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fulfillment_centers fulfillment_centers_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_centers
+    ADD CONSTRAINT fulfillment_centers_code_key UNIQUE (code);
+
+
+--
+-- Name: fulfillment_centers fulfillment_centers_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_centers
+    ADD CONSTRAINT fulfillment_centers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fulfillment_inventory fulfillment_inventory_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_inventory
+    ADD CONSTRAINT fulfillment_inventory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: fulfillment_orders fulfillment_orders_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_orders
+    ADD CONSTRAINT fulfillment_orders_pkey PRIMARY KEY (id);
 
 
 --
@@ -10756,11 +15484,43 @@ ALTER TABLE ONLY public.lifecycle_deadlines
 
 
 --
+-- Name: locker_capex_details locker_capex_details_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_capex_details
+    ADD CONSTRAINT locker_capex_details_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: locker_capex locker_capex_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_capex
+    ADD CONSTRAINT locker_capex_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: locker_operators locker_operators_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.locker_operators
     ADD CONSTRAINT locker_operators_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: locker_opex locker_opex_locker_id_reference_month_cost_type_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_opex
+    ADD CONSTRAINT locker_opex_locker_id_reference_month_cost_type_key UNIQUE (locker_id, reference_month, cost_type);
+
+
+--
+-- Name: locker_opex locker_opex_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_opex
+    ADD CONSTRAINT locker_opex_pkey PRIMARY KEY (id);
 
 
 --
@@ -10804,11 +15564,19 @@ ALTER TABLE ONLY public.locker_slots
 
 
 --
+-- Name: locker_telemetry_partitioned locker_telemetry_partitioned_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_telemetry_partitioned
+    ADD CONSTRAINT locker_telemetry_partitioned_pkey PRIMARY KEY (id, occurred_at);
+
+
+--
 -- Name: locker_telemetry locker_telemetry_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.locker_telemetry
-    ADD CONSTRAINT locker_telemetry_pkey PRIMARY KEY (id);
+    ADD CONSTRAINT locker_telemetry_pkey PRIMARY KEY (id, occurred_at);
 
 
 --
@@ -10948,6 +15716,30 @@ ALTER TABLE ONLY public.logistics_tracking_events
 
 
 --
+-- Name: marketplace_commissions marketplace_commissions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_commissions
+    ADD CONSTRAINT marketplace_commissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_sellers marketplace_sellers_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_sellers
+    ADD CONSTRAINT marketplace_sellers_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_sellers marketplace_sellers_tax_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_sellers
+    ADD CONSTRAINT marketplace_sellers_tax_id_key UNIQUE (tax_id);
+
+
+--
 -- Name: metabase_database metabase_database_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11028,6 +15820,14 @@ ALTER TABLE ONLY public.ml_model_metadata
 
 
 --
+-- Name: ml_prediction_feedback ml_prediction_feedback_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.ml_prediction_feedback
+    ADD CONSTRAINT ml_prediction_feedback_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: ml_predictions_log ml_predictions_log_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11092,6 +15892,14 @@ ALTER TABLE ONLY public.notifications
 
 
 --
+-- Name: omnichannel_orders omnichannel_orders_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.omnichannel_orders
+    ADD CONSTRAINT omnichannel_orders_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: ops_action_audit ops_action_audit_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11148,6 +15956,110 @@ ALTER TABLE ONLY public.order_items
 
 
 --
+-- Name: orders_partitioned orders_partitioned_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_partitioned
+    ADD CONSTRAINT orders_partitioned_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_06 orders_2025_06_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_06
+    ADD CONSTRAINT orders_2025_06_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_07 orders_2025_07_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_07
+    ADD CONSTRAINT orders_2025_07_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_08 orders_2025_08_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_08
+    ADD CONSTRAINT orders_2025_08_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_09 orders_2025_09_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_09
+    ADD CONSTRAINT orders_2025_09_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_10 orders_2025_10_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_10
+    ADD CONSTRAINT orders_2025_10_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_11 orders_2025_11_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_11
+    ADD CONSTRAINT orders_2025_11_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2025_12 orders_2025_12_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2025_12
+    ADD CONSTRAINT orders_2025_12_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2026_01 orders_2026_01_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2026_01
+    ADD CONSTRAINT orders_2026_01_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2026_02 orders_2026_02_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2026_02
+    ADD CONSTRAINT orders_2026_02_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2026_03 orders_2026_03_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2026_03
+    ADD CONSTRAINT orders_2026_03_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2026_04 orders_2026_04_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2026_04
+    ADD CONSTRAINT orders_2026_04_pkey PRIMARY KEY (id, created_at);
+
+
+--
+-- Name: orders_2026_05 orders_2026_05_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.orders_2026_05
+    ADD CONSTRAINT orders_2026_05_pkey PRIMARY KEY (id, created_at);
+
+
+--
 -- Name: orders orders_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11201,6 +16113,14 @@ ALTER TABLE ONLY public.partner_billing_line_items
 
 ALTER TABLE ONLY public.partner_billing_plans
     ADD CONSTRAINT partner_billing_plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: partner_commission_structure partner_commission_structure_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.partner_commission_structure
+    ADD CONSTRAINT partner_commission_structure_pkey PRIMARY KEY (id);
 
 
 --
@@ -11289,6 +16209,22 @@ ALTER TABLE ONLY public.partner_sla_agreements
 
 ALTER TABLE ONLY public.partner_status_history
     ADD CONSTRAINT partner_status_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: partner_stores partner_stores_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.partner_stores
+    ADD CONSTRAINT partner_stores_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: partner_stores partner_stores_tax_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.partner_stores
+    ADD CONSTRAINT partner_stores_tax_id_key UNIQUE (tax_id);
 
 
 --
@@ -11604,6 +16540,14 @@ ALTER TABLE ONLY public.qrtz_paused_trigger_grps
 
 
 --
+-- Name: price_history price_history_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.price_history
+    ADD CONSTRAINT price_history_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: pricing_rules pricing_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11660,6 +16604,14 @@ ALTER TABLE ONLY public.product_categories
 
 
 --
+-- Name: product_cogs product_cogs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_cogs
+    ADD CONSTRAINT product_cogs_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: product_fiscal_config product_fiscal_config_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11676,6 +16628,14 @@ ALTER TABLE ONLY public.product_inventory
 
 
 --
+-- Name: product_locker_compatibility product_locker_compatibility_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_locker_compatibility
+    ADD CONSTRAINT product_locker_compatibility_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: product_locker_configs product_locker_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -11689,6 +16649,14 @@ ALTER TABLE ONLY public.product_locker_configs
 
 ALTER TABLE ONLY public.product_media
     ADD CONSTRAINT product_media_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: product_recommendations product_recommendations_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_recommendations
+    ADD CONSTRAINT product_recommendations_pkey PRIMARY KEY (id);
 
 
 --
@@ -12060,6 +17028,22 @@ ALTER TABLE ONLY public.segment
 
 
 --
+-- Name: seller_products seller_products_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_products
+    ADD CONSTRAINT seller_products_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_reviews seller_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_reviews
+    ADD CONSTRAINT seller_reviews_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: setting setting_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -12081,6 +17065,46 @@ ALTER TABLE ONLY public.sla_breach_events
 
 ALTER TABLE ONLY public.slot_occupancy_history
     ADD CONSTRAINT slot_occupancy_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: store_inventory store_inventory_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscription_benefits_usage subscription_benefits_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_benefits_usage
+    ADD CONSTRAINT subscription_benefits_usage_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscription_plans subscription_plans_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_plans
+    ADD CONSTRAINT subscription_plans_code_key UNIQUE (code);
+
+
+--
+-- Name: subscription_plans subscription_plans_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_plans
+    ADD CONSTRAINT subscription_plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscription_usage subscription_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.subscription_usage
+    ADD CONSTRAINT subscription_usage_pkey PRIMARY KEY (id);
 
 
 --
@@ -12380,6 +17404,22 @@ ALTER TABLE ONLY public.ellanlab_hardware_assets
 
 
 --
+-- Name: demand_forecast uq_forecast_locker_date; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.demand_forecast
+    ADD CONSTRAINT uq_forecast_locker_date UNIQUE (locker_id, forecast_date);
+
+
+--
+-- Name: fulfillment_inventory uq_fulfillment_product; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_inventory
+    ADD CONSTRAINT uq_fulfillment_product UNIQUE (fulfillment_center_id, product_id);
+
+
+--
 -- Name: invoices uq_invoice_order; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -12417,6 +17457,22 @@ ALTER TABLE ONLY public.locker_slot_hourly_occupancy
 
 ALTER TABLE ONLY public.ml_features_daily
     ADD CONSTRAINT uq_ml_features_daily_locker_day UNIQUE (locker_id, feature_date);
+
+
+--
+-- Name: seller_products uq_seller_product_locker; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_products
+    ADD CONSTRAINT uq_seller_product_locker UNIQUE (seller_id, locker_id, product_id);
+
+
+--
+-- Name: store_inventory uq_store_product; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT uq_store_product UNIQUE (store_id, product_id);
 
 
 --
@@ -12611,6 +17667,20 @@ CREATE INDEX compress_hyper_8_4_chunk_partner_id__ts_meta_min_1__ts_meta_idx ON 
 
 
 --
+-- Name: ix_company_mrr_trend_month; Type: INDEX; Schema: analytics_analytics; Owner: admin
+--
+
+CREATE INDEX ix_company_mrr_trend_month ON analytics_analytics.company_mrr_trend USING btree (month_ref DESC);
+
+
+--
+-- Name: ix_locker_pnl_month; Type: INDEX; Schema: analytics_analytics; Owner: admin
+--
+
+CREATE INDEX ix_locker_pnl_month ON analytics_analytics.locker_pnl USING btree (month_ref DESC, partner_id);
+
+
+--
 -- Name: ellanlab_revenue_recognition_recognition_date_idx; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -12779,6 +17849,13 @@ CREATE INDEX idx_ble_handshake_status_created ON public.ble_handshake_logs USING
 --
 
 CREATE INDEX idx_bookmark_ordering_user_id ON public.bookmark_ordering USING btree (user_id);
+
+
+--
+-- Name: idx_capability_locker_location_geom_gist; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_capability_locker_location_geom_gist ON public.capability_locker_location USING gist (geom);
 
 
 --
@@ -13150,6 +18227,13 @@ CREATE INDEX idx_im_locker_occurred ON public.inventory_movements USING btree (l
 --
 
 CREATE INDEX idx_im_product_locker_occurred ON public.inventory_movements USING btree (product_id, locker_id, occurred_at DESC);
+
+
+--
+-- Name: idx_invoices_ecommerce_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_invoices_ecommerce_partner_id ON public.invoices USING btree (ecommerce_partner_id);
 
 
 --
@@ -13580,6 +18664,27 @@ CREATE INDEX idx_ml_features_70d_locker_date ON public.ml_features_daily USING b
 
 
 --
+-- Name: idx_ml_feedback_feedback_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_ml_feedback_feedback_at ON public.ml_prediction_feedback USING btree (feedback_at);
+
+
+--
+-- Name: idx_ml_feedback_prediction; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_ml_feedback_prediction ON public.ml_prediction_feedback USING btree (prediction_id);
+
+
+--
+-- Name: idx_ml_feedback_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX idx_ml_feedback_status ON public.ml_prediction_feedback USING btree (model_performance_status);
+
+
+--
 -- Name: idx_model_index_creator_id; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -13598,6 +18703,13 @@ CREATE INDEX idx_model_index_model_id ON public.model_index USING btree (model_i
 --
 
 CREATE INDEX idx_moderation_review_item_type_item_id ON public.moderation_review USING btree (moderated_item_type, moderated_item_id);
+
+
+--
+-- Name: idx_mv_locker_pnl_pk; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX idx_mv_locker_pnl_pk ON public.mv_locker_monthly_pnl USING btree (month_ref, locker_id);
 
 
 --
@@ -14812,10 +19924,38 @@ CREATE INDEX ix_allocations_allocated_at ON public.allocations USING btree (allo
 
 
 --
+-- Name: ix_allocations_deadline_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_allocations_deadline_status ON public.allocations USING btree (locked_until, state);
+
+
+--
+-- Name: ix_allocations_locker_slot_state; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_allocations_locker_slot_state ON public.allocations USING btree (locker_id, slot, state);
+
+
+--
+-- Name: ix_allocations_order_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_allocations_order_id ON public.allocations USING btree (order_id);
+
+
+--
 -- Name: ix_allocations_released_at; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_allocations_released_at ON public.allocations USING btree (released_at);
+
+
+--
+-- Name: ix_allocations_state_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_allocations_state_created ON public.allocations USING btree (state, created_at);
 
 
 --
@@ -14840,6 +19980,20 @@ CREATE INDEX ix_audit_actor_time ON public.audit_logs USING btree (actor_id, occ
 
 
 --
+-- Name: ix_audit_logs_action; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_logs_action ON public.audit_logs USING btree (action, occurred_at);
+
+
+--
+-- Name: ix_audit_logs_actor_time; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_logs_actor_time ON public.audit_logs USING btree (actor_id, occurred_at DESC);
+
+
+--
 -- Name: ix_audit_logs_new_state_gin; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -14851,6 +20005,13 @@ CREATE INDEX ix_audit_logs_new_state_gin ON public.audit_logs USING gin (new_sta
 --
 
 CREATE INDEX ix_audit_logs_old_state_gin ON public.audit_logs USING gin (old_state);
+
+
+--
+-- Name: ix_audit_logs_target_time; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_audit_logs_target_time ON public.audit_logs USING btree (target_type, target_id, occurred_at DESC);
 
 
 --
@@ -14977,6 +20138,13 @@ CREATE INDEX ix_capability_context_active ON public.capability_context USING btr
 --
 
 CREATE INDEX ix_capability_context_channel ON public.capability_context USING btree (channel_id);
+
+
+--
+-- Name: ix_capability_locker_location_geom; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_capability_locker_location_geom ON public.capability_locker_location USING gist (geom);
 
 
 --
@@ -15138,6 +20306,34 @@ CREATE INDEX ix_capability_region_country ON public.capability_region USING btre
 --
 
 CREATE INDEX ix_capability_requirement_catalog_active ON public.capability_requirement_catalog USING btree (is_active);
+
+
+--
+-- Name: ix_capex_locker_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ix_capex_locker_id ON public.locker_capex_details USING btree (locker_id);
+
+
+--
+-- Name: ix_ccm_locker_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ccm_locker_id ON public.cost_center_monthly USING btree (locker_id);
+
+
+--
+-- Name: ix_ccm_locker_month; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ix_ccm_locker_month ON public.cost_center_monthly USING btree (locker_id, month);
+
+
+--
+-- Name: ix_ccm_month; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_ccm_month ON public.cost_center_monthly USING btree (month DESC);
 
 
 --
@@ -15313,6 +20509,13 @@ CREATE INDEX ix_device_last_seen ON public.device_registry USING btree (last_see
 --
 
 CREATE INDEX ix_domain_events_aggregate_id ON public.domain_events USING btree (aggregate_id);
+
+
+--
+-- Name: ix_domain_events_aggregate_id_type; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_domain_events_aggregate_id_type ON public.domain_events USING btree (aggregate_id, event_name, occurred_at DESC);
 
 
 --
@@ -15540,6 +20743,34 @@ CREATE INDEX ix_inbound_deadline ON public.inbound_deliveries USING btree (picku
 
 
 --
+-- Name: ix_inbound_deliveries_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inbound_deliveries_created ON public.inbound_deliveries USING btree (created_at DESC);
+
+
+--
+-- Name: ix_inbound_deliveries_deadline; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inbound_deliveries_deadline ON public.inbound_deliveries USING btree (pickup_deadline_at) WHERE ((status)::text <> ALL ((ARRAY['PICKED_UP'::character varying, 'RETURNED'::character varying])::text[]));
+
+
+--
+-- Name: ix_inbound_deliveries_locker_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inbound_deliveries_locker_status ON public.inbound_deliveries USING btree (locker_id, status);
+
+
+--
+-- Name: ix_inbound_deliveries_tracking; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inbound_deliveries_tracking ON public.inbound_deliveries USING btree (logistics_partner_id, tracking_code);
+
+
+--
 -- Name: ix_inbound_locker_status; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -15736,6 +20967,13 @@ CREATE INDEX ix_locker_telemetry_event_time ON public.locker_telemetry USING btr
 
 
 --
+-- Name: ix_locker_telemetry_locker_occurred; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_locker_telemetry_locker_occurred ON public.locker_telemetry USING btree (locker_id, occurred_at DESC);
+
+
+--
 -- Name: ix_locker_telemetry_locker_time; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -15803,6 +21041,13 @@ CREATE INDEX ix_lockers_pickup_reuse_policy ON public.lockers USING btree (picku
 --
 
 CREATE INDEX ix_lockers_region ON public.lockers USING btree (region);
+
+
+--
+-- Name: ix_lockers_runtime_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_lockers_runtime_active ON public.runtime_lockers USING btree (active, runtime_enabled);
 
 
 --
@@ -15890,6 +21135,20 @@ CREATE INDEX ix_lus_status_date ON public.locker_utilization_snapshots USING btr
 
 
 --
+-- Name: ix_marketplace_commissions_order; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_commissions_order ON public.marketplace_commissions USING btree (order_id, status);
+
+
+--
+-- Name: ix_marketplace_sellers_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_sellers_status ON public.marketplace_sellers USING btree (status);
+
+
+--
 -- Name: ix_ml_features_daily_date; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -15915,6 +21174,27 @@ CREATE INDEX ix_ml_predictions_locker_time ON public.ml_predictions_log USING bt
 --
 
 CREATE INDEX ix_ml_predictions_time ON public.ml_predictions_log USING btree (predicted_at DESC);
+
+
+--
+-- Name: ix_mv_profitability_locker_month; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX ix_mv_profitability_locker_month ON public.mv_locker_monthly_profitability USING btree (locker_id, month);
+
+
+--
+-- Name: ix_mv_profitability_month; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_mv_profitability_month ON public.mv_locker_monthly_profitability USING btree (month DESC);
+
+
+--
+-- Name: ix_mv_profitability_net_profit; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_mv_profitability_net_profit ON public.mv_locker_monthly_profitability USING btree (net_profit_cents DESC);
 
 
 --
@@ -15985,6 +21265,13 @@ CREATE INDEX ix_notification_logs_next_attempt_at ON public.notification_logs US
 --
 
 CREATE INDEX ix_notification_logs_order_id ON public.notification_logs USING btree (order_id);
+
+
+--
+-- Name: ix_notification_logs_order_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_notification_logs_order_status ON public.notification_logs USING btree (order_id, status, next_attempt_at) WHERE ((status)::text = ANY ((ARRAY['QUEUED'::character varying, 'FAILED'::character varying])::text[]));
 
 
 --
@@ -16079,10 +21366,24 @@ CREATE INDEX ix_orders_active ON public.orders USING btree (deleted_at) WHERE (d
 
 
 --
+-- Name: ix_orders_channel; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_channel ON public.orders USING btree (channel, status);
+
+
+--
 -- Name: ix_orders_channel_status; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_orders_channel_status ON public.orders USING btree (channel, status);
+
+
+--
+-- Name: ix_orders_created_at_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_created_at_partner_id ON public.orders USING btree (created_at DESC, partner_order_ref);
 
 
 --
@@ -16149,10 +21450,31 @@ CREATE INDEX ix_orders_status ON public.orders USING btree (status);
 
 
 --
+-- Name: ix_orders_status_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_status_created ON public.orders USING btree (status, created_at DESC);
+
+
+--
+-- Name: ix_orders_status_created_at; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_status_created_at ON public.orders USING btree (status, created_at DESC);
+
+
+--
 -- Name: ix_orders_status_picked_up; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_orders_status_picked_up ON public.orders USING btree (status, picked_up_at);
+
+
+--
+-- Name: ix_orders_tenant_partner; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_orders_tenant_partner ON public.orders USING btree (tenant_id, ecommerce_partner_id);
 
 
 --
@@ -16244,6 +21566,34 @@ CREATE INDEX ix_payment_method_catalog_family ON public.payment_method_catalog U
 --
 
 CREATE INDEX ix_payment_method_catalog_is_instant ON public.payment_method_catalog USING btree (is_instant);
+
+
+--
+-- Name: ix_payment_transactions_gateway; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_payment_transactions_gateway ON public.payment_transactions USING btree (gateway, gateway_transaction_id);
+
+
+--
+-- Name: ix_payment_transactions_order_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_payment_transactions_order_id ON public.payment_transactions USING btree (order_id);
+
+
+--
+-- Name: ix_payment_transactions_reconciliation; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_payment_transactions_reconciliation ON public.payment_transactions USING btree (reconciliation_status) WHERE ((reconciliation_status)::text = 'PENDING'::text);
+
+
+--
+-- Name: ix_payment_transactions_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_payment_transactions_status ON public.payment_transactions USING btree (status, approved_at);
 
 
 --
@@ -16632,6 +21982,13 @@ CREATE INDEX ix_pickups_status ON public.pickups USING btree (status);
 
 
 --
+-- Name: ix_pickups_status_expires; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_pickups_status_expires ON public.pickups USING btree (status, expires_at) WHERE (status = 'ACTIVE'::public.pickupstatus);
+
+
+--
 -- Name: ix_pickups_tenant; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -16678,6 +22035,13 @@ CREATE INDEX ix_product_cfg_category ON public.product_locker_configs USING btre
 --
 
 CREATE INDEX ix_product_cfg_locker ON public.product_locker_configs USING btree (locker_id);
+
+
+--
+-- Name: ix_product_locker_compat_lookup; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_product_locker_compat_lookup ON public.product_locker_compatibility USING btree (product_id, locker_type_id, effective_from DESC);
 
 
 --
@@ -16804,6 +22168,34 @@ CREATE INDEX ix_runtime_sync_queue_pending ON public.runtime_sync_queue USING bt
 --
 
 CREATE INDEX ix_runtime_sync_queue_status ON public.runtime_sync_queue USING btree (status);
+
+
+--
+-- Name: ix_seller_products_locker; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_products_locker ON public.seller_products USING btree (locker_id, status);
+
+
+--
+-- Name: ix_seller_products_product; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_products_product ON public.seller_products USING btree (product_id);
+
+
+--
+-- Name: ix_seller_products_seller; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_products_seller ON public.seller_products USING btree (seller_id, status);
+
+
+--
+-- Name: ix_seller_reviews_seller; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_reviews_seller ON public.seller_reviews USING btree (seller_id, rating);
 
 
 --
@@ -16937,6 +22329,20 @@ CREATE INDEX ix_wt_order ON public.wallet_transactions USING btree (order_id);
 --
 
 CREATE INDEX ix_wt_wallet ON public.wallet_transactions USING btree (wallet_id, created_at DESC);
+
+
+--
+-- Name: locker_telemetry_occurred_at_idx; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX locker_telemetry_occurred_at_idx ON public.locker_telemetry USING btree (occurred_at DESC);
+
+
+--
+-- Name: locker_telemetry_partitioned_occurred_at_idx; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX locker_telemetry_partitioned_occurred_at_idx ON public.locker_telemetry_partitioned USING btree (occurred_at DESC);
 
 
 --
@@ -17178,6 +22584,139 @@ CREATE UNIQUE INDEX ux_users_email ON public.users USING btree (email) WHERE (an
 
 
 --
+-- Name: orders_2025_06_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_06_pkey;
+
+
+--
+-- Name: orders_2025_07_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_07_pkey;
+
+
+--
+-- Name: orders_2025_08_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_08_pkey;
+
+
+--
+-- Name: orders_2025_09_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_09_pkey;
+
+
+--
+-- Name: orders_2025_10_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_10_pkey;
+
+
+--
+-- Name: orders_2025_11_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_11_pkey;
+
+
+--
+-- Name: orders_2025_12_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2025_12_pkey;
+
+
+--
+-- Name: orders_2026_01_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2026_01_pkey;
+
+
+--
+-- Name: orders_2026_02_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2026_02_pkey;
+
+
+--
+-- Name: orders_2026_03_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2026_03_pkey;
+
+
+--
+-- Name: orders_2026_04_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2026_04_pkey;
+
+
+--
+-- Name: orders_2026_05_pkey; Type: INDEX ATTACH; Schema: public; Owner: admin
+--
+
+ALTER INDEX public.orders_partitioned_pkey ATTACH PARTITION public.orders_2026_05_pkey;
+
+
+--
+-- Name: cost_center_monthly trg_cost_center_monthly_updated; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_cost_center_monthly_updated BEFORE UPDATE ON public.cost_center_monthly FOR EACH ROW EXECUTE FUNCTION public.trg_cost_center_monthly_updated();
+
+
+--
+-- Name: customer_subscriptions trg_customer_subscriptions_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_customer_subscriptions_updated_at BEFORE UPDATE ON public.customer_subscriptions FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: locker_capex_details trg_locker_capex_details_updated; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_locker_capex_details_updated BEFORE UPDATE ON public.locker_capex_details FOR EACH ROW EXECUTE FUNCTION public.trg_cost_center_monthly_updated();
+
+
+--
+-- Name: lockers trg_locker_cost_init; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_locker_cost_init AFTER INSERT OR UPDATE OF active ON public.lockers FOR EACH ROW EXECUTE FUNCTION public.fn_init_locker_costs();
+
+
+--
+-- Name: omnichannel_orders trg_omnichannel_orders_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_omnichannel_orders_updated_at BEFORE UPDATE ON public.omnichannel_orders FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: partner_stores trg_partner_stores_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_partner_stores_updated_at BEFORE UPDATE ON public.partner_stores FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: payment_transactions trg_payment_transactions_calc_fees; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_payment_transactions_calc_fees BEFORE INSERT OR UPDATE OF status ON public.payment_transactions FOR EACH ROW EXECUTE FUNCTION public.trg_payment_transactions_calc_fees();
+
+
+--
 -- Name: payment_gateway_device_registry trg_pg_gateway_device_registry_updated_at; Type: TRIGGER; Schema: public; Owner: admin
 --
 
@@ -17224,6 +22763,20 @@ CREATE TRIGGER trg_slot_occupancy_history AFTER UPDATE ON public.locker_slots FO
 --
 
 CREATE TRIGGER trg_spm_updated_at BEFORE UPDATE ON public.saved_payment_methods FOR EACH ROW EXECUTE FUNCTION public.set_row_updated_at();
+
+
+--
+-- Name: store_inventory trg_store_inventory_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_store_inventory_updated_at BEFORE UPDATE ON public.store_inventory FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
+-- Name: subscription_plans trg_subscription_plans_updated_at; Type: TRIGGER; Schema: public; Owner: admin
+--
+
+CREATE TRIGGER trg_subscription_plans_updated_at BEFORE UPDATE ON public.subscription_plans FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
 
 
 --
@@ -17414,11 +22967,91 @@ ALTER TABLE ONLY public.capability_province
 
 
 --
+-- Name: cost_center_monthly cost_center_monthly_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_center_monthly
+    ADD CONSTRAINT cost_center_monthly_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: cost_center_monthly cost_center_monthly_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_center_monthly
+    ADD CONSTRAINT cost_center_monthly_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: cost_center_monthly cost_center_monthly_updated_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_center_monthly
+    ADD CONSTRAINT cost_center_monthly_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.users(id);
+
+
+--
+-- Name: cost_centers cost_centers_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.cost_centers
+    ADD CONSTRAINT cost_centers_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: custom_domains custom_domains_tenant_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.custom_domains
+    ADD CONSTRAINT custom_domains_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES public.tenant_fiscal_config(tenant_id);
+
+
+--
+-- Name: customer_subscriptions customer_subscriptions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.customer_subscriptions
+    ADD CONSTRAINT customer_subscriptions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: data_deletion_requests data_deletion_requests_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.data_deletion_requests
     ADD CONSTRAINT data_deletion_requests_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: demand_forecast demand_forecast_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.demand_forecast
+    ADD CONSTRAINT demand_forecast_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: dynamic_pricing_rules dynamic_pricing_rules_category_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.dynamic_pricing_rules
+    ADD CONSTRAINT dynamic_pricing_rules_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.product_categories(id);
+
+
+--
+-- Name: dynamic_pricing_rules dynamic_pricing_rules_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.dynamic_pricing_rules
+    ADD CONSTRAINT dynamic_pricing_rules_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: dynamic_pricing_rules dynamic_pricing_rules_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.dynamic_pricing_rules
+    ADD CONSTRAINT dynamic_pricing_rules_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
 
 
 --
@@ -18302,6 +23935,38 @@ ALTER TABLE ONLY public.view_log
 
 
 --
+-- Name: fulfillment_inventory fulfillment_inventory_fulfillment_center_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_inventory
+    ADD CONSTRAINT fulfillment_inventory_fulfillment_center_id_fkey FOREIGN KEY (fulfillment_center_id) REFERENCES public.fulfillment_centers(id);
+
+
+--
+-- Name: fulfillment_inventory fulfillment_inventory_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_inventory
+    ADD CONSTRAINT fulfillment_inventory_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: fulfillment_orders fulfillment_orders_fulfillment_center_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_orders
+    ADD CONSTRAINT fulfillment_orders_fulfillment_center_id_fkey FOREIGN KEY (fulfillment_center_id) REFERENCES public.fulfillment_centers(id);
+
+
+--
+-- Name: fulfillment_orders fulfillment_orders_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.fulfillment_orders
+    ADD CONSTRAINT fulfillment_orders_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
 -- Name: inbound_deliveries inbound_deliveries_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18379,6 +24044,38 @@ ALTER TABLE ONLY public.journal_entry_lines
 
 ALTER TABLE ONLY public.journal_entry_lines
     ADD CONSTRAINT journal_entry_lines_journal_entry_id_fkey FOREIGN KEY (journal_entry_id) REFERENCES public.journal_entries(id) ON DELETE CASCADE;
+
+
+--
+-- Name: locker_capex locker_capex_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_capex
+    ADD CONSTRAINT locker_capex_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.ellanlab_hardware_assets(id);
+
+
+--
+-- Name: locker_capex_details locker_capex_details_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_capex_details
+    ADD CONSTRAINT locker_capex_details_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id) ON DELETE CASCADE;
+
+
+--
+-- Name: locker_capex locker_capex_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_capex
+    ADD CONSTRAINT locker_capex_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: locker_opex locker_opex_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_opex
+    ADD CONSTRAINT locker_opex_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
 
 
 --
@@ -18486,6 +24183,30 @@ ALTER TABLE ONLY public.logistics_tracking_events
 
 
 --
+-- Name: marketplace_commissions marketplace_commissions_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_commissions
+    ADD CONSTRAINT marketplace_commissions_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: marketplace_commissions marketplace_commissions_order_item_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_commissions
+    ADD CONSTRAINT marketplace_commissions_order_item_id_fkey FOREIGN KEY (order_item_id) REFERENCES public.order_items(id);
+
+
+--
+-- Name: marketplace_commissions marketplace_commissions_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_commissions
+    ADD CONSTRAINT marketplace_commissions_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.marketplace_sellers(id);
+
+
+--
 -- Name: ml_features_daily ml_features_daily_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18494,11 +24215,35 @@ ALTER TABLE ONLY public.ml_features_daily
 
 
 --
+-- Name: ml_prediction_feedback ml_prediction_feedback_prediction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.ml_prediction_feedback
+    ADD CONSTRAINT ml_prediction_feedback_prediction_id_fkey FOREIGN KEY (prediction_id) REFERENCES public.ml_predictions_log(id) ON DELETE CASCADE;
+
+
+--
 -- Name: notification_logs notification_logs_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.notification_logs
     ADD CONSTRAINT notification_logs_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: omnichannel_orders omnichannel_orders_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.omnichannel_orders
+    ADD CONSTRAINT omnichannel_orders_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: omnichannel_orders omnichannel_orders_store_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.omnichannel_orders
+    ADD CONSTRAINT omnichannel_orders_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.partner_stores(id);
 
 
 --
@@ -18539,6 +24284,14 @@ ALTER TABLE ONLY public.partner_billing_cycles
 
 ALTER TABLE ONLY public.partner_billing_line_items
     ADD CONSTRAINT partner_billing_line_items_cycle_id_fkey FOREIGN KEY (cycle_id) REFERENCES public.partner_billing_cycles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: partner_commission_structure partner_commission_structure_partner_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.partner_commission_structure
+    ADD CONSTRAINT partner_commission_structure_partner_id_fkey FOREIGN KEY (partner_id) REFERENCES public.ecommerce_partners(id);
 
 
 --
@@ -18622,6 +24375,30 @@ ALTER TABLE ONLY public.pickups
 
 
 --
+-- Name: price_history price_history_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.price_history
+    ADD CONSTRAINT price_history_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: price_history price_history_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.price_history
+    ADD CONSTRAINT price_history_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: price_history price_history_rule_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.price_history
+    ADD CONSTRAINT price_history_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.dynamic_pricing_rules(id);
+
+
+--
 -- Name: privacy_consents privacy_consents_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18654,6 +24431,14 @@ ALTER TABLE ONLY public.product_bundle_items
 
 
 --
+-- Name: product_cogs product_cogs_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_cogs
+    ADD CONSTRAINT product_cogs_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
 -- Name: product_inventory product_inventory_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18670,6 +24455,22 @@ ALTER TABLE ONLY public.product_inventory
 
 
 --
+-- Name: product_locker_compatibility product_locker_compatibility_locker_type_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_locker_compatibility
+    ADD CONSTRAINT product_locker_compatibility_locker_type_id_fkey FOREIGN KEY (locker_type_id) REFERENCES public.capability_profile(id);
+
+
+--
+-- Name: product_locker_compatibility product_locker_compatibility_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_locker_compatibility
+    ADD CONSTRAINT product_locker_compatibility_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
 -- Name: product_locker_configs product_locker_configs_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18683,6 +24484,30 @@ ALTER TABLE ONLY public.product_locker_configs
 
 ALTER TABLE ONLY public.product_media
     ADD CONSTRAINT product_media_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: product_recommendations product_recommendations_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_recommendations
+    ADD CONSTRAINT product_recommendations_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: product_recommendations product_recommendations_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_recommendations
+    ADD CONSTRAINT product_recommendations_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: product_recommendations product_recommendations_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.product_recommendations
+    ADD CONSTRAINT product_recommendations_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
 
 
 --
@@ -18838,6 +24663,54 @@ ALTER TABLE ONLY public.saved_payment_methods
 
 
 --
+-- Name: seller_products seller_products_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_products
+    ADD CONSTRAINT seller_products_locker_id_fkey FOREIGN KEY (locker_id) REFERENCES public.lockers(id);
+
+
+--
+-- Name: seller_products seller_products_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_products
+    ADD CONSTRAINT seller_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: seller_products seller_products_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_products
+    ADD CONSTRAINT seller_products_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.marketplace_sellers(id);
+
+
+--
+-- Name: seller_reviews seller_reviews_order_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_reviews
+    ADD CONSTRAINT seller_reviews_order_id_fkey FOREIGN KEY (order_id) REFERENCES public.orders(id);
+
+
+--
+-- Name: seller_reviews seller_reviews_seller_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_reviews
+    ADD CONSTRAINT seller_reviews_seller_id_fkey FOREIGN KEY (seller_id) REFERENCES public.marketplace_sellers(id);
+
+
+--
+-- Name: seller_reviews seller_reviews_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_reviews
+    ADD CONSTRAINT seller_reviews_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: sla_breach_events sla_breach_events_delivery_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18859,6 +24732,22 @@ ALTER TABLE ONLY public.sla_breach_events
 
 ALTER TABLE ONLY public.sla_breach_events
     ADD CONSTRAINT sla_breach_events_return_request_id_fkey FOREIGN KEY (return_request_id) REFERENCES public.return_requests(id);
+
+
+--
+-- Name: store_inventory store_inventory_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id);
+
+
+--
+-- Name: store_inventory store_inventory_store_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.store_inventory
+    ADD CONSTRAINT store_inventory_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.partner_stores(id);
 
 
 --
@@ -18900,6 +24789,66 @@ ALTER TABLE ONLY public.wallet_transactions
 ALTER TABLE ONLY public.webhook_deliveries
     ADD CONSTRAINT webhook_deliveries_endpoint_id_fkey FOREIGN KEY (endpoint_id) REFERENCES public.webhook_endpoints(id);
 
+
+--
+-- Name: invoices; Type: ROW SECURITY; Schema: public; Owner: admin
+--
+
+ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: invoices invoices_partner_isolation; Type: POLICY; Schema: public; Owner: admin
+--
+
+CREATE POLICY invoices_partner_isolation ON public.invoices USING ((((tenant_id)::text = (public.get_current_tenant_id())::text) OR ((ecommerce_partner_id)::text = (public.get_current_partner_id())::text) OR ((public.get_current_user_role())::text = 'admin'::text)));
+
+
+--
+-- Name: order_items; Type: ROW SECURITY; Schema: public; Owner: admin
+--
+
+ALTER TABLE public.order_items ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: order_items order_items_partner_isolation; Type: POLICY; Schema: public; Owner: admin
+--
+
+CREATE POLICY order_items_partner_isolation ON public.order_items USING ((EXISTS ( SELECT 1
+   FROM public.orders o
+  WHERE (((o.id)::text = (order_items.order_id)::text) AND (((o.ecommerce_partner_id)::text = (public.get_current_partner_id())::text) OR ((public.get_current_user_role())::text = 'admin'::text))))));
+
+
+--
+-- Name: orders; Type: ROW SECURITY; Schema: public; Owner: admin
+--
+
+ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: orders_partitioned; Type: ROW SECURITY; Schema: public; Owner: admin
+--
+
+ALTER TABLE public.orders_partitioned ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: orders orders_partner_isolation; Type: POLICY; Schema: public; Owner: admin
+--
+
+CREATE POLICY orders_partner_isolation ON public.orders USING ((((ecommerce_partner_id)::text = (public.get_current_partner_id())::text) OR ((public.get_current_user_role())::text = 'admin'::text) OR ((public.get_current_user_role())::text = 'ops'::text)));
+
+
+--
+-- Name: orders orders_tenant_isolation; Type: POLICY; Schema: public; Owner: admin
+--
+
+CREATE POLICY orders_tenant_isolation ON public.orders USING ((((tenant_id)::text = (public.get_current_tenant_id())::text) OR ((public.get_current_user_role())::text = 'admin'::text)));
+
+
+--
+-- Name: pickups; Type: ROW SECURITY; Schema: public; Owner: admin
+--
+
+ALTER TABLE public.pickups ENABLE ROW LEVEL SECURITY;
 
 --
 -- PostgreSQL database dump complete

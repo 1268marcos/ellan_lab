@@ -4706,59 +4706,6 @@ def _run_startup_migrations_if_enabled():
     return migrate_order_pickup_schema()
 
 
-
-# ENGINE DE AUTO-CORREÇÃO
-def _ensure_columns(conn, table: str, columns: dict[str, str]) -> None:
-    """
-    Garante que colunas existam na tabela.
-    columns = { "coluna": "TIPO SQL" }
-    """
-    inspector = inspect(conn)
-    if not _has_table(inspector, table):
-        return
-
-    existing = {col["name"] for col in inspector.get_columns(table)}
-
-    for col, ddl in columns.items():
-        if col not in existing:
-            logger.warning(f"[AUTO-MIGRATE] adicionando coluna {table}.{col}")
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}"))
-
-
-def _ensure_locker_operators_columns(conn):
-    _ensure_columns(conn, "locker_operators", {
-        "contract_start_at": "TIMESTAMPTZ",
-        "contract_end_at": "TIMESTAMPTZ",
-        "contract_ref": "VARCHAR(255)",
-        "sla_pickup_hours": "INTEGER DEFAULT 72",
-        "sla_return_hours": "INTEGER DEFAULT 24",
-    })
-
-def _ensure_lockers_columns(conn):
-    _ensure_columns(conn, "lockers", {
-        "geolocation_wkt": "VARCHAR(100)",
-        "slots_available": "INTEGER DEFAULT 0",
-        "has_kiosk": "BOOLEAN DEFAULT FALSE",
-        "has_printer": "BOOLEAN DEFAULT FALSE",
-        "has_card_reader": "BOOLEAN DEFAULT FALSE",
-        "has_nfc": "BOOLEAN DEFAULT FALSE",
-    })
-
-def _ensure_slot_configs_columns(conn):
-    _ensure_columns(conn, "locker_slot_configs", {
-        "width_mm": "INTEGER",
-        "height_mm": "INTEGER",
-        "depth_mm": "INTEGER",
-        "max_weight_g": "INTEGER",
-    })    
-
-def _ensure_capability_columns(conn):
-    _ensure_columns(conn, "capability_profile_target", {
-        "locker_id": "VARCHAR(64)",
-    })
-
-    
-
 if __name__ == "__main__":
     import json
     result = _run_startup_migrations_if_enabled()
