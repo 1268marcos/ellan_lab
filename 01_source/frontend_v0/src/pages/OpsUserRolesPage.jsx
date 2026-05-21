@@ -136,6 +136,9 @@ export default function OpsUserRolesPage() {
           <Link to="/ops/partners/admin" style={crossShortcutLinkStyle}>
             Parceiros admin
           </Link>
+          <Link to="/ops/tenants/admin" style={crossShortcutLinkStyle}>
+            Tenants
+          </Link>
           <Link to="/ops/auth/policy" style={crossShortcutLinkStyle}>
             Politica de autorizacao
           </Link>

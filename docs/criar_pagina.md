@@ -10,6 +10,7 @@
 | `app/routers/user_roles.py` | CRUD + `POST .../revoke` em `user_roles` |
 | `app/routers/users.py` | `GET /users` (lista para concessão de roles) |
 | `app/routers/partner_integrations.py` | webhook, API key, contacts |
+| `app/routers/tenants.py` | CRUD `tenant_fiscal_config`, `custom_domains`, `tenant_partner_links` |
 | `app/services/seed_data.py` | Seed usuários OPS + parceiros demo |
 | `migrations/001_partner_admin.sql` | DDL Postgres alinhado ao schema |
 | `tests/` | pytest (sqlite in-memory) |
@@ -37,8 +38,10 @@ PYTHONPATH=. .venv/bin/pytest tests/ -q
 | `src/pages/ops/OpsPartnersAdmin.tsx` | Parceiros e-commerce/logística, webhook, API key |
 | `src/pages/ops/OpsUserRoles.tsx` | Gerenciar `user_roles` |
 | `src/api/partnerAdmin.ts` | Cliente HTTP |
-| `src/router/index.tsx` | Rotas `/ops/partners/admin`, `/ops/access/user-roles` |
-| `src/layouts/Menu.tsx` | Grupo **Acesso & Parceiros** |
+| `src/router/index.tsx` | Rotas `/ops/partners/admin`, `/ops/access/user-roles`, `/ops/tenants/admin` |
+| `src/pages/ops/OpsTenantsAdmin.tsx` | Tenants, domínios white label, vínculos parceiro |
+| `src/api/tenantAdmin.ts` | Cliente HTTP tenants |
+| `src/layouts/Menu.tsx` | Grupos **Tenants** e **Acesso & Parceiros** |
 | `vite.config.ts` | Proxy `/api/partner-admin` → `:8016` |
 
 ```bash
@@ -49,7 +52,15 @@ cd 01_source/partner_admin_service && PYTHONPATH=. .venv/bin/uvicorn app.main:ap
 cd 01_source/frontend && npm run dev
 ```
 
-URLs: **http://localhost:5173/ops/partners/admin** · **http://localhost:5173/ops/access/user-roles** (perfil `ops` ou `admin`).
+URLs (note o prefixo **`/v1/`** — o app usa `BrowserRouter basename="/v1"`):
+
+- **http://localhost:5173/v1/ops/partners/admin**
+- **http://localhost:5173/v1/ops/access/user-roles**
+- **http://localhost:5173/v1/ops/tenants/admin** — tenants, domínios e vínculos com parceiros
+
+Perfil necessário: **`ops`** ou **`admin`** (parceiro comum não vê o menu nem a rota).
+
+Menu lateral: grupo **Tenants** → *Gerenciar tenants* (junto com **Acesso & Parceiros** para ops/admin).
 
 ## Frontend v0 (porta 5174)
 
@@ -57,15 +68,22 @@ URLs: **http://localhost:5173/ops/partners/admin** · **http://localhost:5173/op
 |--------|--------|
 | `src/pages/OpsPartnersAdminPage.jsx` | Mesmo contrato que frontend |
 | `src/pages/OpsUserRolesPage.jsx` | Papéis `user_roles` |
-| `src/App.jsx` | Menu grupo **Acesso** + rotas |
+| `src/pages/OpsTenantsAdminPage.jsx` | Tenants, domínios, vínculos parceiro |
+| `src/App.jsx` | Menu grupo **Acesso** (subgrupos Parceiros / Tenants) + rotas |
 | `vite.config.js` | Proxy `/api/pa` → `:8016` |
 
 ```bash
 cd 01_source/frontend_v0 && npm run dev
 ```
 
-URLs: **http://localhost:5174/v0/ops/partners/admin** · **http://localhost:5174/v0/ops/access/user-roles** — role `admin_operacao` para mutações.
+URLs (prefixo **`/v0/`** — `BrowserRouter basename="/v0"`):
 
-Menu v0: dropdown **OPS menu** → grupo **Acesso** (subgrupo **Parceiros**), badge **NEW**. Também em **Lockers**: `ops /lockers/create`.
+- **http://localhost:5174/v0/ops/partners/admin**
+- **http://localhost:5174/v0/ops/access/user-roles**
+- **http://localhost:5174/v0/ops/tenants/admin**
+
+Login v0: **email/senha** (não é o formulário partner_id/api_key do `01_source/frontend` em `:5173`). Role **`admin_operacao`** para Seed/criar.
+
+Menu v0: dropdown **OPS menu** → grupo **Acesso** → subgrupo **Tenants** ou **Parceiros** (badge **NEW**).
 
 Referência de dados: `02_docker/complete_schema_20260521_c.sql` (`user_roles`, `ecommerce_partners`, `logistics_partners`, `partner_webhook_endpoints`, `partner_api_keys`).

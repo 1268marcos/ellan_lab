@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, String
+from sqlalchemy import Boolean, Column, DateTime, JSON, String
 
 from app.core.db import Base
 
@@ -23,3 +23,4 @@ class TenantFiscalConfig(Base):
     cert_a1_ref = Column(String(255), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(TZ, nullable=False, default=lambda: datetime.now(timezone.utc))
+    brand_config = Column(JSON, nullable=True)

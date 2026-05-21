@@ -13,6 +13,7 @@ from app.routers import (
     logistics_partners,
     partner_integrations,
     seed,
+    tenants,
     user_roles,
     users,
 )
@@ -47,6 +48,7 @@ app.include_router(logistics_partners.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(user_roles.router, prefix=API_PREFIX)
 app.include_router(partner_integrations.router, prefix=API_PREFIX)
+app.include_router(tenants.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 
 

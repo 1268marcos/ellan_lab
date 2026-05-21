@@ -45,6 +45,7 @@ def init_db() -> None:
     from app.models import contact as _contact  # noqa: F401
     from app.models import partner as _partner  # noqa: F401
     from app.models import user as _user  # noqa: F401
+    from app.models import tenant as _tenant  # noqa: F401
     from app.models import webhook as _webhook  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

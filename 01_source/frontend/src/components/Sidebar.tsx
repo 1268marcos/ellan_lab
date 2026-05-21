@@ -21,6 +21,12 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'tenants',
+    icon: '🏢',
+    label: 'Tenants',
+    items: [{ to: '/ops/tenants/admin', label: 'Gerenciar tenants' }],
+  },
+  {
     key: 'acesso',
     icon: '🔐',
     label: 'Acesso & Parceiros',
@@ -54,6 +60,7 @@ const groups: Group[] = [
 export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
+    tenants: true,
     acesso: true,
     inteligencia: true,
     fiscal: true,

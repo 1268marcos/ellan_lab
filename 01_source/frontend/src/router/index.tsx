@@ -15,6 +15,7 @@ import Lockers from '../pages/ops/Lockers'
 import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
+import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -247,6 +248,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsUserRoles />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/tenants/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsTenantsAdmin />
             </OpsOnly>
           </Protected>
         }

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
 from app.models.partner import EcommercePartner, LogisticsPartner
+from app.models.tenant import CustomDomain, TenantFiscalConfig, TenantPartnerLink
 from app.models.user import User, UserRole
 from app.services.crypto_util import new_id
 
@@ -14,7 +15,7 @@ def _utcnow() -> datetime:
 
 
 def run_seed(db: Session) -> dict[str, int]:
-    counts = {"users": 0, "user_roles": 0, "ecommerce": 0, "logistics": 0}
+    counts = {"users": 0, "user_roles": 0, "ecommerce": 0, "logistics": 0, "tenants": 0, "domains": 0, "tenant_links": 0}
     now = _utcnow()
 
     users_seed = [
@@ -106,6 +107,58 @@ def run_seed(db: Session) -> dict[str, int]:
             )
         )
         counts["logistics"] += 1
+
+    if not db.get(TenantFiscalConfig, "tenant-demo"):
+        db.add(
+            TenantFiscalConfig(
+                tenant_id="tenant-demo",
+                cnpj="12.345.678/0001-90",
+                razao_social="Ellan Lab Demo Tenant",
+                ie="123456789",
+                regime="SIMPLES",
+                crt="1",
+                is_active=True,
+                created_at=now,
+                brand_config={
+                    "logo_url": None,
+                    "accent_color": "#38A169",
+                    "company_name": "Ellan Demo",
+                    "custom_domain": "demo.ellanlab.local",
+                    "primary_color": "#1A365D",
+                    "support_email": "suporte@ellanlab.com",
+                    "support_phone": None,
+                    "secondary_color": "#2D3748",
+                },
+            )
+        )
+        counts["tenants"] += 1
+
+    if not db.query(CustomDomain).filter(CustomDomain.domain == "ops.demo.ellanlab.local").first():
+        db.add(
+            CustomDomain(
+                id=new_id(),
+                tenant_id="tenant-demo",
+                domain="ops.demo.ellanlab.local",
+                verified=True,
+                created_at=now,
+                verified_at=now,
+            )
+        )
+        counts["domains"] += 1
+
+    ec = db.query(EcommercePartner).filter(EcommercePartner.code == "DEMO-EC").first()
+    if ec and not db.query(TenantPartnerLink).filter(TenantPartnerLink.tenant_id == "tenant-demo", TenantPartnerLink.partner_id == ec.id).first():
+        db.add(
+            TenantPartnerLink(
+                id=new_id(),
+                tenant_id="tenant-demo",
+                partner_id=ec.id,
+                partner_type="ECOMMERCE",
+                is_default=True,
+                created_at=now,
+            )
+        )
+        counts["tenant_links"] += 1
 
     db.commit()
     return counts

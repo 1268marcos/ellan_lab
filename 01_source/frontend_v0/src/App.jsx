@@ -79,6 +79,7 @@ const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage
 const OpsLockerCreatePage = lazy(() => import("./pages/OpsLockerCreatePage"));
 const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
+const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -532,6 +533,14 @@ function TopNav() {
       aria: "Gerenciar tabela user_roles e associacoes",
       group: "Acesso",
       opsSubGroup: "Parceiros",
+      isNew: true,
+    },
+    {
+      to: "/ops/tenants/admin",
+      label: "ops /tenants/admin",
+      aria: "CRUD tenants, dominios white label e vinculos com parceiros",
+      group: "Acesso",
+      opsSubGroup: "Tenants",
       isNew: true,
     },
     {
@@ -1954,6 +1963,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsUserRolesPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/tenants/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsTenantsAdminPage />)}
                 </OpsRoute>
               }
             />

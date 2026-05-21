@@ -189,6 +189,9 @@ export default function OpsPartnersAdminPage() {
           <Link to="/ops/access/user-roles" style={crossShortcutLinkStyle}>
             user_roles
           </Link>
+          <Link to="/ops/tenants/admin" style={crossShortcutLinkStyle}>
+            Tenants
+          </Link>
           <Link to="/ops/lockers/create" style={crossShortcutLinkStyle}>
             Criar lockers
           </Link>

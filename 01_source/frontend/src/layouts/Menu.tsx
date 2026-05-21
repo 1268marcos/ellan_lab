@@ -22,6 +22,14 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'tenants',
+    icon: '🏢',
+    label: 'Tenants',
+    items: [
+      { to: '/ops/tenants/admin', label: 'Gerenciar tenants' },
+    ],
+  },
+  {
     key: 'acesso',
     icon: '🔐',
     label: 'Acesso & Parceiros',
@@ -90,6 +98,7 @@ const groups: Group[] = [
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
+    tenants: false,
     acesso: false,
     lifecycle: false,
     intelligence: false,
@@ -121,6 +130,7 @@ export default function Menu() {
       }
       if (profile === 'ops') {
         if (g.key === 'ops') return g
+        if (g.key === 'tenants') return g
         if (g.key === 'acesso') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g
