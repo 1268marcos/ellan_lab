@@ -78,7 +78,10 @@ export default function OpsLockerProductConfigPage() {
     <div style={pageStyle}>
       <section style={cardStyle}>
         <div style={crossShortcutStyle}>
-          <Link to="/ops/health" style={crossShortcutLinkStyle}>
+          <Link to="/ops/lockers/create" style={crossShortcutLinkStyle}>
+            Criar locker(s)
+          </Link>
+          <Link to="/ops/health" style={{ ...crossShortcutLinkStyle, marginLeft: 8 }}>
             Ir para saúde operacional
           </Link>
         </div>

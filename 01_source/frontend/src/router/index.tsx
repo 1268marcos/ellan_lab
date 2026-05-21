@@ -12,6 +12,7 @@ import Transactions from '../pages/finance/Transactions'
 import DashboardMetrics from '../pages/analytics/DashboardMetrics'
 import SLOReport from '../pages/analytics/SLOReport'
 import Lockers from '../pages/ops/Lockers'
+import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -217,6 +218,16 @@ export default function AppRouter() {
       />
 
       <Route path="/ops/lockers" element={<Protected><Lockers /></Protected>} />
+      <Route
+        path="/ops/lockers/create"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsLockerCreate />
+            </OpsOnly>
+          </Protected>
+        }
+      />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />
 
       <Route

@@ -16,6 +16,9 @@ const billingServiceProxy =
 const orderLifecycleServiceProxy =
   process.env.ORDER_LIFECYCLE_SERVICE_PROXY ?? 'http://localhost:8010'
 
+const lockerCreateServiceProxy =
+  process.env.LOCKER_CREATE_SERVICE_PROXY ?? 'http://localhost:8015'
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -57,6 +60,11 @@ export default defineConfig({
         target: orderLifecycleServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/order-lifecycle/, ''),
+      },
+      '/api/locker-create': {
+        target: lockerCreateServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/locker-create/, '/api'),
       },
       '/api/runtime': {
         target: partnerServiceProxy,

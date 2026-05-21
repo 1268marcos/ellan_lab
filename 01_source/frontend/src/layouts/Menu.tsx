@@ -17,6 +17,7 @@ const groups: Group[] = [
     items: [
       { to: '/dashboard', label: 'Dashboard' },
       { to: '/ops/lockers', label: 'Lockers' },
+      { to: '/ops/lockers/create', label: 'Criar lockers' },
       { to: '/ops/manifests', label: 'Manifestos' },
     ],
   },

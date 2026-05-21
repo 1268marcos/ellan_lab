@@ -76,6 +76,7 @@ const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductCo
 const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
 const OpsLockerOccupancyForecastPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
 const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage"));
+const OpsLockerCreatePage = lazy(() => import("./pages/OpsLockerCreatePage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -506,6 +507,14 @@ function TopNav() {
       aria: "Regras product_locker_configs por locker (categoria permitida, dimensões, temperatura)",
       group: "Lockers",
       opsSubGroup: "Lockers",
+    },
+    {
+      to: "/ops/lockers/create",
+      label: "ops /lockers/create",
+      aria: "Criar um ou varios lockers (CRUD, webhook, rotacao API key)",
+      group: "Lockers",
+      opsSubGroup: "Lockers",
+      isNew: true,
     },
     {
       to: "/ops/lockers/slots",
@@ -1902,6 +1911,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsLockerProductConfigPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/create"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsLockerCreatePage />)}
                 </OpsRoute>
               }
             />
