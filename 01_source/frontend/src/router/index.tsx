@@ -17,6 +17,7 @@ import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
+import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -269,6 +270,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsPaymentGatewayAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/order-pickup/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsOrderPickupAdmin />
             </OpsOnly>
           </Protected>
         }

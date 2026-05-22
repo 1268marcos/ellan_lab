@@ -30,6 +30,7 @@ const groups: Group[] = [
       { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
       { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
       { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
+      { to: '/ops/order-pickup/admin', label: 'Order Pickup (pedidos)' },
     ],
   },
   {

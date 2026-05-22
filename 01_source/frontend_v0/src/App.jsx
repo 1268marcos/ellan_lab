@@ -81,6 +81,7 @@ const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
+const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -488,6 +489,14 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
+      isNew: true,
+    },
+    {
+      to: "/ops/order-pickup/admin",
+      label: "Order Pickup — pedidos e integracao",
+      aria: "Parceiros pickup, pedidos, outbox, credits e fulfillment",
+      group: "Cadastros OPS",
+      opsSubGroup: "Order Pickup",
       isNew: true,
     },
     {
@@ -1989,6 +1998,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/order-pickup/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsOrderPickupAdminPage />)}
                 </OpsRoute>
               }
             />
