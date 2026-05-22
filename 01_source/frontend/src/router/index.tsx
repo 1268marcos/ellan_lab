@@ -16,6 +16,7 @@ import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
+import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -258,6 +259,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsTenantsAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/payment-gateway/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsPaymentGatewayAdmin />
             </OpsOnly>
           </Protected>
         }

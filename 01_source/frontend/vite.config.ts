@@ -22,6 +22,9 @@ const lockerCreateServiceProxy =
 const partnerAdminServiceProxy =
   process.env.PARTNER_ADMIN_SERVICE_PROXY ?? 'http://localhost:8016'
 
+const paymentGatewayAdminServiceProxy =
+  process.env.PAYMENT_GATEWAY_ADMIN_SERVICE_PROXY ?? 'http://localhost:8017'
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -73,6 +76,11 @@ export default defineConfig({
         target: partnerAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/partner-admin/, '/api'),
+      },
+      '/api/payment-gateway-admin': {
+        target: paymentGatewayAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/payment-gateway-admin/, '/api'),
       },
       '/api/runtime': {
         target: partnerServiceProxy,

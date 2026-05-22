@@ -80,6 +80,7 @@ const OpsLockerCreatePage = lazy(() => import("./pages/OpsLockerCreatePage"));
 const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
+const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -541,6 +542,14 @@ function TopNav() {
       aria: "CRUD tenants, dominios white label e vinculos com parceiros",
       group: "Acesso",
       opsSubGroup: "Tenants",
+      isNew: true,
+    },
+    {
+      to: "/ops/payment-gateway/admin",
+      label: "ops /payment-gateway/admin",
+      aria: "Catalogo payment gateway, PSP, webhook, API key, device registry e risk",
+      group: "Payment Gateway",
+      opsSubGroup: "Gateway",
       isNew: true,
     },
     {
@@ -1971,6 +1980,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsTenantsAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/payment-gateway/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
                 </OpsRoute>
               }
             />

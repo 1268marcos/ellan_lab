@@ -30,6 +30,14 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'payment_gateway',
+    icon: '💳',
+    label: 'Payment Gateway',
+    items: [
+      { to: '/ops/payment-gateway/admin', label: 'Gerenciar gateway' },
+    ],
+  },
+  {
     key: 'acesso',
     icon: '🔐',
     label: 'Acesso & Parceiros',
@@ -99,6 +107,7 @@ export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
     tenants: false,
+    payment_gateway: false,
     acesso: false,
     lifecycle: false,
     intelligence: false,
@@ -131,6 +140,7 @@ export default function Menu() {
       if (profile === 'ops') {
         if (g.key === 'ops') return g
         if (g.key === 'tenants') return g
+        if (g.key === 'payment_gateway') return g
         if (g.key === 'acesso') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g
