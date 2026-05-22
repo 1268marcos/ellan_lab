@@ -112,3 +112,35 @@ CREATE TABLE IF NOT EXISTS partner_contacts (
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     updated_at timestamp with time zone DEFAULT now() NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS tenant_fiscal_config (
+    tenant_id character varying(100) NOT NULL PRIMARY KEY,
+    cnpj character varying(18) NOT NULL,
+    razao_social character varying(140) NOT NULL,
+    ie character varying(20),
+    regime character varying(20) NOT NULL,
+    crt character(1) NOT NULL,
+    cert_a1_ref character varying(255),
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    brand_config jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS custom_domains (
+    id character varying(36) NOT NULL PRIMARY KEY,
+    tenant_id character varying(100) NOT NULL,
+    domain character varying(255) NOT NULL UNIQUE,
+    verified boolean DEFAULT false,
+    ssl_cert_ref character varying(255),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    verified_at timestamp with time zone
+);
+
+CREATE TABLE IF NOT EXISTS tenant_partner_links (
+    id character varying(36) NOT NULL PRIMARY KEY,
+    tenant_id character varying(100) NOT NULL,
+    partner_id character varying(36) NOT NULL,
+    partner_type character varying(20) NOT NULL,
+    is_default boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);

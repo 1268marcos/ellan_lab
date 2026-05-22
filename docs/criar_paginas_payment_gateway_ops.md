@@ -38,7 +38,7 @@ PYTHONPATH=. .venv/bin/pytest tests/ -q
 | `src/pages/ops/OpsPaymentGatewayAdmin.tsx` | UI admin gateway |
 | `src/api/paymentGatewayAdmin.ts` | Cliente HTTP |
 | `src/router/index.tsx` | Rota `/ops/payment-gateway/admin` |
-| `src/layouts/Menu.tsx` | Grupo **Payment Gateway** |
+| `src/layouts/Menu.tsx` | Grupo **Cadastros OPS** → Payment Gateway (PSP) |
 | `vite.config.ts` | Proxy `/api/payment-gateway-admin` → `:8017` |
 
 ```bash
@@ -53,8 +53,10 @@ cd 01_source/frontend && npm run dev
 | Caminho | Papel |
 |--------|--------|
 | `src/pages/OpsPaymentGatewayAdminPage.jsx` | Mesmo contrato |
-| `src/App.jsx` | Menu grupo **Payment Gateway** + rota |
+| `src/App.jsx` | OPS menu → grupo **Cadastros OPS** → subgrupo **Payment Gateway** |
 | `vite.config.js` | Proxy `/api/pga` → `:8017` |
+
+Menu OPS (dropdown): **Cadastros OPS** → Tenants | Parceiros | Papéis | Payment Gateway.
 
 - http://localhost:5174/v0/ops/payment-gateway/admin
 

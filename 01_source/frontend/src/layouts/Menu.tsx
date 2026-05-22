@@ -22,28 +22,14 @@ const groups: Group[] = [
     ],
   },
   {
-    key: 'tenants',
-    icon: '🏢',
-    label: 'Tenants',
+    key: 'cadastros',
+    icon: '📋',
+    label: 'Cadastros OPS',
     items: [
-      { to: '/ops/tenants/admin', label: 'Gerenciar tenants' },
-    ],
-  },
-  {
-    key: 'payment_gateway',
-    icon: '💳',
-    label: 'Payment Gateway',
-    items: [
-      { to: '/ops/payment-gateway/admin', label: 'Gerenciar gateway' },
-    ],
-  },
-  {
-    key: 'acesso',
-    icon: '🔐',
-    label: 'Acesso & Parceiros',
-    items: [
-      { to: '/ops/partners/admin', label: 'Parceiros' },
-      { to: '/ops/access/user-roles', label: 'Papéis (user_roles)' },
+      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
+      { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
+      { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
+      { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
     ],
   },
   {
@@ -106,9 +92,7 @@ const groups: Group[] = [
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
-    tenants: false,
-    payment_gateway: false,
-    acesso: false,
+    cadastros: true,
     lifecycle: false,
     intelligence: false,
     runtime: false,
@@ -139,9 +123,7 @@ export default function Menu() {
       }
       if (profile === 'ops') {
         if (g.key === 'ops') return g
-        if (g.key === 'tenants') return g
-        if (g.key === 'payment_gateway') return g
-        if (g.key === 'acesso') return g
+        if (g.key === 'cadastros') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g
         if (g.key === 'intelligence') return { ...g, items: [] }

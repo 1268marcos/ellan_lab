@@ -21,24 +21,14 @@ const groups: Group[] = [
     ],
   },
   {
-    key: 'tenants',
-    icon: '🏢',
-    label: 'Tenants',
-    items: [{ to: '/ops/tenants/admin', label: 'Gerenciar tenants' }],
-  },
-  {
-    key: 'payment_gateway',
-    icon: '💳',
-    label: 'Payment Gateway',
-    items: [{ to: '/ops/payment-gateway/admin', label: 'Gerenciar gateway' }],
-  },
-  {
-    key: 'acesso',
-    icon: '🔐',
-    label: 'Acesso & Parceiros',
+    key: 'cadastros',
+    icon: '📋',
+    label: 'Cadastros OPS',
     items: [
-      { to: '/ops/partners/admin', label: 'Parceiros' },
-      { to: '/ops/access/user-roles', label: 'Papéis (user_roles)' },
+      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
+      { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
+      { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
+      { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
     ],
   },
   {
@@ -66,9 +56,7 @@ const groups: Group[] = [
 export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
-    tenants: true,
-    payment_gateway: true,
-    acesso: true,
+    cadastros: true,
     inteligencia: true,
     fiscal: true,
   })

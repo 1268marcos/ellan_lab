@@ -41,7 +41,7 @@ PYTHONPATH=. .venv/bin/pytest tests/ -q
 | `src/router/index.tsx` | Rotas `/ops/partners/admin`, `/ops/access/user-roles`, `/ops/tenants/admin` |
 | `src/pages/ops/OpsTenantsAdmin.tsx` | Tenants, domínios white label, vínculos parceiro |
 | `src/api/tenantAdmin.ts` | Cliente HTTP tenants |
-| `src/layouts/Menu.tsx` | Grupos **Tenants** e **Acesso & Parceiros** |
+| `src/layouts/Menu.tsx` | Grupo **Cadastros OPS** (tenants, parceiros, papéis, payment gateway) |
 | `vite.config.ts` | Proxy `/api/partner-admin` → `:8016` |
 
 ```bash
@@ -60,7 +60,7 @@ URLs (note o prefixo **`/v1/`** — o app usa `BrowserRouter basename="/v1"`):
 
 Perfil necessário: **`ops`** ou **`admin`** (parceiro comum não vê o menu nem a rota).
 
-Menu lateral: grupo **Tenants** → *Gerenciar tenants* (junto com **Acesso & Parceiros** para ops/admin).
+Menu lateral (perfil ops/admin): grupo **Cadastros OPS** com quatro entradas (Tenants, Parceiros, Papéis, Payment Gateway).
 
 ## Frontend v0 (porta 5174)
 
@@ -69,7 +69,7 @@ Menu lateral: grupo **Tenants** → *Gerenciar tenants* (junto com **Acesso & Pa
 | `src/pages/OpsPartnersAdminPage.jsx` | Mesmo contrato que frontend |
 | `src/pages/OpsUserRolesPage.jsx` | Papéis `user_roles` |
 | `src/pages/OpsTenantsAdminPage.jsx` | Tenants, domínios, vínculos parceiro |
-| `src/App.jsx` | Menu grupo **Acesso** (subgrupos Parceiros / Tenants) + rotas |
+| `src/App.jsx` | OPS menu → grupo **Cadastros OPS** (subgrupos Tenants, Parceiros, Payment Gateway) |
 | `vite.config.js` | Proxy `/api/pa` → `:8016` |
 
 ```bash
@@ -84,6 +84,6 @@ URLs (prefixo **`/v0/`** — `BrowserRouter basename="/v0"`):
 
 Login v0: **email/senha** (não é o formulário partner_id/api_key do `01_source/frontend` em `:5173`). Role **`admin_operacao`** para Seed/criar.
 
-Menu v0: dropdown **OPS menu** → grupo **Acesso** → subgrupo **Tenants** ou **Parceiros** (badge **NEW**).
+Menu v0: dropdown **OPS menu** → **Cadastros OPS** → Tenants | Parceiros | Papéis | Payment Gateway (badge **NEW**).
 
 Referência de dados: `02_docker/complete_schema_20260521_c.sql` (`user_roles`, `ecommerce_partners`, `logistics_partners`, `partner_webhook_endpoints`, `partner_api_keys`).
