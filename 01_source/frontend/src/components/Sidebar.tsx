@@ -70,6 +70,18 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'productsCatalog',
+    icon: '📦',
+    label: 'Produtos & Catálogo',
+    items: [
+      { to: '/ops/products/admin', label: 'Hub OPS' },
+      { to: '/ops/products/admin?tab=ecosystem', label: 'Ecossistema mundial' },
+      { to: '/ops/products/admin?tab=taxonomy', label: 'Taxonomias globais' },
+      { to: '/ops/products/admin?tab=channels', label: 'Canais (ML, Magalu…)' },
+      { to: '/ops/products/assets', label: 'Mídia & barcodes' },
+    ],
+  },
+  {
     key: 'inteligencia',
     icon: '🧠',
     label: 'Inteligência',
@@ -98,6 +110,7 @@ export default function Sidebar() {
     cadastros: true,
     mlOps: true,
     marketplace: true,
+    productsCatalog: true,
     inteligencia: true,
     fiscal: true,
   })

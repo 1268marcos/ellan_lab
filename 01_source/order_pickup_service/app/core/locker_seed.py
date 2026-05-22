@@ -14,6 +14,10 @@ Data: 04/04/2026
 """
 
 from sqlalchemy.orm import Session
+
+from app.core.global_players_partner_link import seed_missing_locker_operators_from_registry
+from app.core.operator_catalog_align import align_locker_operators_with_catalog
+from app.data.catalog_global_players import locker_operator_id
 from app.models.locker import Locker, LockerSlotConfig, LockerOperator
 from app.models.product_locker_config import ProductLockerConfig, ProductCategory
 from app.models.capability import (
@@ -488,6 +492,64 @@ def seed_product_categories(db: Session):
         ),
         
         # ============================================================
+        # LOCKER & LAST MILE (redes mundiais)
+        # ============================================================
+        ProductCategory(
+            id="LOCKER_PARCEL",
+            name="Encomenda locker (C2C/B2C)",
+            description="Volumes para InPost, DPD, DHL Packstation, Correios, CTT, Royal Mail",
+            default_temperature_zone="AMBIENT",
+            default_security_level="STANDARD",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+        ProductCategory(
+            id="LOCKER_MARKETPLACE",
+            name="Marketplace → ponto locker",
+            description="Retirada em locker: Magalu, Mercado Livre, Amazon Hub, Worten, El Corte Inglés",
+            default_temperature_zone="AMBIENT",
+            default_security_level="ENHANCED",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+        ProductCategory(
+            id="LOCKER_COLD_CHAIN",
+            name="Locker cadeia fria",
+            description="Alimentos e farmácia refrigerada em locker climatizado",
+            default_temperature_zone="REFRIGERATED",
+            default_security_level="HIGH",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+        ProductCategory(
+            id="LOCKER_FOOD_DELIVERY",
+            name="Food delivery → locker",
+            description="iFood, Uber Eats, Glovo, Deliveroo, Rappi — retirada em locker",
+            default_temperature_zone="HEATED",
+            default_security_level="ENHANCED",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+        ProductCategory(
+            id="LOCKER_PUDO_RETAIL",
+            name="PUDO / loja parceira",
+            description="Mondial Relay, Collect+, UPS Access Point, Relais Colis",
+            default_temperature_zone="AMBIENT",
+            default_security_level="STANDARD",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+        ProductCategory(
+            id="LOCKER_CROSS_BORDER",
+            name="Cross-border / agregador",
+            description="Cainiao, AliExpress, EasyPost — hub internacional",
+            default_temperature_zone="AMBIENT",
+            default_security_level="ENHANCED",
+            is_hazardous=False,
+            requires_age_verification=False,
+        ),
+
+        # ============================================================
         # SERVIÇOS E VOUCHERS
         # ============================================================
         ProductCategory(
@@ -590,7 +652,8 @@ def seed_operators(db: Session):
             sla_return_hours=12,
         ),
         LockerOperator(
-            id="OP-MELI-001",
+            id=locker_operator_id("MERCADO_LIVRE"),
+            player_code="MERCADO_LIVRE",
             name="Mercado Livre",
             document="88.888.888/0001-88",
             email="contato@meli.com",
@@ -618,7 +681,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-CORREIOS-001",
+            id=locker_operator_id("CORREIOS"),
+            player_code="CORREIOS",
             name="Correios Brasil",
             document="34.028.316/0001-03",
             email="contato@correios.com.br",
@@ -632,7 +696,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-SHOPEE-001",
+            id=locker_operator_id("SHOPEE"),
+            player_code="SHOPEE",
             name="Shopee Brasil",
             document="28.797.454/0001-64",
             email="contato@shopee.com.br",
@@ -646,8 +711,9 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-AMAZON-001",
-            name="Amazon Brasil",
+            id=locker_operator_id("AMAZON_HUB"),
+            player_code="AMAZON_HUB",
+            name="Amazon Brasil (Hub)",
             document="15.345.654/0001-00",
             email="contato@amazon.com.br",
             phone="+5511912340022",            
@@ -660,7 +726,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-MAGALU-001",
+            id=locker_operator_id("MAGALU"),
+            player_code="MAGALU",
             name="Magazine Luiza",
             document="47.960.950/0001-87",
             email="contato@magalu.com.br",
@@ -776,7 +843,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-WORTEN-001",
+            id=locker_operator_id("WORTEN"),
+            player_code="WORTEN",
             name="Worten Portugal",
             document="501.501.501",
             email="contato@worten.pt",
@@ -790,7 +858,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-INPOST-EU-001",
+            id=locker_operator_id("INPOST"),
+            player_code="INPOST",
             name="InPost",
             document="PL-INPOST-0001",
             email="contato@inpost.eu",
@@ -804,7 +873,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-CTTPT-001",
+            id=locker_operator_id("CTT"),
+            player_code="CTT",
             name="CTT Correios Portugal",
             document="501.082.977",
             email="contato@ctt.pt",
@@ -818,7 +888,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-DPD-001",
+            id=locker_operator_id("DPD"),
+            player_code="DPD",
             name="DPD Portugal",
             document="502.789.456",
             email="contato@dpd.pt",
@@ -832,7 +903,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-UPS-001",
+            id=locker_operator_id("UPS_ACCESS_POINT"),
+            player_code="UPS_ACCESS_POINT",
             name="UPS Portugal",
             document="503.456.789",
             email="contato@ups.pt",
@@ -846,7 +918,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-GLS-001",
+            id=locker_operator_id("GLS"),
+            player_code="GLS",
             name="GLS Portugal",
             document="504.567.890",
             email="contato@gls.pt",
@@ -948,7 +1021,8 @@ def seed_operators(db: Session):
         # OPERADORES ESPANHA
         # ============================================================
         LockerOperator(
-            id="OP-SEUR-001",
+            id=locker_operator_id("SEUR"),
+            player_code="SEUR",
             name="Seur España",
             document="B-78945612",
             email="contato@seur.es",
@@ -976,8 +1050,9 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-DHL-ES-001",
-            name="DHL Spain",
+            id=locker_operator_id("DHL_PACKSTATION"),
+            player_code="DHL_PACKSTATION",
+            name="DHL Spain (Packstation)",
             document="B-12378945",
             email="contato@dhl.es",
             phone="+3493900900911",
@@ -1004,7 +1079,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-AMAZON-ES-001",
+            id=locker_operator_id("AMAZON_ES"),
+            player_code="AMAZON_ES",
             name="Amazon España",
             document="B-85924956",
             email="contato@amazon.es",
@@ -1018,7 +1094,8 @@ def seed_operators(db: Session):
             sla_return_hours=24,
         ),
         LockerOperator(
-            id="OP-ELCORTE-001",
+            id=locker_operator_id("EL_CORTE_INGLES"),
+            player_code="EL_CORTE_INGLES",
             name="El Corte Inglés",
             document="B-28011890",
             email="contato@elcorteingles.es",
@@ -1262,9 +1339,17 @@ def seed_operators(db: Session):
             db.add(op)
             new_count += 1
             log(f"Operador adicionado: {op.id} - {op.name} ({op.country})")
-    
+        elif getattr(op, "player_code", None):
+            existing.player_code = op.player_code
+            log(f"Operador atualizado (player_code): {op.id} → {op.player_code}")
+
     db.commit()
-    log(f"Seed de operadores concluído: {new_count} novos operadores inseridos")
+    aligned = align_locker_operators_with_catalog(db)
+    from_registry = seed_missing_locker_operators_from_registry(db)
+    log(
+        f"Seed de operadores concluído: {new_count} novos, {aligned} migrados legado, "
+        f"{from_registry} criados do registo global (OP-{{code}})"
+    )
 
 
 # ============================================================

@@ -41,7 +41,9 @@ from app.routers import (
     pickup,
     pricing_fiscal,
     pricing_rules,
+    catalog_professional,
     product_categories,
+    product_inventory_ops,
     products,
     rentals_ops,
     runtime_sync,
@@ -154,6 +156,8 @@ app.include_router(kiosk.router)
 app.include_router(pickup.router)
 app.include_router(products.router)
 app.include_router(product_categories.router)
+app.include_router(catalog_professional.router)
+app.include_router(product_inventory_ops.router)
 app.include_router(operators.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)

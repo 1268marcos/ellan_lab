@@ -43,6 +43,78 @@ class ProductListItemOut(BaseModel):
     updated_at: str
 
 
+class ProductDetailOut(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    amount_cents: int
+    currency: str = "BRL"
+    category_id: str | None = None
+    width_mm: int | None = None
+    height_mm: int | None = None
+    depth_mm: int | None = None
+    weight_g: int | None = None
+    status: str
+    is_active: bool
+    requires_age_verification: bool = False
+    requires_id_check: bool = False
+    requires_signature: bool = False
+    is_hazardous: bool = False
+    is_fragile: bool = False
+    is_virtual: bool = False
+    metadata_json: dict = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
+
+
+class ProductCreateIn(BaseModel):
+    id: str = Field(..., min_length=1, max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=8000)
+    amount_cents: int = Field(..., ge=0)
+    currency: str = Field(default="BRL", max_length=8)
+    category_id: str | None = Field(default=None, max_length=64)
+    width_mm: int | None = Field(default=None, ge=0)
+    height_mm: int | None = Field(default=None, ge=0)
+    depth_mm: int | None = Field(default=None, ge=0)
+    weight_g: int | None = Field(default=None, ge=0)
+    status: str = Field(default="DRAFT", max_length=30)
+    is_active: bool = True
+    requires_age_verification: bool = False
+    requires_id_check: bool = False
+    requires_signature: bool = False
+    is_hazardous: bool = False
+    is_fragile: bool = False
+    is_virtual: bool = False
+    metadata_json: dict | None = None
+
+
+class ProductUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=8000)
+    amount_cents: int | None = Field(default=None, ge=0)
+    currency: str | None = Field(default=None, max_length=8)
+    category_id: str | None = Field(default=None, max_length=64)
+    width_mm: int | None = Field(default=None, ge=0)
+    height_mm: int | None = Field(default=None, ge=0)
+    depth_mm: int | None = Field(default=None, ge=0)
+    weight_g: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    requires_age_verification: bool | None = None
+    requires_id_check: bool | None = None
+    requires_signature: bool | None = None
+    is_hazardous: bool | None = None
+    is_fragile: bool | None = None
+    is_virtual: bool | None = None
+    metadata_json: dict | None = None
+
+
+class ProductDeleteOut(BaseModel):
+    ok: bool
+    product_id: str
+    status: str
+
+
 class ProductListOut(BaseModel):
     ok: bool
     total: int

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 class LockerOperatorOut(BaseModel):
     id: str
+    player_code: str | None = None
     name: str
     document: str | None = None
     email: str | None = None
@@ -30,6 +31,7 @@ class LockerOperatorListOut(BaseModel):
 
 class LockerOperatorCreateIn(BaseModel):
     id: str = Field(..., min_length=1, max_length=64)
+    player_code: str | None = Field(default=None, max_length=40)
     name: str = Field(..., min_length=1, max_length=128)
     document: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=128)
@@ -44,6 +46,7 @@ class LockerOperatorCreateIn(BaseModel):
 
 
 class LockerOperatorUpdateIn(BaseModel):
+    player_code: str | None = Field(default=None, max_length=40)
     name: str | None = Field(default=None, min_length=1, max_length=128)
     document: str | None = Field(default=None, max_length=32)
     email: str | None = Field(default=None, max_length=128)

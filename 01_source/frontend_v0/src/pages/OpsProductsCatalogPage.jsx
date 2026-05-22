@@ -181,6 +181,7 @@ export default function OpsProductsCatalogPage() {
   const [priceModalRow, setPriceModalRow] = useState(null);
   const [priceReaisInput, setPriceReaisInput] = useState("");
   const [pricePatchingId, setPricePatchingId] = useState(null);
+  const [createModal, setCreateModal] = useState(null);
 
   const authHeaders = useMemo(() => (token ? { Authorization: `Bearer ${token}` } : {}), [token]);
 
@@ -327,6 +328,41 @@ export default function OpsProductsCatalogPage() {
       setError(normalizeNetworkError(err, `${ORDER_PICKUP_BASE}/products/.../price`));
     } finally {
       setPricePatchingId(null);
+    }
+  }
+
+  async function createProduct() {
+    if (!token || !createModal) return;
+    const id = String(createModal.id || "").trim();
+    const name = String(createModal.name || "").trim();
+    const raw = String(createModal.amount_reais || "").trim().replace(",", ".");
+    const reais = Number(raw);
+    if (!id || !name || !Number.isFinite(reais) || reais < 0) {
+      setError("Preencha id, name e preço (R$) válidos.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const response = await fetch(`${ORDER_PICKUP_BASE}/products`, {
+        method: "POST",
+        headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
+        body: JSON.stringify({
+          id,
+          name,
+          amount_cents: Math.round(reais * 100),
+          category_id: createModal.category_id?.trim() || null,
+          status: createModal.status || "DRAFT",
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(parseError(data, "Falha ao criar produto."));
+      setCreateModal(null);
+      await loadCatalog({ offsetOverride: 0 });
+    } catch (err) {
+      setError(normalizeNetworkError(err, `${ORDER_PICKUP_BASE}/products`));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -478,6 +514,16 @@ export default function OpsProductsCatalogPage() {
           <button
             type="button"
             style={secondaryButtonStyle}
+            disabled={!token}
+            onClick={() =>
+              setCreateModal({ id: "", name: "", amount_reais: "", category_id: category || "", status: "DRAFT" })
+            }
+          >
+            Novo produto
+          </button>
+          <button
+            type="button"
+            style={secondaryButtonStyle}
             onClick={() => void loadCatalog({ offsetOverride: Math.max(0, offset - limit) })}
             disabled={loading || offset <= 0}
           >
@@ -607,6 +653,46 @@ export default function OpsProductsCatalogPage() {
           </div>
         )}
       </section>
+
+      {createModal ? (
+        <div style={modalBackdropStyle} role="presentation" onClick={() => setCreateModal(null)}>
+          <div style={modalCardStyle} role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <h2 style={modalTitleStyle}>Novo produto (SKU)</h2>
+            <label style={labelStyle}>
+              id
+              <input style={inputStyle} value={createModal.id} onChange={(e) => setCreateModal({ ...createModal, id: e.target.value })} />
+            </label>
+            <label style={labelStyle}>
+              name
+              <input style={inputStyle} value={createModal.name} onChange={(e) => setCreateModal({ ...createModal, name: e.target.value })} />
+            </label>
+            <label style={labelStyle}>
+              Preço (R$)
+              <input
+                style={inputStyle}
+                value={createModal.amount_reais}
+                onChange={(e) => setCreateModal({ ...createModal, amount_reais: e.target.value })}
+              />
+            </label>
+            <label style={labelStyle}>
+              category_id
+              <input
+                style={inputStyle}
+                value={createModal.category_id}
+                onChange={(e) => setCreateModal({ ...createModal, category_id: e.target.value })}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button type="button" style={buttonStyle} disabled={loading} onClick={() => void createProduct()}>
+                Criar
+              </button>
+              <button type="button" style={secondaryButtonStyle} onClick={() => setCreateModal(null)}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {priceModalRow ? (
         <div style={modalBackdropStyle} role="presentation" onClick={() => !pricePatchingId && closePriceModal()}>

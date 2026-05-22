@@ -16,6 +16,15 @@
 10. Realizar Testes
 11. Atualizar Menus (criar novos menus e não apenas itens para agrupar melhor) em http://localhost:5173/v1 e http://localhost:5174/v0
 
+**Referências:** 
+a-) Redes locker / hardware: SwipBox, Cleveron, Pickup (PL), Bloq.it, Quadient, Packeta, Vinted Go
+b-) Carriers globais: InPost, DPD, DHL, USPS, Royal Mail, La Poste, Colissimo, Hermes DE, Yodel, Swiss Post, Australia Post, Blue Dart, Bring, PostNord
+c-) Operadores de Rede de Lockers: DPD, USPS, DHL Packstation, InPost Parcel Lockers
+d-) Marketplaces: Magalu, Mercado Livre, Worten, El Corte Inglés, Amazon US (Hub), Walmart, Rakuten, Cdiscount, OTTO, Flipkart (+ Shopee, Shein, Temu, TikTok Shop já no catálogo)
+e-) Redes de Pontos de Coleta: Ponto Magalu, Mercado Livre, Worten, Corte Inglés Collection Point
+f-) Agregadores / hubs: Cainiao, Parcel2Go, EasyPost, Shippo, Intelipost, Melhor Envio
+
+
 **Restrições:** Sem explicação, sem raciocínio, sem diff. Apenas código + comandos + resultado.
 
 1O. PROMPT
@@ -25,7 +34,7 @@ Codar o pedido em @docs/criar_paginas_product_category.md. Ter como referência 
 Buscar criar mais páginas ou seções para    'product' e 'categoria' . Se necessário criar tabelas e relações para termos nível profissional/mundial.
 
 3O. PROMPT
-Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar     'Partner'
+Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar 'product' e 'categoria'
  
 4o. PROMPT
 Pensar em outros players (redes de locker, carriers globais, Operadores de Rede de Lockers, marketplaces, Redes de Pontos de Coleta, agregadores/hubs, food delivery) que atuam no mercado e como integrar além dos citados. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.

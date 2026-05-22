@@ -20,6 +20,10 @@ import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
 import OpsMarketplaceAdmin from '../pages/ops/OpsMarketplaceAdmin'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
+import OpsProductsAdmin from '../pages/ops/OpsProductsAdmin'
+import OpsProductsCatalog from '../pages/ops/OpsProductsCatalog'
+import OpsProductCategories from '../pages/ops/OpsProductCategories'
+import OpsProductAssets from '../pages/ops/OpsProductAssets'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -302,6 +306,46 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsMlAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsProductsAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/assets"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsProductAssets />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/catalog"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsProductsCatalog />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/categories"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsProductCategories />
             </OpsOnly>
           </Protected>
         }

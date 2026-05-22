@@ -72,6 +72,8 @@ const OpsProductsPricingFiscalPage = lazy(() => import("./pages/OpsProductsPrici
 const OpsPricingRulesPage = lazy(() => import("./pages/OpsPricingRulesPage"));
 const OpsProductsInventoryHealthPage = lazy(() => import("./pages/OpsProductsInventoryHealthPage"));
 const OpsProductCategoriesPage = lazy(() => import("./pages/OpsProductCategoriesPage"));
+const OpsProductsProfessionalPage = lazy(() => import("./pages/OpsProductsProfessionalPage"));
+const OpsProductsEcosystemPage = lazy(() => import("./pages/OpsProductsEcosystemPage"));
 const OpsLockerProductConfigPage = lazy(() => import("./pages/OpsLockerProductConfigPage"));
 const OpsLockerSlotsPage = lazy(() => import("./pages/OpsLockerSlotsPage"));
 const OpsLockerOccupancyForecastPage = lazy(() => import("./pages/OpsLockerOccupancyForecastPage"));
@@ -765,6 +767,20 @@ function TopNav() {
       aria: "CRUD OPS de product_categories (arvore hierarquica)",
       group: "Produtos & Fiscal",
       opsSubGroup: "Products",
+    },
+    {
+      to: "/ops/products/ecosystem",
+      label: "ops /products/ecosystem",
+      aria: "Hub ecossistema mundial: players, elegibilidade e integrações B2B",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Catálogo mundial",
+    },
+    {
+      to: "/ops/products/professional",
+      label: "ops /products/professional",
+      aria: "Taxonomias GS1, canais marketplace e atributos PIM",
+      group: "Produtos & Fiscal",
+      opsSubGroup: "Catálogo mundial",
     },
     {
       to: "/ops/products/bundles",
@@ -2345,6 +2361,22 @@ function AppContent() {
               element={
                 <OpsRoute>
                   <OpsProductCategoriesPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/ecosystem"
+              element={
+                <OpsRoute>
+                  <OpsProductsEcosystemPage />
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/products/professional"
+              element={
+                <OpsRoute>
+                  <OpsProductsProfessionalPage />
                 </OpsRoute>
               }
             />

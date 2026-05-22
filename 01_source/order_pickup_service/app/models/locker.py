@@ -87,6 +87,9 @@ class LockerOperator(Base):
     # País (ISO 3166-1 alpha-2)
     country = Column(String(2), nullable=False, default="BR")
 
+    # Código alinhado ao catálogo profissional (INPOST, MERCADO_LIVRE, DPD, …)
+    player_code = Column(String(40), nullable=True, index=True)
+
     # Status e Configurações Comerciais
     active = Column(Boolean, nullable=False, default=True)
     commission_rate = Column(Float, nullable=True)  # % de comissão (ex: 0.01 = 1%)
@@ -108,6 +111,7 @@ class LockerOperator(Base):
             "phone": self.phone,
             "operator_type": self.operator_type,
             "country": self.country,
+            "player_code": self.player_code,
             "active": self.active,
             "commission_rate": self.commission_rate,
             "currency": self.currency,

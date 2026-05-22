@@ -34,6 +34,7 @@ def _to_iso(value: Any) -> str:
 def _row_to_out(row: dict[str, Any]) -> LockerOperatorOut:
     return LockerOperatorOut(
         id=str(row.get("id") or ""),
+        player_code=(str(row["player_code"]) if row.get("player_code") else None),
         name=str(row.get("name") or ""),
         document=(str(row["document"]) if row.get("document") is not None else None),
         email=(str(row["email"]) if row.get("email") is not None else None),
@@ -57,7 +58,7 @@ def list_operators_ops(db: Session = Depends(get_db)):
         db.execute(
             text(
                 """
-                SELECT id, name, document, email, phone, operator_type, country, active,
+                SELECT id, player_code, name, document, email, phone, operator_type, country, active,
                        commission_rate, currency, status, contract_start_at, contract_end_at,
                        created_at, updated_at
                 FROM locker_operators
@@ -82,11 +83,11 @@ def create_operator_ops(payload: LockerOperatorCreateIn, db: Session = Depends(g
         text(
             """
             INSERT INTO locker_operators (
-                id, name, document, email, phone, operator_type, country, active,
+                id, player_code, name, document, email, phone, operator_type, country, active,
                 commission_rate, currency, status, contract_start_at, contract_end_at,
                 created_at, updated_at
             ) VALUES (
-                :id, :name, :document, :email, :phone, :operator_type, :country, TRUE,
+                :id, :player_code, :name, :document, :email, :phone, :operator_type, :country, TRUE,
                 :commission_rate, :currency, :status, :contract_start_at, :contract_end_at,
                 CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
             )
@@ -94,6 +95,7 @@ def create_operator_ops(payload: LockerOperatorCreateIn, db: Session = Depends(g
         ),
         {
             "id": oid,
+            "player_code": (str(payload.player_code).strip().upper()[:40] if payload.player_code else None),
             "name": str(payload.name).strip(),
             "document": payload.document.strip() if payload.document else None,
             "email": payload.email.strip() if payload.email else None,
@@ -150,10 +152,14 @@ def update_operator_ops(operator_id: str, payload: LockerOperatorUpdateIn, db: S
         r["contract_start_at"] = patch["contract_start_at"]
     if "contract_end_at" in patch:
         r["contract_end_at"] = patch["contract_end_at"]
+    if "player_code" in patch:
+        v = patch["player_code"]
+        r["player_code"] = v.strip().upper()[:40] if isinstance(v, str) and v.strip() else None
     db.execute(
         text(
             """
             UPDATE locker_operators SET
+                player_code = :player_code,
                 name = :name, document = :document, email = :email, phone = :phone,
                 operator_type = :operator_type, country = :country, active = :active,
                 commission_rate = :commission_rate, currency = :currency, status = :status,
@@ -164,6 +170,7 @@ def update_operator_ops(operator_id: str, payload: LockerOperatorUpdateIn, db: S
         ),
         {
             "id": operator_id,
+            "player_code": r.get("player_code"),
             "name": str(r.get("name") or ""),
             "document": r.get("document"),
             "email": r.get("email"),

@@ -1787,6 +1787,179 @@ def _create_product_recommendations(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_catalog_professional_tables(conn, applied: list[str]) -> None:
+    """Taxonomias globais, listings por canal e atributos extensíveis (nível marketplace mundial)."""
+    name = "catalog_professional.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS category_taxonomy_mappings (
+            id              VARCHAR(36) PRIMARY KEY,
+            category_id     VARCHAR(64) NOT NULL REFERENCES product_categories(id) ON DELETE CASCADE,
+            taxonomy_scheme VARCHAR(40) NOT NULL,
+            external_code   VARCHAR(128) NOT NULL,
+            external_name   VARCHAR(255),
+            country_code    VARCHAR(3),
+            is_primary      BOOLEAN NOT NULL DEFAULT FALSE,
+            metadata_json   JSONB NOT NULL DEFAULT '{}',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_category_taxonomy UNIQUE (category_id, taxonomy_scheme, external_code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_category_taxonomy_scheme "
+        "ON category_taxonomy_mappings (taxonomy_scheme, external_code)"
+    ))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_channel_listings (
+            id                  VARCHAR(36) PRIMARY KEY,
+            product_id          VARCHAR(255) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            channel_code        VARCHAR(40) NOT NULL,
+            external_sku        VARCHAR(255),
+            external_category_id VARCHAR(128),
+            listing_status      VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+            price_cents         INTEGER,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            partner_id          VARCHAR(36),
+            sync_mode           VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+            last_synced_at      TIMESTAMPTZ,
+            metadata_json       JSONB NOT NULL DEFAULT '{}',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_product_channel UNIQUE (product_id, channel_code),
+            CONSTRAINT ck_pcl_listing_status CHECK (
+                listing_status IN ('DRAFT', 'ACTIVE', 'SUSPENDED', 'DELISTED')
+            ),
+            CONSTRAINT ck_pcl_sync_mode CHECK (
+                sync_mode IN ('MANUAL', 'API', 'FEED', 'WEBHOOK')
+            )
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_product_channel_listings_channel "
+        "ON product_channel_listings (channel_code, listing_status)"
+    ))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_attribute_definitions (
+            id               VARCHAR(36) PRIMARY KEY,
+            category_id      VARCHAR(64) REFERENCES product_categories(id) ON DELETE CASCADE,
+            attr_key         VARCHAR(64) NOT NULL,
+            attr_label       VARCHAR(128) NOT NULL,
+            data_type        VARCHAR(20) NOT NULL DEFAULT 'STRING',
+            enum_values_json JSONB,
+            is_required      BOOLEAN NOT NULL DEFAULT FALSE,
+            sort_order       INTEGER NOT NULL DEFAULT 0,
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_attr_def_category_key UNIQUE (category_id, attr_key),
+            CONSTRAINT ck_attr_def_type CHECK (
+                data_type IN ('STRING', 'INTEGER', 'BOOLEAN', 'ENUM', 'DECIMAL')
+            )
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS product_attribute_values (
+            id             VARCHAR(36) PRIMARY KEY,
+            product_id     VARCHAR(255) NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+            definition_id  VARCHAR(36) NOT NULL REFERENCES product_attribute_definitions(id) ON DELETE CASCADE,
+            value_text     TEXT,
+            value_number   NUMERIC(18,6),
+            value_bool     BOOLEAN,
+            created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_product_attr_value UNIQUE (product_id, definition_id)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_product_attr_values_product "
+        "ON product_attribute_values (product_id)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_global_players_registry(conn, applied: list[str]) -> None:
+    """Registo mundial de players (redes locker, carriers, marketplaces, food, agregadores)."""
+    name = "global_players.create_registry_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_players (
+            code                    VARCHAR(40) PRIMARY KEY,
+            name                    VARCHAR(128) NOT NULL,
+            player_type             VARCHAR(32) NOT NULL,
+            hq_country              VARCHAR(2) NOT NULL,
+            supports_lockers        BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_pudo           BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_food_delivery  BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_marketplace    BOOLEAN NOT NULL DEFAULT FALSE,
+            operator_id             VARCHAR(64),
+            integration_modes_json  JSONB NOT NULL DEFAULT '[]',
+            metadata_json           JSONB NOT NULL DEFAULT '{}',
+            active                  BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_global_players_type ON global_players (player_type, active)"
+    ))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_player_regions (
+            id              VARCHAR(36) PRIMARY KEY,
+            player_code     VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            country_code    VARCHAR(3) NOT NULL,
+            region_code     VARCHAR(10),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_gpr_player_country UNIQUE (player_code, country_code)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_player_capabilities (
+            id              VARCHAR(36) PRIMARY KEY,
+            player_code     VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            capability      VARCHAR(40) NOT NULL,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_gpc_player_cap UNIQUE (player_code, capability)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS category_player_eligibility (
+            id              VARCHAR(36) PRIMARY KEY,
+            category_id     VARCHAR(64) NOT NULL REFERENCES product_categories(id) ON DELETE CASCADE,
+            player_code     VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            eligibility     VARCHAR(20) NOT NULL DEFAULT 'ALLOWED',
+            notes           TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_cpe_category_player UNIQUE (category_id, player_code)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_player_integration_targets (
+            id              VARCHAR(36) PRIMARY KEY,
+            player_code     VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            target_type     VARCHAR(30) NOT NULL,
+            target_key      VARCHAR(64) NOT NULL,
+            metadata_json   JSONB NOT NULL DEFAULT '{}',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_gpit UNIQUE (player_code, target_type, target_key)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ============================================================================
 # BLOCO 5 — Parceiros
 # ============================================================================
@@ -7174,6 +7347,10 @@ def _auto_heal_legacy_schema(conn, applied: list[str]) -> None:
     _ensure_column(conn, "locker_operators", "contract_start_at", "TIMESTAMPTZ")
     _ensure_column(conn, "locker_operators", "contract_end_at", "TIMESTAMPTZ")
     _ensure_column(conn, "locker_operators", "sla_pickup_hours", "INTEGER NOT NULL DEFAULT 72")
+    _ensure_column(conn, "locker_operators", "player_code", "VARCHAR(40)")
+    conn.execute(
+        text("CREATE INDEX IF NOT EXISTS ix_locker_operators_player_code ON locker_operators (player_code)")
+    )
 
     _ensure_column(conn, "lockers", "tenant_id", "VARCHAR(100)")
     _ensure_column(conn, "lockers", "slots_available", "INTEGER NOT NULL DEFAULT 0")
@@ -7269,6 +7446,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_dynamic_pricing_rules,
     _create_price_history,
     _create_product_recommendations,
+    _create_catalog_professional_tables,
+    _create_global_players_registry,
 
     # Parceiros
     _create_ecommerce_partners,

@@ -37,10 +37,24 @@ def _sqlite_products_session():
                 CREATE TABLE products (
                     id VARCHAR(255) PRIMARY KEY NOT NULL,
                     name VARCHAR(500) NOT NULL DEFAULT '',
+                    description TEXT,
                     amount_cents INTEGER,
+                    currency VARCHAR(8) NOT NULL DEFAULT 'BRL',
                     category_id VARCHAR(255),
+                    width_mm INTEGER,
+                    height_mm INTEGER,
+                    depth_mm INTEGER,
+                    weight_g INTEGER,
                     status VARCHAR(30),
                     is_active INTEGER NOT NULL DEFAULT 0,
+                    requires_age_verification INTEGER NOT NULL DEFAULT 0,
+                    requires_id_check INTEGER NOT NULL DEFAULT 0,
+                    requires_signature INTEGER NOT NULL DEFAULT 0,
+                    is_hazardous INTEGER NOT NULL DEFAULT 0,
+                    is_fragile INTEGER NOT NULL DEFAULT 0,
+                    is_virtual INTEGER NOT NULL DEFAULT 0,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    created_at TEXT NOT NULL DEFAULT (datetime('now')),
                     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
                 )
                 """
@@ -64,6 +78,17 @@ def _sqlite_products_session():
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE product_categories (
+                    id VARCHAR(64) PRIMARY KEY NOT NULL,
+                    name VARCHAR(128) NOT NULL
+                )
+                """
+            )
+        )
+        conn.execute(text("INSERT INTO product_categories (id, name) VALUES ('cat-a', 'Categoria A')"))
         conn.execute(
             text(
                 """
@@ -166,3 +191,27 @@ def test_patch_product_price_inactive_status_rejected(products_client):
     r = products_client.patch("/products/p3/price", json={"amount_cents": 50})
     assert r.status_code == 422
     assert r.json()["detail"]["type"] == "PRODUCT_PRICE_STATUS_NOT_ALLOWED"
+
+
+def test_create_get_and_deactivate_product(products_client):
+    r = products_client.post(
+        "/products",
+        json={
+            "id": "SKU-NEW-001",
+            "name": "Produto locker demo",
+            "amount_cents": 4590,
+            "category_id": "cat-a",
+            "status": "DRAFT",
+        },
+    )
+    assert r.status_code == 201
+    assert r.json()["id"] == "SKU-NEW-001"
+    assert r.json()["amount_cents"] == 4590
+
+    r2 = products_client.get("/products/SKU-NEW-001")
+    assert r2.status_code == 200
+    assert r2.json()["name"] == "Produto locker demo"
+
+    r3 = products_client.delete("/products/SKU-NEW-001")
+    assert r3.status_code == 200
+    assert r3.json()["status"] == "INACTIVE"

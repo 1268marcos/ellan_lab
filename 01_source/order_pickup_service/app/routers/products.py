@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -19,6 +20,9 @@ from app.schemas.products import (
     ProductBarcodeListOut,
     ProductBarcodeOut,
     ProductBarcodeUpdateIn,
+    ProductCreateIn,
+    ProductDeleteOut,
+    ProductDetailOut,
     ProductListItemOut,
     ProductListOut,
     ProductPricePatchIn,
@@ -31,6 +35,7 @@ from app.schemas.products import (
     ProductStatusHistoryListOut,
     ProductStatusOut,
     ProductStatusTransitionIn,
+    ProductUpdateIn,
 )
 
 router = APIRouter(
@@ -103,6 +108,110 @@ def _parse_iso_datetime_utc_optional(raw_value: str | None, *, field_name: str) 
 
 def _ensure_product_exists(db: Session, product_id: str) -> None:
     _load_product_status(db, product_id=product_id)
+
+
+def _ensure_category_exists(db: Session, category_id: str | None) -> None:
+    if not category_id:
+        return
+    cid = str(category_id).strip()
+    if not cid:
+        return
+    row = db.execute(text("SELECT id FROM product_categories WHERE id = :id LIMIT 1"), {"id": cid}).first()
+    if not row:
+        raise HTTPException(
+            status_code=422,
+            detail={"type": "CATEGORY_NOT_FOUND", "message": "category_id inválido.", "category_id": cid},
+        )
+
+
+def _normalize_product_status(raw: str | None) -> str:
+    status = str(raw or "DRAFT").strip().upper()
+    if status not in _PRODUCT_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "type": "INVALID_PRODUCT_STATUS",
+                "message": "Status inválido para produto.",
+                "allowed_statuses": sorted(_PRODUCT_STATUSES),
+            },
+        )
+    return status
+
+
+def _parse_metadata_json(raw: object) -> dict:
+    if raw is None:
+        return {}
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}
+
+
+def _row_to_detail(row: dict) -> ProductDetailOut:
+    meta = _parse_metadata_json(row.get("metadata_json"))
+    return ProductDetailOut(
+        id=str(row.get("id") or ""),
+        name=str(row.get("name") or ""),
+        description=(str(row["description"]) if row.get("description") is not None else None),
+        amount_cents=int(row.get("amount_cents") or 0),
+        currency=str(row.get("currency") or "BRL"),
+        category_id=(str(row["category_id"]) if row.get("category_id") is not None else None),
+        width_mm=(int(row["width_mm"]) if row.get("width_mm") is not None else None),
+        height_mm=(int(row["height_mm"]) if row.get("height_mm") is not None else None),
+        depth_mm=(int(row["depth_mm"]) if row.get("depth_mm") is not None else None),
+        weight_g=(int(row["weight_g"]) if row.get("weight_g") is not None else None),
+        status=str(row.get("status") or "DRAFT"),
+        is_active=bool(row.get("is_active")),
+        requires_age_verification=bool(row.get("requires_age_verification")),
+        requires_id_check=bool(row.get("requires_id_check")),
+        requires_signature=bool(row.get("requires_signature")),
+        is_hazardous=bool(row.get("is_hazardous")),
+        is_fragile=bool(row.get("is_fragile")),
+        is_virtual=bool(row.get("is_virtual")),
+        metadata_json=meta,
+        created_at=_to_iso_utc(row.get("created_at")),
+        updated_at=_to_iso_utc(row.get("updated_at")),
+    )
+
+
+def _fetch_product_detail(db: Session, product_id: str) -> ProductDetailOut:
+    row = db.execute(
+        text(
+            """
+            SELECT
+                id, name, description, amount_cents, currency, category_id,
+                width_mm, height_mm, depth_mm, weight_g,
+                COALESCE(status, 'DRAFT') AS status,
+                COALESCE(is_active, FALSE) AS is_active,
+                COALESCE(requires_age_verification, FALSE) AS requires_age_verification,
+                COALESCE(requires_id_check, FALSE) AS requires_id_check,
+                COALESCE(requires_signature, FALSE) AS requires_signature,
+                COALESCE(is_hazardous, FALSE) AS is_hazardous,
+                COALESCE(is_fragile, FALSE) AS is_fragile,
+                COALESCE(is_virtual, FALSE) AS is_virtual,
+                COALESCE(metadata_json, '{}') AS metadata_json,
+                created_at, updated_at
+            FROM products
+            WHERE id = :id
+            """
+        ),
+        {"id": product_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "type": "PRODUCT_NOT_FOUND",
+                "message": "Produto não encontrado.",
+                "product_id": product_id,
+            },
+        )
+    return _row_to_detail(dict(row))
 
 
 def _record_product_price_audit(
@@ -238,6 +347,171 @@ def list_products(
         for row in rows
     ]
     return ProductListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
+
+
+@router.post("", response_model=ProductDetailOut, status_code=201)
+def create_product_ops(payload: ProductCreateIn, db: Session = Depends(get_db)):
+    product_id = str(payload.id).strip()
+    exists = db.execute(text("SELECT 1 FROM products WHERE id = :id LIMIT 1"), {"id": product_id}).scalar()
+    if exists:
+        raise HTTPException(
+            status_code=409,
+            detail={"type": "PRODUCT_EXISTS", "message": f"Produto {product_id} já existe.", "product_id": product_id},
+        )
+    _ensure_category_exists(db, payload.category_id)
+    status = _normalize_product_status(payload.status)
+    meta = payload.metadata_json if isinstance(payload.metadata_json, dict) else {}
+    meta_json = json.dumps(meta)
+    db.execute(
+        text(
+            """
+            INSERT INTO products (
+                id, name, description, amount_cents, currency, category_id,
+                width_mm, height_mm, depth_mm, weight_g,
+                is_active, requires_age_verification, requires_id_check, requires_signature,
+                is_hazardous, is_fragile, is_virtual, metadata_json, status,
+                created_at, updated_at
+            ) VALUES (
+                :id, :name, :description, :amount_cents, :currency, :category_id,
+                :width_mm, :height_mm, :depth_mm, :weight_g,
+                :is_active, :requires_age_verification, :requires_id_check, :requires_signature,
+                :is_hazardous, :is_fragile, :is_virtual, :metadata_json, :status,
+                CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            )
+            """
+        ),
+        {
+            "id": product_id,
+            "name": str(payload.name).strip(),
+            "description": (payload.description.strip() if payload.description else None),
+            "amount_cents": int(payload.amount_cents),
+            "currency": str(payload.currency or "BRL").strip()[:8] or "BRL",
+            "category_id": (str(payload.category_id).strip() if payload.category_id else None),
+            "width_mm": payload.width_mm,
+            "height_mm": payload.height_mm,
+            "depth_mm": payload.depth_mm,
+            "weight_g": payload.weight_g,
+            "is_active": bool(payload.is_active),
+            "requires_age_verification": bool(payload.requires_age_verification),
+            "requires_id_check": bool(payload.requires_id_check),
+            "requires_signature": bool(payload.requires_signature),
+            "is_hazardous": bool(payload.is_hazardous),
+            "is_fragile": bool(payload.is_fragile),
+            "is_virtual": bool(payload.is_virtual),
+            "metadata_json": meta_json,
+            "status": status,
+        },
+    )
+    db.commit()
+    return _fetch_product_detail(db, product_id)
+
+
+@router.get("/{product_id}", response_model=ProductDetailOut)
+def get_product_ops(product_id: str, db: Session = Depends(get_db)):
+    return _fetch_product_detail(db, product_id)
+
+
+@router.patch("/{product_id}", response_model=ProductDetailOut)
+def update_product_ops(product_id: str, payload: ProductUpdateIn, db: Session = Depends(get_db)):
+    row = db.execute(text("SELECT * FROM products WHERE id = :id"), {"id": product_id}).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PRODUCT_NOT_FOUND", "message": "Produto não encontrado.", "product_id": product_id},
+        )
+    if payload.category_id is not None:
+        _ensure_category_exists(db, payload.category_id)
+
+    name = str(payload.name).strip() if payload.name is not None else row.get("name")
+    description = row.get("description") if payload.description is None else payload.description
+    amount_cents = int(payload.amount_cents) if payload.amount_cents is not None else int(row.get("amount_cents") or 0)
+    currency = str(payload.currency or row.get("currency") or "BRL").strip()[:8] or "BRL"
+    category_id = row.get("category_id") if payload.category_id is None else (str(payload.category_id).strip() if payload.category_id else None)
+    width_mm = row.get("width_mm") if payload.width_mm is None else payload.width_mm
+    height_mm = row.get("height_mm") if payload.height_mm is None else payload.height_mm
+    depth_mm = row.get("depth_mm") if payload.depth_mm is None else payload.depth_mm
+    weight_g = row.get("weight_g") if payload.weight_g is None else payload.weight_g
+    is_active = row.get("is_active") if payload.is_active is None else payload.is_active
+    requires_age = row.get("requires_age_verification") if payload.requires_age_verification is None else payload.requires_age_verification
+    requires_id = row.get("requires_id_check") if payload.requires_id_check is None else payload.requires_id_check
+    requires_sig = row.get("requires_signature") if payload.requires_signature is None else payload.requires_signature
+    is_hazardous = row.get("is_hazardous") if payload.is_hazardous is None else payload.is_hazardous
+    is_fragile = row.get("is_fragile") if payload.is_fragile is None else payload.is_fragile
+    is_virtual = row.get("is_virtual") if payload.is_virtual is None else payload.is_virtual
+    meta = (
+        _parse_metadata_json(row.get("metadata_json"))
+        if payload.metadata_json is None
+        else (payload.metadata_json if isinstance(payload.metadata_json, dict) else {})
+    )
+    meta_json = json.dumps(meta)
+
+    db.execute(
+        text(
+            """
+            UPDATE products SET
+                name = :name,
+                description = :description,
+                amount_cents = :amount_cents,
+                currency = :currency,
+                category_id = :category_id,
+                width_mm = :width_mm,
+                height_mm = :height_mm,
+                depth_mm = :depth_mm,
+                weight_g = :weight_g,
+                is_active = :is_active,
+                requires_age_verification = :requires_age_verification,
+                requires_id_check = :requires_id_check,
+                requires_signature = :requires_signature,
+                is_hazardous = :is_hazardous,
+                is_fragile = :is_fragile,
+                is_virtual = :is_virtual,
+                metadata_json = :metadata_json,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+            """
+        ),
+        {
+            "id": product_id,
+            "name": str(name).strip(),
+            "description": description,
+            "amount_cents": amount_cents,
+            "currency": currency,
+            "category_id": category_id,
+            "width_mm": width_mm,
+            "height_mm": height_mm,
+            "depth_mm": depth_mm,
+            "weight_g": weight_g,
+            "is_active": bool(is_active),
+            "requires_age_verification": bool(requires_age),
+            "requires_id_check": bool(requires_id),
+            "requires_signature": bool(requires_sig),
+            "is_hazardous": bool(is_hazardous),
+            "is_fragile": bool(is_fragile),
+            "is_virtual": bool(is_virtual),
+            "metadata_json": meta_json,
+        },
+    )
+    db.commit()
+    return _fetch_product_detail(db, product_id)
+
+
+@router.delete("/{product_id}", response_model=ProductDeleteOut)
+def deactivate_product_ops(product_id: str, db: Session = Depends(get_db)):
+    _load_product_status(db, product_id=product_id)
+    db.execute(
+        text(
+            """
+            UPDATE products
+            SET status = 'INACTIVE',
+                is_active = FALSE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+            """
+        ),
+        {"id": product_id},
+    )
+    db.commit()
+    return ProductDeleteOut(ok=True, product_id=product_id, status="INACTIVE")
 
 
 @router.patch("/{product_id}/price", response_model=ProductPricePatchOut)

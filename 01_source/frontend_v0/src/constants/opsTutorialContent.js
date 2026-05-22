@@ -290,6 +290,65 @@ export const OPS_TUTORIALS_BY_PATH = {
       { title: "3) Dicas rápidas", items: ["Cruze com pedidos pendentes para priorização real de impacto."] },
     ],
   },
+  "/ops/products/ecosystem": {
+    title: "Tutorial rápido - ops/products/ecosystem",
+    subtitle: "Hub do ecossistema mundial: players, elegibilidade e integrações.",
+    sections: [
+      {
+        title: "1) Objetivo da tela",
+        items: [
+          "Visão única de ~90 players (locker, marketplace, food, PUDO, agregadores).",
+          "Gerir regras categoria×player e estado de ligação com parceiros B2B.",
+        ],
+      },
+      {
+        title: "2) Fluxo recomendado",
+        items: [
+          "Visão geral: confira KPIs e cobertura por segmento.",
+          "Players: explore rede e integrações (ECOMMERCE_PARTNER, LOGISTICS_PARTNER).",
+          "Elegibilidade: defina PREFERRED para categorias locker.",
+          "Ações: Seed mundial → Sync parceiros em ambiente de teste.",
+        ],
+      },
+      {
+        title: "3) Ligação com outras telas",
+        items: [
+          "PIM profissional: taxonomias e listings por SKU.",
+          "Catálogo / categorias: IDs usados nas regras de elegibilidade.",
+        ],
+      },
+    ],
+  },
+  "/ops/products/professional": {
+    title: "Tutorial rápido - ops/products/professional",
+    subtitle: "Taxonomias globais, listings multi-canal e atributos PIM.",
+    sections: [
+      {
+        title: "1) Objetivo da tela",
+        items: [
+          "Alinhar categorias locais a taxonomias de marketplaces e carriers (GS1, ML, Amazon, InPost…).",
+          "Publicar SKUs em canais externos com status e preço por listing.",
+        ],
+      },
+      {
+        title: "2) Fluxo recomendado de uso",
+        items: [
+          "Confira KPIs e use Seed demo mundial em ambiente de teste.",
+          "Aba Taxonomias: vincule category_id ao código externo da rede.",
+          "Aba Canais: crie listing após cadastrar SKU no catálogo central.",
+          "Aba Atributos: valide definições obrigatórias por categoria antes de go-live.",
+        ],
+      },
+      {
+        title: "3) Dicas rápidas",
+        items: [
+          "Use a busca para filtrar por SKU, canal ou scheme.",
+          "Status ACTIVE em verde (badge); DRAFT em amarelo.",
+          "Deep link: ?tab=channels para abrir direto em listings.",
+        ],
+      },
+    ],
+  },
   "/ops/integration/outbox-replay": {
     title: "Tutorial rápido - ops/integration/outbox-replay",
     subtitle: "Replay operacional de eventos de integração.",
