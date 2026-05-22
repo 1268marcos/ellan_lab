@@ -82,6 +82,7 @@ const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
+const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -500,6 +501,38 @@ function TopNav() {
       isNew: true,
     },
     {
+      to: "/ops/marketplace/admin",
+      label: "Marketplace — visao geral",
+      aria: "Dashboard KPIs, sellers, catalogo, comissoes, repasses, KYC e disputas",
+      group: "Marketplace OPS",
+      opsSubGroup: "Visao geral",
+      isNew: true,
+    },
+    {
+      to: "/ops/marketplace/admin?tab=settlements",
+      label: "Marketplace — repasses",
+      aria: "Lotes de liquidacao ao seller e contas PIX",
+      group: "Marketplace OPS",
+      opsSubGroup: "Financeiro",
+      isNew: true,
+    },
+    {
+      to: "/ops/marketplace/admin?tab=kyc",
+      label: "Marketplace — KYC / compliance",
+      aria: "Documentos de onboarding e aprovacao de sellers",
+      group: "Marketplace OPS",
+      opsSubGroup: "Compliance",
+      isNew: true,
+    },
+    {
+      to: "/ops/marketplace/admin?tab=channels",
+      label: "Marketplace — canais e redes locker",
+      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e vinculos seller",
+      group: "Marketplace OPS",
+      opsSubGroup: "Canais",
+      isNew: true,
+    },
+    {
       to: "/ops/order/executive-summary",
       label: "ops /order/executive-summary",
       aria: "Resumo executivo pickup (order lifecycle)",
@@ -693,6 +726,7 @@ function TopNav() {
     "Visão Geral",
     "Dashboards",
     "Cadastros OPS",
+    "Marketplace OPS",
     "Order / Pickup",
     "Lockers",
     "Inteligência",
@@ -2006,6 +2040,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsOrderPickupAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/marketplace/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMarketplaceAdminPage />)}
                 </OpsRoute>
               }
             />

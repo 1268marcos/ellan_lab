@@ -32,6 +32,17 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'marketplace',
+    icon: '🏪',
+    label: 'Marketplace OPS',
+    items: [
+      { to: '/ops/marketplace/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/marketplace/admin?tab=settlements', label: 'Repasses e liquidação' },
+      { to: '/ops/marketplace/admin?tab=kyc', label: 'KYC / compliance' },
+      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
+    ],
+  },
+  {
     key: 'inteligencia',
     icon: '🧠',
     label: 'Inteligência',
@@ -57,6 +68,7 @@ export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
     cadastros: true,
+    marketplace: true,
     inteligencia: true,
     fiscal: true,
   })

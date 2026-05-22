@@ -16,6 +16,7 @@ from app.routers import (
     logistics_partners,
     orders,
     partner_integrations,
+    pickup_lifecycle,
     pickups,
     seed,
 )
@@ -53,6 +54,7 @@ app.include_router(pickups.router, prefix=API_PREFIX)
 app.include_router(credits.router, prefix=API_PREFIX)
 app.include_router(integration_outbox.router, prefix=API_PREFIX)
 app.include_router(fulfillment.router, prefix=API_PREFIX)
+app.include_router(pickup_lifecycle.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 
 

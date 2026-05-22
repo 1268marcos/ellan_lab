@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.order_ops import CreditListOut
+from app.schemas.order_ops import CreditCreateIn, CreditListOut, CreditOut
 from app.services import order_ops_service
 
 router = APIRouter(prefix="/credits", tags=["credits"])
+
+
+@router.post("", response_model=CreditOut, status_code=status.HTTP_201_CREATED)
+def create_credit(body: CreditCreateIn, db: Session = Depends(get_db)) -> CreditOut:
+    return order_ops_service.create_credit(db, body)
 
 
 @router.get("", response_model=CreditListOut)

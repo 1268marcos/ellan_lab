@@ -7,10 +7,17 @@ import {
   buttonGhostStyle,
   buttonPrimaryStyle,
   cardStyle,
+  criticalBannerStyle,
   crossShortcutLinkStyle,
+  healthLocalFilterFieldStyle,
+  healthLocalFilterInputStyle,
+  healthLocalFilterRowStyle,
   mutedTextStyle,
   okBannerStyle,
+  opsSanityCardStyle,
   pageStyle,
+  summary24hHeaderStyle,
+  summary24hHintStyle,
   tabButtonStyle,
   tableStyle,
   tdStyle,
@@ -70,14 +77,6 @@ export default function OpsTenantsAdminPage() {
     [token],
   );
 
-  const loadTenants = useCallback(async () => {
-    const r = await fetch(`${API}/tenants`, { headers });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(parseError(j));
-    setTenants(j.tenants || []);
-    if (!selectedTenant && j.tenants?.length) setSelectedTenant(j.tenants[0].tenant_id);
-  }, [headers, selectedTenant]);
-
   const loadAssociations = useCallback(
     async (tenantId) => {
       if (!tenantId) {
@@ -105,27 +104,42 @@ export default function OpsTenantsAdminPage() {
     setErr("");
     setOk("");
     try {
-      const ec = await fetch(`${API}/ecommerce-partners`, { headers });
-      const ecJson = await ec.json().catch(() => ({}));
-      if (ec.ok) setEcPartners(ecJson.partners || []);
-      await loadTenants();
-      const tid = selectedTenant || "";
+      const [tRes, ecRes] = await Promise.all([
+        fetch(`${API}/tenants`, { headers }),
+        fetch(`${API}/ecommerce-partners`, { headers }),
+      ]);
+      const tJson = await tRes.json().catch(() => ({}));
+      const ecJson = await ecRes.json().catch(() => ({}));
+      if (!tRes.ok) throw new Error(parseError(tJson));
+      if (ecRes.ok) setEcPartners(ecJson.partners || []);
+      const list = tJson.tenants || [];
+      setTenants(list);
+      const tid = selectedTenant || list[0]?.tenant_id || "";
+      if (tid && tid !== selectedTenant) setSelectedTenant(tid);
       if (tid) await loadAssociations(tid);
+      else {
+        setDomains([]);
+        setLinks([]);
+      }
     } catch (e) {
       setErr(normalizeNetworkError(e, API));
+      setTenants([]);
+      setDomains([]);
+      setLinks([]);
     } finally {
       setLoading(false);
     }
-  }, [token, headers, loadTenants, loadAssociations, selectedTenant]);
+  }, [token, headers, loadAssociations, selectedTenant]);
 
   const onSeed = async () => {
     if (!token || !canMutate) return;
     setLoading(true);
+    setErr("");
     try {
       const r = await fetch(`${API}/seed`, { method: "POST", headers });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(parseError(j));
-      setOk("Seed aplicado.");
+      setOk("Seed aplicado (tenant demo, dominio e vinculo).");
       await load();
     } catch (e) {
       setErr(normalizeNetworkError(e, `${API}/seed`));
@@ -136,8 +150,9 @@ export default function OpsTenantsAdminPage() {
 
   const onCreateTenant = async (e) => {
     e.preventDefault();
-    if (!canMutate) return;
+    if (!token || !canMutate) return;
     setLoading(true);
+    setErr("");
     try {
       const r = await fetch(`${API}/tenants`, {
         method: "POST",
@@ -150,15 +165,16 @@ export default function OpsTenantsAdminPage() {
       setSelectedTenant(j.tenant_id);
       await load();
     } catch (e) {
-      setErr(normalizeNetworkError(e, API));
+      setErr(normalizeNetworkError(e, `${API}/tenants`));
     } finally {
       setLoading(false);
     }
   };
 
   const onAddDomain = async () => {
-    if (!selectedTenant || !domainInput) return;
+    if (!token || !canMutate || !selectedTenant || !domainInput) return;
     setLoading(true);
+    setErr("");
     try {
       const r = await fetch(`${API}/tenants/${encodeURIComponent(selectedTenant)}/domains`, {
         method: "POST",
@@ -171,15 +187,16 @@ export default function OpsTenantsAdminPage() {
       setDomainInput("");
       await loadAssociations(selectedTenant);
     } catch (e) {
-      setErr(normalizeNetworkError(e, API));
+      setErr(normalizeNetworkError(e, `${API}/tenants/.../domains`));
     } finally {
       setLoading(false);
     }
   };
 
   const onAddLink = async () => {
-    if (!selectedTenant || !linkPartnerId) return;
+    if (!token || !canMutate || !selectedTenant || !linkPartnerId) return;
     setLoading(true);
+    setErr("");
     try {
       const r = await fetch(`${API}/tenants/${encodeURIComponent(selectedTenant)}/partner-links`, {
         method: "POST",
@@ -192,10 +209,10 @@ export default function OpsTenantsAdminPage() {
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(parseError(j));
-      setOk("Vinculo parceiro criado.");
+      setOk("Vinculo com parceiro criado.");
       await loadAssociations(selectedTenant);
     } catch (e) {
-      setErr(normalizeNetworkError(e, API));
+      setErr(normalizeNetworkError(e, `${API}/tenants/.../partner-links`));
     } finally {
       setLoading(false);
     }
@@ -203,7 +220,13 @@ export default function OpsTenantsAdminPage() {
 
   const onTenantChange = async (tid) => {
     setSelectedTenant(tid);
+    if (!tid) {
+      setDomains([]);
+      setLinks([]);
+      return;
+    }
     setLoading(true);
+    setErr("");
     try {
       await loadAssociations(tid);
     } catch (e) {
@@ -213,148 +236,289 @@ export default function OpsTenantsAdminPage() {
     }
   };
 
+  const tableRows =
+    tab === "tenants"
+      ? tenants.map((t) => ({
+          key: `t-${t.tenant_id}`,
+          tipo: "tenant",
+          id: t.tenant_id,
+          detalhe: `${t.razao_social} · ${t.cnpj} · regime ${t.regime || "—"} · ${t.is_active ? "ativo" : "inativo"}`,
+        }))
+      : tab === "domains"
+        ? domains.map((d) => ({
+            key: `d-${d.id}`,
+            tipo: "domain",
+            id: d.id,
+            detalhe: `${d.domain} · ${d.verified ? "verificado" : "pendente"}`,
+          }))
+        : links.map((l) => ({
+            key: `l-${l.id}`,
+            tipo: l.partner_type,
+            id: l.partner_id,
+            detalhe: `${l.is_default ? "default" : "secundario"} · tenant ${selectedTenant}`,
+          }));
+
+  const listCount = tableRows.length;
+
+  const listTitle =
+    tab === "tenants"
+      ? `Tenants fiscais (${tenants.length})`
+      : tab === "domains"
+        ? `Dominios white-label (${domains.length}) · tenant ${selectedTenant || "—"}`
+        : `Vinculos parceiro (${links.length}) · tenant ${selectedTenant || "—"}`;
+
   return (
-    <div style={pageStyle}>
-      <OpsPageTitleHeader
-        title="OPS / Tenants"
-        subtitle="tenant_fiscal_config, custom_domains e vinculos com parceiros."
-        version={PAGE_VERSION}
-      />
-      <div style={toolbarStyle}>
-        <button type="button" style={buttonGhostStyle} disabled={loading || !canMutate} onClick={() => void onSeed()}>
-          Seed
-        </button>
-        <button type="button" style={buttonPrimaryStyle} disabled={loading} onClick={() => void load()}>
-          Atualizar
-        </button>
-        <Link to="/ops/partners/admin" style={crossShortcutLinkStyle}>
-          Parceiros
-        </Link>
-        <Link to="/ops/payment-gateway/admin" style={crossShortcutLinkStyle}>
-          Payment Gateway
-        </Link>
-      </div>
-      {err ? <p style={{ color: "#b91c1c" }}>{err}</p> : null}
-      {ok ? <p style={okBannerStyle}>{ok}</p> : null}
-      <p style={mutedTextStyle}>{loading ? "Processando…" : null}</p>
+    <div style={pageStyle} data-testid="ops-tenants-admin-page">
+      <section style={cardStyle}>
+        <div style={{ display: "flex", justifyContent: "flex-end", flexWrap: "wrap", marginBottom: 10, gap: 8 }}>
+          <Link to="/ops/partners/admin" style={crossShortcutLinkStyle}>
+            Parceiros
+          </Link>
+          <Link to="/ops/access/user-roles" style={crossShortcutLinkStyle}>
+            user_roles
+          </Link>
+          <Link to="/ops/payment-gateway/admin" style={crossShortcutLinkStyle}>
+            Payment Gateway
+          </Link>
+          <Link to="/ops/order-pickup/admin" style={crossShortcutLinkStyle}>
+            Order Pickup
+          </Link>
+        </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        {["tenants", "domains", "links"].map((t) => (
-          <button key={t} type="button" style={tabButtonStyle(tab === t)} onClick={() => setTab(t)}>
-            {t === "tenants" ? "Tenants" : t === "domains" ? "Dominios" : "Parceiros"}
-          </button>
-        ))}
-      </div>
+        <OpsPageTitleHeader
+          title="OPS — Tenants (white label)"
+          versionLabel={PAGE_VERSION}
+          versionTo="/ops/auth/policy/versioning"
+          containerStyle={{ marginBottom: 0 }}
+          titleStyle={{ margin: 0 }}
+        />
+        <p style={mutedTextStyle}>
+          tenant_fiscal_config, custom_domains e tenant_partner_links — <code style={{ color: "#e2e8f0" }}>{API}</code> — role{" "}
+          <code style={{ color: "#e2e8f0" }}>admin_operacao</code> para escrita.
+        </p>
 
-      <div style={cardStyle}>
-        <select value={selectedTenant} onChange={(e) => void onTenantChange(e.target.value)}>
-          <option value="">Tenant</option>
-          {tenants.map((t) => (
-            <option key={t.tenant_id} value={t.tenant_id}>
-              {t.tenant_id} — {t.razao_social}
-            </option>
-          ))}
-        </select>
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Tenant em foco</h3>
+          </div>
+          <div style={healthLocalFilterRowStyle}>
+            <label style={healthLocalFilterFieldStyle}>
+              tenant_id
+              <select
+                value={selectedTenant}
+                onChange={(e) => void onTenantChange(e.target.value)}
+                style={healthLocalFilterInputStyle}
+              >
+                <option value="">— selecione —</option>
+                {tenants.map((t) => (
+                  <option key={t.tenant_id} value={t.tenant_id}>
+                    {t.tenant_id} — {t.razao_social}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
 
-        {tab === "tenants" ? (
-          <form onSubmit={onCreateTenant} style={{ marginTop: 12, display: "grid", gap: 8 }}>
-            <input
-              placeholder="tenant_id"
-              value={tenantForm.tenant_id}
-              onChange={(e) => setTenantForm((f) => ({ ...f, tenant_id: e.target.value }))}
-              required
-            />
-            <input
-              placeholder="CNPJ"
-              value={tenantForm.cnpj}
-              onChange={(e) => setTenantForm((f) => ({ ...f, cnpj: e.target.value }))}
-              required
-            />
-            <input
-              placeholder="Razao social"
-              value={tenantForm.razao_social}
-              onChange={(e) => setTenantForm((f) => ({ ...f, razao_social: e.target.value }))}
-              required
-            />
-            <button type="submit" disabled={!canMutate}>
-              Criar tenant
+        <section style={opsSanityCardStyle}>
+          <div style={summary24hHeaderStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Área de cadastro</h3>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button type="button" style={tabButtonStyle(tab === "tenants")} onClick={() => setTab("tenants")}>
+                Tenants
+              </button>
+              <button type="button" style={tabButtonStyle(tab === "domains")} onClick={() => setTab("domains")}>
+                Domínios
+              </button>
+              <button type="button" style={tabButtonStyle(tab === "links")} onClick={() => setTab("links")}>
+                Vínculos
+              </button>
+            </div>
+          </div>
+
+          {tab === "tenants" ? (
+            <div style={healthLocalFilterRowStyle}>
+              <label style={healthLocalFilterFieldStyle}>
+                tenant_id
+                <input
+                  value={tenantForm.tenant_id}
+                  onChange={(e) => setTenantForm((f) => ({ ...f, tenant_id: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                  placeholder="tenant-demo"
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                cnpj
+                <input
+                  value={tenantForm.cnpj}
+                  onChange={(e) => setTenantForm((f) => ({ ...f, cnpj: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                razao_social
+                <input
+                  value={tenantForm.razao_social}
+                  onChange={(e) => setTenantForm((f) => ({ ...f, razao_social: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                regime
+                <select
+                  value={tenantForm.regime}
+                  onChange={(e) => setTenantForm((f) => ({ ...f, regime: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                >
+                  <option value="SIMPLES">SIMPLES</option>
+                  <option value="NORMAL">NORMAL</option>
+                </select>
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                crt
+                <input
+                  value={tenantForm.crt}
+                  onChange={(e) => setTenantForm((f) => ({ ...f, crt: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {tab === "domains" ? (
+            <div style={healthLocalFilterRowStyle}>
+              <label style={healthLocalFilterFieldStyle}>
+                domain
+                <input
+                  value={domainInput}
+                  onChange={(e) => setDomainInput(e.target.value)}
+                  style={healthLocalFilterInputStyle}
+                  placeholder="app.parceiro.example"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {tab === "links" ? (
+            <div style={healthLocalFilterRowStyle}>
+              <label style={healthLocalFilterFieldStyle}>
+                partner_type
+                <select value={linkType} onChange={(e) => setLinkType(e.target.value)} style={healthLocalFilterInputStyle}>
+                  <option value="ECOMMERCE">ECOMMERCE</option>
+                  <option value="LOGISTICS">LOGISTICS</option>
+                </select>
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                partner_id
+                <select value={linkPartnerId} onChange={(e) => setLinkPartnerId(e.target.value)} style={healthLocalFilterInputStyle}>
+                  <option value="">— selecione —</option>
+                  {ecPartners.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          {tab === "domains" && !selectedTenant ? (
+            <p style={summary24hHintStyle}>Selecione um tenant para gerenciar dominios.</p>
+          ) : null}
+          {tab === "links" && !selectedTenant ? (
+            <p style={summary24hHintStyle}>Selecione um tenant para vincular parceiros.</p>
+          ) : null}
+
+          <div style={toolbarStyle}>
+            <button type="button" style={buttonGhostStyle} onClick={() => void load()} disabled={loading || !token}>
+              {loading ? "Atualizando..." : "Listar"}
             </button>
-          </form>
-        ) : null}
+            {canMutate ? (
+              <>
+                <button type="button" style={buttonGhostStyle} onClick={() => void onSeed()} disabled={loading}>
+                  Seed
+                </button>
+                {tab === "tenants" ? (
+                  <button
+                    type="button"
+                    style={buttonPrimaryStyle}
+                    onClick={(e) => void onCreateTenant(e)}
+                    disabled={
+                      loading || !tenantForm.tenant_id || !tenantForm.cnpj || !tenantForm.razao_social
+                    }
+                  >
+                    Criar tenant
+                  </button>
+                ) : null}
+                {tab === "domains" ? (
+                  <button
+                    type="button"
+                    style={buttonPrimaryStyle}
+                    onClick={() => void onAddDomain()}
+                    disabled={loading || !selectedTenant || !domainInput}
+                  >
+                    Adicionar dominio
+                  </button>
+                ) : null}
+                {tab === "links" ? (
+                  <button
+                    type="button"
+                    style={buttonPrimaryStyle}
+                    onClick={() => void onAddLink()}
+                    disabled={loading || !selectedTenant || !linkPartnerId}
+                  >
+                    Vincular parceiro
+                  </button>
+                ) : null}
+              </>
+            ) : null}
+          </div>
 
-        {tab === "domains" ? (
-          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              placeholder="dominio white-label"
-              value={domainInput}
-              onChange={(e) => setDomainInput(e.target.value)}
-            />
-            <button type="button" disabled={!canMutate || !selectedTenant} onClick={() => void onAddDomain()}>
-              Adicionar dominio
-            </button>
+        </section>
+
+        {err ? (
+          <div style={criticalBannerStyle} role="alert">
+            {err}
           </div>
         ) : null}
+        {ok ? <p style={okBannerStyle}>{ok}</p> : null}
+        {!token ? <p style={summary24hHintStyle}>Faca login com perfil admin_operacao.</p> : null}
+        {token && !canMutate ? <p style={summary24hHintStyle}>Escrita exige admin_operacao.</p> : null}
 
-        {tab === "links" ? (
-          <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <select value={linkType} onChange={(e) => setLinkType(e.target.value)}>
-              <option value="ECOMMERCE">ECOMMERCE</option>
-              <option value="LOGISTICS">LOGISTICS</option>
-            </select>
-            <select value={linkPartnerId} onChange={(e) => setLinkPartnerId(e.target.value)}>
-              <option value="">Parceiro</option>
-              {ecPartners.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code}
-                </option>
-              ))}
-            </select>
-            <button type="button" disabled={!canMutate || !selectedTenant} onClick={() => void onAddLink()}>
-              Vincular parceiro
-            </button>
-          </div>
+        {listCount > 0 ? (
+          <section style={opsSanityCardStyle}>
+            <div style={summary24hHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: 14 }}>{listTitle}</h3>
+            </div>
+            <div style={{ overflowX: "auto" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["tipo", "id", "detalhe"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((row) => (
+                    <tr key={row.key}>
+                      <td style={tdStyle}>{row.tipo}</td>
+                      <td style={tdStyle}>
+                        <code>{row.id}</code>
+                      </td>
+                      <td style={tdStyle}>{row.detalhe}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : token && !loading ? (
+          <p style={summary24hHintStyle}>Nenhum registro. Use Listar ou Seed (admin_operacao).</p>
         ) : null}
-      </div>
-
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>Tipo</th>
-            <th style={thStyle}>ID</th>
-            <th style={thStyle}>Detalhe</th>
-          </tr>
-        </thead>
-        <tbody>
-          {tab === "tenants" &&
-            tenants.map((t) => (
-              <tr key={t.tenant_id}>
-                <td style={tdStyle}>tenant</td>
-                <td style={tdStyle}>{t.tenant_id}</td>
-                <td style={tdStyle}>
-                  {t.razao_social} · {t.cnpj} · {t.is_active ? "ativo" : "inativo"}
-                </td>
-              </tr>
-            ))}
-          {tab === "domains" &&
-            domains.map((d) => (
-              <tr key={d.id}>
-                <td style={tdStyle}>domain</td>
-                <td style={tdStyle}>{d.id}</td>
-                <td style={tdStyle}>
-                  {d.domain} · {d.verified ? "verificado" : "pendente"}
-                </td>
-              </tr>
-            ))}
-          {tab === "links" &&
-            links.map((l) => (
-              <tr key={l.id}>
-                <td style={tdStyle}>{l.partner_type}</td>
-                <td style={tdStyle}>{l.partner_id}</td>
-                <td style={tdStyle}>{l.is_default ? "default" : ""}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+      </section>
     </div>
   );
 }

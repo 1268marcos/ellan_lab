@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.order_ops import FulfillmentListOut
+from app.schemas.order_ops import FulfillmentListOut, FulfillmentOut, FulfillmentUpdateIn
 from app.services import order_ops_service
 
 router = APIRouter(prefix="/fulfillment-tracking", tags=["fulfillment-tracking"])
@@ -22,3 +22,10 @@ def list_fulfillment(
         db, status=status, partner_id=partner_id, limit=limit, offset=offset
     )
     return FulfillmentListOut(items=items, total=total)
+
+
+@router.patch("/{tracking_id}", response_model=FulfillmentOut)
+def update_fulfillment(
+    tracking_id: str, body: FulfillmentUpdateIn, db: Session = Depends(get_db)
+) -> FulfillmentOut:
+    return order_ops_service.update_fulfillment(db, tracking_id, body)

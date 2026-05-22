@@ -18,3 +18,5 @@
 **Restrições:** Sem explicação, sem raciocínio, sem diff. Apenas código + comandos + resultado.
 
 
+PROMPT
+Codar o pedido em @docs/criar_paginas_order_pickup_service.md. Ter como referência @02_docker/complete_schema_20260521_c.sql 

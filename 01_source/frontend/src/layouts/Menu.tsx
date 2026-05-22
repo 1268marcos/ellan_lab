@@ -30,7 +30,25 @@ const groups: Group[] = [
       { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
       { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
       { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
-      { to: '/ops/order-pickup/admin', label: 'Order Pickup (pedidos)' },
+    ],
+  },
+  {
+    key: 'orderPickup',
+    icon: '📦',
+    label: 'Order Pickup OPS',
+    items: [
+      { to: '/ops/order-pickup/admin', label: 'Cadastro (pedidos / integração)' },
+    ],
+  },
+  {
+    key: 'marketplace',
+    icon: '🏪',
+    label: 'Marketplace OPS',
+    items: [
+      { to: '/ops/marketplace/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/marketplace/admin?tab=settlements', label: 'Repasses e liquidação' },
+      { to: '/ops/marketplace/admin?tab=kyc', label: 'KYC / compliance' },
+      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
     ],
   },
   {
@@ -94,6 +112,8 @@ export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
     cadastros: true,
+    orderPickup: true,
+    marketplace: true,
     lifecycle: false,
     intelligence: false,
     runtime: false,
@@ -125,6 +145,8 @@ export default function Menu() {
       if (profile === 'ops') {
         if (g.key === 'ops') return g
         if (g.key === 'cadastros') return g
+        if (g.key === 'orderPickup') return g
+        if (g.key === 'marketplace') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g
         if (g.key === 'intelligence') return { ...g, items: [] }

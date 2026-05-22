@@ -157,3 +157,66 @@ CREATE TABLE IF NOT EXISTS order_fulfillment_tracking (
 CREATE INDEX IF NOT EXISTS idx_opa_orders_partner ON orders (ecommerce_partner_id);
 CREATE INDEX IF NOT EXISTS idx_opa_pickups_order ON pickups (order_id);
 CREATE INDEX IF NOT EXISTS idx_opa_outbox_status ON partner_order_events_outbox (status);
+
+CREATE TABLE IF NOT EXISTS order_items (
+    id VARCHAR(36) PRIMARY KEY,
+    order_id VARCHAR(64) NOT NULL,
+    sku_id VARCHAR(255) NOT NULL,
+    sku_description VARCHAR(500),
+    quantity INTEGER DEFAULT 1 NOT NULL,
+    unit_amount_cents INTEGER NOT NULL,
+    total_amount_cents INTEGER NOT NULL,
+    item_status VARCHAR(32) DEFAULT 'PENDING' NOT NULL,
+    metadata_json TEXT DEFAULT '{}' NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pickup_events (
+    id VARCHAR(36) PRIMARY KEY,
+    pickup_id VARCHAR(64) NOT NULL,
+    version BIGINT DEFAULT 1 NOT NULL,
+    event_type VARCHAR(100) NOT NULL,
+    payload_json TEXT DEFAULT '{}' NOT NULL,
+    source VARCHAR(100) DEFAULT 'admin' NOT NULL,
+    occurred_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pickup_tokens (
+    id VARCHAR(36) PRIMARY KEY,
+    order_id VARCHAR(64) NOT NULL,
+    pickup_id VARCHAR(64),
+    token_hash VARCHAR(128),
+    expires_at TIMESTAMPTZ,
+    is_active BOOLEAN DEFAULT true NOT NULL,
+    manual_code VARCHAR(32),
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS pickup_attempts (
+    id VARCHAR(64) PRIMARY KEY,
+    order_id VARCHAR(64) NOT NULL,
+    gateway_id VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at_epoch BIGINT NOT NULL,
+    ok BOOLEAN DEFAULT false NOT NULL,
+    reason VARCHAR(255),
+    payload_json TEXT DEFAULT '{}' NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS domain_event_outbox (
+    id VARCHAR(36) PRIMARY KEY,
+    event_key VARCHAR(255) NOT NULL,
+    aggregate_type VARCHAR(100),
+    aggregate_id VARCHAR(100),
+    event_name VARCHAR(100),
+    event_version INTEGER DEFAULT 1,
+    status VARCHAR(50) DEFAULT 'PENDING' NOT NULL,
+    payload_json TEXT DEFAULT '{}' NOT NULL,
+    occurred_at TIMESTAMPTZ,
+    published_at TIMESTAMPTZ,
+    last_error TEXT,
+    retry_count INTEGER DEFAULT 0 NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now() NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now() NOT NULL
+);

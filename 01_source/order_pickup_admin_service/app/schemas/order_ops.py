@@ -161,3 +161,113 @@ class FulfillmentOut(BaseModel):
 class FulfillmentListOut(BaseModel):
     items: list[FulfillmentOut]
     total: int
+
+
+class FulfillmentUpdateIn(BaseModel):
+    status: Optional[str] = None
+    last_event_type: Optional[str] = None
+    last_outbox_status: Optional[str] = None
+
+
+class CreditCreateIn(BaseModel):
+    id: Optional[str] = None
+    order_id: str
+    user_id: str
+    type: str = "GOODWILL"
+    amount_cents: int = Field(gt=0)
+    currency: str = "BRL"
+    status: str = "AVAILABLE"
+
+
+class OrderItemOut(BaseModel):
+    id: str
+    order_id: str
+    sku_id: str
+    sku_description: Optional[str] = None
+    quantity: int
+    unit_amount_cents: int
+    total_amount_cents: int
+    item_status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OrderItemListOut(BaseModel):
+    items: list[OrderItemOut]
+    total: int
+
+
+class PickupEventOut(BaseModel):
+    id: str
+    pickup_id: str
+    version: int
+    event_type: str
+    source: str
+    occurred_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PickupEventListOut(BaseModel):
+    items: list[PickupEventOut]
+    total: int
+
+
+class PickupTokenOut(BaseModel):
+    id: str
+    order_id: str
+    pickup_id: Optional[str] = None
+    token_hash: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    is_active: bool
+    manual_code: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PickupTokenListOut(BaseModel):
+    items: list[PickupTokenOut]
+    total: int
+
+
+class PickupAttemptOut(BaseModel):
+    id: str
+    order_id: str
+    gateway_id: str
+    created_at_epoch: int
+    ok: bool
+    reason: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class PickupAttemptListOut(BaseModel):
+    items: list[PickupAttemptOut]
+    total: int
+
+
+class DomainOutboxOut(BaseModel):
+    id: str
+    event_key: str
+    aggregate_type: Optional[str] = None
+    aggregate_id: Optional[str] = None
+    event_name: Optional[str] = None
+    status: str
+    retry_count: int
+    occurred_at: Optional[datetime] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class DomainOutboxListOut(BaseModel):
+    items: list[DomainOutboxOut]
+    total: int
+
+
+class DomainOutboxReplayOut(BaseModel):
+    ok: bool
+    replayed: bool
+    item: DomainOutboxOut

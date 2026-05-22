@@ -9,20 +9,32 @@ from sqlalchemy.orm import Session
 
 from app.models.order_ops import (
     CreditRecord,
+    DomainEventOutboxRecord,
     OrderFulfillmentTracking,
+    OrderItemRecord,
     OrderRecord,
     PartnerOrderEventsOutbox,
+    PickupAttemptRecord,
+    PickupEventRecord,
     PickupRecord,
+    PickupTokenRecord,
 )
 from app.schemas.order_ops import (
+    CreditCreateIn,
     CreditOut,
+    DomainOutboxOut,
     FulfillmentOut,
+    FulfillmentUpdateIn,
     OrderCreateIn,
+    OrderItemOut,
     OrderOut,
     OrderUpdateIn,
     OutboxOut,
+    PickupAttemptOut,
     PickupCreateIn,
+    PickupEventOut,
     PickupOut,
+    PickupTokenOut,
     PickupUpdateIn,
 )
 from app.services.crypto_util import new_id
@@ -227,9 +239,135 @@ def list_fulfillment(
     return [FulfillmentOut.model_validate(r) for r in rows], total
 
 
+def update_fulfillment(db: Session, tracking_id: str, body: FulfillmentUpdateIn) -> FulfillmentOut:
+    row = db.get(OrderFulfillmentTracking, tracking_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="fulfillment_not_found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        if field == "status" and value is not None:
+            value = str(value).upper()
+        setattr(row, field, value)
+    row.updated_at = _utcnow()
+    db.commit()
+    db.refresh(row)
+    return FulfillmentOut.model_validate(row)
+
+
+def get_pickup_or_404(db: Session, pickup_id: str) -> PickupRecord:
+    row = db.get(PickupRecord, pickup_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="pickup_not_found")
+    return row
+
+
+def create_credit(db: Session, body: CreditCreateIn) -> CreditOut:
+    get_order_or_404(db, body.order_id)
+    cid = body.id or f"crd-{new_id()[:12]}"
+    if db.get(CreditRecord, cid):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="credit_id_exists")
+    now = _utcnow()
+    row = CreditRecord(
+        id=cid,
+        order_id=body.order_id,
+        user_id=body.user_id,
+        type=body.type,
+        amount_cents=body.amount_cents,
+        currency=body.currency,
+        status=body.status.upper(),
+        created_at_epoch=int(time.time()),
+        updated_at=now,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return CreditOut.model_validate(row)
+
+
+def list_order_items(
+    db: Session, *, order_id: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[list[OrderItemOut], int]:
+    q = db.query(OrderItemRecord)
+    if order_id:
+        q = q.filter(OrderItemRecord.order_id == order_id)
+    total = q.count()
+    rows = q.order_by(OrderItemRecord.created_at.desc()).offset(offset).limit(limit).all()
+    return [OrderItemOut.model_validate(r) for r in rows], total
+
+
+def list_pickup_events(
+    db: Session, *, pickup_id: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[list[PickupEventOut], int]:
+    q = db.query(PickupEventRecord)
+    if pickup_id:
+        q = q.filter(PickupEventRecord.pickup_id == pickup_id)
+    total = q.count()
+    rows = q.order_by(PickupEventRecord.occurred_at.desc()).offset(offset).limit(limit).all()
+    return [PickupEventOut.model_validate(r) for r in rows], total
+
+
+def list_pickup_tokens(
+    db: Session, *, order_id: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[list[PickupTokenOut], int]:
+    q = db.query(PickupTokenRecord)
+    if order_id:
+        q = q.filter(PickupTokenRecord.order_id == order_id)
+    total = q.count()
+    rows = q.order_by(PickupTokenRecord.created_at.desc()).offset(offset).limit(limit).all()
+    return [PickupTokenOut.model_validate(r) for r in rows], total
+
+
+def list_pickup_attempts(
+    db: Session, *, order_id: str | None = None, limit: int = 50, offset: int = 0
+) -> tuple[list[PickupAttemptOut], int]:
+    q = db.query(PickupAttemptRecord)
+    if order_id:
+        q = q.filter(PickupAttemptRecord.order_id == order_id)
+    total = q.count()
+    rows = q.order_by(PickupAttemptRecord.created_at_epoch.desc()).offset(offset).limit(limit).all()
+    return [PickupAttemptOut.model_validate(r) for r in rows], total
+
+
+def list_domain_outbox(
+    db: Session,
+    *,
+    status: str | None = None,
+    aggregate_id: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[DomainOutboxOut], int]:
+    q = db.query(DomainEventOutboxRecord)
+    if status:
+        q = q.filter(DomainEventOutboxRecord.status == status.upper())
+    if aggregate_id:
+        q = q.filter(DomainEventOutboxRecord.aggregate_id == aggregate_id)
+    total = q.count()
+    rows = q.order_by(DomainEventOutboxRecord.created_at.desc()).offset(offset).limit(limit).all()
+    return [DomainOutboxOut.model_validate(r) for r in rows], total
+
+
+def replay_domain_outbox(db: Session, outbox_id: str) -> tuple[bool, DomainOutboxOut]:
+    row = db.get(DomainEventOutboxRecord, outbox_id)
+    if not row:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="domain_outbox_not_found")
+    replayed = row.status in {"FAILED", "DEAD_LETTER", "PENDING", "SKIPPED"}
+    if replayed:
+        row.status = "PENDING"
+        row.retry_count = 0
+        row.last_error = None
+        row.updated_at = _utcnow()
+        db.commit()
+        db.refresh(row)
+    return replayed, DomainOutboxOut.model_validate(row)
+
+
 def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> dict[str, str]:
     now = _utcnow()
     order_id = "ord-seed-demo-001"
+    pickup_id = "pkp-seed-demo-001"
+    credit_id = "crd-seed-demo-001"
+    outbox_id = "obx-seed-demo-001"
+    oitem_id = "oitem-seed-demo-001"
+    dom_id = "dom-seed-demo-001"
     if not db.get(OrderRecord, order_id):
         db.add(
             OrderRecord(
@@ -253,7 +391,6 @@ def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> di
                 updated_at=now,
             )
         )
-    pickup_id = "pkp-seed-demo-001"
     if not db.get(PickupRecord, pickup_id):
         db.add(
             PickupRecord(
@@ -271,7 +408,6 @@ def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> di
                 updated_at=now,
             )
         )
-    credit_id = "crd-seed-demo-001"
     if not db.get(CreditRecord, credit_id):
         db.add(
             CreditRecord(
@@ -287,7 +423,6 @@ def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> di
                 updated_at=now,
             )
         )
-    outbox_id = "obx-seed-demo-001"
     if not db.get(PartnerOrderEventsOutbox, outbox_id):
         db.add(
             PartnerOrderEventsOutbox(
@@ -317,5 +452,81 @@ def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> di
                 updated_at=now,
             )
         )
+    if not db.get(OrderItemRecord, oitem_id):
+        db.add(
+            OrderItemRecord(
+                id=oitem_id,
+                order_id=order_id,
+                sku_id="SKU-DEMO",
+                sku_description="Produto demo pickup",
+                quantity=1,
+                unit_amount_cents=4990,
+                total_amount_cents=4990,
+                item_status="ALLOCATED",
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    pevt_id = "pevt-seed-demo-001"
+    if not db.get(PickupEventRecord, pevt_id):
+        db.add(
+            PickupEventRecord(
+                id=pevt_id,
+                pickup_id=pickup_id,
+                version=1,
+                event_type="PICKUP_READY",
+                payload_json=json.dumps({"locker_id": "LOCKER-DEMO-01"}),
+                occurred_at=now,
+                created_at=now,
+            )
+        )
+    ptk_id = "ptk-seed-demo-001"
+    if not db.get(PickupTokenRecord, ptk_id):
+        db.add(
+            PickupTokenRecord(
+                id=ptk_id,
+                order_id=order_id,
+                pickup_id=pickup_id,
+                token_hash="hash-demo-token",
+                expires_at=now + timedelta(hours=48),
+                is_active=True,
+                manual_code="123456",
+                created_at=now,
+            )
+        )
+    patt_id = "patt-seed-demo-001"
+    if not db.get(PickupAttemptRecord, patt_id):
+        db.add(
+            PickupAttemptRecord(
+                id=patt_id,
+                order_id=order_id,
+                gateway_id="gw-demo",
+                created_at_epoch=int(time.time()),
+                ok=True,
+                reason=None,
+            )
+        )
+    if not db.get(DomainEventOutboxRecord, dom_id):
+        db.add(
+            DomainEventOutboxRecord(
+                id=dom_id,
+                event_key=f"order.{order_id}.paid",
+                aggregate_type="order",
+                aggregate_id=order_id,
+                event_name="OrderPaid",
+                status="PENDING",
+                payload_json=json.dumps({"order_id": order_id}),
+                occurred_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
     db.commit()
-    return {"order_id": order_id, "pickup_id": pickup_id, "credit_id": credit_id, "outbox_id": outbox_id}
+    return {
+        "order_id": order_id,
+        "pickup_id": pickup_id,
+        "credit_id": credit_id,
+        "outbox_id": outbox_id,
+        "order_item_id": oitem_id,
+        "domain_outbox_id": dom_id,
+    }

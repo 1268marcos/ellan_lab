@@ -27,6 +27,11 @@ def create_pickup(body: PickupCreateIn, db: Session = Depends(get_db)) -> Pickup
     return order_ops_service.create_pickup(db, body)
 
 
+@router.get("/{pickup_id}", response_model=PickupOut)
+def get_pickup(pickup_id: str, db: Session = Depends(get_db)) -> PickupOut:
+    return PickupOut.model_validate(order_ops_service.get_pickup_or_404(db, pickup_id))
+
+
 @router.patch("/{pickup_id}", response_model=PickupOut)
 def update_pickup(pickup_id: str, body: PickupUpdateIn, db: Session = Depends(get_db)) -> PickupOut:
     return order_ops_service.update_pickup(db, pickup_id, body)

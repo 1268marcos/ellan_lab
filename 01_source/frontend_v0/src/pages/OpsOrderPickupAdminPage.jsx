@@ -63,7 +63,18 @@ export default function OpsOrderPickupAdminPage() {
   const [pickups, setPickups] = useState([]);
   const [outbox, setOutbox] = useState([]);
   const [fulfillment, setFulfillment] = useState([]);
+  const [credits, setCredits] = useState([]);
+  const [orderItems, setOrderItems] = useState([]);
+  const [pickupEvents, setPickupEvents] = useState([]);
+  const [pickupTokens, setPickupTokens] = useState([]);
+  const [pickupAttempts, setPickupAttempts] = useState([]);
+  const [domainOutbox, setDomainOutbox] = useState([]);
   const [partnerForm, setPartnerForm] = useState({ name: "", code: "" });
+  const [creditForm, setCreditForm] = useState({
+    order_id: "ord-seed-demo-001",
+    user_id: "usr-demo",
+    amount_cents: 500,
+  });
   const [orderForm, setOrderForm] = useState({
     amount_cents: 4990,
     ecommerce_partner_id: "ec-ops-001",
@@ -93,40 +104,70 @@ export default function OpsOrderPickupAdminPage() {
     setErr("");
     setOk("");
     try {
-      const [ec, lg, ord, pk, ob, ft] = await Promise.all([
+      const [ec, lg, ord, pk, cr, ob, ft, oi, pe, pt, pa, dom] = await Promise.all([
         fetch(`${API}/ecommerce-partners`, { headers }),
         fetch(`${API}/logistics-partners`, { headers }),
         fetch(`${API}/orders`, { headers }),
         fetch(`${API}/pickups`, { headers }),
+        fetch(`${API}/credits`, { headers }),
         fetch(`${API}/integration-outbox`, { headers }),
         fetch(`${API}/fulfillment-tracking`, { headers }),
+        fetch(`${API}/order-items`, { headers }),
+        fetch(`${API}/pickup-events`, { headers }),
+        fetch(`${API}/pickup-tokens`, { headers }),
+        fetch(`${API}/pickup-attempts`, { headers }),
+        fetch(`${API}/domain-event-outbox`, { headers }),
       ]);
       const ecJson = await ec.json().catch(() => ({}));
       const lgJson = await lg.json().catch(() => ({}));
       const ordJson = await ord.json().catch(() => ({}));
       const pkJson = await pk.json().catch(() => ({}));
+      const crJson = await cr.json().catch(() => ({}));
       const obJson = await ob.json().catch(() => ({}));
       const ftJson = await ft.json().catch(() => ({}));
+      const oiJson = await oi.json().catch(() => ({}));
+      const peJson = await pe.json().catch(() => ({}));
+      const ptJson = await pt.json().catch(() => ({}));
+      const paJson = await pa.json().catch(() => ({}));
+      const domJson = await dom.json().catch(() => ({}));
       if (!ec.ok) throw new Error(parseError(ecJson));
       if (!lg.ok) throw new Error(parseError(lgJson));
       if (!ord.ok) throw new Error(parseError(ordJson));
       if (!pk.ok) throw new Error(parseError(pkJson));
+      if (!cr.ok) throw new Error(parseError(crJson));
       if (!ob.ok) throw new Error(parseError(obJson));
       if (!ft.ok) throw new Error(parseError(ftJson));
+      if (!oi.ok) throw new Error(parseError(oiJson));
+      if (!pe.ok) throw new Error(parseError(peJson));
+      if (!pt.ok) throw new Error(parseError(ptJson));
+      if (!pa.ok) throw new Error(parseError(paJson));
+      if (!dom.ok) throw new Error(parseError(domJson));
       setEcItems(ecJson.partners || []);
       setLgItems(lgJson.partners || []);
       setOrders(ordJson.items || []);
       setPickups(pkJson.items || []);
+      setCredits(crJson.items || []);
       setOutbox(obJson.items || []);
       setFulfillment(ftJson.items || []);
+      setOrderItems(oiJson.items || []);
+      setPickupEvents(peJson.items || []);
+      setPickupTokens(ptJson.items || []);
+      setPickupAttempts(paJson.items || []);
+      setDomainOutbox(domJson.items || []);
     } catch (e) {
       setErr(normalizeNetworkError(e, API));
       setEcItems([]);
       setLgItems([]);
       setOrders([]);
       setPickups([]);
+      setCredits([]);
       setOutbox([]);
       setFulfillment([]);
+      setOrderItems([]);
+      setPickupEvents([]);
+      setPickupTokens([]);
+      setPickupAttempts([]);
+      setDomainOutbox([]);
     } finally {
       setLoading(false);
     }
@@ -168,6 +209,27 @@ export default function OpsOrderPickupAdminPage() {
       await load();
     } catch (e) {
       setErr(normalizeNetworkError(e, `${API}/${path}`));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onCreateCredit = async () => {
+    if (!token || !canMutate) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch(`${API}/credits`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...creditForm, type: "GOODWILL", currency: "BRL", status: "AVAILABLE" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setOk("Crédito criado.");
+      await load();
+    } catch (e) {
+      setErr(normalizeNetworkError(e, `${API}/credits`));
     } finally {
       setLoading(false);
     }
@@ -250,6 +312,25 @@ export default function OpsOrderPickupAdminPage() {
     }
   };
 
+  const onReplayDomain = async (outboxId) => {
+    if (!token || !canMutate || !outboxId) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${API}/domain-event-outbox/${encodeURIComponent(outboxId)}/replay`, {
+        method: "POST",
+        headers,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setOk(`Domain outbox ${outboxId} reenfileirado.`);
+      await load();
+    } catch (e) {
+      setErr(normalizeNetworkError(e, "domain-replay"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onReplay = async (outboxId) => {
     if (!token || !canMutate || !outboxId) return;
     setLoading(true);
@@ -289,27 +370,75 @@ export default function OpsOrderPickupAdminPage() {
           })),
         ]
       : tab === "orders"
-        ? orders.map((o) => ({
-            key: `ord-${o.id}`,
-            tipo: "order",
-            id: o.id,
-            detalhe: `${o.status} / ${o.payment_status} · R$ ${formatMoney(o.amount_cents)} · partner ${o.ecommerce_partner_id || "—"} · pickups ${pickups.filter((p) => p.order_id === o.id).length}`,
-          }))
-        : [
-            ...outbox.map((x) => ({
-              key: `ob-${x.id}`,
-              tipo: "outbox",
-              id: x.id,
-              detalhe: `${x.event_type} · ${x.status} · order ${x.order_id}`,
-              replayId: x.id,
+        ? [
+            ...orders.map((o) => ({
+              key: `ord-${o.id}`,
+              tipo: "order",
+              id: o.id,
+              detalhe: `${o.status} / ${o.payment_status} · R$ ${formatMoney(o.amount_cents)} · partner ${o.ecommerce_partner_id || "—"}`,
             })),
-            ...fulfillment.map((x) => ({
-              key: `ft-${x.id}`,
-              tipo: "fulfillment",
-              id: x.order_id,
-              detalhe: `${x.fulfillment_type} · ${x.status} · ${x.last_event_type || "—"}`,
+            ...pickups.map((p) => ({
+              key: `pkp-${p.id}`,
+              tipo: "pickup",
+              id: p.id,
+              detalhe: `${p.status} · ${p.lifecycle_stage} · order ${p.order_id}`,
             })),
-          ];
+            ...orderItems.map((i) => ({
+              key: `oi-${i.id}`,
+              tipo: "item",
+              id: i.sku_id,
+              detalhe: `order ${i.order_id} · qty ${i.quantity}`,
+            })),
+          ]
+        : tab === "credits"
+          ? credits.map((c) => ({
+              key: `crd-${c.id}`,
+              tipo: "credit",
+              id: c.id,
+              detalhe: `${c.type} · ${c.status} · R$ ${formatMoney(c.amount_cents)} · order ${c.order_id}`,
+            }))
+          : [
+              ...outbox.map((x) => ({
+                key: `pob-${x.id}`,
+                tipo: "partner_outbox",
+                id: x.id,
+                detalhe: `${x.event_type} · ${x.status} · order ${x.order_id}`,
+                replayKind: "partner",
+                replayId: x.id,
+              })),
+              ...domainOutbox.map((x) => ({
+                key: `dob-${x.id}`,
+                tipo: "domain_outbox",
+                id: x.id,
+                detalhe: `${x.event_name || "—"} · ${x.status} · ${x.aggregate_id || "—"}`,
+                replayKind: "domain",
+                replayId: x.id,
+              })),
+              ...pickupEvents.map((x) => ({
+                key: `pe-${x.id}`,
+                tipo: "pickup_event",
+                id: x.id,
+                detalhe: `${x.event_type} · pickup ${x.pickup_id}`,
+              })),
+              ...pickupTokens.map((x) => ({
+                key: `pt-${x.id}`,
+                tipo: "token",
+                id: x.id,
+                detalhe: `order ${x.order_id} · ${x.is_active ? "ativo" : "inativo"}`,
+              })),
+              ...pickupAttempts.map((x) => ({
+                key: `pa-${x.id}`,
+                tipo: "attempt",
+                id: x.id,
+                detalhe: `order ${x.order_id} · ${x.ok ? "ok" : "fail"}`,
+              })),
+              ...fulfillment.map((x) => ({
+                key: `ft-${x.id}`,
+                tipo: "fulfillment",
+                id: x.order_id,
+                detalhe: `${x.fulfillment_type} · ${x.status}`,
+              })),
+            ];
 
   const listCount = tableRows.length;
 
@@ -317,8 +446,10 @@ export default function OpsOrderPickupAdminPage() {
     tab === "partners"
       ? `Parceiros (e-commerce: ${ecItems.length}, logística: ${lgItems.length})`
       : tab === "orders"
-        ? `Pedidos (${orders.length}) · pickups (${pickups.length})`
-        : `Integração (outbox: ${outbox.length}, fulfillment: ${fulfillment.length})`;
+        ? `Pedidos (${orders.length}) · pickups (${pickups.length}) · itens (${orderItems.length})`
+        : tab === "credits"
+          ? `Créditos (${credits.length})`
+          : `Integração (partner outbox: ${outbox.length}, domain: ${domainOutbox.length}, events: ${pickupEvents.length})`;
 
   return (
     <div style={pageStyle} data-testid="ops-order-pickup-admin-page">
@@ -365,6 +496,9 @@ export default function OpsOrderPickupAdminPage() {
               </button>
               <button type="button" style={tabButtonStyle(tab === "orders")} onClick={() => setTab("orders")}>
                 Pedidos
+              </button>
+              <button type="button" style={tabButtonStyle(tab === "credits")} onClick={() => setTab("credits")}>
+                Créditos
               </button>
               <button type="button" style={tabButtonStyle(tab === "integration")} onClick={() => setTab("integration")}>
                 Integração
@@ -445,9 +579,40 @@ export default function OpsOrderPickupAdminPage() {
             </div>
           ) : null}
 
+          {tab === "credits" ? (
+            <div style={healthLocalFilterRowStyle}>
+              <label style={healthLocalFilterFieldStyle}>
+                order_id
+                <input
+                  value={creditForm.order_id}
+                  onChange={(e) => setCreditForm((f) => ({ ...f, order_id: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                user_id
+                <input
+                  value={creditForm.user_id}
+                  onChange={(e) => setCreditForm((f) => ({ ...f, user_id: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+              <label style={healthLocalFilterFieldStyle}>
+                amount_cents
+                <input
+                  type="number"
+                  min={1}
+                  value={creditForm.amount_cents}
+                  onChange={(e) => setCreditForm((f) => ({ ...f, amount_cents: e.target.value }))}
+                  style={healthLocalFilterInputStyle}
+                />
+              </label>
+            </div>
+          ) : null}
+
           {tab === "integration" ? (
             <p style={summary24hHintStyle}>
-              Outbox de eventos para parceiros (replay manual) e rastreamento de fulfillment por pedido.
+              Outbox parceiro/domain, eventos de pickup, tokens, tentativas e fulfillment.
             </p>
           ) : null}
 
@@ -473,6 +638,11 @@ export default function OpsOrderPickupAdminPage() {
                 {tab === "orders" ? (
                   <button type="button" style={buttonPrimaryStyle} onClick={() => void onCreateOrder()} disabled={loading}>
                     Criar pedido
+                  </button>
+                ) : null}
+                {tab === "credits" ? (
+                  <button type="button" style={buttonPrimaryStyle} onClick={() => void onCreateCredit()} disabled={loading}>
+                    Criar crédito
                   </button>
                 ) : null}
               </>
@@ -573,7 +743,11 @@ export default function OpsOrderPickupAdminPage() {
                             <button
                               type="button"
                               style={buttonGhostStyle}
-                              onClick={() => void onReplay(row.replayId)}
+                              onClick={() =>
+                                void (row.replayKind === "domain"
+                                  ? onReplayDomain(row.replayId)
+                                  : onReplay(row.replayId))
+                              }
                               disabled={loading}
                             >
                               Replay
