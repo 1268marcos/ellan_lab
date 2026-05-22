@@ -20,3 +20,6 @@
 
 PROMPT
 Codar o pedido em @docs/criar_paginas_marketplace.md. Ter como referência @02_docker/complete_schema_20260521_c.sql 
+
+
+Buscar mais páginas ou seções para Marketplace. Se necessário criar tabelas e relações para termos nível profissional.

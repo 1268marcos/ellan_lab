@@ -346,3 +346,129 @@ class MarketplaceDashboardOut(BaseModel):
     channel_partners_active: int = 0
     seller_channel_listings: int = 0
     locker_network_links: int = 0
+    integration_readiness_rows: int = 0
+    integration_go_live: int = 0
+    integration_open_incidents: int = 0
+    integration_avg_score: float = 0.0
+
+
+class IntegrationReadinessOut(BaseModel):
+    channel_partner_id: str
+    partner_code: str
+    score_total: float
+    score_capabilities: float
+    score_api: float
+    score_operations: float
+    readiness_band: str
+    blockers: list[str] = []
+    ml_network_code: Optional[str] = None
+    computed_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class IntegrationReadinessListOut(BaseModel):
+    items: list[IntegrationReadinessOut]
+    total: int
+
+
+class IntegrationIncidentOut(BaseModel):
+    id: str
+    channel_partner_id: str
+    partner_code: str
+    severity: str
+    incident_type: str
+    title: str
+    status: str
+    opened_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class IntegrationIncidentListOut(BaseModel):
+    items: list[IntegrationIncidentOut]
+    total: int
+
+
+class IntegrationHubSummaryOut(BaseModel):
+    readiness_rows: int
+    avg_score: float
+    bands: dict[str, int]
+    open_incidents: int
+    open_readiness_alerts: int = 0
+    partners_with_blockers: int
+    top_go_live: list[dict]
+
+
+class ReadinessAlertOut(BaseModel):
+    id: str
+    channel_partner_id: str
+    partner_code: str
+    alert_type: str
+    severity: str
+    previous_score: Optional[float] = None
+    new_score: float
+    score_delta: float
+    previous_band: Optional[str] = None
+    new_band: str
+    status: str
+    webhook_dispatched: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReadinessAlertListOut(BaseModel):
+    items: list[ReadinessAlertOut]
+    total: int
+
+
+class CapabilityWebhookIn(BaseModel):
+    channel_partner_id: str
+    capability_code: str
+    url: str
+    secret: Optional[str] = None
+    events: list[str] | None = None
+    active: bool = True
+
+
+class CapabilityWebhookOut(BaseModel):
+    id: str
+    channel_partner_id: str
+    partner_code: str
+    capability_code: str
+    url: str
+    active: bool
+    event_types: list[str] = []
+    last_http_status: Optional[int] = None
+    last_delivered_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class CapabilityWebhookListOut(BaseModel):
+    items: list[CapabilityWebhookOut]
+    total: int
+
+
+class SimulateScoreDropIn(BaseModel):
+    partner_code: str
+    new_score: float = Field(ge=0, le=100)
+
+
+class SyncAuditLogOut(BaseModel):
+    id: str
+    event_type: str
+    entity_type: str
+    entity_id: Optional[str] = None
+    summary: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class SyncAuditLogListOut(BaseModel):
+    items: list[SyncAuditLogOut]
+    total: int

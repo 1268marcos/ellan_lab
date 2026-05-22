@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         alias="MARKETPLACE_ADMIN_API_KEY_PEPPER",
     )
     seed_on_start: bool = Field(default=True, alias="SEED_ON_START")
+    webhook_dispatch_enabled: bool = Field(default=False, alias="WEBHOOK_DISPATCH_ENABLED")
 
 
 @lru_cache

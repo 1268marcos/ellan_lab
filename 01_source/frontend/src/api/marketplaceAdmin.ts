@@ -102,4 +102,30 @@ export const marketplaceAdminApi = {
   createDispute: (body: Record<string, unknown>) => api.post(`${BASE}/seller-commission-disputes`, body),
   resolveDispute: (id: string, body: Record<string, unknown>) =>
     api.patch(`${BASE}/seller-commission-disputes/${encodeURIComponent(id)}`, body),
+
+  listChannelPartners: (params?: { lockers_only?: boolean; active_only?: boolean }) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/channel-partners`, { params }),
+  seedChannelPlayers: () => api.post(`${BASE}/channel-partners/seed-players`),
+  getChannelPartner: (id: string) => api.get(`${BASE}/channel-partners/${encodeURIComponent(id)}`),
+  integrationMatrix: () => api.get(`${BASE}/integration-hub/summary`),
+
+  listIntegrationReadiness: (params?: { band?: string; limit?: number }) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/integration-readiness`, { params }),
+  recomputeIntegrationReadiness: () => api.post(`${BASE}/integration-readiness/recompute`),
+  integrationHubSummary: () => api.get<Record<string, unknown>>(`${BASE}/integration-hub/summary`),
+  listReadinessAlerts: (open_only = true) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/readiness-alerts`, { params: { open_only } }),
+  acknowledgeReadinessAlert: (alertId: string) =>
+    api.post(`${BASE}/readiness-alerts/${encodeURIComponent(alertId)}/acknowledge`),
+  listCapabilityWebhooks: (channel_partner_id?: string) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/capability-webhooks`, {
+      params: channel_partner_id ? { channel_partner_id } : undefined,
+    }),
+  upsertCapabilityWebhook: (body: Record<string, unknown>) => api.put(`${BASE}/capability-webhooks`, body),
+  testCapabilityWebhook: (webhookId: string) =>
+    api.post(`${BASE}/capability-webhooks/${encodeURIComponent(webhookId)}/test`),
+  simulateScoreDrop: (partner_code: string, new_score: number) =>
+    api.post(`${BASE}/integration-readiness/simulate-drop`, { partner_code, new_score }),
+  listIntegrationIncidents: (open_only = true) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/integration-incidents`, { params: { open_only } }),
 }

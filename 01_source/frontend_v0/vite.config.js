@@ -134,6 +134,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/mka/, "/api"),
       },
+      "/api/mla": {
+        target: "http://localhost:8021",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/mla/, "/api"),
+      },
     },
   },
 });

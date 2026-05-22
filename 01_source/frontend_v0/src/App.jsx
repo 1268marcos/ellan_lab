@@ -83,6 +83,7 @@ const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
+const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
@@ -533,6 +534,134 @@ function TopNav() {
       isNew: true,
     },
     {
+      to: "/ops/marketplace/admin?tab=readiness",
+      label: "Marketplace — prontidao integracao",
+      aria: "Score GO_LIVE/PILOT, incidentes e auditoria de sync",
+      group: "Marketplace OPS",
+      opsSubGroup: "Integracao",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin",
+      label: "ML — visao geral",
+      aria: "Dashboard KPIs ML, parceiros de dados, modelos e feedback",
+      group: "ML OPS",
+      opsSubGroup: "Visao geral",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=partners",
+      label: "ML — parceiros de dados",
+      aria: "CRUD parceiros ML, webhook e rotacao de API key",
+      group: "ML OPS",
+      opsSubGroup: "Integracao",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=readiness",
+      label: "ML — prontidao integracao",
+      aria: "Score por rede locker, telemetria e perfis ML",
+      group: "ML OPS",
+      opsSubGroup: "Integracao",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=networks",
+      label: "ML — redes locker mundiais",
+      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e perfis ML por rede",
+      group: "ML OPS",
+      opsSubGroup: "Redes",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=models",
+      label: "ML — modelos",
+      aria: "Versoes de modelo, metricas e status ACTIVE/STALE",
+      group: "ML OPS",
+      opsSubGroup: "Modelos",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=features",
+      label: "ML — features diarias",
+      aria: "Tabela ml_features_daily por locker e data",
+      group: "ML OPS",
+      opsSubGroup: "Dados",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=predictions",
+      label: "ML — predicoes",
+      aria: "Log ml_predictions_log e health score",
+      group: "ML OPS",
+      opsSubGroup: "Scoring",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=feedback",
+      label: "ML — feedback",
+      aria: "ml_prediction_feedback e validacao de drift",
+      group: "ML OPS",
+      opsSubGroup: "Qualidade",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=use_cases",
+      label: "ML — casos de uso",
+      aria: "Catalogo LOCKER_HEALTH, churn, fraud, LTV, pricing",
+      group: "ML OPS",
+      opsSubGroup: "Plataforma",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=registry",
+      label: "ML — model registry",
+      aria: "Versoes, stages DEV/STAGING/PRODUCTION e promote",
+      group: "ML OPS",
+      opsSubGroup: "Plataforma",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=training",
+      label: "ML — experimentos",
+      aria: "Training runs e metricas de treino",
+      group: "ML OPS",
+      opsSubGroup: "Plataforma",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=catalog",
+      label: "ML — catalogo features",
+      aria: "Definicoes de features e SLA de freshness",
+      group: "ML OPS",
+      opsSubGroup: "Dados",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=drift",
+      label: "ML — drift",
+      aria: "Relatorios PSI e status OK/WARNING/CRITICAL",
+      group: "ML OPS",
+      opsSubGroup: "Monitoramento",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=governance",
+      label: "ML — SLO e alertas",
+      aria: "SLO de inferencia e regras de alerta",
+      group: "ML OPS",
+      opsSubGroup: "Governanca",
+      isNew: true,
+    },
+    {
+      to: "/ops/ml/admin?tab=deployments",
+      label: "ML — deployments",
+      aria: "Trilha promote/rollback de modelos",
+      group: "ML OPS",
+      opsSubGroup: "Governanca",
+      isNew: true,
+    },
+    {
       to: "/ops/order/executive-summary",
       label: "ops /order/executive-summary",
       aria: "Resumo executivo pickup (order lifecycle)",
@@ -726,6 +855,7 @@ function TopNav() {
     "Visão Geral",
     "Dashboards",
     "Cadastros OPS",
+    "ML OPS",
     "Marketplace OPS",
     "Order / Pickup",
     "Lockers",
@@ -2048,6 +2178,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsMarketplaceAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/ml/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMlAdminPage />)}
                 </OpsRoute>
               }
             />

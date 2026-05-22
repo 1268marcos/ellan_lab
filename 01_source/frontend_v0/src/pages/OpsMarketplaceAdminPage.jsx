@@ -36,6 +36,7 @@ const TAB_ITEMS = [
   { id: "products", label: "Produtos" },
   { id: "categories", label: "Categorias" },
   { id: "channels", label: "Canais e redes" },
+  { id: "readiness", label: "Prontidao integracao" },
   { id: "commissions", label: "Comissoes" },
   { id: "settlements", label: "Repasses" },
   { id: "payouts", label: "Contas PIX" },
@@ -89,6 +90,9 @@ export default function OpsMarketplaceAdminPage() {
   const [channelListings, setChannelListings] = useState([]);
   const [lockerNetworkLinks, setLockerNetworkLinks] = useState([]);
   const [channelParentGroup, setChannelParentGroup] = useState("");
+  const [readinessRows, setReadinessRows] = useState([]);
+  const [integrationIncidents, setIntegrationIncidents] = useState([]);
+  const [integrationHub, setIntegrationHub] = useState(null);
   const [sellerForm, setSellerForm] = useState({
     legal_name: "",
     trade_name: "",
@@ -167,7 +171,7 @@ export default function OpsMarketplaceAdminPage() {
     setOk("");
     try {
       const sellerQ = selectedId ? `?seller_id=${encodeURIComponent(selectedId)}` : "";
-      const [dash, s, p, c, r, cats, links, cont, pay, batches, kyc, disp, chp, chl, lnk] = await Promise.all([
+      const [dash, s, p, c, r, cats, links, cont, pay, batches, kyc, disp, chp, chl, lnk, rd, inc, hub] = await Promise.all([
         fetch(`${API}/dashboard`, { headers }),
         fetch(`${API}/sellers`, { headers }),
         fetch(`${API}/seller-products${sellerQ}`, { headers }),
@@ -186,6 +190,9 @@ export default function OpsMarketplaceAdminPage() {
         ),
         fetch(`${API}/seller-channel-listings${sellerQ}`, { headers }),
         fetch(`${API}/seller-locker-network-links${sellerQ}`, { headers }),
+        fetch(`${API}/integration-readiness?limit=120`, { headers }),
+        fetch(`${API}/integration-incidents`, { headers }),
+        fetch(`${API}/integration-hub/summary`, { headers }),
       ]);
       const dashJ = await dash.json().catch(() => ({}));
       const sj = await s.json().catch(() => ({}));
@@ -214,6 +221,9 @@ export default function OpsMarketplaceAdminPage() {
       setChannelPartners((await chp.json().catch(() => ({}))).partners || []);
       setChannelListings((await chl.json().catch(() => ({}))).listings || []);
       setLockerNetworkLinks((await lnk.json().catch(() => ({}))).links || []);
+      setReadinessRows((await rd.json().catch(() => ({}))).items || []);
+      setIntegrationIncidents((await inc.json().catch(() => ({}))).items || []);
+      if (hub.ok) setIntegrationHub(await hub.json().catch(() => null));
       setSelectedId((prev) => prev || sellerList[0]?.id || "");
       const pending = (cj.commissions || []).filter((x) => x.status === "PENDING");
       setSelectedCommissionId((prev) => prev || pending[0]?.id || "");
@@ -700,7 +710,22 @@ export default function OpsMarketplaceAdminPage() {
             id: p.product_id,
             detalhe: `${p.locker_id} · ${formatBrl(p.price_cents)} · qtd ${p.quantity} · ${p.status}`,
           }))
-        : tab === "channels"
+        : tab === "readiness"
+          ? [
+              ...readinessRows.map((row) => ({
+                key: `rd-${row.channel_partner_id}`,
+                tipo: row.readiness_band,
+                id: row.partner_code,
+                detalhe: `score ${row.score_total} · caps ${row.score_capabilities} · api ${row.score_api} · ops ${row.score_operations} · blockers ${(row.blockers || []).length}`,
+              })),
+              ...integrationIncidents.map((i) => ({
+                key: `inc-${i.id}`,
+                tipo: i.severity,
+                id: i.partner_code,
+                detalhe: `${i.incident_type} · ${i.title} · ${i.status}`,
+              })),
+            ]
+          : tab === "channels"
           ? [
               ...filteredChannelPartners.map((p) => ({
                 key: `chp-${p.id}`,
@@ -1465,6 +1490,9 @@ export default function OpsMarketplaceAdminPage() {
                 ["KYC pendente", dashboard.kyc_pending],
                 ["Rating medio", dashboard.avg_seller_rating ?? "—"],
                 ["Players ativos", dashboard.channel_partners_active],
+                ["GO_LIVE (prontidao)", dashboard.integration_go_live],
+                ["Score medio integracao", dashboard.integration_avg_score],
+                ["Incidentes abertos", dashboard.integration_open_incidents],
                 ["Listings canal", dashboard.seller_channel_listings],
                 ["Redes locker", dashboard.locker_network_links],
               ].map(([label, value]) => (

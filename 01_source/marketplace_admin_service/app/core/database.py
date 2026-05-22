@@ -44,6 +44,8 @@ def init_db() -> None:
     from app.models import api_key as _api_key  # noqa: F401
     from app.models import marketplace as _marketplace  # noqa: F401
     from app.models import marketplace_extended as _marketplace_extended  # noqa: F401, F403
+    from app.models import marketplace_alerts_webhooks as _marketplace_alerts_webhooks  # noqa: F401
+    from app.models import marketplace_integration as _marketplace_integration  # noqa: F401
     from app.models import webhook as _webhook  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

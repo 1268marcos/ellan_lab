@@ -31,6 +31,9 @@ const orderPickupAdminServiceProxy =
 const marketplaceAdminServiceProxy =
   process.env.MARKETPLACE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8019'
 
+const mlAdminServiceProxy =
+  process.env.ML_ADMIN_SERVICE_PROXY ?? 'http://localhost:8021'
+
 function redirectRootToV1() {
   const handle = (req: { url?: string }, res: { statusCode: number; setHeader: (name: string, value: string) => void; end: () => void }, next: () => void) => {
     if (req.url === '/' || req.url === '/index.html') {
@@ -97,6 +100,11 @@ export default defineConfig({
         target: marketplaceAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/marketplace-admin/, '/api'),
+      },
+      '/api/ml-admin': {
+        target: mlAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/ml-admin/, '/api'),
       },
       '/api/runtime': {
         target: partnerServiceProxy,

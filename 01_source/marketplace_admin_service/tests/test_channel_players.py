@@ -7,6 +7,7 @@ def test_channel_players_and_seller_links(client):
     client.post(f"{API}/seed")
     r = client.post(f"{API}/channel-partners/seed-players")
     assert r.status_code == 200
+    assert r.json().get("capabilities_in_sync") is True
 
     r = client.get(f"{API}/channel-partners")
     assert r.status_code == 200

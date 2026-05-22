@@ -32,6 +32,20 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'mlOps',
+    icon: '🤖',
+    label: 'ML OPS',
+    items: [
+      { to: '/ops/ml/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/ml/admin?tab=partners', label: 'Parceiros de dados ML' },
+      { to: '/ops/ml/admin?tab=networks', label: 'Redes locker mundiais' },
+      { to: '/ops/ml/admin?tab=models', label: 'Modelos e versões' },
+      { to: '/ops/ml/admin?tab=features', label: 'Features diárias' },
+      { to: '/ops/ml/admin?tab=predictions', label: 'Log de predições' },
+      { to: '/ops/ml/admin?tab=feedback', label: 'Feedback de modelo' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',
@@ -68,6 +82,7 @@ export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
     cadastros: true,
+    mlOps: true,
     marketplace: true,
     inteligencia: true,
     fiscal: true,

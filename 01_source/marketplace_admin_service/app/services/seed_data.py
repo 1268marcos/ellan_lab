@@ -16,6 +16,7 @@ from app.models.marketplace_extended import (
     SellerPayoutAccount,
 )
 from app.services.crypto_util import new_id
+from app.services import integration_readiness_service
 from app.services.extended_service import seed_channel_players
 
 
@@ -35,6 +36,9 @@ def run_seed(db: Session) -> dict[str, int]:
         "payout_accounts": 0,
         "kyc_documents": 0,
         "channel_players": 0,
+        "channel_capabilities": 0,
+        "integration_readiness": 0,
+        "integration_incidents": 0,
         "channel_listings": 0,
         "locker_network_links": 0,
     }
@@ -248,6 +252,13 @@ def run_seed(db: Session) -> dict[str, int]:
 
     cp_sync = seed_channel_players(db)
     counts["channel_players"] = cp_sync.get("inserted", 0) + cp_sync.get("updated", 0)
+    counts["channel_capabilities"] = cp_sync.get("capabilities_db_enabled", 0)
+    counts["integration_readiness"] = cp_sync.get("readiness_upserted", 0)
+    integration_readiness_service.seed_demo_incidents(db)
+    counts["integration_incidents"] = integration_readiness_service.seed_demo_incidents(db)
+    from app.services import readiness_alert_service
+
+    counts["capability_webhooks"] = readiness_alert_service.seed_demo_capability_webhooks(db)
 
     listings_seed = [
         ("mk-list-meli", "mk-seller-demo-001", "mcp-meli", "ML-STORE-DEMO-001"),

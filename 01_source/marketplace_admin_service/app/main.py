@@ -11,6 +11,7 @@ from app.core.health import health_payload
 from app.routers import (
     commissions,
     extended,
+    integration_hub,
     seed,
     seller_integrations,
     seller_products,
@@ -49,6 +50,7 @@ app.include_router(commissions.router, prefix=API_PREFIX)
 app.include_router(seller_reviews.router, prefix=API_PREFIX)
 app.include_router(seller_integrations.router, prefix=API_PREFIX)
 app.include_router(extended.router, prefix=API_PREFIX)
+app.include_router(integration_hub.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 
 

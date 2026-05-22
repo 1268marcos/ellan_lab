@@ -41,6 +41,27 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'mlOps',
+    icon: '🤖',
+    label: 'ML OPS',
+    items: [
+      { to: '/ops/ml/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/ml/admin?tab=partners', label: 'Parceiros de dados ML' },
+      { to: '/ops/ml/admin?tab=networks', label: 'Redes locker mundiais' },
+      { to: '/ops/ml/admin?tab=models', label: 'Modelos e versões' },
+      { to: '/ops/ml/admin?tab=features', label: 'Features diárias' },
+      { to: '/ops/ml/admin?tab=predictions', label: 'Log de predições' },
+      { to: '/ops/ml/admin?tab=feedback', label: 'Feedback de modelo' },
+      { to: '/ops/ml/admin?tab=use_cases', label: 'Casos de uso' },
+      { to: '/ops/ml/admin?tab=registry', label: 'Model registry' },
+      { to: '/ops/ml/admin?tab=training', label: 'Experimentos' },
+      { to: '/ops/ml/admin?tab=catalog', label: 'Catálogo features' },
+      { to: '/ops/ml/admin?tab=drift', label: 'Drift / PSI' },
+      { to: '/ops/ml/admin?tab=governance', label: 'SLO e alertas' },
+      { to: '/ops/ml/admin?tab=deployments', label: 'Deployments' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',
@@ -113,6 +134,7 @@ export default function Menu() {
     ops: false,
     cadastros: true,
     orderPickup: true,
+    mlOps: true,
     marketplace: true,
     lifecycle: false,
     intelligence: false,
@@ -146,6 +168,7 @@ export default function Menu() {
         if (g.key === 'ops') return g
         if (g.key === 'cadastros') return g
         if (g.key === 'orderPickup') return g
+        if (g.key === 'mlOps') return g
         if (g.key === 'marketplace') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g

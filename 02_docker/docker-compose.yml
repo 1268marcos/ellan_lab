@@ -844,10 +844,14 @@ services:
       JAVA_TIMEZONE: UTC
       
       # ⚠️ Desabilita carregamento automático de plugins não essenciais
-      MB_PLUGINS_DIR: /dev/null
-    
+      # MB_PLUGINS_DIR: /dev/null # não é um diretório e isso causa erro / essa configuração é incorreta
+
+      # ✅ CORRETO: Usar um diretório válido dentro do container
+      MB_PLUGINS_DIR: /metabase/plugins
+
     volumes:
       - ../03_data/metabase:/metabase-data
+      - ../03_data/metabase-plugins:/metabase/plugins   # ← Adicionar esta linha
     depends_on:
       postgres_central:
         condition: service_healthy

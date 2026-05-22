@@ -37,9 +37,13 @@ Códigos no seed: `ORDERS_WEBHOOK`, `ORDERS_POLL`, `TRACKING_PUSH`, `LOCKER_INVE
 
 Cada capability tem `protocol` (REST, WEBHOOK, OAUTH2) e `direction` (INBOUND / OUTBOUND).
 
+Helpers no catálogo: `catalog_capability_rows()`, `expected_capability_count()`, `expected_capabilities_for_partner(id)`.
+
+Resposta do seed inclui `capabilities_catalog_expected`, `capabilities_db_enabled`, `capabilities_in_sync` (deve ser `true`).
+
 ## API OPS
 
-- `POST /channel-partners/seed-players` — upsert catálogo + capabilities
+- `POST /channel-partners/seed-players` — upsert catálogo + **espelho 1:1** de `marketplace_channel_capabilities` (remove linhas que saíram do catálogo Python; atualiza protocol/direction)
 - `GET /channel-partners?parent_group=LOCKER_NETWORK`
 - `GET /channel-partners/integration-matrix` — agrupado por `parent_group`
 - `GET /channel-partners/{id}` — player + capabilities

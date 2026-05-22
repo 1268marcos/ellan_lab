@@ -8,7 +8,11 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.data.channel_players_catalog import CHANNEL_PLAYERS_CATALOG
+from app.data.channel_players_catalog import (
+    CHANNEL_PLAYERS_CATALOG,
+    catalog_capability_rows,
+    expected_capability_count,
+)
 
 from app.models.marketplace import MarketplaceCommission, MarketplaceSeller, SellerProduct, SellerReview
 from app.models.marketplace_extended import (
@@ -372,16 +376,75 @@ def _partner_out(db: Session, row: MarketplaceChannelPartner) -> ChannelPartnerO
     )
 
 
+def _sync_partner_capabilities(
+    db: Session,
+    partner_id: str,
+    caps_spec: list[tuple[str, str, str]],
+    now: datetime,
+) -> dict[str, int]:
+    """Espelho 1:1: DB fica identico ao array capabilities[] do catalogo Python."""
+    inserted = updated = removed = 0
+    desired_codes = {cap_code for cap_code, _, _ in caps_spec}
+
+    stale = (
+        db.query(MarketplaceChannelCapability)
+        .filter(MarketplaceChannelCapability.channel_partner_id == partner_id)
+        .all()
+    )
+    for row in stale:
+        if row.capability_code not in desired_codes:
+            db.delete(row)
+            removed += 1
+
+    for cap_code, protocol, direction in caps_spec:
+        cap_row = (
+            db.query(MarketplaceChannelCapability)
+            .filter(
+                MarketplaceChannelCapability.channel_partner_id == partner_id,
+                MarketplaceChannelCapability.capability_code == cap_code,
+            )
+            .first()
+        )
+        if cap_row:
+            changed = False
+            if cap_row.protocol != protocol:
+                cap_row.protocol = protocol
+                changed = True
+            if cap_row.direction != direction:
+                cap_row.direction = direction
+                changed = True
+            if not cap_row.enabled:
+                cap_row.enabled = True
+                changed = True
+            if changed:
+                updated += 1
+        else:
+            db.add(
+                MarketplaceChannelCapability(
+                    id=new_id(),
+                    channel_partner_id=partner_id,
+                    capability_code=cap_code,
+                    protocol=protocol,
+                    direction=direction,
+                    enabled=True,
+                    created_at=now,
+                )
+            )
+            inserted += 1
+
+    return {"inserted": inserted, "updated": updated, "removed": removed}
+
+
 def seed_channel_players(db: Session, *, refresh_existing: bool = True) -> dict[str, int]:
-    """Sincroniza catalogo completo de players + capacidades de integracao."""
+    """Sincroniza catalogo completo de players + marketplace_channel_capabilities (espelho 1:1)."""
     now = _utcnow()
     inserted = 0
     updated = 0
-    capabilities_upserted = 0
+    cap_inserted = cap_updated = cap_removed = 0
 
     for raw in CHANNEL_PLAYERS_CATALOG:
         spec = copy.deepcopy(raw)
-        caps_spec = spec.pop("capabilities", [])
+        caps_spec = list(spec.pop("capabilities", []) or [])
         regions = spec.pop("regions_json", spec.get("regions", []))
         if isinstance(regions, list):
             regions_json = json.dumps(regions)
@@ -394,7 +457,7 @@ def seed_channel_players(db: Session, *, refresh_existing: bool = True) -> dict[
             if k not in ("capabilities", "regions")
         }
         payload["regions_json"] = regions_json
-        payload.setdefault("integration_type", "REST")
+        payload.setdefault("integration_type", payload.get("integration_mode") or "REST")
         payload.setdefault("website", None)
 
         existing = db.get(MarketplaceChannelPartner, payload["id"])
@@ -417,34 +480,48 @@ def seed_channel_players(db: Session, *, refresh_existing: bool = True) -> dict[
         else:
             partner_id = existing.id
 
-        for cap_code, protocol, direction in caps_spec:
-            cap_row = (
-                db.query(MarketplaceChannelCapability)
-                .filter(
-                    MarketplaceChannelCapability.channel_partner_id == partner_id,
-                    MarketplaceChannelCapability.capability_code == cap_code,
-                )
-                .first()
-            )
-            if cap_row:
-                cap_row.protocol = protocol
-                cap_row.direction = direction
-                cap_row.enabled = True
-            else:
-                db.add(
-                    MarketplaceChannelCapability(
-                        id=new_id(),
-                        channel_partner_id=partner_id,
-                        capability_code=cap_code,
-                        protocol=protocol,
-                        direction=direction,
-                        created_at=now,
-                    )
-                )
-                capabilities_upserted += 1
+        cap_stats = _sync_partner_capabilities(db, partner_id, caps_spec, now)
+        cap_inserted += cap_stats["inserted"]
+        cap_updated += cap_stats["updated"]
+        cap_removed += cap_stats["removed"]
 
+    db.flush()
+    catalog_expected = expected_capability_count()
+    db_enabled = (
+        db.query(MarketplaceChannelCapability)
+        .filter(MarketplaceChannelCapability.enabled.is_(True))
+        .count()
+    )
+    from app.services import integration_readiness_service
+
+    integration_readiness_service.append_audit(
+        db,
+        event_type="CHANNEL_PLAYERS_SEED",
+        entity_type="CHANNEL_PARTNER",
+        summary=f"Seed players: {inserted} novos, {updated} atualizados, caps +{cap_inserted}/~{cap_updated}/-{cap_removed}",
+        payload={
+            "inserted": inserted,
+            "updated": updated,
+            "capabilities_inserted": cap_inserted,
+            "capabilities_removed": cap_removed,
+        },
+    )
     db.commit()
-    return {"inserted": inserted, "updated": updated, "capabilities": capabilities_upserted}
+    readiness = integration_readiness_service.recompute_all_readiness(db)
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "capabilities_inserted": cap_inserted,
+        "capabilities_updated": cap_updated,
+        "capabilities_removed": cap_removed,
+        "capabilities_catalog_expected": catalog_expected,
+        "capabilities_db_enabled": db_enabled,
+        "capabilities_in_sync": db_enabled == catalog_expected,
+        "readiness_upserted": readiness.get("upserted", 0),
+        "readiness_bands": readiness.get("bands", {}),
+        # retrocompat
+        "capabilities": cap_inserted,
+    }
 
 
 def get_integration_matrix(db: Session) -> IntegrationMatrixOut:
@@ -578,6 +655,19 @@ def get_dashboard(db: Session) -> MarketplaceDashboardOut:
     )
     seller_channel_listings = db.query(SellerChannelListing).count()
     locker_network_links = db.query(SellerLockerNetworkLink).filter(SellerLockerNetworkLink.active.is_(True)).count()
+    from app.models.marketplace_integration import MarketplaceIntegrationIncident, MarketplaceIntegrationReadiness
+    from app.services.integration_readiness_service import BAND_GO_LIVE
+
+    readiness_rows = db.query(MarketplaceIntegrationReadiness).count()
+    go_live = (
+        db.query(MarketplaceIntegrationReadiness)
+        .filter(MarketplaceIntegrationReadiness.readiness_band == BAND_GO_LIVE)
+        .count()
+    )
+    open_incidents = (
+        db.query(MarketplaceIntegrationIncident).filter(MarketplaceIntegrationIncident.status == "OPEN").count()
+    )
+    avg_readiness = db.query(func.avg(MarketplaceIntegrationReadiness.score_total)).scalar()
     return MarketplaceDashboardOut(
         sellers_total=sellers_total,
         sellers_active=sellers_active,
@@ -593,4 +683,8 @@ def get_dashboard(db: Session) -> MarketplaceDashboardOut:
         channel_partners_active=channel_partners_active,
         seller_channel_listings=seller_channel_listings,
         locker_network_links=locker_network_links,
+        integration_readiness_rows=readiness_rows,
+        integration_go_live=go_live,
+        integration_open_incidents=open_incidents,
+        integration_avg_score=float(avg_readiness) if avg_readiness is not None else 0.0,
     )
