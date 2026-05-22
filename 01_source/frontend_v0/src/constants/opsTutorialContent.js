@@ -272,6 +272,34 @@ export const OPS_TUTORIALS_BY_PATH = {
       { title: "3) Dicas rápidas", items: ["Trate primeiro ativos bloqueantes de publicação/expedição."] },
     ],
   },
+  "/ops/marketing/promotions": {
+    title: "Tutorial rápido - ops/marketing/promotions",
+    subtitle: "Campanhas PR3: promoções, exclusões por SKU e seed de marketplace.",
+    sections: [
+      {
+        title: "1) Objetivo da tela",
+        items: [
+          "Gerir tabelas promotions e promotion_product_exclusions.",
+          "Ativar/desativar campanhas e excluir SKUs que não recebem desconto.",
+        ],
+      },
+      {
+        title: "2) Fluxo recomendado",
+        items: [
+          "Seed PR3 para catálogo demo (Magalu, ML, InPost, DHL…).",
+          "Listar/filtrar por código e status; criar promoção ou patch de status.",
+          "Selecionar linha → painel de exclusões por product_id.",
+        ],
+      },
+      {
+        title: "3) Ligação com outras telas",
+        items: [
+          "Pricing & fiscal — API lab: overview, validate e POST bundle/promotion.",
+          "Bundles (PR3): product_bundles e itens do kit.",
+        ],
+      },
+    ],
+  },
   "/ops/products/pricing-fiscal": {
     title: "Tutorial rápido - ops/products/pricing-fiscal",
     subtitle: "Operação de preço e regras fiscais de produto.",
@@ -533,19 +561,49 @@ export const OPS_TUTORIALS_BY_GROUP = {
       { title: "Saída esperada", items: ["Fila tratada por prioridade com evidências de execução e próximos passos."] },
     ],
   },
-  "Produtos & Fiscal": {
-    title: "Tutorial OPS - Produtos & Fiscal",
-    subtitle: "Governança de catálogo, preços, estoque e conformidade fiscal.",
+  Marketing: {
+    title: "Tutorial OPS - Marketing",
+    subtitle: "Campanhas PR3: promoções, bundles e laboratório pricing/fiscal.",
     sections: [
-      { title: "Objetivo da área", items: ["Garantir consistência de dados de produto e operação fiscal por país."] },
+      {
+        title: "Objetivo da área",
+        items: [
+          "Configurar descontos por código, janela de vigência e condições JSON.",
+          "Excluir SKUs específicos sem desativar a campanha inteira.",
+        ],
+      },
       {
         title: "Fluxo recomendado",
         items: [
-          "Verifique integridade de cadastro, pricing e sinais de inconsistência de estoque.",
-          "Quando houver risco fiscal, valide providers/gates antes de avançar mudanças.",
+          "Promoções: seed → listar → criar/ativar → exclusões por produto.",
+          "API lab: validar promoção em pedido e conferir overview fiscal.",
+          "Bundles: montar kits ligados a product_bundle_items.",
         ],
       },
-      { title: "Saída esperada", items: ["Ajustes seguros aplicados com rastreabilidade operacional."] },
+      { title: "Saída esperada", items: ["Campanhas rastreáveis e alinhadas ao catálogo central."] },
+    ],
+  },
+  "Produtos & Catálogo": {
+    title: "Tutorial OPS - Produtos & Catálogo",
+    subtitle: "Ecossistema mundial, PIM, SKU, categorias, pricing e estoque.",
+    sections: [
+      {
+        title: "Objetivo da área",
+        items: [
+          "Cobertura global de players (locker, marketplace, carrier) e elegibilidade por categoria.",
+          "Consistência entre catálogo central, taxonomias/canais e parceiros B2B.",
+        ],
+      },
+      {
+        title: "Fluxo recomendado",
+        items: [
+          "Ecossistema mundial: seed players → sync parceiros → revisar elegibilidade.",
+          "PIM profissional: taxonomias e listings após SKU no catálogo.",
+          "Catálogo operacional: categorias → assets → bundles.",
+          "Comercial: pricing/fiscal e saúde de estoque; providers fiscais se houver divergência.",
+        ],
+      },
+      { title: "Saída esperada", items: ["Dados alinhados com operadores e integrações rastreáveis."] },
     ],
   },
   "Integrações": {

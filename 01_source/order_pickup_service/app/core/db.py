@@ -682,7 +682,11 @@ def init_db():
         ProductBundle,
         ProductBundleItem,
         Promotion,
+        PromotionCampaign,
         PromotionProductExclusion,
+        PromotionProductInclusion,
+        PromotionRedemption,
+        PromotionScope,
     )
     from app.models.partner_order_events_outbox import PartnerOrderEventOutbox  # noqa: F401
     from app.models.order_fulfillment_tracking import OrderFulfillmentTracking  # noqa: F401

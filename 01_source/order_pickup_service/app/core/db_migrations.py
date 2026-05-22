@@ -1628,6 +1628,167 @@ def _create_promotion_product_exclusions(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_promotion_campaigns(conn, applied: list[str]) -> None:
+    name = "promotion_campaigns.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_campaigns (
+            id               VARCHAR(36) PRIMARY KEY,
+            code             VARCHAR(32) NOT NULL UNIQUE,
+            name             VARCHAR(128) NOT NULL,
+            description      TEXT,
+            channel_family   VARCHAR(32) NOT NULL DEFAULT 'GENERAL',
+            primary_country  VARCHAR(8),
+            priority         INTEGER NOT NULL DEFAULT 100,
+            max_stack_promotions INTEGER NOT NULL DEFAULT 1,
+            is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+            valid_from       TIMESTAMPTZ NOT NULL,
+            valid_until      TIMESTAMPTZ,
+            metadata_json    JSONB NOT NULL DEFAULT '{}',
+            created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promo_campaigns_active "
+        "ON promotion_campaigns (is_active, valid_from, valid_until)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotion_scopes(conn, applied: list[str]) -> None:
+    name = "promotion_scopes.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_scopes (
+            id            VARCHAR(36) PRIMARY KEY,
+            promotion_id  VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+            scope_type    VARCHAR(32) NOT NULL,
+            scope_value   VARCHAR(128) NOT NULL,
+            mode          VARCHAR(16) NOT NULL DEFAULT 'INCLUDE',
+            notes         VARCHAR(255),
+            created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_promotion_scopes UNIQUE (promotion_id, scope_type, scope_value, mode)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promotion_scopes_promo "
+        "ON promotion_scopes (promotion_id, scope_type)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotion_product_inclusions(conn, applied: list[str]) -> None:
+    name = "promotion_product_inclusions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_product_inclusions (
+            promotion_id VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+            product_id   VARCHAR(255) NOT NULL REFERENCES products(id),
+            PRIMARY KEY (promotion_id, product_id)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotion_redemptions(conn, applied: list[str]) -> None:
+    name = "promotion_redemptions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_redemptions (
+            id               VARCHAR(36) PRIMARY KEY,
+            promotion_id     VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE RESTRICT,
+            campaign_id      VARCHAR(36) REFERENCES promotion_campaigns(id) ON DELETE SET NULL,
+            order_id         VARCHAR(64) NOT NULL,
+            user_id          VARCHAR(36),
+            partner_id       VARCHAR(36),
+            channel_code     VARCHAR(32),
+            country_code     VARCHAR(8),
+            player_code      VARCHAR(64),
+            discount_cents   INTEGER NOT NULL DEFAULT 0,
+            currency         VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            idempotency_key  VARCHAR(64),
+            redeemed_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            metadata_json    JSONB NOT NULL DEFAULT '{}'
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promo_redemptions_promo_at "
+        "ON promotion_redemptions (promotion_id, redeemed_at DESC)"
+    ))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_promo_redemptions_idem "
+        "ON promotion_redemptions (idempotency_key) WHERE idempotency_key IS NOT NULL"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_promotion_audit_events(conn, applied: list[str]) -> None:
+    name = "promotion_audit_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_audit_events (
+            id              VARCHAR(36) PRIMARY KEY,
+            entity_type     VARCHAR(32) NOT NULL,
+            entity_id       VARCHAR(64) NOT NULL,
+            action          VARCHAR(64) NOT NULL,
+            actor_id        VARCHAR(36),
+            correlation_id  VARCHAR(64),
+            payload_json    JSONB NOT NULL DEFAULT '{}',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promo_audit_entity "
+        "ON promotion_audit_events (entity_type, entity_id, created_at DESC)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _promotions_add_campaign_id(conn, applied: list[str]) -> None:
+    name = "promotions.add_campaign_id_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "promotions", "campaign_id", "VARCHAR(36)")
+    conn.execute(text("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_promotions_campaign_id'
+            ) THEN
+                ALTER TABLE promotions
+                ADD CONSTRAINT fk_promotions_campaign_id
+                FOREIGN KEY (campaign_id) REFERENCES promotion_campaigns(id) ON DELETE SET NULL;
+            END IF;
+        EXCEPTION WHEN undefined_table THEN
+            NULL;
+        END $$;
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS idx_promotions_campaign ON promotions (campaign_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_products_cache(conn, applied: list[str]) -> None:
     name = "products_cache.create_table_v1"
     if _migration_applied(conn, name):
@@ -1955,6 +2116,53 @@ def _create_global_players_registry(conn, applied: list[str]) -> None:
             CONSTRAINT uq_gpit UNIQUE (player_code, target_type, target_key)
         )
     """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_global_player_aliases_relations(conn, applied: list[str]) -> None:
+    """Aliases canónicos e relações entre players (rede locker / marketplace / food)."""
+    name = "global_players.aliases_relations_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_player_aliases (
+            alias_code      VARCHAR(40) PRIMARY KEY,
+            player_code     VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_gpa_player ON global_player_aliases (player_code)"
+    ))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS global_player_relations (
+            id                  VARCHAR(36) PRIMARY KEY,
+            from_player_code    VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            to_player_code      VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            relation_type       VARCHAR(32) NOT NULL,
+            notes               TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_gpr_relation UNIQUE (from_player_code, to_player_code, relation_type)
+        )
+    """))
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS promotion_player_eligibility (
+            promotion_id        VARCHAR(36) NOT NULL REFERENCES promotions(id) ON DELETE CASCADE,
+            player_code         VARCHAR(40) NOT NULL REFERENCES global_players(code) ON DELETE CASCADE,
+            eligibility_mode    VARCHAR(16) NOT NULL DEFAULT 'INCLUDE',
+            notes               VARCHAR(255),
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            PRIMARY KEY (promotion_id, player_code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_ppe_player ON promotion_player_eligibility (player_code)"
+    ))
 
     _mark_migration(conn, name)
     applied.append(name)
@@ -7441,6 +7649,12 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_product_bundle_items,
     _create_promotions,
     _create_promotion_product_exclusions,
+    _create_promotion_campaigns,
+    _create_promotion_scopes,
+    _create_promotion_product_inclusions,
+    _create_promotion_redemptions,
+    _create_promotion_audit_events,
+    _promotions_add_campaign_id,
     _create_products_cache,
     _create_product_locker_configs,
     _create_dynamic_pricing_rules,
@@ -7448,6 +7662,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_product_recommendations,
     _create_catalog_professional_tables,
     _create_global_players_registry,
+    _create_global_player_aliases_relations,
 
     # Parceiros
     _create_ecommerce_partners,

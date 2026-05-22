@@ -53,6 +53,11 @@ class PromotionValidateIn(BaseModel):
     promotion_code: str | None = Field(default=None, max_length=32)
     items: list[dict] = Field(default_factory=list)
     total_amount_cents: int = Field(default=0, ge=0)
+    country_code: str | None = Field(default=None, max_length=8)
+    channel_code: str | None = Field(default=None, max_length=32)
+    player_code: str | None = Field(default=None, max_length=64)
+    partner_id: str | None = Field(default=None, max_length=36)
+    marketplace_code: str | None = Field(default=None, max_length=64)
 
 
 class ProductFiscalConfigUpsertIn(BaseModel):
@@ -144,11 +149,30 @@ class PromotionListOut(BaseModel):
     items: list[PromotionOut]
 
 
+class PromotionSeedOut(BaseModel):
+    ok: bool = True
+    inserted: int
+    skipped: int
+    total_catalog: int
+
+
 class PromotionStatusOut(BaseModel):
     ok: bool
     promotion_id: str
     is_active: bool
     changed_at: str
+
+
+class PromotionCloneIn(BaseModel):
+    new_code: str = Field(..., min_length=1, max_length=32)
+    new_name: str | None = Field(default=None, max_length=128)
+
+
+class PromotionCloneOut(BaseModel):
+    ok: bool = True
+    promotion_id: str
+    promotion_code: str
+    source_id: str
 
 
 class PromotionValidateOut(BaseModel):

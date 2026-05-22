@@ -90,6 +90,9 @@ class Promotion(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    campaign_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("promotion_campaigns.id", ondelete="SET NULL"), nullable=True
+    )
     created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
@@ -112,6 +115,97 @@ class PromotionProductExclusion(Base):
         ForeignKey("products.id"),
         primary_key=True,
     )
+
+
+class PromotionCampaign(Base):
+    __tablename__ = "promotion_campaigns"
+
+    __table_args__ = (
+        Index("idx_promo_campaigns_active", "is_active", "valid_from", "valid_until"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), nullable=False, unique=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    channel_family: Mapped[str] = mapped_column(String(32), nullable=False, default="GENERAL")
+    primary_country: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    max_stack_promotions: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class PromotionScope(Base):
+    __tablename__ = "promotion_scopes"
+
+    __table_args__ = (
+        Index("idx_promotion_scopes_promo", "promotion_id", "scope_type"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    promotion_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("promotions.id", ondelete="CASCADE"), nullable=False
+    )
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_value: Mapped[str] = mapped_column(String(128), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, default="INCLUDE")
+    notes: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class PromotionProductInclusion(Base):
+    __tablename__ = "promotion_product_inclusions"
+
+    promotion_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("promotions.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    product_id: Mapped[str] = mapped_column(
+        String(255),
+        ForeignKey("products.id"),
+        primary_key=True,
+    )
+
+
+class PromotionRedemption(Base):
+    __tablename__ = "promotion_redemptions"
+
+    __table_args__ = (
+        Index("idx_promo_redemptions_promo_at", "promotion_id", "redeemed_at"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    promotion_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("promotions.id", ondelete="RESTRICT"), nullable=False
+    )
+    campaign_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("promotion_campaigns.id", ondelete="SET NULL"), nullable=True
+    )
+    order_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    partner_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    channel_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    player_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    discount_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    currency: Mapped[str] = mapped_column(String(8), nullable=False, default="BRL")
+    idempotency_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    redeemed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
+    metadata_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
 
 class FiscalAutoClassificationLog(Base):

@@ -89,7 +89,9 @@ const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
+const OpsProductsAdminRedirect = lazy(() => import("./pages/OpsProductsAdminRedirect"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
+const OpsPromotionsAdminPage = lazy(() => import("./pages/OpsPromotionsAdminPage"));
 const OpsIntegrationOutboxReplayPage = lazy(() => import("./pages/OpsIntegrationOutboxReplayPage"));
 const OpsIntegrationOrdersFiscalPage = lazy(() => import("./pages/OpsIntegrationOrdersFiscalPage"));
 const OpsIntegrationOrdersPartnerLookupPage = lazy(() => import("./pages/OpsIntegrationOrdersPartnerLookupPage"));
@@ -748,74 +750,138 @@ function TopNav() {
       group: "Logística / Inventário",
     },
     {
-      to: "/ops/products/catalog",
-      label: "ops /products/catalog",
-      aria: "Dashboard OPS de Catalogo de produtos",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
-    },
-    {
-      to: "/ops/products/assets",
-      label: "ops /products/assets",
-      aria: "Operacao OPS para media e barcodes de produtos",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
-    },
-    {
-      to: "/ops/products/categories",
-      label: "ops /products/categories",
-      aria: "CRUD OPS de product_categories (arvore hierarquica)",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
-    },
-    {
       to: "/ops/products/ecosystem",
-      label: "ops /products/ecosystem",
-      aria: "Hub ecossistema mundial: players, elegibilidade e integrações B2B",
-      group: "Produtos & Fiscal",
+      label: "Ecossistema mundial",
+      aria: "Players globais, elegibilidade categoria×rede e sync parceiros B2B",
+      group: "Produtos & Catálogo",
       opsSubGroup: "Catálogo mundial",
+      newTag: "Hub",
     },
     {
       to: "/ops/products/professional",
-      label: "ops /products/professional",
-      aria: "Taxonomias GS1, canais marketplace e atributos PIM",
-      group: "Produtos & Fiscal",
+      label: "PIM — taxonomias e canais",
+      aria: "Taxonomias GS1/ML/Amazon, listings de canal e atributos PIM",
+      group: "Produtos & Catálogo",
       opsSubGroup: "Catálogo mundial",
     },
     {
+      to: "/ops/products/catalog",
+      label: "Catálogo SKU",
+      aria: "Dashboard OPS de catálogo de produtos",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Catálogo operacional",
+    },
+    {
+      to: "/ops/products/categories",
+      label: "Categorias",
+      aria: "CRUD de product_categories (árvore hierárquica)",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Catálogo operacional",
+    },
+    {
+      to: "/ops/products/assets",
+      label: "Mídia & barcodes",
+      aria: "Mídia, EAN/GTIN e qualidade de dados de produto",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Catálogo operacional",
+    },
+    {
       to: "/ops/products/bundles",
-      label: "ops /products/bundles",
-      aria: "Listagem OPS de product_bundles e itens (ativar/desativar)",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
+      label: "Bundles",
+      aria: "Kits e composições product_bundles",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Catálogo operacional",
     },
     {
       to: "/ops/products/pricing-fiscal",
-      label: "ops /products/pricing-fiscal",
-      aria: "Operacao OPS para pricing e fiscal do Pr-3",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
+      label: "Pricing & fiscal",
+      aria: "Preços, impostos e alinhamento fiscal por SKU",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Comercial & estoque",
     },
     {
       to: "/ops/products/pricing-rules",
-      label: "ops /products/pricing-rules",
-      aria: "Regras comerciais pricing_rules (regiao, categoria, vigencia)",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
+      label: "Regras de preço",
+      aria: "pricing_rules por região, categoria e vigência",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Comercial & estoque",
     },
     {
       to: "/ops/products/inventory-health",
-      label: "ops /products/inventory-health",
-      aria: "Dashboard OPS de Inventory Health",
-      group: "Produtos & Fiscal",
-      opsSubGroup: "Products",
+      label: "Saúde do estoque",
+      aria: "Sinais de ruptura, reservas e inconsistências",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Comercial & estoque",
     },
-    { to: "/ops/marketing/promotions", label: "ops /marketing/promotions", aria: "Listagem e CRUD basico de promocoes (PR3)", group: "Marketing" },
+    {
+      to: "/ops/marketing/promotions",
+      label: "Hub Promoções (mundial)",
+      aria: "Overview, campanhas, promoções, escopos e resgates",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/marketing/promotions?tab=campaigns",
+      label: "Campanhas",
+      aria: "promotion_campaigns por marketplace/carrier/rede locker",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
+    {
+      to: "/ops/marketing/promotions?tab=redemptions",
+      label: "Resgates",
+      aria: "Trilha promotion_redemptions",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
+    {
+      to: "/ops/marketing/promotions?tab=promotions",
+      label: "Promoções (lista)",
+      aria: "Listagem, escopos, exclusões e clonar",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
+    {
+      to: "/ops/marketing/promotions?tab=lab",
+      label: "Laboratório promo",
+      aria: "Simular, match, conflitos e matriz player",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+      newTag: "Lab",
+    },
+    {
+      to: "/ops/products/pricing-fiscal",
+      label: "Pricing & fiscal — API lab",
+      aria: "Overview PR3, bundles e validate promotion",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
+    {
+      to: "/ops/products/bundles",
+      label: "Bundles (PR3)",
+      aria: "Kits e composições product_bundles",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
+    {
+      to: "/ops/products/pricing-rules",
+      label: "Regras de preço",
+      aria: "pricing_rules por região, categoria e vigência",
+      group: "Marketing",
+      opsSubGroup: "Campanhas",
+    },
     { to: "/ops/billing/invoices", label: "ops /billing/invoices", aria: "Busca de invoice (internal)", group: "Billing / Fiscal" },
     { to: "/ops/billing/invoice-queue", label: "ops /billing/invoice-queue", aria: "Fila operacional (dead letters + gaps)", group: "Billing / Fiscal" },
     { to: "/ops/billing/reconciliation-gaps", label: "ops /billing/reconciliation-gaps", aria: "Gaps de reconciliação fiscal", group: "Billing / Fiscal" },
     { to: "/ops/billing/kpis", label: "ops /billing/kpis", aria: "KPI financeiro diário (FA-5)", group: "Billing / Fiscal" },
-    { to: "/ops/fiscal/providers", label: "ops /fiscal/providers", aria: "Status de providers fiscais BR/PT", group: "Produtos & Fiscal" },
+    {
+      to: "/ops/fiscal/providers",
+      label: "Providers fiscais (BR/PT)",
+      aria: "Status de providers fiscais por país",
+      group: "Produtos & Catálogo",
+      opsSubGroup: "Fiscal produto",
+    },
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao", group: "Integrações" },
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)", group: "Integrações" },
     { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", group: "Integrações" },
@@ -979,7 +1045,7 @@ function TopNav() {
     "Runtime",
     "Logística",
     "Logística / Inventário",
-    "Produtos & Fiscal",
+    "Produtos & Catálogo",
     "Marketing",
     "Billing / Fiscal",
     "Integrações",
@@ -2349,6 +2415,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/products/admin"
+              element={
+                <OpsRoute>
+                  <OpsProductsAdminRedirect />
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/products/catalog"
               element={
                 <OpsRoute>
@@ -2424,7 +2498,7 @@ function AppContent() {
               path="/ops/marketing/promotions"
               element={
                 <OpsRoute>
-                  <OpsPromotionsPage />
+                  <OpsPromotionsAdminPage />
                 </OpsRoute>
               }
             />

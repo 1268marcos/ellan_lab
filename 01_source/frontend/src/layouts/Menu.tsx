@@ -121,21 +121,36 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'marketing',
+    icon: '🎯',
+    label: 'Marketing',
+    items: [
+      { to: '/ops/marketing/promotions', label: 'Hub Promoções (mundial)', newTag: 'Hub' },
+      { to: '/ops/marketing/promotions?tab=campaigns', label: 'Campanhas' },
+      { to: '/ops/marketing/promotions?tab=promotions', label: 'Promoções' },
+      { to: '/ops/marketing/promotions?tab=redemptions', label: 'Resgates' },
+      { to: '/ops/marketing/promotions?tab=lab', label: 'Laboratório promo', newTag: 'Lab' },
+      { to: '/ops/products/pricing-fiscal', label: 'Pricing & fiscal — API lab' },
+      { to: '/ops/products/admin?tab=bundles', label: 'Bundles (PR3)' },
+      { to: '/ops/products/pricing-rules', label: 'Regras de preço' },
+    ],
+  },
+  {
     key: 'productsCatalog',
     icon: '📦',
     label: 'Produtos & Catálogo',
     items: [
       { to: '/ops/products/admin', label: 'Hub — visão geral' },
-      { to: '/ops/products/admin?tab=ecosystem', label: 'Ecossistema mundial' },
-      { to: '/ops/products/admin?tab=catalog', label: 'Catálogo (SKU)' },
-      { to: '/ops/products/admin?tab=categories', label: 'Categorias' },
-      { to: '/ops/products/admin?tab=taxonomy', label: 'Taxonomias (GS1, ML, Amazon…)' },
-      { to: '/ops/products/admin?tab=channels', label: 'Canais / marketplaces' },
-      { to: '/ops/products/admin?tab=attributes', label: 'Atributos PIM' },
-      { to: '/ops/products/admin?tab=bundles', label: 'Bundles' },
-      { to: '/ops/products/admin?tab=fiscal', label: 'Pricing / fiscal' },
-      { to: '/ops/products/admin?tab=inventory', label: 'Estoque & reservas' },
+      { to: '/ops/products/admin?tab=ecosystem', label: 'Ecossistema mundial', newTag: 'Hub' },
+      { to: '/ops/products/admin?tab=taxonomy', label: 'PIM — taxonomias (GS1, ML…)' },
+      { to: '/ops/products/admin?tab=channels', label: 'PIM — canais / marketplaces' },
+      { to: '/ops/products/admin?tab=attributes', label: 'PIM — atributos' },
+      { to: '/ops/products/catalog', label: 'Catálogo SKU' },
+      { to: '/ops/products/categories', label: 'Categorias' },
       { to: '/ops/products/assets', label: 'Mídia & barcodes' },
+      { to: '/ops/products/admin?tab=bundles', label: 'Bundles' },
+      { to: '/ops/products/admin?tab=fiscal', label: 'Pricing & fiscal' },
+      { to: '/ops/products/admin?tab=inventory', label: 'Estoque & reservas' },
     ],
   },
   {
@@ -203,6 +218,7 @@ export default function Menu() {
     orderPickup: true,
     mlOps: true,
     marketplace: true,
+    marketing: true,
     productsCatalog: true,
     lifecycle: false,
     intelligence: false,
@@ -239,6 +255,7 @@ export default function Menu() {
         if (g.key === 'orderPickup') return g
         if (g.key === 'mlOps') return g
         if (g.key === 'marketplace') return g
+        if (g.key === 'marketing') return g
         if (g.key === 'productsCatalog') return g
         if (g.key === 'lifecycle') return g
         if (g.key === 'operacional') return g

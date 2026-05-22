@@ -40,6 +40,7 @@ from app.routers import (
     partners,
     pickup,
     pricing_fiscal,
+    promotions_admin,
     pricing_rules,
     catalog_professional,
     product_categories,
@@ -163,6 +164,7 @@ app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
 app.include_router(runtime_sync.router)
 app.include_router(pricing_fiscal.router)
+app.include_router(promotions_admin.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
 app.include_router(internal.router)

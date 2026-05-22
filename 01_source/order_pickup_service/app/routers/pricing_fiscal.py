@@ -37,9 +37,12 @@ from app.schemas.pricing_fiscal import (
     ProductFiscalConfigOut,
     ProductFiscalConfigUpsertIn,
     ProductFiscalConfigUpsertOut,
+    PromotionCloneIn,
+    PromotionCloneOut,
     PromotionCreateIn,
     PromotionListOut,
     PromotionOut,
+    PromotionSeedOut,
     PromotionProductExclusionCreateIn,
     PromotionProductExclusionDeleteOut,
     PromotionProductExclusionListOut,
@@ -49,6 +52,9 @@ from app.schemas.pricing_fiscal import (
     PromotionValidateIn,
     PromotionValidateOut,
 )
+from app.core.promotions_seed import seed_promotions, seed_promotions_world
+from app.services.promotion_engine_service import clone_promotion
+from app.services.promotion_scope_service import evaluate_promotion_scopes
 from app.services.fiscal_context_service import build_fiscal_context
 from app.services.ops_audit_service import record_ops_action_audit
 
@@ -115,9 +121,20 @@ def _resolve_correlation_id(header_value: str | None) -> str:
     return raw or f"corr-pr3-{uuid4().hex}"
 
 
-def _to_iso_utc(value: datetime | None) -> str:
+def _to_iso_utc(value: datetime | str | None) -> str:
     if value is None:
         return datetime.now(timezone.utc).isoformat()
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return datetime.now(timezone.utc).isoformat()
+        if raw.endswith("Z"):
+            raw = raw[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(raw)
+        except ValueError:
+            return raw
+        value = parsed
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
     return value.astimezone(timezone.utc).isoformat()
@@ -156,6 +173,12 @@ def _json_load_dict(value, default: dict | None = None) -> dict:
         except Exception:
             return fallback
     return fallback
+
+
+def _conditions_json_sql_value(db: Session) -> str:
+    if db.get_bind().dialect.name == "postgresql":
+        return "CAST(:conditions_json AS JSONB)"
+    return ":conditions_json"
 
 
 def _to_audit_payload(value):
@@ -747,6 +770,43 @@ def list_promotions(
     return PromotionListOut(ok=True, total=total, limit=limit, offset=offset, items=items)
 
 
+@router.get("/promotions/{promotion_id}", response_model=PromotionOut)
+def get_promotion(promotion_id: str, db: Session = Depends(get_db)):
+    row = db.execute(
+        text(
+            """
+            SELECT id, code, name, type, discount_pct, discount_cents, min_order_cents, max_discount_cents,
+                   max_uses, uses_count, per_user_limit, conditions_json, is_active, valid_from, valid_until,
+                   created_by, created_at
+            FROM promotions
+            WHERE id = :id
+            """
+        ),
+        {"id": promotion_id},
+    ).mappings().first()
+    if not row:
+        raise HTTPException(
+            status_code=404,
+            detail={"type": "PROMOTION_NOT_FOUND", "message": "Promoção não encontrada.", "promotion_id": promotion_id},
+        )
+    return _promotion_to_out(dict(row))
+
+
+@router.post("/promotions/seed", response_model=PromotionSeedOut)
+def seed_promotions_catalog(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    created_by = str(current_user.id) if current_user and current_user.id else None
+    world = seed_promotions_world(db, created_by=created_by)
+    return PromotionSeedOut(
+        ok=True,
+        inserted=world["promotions_inserted"],
+        skipped=world["promotions_skipped"],
+        total_catalog=world["promotions_inserted"] + world["promotions_skipped"],
+    )
+
+
 @router.post("/promotions", response_model=PromotionOut)
 def create_promotion(
     payload: PromotionCreateIn,
@@ -758,22 +818,31 @@ def create_promotion(
     row_id = str(uuid4())
     data = payload.model_dump(mode="json")
     created_by = str(current_user.id) if current_user and current_user.id else None
+    conditions_sql = _conditions_json_sql_value(db)
+    now = datetime.now(timezone.utc)
     try:
         db.execute(
             text(
-                """
+                f"""
                 INSERT INTO promotions (
                     id, code, name, type, discount_pct, discount_cents, min_order_cents, max_discount_cents,
                     max_uses, uses_count, per_user_limit, conditions_json, is_active, valid_from, valid_until,
                     created_by, created_at, updated_at
                 ) VALUES (
                     :id, :code, :name, :type, :discount_pct, :discount_cents, :min_order_cents, :max_discount_cents,
-                    :max_uses, 0, :per_user_limit, CAST(:conditions_json AS JSONB), TRUE, :valid_from, :valid_until,
-                    :created_by, NOW(), NOW()
+                    :max_uses, 0, :per_user_limit, {conditions_sql}, TRUE, :valid_from, :valid_until,
+                    :created_by, :created_at, :updated_at
                 )
                 """
             ),
-            {"id": row_id, "created_by": created_by, **data, "conditions_json": json.dumps(data.get("conditions_json") or {})},
+            {
+                "id": row_id,
+                "created_by": created_by,
+                **data,
+                "conditions_json": json.dumps(data.get("conditions_json") or {}),
+                "created_at": now,
+                "updated_at": now,
+            },
         )
         _record_pr3_audit(
             db=db,
@@ -843,11 +912,15 @@ def patch_promotion_status(
             """
             UPDATE promotions
             SET is_active = :is_active,
-                updated_at = NOW()
+                updated_at = :updated_at
             WHERE id = :id
             """
         ),
-        {"id": promotion_id, "is_active": bool(payload.is_active)},
+        {
+            "id": promotion_id,
+            "is_active": bool(payload.is_active),
+            "updated_at": datetime.now(timezone.utc),
+        },
     )
     after_row = db.execute(
         text("SELECT id, is_active, updated_at FROM promotions WHERE id = :id"),
@@ -871,6 +944,43 @@ def patch_promotion_status(
         is_active=bool((after_row or {}).get("is_active")),
         changed_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+@router.post("/promotions/{promotion_id}/clone", response_model=PromotionCloneOut)
+def clone_promotion_route(
+    promotion_id: str,
+    payload: PromotionCloneIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Duplica promoção, escopos, exclusões e inclusões (cópia inativa por padrão)."""
+    actor = str(current_user.id) if current_user and current_user.id else None
+    try:
+        result = clone_promotion(
+            db,
+            source_promotion_id=promotion_id,
+            new_code=payload.new_code,
+            new_name=payload.new_name,
+            actor_id=actor,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        if code == "PROMOTION_NOT_FOUND":
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "type": code,
+                    "message": "Promoção não encontrada (id ou código).",
+                    "promotion_id": promotion_id,
+                },
+            ) from exc
+        if code == "CODE_ALREADY_EXISTS":
+            raise HTTPException(
+                status_code=409,
+                detail={"type": code, "message": "Código de promoção já existe."},
+            ) from exc
+        raise HTTPException(status_code=400, detail={"type": code, "message": code}) from exc
+    return PromotionCloneOut(ok=True, **result)
 
 
 @router.get("/promotions/{promotion_id}/product-exclusions", response_model=PromotionProductExclusionListOut)
@@ -1168,24 +1278,134 @@ def validate_promotion(
                         reason="pedido abaixo do mínimo da promoção",
                     )
                 else:
-                    discount_cents = _compute_advanced_discount(
-                        promo_type=str(promo.get("type") or ""),
-                        total_amount_cents=total,
-                        discount_pct=(float(promo.get("discount_pct")) if promo.get("discount_pct") is not None else None),
-                        discount_cents=(int(promo.get("discount_cents")) if promo.get("discount_cents") is not None else None),
-                        max_discount_cents=(int(promo.get("max_discount_cents")) if promo.get("max_discount_cents") is not None else None),
-                        conditions_json=_json_load_dict(promo.get("conditions_json"), default={}),
-                        items=payload.items or [],
+                    promo_id = str(promo.get("id"))
+                    scope_ok, scope_reason = evaluate_promotion_scopes(
+                        db,
+                        promo_id,
+                        country_code=payload.country_code,
+                        channel_code=payload.channel_code,
+                        player_code=payload.player_code or payload.marketplace_code,
+                        partner_id=payload.partner_id,
+                        marketplace_code=payload.marketplace_code,
                     )
-                    response = PromotionValidateOut(
-                        ok=True,
-                        valid=True,
-                        idempotent=False,
-                        promotion_id=str(promo.get("id")),
-                        promotion_code=normalized_code,
-                        discount_cents=discount_cents,
-                        reason=None,
-                    )
+                    if not scope_ok:
+                        response = PromotionValidateOut(
+                            ok=True,
+                            valid=False,
+                            idempotent=False,
+                            promotion_id=promo_id,
+                            promotion_code=normalized_code,
+                            discount_cents=0,
+                            reason=scope_reason,
+                        )
+                    else:
+                        incl_total = int(
+                            db.execute(
+                                text(
+                                    "SELECT COUNT(*) FROM promotion_product_inclusions WHERE promotion_id = :pid"
+                                ),
+                                {"pid": promo_id},
+                            ).scalar()
+                            or 0
+                        )
+                        inclusion_ok = True
+                        if incl_total > 0:
+                            item_ids = {
+                                str(it.get("product_id") or it.get("sku_id") or "").strip()
+                                for it in (payload.items or [])
+                                if isinstance(it, dict)
+                            }
+                            allowed_rows = db.execute(
+                                text(
+                                    "SELECT product_id FROM promotion_product_inclusions WHERE promotion_id = :pid"
+                                ),
+                                {"pid": promo_id},
+                            ).mappings().all()
+                            allowed = {str(r.get("product_id") or "") for r in allowed_rows}
+                            inclusion_ok = bool(item_ids & allowed)
+                        if not inclusion_ok:
+                            response = PromotionValidateOut(
+                                ok=True,
+                                valid=False,
+                                idempotent=False,
+                                promotion_id=promo_id,
+                                promotion_code=normalized_code,
+                                discount_cents=0,
+                                reason="nenhum SKU na lista de inclusão da promoção",
+                            )
+                        else:
+                            discount_cents = _compute_advanced_discount(
+                                promo_type=str(promo.get("type") or ""),
+                                total_amount_cents=total,
+                                discount_pct=(
+                                    float(promo.get("discount_pct"))
+                                    if promo.get("discount_pct") is not None
+                                    else None
+                                ),
+                                discount_cents=(
+                                    int(promo.get("discount_cents"))
+                                    if promo.get("discount_cents") is not None
+                                    else None
+                                ),
+                                max_discount_cents=(
+                                    int(promo.get("max_discount_cents"))
+                                    if promo.get("max_discount_cents") is not None
+                                    else None
+                                ),
+                                conditions_json=_json_load_dict(promo.get("conditions_json"), default={}),
+                                items=payload.items or [],
+                            )
+                            response = PromotionValidateOut(
+                                ok=True,
+                                valid=True,
+                                idempotent=False,
+                                promotion_id=promo_id,
+                                promotion_code=normalized_code,
+                                discount_cents=discount_cents,
+                                reason=None,
+                            )
+                            try:
+                                meta_expr = _conditions_json_sql_value(db).replace(
+                                    "conditions_json", "metadata_json"
+                                )
+                                db.execute(
+                                    text(
+                                        f"""
+                                        INSERT INTO promotion_redemptions (
+                                            id, promotion_id, campaign_id, order_id, user_id, partner_id,
+                                            channel_code, country_code, player_code, discount_cents, currency,
+                                            idempotency_key, redeemed_at, metadata_json
+                                        )
+                                        SELECT
+                                            :rid, :pid, campaign_id, :oid, :uid, :partner,
+                                            :channel, :country, :player, :disc, 'BRL',
+                                            :idem, :at, {meta_expr}
+                                        FROM promotions WHERE id = :pid
+                                        """
+                                    ),
+                                    {
+                                        "rid": str(uuid4()),
+                                        "pid": promo_id,
+                                        "oid": normalized_order_id,
+                                        "uid": payload.user_id,
+                                        "partner": payload.partner_id,
+                                        "channel": payload.channel_code,
+                                        "country": payload.country_code,
+                                        "player": payload.player_code or payload.marketplace_code,
+                                        "disc": discount_cents,
+                                        "idem": f"{normalized_order_id}:{normalized_code}",
+                                        "at": now,
+                                        "metadata_json": json.dumps({"source": "PR3_PROMOTION_VALIDATE"}),
+                                    },
+                                )
+                                db.execute(
+                                    text(
+                                        "UPDATE promotions SET uses_count = uses_count + 1, updated_at = :u WHERE id = :pid"
+                                    ),
+                                    {"pid": promo_id, "u": now},
+                                )
+                            except Exception:
+                                pass
 
     _record_pr3_audit(
         db=db,

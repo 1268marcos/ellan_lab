@@ -24,6 +24,7 @@ import OpsProductsAdmin from '../pages/ops/OpsProductsAdmin'
 import OpsProductsCatalog from '../pages/ops/OpsProductsCatalog'
 import OpsProductCategories from '../pages/ops/OpsProductCategories'
 import OpsProductAssets from '../pages/ops/OpsProductAssets'
+import OpsPromotionsAdmin from '../pages/ops/OpsPromotionsAdmin'
 import Manifests from '../pages/ops/Manifests'
 import Compatibility from '../pages/intelligence/Compatibility'
 import PredictiveHealth from '../pages/intelligence/PredictiveHealth'
@@ -346,6 +347,46 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsProductCategories />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/marketing/promotions"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsPromotionsAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/pricing-fiscal"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Navigate to="/ops/products/admin?tab=fiscal" replace />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/pricing-rules"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Navigate to="/ops/products/admin" replace />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/products/bundles"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Navigate to="/ops/products/admin?tab=bundles" replace />
             </OpsOnly>
           </Protected>
         }
