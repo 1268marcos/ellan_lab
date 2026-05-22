@@ -5,8 +5,8 @@ import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsTrendKpiCard, { resolveTrendByDelta } from "../components/OpsTrendKpiCard";
 import { getConfidenceBadgeStyle, getDataQualityFlagStyle } from "../components/opsVisualTokens";
 
-const ORDER_PICKUP_BASE =
-  import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+const PARTNER_ADMIN_BASE = import.meta.env.VITE_PARTNER_ADMIN_BASE_URL || "/api/pa";
+const PARTNER_API = `${PARTNER_ADMIN_BASE}/v1/partner-admin`;
 const AUTO_REFRESH_PREF_KEY = "ops_partners_dashboard:auto_refresh_on_preset";
 const FILTERS_PREF_KEY = "ops_partners_dashboard:last_filters";
 
@@ -210,7 +210,7 @@ export default function OpsPartnersDashboardPage() {
         to,
       });
 
-      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard?${params.toString()}`;
+      const endpoint = `${PARTNER_API}/partners/ops/dashboard?${params.toString()}`;
       const response = await fetch(endpoint, {
         method: "GET",
         headers: { Accept: "application/json", ...authHeaders },
@@ -221,7 +221,7 @@ export default function OpsPartnersDashboardPage() {
       }
       setPayload(data || null);
     } catch (err) {
-      const endpoint = `${ORDER_PICKUP_BASE}/partners/ops/dashboard`;
+      const endpoint = `${PARTNER_API}/partners/ops/dashboard`;
       setError(normalizeNetworkError(err, endpoint));
       setPayload(null);
     } finally {

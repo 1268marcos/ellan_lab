@@ -710,6 +710,35 @@ services:
       start_period: 40s
 
   # =========================
+  # MARKETPLACE ADMIN (OPS — locker_central)
+  # =========================
+  marketplace_admin_service:
+    build:
+      context: ../01_source/marketplace_admin_service
+      dockerfile: Dockerfile
+    container_name: marketplace_admin_service
+    restart: unless-stopped
+    ports:
+      - "8019:8019"
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - MARKETPLACE_ADMIN_PORT=8019
+      - SEED_ON_START=false
+      - WEBHOOK_DISPATCH_ENABLED=false
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8019/api/v1/marketplace-admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================
   # NOTIFICATION DELIVERY WORKER
   # =========================
   notification_delivery_worker:

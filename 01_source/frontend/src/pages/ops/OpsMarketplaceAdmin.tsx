@@ -172,6 +172,8 @@ export default function OpsMarketplaceAdmin() {
   const [readinessRows, setReadinessRows] = useState<ReadinessRow[]>([])
   const [integrationIncidents, setIntegrationIncidents] = useState<IntegrationIncident[]>([])
   const [readinessAlerts, setReadinessAlerts] = useState<Record<string, unknown>[]>([])
+  const [mktGlobalCorridors, setMktGlobalCorridors] = useState<{ corridor_code: string; name: string; steps: { partner_code: string }[] }[]>([])
+  const [mktGlobalOpsSummary, setMktGlobalOpsSummary] = useState<Record<string, unknown> | null>(null)
   const [capabilityWebhooks, setCapabilityWebhooks] = useState<Record<string, unknown>[]>([])
   const [channelParentGroup, setChannelParentGroup] = useState('')
   const [sellerForm, setSellerForm] = useState(emptySeller)
@@ -1053,7 +1055,58 @@ export default function OpsMarketplaceAdmin() {
             <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onSimulateInpostDrop()} disabled={loading}>
               Simular queda INPOST (demo)
             </button>
+            <button
+              type="button"
+              className="rounded border border-emerald-600 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300"
+              onClick={() =>
+                void run(async () => {
+                  await marketplaceAdminApi.seedChannelPlayers()
+                  const seed = await marketplaceAdminApi.seedGlobalOps()
+                  await marketplaceAdminApi.mirrorCertificationsFromPartner()
+                  const [sum, corridors, sla] = await Promise.all([
+                    marketplaceAdminApi.globalOpsSummary(),
+                    marketplaceAdminApi.listGlobalCorridors(),
+                    marketplaceAdminApi.listCorridorSla(),
+                  ])
+                  setMktGlobalOpsSummary(sum.data as Record<string, unknown>)
+                  setMktGlobalCorridors(corridors.data as typeof mktGlobalCorridors)
+                  return `Global OPS: ${seed.data.corridors} corredores, SLA ${sla.data.length}`
+                }, 'Corredores e certificações globais atualizados.')
+              }
+              disabled={loading}
+            >
+              Seed Global OPS
+            </button>
+            <button
+              type="button"
+              className="rounded border px-3 py-2 text-sm dark:border-slate-600"
+              onClick={() =>
+                void run(
+                  () => marketplaceAdminApi.replayDeadLetterBatch(25).then((r) => undefined),
+                  'Replay dead-letter marketplace.',
+                )
+              }
+              disabled={loading}
+            >
+              Replay DLQ
+            </button>
           </div>
+
+          {mktGlobalOpsSummary ? (
+            <div className="rounded-xl border border-emerald-600/30 bg-emerald-50/40 p-3 text-sm dark:bg-emerald-950/20">
+              Certificações válidas: {String(mktGlobalOpsSummary.certifications_valid)} · Corredores:{' '}
+              {String(mktGlobalOpsSummary.corridors_active)} · Steps: {String(mktGlobalOpsSummary.corridor_steps)}
+            </div>
+          ) : null}
+          {mktGlobalCorridors.length > 0 ? (
+            <ul className="text-xs text-gray-600 dark:text-slate-400">
+              {mktGlobalCorridors.map((c) => (
+                <li key={c.corridor_code}>
+                  {c.name}: {c.steps.map((s) => s.partner_code).join(' → ')}
+                </li>
+              ))}
+            </ul>
+          ) : null}
 
           {integrationHub && (
             <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6">

@@ -6,7 +6,7 @@ type Group = {
   key: string
   icon: string
   label: string
-  items: Array<{ to: string; label: string }>
+  items: Array<{ to: string; label: string; newTag?: string }>
 }
 
 const groups: Group[] = [
@@ -26,8 +26,6 @@ const groups: Group[] = [
     icon: '📋',
     label: 'Cadastros OPS',
     items: [
-      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
-      { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
       { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
       { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
     ],
@@ -62,14 +60,64 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'partnersOps',
+    icon: '🤝',
+    label: 'Partners OPS',
+    items: [
+      { to: '/ops/partners/admin', label: 'Visão 360', newTag: 'New1' },
+      { to: '/ops/partners/admin?tab=onboarding', label: 'Onboarding B2B', newTag: 'New2' },
+      { to: '/ops/partners/admin?tab=ecommerce', label: 'E-commerce' },
+      { to: '/ops/partners/admin?tab=logistics', label: 'Logística' },
+      { to: '/ops/partners/admin?tab=integrations', label: 'Webhook e API keys' },
+      { to: '/ops/partners/admin?tab=webhook_monitor', label: 'Entregas webhook', newTag: 'New3' },
+      { to: '/ops/partners/admin?tab=integration_health', label: 'Saúde integração', newTag: 'New4' },
+      { to: '/ops/partners/admin?tab=outbox', label: 'Outbox eventos', newTag: 'New5' },
+      { to: '/ops/partners/admin?tab=settlements', label: 'Settlements', newTag: 'New6' },
+      { to: '/ops/partners/admin?tab=billing', label: 'Billing e line items', newTag: 'New7' },
+      { to: '/ops/partners/admin?tab=invoices', label: 'NF B2B', newTag: 'New8' },
+      { to: '/ops/partners/admin?tab=credits', label: 'Créditos', newTag: 'New9' },
+      { to: '/ops/partners/admin?tab=holds', label: 'Retenções pagamento', newTag: 'New10' },
+      { to: '/ops/partners/admin?tab=sla', label: 'SLA', newTag: 'New11' },
+      { to: '/ops/partners/admin?tab=status', label: 'Histórico status', newTag: 'New12' },
+      { to: '/ops/partners/admin?tab=stores', label: 'Lojas C&C' },
+      {
+        to: '/ops/partners/admin?tab=ecosystem',
+        label: 'Redes mundiais (InPost, DHL…)',
+        newTag: 'New13',
+      },
+      {
+        to: '/ops/partners/admin?tab=global_ops',
+        label: 'Global OPS (corredores · SLA · certificações)',
+        newTag: 'New14',
+      },
+      {
+        to: '/ops/partners/admin?tab=capability_webhooks',
+        label: 'Webhooks capability + dead-letter',
+        newTag: 'New15',
+      },
+      { to: '/ops/partners/admin?tab=contacts', label: 'Contatos B2B' },
+      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
+      { to: '/ops/partners/dashboard', label: 'Dashboard OPS (v0)' },
+      { to: '/ops/partners/settlement', label: 'Settlement export (v0)' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',
     items: [
       { to: '/ops/marketplace/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/marketplace/admin?tab=sellers', label: 'Sellers' },
+      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
+      {
+        to: '/ops/marketplace/admin?tab=readiness',
+        label: 'Prontidão integração + Global OPS',
+        newTag: 'New1',
+      },
       { to: '/ops/marketplace/admin?tab=settlements', label: 'Repasses e liquidação' },
       { to: '/ops/marketplace/admin?tab=kyc', label: 'KYC / compliance' },
-      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
+      { to: '/ops/marketplace/admin?tab=disputes', label: 'Disputas comissão' },
+      { to: '/ops/marketplace/admin?tab=commissions', label: 'Comissões' },
     ],
   },
   {
@@ -133,6 +181,7 @@ export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
     cadastros: true,
+    partnersOps: true,
     orderPickup: true,
     mlOps: true,
     marketplace: true,
@@ -167,6 +216,7 @@ export default function Menu() {
       if (profile === 'ops') {
         if (g.key === 'ops') return g
         if (g.key === 'cadastros') return g
+        if (g.key === 'partnersOps') return g
         if (g.key === 'orderPickup') return g
         if (g.key === 'mlOps') return g
         if (g.key === 'marketplace') return g
@@ -238,7 +288,14 @@ export default function Menu() {
                     }`
                   }
                 >
-                  {item.label}
+                  <span className="flex items-center justify-between gap-2">
+                    <span>{item.label}</span>
+                    {item.newTag ? (
+                      <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                        {item.newTag}
+                      </span>
+                    ) : null}
+                  </span>
                 </NavLink>
               ))}
             </div>

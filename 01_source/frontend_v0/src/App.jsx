@@ -432,7 +432,6 @@ function TopNav() {
       label: "ops /kiosk-touch-models",
       aria: "Protótipos navegáveis KIOSK touch v1 (Sprint 1)",
       group: "Visão Geral",
-      isNew: true,
     },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
     { to: "/ops/runtime/health", label: "ops /runtime/health", aria: "Health do backend runtime (8200)", group: "Runtime" },
@@ -449,7 +448,6 @@ function TopNav() {
       label: "ops /quick-enablement",
       aria: "Treinamento rapido OPS e Suporte (Sprint 3)",
       group: "Dashboards",
-      isNew: true,
     },
     { to: "/ops/audit", label: "ops /audit", aria: "Trilha de auditoria operacional", group: "Dashboards" },
     {
@@ -462,28 +460,11 @@ function TopNav() {
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
     {
-      to: "/ops/tenants/admin",
-      label: "Tenants — white label",
-      aria: "CRUD tenants, dominios customizados e vinculos com parceiros",
-      group: "Cadastros OPS",
-      opsSubGroup: "Tenants",
-      isNew: true,
-    },
-    {
-      to: "/ops/partners/admin",
-      label: "Parceiros — e-commerce e logistica",
-      aria: "CRUD parceiros, webhook e rotacao de API key",
-      group: "Cadastros OPS",
-      opsSubGroup: "Parceiros",
-      isNew: true,
-    },
-    {
       to: "/ops/access/user-roles",
       label: "Papeis de acesso (user_roles)",
       aria: "Gerenciar tabela user_roles e associacoes",
       group: "Cadastros OPS",
-      opsSubGroup: "Parceiros",
-      isNew: true,
+      opsSubGroup: "Acesso",
     },
     {
       to: "/ops/payment-gateway/admin",
@@ -491,7 +472,6 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
-      isNew: true,
     },
     {
       to: "/ops/order-pickup/admin",
@@ -499,7 +479,6 @@ function TopNav() {
       aria: "Parceiros pickup, pedidos, outbox, credits e fulfillment",
       group: "Cadastros OPS",
       opsSubGroup: "Order Pickup",
-      isNew: true,
     },
     {
       to: "/ops/marketplace/admin",
@@ -507,7 +486,6 @@ function TopNav() {
       aria: "Dashboard KPIs, sellers, catalogo, comissoes, repasses, KYC e disputas",
       group: "Marketplace OPS",
       opsSubGroup: "Visao geral",
-      isNew: true,
     },
     {
       to: "/ops/marketplace/admin?tab=settlements",
@@ -515,7 +493,6 @@ function TopNav() {
       aria: "Lotes de liquidacao ao seller e contas PIX",
       group: "Marketplace OPS",
       opsSubGroup: "Financeiro",
-      isNew: true,
     },
     {
       to: "/ops/marketplace/admin?tab=kyc",
@@ -523,7 +500,6 @@ function TopNav() {
       aria: "Documentos de onboarding e aprovacao de sellers",
       group: "Marketplace OPS",
       opsSubGroup: "Compliance",
-      isNew: true,
     },
     {
       to: "/ops/marketplace/admin?tab=channels",
@@ -531,7 +507,6 @@ function TopNav() {
       aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e vinculos seller",
       group: "Marketplace OPS",
       opsSubGroup: "Canais",
-      isNew: true,
     },
     {
       to: "/ops/marketplace/admin?tab=readiness",
@@ -539,7 +514,14 @@ function TopNav() {
       aria: "Score GO_LIVE/PILOT, incidentes e auditoria de sync",
       group: "Marketplace OPS",
       opsSubGroup: "Integracao",
-      isNew: true,
+    },
+    {
+      to: "/ops/marketplace/admin?tab=readiness",
+      label: "Marketplace — Global OPS (corredores · SLA)",
+      aria: "Certificacoes, corredores internacionais e espelho partner",
+      group: "Marketplace OPS",
+      opsSubGroup: "Global OPS",
+      newTag: "New1",
     },
     {
       to: "/ops/ml/admin",
@@ -547,7 +529,6 @@ function TopNav() {
       aria: "Dashboard KPIs ML, parceiros de dados, modelos e feedback",
       group: "ML OPS",
       opsSubGroup: "Visao geral",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=partners",
@@ -555,7 +536,6 @@ function TopNav() {
       aria: "CRUD parceiros ML, webhook e rotacao de API key",
       group: "ML OPS",
       opsSubGroup: "Integracao",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=readiness",
@@ -563,7 +543,6 @@ function TopNav() {
       aria: "Score por rede locker, telemetria e perfis ML",
       group: "ML OPS",
       opsSubGroup: "Integracao",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=networks",
@@ -571,7 +550,6 @@ function TopNav() {
       aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e perfis ML por rede",
       group: "ML OPS",
       opsSubGroup: "Redes",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=models",
@@ -579,7 +557,6 @@ function TopNav() {
       aria: "Versoes de modelo, metricas e status ACTIVE/STALE",
       group: "ML OPS",
       opsSubGroup: "Modelos",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=features",
@@ -587,7 +564,6 @@ function TopNav() {
       aria: "Tabela ml_features_daily por locker e data",
       group: "ML OPS",
       opsSubGroup: "Dados",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=predictions",
@@ -595,7 +571,6 @@ function TopNav() {
       aria: "Log ml_predictions_log e health score",
       group: "ML OPS",
       opsSubGroup: "Scoring",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=feedback",
@@ -603,7 +578,6 @@ function TopNav() {
       aria: "ml_prediction_feedback e validacao de drift",
       group: "ML OPS",
       opsSubGroup: "Qualidade",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=use_cases",
@@ -611,7 +585,6 @@ function TopNav() {
       aria: "Catalogo LOCKER_HEALTH, churn, fraud, LTV, pricing",
       group: "ML OPS",
       opsSubGroup: "Plataforma",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=registry",
@@ -619,7 +592,6 @@ function TopNav() {
       aria: "Versoes, stages DEV/STAGING/PRODUCTION e promote",
       group: "ML OPS",
       opsSubGroup: "Plataforma",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=training",
@@ -627,7 +599,6 @@ function TopNav() {
       aria: "Training runs e metricas de treino",
       group: "ML OPS",
       opsSubGroup: "Plataforma",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=catalog",
@@ -635,7 +606,6 @@ function TopNav() {
       aria: "Definicoes de features e SLA de freshness",
       group: "ML OPS",
       opsSubGroup: "Dados",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=drift",
@@ -643,7 +613,6 @@ function TopNav() {
       aria: "Relatorios PSI e status OK/WARNING/CRITICAL",
       group: "ML OPS",
       opsSubGroup: "Monitoramento",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=governance",
@@ -651,7 +620,6 @@ function TopNav() {
       aria: "SLO de inferencia e regras de alerta",
       group: "ML OPS",
       opsSubGroup: "Governanca",
-      isNew: true,
     },
     {
       to: "/ops/ml/admin?tab=deployments",
@@ -659,7 +627,6 @@ function TopNav() {
       aria: "Trilha promote/rollback de modelos",
       group: "ML OPS",
       opsSubGroup: "Governanca",
-      isNew: true,
     },
     {
       to: "/ops/order/executive-summary",
@@ -679,7 +646,6 @@ function TopNav() {
       aria: "Manutenção preditiva e ML (dashboard)",
       group: "Inteligência",
       opsSubGroup: "ML",
-      isNew: true,
     },
     {
       to: "/ops/feedback-nlp",
@@ -694,7 +660,6 @@ function TopNav() {
       aria: "LTV preditivo clientes (BG/NBD + Gamma-Gamma, campanhas)",
       group: "Inteligência",
       opsSubGroup: "ML",
-      isNew: true,
     },
     {
       to: "/ops/order/domain-events",
@@ -721,7 +686,6 @@ function TopNav() {
       aria: "Criar um ou varios lockers (CRUD, webhook, rotacao API key)",
       group: "Lockers",
       opsSubGroup: "Lockers",
-      isNew: true,
     },
     {
       to: "/ops/lockers/slots",
@@ -839,7 +803,142 @@ function TopNav() {
     { to: "/ops/integration/outbox-replay", label: "ops /integration/outbox-replay", aria: "Operacao de replay em lote do outbox de integracao", group: "Integrações" },
     { to: "/ops/integration/orders-fiscal", label: "ops /integration/orders-fiscal", aria: "Operacao I-1 por order_id (fulfillment, events, fiscal)", group: "Integrações" },
     { to: "/ops/integration/orders-partner-lookup", label: "ops /integration/orders-partner-lookup", aria: "Operacao L-3 para lookup dedicado por partner/ref", group: "Integrações" },
-    { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners", group: "Partners" },
+    {
+      to: "/ops/partners/admin",
+      label: "Parceiros — cadastro e integracoes",
+      aria: "CRUD parceiros, webhook, API keys, contatos e dominio",
+      group: "Partners",
+      opsSubGroup: "Cadastro",
+      newTag: "New1",
+    },
+    {
+      to: "/ops/partners/admin?tab=onboarding",
+      label: "Parceiros — onboarding B2B",
+      aria: "Checklist KYC até go-live",
+      group: "Partners",
+      opsSubGroup: "Cadastro",
+      newTag: "New2",
+    },
+    {
+      to: "/ops/partners/admin?tab=webhook_monitor",
+      label: "Parceiros — entregas webhook",
+      aria: "Monitor de partner_webhook_deliveries",
+      group: "Partners",
+      opsSubGroup: "Integração",
+      newTag: "New3",
+    },
+    {
+      to: "/ops/partners/admin?tab=integration_health",
+      label: "Parceiros — saúde integração",
+      aria: "Probes e histórico integration_health",
+      group: "Partners",
+      opsSubGroup: "Integração",
+      newTag: "New4",
+    },
+    {
+      to: "/ops/partners/admin?tab=outbox",
+      label: "Parceiros — outbox eventos",
+      aria: "Fila partner_order_events_outbox",
+      group: "Partners",
+      opsSubGroup: "Integração",
+      newTag: "New5",
+    },
+    {
+      to: "/ops/partners/admin?tab=settlements",
+      label: "Parceiros — settlements (admin)",
+      aria: "Aba settlements no admin unificado",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New6",
+    },
+    {
+      to: "/ops/partners/admin?tab=invoices",
+      label: "Parceiros — NF B2B",
+      aria: "partner_b2b_invoices",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New7",
+    },
+    {
+      to: "/ops/partners/admin?tab=credits",
+      label: "Parceiros — créditos",
+      aria: "partner_credit_notes",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New8",
+    },
+    {
+      to: "/ops/partners/admin?tab=holds",
+      label: "Parceiros — retenções",
+      aria: "partner_payment_holds",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New9",
+    },
+    {
+      to: "/ops/partners/admin?tab=billing",
+      label: "Parceiros — billing",
+      aria: "Planos, ciclos e line items",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New10",
+    },
+    {
+      to: "/ops/partners/admin?tab=commission",
+      label: "Parceiros — comissão",
+      aria: "partner_commission_structure",
+      group: "Partners",
+      opsSubGroup: "Financeiro",
+      newTag: "New11",
+    },
+    {
+      to: "/ops/partners/admin?tab=sla",
+      label: "Parceiros — SLA",
+      aria: "partner_sla_agreements",
+      group: "Partners",
+      opsSubGroup: "Cadastro",
+      newTag: "New12",
+    },
+    {
+      to: "/ops/partners/admin?tab=status",
+      label: "Parceiros — histórico status",
+      aria: "partner_status_history",
+      group: "Partners",
+      opsSubGroup: "Cadastro",
+      newTag: "New13",
+    },
+    {
+      to: "/ops/partners/admin?tab=ecosystem",
+      label: "Parceiros — redes mundiais",
+      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT, Worten, El Corte Inglés",
+      group: "Partners",
+      opsSubGroup: "Cadastro",
+      newTag: "New14",
+    },
+    {
+      to: "/ops/partners/admin?tab=global_ops",
+      label: "Parceiros — Global OPS",
+      aria: "Corredores, certificacoes, SLA por rota, prontidao por player",
+      group: "Partners",
+      opsSubGroup: "Global OPS",
+      newTag: "New15",
+    },
+    {
+      to: "/ops/partners/admin?tab=capability_webhooks",
+      label: "Parceiros — webhooks capability (DLQ)",
+      aria: "Espelho marketplace, dead-letter e replay em lote",
+      group: "Partners",
+      opsSubGroup: "Integração",
+      newTag: "New16",
+    },
+    {
+      to: "/ops/tenants/admin",
+      label: "Tenants — white label",
+      aria: "CRUD tenants, dominios e vinculos",
+      group: "Partners",
+      opsSubGroup: "Tenants",
+    },
+    { to: "/ops/partners/dashboard", label: "ops /partners/dashboard", aria: "Dashboard OPS de Partners", group: "Partners", opsSubGroup: "Financeiro" },
     { to: "/ops/partners/financials-service-areas", label: "ops /partners/financials-service-areas", aria: "Operacao P-3 para settlements, performance e service-areas", group: "Partners" },
     { to: "/ops/partners/settlement", label: "ops /partners/settlement", aria: "Batches e itens de settlement por parceiro com export CSV/JSON", group: "Partners" },
     { to: "/ops/partners/reconciliation-dashboard", label: "ops /partners/reconciliation-dashboard", aria: "Dashboard operacional de reconciliacao de settlements", group: "Partners" },
@@ -895,13 +994,11 @@ function TopNav() {
           to: "/fiscal/sprint2-finance-gate",
           label: "fiscal /sprint2-finance-gate",
           aria: "Gate financeiro Sprint 2 (comité v2) e sprint ideal na sequência",
-          isNew: true,
         },
         {
           to: "/fiscal/sprint3-partner-audit",
           label: "fiscal /sprint3-partner-audit",
           aria: "Sprint 3 P0-1 — auditoria E2E rollup por parceiro",
-          isNew: true,
         },
         { to: "/fiscal/department-dashboards", label: "fiscal /department-dashboards", aria: "Dashboards departamentais fiscal e contábil" },
         { to: "/fiscal/partner-performance", label: "fiscal /partner-performance", aria: "Desempenho operacional de parceiros fiscais" },
@@ -911,13 +1008,11 @@ function TopNav() {
           to: "/fiscal/sprint4-regression-matrix",
           label: "fiscal /sprint4-regression-matrix",
           aria: "Matriz mínima de regressão Sprint 4 (por persona)",
-          isNew: true,
         },
         {
           to: "/fiscal/incident-response",
           label: "fiscal /incident-response",
           aria: "Runbook e checklist de resposta a incidente fiscal/ops",
-          isNew: true,
         },
         { to: "/fiscal/updates", label: "fiscal /updates", aria: "Histórico da trilha fiscal global" },
       ]
@@ -1024,7 +1119,7 @@ function TopNav() {
                                 onClick={() => setIsOpsMenuOpen(false)}
                               >
                                 <span>{link.label}</span>
-                                {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                                {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
                               </Link>
                             ))}
                           </div>
@@ -1080,7 +1175,7 @@ function TopNav() {
                         onClick={() => setIsFiscalMenuOpen(false)}
                       >
                         <span>{link.label}</span>
-                        {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                        {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
                       </Link>
                     ))}
                   </div>
@@ -1301,7 +1396,7 @@ function TopNav() {
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <span>{link.label}</span>
-                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                          {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
                         </Link>
                       ))}
                     </div>
@@ -1342,7 +1437,7 @@ function TopNav() {
                                   onClick={() => setIsMobileMenuOpen(false)}
                                 >
                                   <span>{link.label}</span>
-                                  {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                                  {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
                                 </Link>
                               ))}
                             </div>
@@ -1424,7 +1519,7 @@ function TopNav() {
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <span>{link.label}</span>
-                          {link.isNew ? <span className="nav-new-badge">NEW</span> : null}
+                          {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
                         </Link>
                       ))}
                     </div>

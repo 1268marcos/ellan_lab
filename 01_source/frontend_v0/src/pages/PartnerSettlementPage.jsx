@@ -5,7 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import OpsActionButton from "../components/OpsActionButton";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 
-const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+const PARTNER_ADMIN_BASE = import.meta.env.VITE_PARTNER_ADMIN_BASE_URL || "/api/pa";
+const PARTNER_API = `${PARTNER_ADMIN_BASE}/v1/partner-admin`;
 
 function parseError(payload, fallback = "Falha na requisição.") {
   if (!payload) return fallback;
@@ -67,7 +68,7 @@ export default function PartnerSettlementPage() {
     setLoading("performance");
     setError("");
     try {
-      const resp = await fetch(`${ORDER_PICKUP_BASE}/partners/${encodeURIComponent(pid)}/performance?limit=6`, {
+      const resp = await fetch(`${PARTNER_API}/partners/${encodeURIComponent(pid)}/performance?limit=6`, {
         headers: { Accept: "application/json", ...authHeaders },
       });
       const data = await resp.json().catch(() => ({}));
@@ -100,7 +101,7 @@ export default function PartnerSettlementPage() {
       if (String(statusFilter || "").trim()) params.set("status", String(statusFilter).trim().toUpperCase());
       if (String(fromPeriod || "").trim()) params.set("from_period_start", String(fromPeriod).trim());
       if (String(toPeriod || "").trim()) params.set("to_period_end", String(toPeriod).trim());
-      const resp = await fetch(`${ORDER_PICKUP_BASE}/partners/${encodeURIComponent(pid)}/settlements?${params}`, {
+      const resp = await fetch(`${PARTNER_API}/partners/${encodeURIComponent(pid)}/settlements?${params}`, {
         headers: { Accept: "application/json", ...authHeaders },
       });
       const data = await resp.json().catch(() => ({}));
@@ -131,7 +132,7 @@ export default function PartnerSettlementPage() {
     setError("");
     try {
       const resp = await fetch(
-        `${ORDER_PICKUP_BASE}/partners/${encodeURIComponent(pid)}/settlements/${encodeURIComponent(bid)}/items?limit=500&offset=0`,
+        `${PARTNER_API}/partners/${encodeURIComponent(pid)}/settlements/${encodeURIComponent(bid)}/items?limit=500&offset=0`,
         { headers: { Accept: "application/json", ...authHeaders } }
       );
       const data = await resp.json().catch(() => ({}));

@@ -14,6 +14,7 @@ from app.models.marketplace_alerts_webhooks import (
 )
 from app.models.marketplace_extended import MarketplaceChannelPartner
 from app.services.crypto_util import hash_secret, new_id
+from app.services import webhook_dlq
 from app.services.webhook_dispatch import dispatch_webhook
 
 EVENT_READINESS_SCORE_DROP = "readiness.score_drop"
@@ -111,8 +112,11 @@ def deliver_event(
             payload_json=json.dumps(payload),
             success=False,
             response_snippet="event_not_subscribed",
+            status=webhook_dlq.STATUS_SKIPPED,
+            attempt_count=1,
         )
         db.add(delivery)
+        db.commit()
         return delivery
 
     if not get_settings().webhook_dispatch_enabled:
@@ -131,6 +135,7 @@ def deliver_event(
     webhook.last_error = None if ok else snippet
     webhook.updated_at = now
 
+    st = webhook_dlq.apply_delivery_status(db, webhook_id=webhook.id, success=ok, response_snippet=snippet)
     delivery = MarketplaceCapabilityWebhookDelivery(
         id=new_id(),
         webhook_id=webhook.id,
@@ -139,9 +144,106 @@ def deliver_event(
         http_status=http_status,
         success=ok,
         response_snippet=snippet,
+        status=st,
+        attempt_count=1,
+        dead_lettered_at=webhook_dlq.dead_lettered_at_for_status(st),
         created_at=now,
     )
     db.add(delivery)
+    db.commit()
+    return delivery
+
+
+def list_deliveries(
+    db: Session,
+    *,
+    status: str | None = None,
+    webhook_id: str | None = None,
+    limit: int = 100,
+) -> list[MarketplaceCapabilityWebhookDelivery]:
+    q = db.query(MarketplaceCapabilityWebhookDelivery)
+    if status:
+        q = q.filter(MarketplaceCapabilityWebhookDelivery.status == status.upper())
+    if webhook_id:
+        q = q.filter(MarketplaceCapabilityWebhookDelivery.webhook_id == webhook_id)
+    return q.order_by(MarketplaceCapabilityWebhookDelivery.created_at.desc()).limit(limit).all()
+
+
+def replay_delivery(db: Session, delivery_id: str) -> MarketplaceCapabilityWebhookDelivery:
+    original = db.get(MarketplaceCapabilityWebhookDelivery, delivery_id)
+    if not original:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="delivery_not_found")
+    if original.status not in (webhook_dlq.STATUS_DEAD_LETTER, webhook_dlq.STATUS_FAILED):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="delivery_not_replayable")
+    webhook = db.get(MarketplaceCapabilityWebhook, original.webhook_id)
+    if not webhook:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="webhook_not_found")
+    try:
+        payload = json.loads(original.payload_json or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    payload["replay"] = True
+    payload["replay_of_delivery_id"] = original.id
+    return _replay_deliver(
+        db, webhook, original.event_type, payload, replay_of=original.id, attempt_count=original.attempt_count + 1
+    )
+
+
+def replay_dead_letter_batch(db: Session, *, limit: int = 25) -> dict[str, int]:
+    rows = list_deliveries(db, status=webhook_dlq.STATUS_DEAD_LETTER, limit=limit)
+    replayed = 0
+    succeeded = 0
+    for row in rows:
+        try:
+            d = replay_delivery(db, row.id)
+            replayed += 1
+            if d.success:
+                succeeded += 1
+        except HTTPException:
+            continue
+    return {"requested": len(rows), "replayed": replayed, "succeeded": succeeded}
+
+
+def _replay_deliver(
+    db: Session,
+    webhook: MarketplaceCapabilityWebhook,
+    event_type: str,
+    payload: dict[str, Any],
+    *,
+    replay_of: str,
+    attempt_count: int,
+) -> MarketplaceCapabilityWebhookDelivery:
+    if not get_settings().webhook_dispatch_enabled:
+        ok, http_status, snippet = True, 202, "dispatch_disabled_simulated"
+    else:
+        ok, http_status, snippet = dispatch_webhook(
+            webhook.url,
+            event_type,
+            payload,
+            secret=webhook.secret_key,
+        )
+    now = _utcnow()
+    st = webhook_dlq.apply_delivery_status(db, webhook_id=webhook.id, success=ok, response_snippet=snippet)
+    webhook.last_http_status = http_status
+    webhook.last_delivered_at = now if ok else webhook.last_delivered_at
+    webhook.last_error = None if ok else snippet
+    webhook.updated_at = now
+    delivery = MarketplaceCapabilityWebhookDelivery(
+        id=new_id(),
+        webhook_id=webhook.id,
+        event_type=event_type,
+        payload_json=json.dumps(payload),
+        http_status=http_status,
+        success=ok,
+        response_snippet=snippet,
+        status=st,
+        attempt_count=attempt_count,
+        dead_lettered_at=webhook_dlq.dead_lettered_at_for_status(st),
+        replay_of_delivery_id=replay_of,
+        created_at=now,
+    )
+    db.add(delivery)
+    db.commit()
     return delivery
 
 

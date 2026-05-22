@@ -128,4 +128,40 @@ export const marketplaceAdminApi = {
     api.post(`${BASE}/integration-readiness/simulate-drop`, { partner_code, new_score }),
   listIntegrationIncidents: (open_only = true) =>
     api.get<{ items: unknown[]; total: number }>(`${BASE}/integration-incidents`, { params: { open_only } }),
+  seedGlobalOps: () =>
+    api.post<{ certifications: number; corridors: number; corridor_steps: number }>(`${BASE}/global-ops/seed`),
+  globalOpsSummary: () =>
+    api.get<{ certifications_valid: number; corridors_active: number; corridor_steps: number }>(
+      `${BASE}/global-ops/summary`,
+    ),
+  mirrorCertificationsFromPartner: () =>
+    api.post<Record<string, number>>(`${BASE}/global-ops/certifications/mirror`),
+  listCorridorSla: (compliance_status?: string) =>
+    api.get<
+      { corridor_code: string; compliance_status: string; uptime_target_pct: number; max_transit_hours: number }[]
+    >(`${BASE}/global-ops/corridor-sla`, { params: compliance_status ? { compliance_status } : undefined }),
+  listCapabilityDeliveries: (params?: { status?: string; webhook_id?: string }) =>
+    api.get<{ id: string; status: string; success: boolean; event_type: string }[]>(
+      `${BASE}/capability-webhooks/deliveries`,
+      { params },
+    ),
+  replayCapabilityDelivery: (deliveryId: string) =>
+    api.post(`${BASE}/capability-webhooks/deliveries/${encodeURIComponent(deliveryId)}/replay`),
+  replayDeadLetterBatch: (limit = 25) =>
+    api.post<{ requested: number; replayed: number; succeeded: number }>(
+      `${BASE}/capability-webhooks/deliveries/replay-dead-letter`,
+      null,
+      { params: { limit } },
+    ),
+  listGlobalCorridors: (origin?: string, dest?: string) =>
+    api.get<
+      {
+        corridor_code: string
+        name: string
+        origin_country: string
+        dest_country: string
+        primary_partner_code: string
+        steps: { partner_code: string; step_role: string }[]
+      }[]
+    >(`${BASE}/global-ops/corridors`, { params: { origin, dest } }),
 }

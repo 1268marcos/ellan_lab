@@ -4,6 +4,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 os.environ["SEED_ON_START"] = "false"
+os.environ["WEBHOOK_DISPATCH_ENABLED"] = "true"
 
 import pytest
 from fastapi.testclient import TestClient

@@ -5,7 +5,8 @@ import OpsActionButton from "../components/OpsActionButton";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import OpsScenarioPresets from "../components/OpsScenarioPresets";
 
-const ORDER_PICKUP_BASE = import.meta.env.VITE_ORDER_PICKUP_BASE_URL || "/api/op";
+const PARTNER_ADMIN_BASE = import.meta.env.VITE_PARTNER_ADMIN_BASE_URL || "/api/pa";
+const PARTNER_API = `${PARTNER_ADMIN_BASE}/v1/partner-admin`;
 const STORAGE_KEY = "ops_partners_financials_service_areas_actions_v1";
 
 const ACTIONS = [
@@ -115,7 +116,7 @@ export default function OpsPartnersFinancialsServiceAreasPage() {
     setLoading(actionKey);
     setAction(actionKey, "running", "Executando...");
     try {
-      const response = await fetch(`${ORDER_PICKUP_BASE}${endpoint}`, {
+      const response = await fetch(`${PARTNER_API}${endpoint}`, {
         method,
         headers: { Accept: "application/json", "Content-Type": "application/json", ...authHeaders },
         body: body ? JSON.stringify(body) : undefined,

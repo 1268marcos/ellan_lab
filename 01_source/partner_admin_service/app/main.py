@@ -11,7 +11,12 @@ from app.core.health import health_payload
 from app.routers import (
     ecommerce_partners,
     logistics_partners,
+    partner_domain,
+    capability_webhooks,
+    partner_ecosystem,
+    partner_global_ops,
     partner_integrations,
+    partner_ops,
     seed,
     tenants,
     user_roles,
@@ -48,6 +53,14 @@ app.include_router(logistics_partners.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(user_roles.router, prefix=API_PREFIX)
 app.include_router(partner_integrations.router, prefix=API_PREFIX)
+app.include_router(partner_ops.ops_router, prefix=API_PREFIX)
+app.include_router(partner_ops.stores_router, prefix=API_PREFIX)
+app.include_router(partner_domain.router, prefix=API_PREFIX)
+app.include_router(partner_ecosystem.players_router, prefix=API_PREFIX)
+app.include_router(partner_ecosystem.router, prefix=API_PREFIX)
+app.include_router(partner_global_ops.router, prefix=API_PREFIX)
+app.include_router(capability_webhooks.router, prefix=API_PREFIX)
+app.include_router(capability_webhooks.ingress_router, prefix=API_PREFIX)
 app.include_router(tenants.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 

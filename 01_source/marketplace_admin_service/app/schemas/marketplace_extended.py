@@ -472,3 +472,82 @@ class SyncAuditLogOut(BaseModel):
 class SyncAuditLogListOut(BaseModel):
     items: list[SyncAuditLogOut]
     total: int
+
+
+class MarketplaceCertificationOut(BaseModel):
+    id: str
+    partner_code: str
+    certification_type: str
+    status: str
+    issuer: Optional[str] = None
+    issued_at: Optional[date] = None
+    expires_at: Optional[date] = None
+    evidence_url: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class MarketplaceCorridorStepOut(BaseModel):
+    id: str
+    step_order: int
+    partner_code: str
+    step_role: str
+
+    model_config = {"from_attributes": True}
+
+
+class MarketplaceGlobalCorridorOut(BaseModel):
+    id: str
+    corridor_code: str
+    name: str
+    origin_country: str
+    dest_country: str
+    primary_partner_code: str
+    fallback_partner_code: Optional[str] = None
+    handoff_type: str
+    service_level: str
+    transit_days_min: int
+    transit_days_max: int
+    supports_returns: bool
+    active: bool
+    priority: int
+    steps: list[MarketplaceCorridorStepOut] = Field(default_factory=list)
+
+    model_config = {"from_attributes": True}
+
+
+class MarketplaceCorridorSlaOut(BaseModel):
+    id: str
+    corridor_code: str
+    uptime_target_pct: float
+    on_time_delivery_pct: float
+    max_transit_hours: int
+    webhook_p95_latency_ms: int
+    compliance_status: str
+    breach_count: int
+
+    model_config = {"from_attributes": True}
+
+
+class CapabilityWebhookDeliveryMktOut(BaseModel):
+    id: str
+    webhook_id: str
+    event_type: str
+    http_status: Optional[int] = None
+    success: bool
+    response_snippet: Optional[str] = None
+    status: str = "DELIVERED"
+    attempt_count: int = 1
+    replay_of_delivery_id: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class MarketplaceGlobalOpsSummaryOut(BaseModel):
+    certifications: int
+    certifications_valid: int
+    corridors_active: int
+    corridor_steps: int
+    corridor_sla_rows: int = 0
+    certifications_mirrored: int = 0

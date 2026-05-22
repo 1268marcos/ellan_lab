@@ -16,13 +16,24 @@ from app.schemas.marketplace_extended import (
     IntegrationIncidentOut,
     IntegrationReadinessListOut,
     IntegrationReadinessOut,
+    MarketplaceCertificationOut,
+    CapabilityWebhookDeliveryMktOut,
+    MarketplaceCorridorSlaOut,
+    MarketplaceGlobalCorridorOut,
+    MarketplaceGlobalOpsSummaryOut,
+    MarketplaceCorridorStepOut,
     ReadinessAlertListOut,
     ReadinessAlertOut,
     SimulateScoreDropIn,
     SyncAuditLogListOut,
     SyncAuditLogOut,
 )
-from app.services import capability_webhook_service, integration_readiness_service, readiness_alert_service
+from app.services import (
+    capability_webhook_service,
+    integration_readiness_service,
+    marketplace_global_ops_service,
+    readiness_alert_service,
+)
 
 router = APIRouter(tags=["integration-hub"])
 
@@ -202,6 +213,11 @@ def seed_capability_webhooks_demo(db: Session = Depends(get_db)) -> dict:
     return {"inserted": n}
 
 
+@router.post("/capability-webhooks/seed-from-catalog")
+def seed_capability_webhooks_from_catalog(db: Session = Depends(get_db)) -> dict:
+    return readiness_alert_service.seed_capability_webhooks_from_catalog(db)
+
+
 @router.get("/sync-audit-log", response_model=SyncAuditLogListOut)
 def list_sync_audit_log(
     limit: int = Query(50, ge=1, le=200),
@@ -215,3 +231,84 @@ def list_sync_audit_log(
     )
     items = [SyncAuditLogOut.model_validate(r) for r in rows]
     return SyncAuditLogListOut(items=items, total=len(items))
+
+
+@router.get("/global-ops/summary", response_model=MarketplaceGlobalOpsSummaryOut)
+def marketplace_global_ops_summary(db: Session = Depends(get_db)) -> MarketplaceGlobalOpsSummaryOut:
+    return MarketplaceGlobalOpsSummaryOut(**marketplace_global_ops_service.global_ops_summary(db))
+
+
+@router.post("/global-ops/seed")
+def seed_marketplace_global_ops(db: Session = Depends(get_db)) -> dict:
+    return marketplace_global_ops_service.seed_global_ops(db)
+
+
+@router.get("/global-ops/certifications", response_model=list[MarketplaceCertificationOut])
+def list_marketplace_certifications(
+    partner_code: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[MarketplaceCertificationOut]:
+    return [
+        MarketplaceCertificationOut.model_validate(r)
+        for r in marketplace_global_ops_service.list_certifications(db, partner_code=partner_code)
+    ]
+
+
+@router.get("/global-ops/corridors", response_model=list[MarketplaceGlobalCorridorOut])
+def list_marketplace_corridors(
+    origin: str | None = Query(None),
+    dest: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[MarketplaceGlobalCorridorOut]:
+    out: list[MarketplaceGlobalCorridorOut] = []
+    for row in marketplace_global_ops_service.list_corridors(db, origin=origin, dest=dest):
+        steps = [
+            MarketplaceCorridorStepOut.model_validate(s)
+            for s in marketplace_global_ops_service.list_corridor_steps(db, row.id)
+        ]
+        base = MarketplaceGlobalCorridorOut.model_validate(row)
+        out.append(base.model_copy(update={"steps": steps}))
+    return out
+
+
+@router.get("/global-ops/corridor-sla", response_model=list[MarketplaceCorridorSlaOut])
+def list_marketplace_corridor_sla(
+    compliance_status: str | None = Query(None),
+    db: Session = Depends(get_db),
+) -> list[MarketplaceCorridorSlaOut]:
+    return [
+        MarketplaceCorridorSlaOut.model_validate(r)
+        for r in marketplace_global_ops_service.list_corridor_sla(db, compliance_status=compliance_status)
+    ]
+
+
+@router.post("/global-ops/certifications/mirror")
+def mirror_marketplace_certifications(db: Session = Depends(get_db)) -> dict:
+    out = marketplace_global_ops_service.mirror_certifications_from_partner(db)
+    db.commit()
+    return out
+
+
+@router.get("/capability-webhooks/deliveries", response_model=list[CapabilityWebhookDeliveryMktOut])
+def list_mkt_webhook_deliveries(
+    status: str | None = Query(None),
+    webhook_id: str | None = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+) -> list[CapabilityWebhookDeliveryMktOut]:
+    rows = capability_webhook_service.list_deliveries(db, status=status, webhook_id=webhook_id, limit=limit)
+    return [CapabilityWebhookDeliveryMktOut.model_validate(r) for r in rows]
+
+
+@router.post("/capability-webhooks/deliveries/{delivery_id}/replay", response_model=CapabilityWebhookDeliveryMktOut)
+def replay_mkt_delivery(delivery_id: str, db: Session = Depends(get_db)) -> CapabilityWebhookDeliveryMktOut:
+    d = capability_webhook_service.replay_delivery(db, delivery_id)
+    return CapabilityWebhookDeliveryMktOut.model_validate(d)
+
+
+@router.post("/capability-webhooks/deliveries/replay-dead-letter")
+def replay_mkt_dead_letter_batch(
+    limit: int = Query(25, ge=1, le=100),
+    db: Session = Depends(get_db),
+) -> dict:
+    return capability_webhook_service.replay_dead_letter_batch(db, limit=limit)

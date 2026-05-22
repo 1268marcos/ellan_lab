@@ -71,4 +71,8 @@ class MarketplaceCapabilityWebhookDelivery(Base):
     http_status = Column(Integer, nullable=True)
     success = Column(Boolean, nullable=False, default=False)
     response_snippet = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="DELIVERED")
+    attempt_count = Column(Integer, nullable=False, default=1)
+    dead_lettered_at = Column(DateTime(timezone=True), nullable=True)
+    replay_of_delivery_id = Column(String(36), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

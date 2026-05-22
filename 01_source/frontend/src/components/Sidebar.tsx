@@ -21,12 +21,24 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'partnersOps',
+    icon: '🤝',
+    label: 'Partners OPS',
+    items: [
+      { to: '/ops/partners/admin', label: 'Visão 360' },
+      { to: '/ops/partners/admin?tab=ecosystem', label: 'Redes mundiais' },
+      { to: '/ops/partners/admin?tab=global_ops', label: 'Global OPS (SLA · corredores)' },
+      { to: '/ops/partners/admin?tab=capability_webhooks', label: 'Webhooks + dead-letter' },
+      { to: '/ops/partners/admin?tab=onboarding', label: 'Onboarding B2B' },
+      { to: '/ops/partners/admin?tab=settlements', label: 'Settlements' },
+      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
+    ],
+  },
+  {
     key: 'cadastros',
     icon: '📋',
     label: 'Cadastros OPS',
     items: [
-      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
-      { to: '/ops/partners/admin', label: 'Parceiros e-commerce / logística' },
       { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
       { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
     ],
@@ -51,9 +63,10 @@ const groups: Group[] = [
     label: 'Marketplace OPS',
     items: [
       { to: '/ops/marketplace/admin', label: 'Visão geral e cadastro' },
+      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes' },
+      { to: '/ops/marketplace/admin?tab=readiness', label: 'Prontidão + Global OPS' },
       { to: '/ops/marketplace/admin?tab=settlements', label: 'Repasses e liquidação' },
       { to: '/ops/marketplace/admin?tab=kyc', label: 'KYC / compliance' },
-      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
     ],
   },
   {
@@ -81,6 +94,7 @@ const groups: Group[] = [
 export default function Sidebar() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: true,
+    partnersOps: true,
     cadastros: true,
     mlOps: true,
     marketplace: true,

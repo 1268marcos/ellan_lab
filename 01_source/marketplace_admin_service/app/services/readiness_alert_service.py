@@ -132,42 +132,71 @@ def acknowledge_alert(db: Session, alert_id: str) -> MarketplaceReadinessAlert:
     return row
 
 
-def seed_demo_capability_webhooks(db: Session) -> int:
-    """Webhooks de demo para players com capabilities (entrega simulada se dispatch off)."""
+WEBHOOK_CAPABILITY_CODES = frozenset(
+    {"ORDERS_WEBHOOK", "TRACKING_PUSH", "SETTLEMENT_FEED", "DELIVERY_STATUS"}
+)
+
+
+def _default_webhook_url(partner_code: str, capability_code: str) -> str:
+    from app.core.config import get_settings
+
+    base = getattr(get_settings(), "webhook_ingress_base_url", None)
+    if base:
+        return f"{base.rstrip('/')}/{partner_code}/{capability_code}"
+    return "https://httpbin.org/post"
+
+
+def seed_capability_webhooks_from_catalog(db: Session) -> dict[str, int]:
+    """Um webhook por capability com protocolo WEBHOOK ou código de evento inbound."""
     from app.models.marketplace_extended import MarketplaceChannelCapability, MarketplaceChannelPartner
 
-    demos = [
-        ("mcp-inpost", "LOCKER_INVENTORY", "https://httpbin.org/post"),
-        ("mcp-meli", "ORDERS_WEBHOOK", "https://httpbin.org/post"),
-        ("mcp-dhl", "TRACKING_PUSH", "https://httpbin.org/post"),
-    ]
-    n = 0
-    for pid, cap, url in demos:
-        if (
+    created = skipped = 0
+    rows = (
+        db.query(MarketplaceChannelCapability, MarketplaceChannelPartner)
+        .join(
+            MarketplaceChannelPartner,
+            MarketplaceChannelCapability.channel_partner_id == MarketplaceChannelPartner.id,
+        )
+        .filter(
+            MarketplaceChannelCapability.enabled.is_(True),
+            MarketplaceChannelPartner.active.is_(True),
+        )
+        .all()
+    )
+    for cap, partner in rows:
+        if cap.protocol != "WEBHOOK" and cap.capability_code not in WEBHOOK_CAPABILITY_CODES:
+            continue
+        exists = (
             db.query(MarketplaceCapabilityWebhook)
             .filter(
-                MarketplaceCapabilityWebhook.channel_partner_id == pid,
-                MarketplaceCapabilityWebhook.capability_code == cap,
+                MarketplaceCapabilityWebhook.channel_partner_id == partner.id,
+                MarketplaceCapabilityWebhook.capability_code == cap.capability_code,
             )
             .first()
-        ):
-            continue
-        if not db.query(MarketplaceChannelCapability).filter(
-            MarketplaceChannelCapability.channel_partner_id == pid,
-            MarketplaceChannelCapability.capability_code == cap,
-        ).first():
+        )
+        if exists:
+            skipped += 1
             continue
         capability_webhook_service.configure_capability_webhook(
             db,
-            channel_partner_id=pid,
-            capability_code=cap,
-            url=url,
-            secret="whsec_demo_capability",
+            channel_partner_id=partner.id,
+            capability_code=cap.capability_code,
+            url=_default_webhook_url(partner.code, cap.capability_code),
+            secret=f"whsec_{partner.code.lower()}_{cap.capability_code.lower()}",
             events=[
                 capability_webhook_service.EVENT_READINESS_SCORE_DROP,
                 capability_webhook_service.EVENT_CAPABILITY_HEALTH,
                 capability_webhook_service.EVENT_TEST_PING,
             ],
         )
-        n += 1
-    return n
+        created += 1
+    return {"created": created, "skipped": skipped, "total": created + skipped}
+
+
+def seed_demo_capability_webhooks(db: Session) -> int:
+    """Compat: garante demos + sincroniza catálogo completo de webhooks por capability."""
+    from app.services.extended_service import seed_channel_players
+
+    seed_channel_players(db, refresh_existing=True)
+    stats = seed_capability_webhooks_from_catalog(db)
+    return stats["created"]
