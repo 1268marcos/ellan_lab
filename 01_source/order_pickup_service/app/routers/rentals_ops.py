@@ -19,9 +19,15 @@ from app.core.rental_seed import seed_rentals
 from app.routers.rental_ops_common import serialize_row as _serialize_row
 from app.routers.rental_ops_common import utc_now as _utc_now
 from app.services.rental_events import log_rental_contract_event
+from app.services.rental_insurance import (
+    calculate_content_insurance_premium,
+    create_content_insurance,
+)
+from app.services.rental_pricing import resolve_contract_pricing_context
 from app.schemas.rentals_ops import (
     RentalContractCancelIn,
     RentalContractIn,
+    RentalContractPricingPreviewIn,
     RentalContractUpdate,
     RentalPlanIn,
     RentalPlanUpdate,
@@ -99,6 +105,55 @@ def _ensure_locker(db: Session, locker_id: str) -> None:
         raise HTTPException(
             status_code=404,
             detail={"type": "LOCKER_NOT_FOUND", "message": locker_id},
+        )
+
+
+def _insert_rental_contract_row(db: Session, params: dict[str, Any]) -> None:
+    """INSERT com colunas de pricing/seguro quando a migração já rodou."""
+    full = {
+        **params,
+        "pricing_rule_code": params.get("pricing_rule_code"),
+        "insurance_premium_cents": params.get("insurance_premium_cents", 0),
+    }
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO rental_contracts (
+                    id, locker_id, slot_label, plan_id, tenant_id, renter_user_id,
+                    renter_name, renter_document, renter_phone, renter_email,
+                    amount_cents, currency, billing_cycle, next_billing_at, auto_renew,
+                    status, started_at, pricing_rule_code, insurance_premium_cents,
+                    created_at, updated_at
+                ) VALUES (
+                    :id, :locker_id, :slot_label, :plan_id, :tenant_id, :renter_user_id,
+                    :renter_name, :renter_document, :renter_phone, :renter_email,
+                    :amount_cents, :currency, :billing_cycle, :next_billing_at, :auto_renew,
+                    :status, :started_at, :pricing_rule_code, :insurance_premium_cents,
+                    :now, :now
+                )
+                """
+            ),
+            full,
+        )
+    except Exception:
+        db.execute(
+            text(
+                """
+                INSERT INTO rental_contracts (
+                    id, locker_id, slot_label, plan_id, tenant_id, renter_user_id,
+                    renter_name, renter_document, renter_phone, renter_email,
+                    amount_cents, currency, billing_cycle, next_billing_at, auto_renew,
+                    status, started_at, created_at, updated_at
+                ) VALUES (
+                    :id, :locker_id, :slot_label, :plan_id, :tenant_id, :renter_user_id,
+                    :renter_name, :renter_document, :renter_phone, :renter_email,
+                    :amount_cents, :currency, :billing_cycle, :next_billing_at, :auto_renew,
+                    :status, :started_at, :now, :now
+                )
+                """
+            ),
+            params,
         )
 
 
@@ -333,36 +388,117 @@ def get_rental_contract(contract_id: str, db: Session = Depends(get_db)):
     return {"contract": contract, "plan": plan, "slot": slot}
 
 
+@router.post("/contracts/preview-pricing")
+def preview_rental_contract_pricing(body: RentalContractPricingPreviewIn, db: Session = Depends(get_db)):
+    """Cotação (regra dinâmica + seguro opcional) antes de criar o contrato."""
+    _ensure_locker(db, body.locker_id)
+    ctx = resolve_contract_pricing_context(
+        db,
+        plan_id=body.plan_id,
+        locker_id=body.locker_id,
+        slot_label=body.slot_label,
+        network_id=body.network_id,
+        slot_size=body.slot_size,
+        billing_cycle=body.billing_cycle,
+        amount_cents=body.amount_cents,
+        use_dynamic_pricing=body.use_dynamic_pricing,
+    )
+    if ctx.get("error"):
+        raise HTTPException(status_code=400, detail={"type": ctx["error"], "quote": ctx.get("quote")})
+    insurance = None
+    if body.content_insurance:
+        declared = body.declared_value_cents
+        if declared is None or declared <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"type": "INSURANCE_DECLARED_VALUE_REQUIRED", "message": "declared_value_cents obrigatório"},
+            )
+        insurance = calculate_content_insurance_premium(declared)
+    return {
+        "ok": True,
+        "pricing": {
+            "amount_cents": ctx["amount_cents"],
+            "billing_cycle": ctx["billing_cycle"],
+            "currency": ctx["currency"],
+            "pricing_source": ctx.get("pricing_source"),
+            "pricing_rule_code": ctx.get("pricing_rule_code"),
+            "quote": ctx.get("quote"),
+        },
+        "insurance": insurance,
+        "total_monthly_cents": int(ctx["amount_cents"]) + int((insurance or {}).get("premium_cents") or 0),
+    }
+
+
+@router.get("/content-insurance")
+def list_content_insurance(
+    db: Session = Depends(get_db),
+    contract_id: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+):
+    clauses = ["1=1"]
+    params: dict[str, Any] = {}
+    if contract_id:
+        clauses.append("i.contract_id = :cid")
+        params["cid"] = contract_id.strip()
+    if status:
+        clauses.append("i.status = :st")
+        params["st"] = status.strip()
+    try:
+        rows = db.execute(
+            text(
+                f"""
+                SELECT i.*, c.renter_name, c.locker_id, c.slot_label
+                FROM rental_content_insurance i
+                JOIN rental_contracts c ON c.id = i.contract_id
+                WHERE {" AND ".join(clauses)}
+                ORDER BY i.created_at DESC
+                """
+            ),
+            params,
+        ).mappings().all()
+    except Exception:
+        return {"items": [], "total": 0}
+    return {"items": [_serialize_row(r) for r in rows], "total": len(rows)}
+
+
 @router.post("/contracts", status_code=status.HTTP_201_CREATED)
 def create_rental_contract(body: RentalContractIn, db: Session = Depends(get_db)):
     _ensure_locker(db, body.locker_id)
-    plan_fields = _apply_plan_to_contract_fields(db, body.plan_id)
-    amount_cents = body.amount_cents if body.amount_cents is not None else plan_fields.get("amount_cents")
-    billing_cycle = body.billing_cycle or plan_fields.get("billing_cycle")
-    currency = body.currency or plan_fields.get("currency", "BRL")
-    if amount_cents is None or not billing_cycle:
-        raise HTTPException(
-            status_code=400,
-            detail={"type": "RENTAL_CONTRACT_PRICING_REQUIRED", "message": "Informe plan_id ou amount_cents+billing_cycle"},
-        )
+    ctx = resolve_contract_pricing_context(
+        db,
+        plan_id=body.plan_id,
+        locker_id=body.locker_id,
+        slot_label=body.slot_label,
+        network_id=body.network_id,
+        slot_size=body.slot_size,
+        billing_cycle=body.billing_cycle,
+        amount_cents=body.amount_cents,
+        use_dynamic_pricing=body.use_dynamic_pricing,
+    )
+    if ctx.get("error"):
+        raise HTTPException(status_code=400, detail={"type": ctx["error"], "quote": ctx.get("quote")})
+
+    amount_cents = int(ctx["amount_cents"])
+    billing_cycle = str(ctx["billing_cycle"])
+    currency = body.currency or str(ctx.get("currency") or "BRL")
+    pricing_rule_code = ctx.get("pricing_rule_code")
+    insurance_premium_cents = 0
+    insurance_record = None
+
+    if body.content_insurance:
+        declared = body.declared_value_cents
+        if declared is None or declared <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail={"type": "INSURANCE_DECLARED_VALUE_REQUIRED", "message": "declared_value_cents obrigatório"},
+            )
+        calc = calculate_content_insurance_premium(declared)
+        insurance_premium_cents = int(calc["premium_cents"])
+
     contract_id = str(uuid.uuid4())
     now = _utc_now()
-    db.execute(
-        text(
-            """
-            INSERT INTO rental_contracts (
-                id, locker_id, slot_label, plan_id, tenant_id, renter_user_id,
-                renter_name, renter_document, renter_phone, renter_email,
-                amount_cents, currency, billing_cycle, next_billing_at, auto_renew,
-                status, started_at, created_at, updated_at
-            ) VALUES (
-                :id, :locker_id, :slot_label, :plan_id, :tenant_id, :renter_user_id,
-                :renter_name, :renter_document, :renter_phone, :renter_email,
-                :amount_cents, :currency, :billing_cycle, :next_billing_at, :auto_renew,
-                :status, :started_at, :now, :now
-            )
-            """
-        ),
+    _insert_rental_contract_row(
+        db,
         {
             "id": contract_id,
             "locker_id": body.locker_id,
@@ -381,9 +517,18 @@ def create_rental_contract(body: RentalContractIn, db: Session = Depends(get_db)
             "auto_renew": body.auto_renew,
             "status": body.status,
             "started_at": now if body.status == "ACTIVE" else None,
+            "pricing_rule_code": pricing_rule_code,
+            "insurance_premium_cents": insurance_premium_cents,
             "now": now,
         },
     )
+    if body.content_insurance and body.declared_value_cents:
+        insurance_record = create_content_insurance(
+            db,
+            contract_id=contract_id,
+            declared_value_cents=int(body.declared_value_cents),
+            currency=currency,
+        )
     if body.status == "ACTIVE":
         db.execute(
             text(
@@ -399,11 +544,26 @@ def create_rental_contract(body: RentalContractIn, db: Session = Depends(get_db)
         db,
         contract_id=contract_id,
         event_type="contract.created",
-        payload={"status": body.status, "plan_id": body.plan_id},
+        payload={
+            "status": body.status,
+            "plan_id": body.plan_id,
+            "pricing_source": ctx.get("pricing_source"),
+            "pricing_rule_code": pricing_rule_code,
+            "content_insurance": bool(body.content_insurance),
+        },
         actor="ops",
     )
     db.commit()
-    return get_rental_contract(contract_id, db)
+    out = get_rental_contract(contract_id, db)
+    out["pricing"] = {
+        "pricing_source": ctx.get("pricing_source"),
+        "pricing_rule_code": pricing_rule_code,
+        "quote": ctx.get("quote"),
+        "insurance_premium_cents": insurance_premium_cents,
+    }
+    if insurance_record:
+        out["content_insurance"] = insurance_record
+    return out
 
 
 @router.patch("/contracts/{contract_id}")

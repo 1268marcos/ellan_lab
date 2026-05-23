@@ -5472,6 +5472,103 @@ def _create_rental_transfer_requests(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_rental_late_fee_policies(conn, applied: list[str]) -> None:
+    name = "rental_late_fee_policies.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_late_fee_policies (
+            id                  VARCHAR(36) PRIMARY KEY,
+            code                VARCHAR(32) NOT NULL UNIQUE,
+            name                VARCHAR(128) NOT NULL,
+            grace_days          INTEGER NOT NULL DEFAULT 3,
+            fee_type            VARCHAR(16) NOT NULL DEFAULT 'BPS',
+            fee_value           NUMERIC(12, 4) NOT NULL DEFAULT 500,
+            daily_cap_cents     INTEGER NOT NULL DEFAULT 0,
+            max_fee_cents       INTEGER NOT NULL DEFAULT 50000,
+            priority            INTEGER NOT NULL DEFAULT 100,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_late_fee_charges(conn, applied: list[str]) -> None:
+    name = "rental_late_fee_charges.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_late_fee_charges (
+            id                  VARCHAR(36) PRIMARY KEY,
+            contract_id         VARCHAR(36) NOT NULL REFERENCES rental_contracts(id),
+            invoice_id          VARCHAR(36) NOT NULL REFERENCES rental_billing_invoices(id),
+            policy_code         VARCHAR(32) NOT NULL,
+            days_overdue        INTEGER NOT NULL DEFAULT 0,
+            fee_cents           INTEGER NOT NULL,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            applied_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_rental_late_fee_invoice ON rental_late_fee_charges (invoice_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_content_insurance(conn, applied: list[str]) -> None:
+    name = "rental_content_insurance.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_content_insurance (
+            id                  VARCHAR(36) PRIMARY KEY,
+            contract_id         VARCHAR(36) NOT NULL REFERENCES rental_contracts(id),
+            policy_number       VARCHAR(32) NOT NULL UNIQUE,
+            declared_value_cents INTEGER NOT NULL,
+            premium_cents       INTEGER NOT NULL,
+            coverage_cents      INTEGER NOT NULL,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            status              VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            starts_at           TIMESTAMPTZ NOT NULL,
+            ends_at             TIMESTAMPTZ NOT NULL,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_insurance_contract ON rental_content_insurance (contract_id, status)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_rental_billing_late_fee_v1(conn, applied: list[str]) -> None:
+    name = "rental_billing_invoices.late_fee_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "rental_billing_invoices", "late_fee_cents", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(conn, "rental_billing_invoices", "base_amount_cents", "INTEGER")
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_rental_contracts_pricing_insurance_v1(conn, applied: list[str]) -> None:
+    name = "rental_contracts.pricing_insurance_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "rental_contracts", "pricing_rule_code", "VARCHAR(32)")
+    _ensure_column(conn, "rental_contracts", "insurance_premium_cents", "INTEGER NOT NULL DEFAULT 0")
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_rental_webhook_deliveries(conn, applied: list[str]) -> None:
     name = "rental_webhook_deliveries.create_table_v1"
     if _migration_applied(conn, name):

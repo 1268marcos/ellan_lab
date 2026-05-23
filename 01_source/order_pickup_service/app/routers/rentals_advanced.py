@@ -23,6 +23,8 @@ from app.schemas.rentals_advanced import (
 from app.routers.rental_ops_common import serialize_row as _serialize_row
 from app.routers.rental_ops_common import utc_now as _utc_now
 from app.services.rental_events import log_rental_contract_event
+from app.services.rental_late_fees import apply_automatic_late_fees
+from app.services.rental_pricing import resolve_rental_quote
 
 router = APIRouter(tags=["rentals-ops-advanced"])
 
@@ -356,40 +358,14 @@ def create_pricing_rule(body: RentalPricingRuleIn, db: Session = Depends(get_db)
 @router.post("/pricing/quote")
 def rental_price_quote(body: RentalQuoteIn, db: Session = Depends(get_db)):
     """Cotação dinâmica com base em regras cadastradas."""
-    at = body.at or _utc_now()
-    rows = db.execute(
-        text(
-            """
-            SELECT base_amount_cents, surge_multiplier, code, name
-            FROM rental_pricing_rules
-            WHERE active = TRUE
-              AND (network_id = :nid OR network_id IS NULL)
-              AND (slot_size IS NULL OR slot_size = :size)
-              AND (billing_cycle IS NULL OR billing_cycle = :cycle)
-              AND (valid_from IS NULL OR valid_from <= :at)
-              AND (valid_until IS NULL OR valid_until >= :at)
-            ORDER BY priority ASC
-            LIMIT 1
-            """
-        ),
-        {
-            "nid": body.network_id,
-            "size": body.slot_size,
-            "cycle": body.billing_cycle,
-            "at": at,
-        },
-    ).mappings().all()
-    if not rows:
-        return {"ok": True, "quoted": False, "amount_cents": None}
-    rule = rows[0]
-    amount = int(float(rule["base_amount_cents"]) * float(rule["surge_multiplier"]))
-    return {
-        "ok": True,
-        "quoted": True,
-        "amount_cents": amount,
-        "rule_code": rule["code"],
-        "rule_name": rule["name"],
-    }
+    quote = resolve_rental_quote(
+        db,
+        network_id=body.network_id,
+        slot_size=body.slot_size,
+        billing_cycle=body.billing_cycle or "MONTHLY",
+        at=body.at,
+    )
+    return {"ok": True, **quote, "rule_code": quote.get("rule_code"), "rule_name": quote.get("rule_name")}
 
 
 @router.get("/dunning")
@@ -416,7 +392,8 @@ def list_dunning_cases(db: Session = Depends(get_db), status: Optional[str] = Qu
 
 @router.post("/dunning/scan")
 def scan_dunning(db: Session = Depends(get_db)):
-    """Abre casos de cobrança para faturas OVERDUE sem caso aberto."""
+    """Aplica multas automáticas e abre casos de cobrança para faturas OVERDUE sem caso aberto."""
+    late_fees = apply_automatic_late_fees(db)
     rows = db.execute(
         text(
             """
@@ -456,7 +433,7 @@ def scan_dunning(db: Session = Depends(get_db)):
         )
         created += 1
     db.commit()
-    return {"ok": True, "cases_created": created}
+    return {"ok": True, "cases_created": created, "late_fees": late_fees}
 
 
 @router.get("/transfers")

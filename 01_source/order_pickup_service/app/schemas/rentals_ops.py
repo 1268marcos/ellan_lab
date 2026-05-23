@@ -43,6 +43,19 @@ class RentalPlanUpdate(BaseModel):
     active: Optional[bool] = None
 
 
+class RentalContractPricingPreviewIn(BaseModel):
+    locker_id: str = Field(min_length=1, max_length=36)
+    slot_label: str = Field(min_length=1, max_length=20)
+    plan_id: Optional[str] = Field(None, max_length=36)
+    network_id: Optional[str] = Field(None, max_length=36)
+    slot_size: Optional[str] = Field(None, max_length=8)
+    billing_cycle: Optional[BillingCycle] = None
+    amount_cents: Optional[int] = Field(None, ge=0)
+    use_dynamic_pricing: bool = True
+    content_insurance: bool = False
+    declared_value_cents: Optional[int] = Field(None, ge=0)
+
+
 class RentalContractIn(BaseModel):
     locker_id: str = Field(min_length=1, max_length=36)
     slot_label: str = Field(min_length=1, max_length=20)
@@ -59,6 +72,11 @@ class RentalContractIn(BaseModel):
     next_billing_at: Optional[datetime] = None
     auto_renew: bool = False
     status: RentalContractStatus = "PENDING"
+    network_id: Optional[str] = Field(None, max_length=36)
+    slot_size: Optional[str] = Field(None, max_length=8)
+    use_dynamic_pricing: bool = True
+    content_insurance: bool = False
+    declared_value_cents: Optional[int] = Field(None, ge=0)
 
 
 class RentalContractUpdate(BaseModel):

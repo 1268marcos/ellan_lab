@@ -23,6 +23,7 @@ from app.schemas.rentals_extended import (
 )
 from app.routers.rental_ops_common import serialize_row as _serialize_row
 from app.routers.rental_ops_common import utc_now as _utc_now
+from app.services.rental_late_fees import apply_automatic_late_fees
 
 router = APIRouter(tags=["rentals-ops-extended"])
 
@@ -393,6 +394,14 @@ def list_contract_events(
         item.pop("payload_json", None)
         items.append(item)
     return {"items": items, "total": len(items)}
+
+
+@router.post("/billing/apply-late-fees")
+def apply_late_fees(db: Session = Depends(get_db)):
+    """Aplica multas automáticas em faturas OVERDUE (após grace da política ativa)."""
+    result = apply_automatic_late_fees(db)
+    db.commit()
+    return {"ok": True, **result}
 
 
 @router.get("/billing/invoices")

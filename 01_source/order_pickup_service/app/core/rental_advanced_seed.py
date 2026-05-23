@@ -20,6 +20,8 @@ def seed_rental_advanced(db: Session) -> dict[str, int]:
         "pricing_rules": 0,
         "dunning": 0,
         "transfers": 0,
+        "late_fee_policies": 0,
+        "content_insurance": 0,
     }
 
     contract = db.execute(
@@ -31,6 +33,34 @@ def seed_rental_advanced(db: Session) -> dict[str, int]:
     cid = str(contract["id"])
     lid = str(contract["locker_id"])
     slot = str(contract["slot_label"])
+
+    if not db.execute(
+        text("SELECT id FROM rental_late_fee_policies WHERE code = 'DEFAULT_OVERDUE' LIMIT 1"),
+    ).mappings().first():
+        db.execute(
+            text(
+                """
+                INSERT INTO rental_late_fee_policies (
+                    id, code, name, grace_days, fee_type, fee_value,
+                    daily_cap_cents, max_fee_cents, priority, active, created_at
+                ) VALUES (
+                    :id, 'DEFAULT_OVERDUE', 'Multa padrão atraso', 3, 'BPS', 500,
+                    0, 50000, 10, TRUE, :now
+                )
+                """
+            ),
+            {"id": str(uuid.uuid4()), "now": now},
+        )
+        counts["late_fee_policies"] += 1
+
+    if not db.execute(
+        text("SELECT id FROM rental_content_insurance WHERE contract_id = :c LIMIT 1"),
+        {"c": cid},
+    ).mappings().first():
+        from app.services.rental_insurance import create_content_insurance
+
+        if create_content_insurance(db, contract_id=cid, declared_value_cents=250000, currency="BRL"):
+            counts["content_insurance"] += 1
 
     if not db.execute(
         text("SELECT id FROM rental_access_passes WHERE contract_id = :c LIMIT 1"),
@@ -153,9 +183,9 @@ def seed_rental_advanced(db: Session) -> dict[str, int]:
                 """
                 INSERT INTO rental_billing_invoices (
                     id, contract_id, invoice_number, period_start, period_end,
-                    amount_cents, currency, status, due_at, created_at, updated_at
+                    amount_cents, currency, status, due_at, late_fee_cents, created_at, updated_at
                 ) VALUES (
-                    :id, :cid, :num, :start, :end, :amt, 'BRL', 'OVERDUE', :due, :now, :now
+                    :id, :cid, :num, :start, :end, :amt, 'BRL', 'OVERDUE', :due, 0, :now, :now
                 )
                 """
             ),

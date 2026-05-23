@@ -84,6 +84,21 @@ export default function OpsRentalAdmin() {
   const [pricingRules, setPricingRules] = useState<unknown[]>([])
   const [dunningCases, setDunningCases] = useState<unknown[]>([])
   const [transfers, setTransfers] = useState<unknown[]>([])
+  const [contentInsurance, setContentInsurance] = useState<unknown[]>([])
+  const [pricingPreview, setPricingPreview] = useState<{
+    pricing: Record<string, unknown>
+    insurance?: Record<string, unknown>
+    total_monthly_cents: number
+  } | null>(null)
+  const [contractForm, setContractForm] = useState({
+    locker_id: '',
+    slot_label: '',
+    slot_size: 'M',
+    renter_name: '',
+    use_dynamic_pricing: true,
+    content_insurance: false,
+    declared_value_cents: 0,
+  })
 
   useEffect(() => {
     const fromUrl = (searchParams.get('tab') as Tab) || 'overview'
@@ -102,7 +117,8 @@ export default function OpsRentalAdmin() {
     setLoading(true)
     setError(null)
     try {
-      const [s, p, c, n, cor, op, inv, sla, w, k, eco, ps, ob, cap, stl, br, disp, ren, ap, dep, pr, dun, tr] = await Promise.all([
+      const [s, p, c, n, cor, op, inv, sla, w, k, eco, ps, ob, cap, stl, br, disp, ren, ap, dep, pr, dun, tr, ins] =
+        await Promise.all([
         rentalsOpsApi.analyticsSummary(),
         rentalsOpsApi.listPlans({ active_only: false }),
         rentalsOpsApi.listContracts({}),
@@ -126,6 +142,7 @@ export default function OpsRentalAdmin() {
         rentalsOpsApi.listPricingRules(),
         rentalsOpsApi.listDunning(),
         rentalsOpsApi.listTransfers(),
+        rentalsOpsApi.listContentInsurance(),
       ])
       setSummary(s.data.summary ?? null)
       setPlans(p.data.items ?? [])
@@ -150,6 +167,7 @@ export default function OpsRentalAdmin() {
       setPricingRules(pr.data.items ?? [])
       setDunningCases(dun.data.items ?? [])
       setTransfers(tr.data.items ?? [])
+      setContentInsurance(ins.data.items ?? [])
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar')
     } finally {
@@ -204,6 +222,65 @@ export default function OpsRentalAdmin() {
       await load()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha no webhook')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onPreviewContractPricing = async () => {
+    setLoading(true)
+    try {
+      const { data } = await rentalsOpsApi.previewContractPricing({
+        locker_id: contractForm.locker_id,
+        slot_label: contractForm.slot_label,
+        slot_size: contractForm.slot_size,
+        billing_cycle: 'MONTHLY',
+        use_dynamic_pricing: contractForm.use_dynamic_pricing,
+        content_insurance: contractForm.content_insurance,
+        declared_value_cents: contractForm.content_insurance ? contractForm.declared_value_cents : undefined,
+      })
+      setPricingPreview(data)
+      setMessage('Cotação atualizada.')
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha na cotação')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onCreateContract = async (e: FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+    try {
+      await rentalsOpsApi.createContract({
+        locker_id: contractForm.locker_id,
+        slot_label: contractForm.slot_label,
+        slot_size: contractForm.slot_size,
+        billing_cycle: 'MONTHLY',
+        renter_name: contractForm.renter_name || undefined,
+        use_dynamic_pricing: contractForm.use_dynamic_pricing,
+        content_insurance: contractForm.content_insurance,
+        declared_value_cents: contractForm.content_insurance ? contractForm.declared_value_cents : undefined,
+        status: 'PENDING',
+      })
+      setMessage('Contrato criado.')
+      setPricingPreview(null)
+      await load()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao criar contrato')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onApplyLateFees = async () => {
+    setLoading(true)
+    try {
+      const { data } = await rentalsOpsApi.applyLateFees()
+      setMessage(`Multas: ${data.applied} aplicada(s), ${data.skipped} ignorada(s).`)
+      await load()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao aplicar multas')
     } finally {
       setLoading(false)
     }
@@ -322,11 +399,21 @@ export default function OpsRentalAdmin() {
       {tab === 'operators'
         ? renderTable(operators, ['operator_code', 'legal_name', 'status'], (r, c) => String(r[c] ?? '—'))
         : null}
-      {tab === 'billing'
-        ? renderTable(invoices, ['invoice_number', 'status', 'amount_cents'], (r, c) =>
+      {tab === 'billing' ? (
+        <section className="space-y-3">
+          <button
+            type="button"
+            className="rounded bg-amber-600 px-3 py-1 text-sm text-white"
+            onClick={() => void onApplyLateFees()}
+            disabled={loading}
+          >
+            Aplicar multas automáticas
+          </button>
+          {renderTable(invoices, ['invoice_number', 'status', 'amount_cents'], (r, c) =>
             c === 'amount_cents' ? formatBrl(Number(r.amount_cents)) : String(r[c] ?? '—'),
-          )
-        : null}
+          )}
+        </section>
+      ) : null}
       {tab === 'sla'
         ? renderTable(slaPolicies, ['network_code', 'metric_code', 'target_value'], (r, c) => String(r[c] ?? '—'))
         : null}
@@ -381,7 +468,78 @@ export default function OpsRentalAdmin() {
       ) : null}
 
       {tab === 'contracts' ? (
-        <table className="w-full text-left text-sm">
+        <section className="space-y-3">
+          <form className="flex flex-wrap items-end gap-2" onSubmit={onCreateContract}>
+            <input
+              className="rounded border px-2 py-1 text-sm"
+              placeholder="locker_id"
+              value={contractForm.locker_id}
+              onChange={(e) => setContractForm((f) => ({ ...f, locker_id: e.target.value }))}
+              required
+            />
+            <input
+              className="rounded border px-2 py-1 text-sm"
+              placeholder="slot_label"
+              value={contractForm.slot_label}
+              onChange={(e) => setContractForm((f) => ({ ...f, slot_label: e.target.value }))}
+              required
+            />
+            <input
+              className="rounded border px-2 py-1 text-sm"
+              placeholder="Locatário"
+              value={contractForm.renter_name}
+              onChange={(e) => setContractForm((f) => ({ ...f, renter_name: e.target.value }))}
+            />
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={contractForm.use_dynamic_pricing}
+                onChange={(e) => setContractForm((f) => ({ ...f, use_dynamic_pricing: e.target.checked }))}
+              />
+              Cotação dinâmica
+            </label>
+            <label className="flex items-center gap-1 text-sm">
+              <input
+                type="checkbox"
+                checked={contractForm.content_insurance}
+                onChange={(e) => setContractForm((f) => ({ ...f, content_insurance: e.target.checked }))}
+              />
+              Seguro conteúdo
+            </label>
+            {contractForm.content_insurance ? (
+              <input
+                type="number"
+                className="w-36 rounded border px-2 py-1 text-sm"
+                placeholder="Valor declarado (centavos)"
+                value={contractForm.declared_value_cents}
+                onChange={(e) =>
+                  setContractForm((f) => ({ ...f, declared_value_cents: Number(e.target.value) }))
+                }
+              />
+            ) : null}
+            <button
+              type="button"
+              className="rounded bg-slate-600 px-3 py-1 text-sm text-white"
+              onClick={() => void onPreviewContractPricing()}
+              disabled={loading}
+            >
+              Preview cotação
+            </button>
+            <button type="submit" className="rounded bg-blue-600 px-3 py-1 text-sm text-white" disabled={loading}>
+              Criar contrato
+            </button>
+          </form>
+          {pricingPreview ? (
+            <p className="text-sm text-slate-600">
+              Aluguel: {formatBrl(Number(pricingPreview.pricing.amount_cents))}
+              {pricingPreview.insurance
+                ? ` · Seguro: ${formatBrl(Number(pricingPreview.insurance.premium_cents))}`
+                : ''}
+              {' · Total: '}
+              {formatBrl(pricingPreview.total_monthly_cents)}
+            </p>
+          ) : null}
+          <table className="w-full text-left text-sm">
           <thead>
             <tr className="border-b text-slate-500">
               <th className="p-2">ID</th>
@@ -403,6 +561,7 @@ export default function OpsRentalAdmin() {
             ))}
           </tbody>
         </table>
+        </section>
       ) : null}
 
       {tab === 'onboarding'
@@ -449,6 +608,11 @@ export default function OpsRentalAdmin() {
 
       {tab === 'advanced' ? (
         <section className="space-y-6">
+          {renderTable(
+            contentInsurance,
+            ['policy_number', 'renter_name', 'premium_cents', 'status'],
+            (r, c) => (c === 'premium_cents' ? formatBrl(Number(r.premium_cents)) : String(r[c] ?? '—')),
+          )}
           {renderTable(accessPasses, ['contract_id', 'pass_type', 'pass_hint', 'status'], (r, c) =>
             String(r[c] ?? '—'),
           )}

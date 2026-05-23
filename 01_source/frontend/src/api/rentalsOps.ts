@@ -58,6 +58,14 @@ export const rentalsOpsApi = {
       `${BASE}/contracts/${encodeURIComponent(contractId)}`,
     ),
 
+  previewContractPricing: (body: Record<string, unknown>) =>
+    api.post<{
+      ok: boolean
+      pricing: Record<string, unknown>
+      insurance?: Record<string, unknown>
+      total_monthly_cents: number
+    }>(`${BASE}/contracts/preview-pricing`, body),
+
   createContract: (body: Record<string, unknown>) => api.post(`${BASE}/contracts`, body),
   updateContract: (contractId: string, body: Record<string, unknown>) =>
     api.patch(`${BASE}/contracts/${encodeURIComponent(contractId)}`, body),
@@ -89,6 +97,14 @@ export const rentalsOpsApi = {
 
   listInvoices: (params?: { contract_id?: string; status?: string }) =>
     api.get<{ items: unknown[] }>(`${BASE}/billing/invoices`, { params }),
+
+  applyLateFees: () =>
+    api.post<{ ok: boolean; applied: number; skipped: number; policy_code?: string }>(
+      `${BASE}/billing/apply-late-fees`,
+    ),
+
+  listContentInsurance: (params?: { contract_id?: string; status?: string }) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/content-insurance`, { params }),
 
   listSlaPolicies: (networkId?: string) =>
     api.get<{ items: unknown[] }>(`${BASE}/sla-policies`, { params: networkId ? { network_id: networkId } : {} }),

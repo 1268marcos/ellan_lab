@@ -32,6 +32,9 @@ _RENTAL_TABLE_MIGRATIONS: list[tuple[str, object]] = [
     ("rental_pricing_rules", db_migrations._create_rental_pricing_rules),
     ("rental_dunning_cases", db_migrations._create_rental_dunning_cases),
     ("rental_transfer_requests", db_migrations._create_rental_transfer_requests),
+    ("rental_late_fee_policies", db_migrations._create_rental_late_fee_policies),
+    ("rental_late_fee_charges", db_migrations._create_rental_late_fee_charges),
+    ("rental_content_insurance", db_migrations._create_rental_content_insurance),
     ("rental_webhook_deliveries", db_migrations._create_rental_webhook_deliveries),
 ]
 
@@ -44,6 +47,8 @@ _POST_TABLE_MIGRATIONS = [
     db_migrations._migrate_rental_plans_network_id_v1,
     db_migrations._migrate_rental_contracts_operator_id_v1,
     db_migrations._migrate_rental_networks_ecosystem_v1,
+    db_migrations._migrate_rental_billing_late_fee_v1,
+    db_migrations._migrate_rental_contracts_pricing_insurance_v1,
 ]
 
 
