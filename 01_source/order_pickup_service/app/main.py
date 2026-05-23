@@ -7,16 +7,19 @@ import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.shadow_mode import ShadowModeMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
+from app.core.auth_dep import require_user_roles
 from app.core.authorization_policy import AUTHORIZATION_POLICY_MD
 from app.core.config import settings
-from app.core.db import SessionLocal, init_db
+from app.core.internal_auth import require_internal_token
+from app.core.rental_schema import ensure_rental_schema
+from app.core.db import SessionLocal, get_db, init_db
 from app.core.version import get_version
 from app.health.health import router as health_router
 from app.health.internal import router as internal_health_router
@@ -168,7 +171,23 @@ app.include_router(promotions_admin.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
 app.include_router(internal.router)
-app.include_router(rentals_ops.router, prefix="/internal")
+def _ensure_rental_schema_dep(db=Depends(get_db)):
+    ensure_rental_schema(db)
+
+
+app.include_router(
+    rentals_ops.router,
+    prefix="/internal/rentals",
+    dependencies=[Depends(require_internal_token), Depends(_ensure_rental_schema_dep)],
+)
+app.include_router(
+    rentals_ops.router,
+    prefix="/v1/rentals-admin",
+    dependencies=[
+        Depends(require_user_roles(allowed_roles={"admin_operacao"})),
+        Depends(_ensure_rental_schema_dep),
+    ],
+)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
 app.include_router(public_auth_router)

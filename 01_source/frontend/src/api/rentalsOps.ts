@@ -1,0 +1,101 @@
+import { api } from './client'
+
+const BASE = '/api/op/v1/rentals-admin'
+
+export type RentalPlan = {
+  id: string
+  name: string
+  locker_id?: string | null
+  slot_size?: string | null
+  billing_cycle: string
+  amount_cents: number
+  currency: string
+  active: boolean
+}
+
+export type RentalContract = {
+  id: string
+  locker_id: string
+  slot_label: string
+  renter_name?: string
+  status: string
+  billing_cycle: string
+  amount_cents: number
+  plan_id?: string
+  tenant_id?: string
+}
+
+export type RentalEcosystemCatalog = {
+  version: string
+  networks_total: number
+  priority_codes: string[]
+  networks: Array<Record<string, unknown>>
+  by_region: Record<string, unknown[]>
+  by_type: Record<string, string[]>
+  plans_catalog: number
+  operators_catalog: number
+}
+
+export const rentalsOpsApi = {
+  ecosystemCatalog: () =>
+    api.get<{ ok: boolean; catalog: RentalEcosystemCatalog }>(`${BASE}/ecosystem/catalog`),
+
+  seed: () => api.post<{ ok: boolean; seeded: Record<string, number> }>(`${BASE}/seed`),
+
+  listPlans: (params?: { active_only?: boolean; locker_id?: string }) =>
+    api.get<{ items: RentalPlan[]; total: number }>(`${BASE}/plans`, { params }),
+
+  createPlan: (body: Record<string, unknown>) => api.post<RentalPlan>(`${BASE}/plans`, body),
+  updatePlan: (planId: string, body: Record<string, unknown>) =>
+    api.patch<RentalPlan>(`${BASE}/plans/${encodeURIComponent(planId)}`, body),
+  deletePlan: (planId: string) => api.delete(`${BASE}/plans/${encodeURIComponent(planId)}`),
+
+  listContracts: (params?: { status?: string; locker_id?: string; tenant_id?: string }) =>
+    api.get<{ items: RentalContract[]; total: number }>(`${BASE}/contracts`, { params }),
+
+  getContract: (contractId: string) =>
+    api.get<{ contract: Record<string, unknown>; plan?: RentalPlan; slot?: Record<string, unknown> }>(
+      `${BASE}/contracts/${encodeURIComponent(contractId)}`,
+    ),
+
+  createContract: (body: Record<string, unknown>) => api.post(`${BASE}/contracts`, body),
+  updateContract: (contractId: string, body: Record<string, unknown>) =>
+    api.patch(`${BASE}/contracts/${encodeURIComponent(contractId)}`, body),
+  cancelContract: (contractId: string, body?: { cancel_reason?: string }) =>
+    api.post(`${BASE}/contracts/${encodeURIComponent(contractId)}/cancel`, body ?? {}),
+
+  listWebhooks: (tenantId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/webhooks`, { params: tenantId ? { tenant_id: tenantId } : {} }),
+
+  upsertWebhook: (tenantId: string, body: Record<string, unknown>) =>
+    api.put(`${BASE}/webhooks/${encodeURIComponent(tenantId)}`, body),
+
+  listApiKeys: (tenantId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/api-keys`, { params: tenantId ? { tenant_id: tenantId } : {} }),
+
+  rotateApiKey: (tenantId: string) =>
+    api.post<{ api_key: string; key_prefix: string }>(`${BASE}/api-keys/${encodeURIComponent(tenantId)}/rotate`),
+
+  analyticsSummary: () => api.get<{ ok: boolean; summary: Record<string, number> }>(`${BASE}/analytics/summary`),
+
+  listNetworks: (params?: { network_type?: string; active_only?: boolean }) =>
+    api.get<{ items: unknown[] }>(`${BASE}/networks`, { params }),
+
+  listCorridors: (networkId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/corridors`, { params: networkId ? { network_id: networkId } : {} }),
+
+  listOperators: (params?: { tenant_id?: string; network_id?: string }) =>
+    api.get<{ items: unknown[] }>(`${BASE}/operators`, { params }),
+
+  listInvoices: (params?: { contract_id?: string; status?: string }) =>
+    api.get<{ items: unknown[] }>(`${BASE}/billing/invoices`, { params }),
+
+  listSlaPolicies: (networkId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/sla-policies`, { params: networkId ? { network_id: networkId } : {} }),
+
+  listContractEvents: (contractId: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/contracts/${encodeURIComponent(contractId)}/events`),
+
+  listWebhookDeliveries: (params?: { status?: string }) =>
+    api.get<{ items: unknown[] }>(`${BASE}/webhook-deliveries`, { params }),
+}

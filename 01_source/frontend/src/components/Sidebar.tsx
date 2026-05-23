@@ -58,6 +58,20 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'rentalsOps',
+    icon: '🔑',
+    label: 'Rentals OPS',
+    items: [
+      { to: '/ops/rentals/admin', label: 'Visão geral' },
+      { to: '/ops/rentals/admin?tab=networks', label: 'Redes mundiais' },
+      { to: '/ops/rentals/admin?tab=operators', label: 'Operadores' },
+      { to: '/ops/rentals/admin?tab=plans', label: 'Planos' },
+      { to: '/ops/rentals/admin?tab=contracts', label: 'Contratos' },
+      { to: '/ops/rentals/admin?tab=billing', label: 'Faturamento' },
+      { to: '/ops/rentals/admin?tab=integrations', label: 'Integrações' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',

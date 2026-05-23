@@ -4813,6 +4813,308 @@ def _create_rental_contracts(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_rental_webhook_endpoints(conn, applied: list[str]) -> None:
+    name = "rental_webhook_endpoints.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_webhook_endpoints (
+            id           VARCHAR(36) PRIMARY KEY,
+            tenant_id    VARCHAR(100) NOT NULL,
+            url          VARCHAR(500) NOT NULL,
+            secret_hash  VARCHAR(128) NOT NULL,
+            secret_key   VARCHAR(256),
+            events_json  TEXT NOT NULL DEFAULT '["rental.contract.created"]',
+            active       BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_webhook_tenant ON rental_webhook_endpoints (tenant_id)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_api_keys(conn, applied: list[str]) -> None:
+    name = "rental_api_keys.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_api_keys (
+            id           VARCHAR(36) PRIMARY KEY,
+            tenant_id    VARCHAR(100) NOT NULL,
+            key_prefix   VARCHAR(16) NOT NULL,
+            key_hash     VARCHAR(128) NOT NULL,
+            label        VARCHAR(64),
+            scopes_json  TEXT NOT NULL DEFAULT '[]',
+            expires_at   TIMESTAMPTZ,
+            last_used_at TIMESTAMPTZ,
+            revoked_at   TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_api_keys_tenant ON rental_api_keys (tenant_id)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_networks(conn, applied: list[str]) -> None:
+    name = "rental_networks.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_networks (
+            id                    VARCHAR(36) PRIMARY KEY,
+            code                  VARCHAR(32) NOT NULL UNIQUE,
+            name                  VARCHAR(128) NOT NULL,
+            network_type          VARCHAR(32) NOT NULL DEFAULT 'LOCKER_NETWORK',
+            hardware_vendor       VARCHAR(64),
+            primary_countries_json TEXT NOT NULL DEFAULT '[]',
+            website_url           VARCHAR(255),
+            active                BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_networks_type ON rental_networks (network_type)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_network_corridors(conn, applied: list[str]) -> None:
+    name = "rental_network_corridors.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_network_corridors (
+            id                  VARCHAR(36) PRIMARY KEY,
+            network_id          VARCHAR(36) NOT NULL REFERENCES rental_networks(id),
+            origin_country      CHAR(2) NOT NULL,
+            destination_country CHAR(2) NOT NULL,
+            sla_hours           INTEGER NOT NULL DEFAULT 72,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'EUR',
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_corridors_network ON rental_network_corridors (network_id)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_operators(conn, applied: list[str]) -> None:
+    name = "rental_operators.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_operators (
+            id              VARCHAR(36) PRIMARY KEY,
+            tenant_id       VARCHAR(100),
+            network_id      VARCHAR(36) REFERENCES rental_networks(id),
+            legal_name      VARCHAR(255) NOT NULL,
+            trade_name      VARCHAR(128),
+            operator_code   VARCHAR(32) NOT NULL,
+            commission_bps  INTEGER NOT NULL DEFAULT 0,
+            status          VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            contract_ref    VARCHAR(64),
+            contact_email   VARCHAR(128),
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ux_rental_operators_code ON rental_operators (operator_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_rental_operators_tenant ON rental_operators (tenant_id)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_contract_events(conn, applied: list[str]) -> None:
+    name = "rental_contract_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_contract_events (
+            id           VARCHAR(36) PRIMARY KEY,
+            contract_id  VARCHAR(36) NOT NULL REFERENCES rental_contracts(id),
+            event_type   VARCHAR(64) NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            actor        VARCHAR(128) NOT NULL DEFAULT 'system',
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_contract_events_contract ON rental_contract_events (contract_id, created_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_billing_invoices(conn, applied: list[str]) -> None:
+    name = "rental_billing_invoices.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_billing_invoices (
+            id              VARCHAR(36) PRIMARY KEY,
+            contract_id     VARCHAR(36) NOT NULL REFERENCES rental_contracts(id),
+            invoice_number  VARCHAR(32) NOT NULL,
+            period_start    TIMESTAMPTZ NOT NULL,
+            period_end      TIMESTAMPTZ NOT NULL,
+            amount_cents    INTEGER NOT NULL,
+            currency        VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            status          VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+            due_at          TIMESTAMPTZ,
+            paid_at         TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_invoices_contract ON rental_billing_invoices (contract_id, period_end DESC)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_invoices_status ON rental_billing_invoices (status, due_at)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_sla_policies(conn, applied: list[str]) -> None:
+    name = "rental_sla_policies.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_sla_policies (
+            id                  VARCHAR(36) PRIMARY KEY,
+            network_id          VARCHAR(36) NOT NULL REFERENCES rental_networks(id),
+            metric_code         VARCHAR(64) NOT NULL,
+            target_value        NUMERIC(12, 4) NOT NULL,
+            unit                VARCHAR(16) NOT NULL,
+            breach_penalty_bps  INTEGER NOT NULL DEFAULT 0,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_sla_network ON rental_sla_policies (network_id, metric_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _table_has_primary_key(conn, table_name: str) -> bool:
+    if conn.dialect.name == "postgresql":
+        row = conn.execute(
+            text(
+                """
+                SELECT 1 FROM pg_constraint c
+                JOIN pg_class t ON t.oid = c.conrelid
+                WHERE t.relname = :tbl AND c.contype = 'p'
+                LIMIT 1
+                """
+            ),
+            {"tbl": table_name},
+        ).first()
+        return row is not None
+    if conn.dialect.name == "sqlite":
+        rows = conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+        return any(int(r[5] or 0) > 0 for r in rows)
+    return True
+
+
+def _migrate_rental_plans_primary_key_v1(conn, applied: list[str]) -> None:
+    name = "rental_plans.primary_key_v1"
+    if _migration_applied(conn, name):
+        return
+    if not _table_has_primary_key(conn, "rental_plans"):
+        conn.execute(text("ALTER TABLE rental_plans ADD PRIMARY KEY (id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_rental_contracts_primary_key_v1(conn, applied: list[str]) -> None:
+    name = "rental_contracts.primary_key_v1"
+    if _migration_applied(conn, name):
+        return
+    if not _table_has_primary_key(conn, "rental_contracts"):
+        conn.execute(text("ALTER TABLE rental_contracts ADD PRIMARY KEY (id)"))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_rental_plans_network_id_v1(conn, applied: list[str]) -> None:
+    name = "rental_plans.network_id_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "rental_plans", "network_id", "VARCHAR(36)")
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_plans_network ON rental_plans (network_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_rental_contracts_operator_id_v1(conn, applied: list[str]) -> None:
+    name = "rental_contracts.operator_id_v1"
+    if _migration_applied(conn, name):
+        return
+    _ensure_column(conn, "rental_contracts", "operator_id", "VARCHAR(36)")
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_contracts_operator ON rental_contracts (operator_id)"
+    ))
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_rental_webhook_deliveries(conn, applied: list[str]) -> None:
+    name = "rental_webhook_deliveries.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS rental_webhook_deliveries (
+            id              VARCHAR(36) PRIMARY KEY,
+            endpoint_id     VARCHAR(36) NOT NULL REFERENCES rental_webhook_endpoints(id),
+            contract_id     VARCHAR(36),
+            event_type      VARCHAR(64) NOT NULL,
+            status          VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            attempt         INTEGER NOT NULL DEFAULT 0,
+            response_code   INTEGER,
+            error_message   TEXT,
+            next_retry_at   TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_rental_wh_deliveries_status ON rental_webhook_deliveries (status, next_retry_at)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ============================================================================
 # BLOCO 14 — Métricas e ML
 # ============================================================================
@@ -7766,6 +8068,19 @@ _POSTGRES_MIGRATION_STEPS = [
     # Rental
     _create_rental_plans,
     _create_rental_contracts,
+    _create_rental_webhook_endpoints,
+    _create_rental_api_keys,
+    _create_rental_networks,
+    _create_rental_network_corridors,
+    _create_rental_operators,
+    _create_rental_contract_events,
+    _create_rental_billing_invoices,
+    _create_rental_sla_policies,
+    _create_rental_webhook_deliveries,
+    _migrate_rental_plans_primary_key_v1,
+    _migrate_rental_contracts_primary_key_v1,
+    _migrate_rental_plans_network_id_v1,
+    _migrate_rental_contracts_operator_id_v1,
 
     # Métricas e ML
     _create_demand_forecast,

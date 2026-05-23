@@ -102,6 +102,23 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'rentalsOps',
+    icon: '🔑',
+    label: 'Rentals OPS',
+    items: [
+      { to: '/ops/rentals/admin', label: 'Visão geral e cadastro', newTag: 'Hub' },
+      { to: '/ops/rentals/admin?tab=networks', label: 'Redes mundiais (InPost, DHL…)' },
+      { to: '/ops/rentals/admin?tab=corridors', label: 'Corredores internacionais' },
+      { to: '/ops/rentals/admin?tab=operators', label: 'Operadores B2B' },
+      { to: '/ops/rentals/admin?tab=plans', label: 'Planos (rental_plans)' },
+      { to: '/ops/rentals/admin?tab=contracts', label: 'Contratos (rental_contracts)' },
+      { to: '/ops/rentals/admin?tab=billing', label: 'Faturamento' },
+      { to: '/ops/rentals/admin?tab=sla', label: 'SLA e compliance' },
+      { to: '/ops/rentals/admin?tab=events', label: 'Eventos / auditoria' },
+      { to: '/ops/rentals/admin?tab=integrations', label: 'Webhooks e API keys' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',

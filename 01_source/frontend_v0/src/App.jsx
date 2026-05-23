@@ -88,6 +88,7 @@ const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPa
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
+const OpsRentalAdminPage = lazy(() => import("./pages/OpsRentalAdminPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsProductsAdminRedirect = lazy(() => import("./pages/OpsProductsAdminRedirect"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
@@ -713,18 +714,89 @@ function TopNav() {
       opsSubGroup: "Lockers",
     },
     {
+      to: "/ops/rentals/admin",
+      label: "ops /rentals/admin",
+      aria: "Hub OPS rental — planos, contratos, webhooks, API keys",
+      group: "Rentals OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/rentals/admin?tab=plans",
+      label: "ops /rentals/plans (CRUD)",
+      aria: "Planos de aluguel rental_plans",
+      group: "Rentals OPS",
+      opsSubGroup: "Planos",
+    },
+    {
+      to: "/ops/rentals/admin?tab=contracts",
+      label: "ops /rentals/contracts (CRUD)",
+      aria: "Contratos rental_contracts",
+      group: "Rentals OPS",
+      opsSubGroup: "Contratos",
+    },
+    {
+      to: "/ops/rentals/admin?tab=networks",
+      label: "ops /rentals/networks",
+      aria: "Redes locker mundiais (InPost, DHL, SwipBox…)",
+      group: "Rentals OPS",
+      opsSubGroup: "Redes",
+    },
+    {
+      to: "/ops/rentals/admin?tab=corridors",
+      label: "ops /rentals/corridors",
+      aria: "Corredores logísticos internacionais rental",
+      group: "Rentals OPS",
+      opsSubGroup: "Redes",
+    },
+    {
+      to: "/ops/rentals/admin?tab=operators",
+      label: "ops /rentals/operators",
+      aria: "Operadores B2B e comissões",
+      group: "Rentals OPS",
+      opsSubGroup: "Operadores",
+    },
+    {
+      to: "/ops/rentals/admin?tab=billing",
+      label: "ops /rentals/billing",
+      aria: "Faturamento e ciclos rental_billing_invoices",
+      group: "Rentals OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/rentals/admin?tab=sla",
+      label: "ops /rentals/sla",
+      aria: "Políticas SLA por rede",
+      group: "Rentals OPS",
+      opsSubGroup: "Compliance",
+    },
+    {
+      to: "/ops/rentals/admin?tab=events",
+      label: "ops /rentals/events",
+      aria: "Auditoria rental_contract_events",
+      group: "Rentals OPS",
+      opsSubGroup: "Auditoria",
+    },
+    {
+      to: "/ops/rentals/admin?tab=integrations",
+      label: "ops /rentals/integrations",
+      aria: "Webhooks, entregas e API keys",
+      group: "Rentals OPS",
+      opsSubGroup: "Integrações",
+    },
+    {
       to: "/ops/rentals/contracts",
-      label: "ops /rentals/contracts",
+      label: "ops /rentals/contracts (lista)",
       aria: "Listagem interna de contratos de aluguel (rental_contracts)",
-      group: "Rentals",
-      opsSubGroup: "Rentals",
+      group: "Rentals OPS",
+      opsSubGroup: "Contratos",
     },
     {
       to: "/ops/rentals/plans",
-      label: "ops /rentals/plans",
+      label: "ops /rentals/plans (lista)",
       aria: "Planos de aluguel ativos (rental_plans, admin_operacao)",
-      group: "Rentals",
-      opsSubGroup: "Rentals",
+      group: "Rentals OPS",
+      opsSubGroup: "Planos",
     },
     {
       to: "/ops/payments/reconciliation",
@@ -1041,7 +1113,7 @@ function TopNav() {
     "Order / Pickup",
     "Lockers",
     "Inteligência",
-    "Rentals",
+    "Rentals OPS",
     "Runtime",
     "Logística",
     "Logística / Inventário",
@@ -2387,6 +2459,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerOperatorsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/rentals/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsRentalAdminPage />)}
                 </OpsRoute>
               }
             />
