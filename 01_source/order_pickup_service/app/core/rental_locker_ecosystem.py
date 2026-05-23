@@ -15,6 +15,8 @@ class LockerNetworkDef(TypedDict, total=False):
     code: str
     name: str
     network_type: str
+    market_segment: str
+    global_player_code: str | None
     hardware_vendor: str | None
     countries: list[str]
     website_url: str | None
@@ -22,8 +24,9 @@ class LockerNetworkDef(TypedDict, total=False):
 
 
 # network_type: LOCKER_NETWORK | COLLECTION_POINT | MARKETPLACE_HUB | AGGREGATOR | CARRIER_OPERATED
+# market_segment: PARCEL_LOCKER | CARRIER | MARKETPLACE | PUDO_RETAIL | AGGREGATOR | FOOD_DELIVERY
 
-LOCKER_ECOSYSTEM_NETWORKS: list[LockerNetworkDef] = [
+_BASE_NETWORKS: list[LockerNetworkDef] = [
     # —— Europa — locker-native ——
     {
         "id": "net-inpost",
@@ -289,6 +292,37 @@ LOCKER_ECOSYSTEM_NETWORKS: list[LockerNetworkDef] = [
     },
 ]
 
+from app.core.rental_locker_ecosystem_extra import (  # noqa: E402
+    ECOSYSTEM_NETWORK_RELATIONS,
+    EXTRA_ECOSYSTEM_OPERATORS,
+    EXTRA_ECOSYSTEM_PLANS,
+    EXTRA_LOCKER_NETWORKS,
+    EXTRA_WEBHOOK_TENANTS,
+    NETWORK_GLOBAL_PLAYER_CODES,
+)
+
+LOCKER_ECOSYSTEM_NETWORKS: list[LockerNetworkDef] = _BASE_NETWORKS + EXTRA_LOCKER_NETWORKS  # type: ignore[operator]
+
+_DEFAULT_SEGMENT: dict[str, str] = {
+    "LOCKER_NETWORK": "PARCEL_LOCKER",
+    "COLLECTION_POINT": "PUDO_RETAIL",
+    "MARKETPLACE_HUB": "MARKETPLACE",
+    "AGGREGATOR": "AGGREGATOR",
+    "CARRIER_OPERATED": "CARRIER",
+}
+
+
+def enrich_network_metadata(network: LockerNetworkDef) -> LockerNetworkDef:
+    """Preenche market_segment e global_player_code quando ausentes."""
+    out = dict(network)
+    code = str(out.get("code") or "")
+    out.setdefault("market_segment", _DEFAULT_SEGMENT.get(str(out.get("network_type") or ""), "PARCEL_LOCKER"))
+    out.setdefault("global_player_code", NETWORK_GLOBAL_PLAYER_CODES.get(code))
+    return out  # type: ignore[return-value]
+
+
+LOCKER_ECOSYSTEM_NETWORKS = [enrich_network_metadata(n) for n in LOCKER_ECOSYSTEM_NETWORKS]
+
 LOCKER_ECOSYSTEM_PLANS: list[dict[str, Any]] = [
     {
         "id": "rental-plan-inpost-m",
@@ -389,7 +423,7 @@ LOCKER_ECOSYSTEM_PLANS: list[dict[str, Any]] = [
         "billing_cycle": "MONTHLY",
         "amount_cents": 13900,
     },
-]
+] + EXTRA_ECOSYSTEM_PLANS
 
 LOCKER_ECOSYSTEM_CORRIDORS: list[tuple[str, str, str, int, str]] = [
     ("net-inpost", "PL", "UK", 48, "EUR"),
@@ -419,7 +453,7 @@ LOCKER_ECOSYSTEM_OPERATORS: list[dict[str, Any]] = [
     {"id": "op-ctt-pt", "tenant_id": "tenant-ctt-pt", "network_id": "net-ctt", "legal_name": "CTT — Correios de Portugal", "operator_code": "CTT_PT", "commission_bps": 420},
     {"id": "op-worten", "tenant_id": "tenant-worten", "network_id": "net-worten", "legal_name": "Worten Portugal", "operator_code": "WORTEN_PT", "commission_bps": 400},
     {"id": "op-eci", "tenant_id": "tenant-eci", "network_id": "net-eci", "legal_name": "El Corte Inglés Logística", "operator_code": "ECI_ES", "commission_bps": 410},
-]
+] + EXTRA_ECOSYSTEM_OPERATORS
 
 LOCKER_ECOSYSTEM_SLA: list[tuple[str, str, float, str, int]] = [
     ("net-inpost", "uptime_pct", 99.5, "percent", 100),
@@ -446,7 +480,7 @@ LOCKER_ECOSYSTEM_WEBHOOK_TENANTS: list[str] = [
     "tenant-ctt-pt",
     "tenant-worten",
     "tenant-eci",
-]
+] + EXTRA_WEBHOOK_TENANTS
 
 # Códigos obrigatórios (smoke / QA do catálogo)
 PRIORITY_NETWORK_CODES = frozenset(
@@ -469,19 +503,31 @@ PRIORITY_NETWORK_CODES = frozenset(
 def ecosystem_catalog_payload() -> dict[str, Any]:
     """Payload público para OPS (sem persistência)."""
     by_region: dict[str, list[dict[str, Any]]] = {}
-    by_type: dict[str, list[dict[str, Any]]] = {}
+    by_type: dict[str, list[str]] = {}
+    by_segment: dict[str, list[str]] = {}
     for n in LOCKER_ECOSYSTEM_NETWORKS:
         rg = n.get("region_group") or "OTHER"
         by_region.setdefault(rg, []).append({k: v for k, v in n.items() if k != "region_group"})
         nt = n["network_type"]
         by_type.setdefault(nt, []).append(n["code"])
+        seg = n.get("market_segment") or "PARCEL_LOCKER"
+        by_segment.setdefault(seg, []).append(n["code"])
     return {
-        "version": "2026-05",
+        "version": "2026-05-2",
         "networks_total": len(LOCKER_ECOSYSTEM_NETWORKS),
         "priority_codes": sorted(PRIORITY_NETWORK_CODES),
         "networks": LOCKER_ECOSYSTEM_NETWORKS,
         "by_region": by_region,
         "by_type": {k: sorted(v) for k, v in by_type.items()},
+        "by_segment": {k: sorted(v) for k, v in by_segment.items()},
+        "relations_catalog": [
+            {"from": a, "to": b, "relation_type": rt, "integration_mode": im}
+            for a, b, rt, im in ECOSYSTEM_NETWORK_RELATIONS
+        ],
         "plans_catalog": len(LOCKER_ECOSYSTEM_PLANS),
         "operators_catalog": len(LOCKER_ECOSYSTEM_OPERATORS),
+        "integration_notes": {
+            "global_players": "Use global_player_code + POST /catalog-professional/global-players/seed",
+            "rental_relations": "Persistidas em rental_network_relations após seed",
+        },
     }

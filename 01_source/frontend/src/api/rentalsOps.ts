@@ -98,4 +98,56 @@ export const rentalsOpsApi = {
 
   listWebhookDeliveries: (params?: { status?: string }) =>
     api.get<{ items: unknown[] }>(`${BASE}/webhook-deliveries`, { params }),
+
+  premiumSummary: () =>
+    api.get<{ ok: boolean; summary: Record<string, number> }>(`${BASE}/analytics/premium-summary`),
+
+  listOnboarding: (status?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/onboarding`, { params: status ? { status } : {} }),
+
+  listCapacity: (networkId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/capacity`, { params: networkId ? { network_id: networkId } : {} }),
+
+  listSettlements: (status?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/settlements`, { params: status ? { status } : {} }),
+
+  listSlaBreaches: (status?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/sla-breaches`, { params: status ? { status } : {} }),
+
+  listDisputes: (status?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/disputes`, { params: status ? { status } : {} }),
+
+  listRenewalOffers: (status?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/renewal-offers`, { params: status ? { status } : {} }),
+
+  networkHealth: () => api.get<{ items: unknown[] }>(`${BASE}/analytics/network-health`),
+
+  activateContract: (contractId: string) =>
+    api.post(`${BASE}/contracts/${encodeURIComponent(contractId)}/activate`),
+
+  listAccessPasses: (contractId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/access-passes`, {
+      params: contractId ? { contract_id: contractId } : {},
+    }),
+
+  listDeposits: (contractId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/deposits`, {
+      params: contractId ? { contract_id: contractId } : {},
+    }),
+
+  listSlotBlocks: (lockerId?: string) =>
+    api.get<{ items: unknown[] }>(`${BASE}/slot-blocks`, {
+      params: lockerId ? { locker_id: lockerId } : {},
+    }),
+
+  listPricingRules: () => api.get<{ items: unknown[] }>(`${BASE}/pricing-rules`),
+
+  priceQuote: (body: Record<string, unknown>) =>
+    api.post<{ ok: boolean; quoted: boolean; amount_cents?: number }>(`${BASE}/pricing/quote`, body),
+
+  listDunning: () => api.get<{ items: unknown[] }>(`${BASE}/dunning`),
+
+  scanDunning: () => api.post<{ ok: boolean; cases_created: number }>(`${BASE}/dunning/scan`),
+
+  listTransfers: () => api.get<{ items: unknown[] }>(`${BASE}/transfers`),
 }

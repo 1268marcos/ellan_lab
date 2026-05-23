@@ -26,7 +26,24 @@ def extended_client():
                     id VARCHAR(36) PRIMARY KEY, code VARCHAR(32) UNIQUE, name VARCHAR(128),
                     network_type VARCHAR(32), hardware_vendor VARCHAR(64),
                     primary_countries_json TEXT, website_url VARCHAR(255),
+                    market_segment VARCHAR(32), global_player_code VARCHAR(40),
                     active INTEGER DEFAULT 1, created_at TEXT, updated_at TEXT
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE TABLE rental_network_relations (
+                    id VARCHAR(36) PRIMARY KEY,
+                    from_network_id VARCHAR(36) NOT NULL,
+                    to_network_id VARCHAR(36) NOT NULL,
+                    relation_type VARCHAR(32) NOT NULL,
+                    integration_mode VARCHAR(16) NOT NULL DEFAULT 'API',
+                    metadata_json TEXT DEFAULT '{}',
+                    active INTEGER DEFAULT 1,
+                    created_at TEXT
                 )
                 """
             )

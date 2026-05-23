@@ -324,7 +324,9 @@ def test_ecosystem_catalog(rentals_client):
     body = r.json()
     assert body["ok"] is True
     catalog = body["catalog"]
-    assert catalog["networks_total"] >= 20
+    assert catalog["networks_total"] >= 50
+    assert "FOOD_DELIVERY" in catalog.get("by_segment", {})
+    assert len(catalog.get("relations_catalog") or []) >= 10
     codes = {n["code"] for n in catalog["networks"]}
     for code in ("INPOST", "DPD", "DHL_PACK", "MAGALU", "MELI", "AMAZON_HUB", "CORREIOS", "CTT", "WORTEN", "ECI"):
         assert code in codes

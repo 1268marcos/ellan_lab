@@ -8,6 +8,9 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.rental_ecosystem_sync import count_global_player_links, seed_rental_network_relations
+from app.core.rental_advanced_seed import seed_rental_advanced
+from app.core.rental_premium_seed import seed_rental_premium
 from app.core.rental_locker_ecosystem import (
     LOCKER_ECOSYSTEM_CORRIDORS,
     LOCKER_ECOSYSTEM_NETWORKS,
@@ -31,6 +34,26 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _column_exists(db: Session, table: str, column: str) -> bool:
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name == "sqlite":
+            rows = db.execute(text(f"PRAGMA table_info({table})")).fetchall()
+            return any(str(r[1]) == column for r in rows)
+        row = db.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = :t AND column_name = :c LIMIT 1
+                """
+            ),
+            {"t": table, "c": column},
+        ).first()
+        return row is not None
+    except Exception:
+        return False
+
+
 def _upsert_network(db: Session, n: dict, now: datetime) -> str:
     """Insere ou atualiza metadados da rede (complemento idempotente)."""
     row = db.execute(
@@ -43,18 +66,28 @@ def _upsert_network(db: Session, n: dict, now: datetime) -> str:
         "code": n["code"],
         "name": n["name"],
         "network_type": n["network_type"],
+        "market_segment": n.get("market_segment"),
+        "global_player_code": n.get("global_player_code"),
         "hardware_vendor": n.get("hardware_vendor"),
         "countries": countries,
         "website_url": n.get("website_url"),
         "now": now,
     }
+    cols_extra = ""
+    vals_extra = ""
+    upd_extra = ""
+    if _column_exists(db, "rental_networks", "market_segment"):
+        cols_extra = ", market_segment, global_player_code"
+        vals_extra = ", :market_segment, :global_player_code"
+        upd_extra = ", market_segment = :market_segment, global_player_code = :global_player_code"
     if row:
         db.execute(
             text(
-                """
+                f"""
                 UPDATE rental_networks SET
                     name = :name, network_type = :network_type, hardware_vendor = :hardware_vendor,
-                    primary_countries_json = :countries, website_url = :website_url,
+                    primary_countries_json = :countries, website_url = :website_url
+                    {upd_extra},
                     active = TRUE, updated_at = :now
                 WHERE id = :id OR code = :code
                 """
@@ -64,13 +97,13 @@ def _upsert_network(db: Session, n: dict, now: datetime) -> str:
         return "updated"
     db.execute(
         text(
-            """
+            f"""
             INSERT INTO rental_networks (
                 id, code, name, network_type, hardware_vendor, primary_countries_json,
-                website_url, active, created_at, updated_at
+                website_url, active, created_at, updated_at{cols_extra}
             ) VALUES (
                 :id, :code, :name, :network_type, :hardware_vendor, :countries,
-                :website_url, TRUE, :now, :now
+                :website_url, TRUE, :now, :now{vals_extra}
             )
             """
         ),
@@ -230,6 +263,21 @@ def seed_rental_professional_tables(db: Session) -> dict[str, int]:
             {"nid": network_id, "pid": plan_id},
         )
 
+    relations = 0
+    gp_link: dict[str, Any] = {}
+    if _table_exists(db, "rental_network_relations"):
+        relations = seed_rental_network_relations(db)
+    if _table_exists(db, "global_players"):
+        gp_link = count_global_player_links(db)
+
+    premium: dict[str, int] = {}
+    if _table_exists(db, "rental_network_onboarding"):
+        premium = seed_rental_premium(db)
+
+    advanced: dict[str, int] = {}
+    if _table_exists(db, "rental_access_passes"):
+        advanced = seed_rental_advanced(db)
+
     db.execute(
         text(
             """
@@ -247,7 +295,34 @@ def seed_rental_professional_tables(db: Session) -> dict[str, int]:
         "sla_policies": sla_count,
         "invoices": invoices,
         "webhook_deliveries": deliveries,
+        "network_relations": relations,
+        "global_player_links": gp_link,
+        "premium": premium,
+        "advanced": advanced,
     }
+
+
+def _table_exists(db: Session, table: str) -> bool:
+    try:
+        bind = db.get_bind()
+        if bind.dialect.name == "sqlite":
+            row = db.execute(
+                text("SELECT 1 FROM sqlite_master WHERE type='table' AND name=:t"),
+                {"t": table},
+            ).first()
+            return row is not None
+        row = db.execute(
+            text(
+                """
+                SELECT 1 FROM information_schema.tables
+                WHERE table_name = :t LIMIT 1
+                """
+            ),
+            {"t": table},
+        ).first()
+        return row is not None
+    except Exception:
+        return False
 
 
 def seed_rental_integration_tables(db: Session) -> dict[str, int]:

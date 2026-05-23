@@ -13,6 +13,11 @@ type Tab =
   | 'sla'
   | 'events'
   | 'integrations'
+  | 'onboarding'
+  | 'capacity'
+  | 'settlements'
+  | 'premium'
+  | 'advanced'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Visão geral' },
@@ -25,6 +30,11 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'sla', label: 'SLA' },
   { id: 'events', label: 'Eventos' },
   { id: 'integrations', label: 'Integrações' },
+  { id: 'onboarding', label: 'Onboarding' },
+  { id: 'capacity', label: 'Capacidade' },
+  { id: 'settlements', label: 'Liquidações' },
+  { id: 'premium', label: 'SLA & disputas' },
+  { id: 'advanced', label: 'Avançado' },
 ]
 
 function formatBrl(cents: number) {
@@ -62,6 +72,23 @@ export default function OpsRentalAdmin() {
   })
   const [webhookTenant, setWebhookTenant] = useState('tenant-inpost-br')
   const [webhookUrl, setWebhookUrl] = useState('https://hooks.example.com/rentals')
+  const [premiumSummary, setPremiumSummary] = useState<Record<string, number> | null>(null)
+  const [onboarding, setOnboarding] = useState<unknown[]>([])
+  const [capacity, setCapacity] = useState<unknown[]>([])
+  const [settlements, setSettlements] = useState<unknown[]>([])
+  const [slaBreaches, setSlaBreaches] = useState<unknown[]>([])
+  const [disputes, setDisputes] = useState<unknown[]>([])
+  const [renewalOffers, setRenewalOffers] = useState<unknown[]>([])
+  const [accessPasses, setAccessPasses] = useState<unknown[]>([])
+  const [deposits, setDeposits] = useState<unknown[]>([])
+  const [pricingRules, setPricingRules] = useState<unknown[]>([])
+  const [dunningCases, setDunningCases] = useState<unknown[]>([])
+  const [transfers, setTransfers] = useState<unknown[]>([])
+
+  useEffect(() => {
+    const fromUrl = (searchParams.get('tab') as Tab) || 'overview'
+    setTab(TABS.some((t) => t.id === fromUrl) ? fromUrl : 'overview')
+  }, [searchParams])
 
   const setTabUrl = (id: Tab) => {
     setTab(id)
@@ -75,7 +102,7 @@ export default function OpsRentalAdmin() {
     setLoading(true)
     setError(null)
     try {
-      const [s, p, c, n, cor, op, inv, sla, w, k, eco] = await Promise.all([
+      const [s, p, c, n, cor, op, inv, sla, w, k, eco, ps, ob, cap, stl, br, disp, ren, ap, dep, pr, dun, tr] = await Promise.all([
         rentalsOpsApi.analyticsSummary(),
         rentalsOpsApi.listPlans({ active_only: false }),
         rentalsOpsApi.listContracts({}),
@@ -87,6 +114,18 @@ export default function OpsRentalAdmin() {
         rentalsOpsApi.listWebhooks(),
         rentalsOpsApi.listApiKeys(),
         rentalsOpsApi.ecosystemCatalog(),
+        rentalsOpsApi.premiumSummary(),
+        rentalsOpsApi.listOnboarding(),
+        rentalsOpsApi.listCapacity(),
+        rentalsOpsApi.listSettlements(),
+        rentalsOpsApi.listSlaBreaches(),
+        rentalsOpsApi.listDisputes(),
+        rentalsOpsApi.listRenewalOffers(),
+        rentalsOpsApi.listAccessPasses(),
+        rentalsOpsApi.listDeposits(),
+        rentalsOpsApi.listPricingRules(),
+        rentalsOpsApi.listDunning(),
+        rentalsOpsApi.listTransfers(),
       ])
       setSummary(s.data.summary ?? null)
       setPlans(p.data.items ?? [])
@@ -99,6 +138,18 @@ export default function OpsRentalAdmin() {
       setWebhooks(w.data.items ?? [])
       setApiKeys(k.data.items ?? [])
       if (eco.data.catalog) setEcosystemCatalog(eco.data.catalog)
+      setPremiumSummary(ps.data.summary ?? null)
+      setOnboarding(ob.data.items ?? [])
+      setCapacity(cap.data.items ?? [])
+      setSettlements(stl.data.items ?? [])
+      setSlaBreaches(br.data.items ?? [])
+      setDisputes(disp.data.items ?? [])
+      setRenewalOffers(ren.data.items ?? [])
+      setAccessPasses(ap.data.items ?? [])
+      setDeposits(dep.data.items ?? [])
+      setPricingRules(pr.data.items ?? [])
+      setDunningCases(dun.data.items ?? [])
+      setTransfers(tr.data.items ?? [])
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha ao carregar')
     } finally {
@@ -204,7 +255,7 @@ export default function OpsRentalAdmin() {
       <header>
         <h1 className="text-xl font-semibold">Rental OPS</h1>
         <p className="text-sm text-slate-500">
-          Catálogo mundial: InPost, DHL, DPD, Magalu, Mercado Livre, Amazon Hub, Correios, CTT, Worten, El Corte Inglés…
+          Redes, carriers, marketplaces, agregadores e food delivery (50+ players) — ver catálogo / relações
         </p>
         {ecosystemCatalog ? (
           <p className="text-xs text-slate-400">
@@ -246,6 +297,9 @@ export default function OpsRentalAdmin() {
             ['Operadores', summary?.active_operators ?? operators.length],
             ['Contratos ativos', activeCount],
             ['MRR', formatBrl(Number(summary?.mrr_cents ?? 0))],
+            ['Onboarding LIVE', premiumSummary?.onboarding_live ?? '—'],
+            ['SLA breaches', premiumSummary?.open_sla_breaches ?? '—'],
+            ['Disputas', premiumSummary?.open_disputes ?? '—'],
           ].map(([label, val]) => (
             <div key={label} className="rounded border p-3">
               <div className="text-xs text-slate-500">{label}</div>
@@ -349,6 +403,68 @@ export default function OpsRentalAdmin() {
             ))}
           </tbody>
         </table>
+      ) : null}
+
+      {tab === 'onboarding'
+        ? renderTable(onboarding, ['network_code', 'status', 'kyb_tier', 'compliance_score'], (r, c) =>
+            String(r[c] ?? '—'),
+          )
+        : null}
+      {tab === 'capacity'
+        ? renderTable(
+            capacity,
+            ['network_code', 'snapshot_date', 'utilization_pct', 'occupied_slots'],
+            (r, c) => String(r[c] ?? '—'),
+          )
+        : null}
+      {tab === 'settlements'
+        ? renderTable(
+            settlements,
+            ['batch_code', 'operator_name', 'net_cents', 'status'],
+            (r, c) => (c === 'net_cents' ? formatBrl(Number(r.net_cents)) : String(r[c] ?? '—')),
+          )
+        : null}
+      {tab === 'premium' ? (
+        <section className="space-y-6">
+          <div>
+            <h2 className="mb-2 text-sm font-medium text-slate-600">Incidentes SLA</h2>
+            {renderTable(slaBreaches, ['network_code', 'metric_code', 'status', 'penalty_cents'], (r, c) =>
+              c === 'penalty_cents' ? formatBrl(Number(r.penalty_cents)) : String(r[c] ?? '—'),
+            )}
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-medium text-slate-600">Disputas</h2>
+            {renderTable(disputes, ['contract_id', 'dispute_type', 'status', 'amount_cents'], (r, c) =>
+              c === 'amount_cents' ? formatBrl(Number(r.amount_cents)) : String(r[c] ?? '—'),
+            )}
+          </div>
+          <div>
+            <h2 className="mb-2 text-sm font-medium text-slate-600">Renovações</h2>
+            {renderTable(renewalOffers, ['renter_name', 'offer_amount_cents', 'valid_until', 'status'], (r, c) =>
+              c === 'offer_amount_cents' ? formatBrl(Number(r.offer_amount_cents)) : String(r[c] ?? '—'),
+            )}
+          </div>
+        </section>
+      ) : null}
+
+      {tab === 'advanced' ? (
+        <section className="space-y-6">
+          {renderTable(accessPasses, ['contract_id', 'pass_type', 'pass_hint', 'status'], (r, c) =>
+            String(r[c] ?? '—'),
+          )}
+          {renderTable(deposits, ['renter_name', 'amount_cents', 'status'], (r, c) =>
+            c === 'amount_cents' ? formatBrl(Number(r.amount_cents)) : String(r[c] ?? '—'),
+          )}
+          {renderTable(pricingRules, ['code', 'name', 'base_amount_cents'], (r, c) =>
+            c === 'base_amount_cents' ? formatBrl(Number(r.base_amount_cents)) : String(r[c] ?? '—'),
+          )}
+          {renderTable(dunningCases, ['stage', 'status', 'amount_due_cents'], (r, c) =>
+            c === 'amount_due_cents' ? formatBrl(Number(r.amount_due_cents)) : String(r[c] ?? '—'),
+          )}
+          {renderTable(transfers, ['status', 'from_slot_label', 'to_slot_label'], (r, c) =>
+            String(r[c] ?? '—'),
+          )}
+        </section>
       ) : null}
 
       {tab === 'integrations' ? (

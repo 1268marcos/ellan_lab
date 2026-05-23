@@ -35,6 +35,11 @@ const TABS = [
   { id: "sla", label: "SLA" },
   { id: "events", label: "Eventos" },
   { id: "integrations", label: "Integrações" },
+  { id: "onboarding", label: "Onboarding KYB" },
+  { id: "capacity", label: "Capacidade" },
+  { id: "settlements", label: "Liquidações" },
+  { id: "premium", label: "SLA & disputas" },
+  { id: "advanced", label: "Avançado" },
 ];
 
 function parseError(payload, fallback = "Falha na API rentals.") {
@@ -81,6 +86,21 @@ export default function OpsRentalAdminPage() {
   const [webhooks, setWebhooks] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [ecosystemCatalog, setEcosystemCatalog] = useState(null);
+  const [premiumSummary, setPremiumSummary] = useState(null);
+  const [onboarding, setOnboarding] = useState([]);
+  const [capacity, setCapacity] = useState([]);
+  const [settlements, setSettlements] = useState([]);
+  const [slaBreaches, setSlaBreaches] = useState([]);
+  const [disputes, setDisputes] = useState([]);
+  const [renewalOffers, setRenewalOffers] = useState([]);
+  const [networkHealth, setNetworkHealth] = useState([]);
+  const [accessPasses, setAccessPasses] = useState([]);
+  const [deposits, setDeposits] = useState([]);
+  const [slotBlocks, setSlotBlocks] = useState([]);
+  const [pricingRules, setPricingRules] = useState([]);
+  const [dunningCases, setDunningCases] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [priceQuote, setPriceQuote] = useState(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -115,12 +135,17 @@ export default function OpsRentalAdminPage() {
     setSearchParams(next, { replace: true });
   };
 
+  useEffect(() => {
+    const fromUrl = searchParams.get("tab") || "overview";
+    setTab(TABS.some((t) => t.id === fromUrl) ? fromUrl : "overview");
+  }, [searchParams]);
+
   const load = useCallback(async () => {
     if (!INTERNAL || !canMutate) return;
     setLoading(true);
     setErr("");
     try {
-      const [s, p, c, n, cor, op, inv, sla, del, w, k, eco] = await Promise.all([
+      const [s, p, c, n, cor, op, inv, sla, del, w, k, eco, ps, ob, cap, stl, br, disp, ren, nh, ap, dep, sb, pr, dun, tr] = await Promise.all([
         fetch(`${API}/analytics/summary`, { headers }),
         fetch(`${API}/plans?active_only=false`, { headers }),
         fetch(`${API}/contracts?limit=100`, { headers }),
@@ -133,6 +158,20 @@ export default function OpsRentalAdminPage() {
         fetch(`${API}/webhooks`, { headers }),
         fetch(`${API}/api-keys`, { headers }),
         fetch(`${API}/ecosystem/catalog`, { headers }),
+        fetch(`${API}/analytics/premium-summary`, { headers }),
+        fetch(`${API}/onboarding`, { headers }),
+        fetch(`${API}/capacity?days=14`, { headers }),
+        fetch(`${API}/settlements`, { headers }),
+        fetch(`${API}/sla-breaches`, { headers }),
+        fetch(`${API}/disputes`, { headers }),
+        fetch(`${API}/renewal-offers`, { headers }),
+        fetch(`${API}/analytics/network-health`, { headers }),
+        fetch(`${API}/access-passes`, { headers }),
+        fetch(`${API}/deposits`, { headers }),
+        fetch(`${API}/slot-blocks`, { headers }),
+        fetch(`${API}/pricing-rules`, { headers }),
+        fetch(`${API}/dunning`, { headers }),
+        fetch(`${API}/transfers`, { headers }),
       ]);
       const sj = await s.json().catch(() => ({}));
       const pj = await p.json().catch(() => ({}));
@@ -146,6 +185,20 @@ export default function OpsRentalAdminPage() {
       const wj = await w.json().catch(() => ({}));
       const kj = await k.json().catch(() => ({}));
       const ecoj = await eco.json().catch(() => ({}));
+      const psj = await ps.json().catch(() => ({}));
+      const obj = await ob.json().catch(() => ({}));
+      const capj = await cap.json().catch(() => ({}));
+      const stlj = await stl.json().catch(() => ({}));
+      const brj = await br.json().catch(() => ({}));
+      const dispj = await disp.json().catch(() => ({}));
+      const renj = await ren.json().catch(() => ({}));
+      const nhj = await nh.json().catch(() => ({}));
+      const apj = await ap.json().catch(() => ({}));
+      const depj = await dep.json().catch(() => ({}));
+      const sbj = await sb.json().catch(() => ({}));
+      const prj = await pr.json().catch(() => ({}));
+      const dunj = await dun.json().catch(() => ({}));
+      const trj = await tr.json().catch(() => ({}));
       const failures = [];
       if (!p.ok) failures.push(`planos: ${parseError(pj)}`);
       if (!c.ok) failures.push(`contratos: ${parseError(cj)}`);
@@ -163,6 +216,20 @@ export default function OpsRentalAdminPage() {
       setWebhooks(wj.items || []);
       setApiKeys(kj.items || []);
       if (eco.ok && ecoj.catalog) setEcosystemCatalog(ecoj.catalog);
+      if (ps.ok) setPremiumSummary(psj.summary || null);
+      if (ob.ok) setOnboarding(obj.items || []);
+      if (cap.ok) setCapacity(capj.items || []);
+      if (stl.ok) setSettlements(stlj.items || []);
+      if (br.ok) setSlaBreaches(brj.items || []);
+      if (disp.ok) setDisputes(dispj.items || []);
+      if (ren.ok) setRenewalOffers(renj.items || []);
+      if (nh.ok) setNetworkHealth(nhj.items || []);
+      if (ap.ok) setAccessPasses(apj.items || []);
+      if (dep.ok) setDeposits(depj.items || []);
+      if (sb.ok) setSlotBlocks(sbj.items || []);
+      if (pr.ok) setPricingRules(prj.items || []);
+      if (dun.ok) setDunningCases(dunj.items || []);
+      if (tr.ok) setTransfers(trj.items || []);
       if (!eventsContractId && (cj.items || []).length) {
         setEventsContractId(cj.items[0].id);
       }
@@ -327,8 +394,8 @@ export default function OpsRentalAdminPage() {
       <section style={cardStyle}>
         <OpsPageTitleHeader title="OPS — Rental (planos, contratos, integrações)" />
         <p style={mutedTextStyle}>
-          Catálogo mundial: InPost, DHL, DPD, Magalu, Mercado Livre, Amazon Hub, Correios, CTT, Worten, El Corte
-          Inglés, Royal Mail, La Poste, Cainiao, SwipBox, Cleveron… · API <code>{API}</code> · {PAGE_VERSION}
+          Catálogo mundial: lockers, carriers (UPS, FedEx, GLS), marketplaces (Shopee, Walmart), agregadores
+          (Melhor Envio, Intelipost) e food delivery (iFood, Uber Eats) · API <code>{API}</code> · {PAGE_VERSION}
         </p>
         {ecosystemCatalog ? (
           <p style={mutedTextStyle}>
@@ -382,6 +449,10 @@ export default function OpsRentalAdminPage() {
               ["Faturas em atraso", summary?.overdue_invoices ?? 0],
               ["Receita paga", formatBrl(summary?.paid_invoice_cents ?? 0)],
               ["Webhooks", webhooks.length],
+              ["Onboarding LIVE", premiumSummary?.onboarding_live ?? "—"],
+              ["SLA breaches abertos", premiumSummary?.open_sla_breaches ?? "—"],
+              ["Utilização média %", premiumSummary?.avg_utilization_pct ?? "—"],
+              ["Disputas abertas", premiumSummary?.open_disputes ?? "—"],
             ].map(([label, val]) => (
               <div key={label} style={cardStyle}>
                 <strong>{label}</strong>
@@ -791,6 +862,346 @@ export default function OpsRentalAdminPage() {
                       <td style={tdStyle}>{k.key_prefix}…</td>
                       <td style={tdStyle}>{k.label ?? "—"}</td>
                       <td style={tdStyle}>{k.revoked_at ?? "ativa"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "onboarding" ? (
+          <div style={{ marginTop: 16 }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  {["rede", "status", "tier", "compliance", "reviewer"].map((h) => (
+                    <th key={h} style={thStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {onboarding.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{row.network_code}</td>
+                    <td style={tdStyle}>{row.status}</td>
+                    <td style={tdStyle}>{row.kyb_tier}</td>
+                    <td style={tdStyle}>{row.compliance_score ?? "—"}</td>
+                    <td style={tdStyle}>{row.reviewer ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {tab === "capacity" ? (
+          <div style={{ marginTop: 16 }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  {["rede", "data", "ocupação %", "slots", "health score"].map((h) => (
+                    <th key={h} style={thStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {capacity.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{row.network_code}</td>
+                    <td style={tdStyle}>{row.snapshot_date}</td>
+                    <td style={tdStyle}>{row.utilization_pct}</td>
+                    <td style={tdStyle}>
+                      {row.occupied_slots}/{row.total_slots}
+                    </td>
+                    <td style={tdStyle}>
+                      {networkHealth.find((h) => h.code === row.network_code)?.health_score ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {tab === "settlements" ? (
+          <div style={{ marginTop: 16 }}>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  {["batch", "operador", "bruto", "líquido", "status"].map((h) => (
+                    <th key={h} style={thStyle}>
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {settlements.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{row.batch_code}</td>
+                    <td style={tdStyle}>{row.operator_name ?? row.operator_code}</td>
+                    <td style={tdStyle}>{formatBrl(row.gross_cents)}</td>
+                    <td style={tdStyle}>{formatBrl(row.net_cents)}</td>
+                    <td style={tdStyle}>{row.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {tab === "premium" ? (
+          <div style={{ marginTop: 16, display: "grid", gap: 20 }}>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Incidentes SLA</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["rede", "métrica", "medido", "meta", "status", "penalidade"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {slaBreaches.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.network_code}</td>
+                      <td style={tdStyle}>{row.metric_code}</td>
+                      <td style={tdStyle}>{row.measured_value}</td>
+                      <td style={tdStyle}>{row.target_value}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>{formatBrl(row.penalty_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Disputas</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["contrato", "tipo", "valor", "status", "motivo"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {disputes.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.contract_id?.slice(0, 8)}…</td>
+                      <td style={tdStyle}>{row.dispute_type}</td>
+                      <td style={tdStyle}>{formatBrl(row.amount_cents)}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>{row.reason ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Ofertas de renovação</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["locatário", "valor", "válido até", "status"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {renewalOffers.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.renter_name ?? row.contract_id?.slice(0, 8)}</td>
+                      <td style={tdStyle}>{formatBrl(row.offer_amount_cents)}</td>
+                      <td style={tdStyle}>{row.valid_until}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        {tab === "advanced" ? (
+          <div style={{ marginTop: 16, display: "grid", gap: 20 }}>
+            <div style={toolbarStyle}>
+              <button
+                type="button"
+                style={buttonGhostStyle}
+                onClick={async () => {
+                  const r = await fetch(`${API}/pricing/quote`, {
+                    method: "POST",
+                    headers: { ...headers, "Content-Type": "application/json" },
+                    body: JSON.stringify({ slot_size: "M", billing_cycle: "MONTHLY" }),
+                  });
+                  const j = await r.json();
+                  if (r.ok) setPriceQuote(j);
+                }}
+              >
+                Cotação dinâmica (M/mensal)
+              </button>
+              <button
+                type="button"
+                style={buttonGhostStyle}
+                onClick={async () => {
+                  await fetch(`${API}/dunning/scan`, { method: "POST", headers });
+                  void load();
+                }}
+              >
+                Scan dunning
+              </button>
+              {priceQuote?.quoted ? (
+                <span style={mutedTextStyle}>
+                  Cotação: R$ {(priceQuote.amount_cents / 100).toFixed(2)} ({priceQuote.rule_code})
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Passes de acesso (PIN/QR)</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["contrato", "tipo", "hint", "válido até", "usos", "status"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessPasses.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{String(row.contract_id).slice(0, 8)}…</td>
+                      <td style={tdStyle}>{row.pass_type}</td>
+                      <td style={tdStyle}>{row.pass_hint}</td>
+                      <td style={tdStyle}>{row.valid_until}</td>
+                      <td style={tdStyle}>
+                        {row.use_count}/{row.max_uses}
+                      </td>
+                      <td style={tdStyle}>{row.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Cauções</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["contrato", "valor", "status", "motivo"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {deposits.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.renter_name ?? row.contract_id?.slice(0, 8)}</td>
+                      <td style={tdStyle}>{formatBrl(row.amount_cents)}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>{row.hold_reason}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Bloqueios de slot</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["locker", "slot", "tipo", "início", "fim"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {slotBlocks.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.locker_id}</td>
+                      <td style={tdStyle}>{row.slot_label}</td>
+                      <td style={tdStyle}>{row.block_type}</td>
+                      <td style={tdStyle}>{row.starts_at}</td>
+                      <td style={tdStyle}>{row.ends_at}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Regras de preço</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["code", "nome", "base", "surge", "rede"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {pricingRules.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>{row.code}</td>
+                      <td style={tdStyle}>{row.name}</td>
+                      <td style={tdStyle}>{formatBrl(row.base_amount_cents)}</td>
+                      <td style={tdStyle}>{row.surge_multiplier}</td>
+                      <td style={tdStyle}>{row.network_code ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <h3 style={{ color: "#E2E8F0" }}>Dunning / transferências</h3>
+              <table style={tableStyle}>
+                <thead>
+                  <tr>
+                    {["tipo", "contrato", "status", "detalhe"].map((h) => (
+                      <th key={h} style={thStyle}>
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dunningCases.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>dunning</td>
+                      <td style={tdStyle}>{row.renter_name ?? row.contract_id?.slice(0, 8)}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>
+                        {row.stage} · {formatBrl(row.amount_due_cents)}
+                      </td>
+                    </tr>
+                  ))}
+                  {transfers.map((row) => (
+                    <tr key={row.id}>
+                      <td style={tdStyle}>transfer</td>
+                      <td style={tdStyle}>{row.renter_name ?? row.contract_id?.slice(0, 8)}</td>
+                      <td style={tdStyle}>{row.status}</td>
+                      <td style={tdStyle}>
+                        {row.from_slot_label} → {row.to_slot_label}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

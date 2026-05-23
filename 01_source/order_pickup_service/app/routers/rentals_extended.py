@@ -52,10 +52,44 @@ def rental_analytics_summary(db: Session = Depends(get_db)):
     return {"ok": True, "summary": _serialize_row(row) if row else {}}
 
 
+@router.get("/network-relations")
+def list_rental_network_relations(
+    db: Session = Depends(get_db),
+    network_id: Optional[str] = Query(None),
+    relation_type: Optional[str] = Query(None),
+):
+    clauses = ["r.active = TRUE"]
+    params: dict[str, Any] = {}
+    if network_id:
+        clauses.append("(r.from_network_id = :nid OR r.to_network_id = :nid)")
+        params["nid"] = network_id.strip()
+    if relation_type:
+        clauses.append("r.relation_type = :rt")
+        params["rt"] = relation_type.strip()
+    rows = db.execute(
+        text(
+            f"""
+            SELECT r.id, r.from_network_id, r.to_network_id, r.relation_type, r.integration_mode,
+                   r.active, r.created_at,
+                   fn.code AS from_code, fn.name AS from_name,
+                   tn.code AS to_code, tn.name AS to_name
+            FROM rental_network_relations r
+            JOIN rental_networks fn ON fn.id = r.from_network_id
+            JOIN rental_networks tn ON tn.id = r.to_network_id
+            WHERE {" AND ".join(clauses)}
+            ORDER BY fn.code, tn.code
+            """
+        ),
+        params,
+    ).mappings().all()
+    return {"items": [_serialize_row(r) for r in rows], "total": len(rows)}
+
+
 @router.get("/networks")
 def list_rental_networks(
     db: Session = Depends(get_db),
     network_type: Optional[str] = Query(None),
+    market_segment: Optional[str] = Query(None),
     active_only: bool = Query(True),
 ):
     clauses = ["1=1"]
@@ -63,13 +97,24 @@ def list_rental_networks(
     if network_type:
         clauses.append("network_type = :network_type")
         params["network_type"] = network_type.strip()
+    if market_segment:
+        clauses.append("market_segment = :market_segment")
+        params["market_segment"] = market_segment.strip()
     if active_only:
         clauses.append("active = TRUE")
+    cols = (
+        "id, code, name, network_type, hardware_vendor, primary_countries_json, "
+        "website_url, active, created_at, updated_at"
+    )
+    try:
+        db.execute(text("SELECT market_segment FROM rental_networks LIMIT 0"))
+        cols += ", market_segment, global_player_code"
+    except Exception:
+        pass
     rows = db.execute(
         text(
             f"""
-            SELECT id, code, name, network_type, hardware_vendor, primary_countries_json,
-                   website_url, active, created_at, updated_at
+            SELECT {cols}
             FROM rental_networks
             WHERE {" AND ".join(clauses)}
             ORDER BY name

@@ -687,6 +687,8 @@ def rotate_rental_api_key(
     return {"id": key_id, "tenant_id": tenant_id, "key_prefix": prefix, "api_key": raw}
 
 
-from app.routers import rentals_extended  # noqa: E402
+from app.routers import rentals_advanced, rentals_extended, rentals_premium  # noqa: E402
 
 router.include_router(rentals_extended.router)
+router.include_router(rentals_premium.router)
+router.include_router(rentals_advanced.router)
