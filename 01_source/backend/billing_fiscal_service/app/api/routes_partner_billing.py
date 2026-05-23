@@ -17,6 +17,7 @@ from app.schemas.partner_billing_schema import (
     PartnerDisputeHistoryOut,
     PartnerBillingLineItemOut,
 )
+from app.services.partner_b2b_fiscal_issue_service import issue_partner_b2b_invoice
 from app.services.partner_billing_cycle_service import compute_cycle_once, open_cycle_dispute
 from app.services.partner_billing_utilization_service import recompute_daily_utilization_snapshot
 from app.services.accounting_posting_service import PostingEvent, post_event
@@ -752,6 +753,25 @@ def recompute_utilization_snapshots(
         locker_id=locker_id,
     )
     return {"ok": True, **result}
+
+
+@router.post("/{partner_id}/invoices/{invoice_id}/issue-fiscal")
+def post_issue_partner_invoice_fiscal(
+    partner_id: str,
+    invoice_id: str,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    try:
+        result = issue_partner_b2b_invoice(db, partner_id=partner_id, invoice_id=invoice_id)
+        return {"ok": True, **result}
+    except ValueError as exc:
+        code = str(exc)
+        if code == "partner_b2b_invoice_not_found":
+            raise _api_error(404, code, "Invoice not found", {"invoice_id": invoice_id}) from exc
+        if code == "invoice_cancelled":
+            raise _api_error(409, code, "Invoice is cancelled", {"invoice_id": invoice_id}) from exc
+        raise _api_error(400, "ISSUE_FAILED", str(exc)) from exc
 
 
 @router.post("/{partner_id}/invoices/{invoice_id}/cancel")

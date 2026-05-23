@@ -1,17 +1,17 @@
-# Cursor/Claude Prompt - Criar/Implementar páginas de gerenciamento para    'GDPR', 'LGPD' E 'CCPA'   http://localhost:5173/v1 (@01_source/frontend) http://localhost:5174/v0 (@01_source/frontend_v0)
+# Cursor/Claude Prompt - Criar/Implementar páginas de gerenciamento para   FINANCE   http://localhost:5173/v1 (@01_source/frontend) http://localhost:5174/v0 (@01_source/frontend_v0)
  
-**Contexto:** `@02_docker/complete_schema_20260523_b.sql` e `@01_source/order_pickup_service` e `@01_source/backend/runtime`
+**Contexto:** `@02_docker/complete_schema_20260523_c.sql` e `@01_source/order_pickup_service` e `@01_source/backend/runtime`
 
 **Requisições:**
 
 1. Atuar como engenheiro de software/desenvolvedor com larga experiência no mercado de LOCKERS e seu gerenciamento em todos os níveis.
-2. Implementar/codar as páginas (novas ou atualizar) para gerenciar as tabelas relacionadas ao domínio   'GDPR', 'LGPD' E 'CCPA' 
+2. Implementar/codar as páginas (novas ou atualizar) para gerenciar as tabelas relacionadas ao domínio     FINANCE (financeiro)
 3. Manter padrão UI
 4. Manter o padrão em UX/CX e alinhar as novas páginas ao padrão OPS no frontend v0 das outras telas OPS (referência: Payment Gateway e Marketplace).
 5. Criar as páginas segundo o padrão adotado no projeto para OPS ou seguir o padrão `@01_source\frontend` ou desenvolver um novo
 6. Use FastAPI + SQLAlchemy + PostgreSQL
 7. Criar novas entidades para atender o que é pedido resolvendo problemas que não foram visualizados.
-8. Endpoints: CRUD  'GDPR', 'LGPD' E 'CCPA'  (e outros), webhook config, api key rotation entre outras possibilidades (que sejam necessárias)
+8. Endpoints: CRUD FINANCE (e outros), webhook config, api key rotation entre outras possibilidades (que sejam necessárias)
 9. Inserir Dados (seed) para as tabelas
 10. Realizar Testes
 11. Atualizar Menus (criar novos menus e não apenas itens para agrupar melhor) em http://localhost:5173/v1 e http://localhost:5174/v0
@@ -27,14 +27,16 @@ f-) Agregadores / hubs: Cainiao, Parcel2Go, EasyPost, Shippo, Intelipost, Melhor
 
 **Restrições:** Sem explicação, sem raciocínio, sem diff. Apenas código + comandos + resultado.
 
+
+
 1O. PROMPT
-Codar o pedido em @docs/criar_paginas_gdpr_lgpd_ccpa.md. Ter como referência @02_docker/complete_schema_20260523_b.sql 
+Codar o pedido em @docs/criar_paginas_finance.md. Ter como referência @02_docker/complete_schema_20260523_c.sql 
 
 2o. PROMPT
-Buscar criar mais páginas ou seções para     'GDPR', 'LGPD' E 'CCPA'  . Se necessário criar tabelas e relações para termos nível profissional/mundial.
+Buscar criar mais páginas ou seções para  FINANCE . Se necessário criar tabelas e relações para termos nível profissional/mundial.
 
 3O. PROMPT
-Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar    'GDPR', 'LGPD', 'CCPA' e outros 
+Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar FINANCE
  
 4o. PROMPT
 Pensar em outros players (redes de locker, carriers globais, Operadores de Rede de Lockers, marketplaces, Redes de Pontos de Coleta, agregadores/hubs, food delivery) que atuam no mercado e como integrar além dos citados. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.
@@ -47,4 +49,4 @@ Atualizar menus com as páginas criadas.
 
 7o. 
 PROMPT
-Codar novas possibilidades dentro do domínio 'GDPR', 'LGPD' E 'CCPA' e outros que não visualizei e deveriam ser implementados
+Codar novas possibilidades dentro do domínio FINANCE que não visualizei e deveria ser implementado

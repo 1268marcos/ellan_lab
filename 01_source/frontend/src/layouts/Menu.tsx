@@ -169,6 +169,62 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'financeOpsGlobal',
+    icon: '🌍',
+    label: 'Finance OPS — Global',
+    items: [
+      {
+        to: '/ops/finance/admin?tab=networks',
+        label: 'Redes mundiais (88+ players)',
+        newTag: 'Global',
+      },
+      {
+        to: '/ops/finance/admin?tab=ecosystem',
+        label: 'Ecossistema e relações',
+        newTag: 'KPI',
+      },
+      { to: '/ops/finance/admin?tab=readiness', label: 'Readiness score (A–D)' },
+      { to: '/ops/finance/admin?tab=roadmap', label: 'Roadmap integração' },
+      { to: '/ops/finance/admin?tab=contracts', label: 'Contratos comerciais (MSA)' },
+      { to: '/ops/finance/admin?tab=slas', label: 'SLAs e breaches' },
+    ],
+  },
+  {
+    key: 'financeOpsCommercial',
+    icon: '📊',
+    label: 'Finance OPS — Comercial',
+    items: [
+      { to: '/ops/finance/admin?tab=dunning', label: 'Cobrança (dunning)' },
+      { to: '/ops/finance/admin?tab=tiers', label: 'Níveis comerciais' },
+      { to: '/ops/finance/admin?tab=fx', label: 'Câmbio (FX)' },
+      { to: '/ops/finance/admin?tab=tax', label: 'Corredores fiscais' },
+      { to: '/ops/finance/admin?tab=documents', label: 'Documentos NF (PDF/XML)' },
+      { to: '/ops/finance/admin?tab=audit', label: 'Auditoria financeira' },
+      { to: '/ops/finance/admin?tab=revrec', label: 'Reconhecimento de receita' },
+      { to: '/ops/finance/admin?tab=jobs', label: 'Jobs agendados (dunning/revrec)' },
+    ],
+  },
+  {
+    key: 'financeOps',
+    icon: '💰',
+    label: 'Finance OPS',
+    items: [
+      { to: '/ops/finance/admin', label: 'Visão geral e cadastro', newTag: 'Hub' },
+      { to: '/ops/finance/admin?tab=partners', label: 'Parceiros financeiros' },
+      { to: '/ops/finance/admin?tab=billing', label: 'Billing + line items' },
+      { to: '/ops/finance/admin?tab=invoices', label: 'NF B2B' },
+      { to: '/ops/finance/admin?tab=settlements', label: 'Settlements (lotes)' },
+      { to: '/ops/finance/admin?tab=treasury', label: 'Créditos, holds, comissão' },
+      { to: '/ops/finance/admin?tab=wallet', label: 'Wallet' },
+      { to: '/ops/finance/admin?tab=pnl', label: 'PnL locker (cost center)' },
+      { to: '/ops/finance/admin?tab=reconciliation', label: 'Gaps fiscais' },
+      { to: '/ops/finance/admin?tab=webhooks', label: 'Webhook DLQ + replay' },
+      { to: '/ops/finance/admin?tab=ops', label: 'NF ops e eventos' },
+      { to: '/ops/billing/kpis', label: 'KPIs billing / fiscal (FA-5)' },
+      { to: '/ops/billing/invoices', label: 'Busca invoice (billing-svc)' },
+    ],
+  },
+  {
     key: 'marketplace',
     icon: '🏪',
     label: 'Marketplace OPS',
@@ -284,6 +340,9 @@ export default function Menu() {
     partnersOps: true,
     orderPickup: true,
     mlOps: true,
+    financeOpsGlobal: true,
+    financeOpsCommercial: true,
+    financeOps: true,
     marketplace: true,
     privacyCompliance: true,
     rentalsOps: true,
@@ -323,6 +382,9 @@ export default function Menu() {
         if (g.key === 'partnersOps') return g
         if (g.key === 'orderPickup') return g
         if (g.key === 'mlOps') return g
+        if (g.key === 'financeOpsGlobal') return g
+        if (g.key === 'financeOpsCommercial') return g
+        if (g.key === 'financeOps') return g
         if (g.key === 'marketplace') return g
         if (g.key === 'marketing') return g
         if (g.key === 'productsCatalog') return g

@@ -97,6 +97,7 @@ const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
+const OpsFinanceAdminPage = lazy(() => import("./pages/OpsFinanceAdminPage"));
 const OpsPrivacyComplianceAdminPage = lazy(() => import("./pages/OpsPrivacyComplianceAdminPage"));
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
@@ -490,6 +491,184 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
+    },
+    {
+      to: "/ops/finance/admin?tab=networks",
+      label: "Finance — redes mundiais",
+      aria: "Catálogo 88+ players: InPost, DHL, Magalu, Mercado Livre, Amazon, carriers, food delivery",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Catálogo",
+      newTag: "Global",
+    },
+    {
+      to: "/ops/finance/admin?tab=ecosystem",
+      label: "Finance — ecossistema",
+      aria: "KPIs globais, relações entre players, cobertura de capacidades",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+      newTag: "KPI",
+    },
+    {
+      to: "/ops/finance/admin?tab=readiness",
+      label: "Finance — readiness",
+      aria: "Score de prontidão financeira por player do catálogo (grade A–D)",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+    },
+    {
+      to: "/ops/finance/admin?tab=roadmap",
+      label: "Finance — roadmap",
+      aria: "Marcos de integração DISCOVERY PILOT UAT LIVE",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+    },
+    {
+      to: "/ops/finance/admin?tab=contracts",
+      label: "Finance — contratos",
+      aria: "MSA e contratos comerciais por parceiro",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+    },
+    {
+      to: "/ops/finance/admin?tab=slas",
+      label: "Finance — SLAs",
+      aria: "Definições de SLA e breaches com crédito automático",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+    },
+    {
+      to: "/ops/finance/admin?tab=dunning",
+      label: "Finance — cobranca",
+      aria: "Dunning B2B: faturas vencidas e estagios de cobranca",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Cobranca",
+    },
+    {
+      to: "/ops/finance/admin?tab=tiers",
+      label: "Finance — niveis",
+      aria: "Tiers comerciais STANDARD GROWTH ENTERPRISE",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Tiers",
+    },
+    {
+      to: "/ops/finance/admin?tab=fx",
+      label: "Finance — cambio",
+      aria: "Taxas FX para settlement multi-moeda",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "FX",
+    },
+    {
+      to: "/ops/finance/admin?tab=tax",
+      label: "Finance — corredores fiscais",
+      aria: "Regimes fiscais por corridor BR PT ES",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Fiscal",
+    },
+    {
+      to: "/ops/finance/admin?tab=documents",
+      label: "Finance — docs NF",
+      aria: "PDF XML access_key vinculados a NF B2B",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Documentos",
+    },
+    {
+      to: "/ops/finance/admin?tab=audit",
+      label: "Finance — auditoria",
+      aria: "Trilha imutavel de acoes financeiras",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Auditoria",
+    },
+    {
+      to: "/ops/finance/admin?tab=revrec",
+      label: "Finance — rev. receita",
+      aria: "Schedules de diferimento STRAIGHT_LINE e sync fiscal",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "RevRec",
+    },
+    {
+      to: "/ops/finance/admin?tab=jobs",
+      label: "Finance — jobs",
+      aria: "Dunning, reconciliacao, revrec e fiscal gap sync agendados",
+      group: "Finance OPS — Comercial",
+      opsSubGroup: "Jobs",
+    },
+    {
+      to: "/ops/finance/admin",
+      label: "Finance — visao geral",
+      aria: "Parceiros financeiros, billing B2B, wallet, NF ops e eventos",
+      group: "Finance OPS",
+      opsSubGroup: "Visao geral",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/finance/admin?tab=partners",
+      label: "Finance — parceiros",
+      aria: "finance_partner_accounts, webhook e API keys",
+      group: "Finance OPS",
+      opsSubGroup: "Parceiros",
+    },
+    {
+      to: "/ops/finance/admin?tab=billing",
+      label: "Finance — planos e ciclos",
+      aria: "partner_billing_plans e partner_billing_cycles",
+      group: "Finance OPS",
+      opsSubGroup: "Billing",
+    },
+    {
+      to: "/ops/finance/admin?tab=invoices",
+      label: "Finance — NF B2B",
+      aria: "partner_b2b_invoices",
+      group: "Finance OPS",
+      opsSubGroup: "NF B2B",
+    },
+    {
+      to: "/ops/finance/admin?tab=wallet",
+      label: "Finance — wallet",
+      aria: "wallet_provider_catalog e wallet_transactions",
+      group: "Finance OPS",
+      opsSubGroup: "Wallet",
+    },
+    {
+      to: "/ops/finance/admin?tab=settlements",
+      label: "Finance — settlements",
+      aria: "partner_settlement_batches e itens",
+      group: "Finance OPS",
+      opsSubGroup: "Settlements",
+    },
+    {
+      to: "/ops/finance/admin?tab=treasury",
+      label: "Finance — treasury",
+      aria: "credit_notes, payment_holds, commission_structure",
+      group: "Finance OPS",
+      opsSubGroup: "Treasury",
+    },
+    {
+      to: "/ops/finance/admin?tab=pnl",
+      label: "Finance — PnL locker",
+      aria: "cost_centers e cost_center_monthly",
+      group: "Finance OPS",
+      opsSubGroup: "PnL",
+    },
+    {
+      to: "/ops/finance/admin?tab=reconciliation",
+      label: "Finance — gaps fiscais",
+      aria: "fiscal_reconciliation_gaps",
+      group: "Finance OPS",
+      opsSubGroup: "Reconciliacao",
+    },
+    {
+      to: "/ops/finance/admin?tab=webhooks",
+      label: "Finance — webhook DLQ",
+      aria: "partner_webhook_deliveries falhas",
+      group: "Finance OPS",
+      opsSubGroup: "Webhooks",
+    },
+    {
+      to: "/ops/finance/admin?tab=ops",
+      label: "Finance — fiscal ops",
+      aria: "finance_ops_invoices e billing_processed_events",
+      group: "Finance OPS",
+      opsSubGroup: "Fiscal ops",
     },
     {
       to: "/ops/order-pickup/admin",
@@ -2676,6 +2855,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsMarketplaceAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/finance/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsFinanceAdminPage />)}
                 </OpsRoute>
               }
             />
