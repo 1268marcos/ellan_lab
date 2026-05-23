@@ -34,6 +34,9 @@ const marketplaceAdminServiceProxy =
 const mlAdminServiceProxy =
   process.env.ML_ADMIN_SERVICE_PROXY ?? 'http://localhost:8021'
 
+const privacyComplianceAdminServiceProxy =
+  process.env.PRIVACY_COMPLIANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8022'
+
 const orderPickupServiceProxy =
   process.env.ORDER_PICKUP_SERVICE_PROXY ?? 'http://localhost:8003'
 
@@ -108,6 +111,11 @@ export default defineConfig({
         target: mlAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ml-admin/, '/api'),
+      },
+      '/api/privacy-compliance-admin': {
+        target: privacyComplianceAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/privacy-compliance-admin/, '/api'),
       },
       '/api/op': {
         target: orderPickupServiceProxy,

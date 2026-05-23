@@ -19,6 +19,7 @@ import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
 import OpsMarketplaceAdmin from '../pages/ops/OpsMarketplaceAdmin'
+import OpsPrivacyComplianceAdmin from '../pages/ops/OpsPrivacyComplianceAdmin'
 import OpsRentalAdmin from '../pages/ops/OpsRentalAdmin'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
 import OpsProductsAdmin from '../pages/ops/OpsProductsAdmin'
@@ -298,6 +299,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsMarketplaceAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/privacy-compliance/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsPrivacyComplianceAdmin />
             </OpsOnly>
           </Protected>
         }

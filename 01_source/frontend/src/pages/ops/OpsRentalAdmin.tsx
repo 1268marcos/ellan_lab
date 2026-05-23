@@ -25,8 +25,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'corridors', label: 'Corredores' },
   { id: 'operators', label: 'Operadores' },
   { id: 'plans', label: 'Planos' },
-  { id: 'contracts', label: 'Contratos' },
-  { id: 'billing', label: 'Faturamento' },
+  { id: 'contracts', label: 'Contratos + cotação' },
+  { id: 'billing', label: 'Faturamento + multas' },
   { id: 'sla', label: 'SLA' },
   { id: 'events', label: 'Eventos' },
   { id: 'integrations', label: 'Integrações' },
@@ -34,7 +34,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'capacity', label: 'Capacidade' },
   { id: 'settlements', label: 'Liquidações' },
   { id: 'premium', label: 'SLA & disputas' },
-  { id: 'advanced', label: 'Avançado' },
+  { id: 'advanced', label: 'Avançado (seguro, pricing)' },
 ]
 
 function formatBrl(cents: number) {

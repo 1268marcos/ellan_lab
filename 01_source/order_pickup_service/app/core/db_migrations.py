@@ -599,6 +599,642 @@ def _create_data_deletion_requests(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_privacy_regulations(conn, applied: list[str]) -> None:
+    name = "privacy_regulations.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_regulations (
+            id                      VARCHAR(36) PRIMARY KEY,
+            code                    VARCHAR(16) NOT NULL UNIQUE,
+            name                    VARCHAR(128) NOT NULL,
+            jurisdiction            VARCHAR(64) NOT NULL,
+            description             TEXT,
+            dpo_email               VARCHAR(255),
+            supervisory_authority   VARCHAR(255),
+            default_retention_days  INTEGER NOT NULL DEFAULT 365,
+            response_sla_days       INTEGER NOT NULL DEFAULT 30,
+            active                  BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_privacy_reg_code ON privacy_regulations (code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_policy_versions(conn, applied: list[str]) -> None:
+    name = "privacy_policy_versions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_policy_versions (
+            id              VARCHAR(36) PRIMARY KEY,
+            regulation_id   VARCHAR(36) NOT NULL REFERENCES privacy_regulations(id),
+            version         VARCHAR(20) NOT NULL,
+            title           VARCHAR(255) NOT NULL,
+            content_url     VARCHAR(500),
+            summary         TEXT,
+            effective_at    TIMESTAMPTZ NOT NULL,
+            is_current      BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_privacy_policy_reg ON privacy_policy_versions (regulation_id)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_data_subject_requests(conn, applied: list[str]) -> None:
+    name = "data_subject_requests.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS data_subject_requests (
+            id                  VARCHAR(36) PRIMARY KEY,
+            regulation_code     VARCHAR(16) NOT NULL,
+            user_id             VARCHAR(36) REFERENCES users(id),
+            guest_identifier    VARCHAR(255),
+            request_type        VARCHAR(32) NOT NULL,
+            status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            requested_by        VARCHAR(255),
+            details             TEXT,
+            response_notes      TEXT,
+            due_at              TIMESTAMPTZ,
+            completed_at        TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_dsr_regulation ON data_subject_requests (regulation_code)"
+    ))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_dsr_status ON data_subject_requests (status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_dsr_type ON data_subject_requests (request_type)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_webhook_endpoints(conn, applied: list[str]) -> None:
+    name = "privacy_webhook_endpoints.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_webhook_endpoints (
+            id              VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            url             VARCHAR(500) NOT NULL,
+            events_json     TEXT NOT NULL DEFAULT '[]',
+            secret_ref      VARCHAR(255),
+            signing_algo    VARCHAR(20) NOT NULL DEFAULT 'HMAC_SHA256',
+            active          BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_privacy_wh_reg ON privacy_webhook_endpoints (regulation_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_api_keys(conn, applied: list[str]) -> None:
+    name = "privacy_api_keys.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_api_keys (
+            id              VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            key_prefix      VARCHAR(16) NOT NULL,
+            key_hash        VARCHAR(128) NOT NULL,
+            label           VARCHAR(64),
+            scopes_json     TEXT NOT NULL DEFAULT '[]',
+            expires_at      TIMESTAMPTZ,
+            last_used_at    TIMESTAMPTZ,
+            revoked_at      TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_privacy_ak_reg ON privacy_api_keys (regulation_code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_privacy_consents_regulation_code(conn, applied: list[str]) -> None:
+    name = "privacy_consents.add_regulation_code_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text(
+        "ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS regulation_code VARCHAR(16) NOT NULL DEFAULT 'GDPR'"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_consents_regulation ON privacy_consents (regulation_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _migrate_data_deletion_regulation_code(conn, applied: list[str]) -> None:
+    name = "data_deletion_requests.add_regulation_code_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text(
+        "ALTER TABLE data_deletion_requests ADD COLUMN IF NOT EXISTS regulation_code VARCHAR(16) NOT NULL DEFAULT 'GDPR'"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_deletion_req_regulation ON data_deletion_requests (regulation_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_extended_tables(conn, applied: list[str]) -> None:
+    name = "privacy_extended.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_legal_bases (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            code VARCHAR(32) NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            article_ref VARCHAR(64),
+            description TEXT,
+            requires_consent BOOLEAN NOT NULL DEFAULT FALSE,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_data_categories (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            code VARCHAR(32) NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            sensitivity VARCHAR(16) NOT NULL DEFAULT 'NORMAL',
+            description TEXT,
+            special_category BOOLEAN NOT NULL DEFAULT FALSE,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_processing_activities (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            code VARCHAR(32) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            purpose TEXT NOT NULL,
+            data_controller VARCHAR(255),
+            legal_basis_id VARCHAR(36),
+            data_categories_json TEXT NOT NULL DEFAULT '[]',
+            recipients_json TEXT NOT NULL DEFAULT '[]',
+            retention_days INTEGER,
+            cross_border BOOLEAN NOT NULL DEFAULT FALSE,
+            status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_processors (
+            id VARCHAR(36) PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            processor_type VARCHAR(32) NOT NULL DEFAULT 'SUB_PROCESSOR',
+            country VARCHAR(2),
+            contact_email VARCHAR(255),
+            services_json TEXT NOT NULL DEFAULT '[]',
+            regulation_codes_json TEXT NOT NULL DEFAULT '[]',
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_processor_agreements (
+            id VARCHAR(36) PRIMARY KEY,
+            processor_id VARCHAR(36) NOT NULL,
+            regulation_code VARCHAR(16) NOT NULL,
+            agreement_type VARCHAR(16) NOT NULL DEFAULT 'DPA',
+            status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            signed_at TIMESTAMPTZ,
+            expires_at TIMESTAMPTZ,
+            document_url VARCHAR(500),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_activity_processor_links (
+            id VARCHAR(36) PRIMARY KEY,
+            processing_activity_id VARCHAR(36) NOT NULL,
+            processor_id VARCHAR(36) NOT NULL,
+            role VARCHAR(24) NOT NULL DEFAULT 'SUB_PROCESSOR',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_retention_rules (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            data_category_id VARCHAR(36),
+            processing_activity_id VARCHAR(36),
+            retention_days INTEGER NOT NULL,
+            purge_method VARCHAR(32) NOT NULL DEFAULT 'ANONYMIZE',
+            legal_basis_code VARCHAR(32),
+            notes TEXT,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_breach_incidents (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            severity VARCHAR(16) NOT NULL DEFAULT 'MEDIUM',
+            status VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            discovered_at TIMESTAMPTZ NOT NULL,
+            reported_at TIMESTAMPTZ,
+            affected_count INTEGER,
+            description TEXT,
+            remediation TEXT,
+            notification_required BOOLEAN NOT NULL DEFAULT FALSE,
+            supervisory_notified_at TIMESTAMPTZ,
+            subjects_notified_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_impact_assessments (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            processing_activity_id VARCHAR(36),
+            title VARCHAR(255) NOT NULL,
+            risk_level VARCHAR(16) NOT NULL DEFAULT 'MEDIUM',
+            status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+            assessed_at TIMESTAMPTZ,
+            reviewer VARCHAR(255),
+            mitigation_summary TEXT,
+            document_url VARCHAR(500),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_transfer_records (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            destination_country VARCHAR(2) NOT NULL,
+            mechanism VARCHAR(16) NOT NULL DEFAULT 'SCC',
+            processor_id VARCHAR(36),
+            processing_activity_id VARCHAR(36),
+            status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            document_ref VARCHAR(500),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_plb_reg ON privacy_legal_bases (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pdc_reg ON privacy_data_categories (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ppa_reg ON privacy_processing_activities (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pbreach_reg ON privacy_breach_incidents (regulation_code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_ecosystem_tables(conn, applied: list[str]) -> None:
+    name = "privacy_ecosystem.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_ecosystem_players (
+            id VARCHAR(36) PRIMARY KEY,
+            code VARCHAR(32) NOT NULL UNIQUE,
+            name VARCHAR(255) NOT NULL,
+            player_segment VARCHAR(32) NOT NULL,
+            network_type VARCHAR(32) NOT NULL DEFAULT 'LOCKER_NETWORK',
+            region_group VARCHAR(16) NOT NULL,
+            countries_json TEXT NOT NULL DEFAULT '[]',
+            hardware_vendor VARCHAR(128),
+            global_player_code VARCHAR(64),
+            website_url VARCHAR(500),
+            privacy_contact_email VARCHAR(255),
+            rental_network_id VARCHAR(36),
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_player_regulation_links (
+            id VARCHAR(36) PRIMARY KEY,
+            player_id VARCHAR(36) NOT NULL REFERENCES privacy_ecosystem_players(id),
+            regulation_code VARCHAR(16) NOT NULL,
+            privacy_role VARCHAR(24) NOT NULL DEFAULT 'PROCESSOR',
+            data_shared_json TEXT NOT NULL DEFAULT '[]',
+            dpa_required BOOLEAN NOT NULL DEFAULT TRUE,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (player_id, regulation_code)
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_ecosystem_relations (
+            id VARCHAR(36) PRIMARY KEY,
+            from_player_id VARCHAR(36) NOT NULL REFERENCES privacy_ecosystem_players(id),
+            to_player_id VARCHAR(36) NOT NULL REFERENCES privacy_ecosystem_players(id),
+            relation_type VARCHAR(32) NOT NULL,
+            integration_mode VARCHAR(16) NOT NULL DEFAULT 'API',
+            description TEXT,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (from_player_id, to_player_id, relation_type)
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pep_segment ON privacy_ecosystem_players (player_segment)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pep_region ON privacy_ecosystem_players (region_group)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pprl_reg ON privacy_player_regulation_links (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_per_type ON privacy_ecosystem_relations (relation_type)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_pro_tables(conn, applied: list[str]) -> None:
+    name = "privacy_pro.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_audit_events (
+            id VARCHAR(36) PRIMARY KEY,
+            actor_id VARCHAR(128),
+            actor_role VARCHAR(64),
+            action VARCHAR(64) NOT NULL,
+            resource_type VARCHAR(64) NOT NULL,
+            resource_id VARCHAR(64),
+            regulation_code VARCHAR(16),
+            summary VARCHAR(500) NOT NULL,
+            payload_json TEXT,
+            ip_address VARCHAR(45),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_compliance_snapshots (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            score_pct DOUBLE PRECISION NOT NULL,
+            grade VARCHAR(2) NOT NULL,
+            gaps_json TEXT NOT NULL DEFAULT '[]',
+            dimensions_json TEXT NOT NULL DEFAULT '{}',
+            computed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_breach_timeline_events (
+            id VARCHAR(36) PRIMARY KEY,
+            breach_id VARCHAR(36) NOT NULL REFERENCES privacy_breach_incidents(id),
+            milestone VARCHAR(32) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            due_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_dsr_tasks (
+            id VARCHAR(36) PRIMARY KEY,
+            subject_request_id VARCHAR(36) NOT NULL REFERENCES data_subject_requests(id),
+            step_code VARCHAR(32) NOT NULL,
+            step_order INTEGER NOT NULL DEFAULT 0,
+            status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            assignee VARCHAR(128),
+            due_at TIMESTAMPTZ,
+            completed_at TIMESTAMPTZ,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_integration_health_checks (
+            id VARCHAR(36) PRIMARY KEY,
+            player_code VARCHAR(32) NOT NULL,
+            relation_type VARCHAR(32),
+            probe_type VARCHAR(24) NOT NULL DEFAULT 'API',
+            status VARCHAR(16) NOT NULL DEFAULT 'HEALTHY',
+            score_pct DOUBLE PRECISION NOT NULL DEFAULT 100.0,
+            latency_ms INTEGER,
+            last_error TEXT,
+            checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pae_reg ON privacy_audit_events (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pae_created ON privacy_audit_events (created_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pcs_reg ON privacy_compliance_snapshots (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pbte_breach ON privacy_breach_timeline_events (breach_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pdt_sr ON privacy_dsr_tasks (subject_request_id)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pihc_player ON privacy_integration_health_checks (player_code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_pro_v2_tables(conn, applied: list[str]) -> None:
+    name = "privacy_pro.create_tables_v2"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_transfer_wizard_sessions (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            current_step VARCHAR(24) NOT NULL DEFAULT 'SCOPE',
+            status VARCHAR(20) NOT NULL DEFAULT 'IN_PROGRESS',
+            destination_country VARCHAR(2),
+            mechanism VARCHAR(16),
+            processor_id VARCHAR(36),
+            processing_activity_id VARCHAR(36),
+            document_ref VARCHAR(500),
+            adequacy_notes TEXT,
+            steps_completed_json TEXT NOT NULL DEFAULT '[]',
+            transfer_record_id VARCHAR(36),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_webhook_deliveries (
+            id VARCHAR(36) PRIMARY KEY,
+            webhook_id VARCHAR(36) NOT NULL REFERENCES privacy_webhook_endpoints(id),
+            regulation_code VARCHAR(16) NOT NULL,
+            event_name VARCHAR(64) NOT NULL,
+            aggregate_id VARCHAR(64),
+            payload_json TEXT NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            last_status_code INTEGER,
+            last_response_body TEXT,
+            last_attempt_at TIMESTAMPTZ,
+            next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            delivered_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_player_certification_mirrors (
+            id VARCHAR(36) PRIMARY KEY,
+            player_code VARCHAR(32) NOT NULL,
+            certification_type VARCHAR(32) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'VALID',
+            source VARCHAR(24) NOT NULL DEFAULT 'PARTNER',
+            external_id VARCHAR(64),
+            issuer VARCHAR(128),
+            evidence_url VARCHAR(500),
+            scope_notes TEXT,
+            synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ptws_reg ON privacy_transfer_wizard_sessions (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pwd_status ON privacy_webhook_deliveries (status, next_attempt_at)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ppcm_player ON privacy_player_certification_mirrors (player_code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_regulatory_tables(conn, applied: list[str]) -> None:
+    name = "privacy_regulatory.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_subject_rights (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            right_code VARCHAR(32) NOT NULL,
+            name VARCHAR(128) NOT NULL,
+            article_ref VARCHAR(64),
+            description TEXT,
+            response_sla_days VARCHAR(8),
+            dsar_type VARCHAR(24),
+            automated_available BOOLEAN NOT NULL DEFAULT FALSE,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_regulatory_obligations (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            obligation_code VARCHAR(32) NOT NULL,
+            name VARCHAR(255) NOT NULL,
+            category VARCHAR(32) NOT NULL,
+            article_ref VARCHAR(64),
+            description TEXT,
+            compliance_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            evidence_url VARCHAR(500),
+            due_review_at TIMESTAMPTZ,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_opt_out_records (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL DEFAULT 'CCPA',
+            user_id VARCHAR(128),
+            guest_identifier VARCHAR(128),
+            opt_out_type VARCHAR(32) NOT NULL,
+            signal_source VARCHAR(24) NOT NULL DEFAULT 'WEB',
+            gpc_signal BOOLEAN NOT NULL DEFAULT FALSE,
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            revoked_at TIMESTAMPTZ
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_lia_records (
+            id VARCHAR(36) PRIMARY KEY,
+            regulation_code VARCHAR(16) NOT NULL,
+            processing_activity_id VARCHAR(36),
+            title VARCHAR(255) NOT NULL,
+            purpose TEXT NOT NULL,
+            balancing_test_summary TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+            reviewer VARCHAR(128),
+            reviewed_at TIMESTAMPTZ,
+            document_url VARCHAR(500),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_psr_reg ON privacy_subject_rights (regulation_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_pro_reg ON privacy_regulatory_obligations (regulation_code, compliance_status)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_poor_reg ON privacy_opt_out_records (regulation_code, opt_out_type)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_plia_reg ON privacy_lia_records (regulation_code, status)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_privacy_player_legal_tables(conn, applied: list[str]) -> None:
+    name = "privacy_player_legal.create_tables_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS privacy_player_legal_documents (
+            id VARCHAR(36) PRIMARY KEY,
+            player_code VARCHAR(32) NOT NULL,
+            player_name VARCHAR(128) NOT NULL,
+            document_slug VARCHAR(64) NOT NULL,
+            title VARCHAR(255) NOT NULL,
+            regulation_code VARCHAR(16) NOT NULL,
+            version VARCHAR(16) NOT NULL,
+            language VARCHAR(8) NOT NULL DEFAULT 'en',
+            summary TEXT,
+            public_path VARCHAR(200) NOT NULL,
+            privacy_contact_email VARCHAR(128),
+            active BOOLEAN NOT NULL DEFAULT TRUE,
+            effective_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ppld_player ON privacy_player_legal_documents (player_code)"))
+    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ppld_reg ON privacy_player_legal_documents (regulation_code)"))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 # ============================================================================
 # BLOCO 3 — Lockers e Operadores
 # ============================================================================
@@ -8392,6 +9028,19 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_user_roles,
     _create_privacy_consents,
     _create_data_deletion_requests,
+    _create_privacy_regulations,
+    _create_privacy_policy_versions,
+    _create_data_subject_requests,
+    _create_privacy_webhook_endpoints,
+    _create_privacy_api_keys,
+    _migrate_privacy_consents_regulation_code,
+    _migrate_data_deletion_regulation_code,
+    _create_privacy_extended_tables,
+    _create_privacy_ecosystem_tables,
+    _create_privacy_pro_tables,
+    _create_privacy_pro_v2_tables,
+    _create_privacy_regulatory_tables,
+    _create_privacy_player_legal_tables,
 
     # Lockers e operadores
     _create_locker_operators,

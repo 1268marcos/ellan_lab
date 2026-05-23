@@ -31,6 +31,18 @@ const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPag
 const PublicNotFoundPage = lazy(() => import("./pages/public/PublicNotFoundPage"));
 const PublicSupportPage = lazy(() => import("./pages/public/PublicSupportPage")); // NOVA IMPORT
 const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyPolicyPage"));
+const PublicLegalPrivacyDocumentPage = lazy(() => import("./pages/public/PublicLegalPrivacyDocumentPage"));
+const PublicLegalPrivacyIndexPage = lazy(() =>
+  import("./pages/public/PublicLegalPrivacyDocumentPage").then((m) => ({ default: m.PublicLegalPrivacyIndexPage })),
+);
+const PublicPlayerLegalPrivacyDocumentPage = lazy(() =>
+  import("./pages/public/PublicPlayerLegalPrivacyDocumentPage"),
+);
+const PublicPlayerLegalPrivacyIndexPage = lazy(() =>
+  import("./pages/public/PublicPlayerLegalPrivacyDocumentPage").then((m) => ({
+    default: m.PublicPlayerLegalPrivacyIndexPage,
+  })),
+);
 const PublicTermsOfUsePage = lazy(() => import("./pages/public/PublicTermsOfUsePage"));
 const PublicAccessDeniedPage = lazy(() => import("./pages/public/PublicAccessDeniedPage"));
 const LockerDashboard = lazy(() => import("./pages/LockerDashboard"));
@@ -85,6 +97,7 @@ const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
+const OpsPrivacyComplianceAdminPage = lazy(() => import("./pages/OpsPrivacyComplianceAdminPage"));
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
@@ -529,6 +542,172 @@ function TopNav() {
       newTag: "New1",
     },
     {
+      to: "/ops/privacy-compliance/admin",
+      label: "Privacy — visao geral (compliance global)",
+      aria: "Dashboard KPIs privacy, marcos regulatorios e politicas",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Visao geral",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=compliance",
+      label: "Privacy — score compliance",
+      aria: "Nota A-F, gaps e comparativo GDPR/LGPD/CCPA",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Score",
+      newTag: "New",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=regulation_hub",
+      label: "Privacy — hub GDPR / LGPD / CCPA",
+      aria: "Visao 360 por marco regulatorio em foco",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Hub marco",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=regulatory_toolkit",
+      label: "Privacy — toolkit GDPR / LGPD / CCPA",
+      aria: "Direitos titular, obrigacoes, LIA, opt-out CCPA/GPC e templates autoridade",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Hub marco",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=regulations",
+      label: "Privacy — marcos regulatorios",
+      aria: "CRUD marcos GDPR, LGPD, CCPA e 15+ jurisdicoes",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=policies",
+      label: "Privacy — politicas de privacidade",
+      aria: "Versoes vigentes e historicas por marco",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=legal_bases",
+      label: "Privacy — bases legais",
+      aria: "Art. 6 GDPR, bases LGPD e opt-out CCPA",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=data_categories",
+      label: "Privacy — categorias de dados",
+      aria: "Inventario de categorias e sensibilidade",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=ropa",
+      label: "Privacy — ROPA (tratamentos + grafo)",
+      aria: "Registro Art. 30 GDPR e mapa React Flow",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "ROPA",
+      newTag: "New",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=processors",
+      label: "Privacy — processadores e DPA",
+      aria: "Subprocessadores, redes locker e acordos DPA/SCC",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Processadores",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=retention",
+      label: "Privacy — retencao",
+      aria: "Regras de retencao e purge por categoria",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Processadores",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=consents",
+      label: "Privacy — consentimentos",
+      aria: "Registro, analytics e revogacao por canal",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Titulares",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=deletions",
+      label: "Privacy — eliminacao de dados",
+      aria: "Pedidos de exclusao (right to erasure)",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Titulares",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=subject_requests",
+      label: "Privacy — DSAR titulares",
+      aria: "Acesso, portabilidade, playbook automatizado",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Titulares",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=breaches",
+      label: "Privacy — incidentes / violacoes",
+      aria: "Timeline 72h GDPR/ANPD e notificacao titulares",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Incidentes",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=dpia",
+      label: "Privacy — DPIA / LIA / PIA",
+      aria: "Avaliacoes de impacto por marco regulatorio",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Incidentes",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=transfers",
+      label: "Privacy — transferencias (wizard SCC/BCR)",
+      aria: "Wizard step-by-step e registros cross-border",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Transferencias",
+      newTag: "New",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=ecosystem",
+      label: "Privacy — ecossistema locker mundial",
+      aria: "77 players, relacoes, health probes e certificacoes Partner",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Ecossistema",
+      newTag: "New",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=audit",
+      label: "Privacy — trilha de auditoria",
+      aria: "Eventos imutaveis DPO/regulador",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Auditoria",
+      newTag: "New",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=integrations",
+      label: "Privacy — webhooks e entregas (DLQ)",
+      aria: "Webhooks, dispatcher e fila privacy_webhook_deliveries",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/privacidade",
+      label: "Privacy — pagina publica /privacidade",
+      aria: "Politica resumida, seletor jurisdicao e redes locker",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Publico",
+    },
+    {
+      to: "/legal/privacy/players",
+      label: "Privacy — docs por player",
+      aria: "Documentos legais Mercado Livre, InPost, DHL, Amazon Hub, iFood, etc.",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Publico",
+    },
+    {
+      to: "/legal/privacy",
+      label: "Privacy — documentos legais",
+      aria: "Indice GDPR, LGPD, CCPA, UK, PT, ES, JP, SG por versao",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Publico",
+    },
+    {
       to: "/ops/ml/admin",
       label: "ML — visao geral",
       aria: "Dashboard KPIs ML, parceiros de dados, modelos e feedback",
@@ -774,9 +953,18 @@ function TopNav() {
     {
       to: "/ops/rentals/admin?tab=contracts",
       label: "ops /rentals/contracts (CRUD)",
-      aria: "Contratos rental_contracts",
+      aria: "Contratos rental_contracts — preview-pricing e seguro de conteúdo",
       group: "Rentals OPS",
       opsSubGroup: "Contratos",
+      newTag: "New",
+    },
+    {
+      to: "/ops/rentals/admin?tab=contracts",
+      label: "ops /rentals/preview-pricing",
+      aria: "POST contracts/preview-pricing — cotação dinâmica (rental_pricing_rules)",
+      group: "Rentals OPS",
+      opsSubGroup: "Contratos",
+      newTag: "New",
     },
     {
       to: "/ops/rentals/contracts",
@@ -788,9 +976,18 @@ function TopNav() {
     {
       to: "/ops/rentals/admin?tab=billing",
       label: "ops /rentals/billing",
-      aria: "Faturamento rental_billing_invoices",
+      aria: "Faturamento rental_billing_invoices e multas automáticas (apply-late-fees)",
       group: "Rentals OPS",
       opsSubGroup: "Financeiro",
+      newTag: "New",
+    },
+    {
+      to: "/ops/rentals/admin?tab=billing",
+      label: "ops /rentals/apply-late-fees",
+      aria: "POST billing/apply-late-fees — rental_late_fee_policies",
+      group: "Rentals OPS",
+      opsSubGroup: "Financeiro",
+      newTag: "New",
     },
     {
       to: "/ops/rentals/admin?tab=settlements",
@@ -832,9 +1029,17 @@ function TopNav() {
     {
       to: "/ops/rentals/admin?tab=advanced",
       label: "ops /rentals/advanced",
-      aria: "Passes, cauções, pricing, dunning, transferências",
+      aria: "Passes, cauções, pricing/quote, dunning, transferências, seguro de conteúdo",
       group: "Rentals OPS",
       opsSubGroup: "Avançado",
+      newTag: "New",
+    },
+    {
+      to: "/ops/rentals/admin?tab=advanced",
+      label: "ops /rentals/content-insurance",
+      aria: "GET content-insurance — apólices rental_content_insurance",
+      group: "Rentals OPS",
+      opsSubGroup: "Financeiro",
       newTag: "New",
     },
     {
@@ -1149,6 +1354,7 @@ function TopNav() {
     "Cadastros OPS",
     "ML OPS",
     "Marketplace OPS",
+    "Privacy & Compliance OPS",
     "Order / Pickup",
     "Lockers",
     "Inteligência",
@@ -1886,6 +2092,10 @@ function AppContent() {
             <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
             <Route path="/suporte" element={<PublicSupportPage />} /> {/* NOVA ROTA */}
             <Route path="/privacidade" element={<PublicPrivacyPolicyPage />} />
+            <Route path="/legal/privacy" element={<PublicLegalPrivacyIndexPage />} />
+            <Route path="/legal/privacy/players" element={<PublicPlayerLegalPrivacyIndexPage />} />
+            <Route path="/legal/privacy/player/:playerCode/:version" element={<PublicPlayerLegalPrivacyDocumentPage />} />
+            <Route path="/legal/privacy/:region/:version" element={<PublicLegalPrivacyDocumentPage />} />
             <Route path="/termos" element={<PublicTermsOfUsePage />} />
             <Route path="/sp" element={<PublicRegionHubPage region="SP" />} />
             <Route path="/pt" element={<PublicRegionHubPage region="PT" />} />
@@ -2470,6 +2680,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/privacy-compliance/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsPrivacyComplianceAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/ml/admin"
               element={
                 <OpsRoute>
@@ -2855,6 +3073,19 @@ function AppContent() {
             onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
           >
             Política de Privacidade
+          </Link>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/legal/privacy" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Documentos legais
           </Link>
           <span aria-hidden="true">|</span>
           <Link 
