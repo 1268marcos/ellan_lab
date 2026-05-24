@@ -124,6 +124,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/pga/, "/api"),
       },
+      "/api/pya": {
+        target: "http://localhost:8126",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/pya/, "/api"),
+      },
       "/api/opa": {
         target: "http://localhost:8018",
         changeOrigin: true,

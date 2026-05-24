@@ -1,9 +1,22 @@
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url))
+const repoSiblingV0 = path.resolve(projectDir, '../frontend_v0/node_modules')
+
+function xyflowAlias(subpath: string) {
+  const local = path.resolve(projectDir, 'node_modules', subpath)
+  const fromV0 = path.join(repoSiblingV0, subpath)
+  try {
+    fs.accessSync(local)
+    return local
+  } catch {
+    return fromV0
+  }
+}
 
 /** Docker compose expõe partner_service em :8402; uvicorn local costuma usar :8002. */
 const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localhost:8402'
@@ -24,6 +37,9 @@ const partnerAdminServiceProxy =
 
 const paymentGatewayAdminServiceProxy =
   process.env.PAYMENT_GATEWAY_ADMIN_SERVICE_PROXY ?? 'http://localhost:8017'
+
+const paymentsAdminServiceProxy =
+  process.env.PAYMENTS_ADMIN_SERVICE_PROXY ?? 'http://localhost:8126'
 
 const orderPickupAdminServiceProxy =
   process.env.ORDER_PICKUP_ADMIN_SERVICE_PROXY ?? 'http://localhost:8018'
@@ -73,6 +89,12 @@ function redirectRootToV1() {
 
 export default defineConfig({
   cacheDir: path.join(projectDir, '.vite-cache'),
+  resolve: {
+    alias: {
+      '@xyflow/react': xyflowAlias('@xyflow/react'),
+      '@xyflow/system': xyflowAlias('@xyflow/system'),
+    },
+  },
   plugins: [redirectRootToV1(), react()],
   server: {
     proxy: {
@@ -105,6 +127,11 @@ export default defineConfig({
         target: paymentGatewayAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/payment-gateway-admin/, '/api'),
+      },
+      '/api/payments-admin': {
+        target: paymentsAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/payments-admin/, '/api'),
       },
       '/api/order-pickup-admin': {
         target: orderPickupAdminServiceProxy,

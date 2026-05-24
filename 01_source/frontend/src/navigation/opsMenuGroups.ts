@@ -1,0 +1,300 @@
+import type { OpsNavGroup } from './opsMenuTypes'
+import { fiscalOpsNavGroup } from './fiscalOpsNav'
+import { cambioOpsNavGroup, moneyOpsNavGroup } from './moneyOpsNav'
+import { navItem, opsGroup, section } from './opsNavHelpers'
+import { paymentsOpsNavGroup } from './paymentsOpsNav'
+
+const P = '/ops/partners/admin'
+const F = '/ops/finance/admin'
+const M = '/ops/marketplace/admin'
+const ML = '/ops/ml/admin'
+const R = '/ops/rentals/admin'
+const PR = '/ops/products/admin'
+const PC = '/ops/privacy-compliance/admin'
+const MK = '/ops/marketing/promotions'
+
+export const OPS_MENU_GROUPS: OpsNavGroup[] = [
+  opsGroup('ops', '🛠️', 'OPS', {
+    items: [
+      navItem('/dashboard', 'Dashboard'),
+      navItem('/ops/lockers', 'Lockers'),
+      navItem('/ops/lockers/create', 'Criar lockers'),
+      navItem('/ops/manifests', 'Manifestos'),
+    ],
+  }),
+  opsGroup('cadastros', '📋', 'Cadastros OPS', {
+    items: [
+      navItem('/ops/access/user-roles', 'Papéis de acesso'),
+      navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)'),
+    ],
+  }),
+  paymentsOpsNavGroup,
+  moneyOpsNavGroup,
+  cambioOpsNavGroup,
+  fiscalOpsNavGroup,
+  opsGroup('orderPickup', '📦', 'Order Pickup OPS', {
+    items: [navItem('/ops/order-pickup/admin', 'Cadastro pedidos / integração')],
+  }),
+  opsGroup('mlOps', '🤖', 'ML OPS', {
+    hub: navItem(ML, 'Visão geral', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub', [navItem(ML, 'Visão geral e cadastro', { newTag: 'Hub' })], true),
+      section('data', 'Dados & modelos', [
+        navItem(`${ML}?tab=partners`, 'Parceiros de dados'),
+        navItem(`${ML}?tab=networks`, 'Redes locker mundiais'),
+        navItem(`${ML}?tab=models`, 'Modelos e versões'),
+        navItem(`${ML}?tab=features`, 'Features diárias'),
+        navItem(`${ML}?tab=catalog`, 'Catálogo features'),
+      ]),
+      section('runtime', 'Predição & ops', [
+        navItem(`${ML}?tab=predictions`, 'Log de predições'),
+        navItem(`${ML}?tab=feedback`, 'Feedback de modelo'),
+        navItem(`${ML}?tab=use_cases`, 'Casos de uso'),
+        navItem(`${ML}?tab=registry`, 'Model registry'),
+        navItem(`${ML}?tab=training`, 'Experimentos'),
+        navItem(`${ML}?tab=drift`, 'Drift / PSI'),
+        navItem(`${ML}?tab=governance`, 'SLO e alertas'),
+        navItem(`${ML}?tab=deployments`, 'Deployments'),
+      ]),
+    ],
+  }),
+  opsGroup('partnersOps', '🤝', 'Partners OPS', {
+    hub: navItem(P, 'Visão 360', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub & onboarding', [
+        navItem(P, 'Visão 360', { newTag: 'Hub' }),
+        navItem(`${P}?tab=onboarding`, 'Onboarding B2B', { newTag: 'New' }),
+        navItem(`${P}?tab=ecommerce`, 'E-commerce'),
+        navItem(`${P}?tab=logistics`, 'Logística'),
+      ], true),
+      section('integration', 'Integração', [
+        navItem(`${P}?tab=integrations`, 'Webhook e API keys'),
+        navItem(`${P}?tab=webhook_monitor`, 'Entregas webhook'),
+        navItem(`${P}?tab=integration_health`, 'Saúde integração'),
+        navItem(`${P}?tab=outbox`, 'Outbox eventos'),
+        navItem(`${P}?tab=capability_webhooks`, 'Webhooks + dead-letter'),
+      ]),
+      section('finance', 'Financeiro', [
+        navItem(`${P}?tab=settlements`, 'Settlements'),
+        navItem(`${P}?tab=billing`, 'Billing e line items'),
+        navItem(`${P}?tab=invoices`, 'NF B2B'),
+        navItem(`${P}?tab=credits`, 'Créditos'),
+        navItem(`${P}?tab=holds`, 'Retenções pagamento'),
+      ]),
+      section('world', 'Mundial', [
+        navItem(`${P}?tab=ecosystem`, 'Redes mundiais'),
+        navItem(`${P}?tab=global_ops`, 'Global OPS'),
+        navItem(`${P}?tab=stores`, 'Lojas C&C'),
+        navItem(`${P}?tab=contacts`, 'Contatos B2B'),
+        navItem('/ops/tenants/admin', 'Tenants white label'),
+      ]),
+      section('legacy', 'Legado v0', [
+        navItem('/ops/partners/dashboard', 'Dashboard OPS'),
+        navItem('/ops/partners/settlement', 'Settlement export'),
+        navItem(`${P}?tab=sla`, 'SLA'),
+        navItem(`${P}?tab=status`, 'Histórico status'),
+      ]),
+    ],
+  }),
+  opsGroup('rentalsOps', '🔑', 'Rentals OPS', {
+    hub: navItem(R, 'Visão geral', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub & redes', [
+        navItem(R, 'Visão geral', { newTag: 'Hub' }),
+        navItem(`${R}?tab=networks`, 'Redes mundiais'),
+        navItem(`${R}?tab=corridors`, 'Corredores'),
+        navItem(`${R}?tab=onboarding`, 'Onboarding KYB'),
+      ], true),
+      section('ops', 'Operação', [
+        navItem(`${R}?tab=capacity`, 'Capacidade'),
+        navItem(`${R}?tab=operators`, 'Operadores B2B'),
+        navItem(`${R}?tab=plans`, 'Planos'),
+        navItem(`${R}?tab=contracts`, 'Contratos'),
+        navItem(`${R}?tab=billing`, 'Faturamento'),
+        navItem(`${R}?tab=settlements`, 'Liquidações'),
+        navItem(`${R}?tab=sla`, 'Políticas SLA'),
+        navItem(`${R}?tab=premium`, 'Breaches e disputas'),
+      ]),
+      section('tech', 'Eventos & integração', [
+        navItem(`${R}?tab=events`, 'Eventos / auditoria'),
+        navItem(`${R}?tab=integrations`, 'Webhooks e API keys'),
+        navItem(`${R}?tab=advanced`, 'Avançado'),
+      ]),
+    ],
+  }),
+  opsGroup('privacyCompliance', '🔒', 'Privacy & Compliance OPS', {
+    hub: navItem(PC, 'Compliance global', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub', [
+        navItem(PC, 'Visão geral'),
+        navItem(`${PC}?tab=compliance`, 'Score compliance', { newTag: 'New' }),
+        navItem(`${PC}?tab=regulation_hub`, 'Hub GDPR / LGPD / CCPA'),
+      ], true),
+      section('registry', 'Registro & políticas', [
+        navItem(`${PC}?tab=regulations`, 'Marcos regulatórios'),
+        navItem(`${PC}?tab=policies`, 'Políticas'),
+        navItem(`${PC}?tab=legal_bases`, 'Bases legais'),
+        navItem(`${PC}?tab=data_categories`, 'Categorias de dados'),
+        navItem(`${PC}?tab=ropa`, 'ROPA · grafo', { newTag: 'New' }),
+      ]),
+      section('rights', 'Titulares & incidentes', [
+        navItem(`${PC}?tab=consents`, 'Consentimentos'),
+        navItem(`${PC}?tab=deletions`, 'Eliminação'),
+        navItem(`${PC}?tab=subject_requests`, 'DSAR'),
+        navItem(`${PC}?tab=breaches`, 'Incidentes 72h'),
+        navItem(`${PC}?tab=dpia`, 'DPIA / LIA'),
+        navItem(`${PC}?tab=transfers`, 'Transferências', { newTag: 'New' }),
+      ]),
+      section('ecosystem', 'Ecossistema & público', [
+        navItem(`${PC}?tab=ecosystem`, 'Ecossistema locker'),
+        navItem(`${PC}?tab=audit`, 'Auditoria'),
+        navItem(`${PC}?tab=integrations`, 'Webhooks DLQ'),
+        navItem('/legal/privacy/players', 'Docs por player'),
+        navItem('/privacidade', 'Página pública'),
+      ]),
+    ],
+  }),
+  opsGroup('financeOpsGlobal', '🌍', 'Finance OPS — Global', {
+    sections: [
+      section('global', 'Global', [
+        navItem(`${F}?tab=networks`, 'Redes mundiais', { newTag: 'Global' }),
+        navItem(`${F}?tab=intelligence`, 'Ecosystem Intelligence', { newTag: 'New' }),
+        navItem(`${F}?tab=ecosystem`, 'Ecossistema e relações'),
+        navItem(`${F}?tab=readiness`, 'Readiness score'),
+        navItem(`${F}?tab=roadmap`, 'Roadmap integração'),
+        navItem(`${F}?tab=contracts`, 'Contratos MSA'),
+        navItem(`${F}?tab=slas`, 'SLAs e breaches'),
+      ], true),
+    ],
+  }),
+  opsGroup('financeOpsCommercial', '📊', 'Finance OPS — Comercial', {
+    sections: [
+      section('commercial', 'Comercial', [
+        navItem(`${F}?tab=dunning`, 'Cobrança (dunning)'),
+        navItem(`${F}?tab=tiers`, 'Níveis comerciais'),
+        navItem(`${F}?tab=fx`, 'Câmbio (FX)'),
+        navItem(`${F}?tab=tax`, 'Corredores fiscais'),
+        navItem(`${F}?tab=documents`, 'Documentos NF'),
+        navItem(`${F}?tab=audit`, 'Auditoria'),
+        navItem(`${F}?tab=revrec`, 'Rev. receita'),
+        navItem(`${F}?tab=jobs`, 'Jobs agendados'),
+      ], true),
+    ],
+  }),
+  opsGroup('financeOps', '💰', 'Finance OPS', {
+    hub: navItem(F, 'Visão geral', { newTag: 'Hub' }),
+    sections: [
+      section('core', 'Núcleo', [
+        navItem(F, 'Visão geral', { newTag: 'Hub' }),
+        navItem(`${F}?tab=partners`, 'Parceiros financeiros'),
+        navItem(`${F}?tab=billing`, 'Billing'),
+        navItem(`${F}?tab=invoices`, 'NF B2B'),
+        navItem(`${F}?tab=settlements`, 'Settlements'),
+      ], true),
+      section('treasury', 'Tesouraria', [
+        navItem(`${F}?tab=treasury`, 'Créditos e holds'),
+        navItem(`${F}?tab=wallet`, 'Wallet'),
+        navItem(`${F}?tab=pnl`, 'PnL locker'),
+        navItem(`${F}?tab=reconciliation`, 'Gaps fiscais'),
+      ]),
+      section('ops', 'Ops & billing', [
+        navItem(`${F}?tab=webhooks`, 'Webhook DLQ'),
+        navItem(`${F}?tab=ops`, 'NF ops e eventos'),
+      ]),
+    ],
+  }),
+  opsGroup('marketplace', '🏪', 'Marketplace OPS', {
+    hub: navItem(M, 'Visão geral', { newTag: 'Hub' }),
+    sections: [
+      section('core', 'Núcleo', [
+        navItem(M, 'Visão geral'),
+        navItem(`${M}?tab=sellers`, 'Sellers'),
+        navItem(`${M}?tab=channels`, 'Canais e redes'),
+        navItem(`${M}?tab=readiness`, 'Prontidão + Global OPS', { newTag: 'New' }),
+      ], true),
+      section('finance', 'Financeiro', [
+        navItem(`${M}?tab=settlements`, 'Repasses'),
+        navItem(`${M}?tab=kyc`, 'KYC / compliance'),
+        navItem(`${M}?tab=disputes`, 'Disputas'),
+        navItem(`${M}?tab=commissions`, 'Comissões'),
+      ]),
+    ],
+  }),
+  opsGroup('marketing', '🎯', 'Marketing', {
+    hub: navItem(MK, 'Hub Promoções', { newTag: 'Hub' }),
+    sections: [
+      section('promo', 'Promoções', [
+        navItem(MK, 'Hub Promoções', { newTag: 'Hub' }),
+        navItem(`${MK}?tab=campaigns`, 'Campanhas'),
+        navItem(`${MK}?tab=promotions`, 'Promoções'),
+        navItem(`${MK}?tab=redemptions`, 'Resgates'),
+        navItem(`${MK}?tab=lab`, 'Laboratório', { newTag: 'Lab' }),
+      ], true),
+      section('catalog', 'Catálogo', [
+        navItem('/ops/products/pricing-fiscal', 'Pricing & fiscal lab'),
+        navItem(`${PR}?tab=bundles`, 'Bundles'),
+        navItem('/ops/products/pricing-rules', 'Regras de preço'),
+      ]),
+    ],
+  }),
+  opsGroup('productsCatalog', '📦', 'Produtos & Catálogo', {
+    hub: navItem(PR, 'Hub produtos', { newTag: 'Hub' }),
+    sections: [
+      section('pim', 'PIM & mundial', [
+        navItem(PR, 'Hub visão geral'),
+        navItem(`${PR}?tab=ecosystem`, 'Ecossistema mundial'),
+        navItem(`${PR}?tab=taxonomy`, 'Taxonomias'),
+        navItem(`${PR}?tab=channels`, 'Canais'),
+        navItem(`${PR}?tab=attributes`, 'Atributos'),
+      ], true),
+      section('sku', 'SKU & estoque', [
+        navItem('/ops/products/catalog', 'Catálogo SKU'),
+        navItem('/ops/products/categories', 'Categorias'),
+        navItem('/ops/products/assets', 'Mídia & barcodes'),
+        navItem(`${PR}?tab=bundles`, 'Bundles'),
+        navItem(`${PR}?tab=fiscal`, 'Pricing & fiscal'),
+        navItem(`${PR}?tab=inventory`, 'Estoque'),
+      ]),
+    ],
+  }),
+  opsGroup('lifecycle', '♻️', 'Ciclo de Vida', {
+    items: [
+      navItem('/lifecycle/metrics', 'Métricas'),
+      navItem('/lifecycle/ranking', 'Ranking'),
+      navItem('/lifecycle/health', 'Saúde'),
+    ],
+  }),
+  opsGroup('intelligence', '🧠', 'Inteligência', {
+    items: [
+      navItem('/partners/catalog', 'Catálogo'),
+      navItem('/partners/webhooks', 'Webhooks'),
+      navItem('/intelligence/compatibility', 'Compatibilidade'),
+      navItem('/intelligence/predictive-health', 'Saúde preditiva'),
+      navItem('/intelligence/occupancy-forecast', 'Previsão ocupação'),
+      navItem('/intelligence/feedback-insights', 'Insights feedback'),
+    ],
+  }),
+  opsGroup('runtime', '⚙️', 'Runtime / Operacional', {
+    items: [
+      navItem('/runtime/slots', 'Slots e ocupação'),
+      navItem('/runtime/allocations', 'Alocações'),
+    ],
+  }),
+  opsGroup('operacional', '📡', 'Operacional', {
+    items: [
+      navItem('/partners/ops/lockers', 'Lockers'),
+      navItem('/partners/ops/pickups', 'Pickups ativos'),
+    ],
+  }),
+  opsGroup('fiscal', '💼', 'Fiscal (parceiro)', {
+    items: [
+      navItem('/finance/wallet', 'Wallet'),
+      navItem('/finance/transactions', 'Transações'),
+      navItem('/finance/billing/cycles', 'Ciclos'),
+      navItem('/finance/invoices', 'Notas B2B'),
+      navItem('/finance/credit-notes', 'Créditos'),
+      navItem('/finance/disputes', 'Disputas'),
+      navItem('/fiscal/reconcile', 'Reconciliação'),
+    ],
+  }),
+]

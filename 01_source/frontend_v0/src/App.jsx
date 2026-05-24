@@ -4,6 +4,7 @@ import React, { Suspense, lazy, useState, useEffect, useRef } from "react";
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import InteligenciaMenu from "./components/intelligence/InteligenciaMenu";
+import OpsMenuPanel from "./components/ops/OpsMenuPanel";
 import { mlIntelligenceApi } from "./api/mlIntelligenceClient";
 import FiscalPageLayout from "./components/FiscalPageLayout";
 import DomainErrorBoundary from "./components/DomainErrorBoundary.tsx";
@@ -95,6 +96,7 @@ const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
+const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
 const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPage"));
 const OpsFiscalAdminPage = lazy(() => import("./pages/OpsFiscalAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
@@ -493,6 +495,195 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
+    },
+    {
+      to: "/ops/payments/admin",
+      label: "Centro de comando (KPIs)",
+      aria: "Resumo PAYMENT, prontidao global, simulador roteamento",
+      group: "Payments OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+      opsSearch: "intelligence readiness kpi",
+    },
+    {
+      to: "/ops/payments/admin?tab=graph",
+      label: "Grafo ecossistema",
+      aria: "React Flow players e relacoes mundiais",
+      group: "Payments OPS",
+      opsSubGroup: "Hub",
+      newTag: "Flow",
+      opsSearch: "inpost dhl flow",
+    },
+    {
+      to: "/ops/payments/admin?tab=cross-domain",
+      label: "Hub 360° · gaps",
+      aria: "Registry domínios, refs externas, obrigações, order-360",
+      group: "Payments OPS",
+      opsSubGroup: "Cross-domain",
+      newTag: "New",
+      opsSearch: "finance fiscal marketplace obligation",
+    },
+    {
+      to: "/ops/payments/admin?tab=order-context",
+      label: "Contexto pedido",
+      aria: "payment_order_context tenant locker marketplace carrier",
+      group: "Payments OPS",
+      opsSubGroup: "Cross-domain",
+      opsSearch: "order context",
+    },
+    {
+      to: "/ops/payments/admin?tab=ecosystem",
+      label: "Players mundiais",
+      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, Correios, CTT",
+      group: "Payments OPS",
+      opsSubGroup: "Mundial",
+      opsSearch: "ecosystem carrier locker",
+    },
+    {
+      to: "/ops/payments/admin?tab=segments",
+      label: "Segmentos",
+      aria: "LOCKER_NETWORK CARRIER MARKETPLACE FOOD_DELIVERY",
+      group: "Payments OPS",
+      opsSubGroup: "Mundial",
+    },
+    {
+      to: "/ops/payments/admin?tab=integrations",
+      label: "Integrações · playbook",
+      aria: "Readiness score sandbox producao",
+      group: "Payments OPS",
+      opsSubGroup: "Mundial",
+    },
+    {
+      to: "/ops/payments/admin?tab=coverage",
+      label: "Cobertura por país",
+      aria: "payment_player_country_coverage",
+      group: "Payments OPS",
+      opsSubGroup: "Mundial",
+      opsSearch: "br pt es country",
+    },
+    {
+      to: "/ops/payments/admin?tab=relations",
+      label: "Relações entre players",
+      aria: "CHANNEL_USES_CARRIER WHITE_LABEL AGGREGATES",
+      group: "Payments OPS",
+      opsSubGroup: "Mundial",
+    },
+    {
+      to: "/ops/payments/admin?tab=milestones",
+      label: "Roadmap integração",
+      aria: "Marcos DISCOVERY a PRODUCTION CRUD",
+      group: "Payments OPS",
+      opsSubGroup: "Valor",
+      newTag: "CRUD",
+    },
+    {
+      to: "/ops/payments/admin?tab=routing",
+      label: "Roteamento PSP",
+      aria: "Regras pais metodo PSP primario fallback CRUD",
+      group: "Payments OPS",
+      opsSubGroup: "Valor",
+      newTag: "CRUD",
+      opsSearch: "psp stripe adyen",
+    },
+    {
+      to: "/ops/payments/admin?tab=corridors",
+      label: "Corredores FX",
+      aria: "Settlement cross-border BR PT CN US",
+      group: "Payments OPS",
+      opsSubGroup: "Valor",
+    },
+    {
+      to: "/ops/payments/admin?tab=compliance",
+      label: "Compliance",
+      aria: "LGPD GDPR PCI risk tier",
+      group: "Payments OPS",
+      opsSubGroup: "Valor",
+    },
+    {
+      to: "/ops/payments/admin?tab=incidents",
+      label: "Incidentes",
+      aria: "SLA webhook latency rate limit",
+      group: "Payments OPS",
+      opsSubGroup: "Valor",
+    },
+    {
+      to: "/ops/payments/admin?tab=transactions",
+      label: "Transações",
+      aria: "payment_transactions",
+      group: "Payments OPS",
+      opsSubGroup: "Ledger",
+    },
+    {
+      to: "/ops/payments/admin?tab=instructions",
+      label: "Instruções PIX / boleto",
+      aria: "payment_instructions QR",
+      group: "Payments OPS",
+      opsSubGroup: "Ledger",
+      opsSearch: "pix boleto",
+    },
+    {
+      to: "/ops/payments/admin?tab=splits",
+      label: "Splits repasse",
+      aria: "payment_splits marketplace carrier",
+      group: "Payments OPS",
+      opsSubGroup: "Ledger",
+    },
+    {
+      to: "/ops/payments/admin?tab=payments",
+      label: "Ledger payments",
+      aria: "Tabela payments provider status",
+      group: "Payments OPS",
+      opsSubGroup: "Ledger",
+    },
+    {
+      to: "/ops/payments/admin?tab=batches",
+      label: "Lotes conciliação",
+      aria: "payment_reconciliation_batch",
+      group: "Payments OPS",
+      opsSubGroup: "Conciliação",
+    },
+    {
+      to: "/ops/payments/reconciliation",
+      label: "Workbench conciliação",
+      aria: "Conciliação payment_transactions e payment_splits",
+      group: "Payments OPS",
+      opsSubGroup: "Conciliação",
+      opsSearch: "reconcile status lote",
+    },
+    {
+      to: "/ops/payments/admin?tab=webhooks",
+      label: "Webhooks",
+      aria: "webhook_endpoints rotate secret",
+      group: "Payments OPS",
+      opsSubGroup: "Integração",
+    },
+    {
+      to: "/ops/payments/admin?tab=deliveries",
+      label: "Entregas · DLQ",
+      aria: "webhook_deliveries retry",
+      group: "Payments OPS",
+      opsSubGroup: "Integração",
+    },
+    {
+      to: "/ops/payments/admin?tab=events",
+      label: "Gateway events",
+      aria: "gateway_events auditoria runtime",
+      group: "Payments OPS",
+      opsSubGroup: "Integração",
+    },
+    {
+      to: "/ops/payments/admin?tab=holds",
+      label: "Holds parceiro",
+      aria: "partner_payment_holds finance",
+      group: "Payments OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/payments/admin?tab=vault",
+      label: "Cartões salvos",
+      aria: "saved_payment_methods vault",
+      group: "Payments OPS",
+      opsSubGroup: "Vault",
     },
     {
       to: "/ops/money-cambio/admin",
@@ -1485,12 +1676,6 @@ function TopNav() {
       opsSubGroup: "Financeiro",
       newTag: "New",
     },
-    {
-      to: "/ops/payments/reconciliation",
-      label: "ops /payments/reconciliation",
-      aria: "Conciliação payment_transactions e payment_splits (status e lote)",
-      group: "Order / Pickup",
-    },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
@@ -1795,6 +1980,7 @@ function TopNav() {
     "Visão Geral",
     "Dashboards",
     "Cadastros OPS",
+    "Payments OPS",
     "ML OPS",
     "Marketplace OPS",
     "Money OPS",
@@ -1943,35 +2129,11 @@ function TopNav() {
                   OPS menu ({opsLinks.length}) {isOpsMenuOpen ? "▲" : "▼"}
                 </button>
                 {isOpsMenuOpen ? (
-                  <div className="nav-ops-panel" role="menu" aria-label="Menu OPS">
-                    {groupedOpsLinks.map((groupEntry) => (
-                      <div key={groupEntry.group}>
-                        <div className="ops-group-title">
-                          {groupEntry.group}
-                        </div>
-                        {clusterOpsLinksBySubGroup(groupEntry.links).map((bucket, bidx) => (
-                          <div key={`${groupEntry.group}-sg-${bidx}`}>
-                            {bucket.subGroupLabel ? (
-                              <div className="ops-subgroup-title" style={{ padding: "6px 12px 2px", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>
-                                {bucket.subGroupLabel}
-                              </div>
-                            ) : null}
-                            {bucket.links.map((link) => (
-                              <Link
-                                key={link.to}
-                                className="nav-ops-item"
-                                to={link.to}
-                                onClick={() => setIsOpsMenuOpen(false)}
-                              >
-                                <span>{link.label}</span>
-                                {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
-                              </Link>
-                            ))}
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
+                  <OpsMenuPanel
+                    groupedOpsLinks={groupedOpsLinks}
+                    clusterOpsLinksBySubGroup={clusterOpsLinksBySubGroup}
+                    onNavigate={() => setIsOpsMenuOpen(false)}
+                  />
                 ) : null}
               </div>
             </>
@@ -2261,35 +2423,14 @@ function TopNav() {
                     Ferramentas Operacionais ({opsLinks.length}) {isMobileOpsOpen ? "▲" : "▼"}
                   </button>
                   {isMobileOpsOpen ? (
-                    <div className="mobile-ops-list">
-                      {groupedOpsLinks.map((groupEntry) => (
-                        <div key={groupEntry.group}>
-                          <div className="ops-group-title ops-group-title--mobile">
-                            {groupEntry.group}
-                          </div>
-                          {clusterOpsLinksBySubGroup(groupEntry.links).map((bucket, bidx) => (
-                            <div key={`${groupEntry.group}-m-sg-${bidx}`}>
-                              {bucket.subGroupLabel ? (
-                                <div className="ops-subgroup-title" style={{ padding: "6px 12px 2px", fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>
-                                  {bucket.subGroupLabel}
-                                </div>
-                              ) : null}
-                              {bucket.links.map((link) => (
-                                <Link
-                                  key={link.to}
-                                  className="mobile-nav-link mobile-nav-link--dev"
-                                  to={link.to}
-                                  onClick={() => setIsMobileMenuOpen(false)}
-                                >
-                                  <span>{link.label}</span>
-                                  {link.newTag ? <span className="nav-new-badge">{link.newTag}</span> : null}
-                                </Link>
-                              ))}
-                            </div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>
+                    <OpsMenuPanel
+                      id="ops-menu-search-mobile"
+                      className="mobile-ops-list mobile-ops-list--searchable"
+                      variant="mobile"
+                      groupedOpsLinks={groupedOpsLinks}
+                      clusterOpsLinksBySubGroup={clusterOpsLinksBySubGroup}
+                      onNavigate={() => setIsMobileMenuOpen(false)}
+                    />
                   ) : null}
                 </div>
               )}
@@ -3106,6 +3247,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/payments/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsPaymentsAdminPage />)}
                 </OpsRoute>
               }
             />

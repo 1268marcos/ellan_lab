@@ -1,404 +1,17 @@
 import { useState } from 'react'
-import { Link, NavLink, useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../AuthContext'
-
-type Group = {
-  key: string
-  icon: string
-  label: string
-  items: Array<{ to: string; label: string; newTag?: string }>
-}
-
-const groups: Group[] = [
-  {
-    key: 'ops',
-    icon: '🛠️',
-    label: 'OPS',
-    items: [
-      { to: '/dashboard', label: 'Dashboard' },
-      { to: '/ops/lockers', label: 'Lockers' },
-      { to: '/ops/lockers/create', label: 'Criar lockers' },
-      { to: '/ops/manifests', label: 'Manifestos' },
-    ],
-  },
-  {
-    key: 'cadastros',
-    icon: '📋',
-    label: 'Cadastros OPS',
-    items: [
-      { to: '/ops/access/user-roles', label: 'Papéis de acesso (user_roles)' },
-      { to: '/ops/payment-gateway/admin', label: 'Payment Gateway (PSP)' },
-    ],
-  },
-  {
-    key: 'moneyOps',
-    icon: '💵',
-    label: 'Money OPS',
-    items: [
-      { to: '/ops/money-cambio/admin', label: 'Visão global (KPIs)', newTag: 'Hub' },
-      { to: '/ops/money-cambio/admin?tab=players', label: 'Players ecossistema (mundial)', newTag: 'New' },
-      { to: '/ops/money-cambio/admin?tab=segments', label: 'Segmentos (locker, carrier, food…)' },
-      { to: '/ops/money-cambio/admin?tab=relations', label: 'Relações entre players' },
-      { to: '/ops/money-cambio/admin?tab=intelligence', label: 'Intelligence (readiness · insights)', newTag: 'New' },
-      { to: '/ops/money-cambio/admin?tab=countries', label: 'Países operacionais' },
-      { to: '/ops/money-cambio/admin?tab=matrix', label: 'Matriz método × país' },
-      { to: '/ops/money-cambio/admin?tab=currencies', label: 'Moedas ISO' },
-      { to: '/ops/money-cambio/admin?tab=methods', label: 'Métodos de pagamento' },
-      { to: '/ops/money-cambio/admin?tab=aliases', label: 'Aliases UI' },
-      { to: '/ops/money-cambio/admin?tab=interfaces', label: 'Interfaces (totem/app)' },
-      { to: '/ops/money-cambio/admin?tab=wallets', label: 'Wallet providers' },
-      { to: '/ops/money-cambio/admin?tab=rails', label: 'Payment rails (player×país)', newTag: 'New' },
-      { to: '/ops/money-cambio/admin?tab=treasury', label: 'Tesouraria / exposição FX', newTag: 'New' },
-    ],
-  },
-  {
-    key: 'cambioOps',
-    icon: '💱',
-    label: 'Câmbio OPS',
-    items: [
-      { to: '/ops/money-cambio/admin?tab=corridors', label: 'Corredores cross-border' },
-      { to: '/ops/money-cambio/admin?tab=fx', label: 'Taxas FX e conversão' },
-      { to: '/ops/money-cambio/admin?tab=pricing', label: 'Simulador de cotação', newTag: 'New' },
-      { to: '/ops/money-cambio/admin?tab=fxlocks', label: 'Travas FX (hedge)' },
-      { to: '/ops/money-cambio/admin?tab=compliance', label: 'Limites AML/KYC' },
-      { to: '/ops/money-cambio/admin?tab=audit', label: 'Auditoria de taxas' },
-      { to: '/ops/money-cambio/admin?tab=settlements', label: 'Calendário settlement (T+N)', newTag: 'New' },
-      { to: '/ops/money-cambio/admin?tab=partners', label: 'Parceiros FX (webhook/API key)' },
-    ],
-  },
-  {
-    key: 'fiscalOps',
-    icon: '🧾',
-    label: 'Fiscal OPS',
-    items: [
-      { to: '/ops/fiscal/admin?tab=global', label: 'Global OPS (jurisdições · KPIs)', newTag: 'Hub' },
-      { to: '/ops/fiscal/admin?tab=intelligence', label: 'Inteligência fiscal (scan · contingência)', newTag: 'New' },
-      { to: '/ops/fiscal/admin', label: 'Emissores e integração' },
-      { to: '/ops/fiscal/admin?tab=corridors', label: 'Corredores fiscais mundiais' },
-      { to: '/ops/fiscal/admin?tab=readiness', label: 'Prontidão por emissor' },
-      { to: '/ops/fiscal/admin?tab=certifications', label: 'Certificações (A1, LGPD…)' },
-      { to: '/ops/fiscal/admin?tab=documents', label: 'Documentos NFC-e / NF-e' },
-      { to: '/ops/fiscal/admin?tab=classification', label: 'Classificação NCM / CFOP (teste SKU)' },
-      { to: '/ops/fiscal/admin?tab=gaps', label: 'Gaps unificados (admin + billing)', newTag: 'Workbench' },
-      { to: '/ops/fiscal/admin?tab=slo', label: 'SLA de emissão' },
-      { to: '/ops/fiscal/admin?tab=webhooks', label: 'Webhook DLQ' },
-      { to: '/ops/fiscal/admin?tab=config', label: 'Tenant / SKU / Health' },
-      { to: '/ops/fiscal/admin?tab=governance', label: 'Aprovações e callbacks SEFAZ' },
-      { to: '/fiscal/reconcile', label: 'Reconciliação legado' },
-    ],
-  },
-  {
-    key: 'orderPickup',
-    icon: '📦',
-    label: 'Order Pickup OPS',
-    items: [
-      { to: '/ops/order-pickup/admin', label: 'Cadastro (pedidos / integração)' },
-    ],
-  },
-  {
-    key: 'mlOps',
-    icon: '🤖',
-    label: 'ML OPS',
-    items: [
-      { to: '/ops/ml/admin', label: 'Visão geral e cadastro' },
-      { to: '/ops/ml/admin?tab=partners', label: 'Parceiros de dados ML' },
-      { to: '/ops/ml/admin?tab=networks', label: 'Redes locker mundiais' },
-      { to: '/ops/ml/admin?tab=models', label: 'Modelos e versões' },
-      { to: '/ops/ml/admin?tab=features', label: 'Features diárias' },
-      { to: '/ops/ml/admin?tab=predictions', label: 'Log de predições' },
-      { to: '/ops/ml/admin?tab=feedback', label: 'Feedback de modelo' },
-      { to: '/ops/ml/admin?tab=use_cases', label: 'Casos de uso' },
-      { to: '/ops/ml/admin?tab=registry', label: 'Model registry' },
-      { to: '/ops/ml/admin?tab=training', label: 'Experimentos' },
-      { to: '/ops/ml/admin?tab=catalog', label: 'Catálogo features' },
-      { to: '/ops/ml/admin?tab=drift', label: 'Drift / PSI' },
-      { to: '/ops/ml/admin?tab=governance', label: 'SLO e alertas' },
-      { to: '/ops/ml/admin?tab=deployments', label: 'Deployments' },
-    ],
-  },
-  {
-    key: 'partnersOps',
-    icon: '🤝',
-    label: 'Partners OPS',
-    items: [
-      { to: '/ops/partners/admin', label: 'Visão 360', newTag: 'New1' },
-      { to: '/ops/partners/admin?tab=onboarding', label: 'Onboarding B2B', newTag: 'New2' },
-      { to: '/ops/partners/admin?tab=ecommerce', label: 'E-commerce' },
-      { to: '/ops/partners/admin?tab=logistics', label: 'Logística' },
-      { to: '/ops/partners/admin?tab=integrations', label: 'Webhook e API keys' },
-      { to: '/ops/partners/admin?tab=webhook_monitor', label: 'Entregas webhook', newTag: 'New3' },
-      { to: '/ops/partners/admin?tab=integration_health', label: 'Saúde integração', newTag: 'New4' },
-      { to: '/ops/partners/admin?tab=outbox', label: 'Outbox eventos', newTag: 'New5' },
-      { to: '/ops/partners/admin?tab=settlements', label: 'Settlements', newTag: 'New6' },
-      { to: '/ops/partners/admin?tab=billing', label: 'Billing e line items', newTag: 'New7' },
-      { to: '/ops/partners/admin?tab=invoices', label: 'NF B2B', newTag: 'New8' },
-      { to: '/ops/partners/admin?tab=credits', label: 'Créditos', newTag: 'New9' },
-      { to: '/ops/partners/admin?tab=holds', label: 'Retenções pagamento', newTag: 'New10' },
-      { to: '/ops/partners/admin?tab=sla', label: 'SLA', newTag: 'New11' },
-      { to: '/ops/partners/admin?tab=status', label: 'Histórico status', newTag: 'New12' },
-      { to: '/ops/partners/admin?tab=stores', label: 'Lojas C&C' },
-      {
-        to: '/ops/partners/admin?tab=ecosystem',
-        label: 'Redes mundiais (InPost, DHL…)',
-        newTag: 'New13',
-      },
-      {
-        to: '/ops/partners/admin?tab=global_ops',
-        label: 'Global OPS (corredores · SLA · certificações)',
-        newTag: 'New14',
-      },
-      {
-        to: '/ops/partners/admin?tab=capability_webhooks',
-        label: 'Webhooks capability + dead-letter',
-        newTag: 'New15',
-      },
-      { to: '/ops/partners/admin?tab=contacts', label: 'Contatos B2B' },
-      { to: '/ops/tenants/admin', label: 'Tenants (white label)' },
-      { to: '/ops/partners/dashboard', label: 'Dashboard OPS (v0)' },
-      { to: '/ops/partners/settlement', label: 'Settlement export (v0)' },
-    ],
-  },
-  {
-    key: 'rentalsOps',
-    icon: '🔑',
-    label: 'Rentals OPS',
-    items: [
-      { to: '/ops/rentals/admin', label: 'Visão geral e cadastro', newTag: 'Hub' },
-      { to: '/ops/rentals/admin?tab=networks', label: 'Redes mundiais (50+ players)' },
-      { to: '/ops/rentals/admin?tab=corridors', label: 'Corredores internacionais' },
-      { to: '/ops/rentals/admin?tab=onboarding', label: 'Onboarding KYB', newTag: 'KYB' },
-      { to: '/ops/rentals/admin?tab=capacity', label: 'Capacidade e utilização' },
-      { to: '/ops/rentals/admin?tab=operators', label: 'Operadores B2B' },
-      { to: '/ops/rentals/admin?tab=plans', label: 'Planos (rental_plans)' },
-      { to: '/ops/rentals/admin?tab=contracts', label: 'Contratos — cotação e seguro no slot', newTag: 'New' },
-      {
-        to: '/ops/rentals/admin?tab=contracts',
-        label: 'Preview pricing (contratos)',
-        newTag: 'API',
-      },
-      { to: '/ops/rentals/admin?tab=billing', label: 'Faturamento — multas por atraso', newTag: 'New' },
-      {
-        to: '/ops/rentals/admin?tab=billing',
-        label: 'Aplicar multas (billing)',
-        newTag: 'API',
-      },
-      { to: '/ops/rentals/admin?tab=settlements', label: 'Liquidações operadores' },
-      { to: '/ops/rentals/admin?tab=sla', label: 'Políticas SLA' },
-      { to: '/ops/rentals/admin?tab=premium', label: 'Breaches, disputas, renovação' },
-      { to: '/ops/rentals/admin?tab=events', label: 'Eventos / auditoria' },
-      { to: '/ops/rentals/admin?tab=integrations', label: 'Webhooks e API keys' },
-      { to: '/ops/rentals/admin?tab=advanced', label: 'Avançado — pricing, seguro, dunning, acesso', newTag: 'New' },
-      {
-        to: '/ops/rentals/admin?tab=advanced',
-        label: 'Seguro de conteúdo (apólices)',
-        newTag: 'API',
-      },
-    ],
-  },
-  {
-    key: 'privacyCompliance',
-    icon: '🔒',
-    label: 'Privacy & Compliance OPS',
-    items: [
-      { to: '/ops/privacy-compliance/admin', label: 'Visão geral (compliance global)' },
-      { to: '/ops/privacy-compliance/admin?tab=compliance', label: 'Score compliance (A–F)', newTag: 'New' },
-      { to: '/ops/privacy-compliance/admin?tab=regulation_hub', label: 'Hub GDPR / LGPD / CCPA' },
-      { to: '/ops/privacy-compliance/admin?tab=regulatory_toolkit', label: 'Toolkit regulatório' },
-      { to: '/legal/privacy/players', label: 'Docs legais por player' },
-      { to: '/ops/privacy-compliance/admin?tab=regulations', label: 'Marcos regulatórios (15+)' },
-      { to: '/ops/privacy-compliance/admin?tab=policies', label: 'Políticas de privacidade' },
-      { to: '/ops/privacy-compliance/admin?tab=legal_bases', label: 'Bases legais' },
-      { to: '/ops/privacy-compliance/admin?tab=data_categories', label: 'Categorias de dados' },
-      { to: '/ops/privacy-compliance/admin?tab=ropa', label: 'ROPA — grafo React Flow', newTag: 'New' },
-      { to: '/ops/privacy-compliance/admin?tab=processors', label: 'Processadores e DPA' },
-      { to: '/ops/privacy-compliance/admin?tab=retention', label: 'Retenção' },
-      { to: '/ops/privacy-compliance/admin?tab=consents', label: 'Consentimentos + analytics' },
-      { to: '/ops/privacy-compliance/admin?tab=deletions', label: 'Eliminação de dados' },
-      { to: '/ops/privacy-compliance/admin?tab=subject_requests', label: 'DSAR titulares + playbook' },
-      { to: '/ops/privacy-compliance/admin?tab=breaches', label: 'Incidentes / timeline 72h' },
-      { to: '/ops/privacy-compliance/admin?tab=dpia', label: 'DPIA / LIA / PIA' },
-      { to: '/ops/privacy-compliance/admin?tab=transfers', label: 'Transferências — wizard SCC/BCR', newTag: 'New' },
-      { to: '/ops/privacy-compliance/admin?tab=ecosystem', label: 'Ecossistema locker + certificações', newTag: 'New' },
-      { to: '/ops/privacy-compliance/admin?tab=audit', label: 'Trilha de auditoria', newTag: 'New' },
-      { to: '/ops/privacy-compliance/admin?tab=integrations', label: 'Webhooks e entregas (DLQ)' },
-      { to: '/privacidade', label: 'Página pública /privacidade' },
-      { to: '/legal/privacy', label: 'Documentos legais por jurisdição' },
-    ],
-  },
-  {
-    key: 'financeOpsGlobal',
-    icon: '🌍',
-    label: 'Finance OPS — Global',
-    items: [
-      {
-        to: '/ops/finance/admin?tab=networks',
-        label: 'Redes mundiais · Como integrar (90+ players)',
-        newTag: 'Global',
-      },
-      {
-        to: '/ops/finance/admin?tab=intelligence',
-        label: 'Ecosystem Intelligence (insights, benchmarks)',
-        newTag: 'New',
-      },
-      {
-        to: '/ops/finance/admin?tab=ecosystem',
-        label: 'Ecossistema e relações',
-        newTag: 'KPI',
-      },
-      { to: '/ops/finance/admin?tab=readiness', label: 'Readiness score (A–D)' },
-      { to: '/ops/finance/admin?tab=roadmap', label: 'Roadmap integração' },
-      { to: '/ops/finance/admin?tab=contracts', label: 'Contratos comerciais (MSA)' },
-      { to: '/ops/finance/admin?tab=slas', label: 'SLAs e breaches' },
-    ],
-  },
-  {
-    key: 'financeOpsCommercial',
-    icon: '📊',
-    label: 'Finance OPS — Comercial',
-    items: [
-      { to: '/ops/finance/admin?tab=dunning', label: 'Cobrança (dunning)' },
-      { to: '/ops/finance/admin?tab=tiers', label: 'Níveis comerciais' },
-      { to: '/ops/finance/admin?tab=fx', label: 'Câmbio (FX)' },
-      { to: '/ops/finance/admin?tab=tax', label: 'Corredores fiscais' },
-      { to: '/ops/finance/admin?tab=documents', label: 'Documentos NF (PDF/XML)' },
-      { to: '/ops/finance/admin?tab=audit', label: 'Auditoria financeira' },
-      { to: '/ops/finance/admin?tab=revrec', label: 'Reconhecimento de receita' },
-      { to: '/ops/finance/admin?tab=jobs', label: 'Jobs agendados (dunning/revrec)' },
-    ],
-  },
-  {
-    key: 'financeOps',
-    icon: '💰',
-    label: 'Finance OPS',
-    items: [
-      { to: '/ops/finance/admin', label: 'Visão geral e cadastro', newTag: 'Hub' },
-      { to: '/ops/finance/admin?tab=partners', label: 'Parceiros financeiros' },
-      { to: '/ops/finance/admin?tab=billing', label: 'Billing + line items' },
-      { to: '/ops/finance/admin?tab=invoices', label: 'NF B2B' },
-      { to: '/ops/finance/admin?tab=settlements', label: 'Settlements (lotes)' },
-      { to: '/ops/finance/admin?tab=treasury', label: 'Créditos, holds, comissão' },
-      { to: '/ops/finance/admin?tab=wallet', label: 'Wallet' },
-      { to: '/ops/finance/admin?tab=pnl', label: 'PnL locker (cost center)' },
-      { to: '/ops/finance/admin?tab=reconciliation', label: 'Gaps fiscais' },
-      { to: '/ops/finance/admin?tab=webhooks', label: 'Webhook DLQ + replay' },
-      { to: '/ops/finance/admin?tab=ops', label: 'NF ops e eventos' },
-      { to: '/ops/billing/kpis', label: 'KPIs billing / fiscal (FA-5)' },
-      { to: '/ops/billing/invoices', label: 'Busca invoice (billing-svc)' },
-    ],
-  },
-  {
-    key: 'marketplace',
-    icon: '🏪',
-    label: 'Marketplace OPS',
-    items: [
-      { to: '/ops/marketplace/admin', label: 'Visão geral e cadastro' },
-      { to: '/ops/marketplace/admin?tab=sellers', label: 'Sellers' },
-      { to: '/ops/marketplace/admin?tab=channels', label: 'Canais e redes (InPost, ML…)' },
-      {
-        to: '/ops/marketplace/admin?tab=readiness',
-        label: 'Prontidão integração + Global OPS',
-        newTag: 'New1',
-      },
-      { to: '/ops/marketplace/admin?tab=settlements', label: 'Repasses e liquidação' },
-      { to: '/ops/marketplace/admin?tab=kyc', label: 'KYC / compliance' },
-      { to: '/ops/marketplace/admin?tab=disputes', label: 'Disputas comissão' },
-      { to: '/ops/marketplace/admin?tab=commissions', label: 'Comissões' },
-    ],
-  },
-  {
-    key: 'marketing',
-    icon: '🎯',
-    label: 'Marketing',
-    items: [
-      { to: '/ops/marketing/promotions', label: 'Hub Promoções (mundial)', newTag: 'Hub' },
-      { to: '/ops/marketing/promotions?tab=campaigns', label: 'Campanhas' },
-      { to: '/ops/marketing/promotions?tab=promotions', label: 'Promoções' },
-      { to: '/ops/marketing/promotions?tab=redemptions', label: 'Resgates' },
-      { to: '/ops/marketing/promotions?tab=lab', label: 'Laboratório promo', newTag: 'Lab' },
-      { to: '/ops/products/pricing-fiscal', label: 'Pricing & fiscal — API lab' },
-      { to: '/ops/products/admin?tab=bundles', label: 'Bundles (PR3)' },
-      { to: '/ops/products/pricing-rules', label: 'Regras de preço' },
-    ],
-  },
-  {
-    key: 'productsCatalog',
-    icon: '📦',
-    label: 'Produtos & Catálogo',
-    items: [
-      { to: '/ops/products/admin', label: 'Hub — visão geral' },
-      { to: '/ops/products/admin?tab=ecosystem', label: 'Ecossistema mundial', newTag: 'Hub' },
-      { to: '/ops/products/admin?tab=taxonomy', label: 'PIM — taxonomias (GS1, ML…)' },
-      { to: '/ops/products/admin?tab=channels', label: 'PIM — canais / marketplaces' },
-      { to: '/ops/products/admin?tab=attributes', label: 'PIM — atributos' },
-      { to: '/ops/products/catalog', label: 'Catálogo SKU' },
-      { to: '/ops/products/categories', label: 'Categorias' },
-      { to: '/ops/products/assets', label: 'Mídia & barcodes' },
-      { to: '/ops/products/admin?tab=bundles', label: 'Bundles' },
-      { to: '/ops/products/admin?tab=fiscal', label: 'Pricing & fiscal' },
-      { to: '/ops/products/admin?tab=inventory', label: 'Estoque & reservas' },
-    ],
-  },
-  {
-    key: 'lifecycle',
-    icon: '♻️',
-    label: 'Ciclo de Vida',
-    items: [
-      { to: '/lifecycle/metrics', label: 'Métricas' },
-      { to: '/lifecycle/ranking', label: 'Ranking' },
-      { to: '/lifecycle/health', label: 'Saúde' },
-    ],
-  },
-  {
-    key: 'intelligence',
-    icon: '🧠',
-    label: 'Inteligência',
-    items: [
-      { to: '/partners/catalog', label: 'Catálogo' },
-      { to: '/partners/webhooks', label: 'Webhooks' },
-      { to: '/intelligence/compatibility', label: 'Compatibilidade' },
-      { to: '/intelligence/predictive-health', label: 'Saúde preditiva' },
-      { to: '/intelligence/occupancy-forecast', label: 'Previsão de ocupação' },
-      { to: '/intelligence/feedback-insights', label: 'Insights de feedback' },
-    ],
-  },
-  {
-    key: 'runtime',
-    icon: '⚙️',
-    label: 'Runtime / Operacional',
-    items: [
-      { to: '/runtime/slots', label: 'Slots e ocupação' },
-      { to: '/runtime/allocations', label: 'Alocações' },
-    ],
-  },
-  {
-    key: 'operacional',
-    icon: '📡',
-    label: 'Operacional',
-    items: [
-      { to: '/partners/ops/lockers', label: 'Lockers' },
-      { to: '/partners/ops/pickups', label: 'Pickups ativos' },
-    ],
-  },
-  {
-    key: 'fiscal',
-    icon: '💼',
-    label: 'Fiscal',
-    items: [
-      { to: '/finance/wallet', label: 'Wallet' },
-      { to: '/finance/transactions', label: 'Transações' },
-      { to: '/finance/billing/cycles', label: 'Ciclos' },
-      { to: '/finance/invoices', label: 'Notas B2B' },
-      { to: '/finance/credit-notes', label: 'Créditos' },
-      { to: '/finance/disputes', label: 'Disputas' },
-      { to: '/fiscal/reconcile', label: 'Reconciliação' },
-    ],
-  },
-]
+import OpsSidebarNav from '../components/navigation/OpsSidebarNav'
+import { OPS_MENU_GROUPS } from '../navigation/opsMenuGroups'
 
 export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
     cadastros: true,
+    paymentsOps: true,
+    moneyOps: true,
+    cambioOps: false,
+    fiscalOps: true,
     partnersOps: true,
     orderPickup: true,
     mlOps: true,
@@ -406,10 +19,7 @@ export default function Menu() {
     financeOpsCommercial: true,
     financeOps: true,
     marketplace: true,
-    moneyOps: true,
-    cambioOps: true,
-    fiscalOps: true,
-    privacyCompliance: true,
+    privacyCompliance: false,
     rentalsOps: true,
     marketing: true,
     productsCatalog: true,
@@ -423,48 +33,62 @@ export default function Menu() {
   const navigate = useNavigate()
   const profile = auth?.profile ?? 'partner'
 
-  const filteredGroups = groups
-    .filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
+  const filteredGroups = OPS_MENU_GROUPS.filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
     .map((g) => {
       if (profile === 'admin') return g
       if (profile === 'partner') {
-        if (g.key === 'ops') return { ...g, items: [] }
+        if (g.key === 'ops') return { ...g, items: [], sections: undefined, hub: undefined }
         if (g.key === 'lifecycle') return g
         if (g.key === 'intelligence') {
           return {
             ...g,
-            items: g.items.filter(
+            items: (g.items ?? []).filter(
               (i) => i.to.startsWith('/partners') || i.to.startsWith('/intelligence/'),
             ),
+            sections: undefined,
+            hub: undefined,
           }
         }
         if (g.key === 'runtime') return g
-        if (g.key === 'fiscal') return { ...g, items: g.items.filter((i) => i.to.startsWith('/finance')) }
+        if (g.key === 'fiscal') {
+          return {
+            ...g,
+            items: (g.items ?? []).filter((i) => i.to.startsWith('/finance')),
+            sections: undefined,
+            hub: undefined,
+          }
+        }
       }
       if (profile === 'ops') {
-        if (g.key === 'ops') return g
-        if (g.key === 'cadastros') return g
-        if (g.key === 'partnersOps') return g
-        if (g.key === 'orderPickup') return g
-        if (g.key === 'mlOps') return g
-        if (g.key === 'financeOpsGlobal') return g
-        if (g.key === 'financeOpsCommercial') return g
-        if (g.key === 'financeOps') return g
-        if (g.key === 'marketplace') return g
-        if (g.key === 'fiscalOps') return g
-        if (g.key === 'moneyOps') return g
-        if (g.key === 'cambioOps') return g
-        if (g.key === 'marketing') return g
-        if (g.key === 'productsCatalog') return g
-        if (g.key === 'lifecycle') return g
-        if (g.key === 'operacional') return g
-        if (g.key === 'intelligence') return { ...g, items: [] }
-        if (g.key === 'fiscal') return { ...g, items: [] }
+        const opsKeys = new Set([
+          'ops',
+          'cadastros',
+          'paymentsOps',
+          'moneyOps',
+          'cambioOps',
+          'fiscalOps',
+          'partnersOps',
+          'orderPickup',
+          'mlOps',
+          'financeOpsGlobal',
+          'financeOpsCommercial',
+          'financeOps',
+          'marketplace',
+          'marketing',
+          'productsCatalog',
+          'lifecycle',
+          'operacional',
+          'rentalsOps',
+          'privacyCompliance',
+        ])
+        if (opsKeys.has(g.key)) return g
+        if (g.key === 'intelligence') return { ...g, items: [], sections: undefined, hub: undefined }
+        if (g.key === 'fiscal') return { ...g, items: [], sections: undefined, hub: undefined }
       }
-      if (g.key === 'operacional') return { ...g, items: [] }
-      return { ...g, items: [] }
+      if (g.key === 'operacional') return { ...g, items: [], sections: undefined, hub: undefined }
+      return { ...g, items: [], sections: undefined, hub: undefined }
     })
-    .filter((g) => g.items.length > 0)
+    .filter((g) => (g.items?.length ?? 0) > 0 || (g.sections?.length ?? 0) > 0 || g.hub)
 
   return (
     <aside className="w-72 shrink-0 border-r border-gray-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
@@ -496,48 +120,11 @@ export default function Menu() {
         )}
       </div>
 
-      {filteredGroups.map((group) => (
-        <div key={group.key} className="mb-2">
-          <button
-            type="button"
-            className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
-            onClick={() => setOpen((s) => ({ ...s, [group.key]: !s[group.key] }))}
-          >
-            <span className="flex items-center gap-2">
-              <span>{group.icon}</span>
-              {group.label}
-            </span>
-            <span className="text-xs">{open[group.key] ? '▾' : '▸'}</span>
-          </button>
-
-          {open[group.key] && (
-            <div className="mt-1 space-y-1 pl-2">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  className={({ isActive }) =>
-                    `block rounded-md px-3 py-2 text-sm ${
-                      isActive
-                        ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-800 dark:text-indigo-300'
-                        : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800'
-                    }`
-                  }
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span>{item.label}</span>
-                    {item.newTag ? (
-                      <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                        {item.newTag}
-                      </span>
-                    ) : null}
-                  </span>
-                </NavLink>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+      <OpsSidebarNav
+        groups={filteredGroups}
+        open={open}
+        onToggleGroup={(key) => setOpen((s) => ({ ...s, [key]: !s[key] }))}
+      />
     </aside>
   )
 }

@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { useOpsTabFromUrl } from '../../hooks/useOpsTabFromUrl'
 import { fiscalAdminApi, type FiscalIssuer, type GapWorkbenchResponse, type UnifiedGap } from '../../api/fiscalAdmin'
 
 const TABS = [
@@ -20,10 +21,7 @@ const TABS = [
 type Tab = (typeof TABS)[number]
 
 export default function OpsFiscalAdmin() {
-  const [searchParams, setSearchParams] = useSearchParams()
-  const tabParam = searchParams.get('tab') || 'global'
-  const tab: Tab = TABS.includes(tabParam as Tab) ? (tabParam as Tab) : 'global'
-  const setTab = (t: Tab) => setSearchParams({ tab: t }, { replace: true })
+  const { tab, setTab } = useOpsTabFromUrl('/ops/fiscal/admin', TABS, 'global')
   const [issuers, setIssuers] = useState<FiscalIssuer[]>([])
   const [documents, setDocuments] = useState<unknown[]>([])
   const [gapWorkbench, setGapWorkbench] = useState<GapWorkbenchResponse | null>(null)

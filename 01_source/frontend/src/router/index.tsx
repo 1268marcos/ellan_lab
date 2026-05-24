@@ -17,6 +17,7 @@ import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
+const OpsPaymentsAdmin = lazy(() => import('../pages/ops/OpsPaymentsAdmin'))
 import OpsMoneyCambioAdmin from '../pages/ops/OpsMoneyCambioAdmin'
 import OpsFiscalAdmin from '../pages/ops/OpsFiscalAdmin'
 import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
@@ -282,6 +283,18 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsPaymentGatewayAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/payments/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <Suspense fallback={<p className="p-4 text-sm text-gray-500">Carregando Payments OPS…</p>}>
+                <OpsPaymentsAdmin />
+              </Suspense>
             </OpsOnly>
           </Protected>
         }
