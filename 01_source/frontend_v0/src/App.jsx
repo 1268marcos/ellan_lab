@@ -95,6 +95,8 @@ const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
+const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPage"));
+const OpsFiscalAdminPage = lazy(() => import("./pages/OpsFiscalAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
 const OpsFinanceAdminPage = lazy(() => import("./pages/OpsFinanceAdminPage"));
@@ -493,12 +495,274 @@ function TopNav() {
       opsSubGroup: "Payment Gateway",
     },
     {
+      to: "/ops/money-cambio/admin",
+      label: "Money & Cambio — visao global",
+      aria: "Dashboard KPIs, grade de prontidao e cobertura mundial",
+      group: "Money OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=players",
+      label: "Money — players ecossistema",
+      aria: "Lockers, carriers, marketplaces, coleta, food delivery — ligação Finance/Fiscal",
+      group: "Money OPS",
+      opsSubGroup: "Ecossistema",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=segments",
+      label: "Money — segmentos",
+      aria: "Taxonomia LOCKER_NETWORK, CARRIER, MARKETPLACE, FOOD_DELIVERY…",
+      group: "Money OPS",
+      opsSubGroup: "Ecossistema",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=relations",
+      label: "Money — relacoes players",
+      aria: "Grafo WHITE_LABEL, AGGREGATES, CHANNEL_USES_CARRIER…",
+      group: "Money OPS",
+      opsSubGroup: "Ecossistema",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=intelligence",
+      label: "Money — intelligence",
+      aria: "Readiness score, insights, gaps fiscal/FX, alertas",
+      group: "Money OPS",
+      opsSubGroup: "Intelligence",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=countries",
+      label: "Money — paises operacionais",
+      aria: "money_operating_country, redes locker e zona regulatoria",
+      group: "Money OPS",
+      opsSubGroup: "Mundial",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=matrix",
+      label: "Money — metodo x pais",
+      aria: "money_method_country_matrix",
+      group: "Money OPS",
+      opsSubGroup: "Mundial",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=aliases",
+      label: "Money — aliases UI",
+      aria: "payment_method_ui_alias",
+      group: "Money OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=currencies",
+      label: "Money — moedas ISO",
+      aria: "money_currency_catalog",
+      group: "Money OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=methods",
+      label: "Money — metodos de pagamento",
+      aria: "payment_method_catalog",
+      group: "Money OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=interfaces",
+      label: "Money — interfaces (totem, app)",
+      aria: "payment_interface_catalog",
+      group: "Money OPS",
+      opsSubGroup: "Catalogo",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=wallets",
+      label: "Money — wallet providers",
+      aria: "wallet_provider_catalog",
+      group: "Money OPS",
+      opsSubGroup: "Wallets",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=corridors",
+      label: "Cambio — corredores pagamento",
+      aria: "cambio_payment_corridor cross-border",
+      group: "Cambio OPS",
+      opsSubGroup: "Corredores",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=fx",
+      label: "Cambio — taxas FX",
+      aria: "cambio_fx_rates e conversao",
+      group: "Cambio OPS",
+      opsSubGroup: "Taxas",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=compliance",
+      label: "Cambio — limites AML/KYC",
+      aria: "money_compliance_limit",
+      group: "Cambio OPS",
+      opsSubGroup: "Compliance",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=audit",
+      label: "Cambio — auditoria FX",
+      aria: "cambio_fx_rate_audit",
+      group: "Cambio OPS",
+      opsSubGroup: "Auditoria",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=settlements",
+      label: "Cambio — calendario settlement",
+      aria: "money_settlement_schedule T+N, cut-off UTC por player/corredor",
+      group: "Cambio OPS",
+      opsSubGroup: "Settlement",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=pricing",
+      label: "Cambio — simulador cotacao",
+      aria: "Preview FX + spread + markup + compliance + settlement",
+      group: "Cambio OPS",
+      opsSubGroup: "Pricing",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=fxlocks",
+      label: "Cambio — travas FX",
+      aria: "money_fx_lock hedge operacional",
+      group: "Cambio OPS",
+      opsSubGroup: "Pricing",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=treasury",
+      label: "Money — tesouraria FX",
+      aria: "Exposicao por moeda, gaps e locks ativos",
+      group: "Money OPS",
+      opsSubGroup: "Tesouraria",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=rails",
+      label: "Money — payment rails",
+      aria: "Metodos e wallets habilitados por player e pais",
+      group: "Money OPS",
+      opsSubGroup: "Rails",
+      newTag: "New",
+    },
+    {
+      to: "/ops/money-cambio/admin?tab=partners",
+      label: "Cambio — parceiros FX",
+      aria: "Integracao, webhook e API key",
+      group: "Cambio OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=global",
+      label: "Fiscal OPS — Global (jurisdicoes · KPIs)",
+      aria: "Jurisdicoes BR PT ES DE US, resumo global e corredores",
+      group: "Fiscal OPS",
+      opsSubGroup: "Global",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=intelligence",
+      label: "Fiscal OPS — inteligencia",
+      aria: "Scan insights, certificados expirando, contingencia SEFAZ, webhook DLQ",
+      group: "Fiscal OPS",
+      opsSubGroup: "Inteligencia",
+      newTag: "New",
+    },
+    {
+      to: "/ops/fiscal/admin",
+      label: "Fiscal OPS — emissores e integracao",
+      aria: "Emissores fiscais, webhook, API key rotation",
+      group: "Fiscal OPS",
+      opsSubGroup: "Emissores",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=corridors",
+      label: "Fiscal OPS — corredores mundiais",
+      aria: "fiscal_tax_corridors BR-BR, BR-PT, PT-ES, regras ICMS/IVA",
+      group: "Fiscal OPS",
+      opsSubGroup: "Corredores",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=readiness",
+      label: "Fiscal OPS — prontidao",
+      aria: "Score A-D por emissor, certificados e API",
+      group: "Fiscal OPS",
+      opsSubGroup: "Prontidao",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=certifications",
+      label: "Fiscal OPS — certificacoes",
+      aria: "A1 ICP-Brasil, LGPD, SAF-T, NFC-e homolog",
+      group: "Fiscal OPS",
+      opsSubGroup: "Compliance",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=documents",
+      label: "Fiscal OPS — documentos",
+      aria: "fiscal_documents NFC-e e comprovantes",
+      group: "Fiscal OPS",
+      opsSubGroup: "Documentos",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=classification",
+      label: "Fiscal OPS — NCM / CFOP",
+      aria: "Regras e log de classificacao automatica",
+      group: "Fiscal OPS",
+      opsSubGroup: "Classificacao",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=gaps",
+      label: "Fiscal OPS — reconciliacao",
+      aria: "fiscal_reconciliation_gaps e resolucao",
+      group: "Fiscal OPS",
+      opsSubGroup: "Gaps",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=slo",
+      label: "Fiscal OPS — SLA emissao",
+      aria: "fiscal_emission_slo_policies p99 e success rate",
+      group: "Fiscal OPS",
+      opsSubGroup: "SLA",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=webhooks",
+      label: "Fiscal OPS — webhook DLQ",
+      aria: "fiscal_webhook_delivery_log falhas e retries",
+      group: "Fiscal OPS",
+      opsSubGroup: "Webhooks",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=config",
+      label: "Fiscal OPS — tenant e SKU",
+      aria: "tenant_fiscal_config, product_fiscal_config e provider health",
+      group: "Fiscal OPS",
+      opsSubGroup: "Config",
+    },
+    {
+      to: "/ops/fiscal/admin?tab=governance",
+      label: "Fiscal OPS — governanca",
+      aria: "fiscal_accounting_approvals e fiscal_authority_callbacks",
+      group: "Fiscal OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
       to: "/ops/finance/admin?tab=networks",
       label: "Finance — redes mundiais",
-      aria: "Catálogo 88+ players: InPost, DHL, Magalu, Mercado Livre, Amazon, carriers, food delivery",
+      aria: "Catálogo 90+ players, world-priority-index e guia Como integrar por player",
       group: "Finance OPS — Global",
       opsSubGroup: "Catálogo",
       newTag: "Global",
+    },
+    {
+      to: "/ops/finance/admin?tab=intelligence",
+      label: "Finance — inteligencia",
+      aria: "Ecosystem Intelligence: scan, insights, benchmarks, health checks e resolver",
+      group: "Finance OPS — Global",
+      opsSubGroup: "Inteligência",
+      newTag: "New",
     },
     {
       to: "/ops/finance/admin?tab=ecosystem",
@@ -1533,6 +1797,8 @@ function TopNav() {
     "Cadastros OPS",
     "ML OPS",
     "Marketplace OPS",
+    "Money OPS",
+    "Cambio OPS",
     "Privacy & Compliance OPS",
     "Order / Pickup",
     "Lockers",
@@ -1544,6 +1810,7 @@ function TopNav() {
     "Produtos & Catálogo",
     "Marketing",
     "Billing / Fiscal",
+    "Fiscal OPS",
     "Integrações",
     "Partners",
     "Políticas",
@@ -2839,6 +3106,22 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/money-cambio/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMoneyCambioAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/fiscal/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsFiscalAdminPage />)}
                 </OpsRoute>
               }
             />

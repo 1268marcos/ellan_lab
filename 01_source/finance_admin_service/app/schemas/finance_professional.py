@@ -76,6 +76,8 @@ class PartnerReadinessOut(BaseModel):
     integration_score: int
     billing_score: int
     compliance_score: int
+    blueprint_score: int = 0
+    integration_blueprint_code: str | None = None
     grade: str
     blockers_json: str
     computed_at: datetime

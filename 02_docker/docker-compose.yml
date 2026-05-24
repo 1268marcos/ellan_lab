@@ -739,6 +739,65 @@ services:
       start_period: 40s
 
   # =========================
+  # FISCAL ADMIN (OPS — locker_central)
+  # =========================
+  fiscal_admin_service:
+    build:
+      context: ../01_source/fiscal_admin_service
+      dockerfile: Dockerfile
+    container_name: fiscal_admin_service
+    restart: unless-stopped
+    ports:
+      - "8024:8024"
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - FISCAL_ADMIN_PORT=8024
+      - SEED_ON_START=false
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8024/api/v1/fiscal-admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  money_cambio_admin_service:
+    build:
+      context: ../01_source/money_cambio_admin_service
+      dockerfile: Dockerfile
+    container_name: money_cambio_admin_service
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8125:8125"
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
+      - MONEY_CAMBIO_ADMIN_PORT=8125
+      - SEED_ON_START=true
+      - FINANCE_ADMIN_BASE_URL=http://host.docker.internal:8123/api/v1/finance-admin
+      - FINANCE_ADMIN_SYNC_ENABLED=true
+      - FINANCE_ADMIN_SYNC_ON_START=false
+      - FINANCE_ADMIN_SYNC_AFTER_SEED=false
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+    networks:
+      - locker-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8125/api/v1/money-cambio-admin/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # =========================
   # NOTIFICATION DELIVERY WORKER
   # =========================
   notification_delivery_worker:

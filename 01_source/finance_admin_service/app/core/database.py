@@ -81,7 +81,27 @@ def init_db() -> None:
     from app.models import finance_professional as _finance_professional  # noqa: F401
     from app.models import finance_advanced as _finance_advanced  # noqa: F401
     from app.models import finance_revenue as _finance_revenue  # noqa: F401
+    from app.models import finance_world_meta as _finance_world_meta  # noqa: F401
+    from app.models import finance_intelligence as _finance_intelligence  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _migrate_b2b_fiscal_columns()
     _migrate_catalog_columns()
+    _migrate_readiness_blueprint_columns()
+
+
+def _migrate_readiness_blueprint_columns() -> None:
+    url = get_settings().database_url
+    if not url.startswith("sqlite") or ":memory:" in url:
+        return
+    if "finance_partner_readiness" not in inspect(engine).get_table_names():
+        return
+    existing = {c["name"] for c in inspect(engine).get_columns("finance_partner_readiness")}
+    alters: list[tuple[str, str]] = [
+        ("integration_blueprint_code", "VARCHAR(40)"),
+        ("blueprint_score", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    with engine.begin() as conn:
+        for col, ddl in alters:
+            if col not in existing:
+                conn.execute(text(f"ALTER TABLE finance_partner_readiness ADD COLUMN {col} {ddl}"))

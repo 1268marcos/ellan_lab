@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -49,6 +49,16 @@ def list_locker_network_players(
         total=len(items),
         priority_codes=sorted(PRIORITY_LOCKER_CODES),
     )
+
+
+@router.get("/ml-locker-network-players/by-finance-code/{finance_catalog_code}", response_model=MlLockerNetworkPlayerOut)
+def get_locker_network_player_by_finance_code(
+    finance_catalog_code: str, db: Session = Depends(get_db)
+) -> MlLockerNetworkPlayerOut:
+    row = network_players_service.get_network_player_by_finance_code(db, finance_catalog_code)
+    if not row:
+        raise HTTPException(status_code=404, detail="ml_network_player_not_found")
+    return MlLockerNetworkPlayerOut.model_validate(row)
 
 
 @router.post("/ml-locker-network-players/seed-from-catalog", response_model=MlNetworkSeedResultOut)

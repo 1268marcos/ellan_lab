@@ -279,6 +279,9 @@ export default function OpsPaymentGatewayAdminPage() {
           <Link to="/ops/partners/dashboard" style={crossShortcutLinkStyle}>
             Partners dashboard
           </Link>
+          <Link to="/ops/fiscal/admin" style={crossShortcutLinkStyle}>
+            Fiscal OPS
+          </Link>
         </div>
 
         <OpsPageTitleHeader

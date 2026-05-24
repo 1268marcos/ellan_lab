@@ -24,6 +24,7 @@ class EcosystemPlayerOut(BaseModel):
     api_docs_url: Optional[str] = None
     notes: Optional[str] = None
     global_tier: str
+    finance_catalog_code: str | None = None
     sort_order: int
     active: bool
 

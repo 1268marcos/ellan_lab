@@ -73,6 +73,8 @@ class JobExecuteOut(BaseModel):
     job_run_id: str
     job_code: str
     status: str
+    recomputed: int | None = None
+    average_score: float | None = None
 
 
 class FiscalEmitOut(BaseModel):

@@ -55,6 +55,7 @@ def _player_out(row: PartnerEcosystemPlayer) -> EcosystemPlayerOut:
         api_docs_url=row.api_docs_url,
         notes=row.notes,
         global_tier=row.global_tier,
+        finance_catalog_code=getattr(row, "finance_catalog_code", None) or row.code,
         sort_order=row.sort_order,
         active=row.active,
     )
@@ -89,6 +90,7 @@ _PLAYER_COLUMNS = {
     "website_url",
     "estimated_locker_count",
     "data_source",
+    "finance_catalog_code",
 }
 
 
@@ -98,6 +100,8 @@ def sync_catalog(db: Session) -> EcosystemSyncOut:
     for entry in LOCKER_ECOSYSTEM_CATALOG:
         row = db.get(PartnerEcosystemPlayer, entry["id"])
         payload = {k: v for k, v in entry.items() if k != "id" and k in _PLAYER_COLUMNS}
+        if "finance_catalog_code" not in payload or not payload.get("finance_catalog_code"):
+            payload["finance_catalog_code"] = entry.get("finance_catalog_code") or entry["code"]
         if row:
             for key, val in payload.items():
                 setattr(row, key, val)
@@ -138,6 +142,18 @@ def list_players(
     items = [_player_out(r) for r in rows]
     priority_count = sum(1 for i in items if i.code in PRIORITY_ECOSYSTEM_CODES)
     return EcosystemPlayerListOut(items=items, total=len(items), priority_count=priority_count)
+
+
+def get_player_by_finance_catalog_code(db: Session, finance_catalog_code: str) -> EcosystemPlayerOut | None:
+    code = finance_catalog_code.upper()
+    row = (
+        db.query(PartnerEcosystemPlayer)
+        .filter(
+            (PartnerEcosystemPlayer.finance_catalog_code == code) | (PartnerEcosystemPlayer.code == code)
+        )
+        .first()
+    )
+    return _player_out(row) if row else None
 
 
 def list_links(db: Session, partner_id: str, partner_type: str | None = None) -> EcosystemLinkListOut:

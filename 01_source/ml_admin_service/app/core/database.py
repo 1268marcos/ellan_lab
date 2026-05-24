@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
@@ -45,3 +45,18 @@ def init_db() -> None:
     from app.models import partner as _partner  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _apply_sqlite_compat_migrations(engine)
+
+
+def _apply_sqlite_compat_migrations(eng) -> None:
+    if not str(eng.url).startswith("sqlite"):
+        return
+    alters = [
+        "ALTER TABLE ml_locker_network_players ADD COLUMN finance_catalog_code VARCHAR(48)",
+    ]
+    with eng.begin() as conn:
+        for stmt in alters:
+            try:
+                conn.execute(text(stmt))
+            except Exception:
+                pass

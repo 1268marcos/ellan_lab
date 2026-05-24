@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { financeAdminApi, type FinancePartner, type LockerNetworkPlayer } from '../../api/financeAdmin'
 
 type Tab =
+  | 'intelligence'
   | 'networks'
   | 'ecosystem'
   | 'readiness'
@@ -30,6 +31,7 @@ type Tab =
 
 const TABS: { key: Tab; label: string }[] = [
   { key: 'networks', label: 'Redes mundiais' },
+  { key: 'intelligence', label: 'Inteligência' },
   { key: 'ecosystem', label: 'Ecossistema' },
   { key: 'readiness', label: 'Readiness' },
   { key: 'roadmap', label: 'Roadmap integração' },
@@ -64,7 +66,22 @@ export default function OpsFinanceAdmin() {
 
   const [networkCatalog, setNetworkCatalog] = useState<LockerNetworkPlayer[]>([])
   const [networkStats, setNetworkStats] = useState<Record<string, number>>({})
+  const [worldPriorityIndex, setWorldPriorityIndex] = useState<
+    { code: string; segment: string; countries: string[] }[]
+  >([])
+  const [ecosystemMatrix, setEcosystemMatrix] = useState<{
+    total_players: number
+    total_relations: number
+    total_aliases: number
+  } | null>(null)
   const [networkFilter, setNetworkFilter] = useState('')
+  const [selectedNetworkCode, setSelectedNetworkCode] = useState('')
+  const [integrationGuide, setIntegrationGuide] = useState<Awaited<
+    ReturnType<typeof financeAdminApi.playerIntegrationGuide>
+  >['data'] | null>(null)
+  const [intelDashboard, setIntelDashboard] = useState<Record<string, unknown> | null>(null)
+  const [intelInsights, setIntelInsights] = useState<unknown[]>([])
+  const [intelBenchmarks, setIntelBenchmarks] = useState<unknown[]>([])
   const [partners, setPartners] = useState<FinancePartner[]>([])
   const [plans, setPlans] = useState<unknown[]>([])
   const [cycles, setCycles] = useState<unknown[]>([])
@@ -162,6 +179,8 @@ export default function OpsFinanceAdmin() {
         rs,
         re,
         jr,
+        wpi,
+        matrix,
       ] = await Promise.all([
         safe(
           () =>
@@ -208,9 +227,23 @@ export default function OpsFinanceAdmin() {
         safe(() => financeAdminApi.listRevenueSchedules(), emptyList),
         safe(() => financeAdminApi.listRevenueEntries(), emptyList),
         safe(() => financeAdminApi.listJobRuns(), emptyList),
+        safe(() => financeAdminApi.worldPriorityIndex(), { items: [], total: 0 }),
+        safe(() => financeAdminApi.ecosystemMatrix(), {
+          segments: [],
+          matrix: {},
+          total_players: 0,
+          total_relations: 0,
+          total_aliases: 0,
+        }),
       ])
       setNetworkCatalog(nc.items ?? [])
       setNetworkStats(nc.by_parent_group ?? {})
+      setWorldPriorityIndex(wpi.items ?? [])
+      setEcosystemMatrix({
+        total_players: matrix.total_players ?? 0,
+        total_relations: matrix.total_relations ?? 0,
+        total_aliases: matrix.total_aliases ?? 0,
+      })
       setPartners(p.items ?? [])
       setPlans(pl.items ?? [])
       setCycles(cy.items ?? [])
@@ -251,7 +284,7 @@ export default function OpsFinanceAdmin() {
       const hasCatalog = (nc.items?.length ?? 0) > 0
       if (!hasCore && !hasCatalog) {
         setError(
-          'Nenhum dado finance-admin. Inicie o serviço na porta 8023 e clique Seed (ou Sync catálogo).',
+          'Nenhum dado finance-admin. Inicie o serviço na porta 8123 e clique Seed (ou Sync catálogo).',
         )
       } else if (!hasCatalog || (li.items?.length ?? 0) === 0 && (st.items?.length ?? 0) === 0) {
         setMessage(
@@ -268,6 +301,55 @@ export default function OpsFinanceAdmin() {
   useEffect(() => {
     void load()
   }, [load])
+
+  const loadIntelligence = useCallback(async () => {
+    try {
+      const [dash, ins, bench] = await Promise.all([
+        financeAdminApi.intelligenceDashboard(),
+        financeAdminApi.listEcosystemInsights(),
+        financeAdminApi.listPlayerBenchmarks(),
+      ])
+      setIntelDashboard(dash.data as Record<string, unknown>)
+      setIntelInsights(ins.data.items ?? [])
+      setIntelBenchmarks(bench.data.items ?? [])
+    } catch {
+      setIntelDashboard(null)
+      setIntelInsights([])
+      setIntelBenchmarks([])
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'intelligence') void loadIntelligence()
+  }, [tab, loadIntelligence])
+
+  const onAnalyzeIntelligence = async () => {
+    setLoading(true)
+    try {
+      const { data } = await financeAdminApi.analyzeEcosystem()
+      setMessage(
+        `Scan: ${data.insights_created} insights · ${data.benchmarks_computed} benchmarks · ${data.health_checks_run} health checks`,
+      )
+      await loadIntelligence()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha no scan de inteligência')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onResolveInsight = async (insightId: string) => {
+    setLoading(true)
+    try {
+      await financeAdminApi.resolveInsight(insightId)
+      setMessage(`Insight ${insightId} resolvido.`)
+      await loadIntelligence()
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao resolver insight')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const onSyncCatalog = async () => {
     setLoading(true)
@@ -346,10 +428,29 @@ export default function OpsFinanceAdmin() {
     setLoading(true)
     try {
       const { data } = await financeAdminApi.recomputeReadiness()
-      setMessage(`Readiness: ${data.recomputed} players · média ${data.average_score}`)
+      setMessage(`Readiness por blueprint: ${data.recomputed} players · média ${data.average_score}`)
       await load()
+      if (selectedNetworkCode) {
+        const { data: guide } = await financeAdminApi.playerIntegrationGuide(selectedNetworkCode)
+        setIntegrationGuide(guide)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha readiness')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadIntegrationGuide = async (catalogCode: string) => {
+    setSelectedNetworkCode(catalogCode)
+    setLoading(true)
+    setError(null)
+    try {
+      const { data } = await financeAdminApi.playerIntegrationGuide(catalogCode)
+      setIntegrationGuide(data)
+    } catch (err: unknown) {
+      setIntegrationGuide(null)
+      setError(err instanceof Error ? err.message : 'Falha ao carregar guia de integração')
     } finally {
       setLoading(false)
     }
@@ -461,6 +562,35 @@ export default function OpsFinanceAdmin() {
 
   const tableRows: Row[] = useMemo(() => {
     switch (tab) {
+      case 'intelligence':
+        return [
+          ...(intelDashboard
+            ? [
+                {
+                  key: 'intel-dash',
+                  col1: 'KPI',
+                  col2: `${intelDashboard.open_insights} insights abertos · ${intelDashboard.critical_insights} críticos`,
+                  col3: `readiness médio ${intelDashboard.avg_readiness} · composite ${intelDashboard.avg_composite_score}`,
+                },
+              ]
+            : []),
+          ...intelInsights.map(
+            (i: { id?: string; catalog_code?: string; insight_type?: string; severity?: string; title?: string; suggested_action?: string }) => ({
+              key: i.id ?? '',
+              col1: i.catalog_code ?? '',
+              col2: `${i.severity} · ${i.insight_type} · ${i.title}`,
+              col3: i.suggested_action ?? '',
+            }),
+          ),
+          ...intelBenchmarks.slice(0, 15).map(
+            (b: { catalog_code?: string; composite_score?: number; readiness_rank?: number; segment_code?: string }) => ({
+              key: `bm-${b.catalog_code}`,
+              col1: b.catalog_code ?? '',
+              col2: `benchmark #${b.readiness_rank} · ${b.segment_code}`,
+              col3: `composite ${b.composite_score}`,
+            }),
+          ),
+        ]
       case 'ecosystem':
         return [
           ...(ecosystemSummary
@@ -738,6 +868,9 @@ export default function OpsFinanceAdmin() {
     walletTx,
     opsInvoices,
     billingEvents,
+    intelDashboard,
+    intelInsights,
+    intelBenchmarks,
     ecosystemSummary,
     playerRelations,
     readiness,
@@ -775,7 +908,7 @@ export default function OpsFinanceAdmin() {
       <header>
         <h1 className="text-xl font-semibold">OPS — Finance Admin (global)</h1>
         <p className="text-sm text-gray-600">
-          Billing B2B, settlements, treasury, PnL por locker, gaps fiscais e monitoramento de webhooks — porta 8023.
+          Billing B2B, settlements, treasury, PnL por locker, gaps fiscais e monitoramento de webhooks — porta 8123.
         </p>
       </header>
 
@@ -799,6 +932,11 @@ export default function OpsFinanceAdmin() {
         <button type="button" className="rounded bg-gray-700 px-2 py-1 text-xs text-white" onClick={() => void load()}>
           Recarregar
         </button>
+        {tab === 'intelligence' ? (
+          <button type="button" className="rounded bg-purple-600 px-2 py-1 text-xs text-white" onClick={() => void onAnalyzeIntelligence()}>
+            Scan inteligência
+          </button>
+        ) : null}
         {tab === 'readiness' ? (
           <button type="button" className="rounded bg-violet-600 px-2 py-1 text-xs text-white" onClick={() => void onRecomputeReadiness()}>
             Recompute readiness
@@ -816,7 +954,7 @@ export default function OpsFinanceAdmin() {
         ) : null}
         {tab === 'jobs' ? (
           <>
-            {['DUNNING_SCAN', 'SETTLEMENT_RECONCILE', 'REVENUE_RECOGNITION', 'FISCAL_GAP_SYNC'].map((c) => (
+            {['DUNNING_SCAN', 'SETTLEMENT_RECONCILE', 'REVENUE_RECOGNITION', 'FISCAL_GAP_SYNC', 'READINESS_RECOMPUTE', 'ECOSYSTEM_INTELLIGENCE_SCAN'].map((c) => (
               <button key={c} type="button" className="rounded bg-slate-600 px-2 py-1 text-xs text-white" onClick={() => void onRunJob(c)}>
                 {c}
               </button>
@@ -826,31 +964,167 @@ export default function OpsFinanceAdmin() {
       </div>
 
       {tab === 'networks' ? (
-        <div className="flex flex-wrap gap-2 items-center text-sm">
-          <span className="text-gray-600">Grupo:</span>
-          {[
-            '',
-            'LOCKER_NETWORK',
-            'LOCKER_NETWORK_OPERATOR',
-            'CARRIER_LAST_MILE',
-            'MARKETPLACE',
-            'COLLECTION_POINT',
-            'LOGISTICS_PLATFORM',
-            'FOOD_DELIVERY',
-            'PAYMENTS_FISCAL',
-          ].map((g) => (
+        <div className="space-y-2">
+          <div className="rounded border border-indigo-200 bg-indigo-50/80 px-3 py-2 text-sm dark:border-indigo-800 dark:bg-indigo-950/40">
+            <div className="mb-1 font-medium text-indigo-900 dark:text-indigo-200">
+              Players prioritários (world-priority-index)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {worldPriorityIndex.length === 0 ? (
+                <span className="text-xs text-gray-500">Execute Sync catálogo para carregar o índice.</span>
+              ) : (
+                worldPriorityIndex.map((p) => {
+                  const inCatalog = networkCatalog.some((n) => n.code === p.code)
+                  return (
+                    <button
+                      key={p.code}
+                      type="button"
+                      title={`${p.segment} · ${p.countries.join(', ')}`}
+                      className={`rounded px-2 py-0.5 text-xs ${
+                        selectedNetworkCode === p.code
+                          ? 'ring-2 ring-white'
+                          : ''
+                      } ${
+                        inCatalog ? 'bg-indigo-600 text-white' : 'bg-amber-100 text-amber-900'
+                      }`}
+                      onClick={() => void loadIntegrationGuide(p.code)}
+                    >
+                      {p.code}
+                      <span className="opacity-80"> · {p.countries.join('/')}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 items-center text-sm">
+            <span className="text-gray-600">Grupo:</span>
+            {[
+              '',
+              'LOCKER_NETWORK',
+              'LOCKER_NETWORK_OPERATOR',
+              'CARRIER_LAST_MILE',
+              'MARKETPLACE',
+              'COLLECTION_POINT',
+              'LOGISTICS_PLATFORM',
+              'FOOD_DELIVERY',
+              'PAYMENTS_FISCAL',
+            ].map((g) => (
+              <button
+                key={g || 'all'}
+                type="button"
+                className={`rounded px-2 py-0.5 text-xs ${networkFilter === g ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+                onClick={() => setNetworkFilter(g)}
+              >
+                {g || 'Todos'} {g && networkStats[g] != null ? `(${networkStats[g]})` : ''}
+              </button>
+            ))}
+            <span className="text-xs text-gray-500 ml-2">
+              {ecosystemMatrix
+                ? `${ecosystemMatrix.total_players} players · ${ecosystemMatrix.total_relations} relações · ${ecosystemMatrix.total_aliases} aliases`
+                : '90+ players mundiais'}
+              {' · '}6 blueprints de integração (LOCKER_API, Marketplace OAuth, Carrier, Agregador, Food, Cross-border)
+            </span>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 'networks' && integrationGuide ? (
+        <div className="rounded border border-slate-300 bg-white p-4 text-sm shadow-sm dark:border-slate-600 dark:bg-slate-900">
+          <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
+            <div>
+              <h3 className="font-semibold text-base">
+                Como integrar · {integrationGuide.name}{' '}
+                <span className="font-mono text-indigo-600 text-sm">({integrationGuide.catalog_code})</span>
+              </h3>
+              <p className="text-xs text-gray-500">
+                {integrationGuide.segment_code} · status {integrationGuide.integration_status}
+                {integrationGuide.finance_partner_code ? ` · fin:${integrationGuide.finance_partner_code}` : ''}
+              </p>
+            </div>
             <button
-              key={g || 'all'}
               type="button"
-              className={`rounded px-2 py-0.5 text-xs ${networkFilter === g ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
-              onClick={() => setNetworkFilter(g)}
+              className="text-xs text-gray-500 hover:text-gray-800"
+              onClick={() => {
+                setIntegrationGuide(null)
+                setSelectedNetworkCode('')
+              }}
             >
-              {g || 'Todos'} {g && networkStats[g] != null ? `(${networkStats[g]})` : ''}
+              Fechar
             </button>
-          ))}
-          <span className="text-xs text-gray-500 ml-2">
-            90+ players: redes locker, operadores (USPS/DHL Packstation), carriers, marketplaces, pontos de coleta, food delivery, agregadores.
-          </span>
+          </div>
+
+          {integrationGuide.blueprint ? (
+            <div className="mb-3 rounded bg-indigo-50 p-3 dark:bg-indigo-950/30">
+              <div className="font-medium text-indigo-900 dark:text-indigo-200">
+                Blueprint: {integrationGuide.blueprint.name} ({integrationGuide.blueprint.code})
+              </div>
+              <p className="text-xs mt-1">
+                Auth {integrationGuide.blueprint.auth_type} · capability{' '}
+                <code>{integrationGuide.blueprint.primary_capability}</code>
+              </p>
+              {integrationGuide.blueprint.docs_hint ? (
+                <p className="text-xs text-gray-600 mt-1">{integrationGuide.blueprint.docs_hint}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {integrationGuide.integration_steps?.length ? (
+            <ol className="list-decimal list-inside text-xs space-y-1 mb-3 text-gray-700 dark:text-slate-300">
+              {integrationGuide.integration_steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+          ) : null}
+
+          <div className="grid gap-3 md:grid-cols-3 text-xs">
+            <div>
+              <div className="font-medium mb-1">Capabilities ({integrationGuide.capabilities.length})</div>
+              <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+                {integrationGuide.capabilities.map((c) => (
+                  <li key={`${c.capability_code}-${c.direction}`}>
+                    {c.capability_code} · {c.protocol} · {c.direction}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium mb-1">Relações ({integrationGuide.relations.length})</div>
+              <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+                {integrationGuide.relations.map((r) => (
+                  <li key={`${r.from_catalog_code}-${r.to_catalog_code}-${r.relation_type}`}>
+                    {r.from_catalog_code} → {r.to_catalog_code} ({r.relation_type})
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <div className="font-medium mb-1">Cobertura ({integrationGuide.country_coverage.length})</div>
+              <ul className="space-y-0.5 max-h-32 overflow-y-auto">
+                {integrationGuide.country_coverage.map((c) => (
+                  <li key={c.country_code}>
+                    {c.country_code}:{' '}
+                    {[c.locker_service && 'locker', c.pudo_service && 'PUDO', c.marketplace_channel && 'mkt', c.food_pickup && 'food']
+                      .filter(Boolean)
+                      .join(', ') || '—'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {integrationGuide.readiness ? (
+            <p className="text-xs mt-3 text-gray-600">
+              Readiness {integrationGuide.readiness.readiness_score} ({integrationGuide.readiness.grade}) · blueprint{' '}
+              {integrationGuide.readiness.integration_blueprint_code ?? '—'} · score {integrationGuide.readiness.blueprint_score}
+            </p>
+          ) : (
+            <p className="text-xs mt-3 text-amber-700">Readiness não calculado — Recompute ou job READINESS_RECOMPUTE.</p>
+          )}
+
+          <p className="text-xs mt-2 text-gray-400 font-mono break-all">
+            {integrationGuide.cross_refs?.partner_admin_path} · {integrationGuide.cross_refs?.ml_admin_path}
+          </p>
         </div>
       ) : null}
 
@@ -908,8 +1182,10 @@ export default function OpsFinanceAdmin() {
             <th className="py-1">Tipo / ID</th>
             <th className="py-1">Detalhe</th>
             <th className="py-1">Status / valor</th>
-            {tab === 'reconciliation' || tab === 'webhooks' || tab === 'billing' || tab === 'settlements' || tab === 'invoices' ? (
+            {tab === 'intelligence' || tab === 'reconciliation' || tab === 'webhooks' || tab === 'billing' || tab === 'settlements' || tab === 'invoices' ? (
               <th className="py-1">Ação</th>
+            ) : tab === 'networks' ? (
+              <th className="py-1">Integrar</th>
             ) : null}
           </tr>
         </thead>
@@ -919,6 +1195,26 @@ export default function OpsFinanceAdmin() {
               <td className="py-1 font-mono text-xs">{r.col1}</td>
               <td className="py-1">{r.col2}</td>
               <td className="py-1 text-gray-600">{r.col3}</td>
+              {tab === 'networks' ? (
+                <td className="py-1">
+                  <button
+                    type="button"
+                    className="text-indigo-600 text-xs"
+                    onClick={() => void loadIntegrationGuide(r.col1)}
+                  >
+                    Como integrar
+                  </button>
+                </td>
+              ) : null}
+              {tab === 'intelligence' && r.key && !r.key.startsWith('bm-') && r.key !== 'intel-dash' ? (
+                <td className="py-1">
+                  <button type="button" className="text-indigo-600 text-xs" onClick={() => void onResolveInsight(r.key)}>
+                    Resolver
+                  </button>
+                </td>
+              ) : tab === 'intelligence' ? (
+                <td className="py-1">—</td>
+              ) : null}
               {tab === 'reconciliation' ? (
                 <td className="py-1">
                   {r.col3 === 'OPEN' ? (

@@ -67,6 +67,7 @@ def _apply_sqlite_compat_migrations(eng) -> None:
         "ALTER TABLE partner_ecosystem_players ADD COLUMN website_url VARCHAR(500)",
         "ALTER TABLE partner_ecosystem_players ADD COLUMN estimated_locker_count INTEGER",
         "ALTER TABLE partner_ecosystem_players ADD COLUMN data_source VARCHAR(32) DEFAULT 'CATALOG'",
+        "ALTER TABLE partner_ecosystem_players ADD COLUMN finance_catalog_code VARCHAR(48)",
     ]
     with eng.begin() as conn:
         for stmt in alters:

@@ -57,6 +57,8 @@ class FinancePartnerReadiness(Base):
     compliance_score = Column(Integer, nullable=False, default=0)
     grade = Column(String(4), nullable=False, default="D")
     blockers_json = Column(Text, nullable=False, default="[]")
+    integration_blueprint_code = Column(String(40), nullable=True)
+    blueprint_score = Column(Integer, nullable=False, default=0)
     computed_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
 

@@ -35,6 +35,7 @@ class PartnerEcosystemPlayer(Base):
     website_url = Column(String(500), nullable=True)
     estimated_locker_count = Column(Integer, nullable=True)
     data_source = Column(String(32), nullable=False, default="CATALOG")
+    finance_catalog_code = Column(String(48), nullable=True, index=True)
     sort_order = Column(Integer, nullable=False, default=100)
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

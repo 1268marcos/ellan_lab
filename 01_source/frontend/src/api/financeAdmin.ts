@@ -173,6 +173,89 @@ export const financeAdminApi = {
     }),
   syncLockerNetworkCatalog: () => api.post(`${BASE}/locker-network-catalog/sync`),
 
+  worldPriorityIndex: () =>
+    api.get<{ items: { code: string; segment: string; countries: string[] }[]; total: number }>(
+      `${BASE}/locker-network-catalog/world-priority-index`,
+    ),
+  integrationBlueprints: () =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/locker-network-catalog/integration-blueprints`),
+  ecosystemMatrix: () =>
+    api.get<{
+      segments: { code: string; name: string }[]
+      matrix: Record<string, Record<string, number>>
+      total_players: number
+      total_relations: number
+      total_aliases: number
+    }>(`${BASE}/locker-network-catalog/ecosystem-matrix`),
+  resolveCatalogCode: (codeOrAlias: string) =>
+    api.get<{ input: string; catalog_code: string | null }>(
+      `${BASE}/locker-network-catalog/resolve/${encodeURIComponent(codeOrAlias)}`,
+    ),
+
+  playerIntegrationGuide: (catalogCode: string) =>
+    api.get<{
+      catalog_code: string
+      name: string
+      segment_code: string
+      parent_group: string
+      integration_status: string
+      finance_partner_code: string | null
+      blueprint: {
+        code: string
+        name: string
+        auth_type: string
+        primary_capability: string
+        webhook_events: string[]
+        docs_hint: string | null
+      } | null
+      integration_steps: string[]
+      capabilities: { capability_code: string; protocol: string; direction: string }[]
+      relations: { from_catalog_code: string; to_catalog_code: string; relation_type: string; notes: string | null }[]
+      country_coverage: {
+        country_code: string
+        locker_service: boolean
+        pudo_service: boolean
+        marketplace_channel: boolean
+        food_pickup: boolean
+      }[]
+      readiness: {
+        readiness_score: number
+        grade: string
+        integration_blueprint_code: string | null
+        blueprint_score: number
+        blockers_json: string
+      } | null
+      cross_refs: Record<string, string>
+    }>(`${BASE}/locker-network-catalog/players/${encodeURIComponent(catalogCode)}/integration-guide`),
+
+  intelligenceDashboard: () =>
+    api.get<{
+      open_insights: number
+      critical_insights: number
+      players_analyzed: number
+      avg_readiness: number
+      avg_composite_score: number
+      top_benchmarks: unknown[]
+      recent_insights: unknown[]
+      health_summary: Record<string, number>
+    }>(`${BASE}/ecosystem-intelligence/dashboard`),
+
+  listEcosystemInsights: (params?: { catalog_code?: string; severity?: string }) =>
+    api.get<{ items: unknown[]; total: number; open_count: number }>(`${BASE}/ecosystem-intelligence/insights`, {
+      params,
+    }),
+
+  listPlayerBenchmarks: (segment_code?: string) =>
+    api.get<{ items: unknown[]; total: number }>(`${BASE}/ecosystem-intelligence/benchmarks`, {
+      params: segment_code ? { segment_code } : undefined,
+    }),
+
+  analyzeEcosystem: () => api.post<{ benchmarks_computed: number; insights_created: number; health_checks_run: number }>(
+    `${BASE}/ecosystem-intelligence/analyze`,
+  ),
+
+  resolveInsight: (insightId: string) => api.post(`${BASE}/ecosystem-intelligence/insights/${insightId}/resolve`),
+
   ecosystemSummary: () =>
     api.get<{
       total_players: number

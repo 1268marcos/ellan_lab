@@ -9,7 +9,7 @@ from app.core.config import get_settings
 from app.core.database import SessionLocal, init_db
 from app.core.scheduler import start_finance_scheduler, stop_finance_scheduler
 from app.core.health import health_payload
-from app.routers import advanced, billing, catalog, extended, intelligence, jobs, partners, revenue, seed, wallet
+from app.routers import advanced, billing, catalog, ecosystem_intelligence, extended, intelligence, jobs, partners, revenue, seed, wallet
 from app.services.seed_data import run_seed
 
 API_PREFIX = "/api/v1/finance-admin"
@@ -44,6 +44,7 @@ app.include_router(wallet.router, prefix=API_PREFIX)
 app.include_router(extended.router, prefix=API_PREFIX)
 app.include_router(catalog.router, prefix=API_PREFIX)
 app.include_router(intelligence.router, prefix=API_PREFIX)
+app.include_router(ecosystem_intelligence.router, prefix=API_PREFIX)
 app.include_router(advanced.router, prefix=API_PREFIX)
 app.include_router(revenue.router, prefix=API_PREFIX)
 app.include_router(jobs.router, prefix=API_PREFIX)

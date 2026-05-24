@@ -53,6 +53,18 @@ def start_finance_scheduler() -> None:
         hour=settings.finance_fiscal_gap_cron_hour,
         minute=45,
     )
+    _scheduler.add_job(
+        lambda: _run_job_safe("READINESS_RECOMPUTE"),
+        "cron",
+        hour=6,
+        minute=0,
+    )
+    _scheduler.add_job(
+        lambda: _run_job_safe("ECOSYSTEM_INTELLIGENCE_SCAN"),
+        "cron",
+        hour=6,
+        minute=30,
+    )
     _scheduler.start()
     logger.info("finance_scheduler_started tz=%s", settings.finance_scheduler_timezone)
 

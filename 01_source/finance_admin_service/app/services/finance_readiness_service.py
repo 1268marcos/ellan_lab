@@ -9,6 +9,8 @@ from app.models.finance import PartnerBillingPlan
 from app.models.finance_catalog import FinanceLockerNetworkCatalog
 from app.models.finance_ecosystem import FinancePlayerCapability, FinancePlayerRelation
 from app.models.finance_professional import FinancePartnerReadiness
+from app.models.finance_world_meta import FinancePlayerCountryCoverage
+from app.services.finance_catalog_service import match_blueprint_for_player
 
 
 def _grade(score: int) -> str:
@@ -21,11 +23,48 @@ def _grade(score: int) -> str:
     return "D"
 
 
+def _score_blueprint(db: Session, row: FinanceLockerNetworkCatalog, blockers: list[str]) -> tuple[int, str | None]:
+    blueprint = match_blueprint_for_player(db, row)
+    if not blueprint:
+        blockers.append("no_integration_blueprint")
+        return 0, None
+
+    score = 0
+    cap_codes = {
+        c.capability_code
+        for c in db.query(FinancePlayerCapability)
+        .filter(FinancePlayerCapability.catalog_code == row.code)
+        .all()
+    }
+    if blueprint.primary_capability in cap_codes:
+        score += 10
+    else:
+        blockers.append(f"missing_capability:{blueprint.primary_capability}")
+
+    has_coverage = (
+        db.query(FinancePlayerCountryCoverage)
+        .filter(FinancePlayerCountryCoverage.catalog_code == row.code)
+        .first()
+        is not None
+    )
+    if has_coverage:
+        score += 5
+    elif row.regions_json and row.regions_json != "[]":
+        score += 3
+    else:
+        blockers.append("no_country_coverage")
+
+    if row.integration_status == "LIVE":
+        score += 5
+    elif row.integration_status == "PILOT":
+        score += 3
+
+    return min(20, score), blueprint.code
+
+
 def _score_catalog_row(db: Session, row: FinanceLockerNetworkCatalog) -> FinancePartnerReadiness:
     blockers: list[str] = []
-    integration = {"LIVE": 40, "PILOT": 28, "IN_PROGRESS": 18, "PLANNED": 8}.get(
-        row.integration_status, 5
-    )
+    integration = {"LIVE": 35, "PILOT": 24, "IN_PROGRESS": 15, "PLANNED": 6}.get(row.integration_status, 4)
     if row.integration_status != "LIVE":
         blockers.append(f"integration_status={row.integration_status}")
 
@@ -60,17 +99,19 @@ def _score_catalog_row(db: Session, row: FinanceLockerNetworkCatalog) -> Finance
         )
         .count()
     )
-    compliance = min(20, cap_count * 5) + min(10, rel_count * 3)
+    compliance = min(15, cap_count * 4) + min(10, rel_count * 3)
     if cap_count == 0:
         blockers.append("no_capabilities_mapped")
     if row.api_docs_url:
         compliance += 5
 
-    integration_extra = min(15, cap_count * 3)
-    integration_score = min(50, integration + integration_extra)
+    blueprint_score, blueprint_code = _score_blueprint(db, row, blockers)
+
+    integration_extra = min(10, cap_count * 2)
+    integration_score = min(45, integration + integration_extra)
     billing_score = min(30, billing)
-    compliance_score = min(20, compliance)
-    total = min(100, integration_score + billing_score + compliance_score)
+    compliance_score = min(15, compliance)
+    total = min(100, integration_score + billing_score + compliance_score + blueprint_score)
 
     return FinancePartnerReadiness(
         catalog_code=row.code,
@@ -78,8 +119,10 @@ def _score_catalog_row(db: Session, row: FinanceLockerNetworkCatalog) -> Finance
         integration_score=integration_score,
         billing_score=billing_score,
         compliance_score=compliance_score,
+        blueprint_score=blueprint_score,
+        integration_blueprint_code=blueprint_code,
         grade=_grade(total),
-        blockers_json=json.dumps(blockers[:8]),
+        blockers_json=json.dumps(blockers[:10]),
         computed_at=datetime.now(timezone.utc),
     )
 
@@ -95,6 +138,8 @@ def recompute_all_readiness(db: Session) -> tuple[int, float]:
             existing.integration_score = scored.integration_score
             existing.billing_score = scored.billing_score
             existing.compliance_score = scored.compliance_score
+            existing.blueprint_score = scored.blueprint_score
+            existing.integration_blueprint_code = scored.integration_blueprint_code
             existing.grade = scored.grade
             existing.blockers_json = scored.blockers_json
             existing.computed_at = scored.computed_at

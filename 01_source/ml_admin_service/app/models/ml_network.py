@@ -39,6 +39,7 @@ class MlLockerNetworkPlayer(Base):
     parent_player_id = Column(String(36), ForeignKey("ml_locker_network_players.id", ondelete="SET NULL"), nullable=True)
     estimated_locker_count = Column(Integer, nullable=True)
     data_source = Column(String(32), nullable=False, default="CATALOG")
+    finance_catalog_code = Column(String(48), nullable=True, index=True)
     sort_order = Column(Integer, nullable=False, default=100)
     active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)

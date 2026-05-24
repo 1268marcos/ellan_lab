@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = Field(default="sqlite:///./finance_admin.db", alias="DATABASE_URL")
-    service_port: int = Field(default=8023, alias="FINANCE_ADMIN_PORT")
+    service_port: int = Field(default=8123, alias="FINANCE_ADMIN_PORT")
     api_key_pepper: str = Field(
         default="dev-finance-admin-pepper",
         alias="FINANCE_ADMIN_API_KEY_PEPPER",

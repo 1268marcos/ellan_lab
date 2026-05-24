@@ -145,9 +145,19 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/pca/, "/api"),
       },
       "/api/fna": {
-        target: "http://localhost:8023",
+        target: "http://localhost:8123",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/fna/, "/api"),
+      },
+      "/api/fca": {
+        target: "http://localhost:8024",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/fca/, "/api"),
+      },
+      "/api/mca": {
+        target: "http://localhost:8125",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/mca/, "/api"),
       },
     },
   },

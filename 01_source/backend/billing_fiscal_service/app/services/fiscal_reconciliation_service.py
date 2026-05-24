@@ -175,3 +175,15 @@ def list_reconciliation_gaps(
     if date_from:
         q = q.filter(FiscalReconciliationGap.last_detected_at >= date_from)
     return q.limit(max(1, min(limit, 1000))).all()
+
+
+def resolve_reconciliation_gap(db: Session, gap_id: str) -> FiscalReconciliationGap | None:
+    row = db.get(FiscalReconciliationGap, gap_id)
+    if not row:
+        return None
+    now = _utc_now()
+    row.status = "RESOLVED"
+    row.resolved_at = now
+    db.commit()
+    db.refresh(row)
+    return row

@@ -31,6 +31,63 @@ const groups: Group[] = [
     ],
   },
   {
+    key: 'moneyOps',
+    icon: '💵',
+    label: 'Money OPS',
+    items: [
+      { to: '/ops/money-cambio/admin', label: 'Visão global (KPIs)', newTag: 'Hub' },
+      { to: '/ops/money-cambio/admin?tab=players', label: 'Players ecossistema (mundial)', newTag: 'New' },
+      { to: '/ops/money-cambio/admin?tab=segments', label: 'Segmentos (locker, carrier, food…)' },
+      { to: '/ops/money-cambio/admin?tab=relations', label: 'Relações entre players' },
+      { to: '/ops/money-cambio/admin?tab=intelligence', label: 'Intelligence (readiness · insights)', newTag: 'New' },
+      { to: '/ops/money-cambio/admin?tab=countries', label: 'Países operacionais' },
+      { to: '/ops/money-cambio/admin?tab=matrix', label: 'Matriz método × país' },
+      { to: '/ops/money-cambio/admin?tab=currencies', label: 'Moedas ISO' },
+      { to: '/ops/money-cambio/admin?tab=methods', label: 'Métodos de pagamento' },
+      { to: '/ops/money-cambio/admin?tab=aliases', label: 'Aliases UI' },
+      { to: '/ops/money-cambio/admin?tab=interfaces', label: 'Interfaces (totem/app)' },
+      { to: '/ops/money-cambio/admin?tab=wallets', label: 'Wallet providers' },
+      { to: '/ops/money-cambio/admin?tab=rails', label: 'Payment rails (player×país)', newTag: 'New' },
+      { to: '/ops/money-cambio/admin?tab=treasury', label: 'Tesouraria / exposição FX', newTag: 'New' },
+    ],
+  },
+  {
+    key: 'cambioOps',
+    icon: '💱',
+    label: 'Câmbio OPS',
+    items: [
+      { to: '/ops/money-cambio/admin?tab=corridors', label: 'Corredores cross-border' },
+      { to: '/ops/money-cambio/admin?tab=fx', label: 'Taxas FX e conversão' },
+      { to: '/ops/money-cambio/admin?tab=pricing', label: 'Simulador de cotação', newTag: 'New' },
+      { to: '/ops/money-cambio/admin?tab=fxlocks', label: 'Travas FX (hedge)' },
+      { to: '/ops/money-cambio/admin?tab=compliance', label: 'Limites AML/KYC' },
+      { to: '/ops/money-cambio/admin?tab=audit', label: 'Auditoria de taxas' },
+      { to: '/ops/money-cambio/admin?tab=settlements', label: 'Calendário settlement (T+N)', newTag: 'New' },
+      { to: '/ops/money-cambio/admin?tab=partners', label: 'Parceiros FX (webhook/API key)' },
+    ],
+  },
+  {
+    key: 'fiscalOps',
+    icon: '🧾',
+    label: 'Fiscal OPS',
+    items: [
+      { to: '/ops/fiscal/admin?tab=global', label: 'Global OPS (jurisdições · KPIs)', newTag: 'Hub' },
+      { to: '/ops/fiscal/admin?tab=intelligence', label: 'Inteligência fiscal (scan · contingência)', newTag: 'New' },
+      { to: '/ops/fiscal/admin', label: 'Emissores e integração' },
+      { to: '/ops/fiscal/admin?tab=corridors', label: 'Corredores fiscais mundiais' },
+      { to: '/ops/fiscal/admin?tab=readiness', label: 'Prontidão por emissor' },
+      { to: '/ops/fiscal/admin?tab=certifications', label: 'Certificações (A1, LGPD…)' },
+      { to: '/ops/fiscal/admin?tab=documents', label: 'Documentos NFC-e / NF-e' },
+      { to: '/ops/fiscal/admin?tab=classification', label: 'Classificação NCM / CFOP (teste SKU)' },
+      { to: '/ops/fiscal/admin?tab=gaps', label: 'Gaps unificados (admin + billing)', newTag: 'Workbench' },
+      { to: '/ops/fiscal/admin?tab=slo', label: 'SLA de emissão' },
+      { to: '/ops/fiscal/admin?tab=webhooks', label: 'Webhook DLQ' },
+      { to: '/ops/fiscal/admin?tab=config', label: 'Tenant / SKU / Health' },
+      { to: '/ops/fiscal/admin?tab=governance', label: 'Aprovações e callbacks SEFAZ' },
+      { to: '/fiscal/reconcile', label: 'Reconciliação legado' },
+    ],
+  },
+  {
     key: 'orderPickup',
     icon: '📦',
     label: 'Order Pickup OPS',
@@ -175,8 +232,13 @@ const groups: Group[] = [
     items: [
       {
         to: '/ops/finance/admin?tab=networks',
-        label: 'Redes mundiais (88+ players)',
+        label: 'Redes mundiais · Como integrar (90+ players)',
         newTag: 'Global',
+      },
+      {
+        to: '/ops/finance/admin?tab=intelligence',
+        label: 'Ecosystem Intelligence (insights, benchmarks)',
+        newTag: 'New',
       },
       {
         to: '/ops/finance/admin?tab=ecosystem',
@@ -344,6 +406,9 @@ export default function Menu() {
     financeOpsCommercial: true,
     financeOps: true,
     marketplace: true,
+    moneyOps: true,
+    cambioOps: true,
+    fiscalOps: true,
     privacyCompliance: true,
     rentalsOps: true,
     marketing: true,
@@ -386,6 +451,9 @@ export default function Menu() {
         if (g.key === 'financeOpsCommercial') return g
         if (g.key === 'financeOps') return g
         if (g.key === 'marketplace') return g
+        if (g.key === 'fiscalOps') return g
+        if (g.key === 'moneyOps') return g
+        if (g.key === 'cambioOps') return g
         if (g.key === 'marketing') return g
         if (g.key === 'productsCatalog') return g
         if (g.key === 'lifecycle') return g

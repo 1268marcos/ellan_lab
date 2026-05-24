@@ -17,6 +17,8 @@ import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
+import OpsMoneyCambioAdmin from '../pages/ops/OpsMoneyCambioAdmin'
+import OpsFiscalAdmin from '../pages/ops/OpsFiscalAdmin'
 import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
 import OpsMarketplaceAdmin from '../pages/ops/OpsMarketplaceAdmin'
 import OpsFinanceAdmin from '../pages/ops/OpsFinanceAdmin'
@@ -280,6 +282,26 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsPaymentGatewayAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/money-cambio/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsMoneyCambioAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/fiscal/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsFiscalAdmin />
             </OpsOnly>
           </Protected>
         }

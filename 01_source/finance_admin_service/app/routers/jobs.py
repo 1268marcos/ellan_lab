@@ -24,6 +24,8 @@ def run_job(job_code: str, db: Session = Depends(get_db)) -> JobExecuteOut:
         job_run_id=result.get("job_run_id", ""),
         job_code=job_code,
         status=result.get("status", "UNKNOWN"),
+        recomputed=result.get("recomputed"),
+        average_score=result.get("average_score"),
     )
 
 

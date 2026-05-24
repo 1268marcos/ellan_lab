@@ -1,18 +1,18 @@
 # Finance Admin — runbook local
 
-## Backend (porta 8023)
+## Backend (porta 8123)
 
 ```bash
 cd 01_source/finance_admin_service
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8023 --reload
+PYTHONPATH=. .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8123 --reload
 ```
 
-Se as abas OPS mostrarem **Not Found**, o processo na 8023 está desatualizado (sem rotas `billing-line-items`, `locker-network-catalog`, etc.). Pare o uvicorn antigo e suba de novo a partir de `finance_admin_service`, depois:
+Se as abas OPS mostrarem **Not Found**, o processo na 8123 está desatualizado (sem rotas `billing-line-items`, `locker-network-catalog`, etc.). Pare o uvicorn antigo e suba de novo a partir de `finance_admin_service`, depois:
 
 ```bash
-curl -X POST http://localhost:8023/api/v1/finance-admin/seed
+curl -X POST http://localhost:8123/api/v1/finance-admin/seed
 ```
 
 ## Testes
@@ -24,8 +24,8 @@ PYTHONPATH=. .venv/bin/pytest tests/ -q
 
 ## Frontends
 
-- v1: proxy `/api/finance-admin` → `:8023` — rota `/ops/finance/admin`
-- v0: proxy `/api/fna` → `:8023` — rota `/ops/finance/admin`
+- v1: proxy `/api/finance-admin` → `:8123` — rota `/ops/finance/admin`
+- v0: proxy `/api/fna` → `:8123` — rota `/ops/finance/admin`
 
 ## Seed
 
@@ -51,11 +51,36 @@ Abas UI: **networks** · partners · billing · invoices · settlements · treas
 Fonte: `app/data/global_locker_finance_catalog.py` — 50+ players (InPost, DHL, Magalu, Mercado Livre, Amazon BR/US/ES, DPD, Correios, CTT, Worten, El Corte Inglés, SwipBox, Cleveron, Cainiao, USPS, Royal Mail, etc.)
 
 ```bash
-curl -X POST http://localhost:8023/api/v1/finance-admin/locker-network-catalog/sync
-curl http://localhost:8023/api/v1/finance-admin/locker-network-catalog?parent_group=MARKETPLACE
+curl -X POST http://localhost:8123/api/v1/finance-admin/locker-network-catalog/sync
+curl http://localhost:8123/api/v1/finance-admin/locker-network-catalog?parent_group=MARKETPLACE
+curl http://localhost:8123/api/v1/finance-admin/locker-network-catalog/world-priority-index
+curl "http://localhost:8123/api/v1/finance-admin/locker-network-catalog/relations?catalog_code=MAGALU"
 ```
 
-O seed (`POST .../seed`) chama sync automaticamente e cria `finance_partner_accounts` + planos para players prioritários.
+Players prioritários (InPost, DHL, DPD, Magalu, Mercado Livre, Amazon, Correios, CTT, Worten, El Corte Inglés) têm entradas enriquecidas em `global_locker_finance_catalog.py` + extensão `global_locker_finance_catalog_world.py` (`PLAYER_RELATIONS`).
+
+Corredores fiscais OPS alinhados por `corridor_code` (ex. `BR-MAGALU-LOCKER`, `PL-EU-INPOST-LOCKER`) em `fiscal_admin_service/app/data/fiscal_global_seed.py` — após sync Finance, `POST /api/v1/fiscal-admin/global-ops/seed` no fiscal (8024).
+
+Ecossistema mundial (aliases, cobertura país, blueprints, matriz): ver `docs/FINANCE_WORLD_ECOSYSTEM.md` e migration `008_finance_world_ecosystem_meta.sql`.
+
+```bash
+curl http://localhost:8123/api/v1/finance-admin/locker-network-catalog/ecosystem-matrix
+curl http://localhost:8123/api/v1/finance-admin/locker-network-catalog/integration-blueprints
+curl http://localhost:8123/api/v1/finance-admin/locker-network-catalog/resolve/MELI
+```
+
+O seed (`POST .../seed`) chama sync automaticamente e cria `finance_partner_accounts` + planos para players prioritários (`FINANCE_DEMO_PRIORITY_CODES`).
+
+## Ecosystem Intelligence (migration `010_finance_ecosystem_intelligence.sql`)
+
+Gaps automáticos, benchmarks mundiais, health checks e roadmap gerado por blueprint. Ver `docs/FINANCE_ECOSYSTEM_INTELLIGENCE.md`.
+
+```bash
+curl -X POST http://localhost:8123/api/v1/finance-admin/ecosystem-intelligence/analyze
+curl http://localhost:8123/api/v1/finance-admin/ecosystem-intelligence/dashboard
+```
+
+Aba UI: **Inteligência** · Jobs: `ECOSYSTEM_INTELLIGENCE_SCAN` (cron 06:30).
 
 ## Módulo profissional (migration `005_finance_professional_ops.sql`)
 

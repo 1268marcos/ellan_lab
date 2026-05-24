@@ -41,6 +41,7 @@ const NETWORK_SEGMENTS = [
 
 const TAB_DEFS = [
   ["networks", "Redes mundiais"],
+  ["intelligence", "Inteligência"],
   ["ecosystem", "Ecossistema"],
   ["readiness", "Readiness"],
   ["roadmap", "Roadmap"],
@@ -71,7 +72,7 @@ function normalizeNetworkError(err, endpoint) {
   if (!raw) return "Falha de comunicacao com a API.";
   const lower = raw.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
-    return `Falha de conexao (${endpoint}). Verifique proxy ${BASE} (porta 8023).`;
+    return `Falha de conexao (${endpoint}). Verifique proxy ${BASE} (porta 8123).`;
   }
   return raw;
 }
@@ -84,6 +85,9 @@ export default function OpsFinanceAdminPage() {
   const setTab = (k) => setSearchParams({ tab: k }, { replace: true });
   const [networkCatalog, setNetworkCatalog] = useState([]);
   const [networkStats, setNetworkStats] = useState({});
+  const [worldPriorityIndex, setWorldPriorityIndex] = useState([]);
+  const [integrationGuide, setIntegrationGuide] = useState(null);
+  const [intelDash, setIntelDash] = useState(null);
   const [networkFilter, setNetworkFilter] = useState("");
   const [partners, setPartners] = useState([]);
   const [plans, setPlans] = useState([]);
@@ -169,6 +173,7 @@ export default function OpsFinanceAdminPage() {
         `${API}/revenue-schedules`,
         `${API}/revenue-recognition-entries`,
         `${API}/jobs/runs`,
+        `${API}/locker-network-catalog/world-priority-index`,
       ];
       const res = await Promise.all(urls.map((u) => fetch(u, { headers })));
       const jsons = await Promise.all(res.map((r) => r.json().catch(() => ({}))));
@@ -210,16 +215,18 @@ export default function OpsFinanceAdminPage() {
       setRevenueSchedules(pick(25));
       setRevenueEntries(pick(26));
       setJobRuns(pick(27));
+      if (res[28]?.ok) setWorldPriorityIndex(jsons[28].items || []);
+      else setWorldPriorityIndex([]);
 
       const failed = res.map((r, i) => (!r.ok ? urls[i].replace(`${API}/`, "") : null)).filter(Boolean);
       if (!res.some((r) => r.ok)) {
         throw new Error(
-          `Servico finance-admin indisponivel em ${BASE}. Inicie: cd 01_source/finance_admin_service && PYTHONPATH=. .venv/bin/uvicorn app.main:app --port 8023`,
+          `Servico finance-admin indisponivel em ${BASE}. Inicie: cd 01_source/finance_admin_service && PYTHONPATH=. .venv/bin/uvicorn app.main:app --port 8123`,
         );
       }
       if (failed.length) {
         setOk(
-          `Dados parciais (${failed.length} endpoint(s) 404). Reinicie o finance-admin na porta 8023 (versao atual) e clique Seed.`,
+          `Dados parciais (${failed.length} endpoint(s) 404). Reinicie o finance-admin na porta 8123 (versao atual) e clique Seed.`,
         );
       }
     } catch (e) {
@@ -228,6 +235,25 @@ export default function OpsFinanceAdminPage() {
       setLoading(false);
     }
   }, [token, headers, tab, networkFilter]);
+
+  const loadIntegrationGuide = async (code) => {
+    if (!token || !code) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch(`${API}/locker-network-catalog/players/${encodeURIComponent(code)}/integration-guide`, {
+        headers,
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setIntegrationGuide(j);
+    } catch (e) {
+      setIntegrationGuide(null);
+      setErr(normalizeNetworkError(e, `${API}/locker-network-catalog/players/.../integration-guide`));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     load();
@@ -329,6 +355,25 @@ export default function OpsFinanceAdminPage() {
       setOk(`Nova API key (${j.key_prefix}…). Copie agora.`);
     } catch (e) {
       setErr(normalizeNetworkError(e, `${API}/finance-partners/.../api-keys/rotate`));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onAnalyzeIntel = async () => {
+    if (!token) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch(`${API}/ecosystem-intelligence/analyze`, { method: "POST", headers });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      const d = await fetch(`${API}/ecosystem-intelligence/dashboard`, { headers });
+      const dj = await d.json().catch(() => ({}));
+      if (d.ok) setIntelDash(dj);
+      setOk(`Inteligência: ${j.insights_created} insights · ${j.benchmarks_computed} benchmarks`);
+    } catch (e) {
+      setErr(normalizeNetworkError(e, `${API}/ecosystem-intelligence/analyze`));
     } finally {
       setLoading(false);
     }
@@ -574,19 +619,97 @@ export default function OpsFinanceAdminPage() {
           </div>
 
           {tab === "networks" ? (
-            <div style={{ ...healthLocalFilterRowStyle, alignItems: "center", gap: 6 }}>
-              <span style={{ ...mutedTextStyle, fontSize: 12 }}>Segmento:</span>
-              {NETWORK_SEGMENTS.map((g) => (
-                <button
-                  key={g || "all"}
-                  type="button"
-                  style={tabButtonStyle(networkFilter === g)}
-                  onClick={() => setNetworkFilter(g)}
-                >
-                  {g || "Todos"}
-                  {g && networkStats[g] != null ? ` (${networkStats[g]})` : ""}
-                </button>
-              ))}
+            <>
+              <div
+                style={{
+                  marginBottom: 8,
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(99,102,241,0.35)",
+                  background: "rgba(99,102,241,0.08)",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6, color: "#c7d2fe" }}>
+                  Players prioritários (world-priority-index)
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {worldPriorityIndex.length === 0 ? (
+                    <span style={{ ...mutedTextStyle, fontSize: 11 }}>Sync catálogo para carregar o índice.</span>
+                  ) : (
+                    worldPriorityIndex.map((p) => (
+                      <button
+                        key={p.code}
+                        type="button"
+                        title={`${p.segment} · ${(p.countries || []).join(", ")}`}
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          border: "none",
+                          cursor: "pointer",
+                          background: networkCatalog.some((n) => n.code === p.code) ? "#4f46e5" : "rgba(245,158,11,0.25)",
+                          color: networkCatalog.some((n) => n.code === p.code) ? "#fff" : "#fcd34d",
+                        }}
+                        onClick={() => void loadIntegrationGuide(p.code)}
+                      >
+                        {p.code} · {(p.countries || []).join("/")}
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+              <div style={{ ...healthLocalFilterRowStyle, alignItems: "center", gap: 6 }}>
+                <span style={{ ...mutedTextStyle, fontSize: 12 }}>Segmento:</span>
+                {NETWORK_SEGMENTS.map((g) => (
+                  <button
+                    key={g || "all"}
+                    type="button"
+                    style={tabButtonStyle(networkFilter === g)}
+                    onClick={() => setNetworkFilter(g)}
+                  >
+                    {g || "Todos"}
+                    {g && networkStats[g] != null ? ` (${networkStats[g]})` : ""}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : null}
+
+          {tab === "networks" && integrationGuide ? (
+            <div
+              style={{
+                marginBottom: 10,
+                padding: 12,
+                borderRadius: 8,
+                border: "1px solid rgba(148,163,184,0.35)",
+                background: "rgba(15,23,42,0.5)",
+                fontSize: 12,
+              }}
+            >
+              <strong>
+                Como integrar · {integrationGuide.name} ({integrationGuide.catalog_code})
+              </strong>
+              {integrationGuide.blueprint ? (
+                <p style={{ margin: "6px 0", color: "#c7d2fe" }}>
+                  Blueprint {integrationGuide.blueprint.code}: {integrationGuide.blueprint.primary_capability} ·{" "}
+                  {integrationGuide.blueprint.auth_type}
+                </p>
+              ) : null}
+              <ul style={{ margin: "6px 0", paddingLeft: 18 }}>
+                {(integrationGuide.integration_steps || []).slice(0, 5).map((s) => (
+                  <li key={s}>{s}</li>
+                ))}
+              </ul>
+              <p style={{ margin: 0, color: "#94a3b8" }}>
+                Relações: {(integrationGuide.relations || []).length} · Cobertura:{" "}
+                {(integrationGuide.country_coverage || []).length}
+                {integrationGuide.readiness
+                  ? ` · Readiness ${integrationGuide.readiness.readiness_score} (${integrationGuide.readiness.grade})`
+                  : ""}
+              </p>
+              <button type="button" style={{ ...buttonGhostStyle, marginTop: 8 }} onClick={() => setIntegrationGuide(null)}>
+                Fechar
+              </button>
             </div>
           ) : null}
 
@@ -652,6 +775,13 @@ export default function OpsFinanceAdminPage() {
             </div>
           ) : null}
 
+          {tab === "intelligence" && intelDash ? (
+            <p style={{ ...mutedTextStyle, fontSize: 12, marginBottom: 8 }}>
+              {intelDash.open_insights} insights abertos · {intelDash.critical_insights} críticos · readiness médio{" "}
+              {intelDash.avg_readiness} · composite {intelDash.avg_composite_score}
+            </p>
+          ) : null}
+
           <div style={toolbarStyle}>
             <button type="button" style={buttonGhostStyle} onClick={() => load()} disabled={loading || !token}>
               Recarregar
@@ -667,6 +797,11 @@ export default function OpsFinanceAdminPage() {
                 {tab === "readiness" ? (
                   <button type="button" style={buttonGhostStyle} onClick={onRecomputeReadiness} disabled={loading}>
                     Recompute readiness
+                  </button>
+                ) : null}
+                {tab === "intelligence" ? (
+                  <button type="button" style={buttonPrimaryStyle} onClick={() => void onAnalyzeIntel()} disabled={loading}>
+                    Scan inteligência
                   </button>
                 ) : null}
                 {tab === "partners" ? (

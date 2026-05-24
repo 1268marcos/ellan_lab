@@ -38,7 +38,13 @@ const privacyComplianceAdminServiceProxy =
   process.env.PRIVACY_COMPLIANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8022'
 
 const financeAdminServiceProxy =
-  process.env.FINANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8023'
+  process.env.FINANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8123'
+
+const fiscalAdminServiceProxy =
+  process.env.FISCAL_ADMIN_SERVICE_PROXY ?? 'http://localhost:8024'
+
+const moneyCambioAdminServiceProxy =
+  process.env.MONEY_CAMBIO_ADMIN_SERVICE_PROXY ?? 'http://localhost:8125'
 
 const orderPickupServiceProxy =
   process.env.ORDER_PICKUP_SERVICE_PROXY ?? 'http://localhost:8003'
@@ -124,6 +130,16 @@ export default defineConfig({
         target: financeAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/finance-admin/, '/api'),
+      },
+      '/api/fiscal-admin': {
+        target: fiscalAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/fiscal-admin/, '/api'),
+      },
+      '/api/money-cambio-admin': {
+        target: moneyCambioAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/money-cambio-admin/, '/api'),
       },
       '/api/op': {
         target: orderPickupServiceProxy,

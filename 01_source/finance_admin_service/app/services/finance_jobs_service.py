@@ -14,9 +14,18 @@ from app.services.billing_fiscal_client import (
     is_fiscal_live_enabled,
 )
 from app.services.crypto_util import new_id
+from app.services.finance_ecosystem_intelligence_service import run_full_intelligence_scan
+from app.services.finance_readiness_service import recompute_all_readiness
 from app.services.finance_revenue_service import run_straight_line_recognition, sync_recognition_to_fiscal
 
-JOB_CODES = ("DUNNING_SCAN", "SETTLEMENT_RECONCILE", "REVENUE_RECOGNITION", "FISCAL_GAP_SYNC")
+JOB_CODES = (
+    "DUNNING_SCAN",
+    "SETTLEMENT_RECONCILE",
+    "REVENUE_RECOGNITION",
+    "FISCAL_GAP_SYNC",
+    "READINESS_RECOMPUTE",
+    "ECOSYSTEM_INTELLIGENCE_SCAN",
+)
 
 
 def _utcnow() -> datetime:
@@ -60,6 +69,11 @@ def run_job(db: Session, job_code: str) -> dict:
                 result["fiscal"] = sync_recognition_to_fiscal(db, snapshot_date=date.today())
         elif job_code == "FISCAL_GAP_SYNC":
             result = _sync_fiscal_gaps(db)
+        elif job_code == "READINESS_RECOMPUTE":
+            n, avg = recompute_all_readiness(db)
+            result = {"recomputed": n, "average_score": round(avg, 2)}
+        elif job_code == "ECOSYSTEM_INTELLIGENCE_SCAN":
+            result = run_full_intelligence_scan(db)
         else:
             result = {}
         _finish_run(db, run, result)

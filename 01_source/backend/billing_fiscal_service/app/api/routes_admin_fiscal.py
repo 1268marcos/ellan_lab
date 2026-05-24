@@ -18,6 +18,7 @@ from app.models.invoice_model import Invoice
 from app.services.invoice_orchestrator import ensure_and_process_invoice, ensure_invoice_for_order
 from app.services.fiscal_reconciliation_service import (
     list_reconciliation_gaps,
+    resolve_reconciliation_gap,
     scan_and_persist_reconciliation_gaps,
 )
 from app.services.fiscal_gap_conciliation_snapshot_service import build_fiscal_gap_conciliation_snapshot
@@ -273,6 +274,36 @@ def get_reconciliation_gaps(
             }
             for r in rows
         ],
+    }
+
+
+@router.patch("/gaps/{gap_id}")
+def patch_reconciliation_gap(
+    gap_id: str,
+    payload: dict,
+    db: Session = Depends(get_db),
+    _: None = Depends(validate_internal_token),
+):
+    """OPS: marcar gap de emissão real como RESOLVED (workbench fiscal unificado)."""
+    body = payload if isinstance(payload, dict) else {}
+    status_value = str(body.get("status") or "").strip().upper()
+    if status_value and status_value != "RESOLVED":
+        raise HTTPException(status_code=400, detail="Only status=RESOLVED is supported")
+    row = resolve_reconciliation_gap(db, gap_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="gap_not_found")
+    return {
+        "id": row.id,
+        "dedupe_key": row.dedupe_key,
+        "gap_type": row.gap_type,
+        "severity": row.severity,
+        "status": row.status,
+        "order_id": row.order_id,
+        "invoice_id": row.invoice_id,
+        "details_json": row.details_json,
+        "first_detected_at": row.first_detected_at.isoformat() if row.first_detected_at else None,
+        "last_detected_at": row.last_detected_at.isoformat() if row.last_detected_at else None,
+        "resolved_at": row.resolved_at.isoformat() if row.resolved_at else None,
     }
 
 

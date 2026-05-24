@@ -70,6 +70,7 @@ def _row_to_player_out(row: MlLockerNetworkPlayer) -> dict:
         "global_tier": getattr(row, "global_tier", None) or "REGIONAL",
         "integration_status": getattr(row, "integration_status", None) or "PLANNED",
         "data_source": getattr(row, "data_source", None) or "CATALOG",
+        "finance_catalog_code": getattr(row, "finance_catalog_code", None) or row.code,
         "sort_order": row.sort_order,
         "active": row.active,
         "created_at": row.created_at,
@@ -95,6 +96,18 @@ def list_network_players(
     if priority_only:
         q = q.filter(MlLockerNetworkPlayer.code.in_(PRIORITY_LOCKER_CODES))
     return q.order_by(MlLockerNetworkPlayer.sort_order, MlLockerNetworkPlayer.code).all()
+
+
+def get_network_player_by_finance_code(db: Session, finance_catalog_code: str) -> dict | None:
+    code = finance_catalog_code.upper()
+    row = (
+        db.query(MlLockerNetworkPlayer)
+        .filter(
+            (MlLockerNetworkPlayer.finance_catalog_code == code) | (MlLockerNetworkPlayer.code == code)
+        )
+        .first()
+    )
+    return _row_to_player_out(row) if row else None
 
 
 def list_network_profiles(db: Session, network_player_id: str | None = None) -> list[dict]:
@@ -156,6 +169,7 @@ def seed_from_catalog(db: Session) -> dict[str, int]:
             "global_tier": global_tier_for_code(code),
             "integration_status": integration_status_for_entry(entry),
             "data_source": "MARKETPLACE_CATALOG" if entry.get("marketplace_channel_id") else "CATALOG",
+            "finance_catalog_code": entry.get("finance_catalog_code") or code,
             "sort_order": entry.get("sort_order", 100),
             "active": True,
             "updated_at": _utcnow(),

@@ -30,6 +30,7 @@ class MlLockerNetworkPlayerOut(BaseModel):
     global_tier: str = "REGIONAL"
     integration_status: str = "PLANNED"
     data_source: str = "CATALOG"
+    finance_catalog_code: str | None = None
     sort_order: int
     active: bool
     created_at: datetime

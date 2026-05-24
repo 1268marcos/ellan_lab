@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -11,6 +11,7 @@ from app.schemas.partner_ecosystem import (
     EcosystemLinkListOut,
     EcosystemLinkOut,
     EcosystemPlayerListOut,
+    EcosystemPlayerOut,
     EcosystemSummaryOut,
     EcosystemSyncOut,
     IntegrationMatrixGroupOut,
@@ -44,6 +45,14 @@ def list_ecosystem_players(
         global_tier=global_tier,
         supports_lockers=supports_lockers,
     )
+
+
+@players_router.get("/by-finance-code/{finance_catalog_code}", response_model=EcosystemPlayerOut)
+def get_ecosystem_player_by_finance_code(finance_catalog_code: str, db: Session = Depends(get_db)) -> EcosystemPlayerOut:
+    player = svc.get_player_by_finance_catalog_code(db, finance_catalog_code)
+    if not player:
+        raise HTTPException(status_code=404, detail="ecosystem_player_not_found")
+    return player
 
 
 @players_router.post("/sync-catalog", response_model=EcosystemSyncOut)
