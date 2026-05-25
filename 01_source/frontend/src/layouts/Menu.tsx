@@ -8,6 +8,7 @@ export default function Menu() {
   const [open, setOpen] = useState<Record<string, boolean>>({
     ops: false,
     cadastros: true,
+    hardwareOps: true,
     paymentsOps: true,
     moneyOps: true,
     cambioOps: false,
@@ -29,11 +30,29 @@ export default function Menu() {
     operacional: false,
     fiscal: false,
   })
-  const { auth, logout, isAuthenticated } = useAuth()
+  const { auth, logout, isAuthenticated, profile: authProfile } = useAuth()
   const navigate = useNavigate()
-  const profile = auth?.profile ?? 'partner'
+  const profile = isAuthenticated ? authProfile : null
 
-  const filteredGroups = OPS_MENU_GROUPS.filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
+  const profileLabel =
+    profile === 'admin'
+      ? 'Administrador'
+      : profile === 'ops'
+        ? 'Operações'
+        : profile === 'partner'
+          ? 'Parceiro'
+          : null
+
+  const guestLinks = [
+    { to: '/', label: 'Início' },
+    { to: '/login', label: 'Login OPS (API key)' },
+    { to: '/legal/privacy', label: 'Privacidade' },
+    { to: '/support', label: 'Suporte' },
+  ]
+
+  const filteredGroups = !profile
+    ? []
+    : OPS_MENU_GROUPS.filter((g) => (g.key === 'runtime' ? profile === 'partner' : true))
     .map((g) => {
       if (profile === 'admin') return g
       if (profile === 'partner') {
@@ -63,6 +82,7 @@ export default function Menu() {
         const opsKeys = new Set([
           'ops',
           'cadastros',
+          'hardwareOps',
           'paymentsOps',
           'moneyOps',
           'cambioOps',
@@ -96,8 +116,13 @@ export default function Menu() {
         <div>
           <p className="text-xs font-bold tracking-wide text-indigo-600 dark:text-indigo-300">ELLAN LAB</p>
           <p className="text-[11px] text-gray-500 dark:text-slate-400">
-            {isAuthenticated ? auth?.partnerName || 'Parceiro' : 'Visitante'}
+            {isAuthenticated ? auth?.partnerName || 'Parceiro' : 'Visitante — faça login para o menu OPS'}
           </p>
+          {profileLabel ? (
+            <p className="text-[10px] font-medium uppercase tracking-wide text-indigo-500 dark:text-indigo-300">
+              Perfil: {profileLabel}
+            </p>
+          ) : null}
         </div>
         {isAuthenticated ? (
           <button
@@ -120,11 +145,33 @@ export default function Menu() {
         )}
       </div>
 
-      <OpsSidebarNav
-        groups={filteredGroups}
-        open={open}
-        onToggleGroup={(key) => setOpen((s) => ({ ...s, [key]: !s[key] }))}
-      />
+      {!profile ? (
+        <nav className="space-y-1 text-sm">
+          {guestLinks.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="block rounded px-2 py-1.5 text-slate-700 hover:bg-indigo-50 dark:text-slate-200 dark:hover:bg-slate-800"
+            >
+              {item.label}
+            </Link>
+          ))}
+          <a
+            href={
+              import.meta.env.VITE_PUBLIC_PORTAL_URL || 'http://localhost:5174/v0/login'
+            }
+            className="mt-3 block rounded border border-indigo-200 px-2 py-1.5 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-300 dark:hover:bg-slate-800"
+          >
+            Portal consumidor (v0)
+          </a>
+        </nav>
+      ) : (
+        <OpsSidebarNav
+          groups={filteredGroups}
+          open={open}
+          onToggleGroup={(key) => setOpen((s) => ({ ...s, [key]: !s[key] }))}
+        />
+      )}
     </aside>
   )
 }

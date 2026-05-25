@@ -17,6 +17,11 @@ import {
   buildOnlineOrderPayload,
   paymentMethodLabel,
 } from "../../utils/paymentProfile";
+import {
+  defaultPaymentMethodsForRegion,
+  mergeLockerPaymentSources,
+  parsePaymentMethodsFromRaw,
+} from "../../utils/lockerPaymentMethods";
 import { previewCheckoutCredit } from "../../services/publicApi";
 
 
@@ -182,6 +187,7 @@ function parseLockersResponse(data) {
 }
 
 function normalizeLockerItem(locker) {
+  const lockerId = String(locker?.locker_id || locker?.id || "").trim();
   const address =
     locker?.address && typeof locker.address === "object"
       ? locker.address
@@ -197,17 +203,58 @@ function normalizeLockerItem(locker) {
         };
 
   return {
-    locker_id: String(locker?.locker_id || "").trim(),
+    locker_id: lockerId,
     region: String(locker?.region || "").trim().toUpperCase(),
     site_id: locker?.site_id || "",
-    display_name: locker?.display_name || locker?.locker_id || "",
+    display_name: locker?.display_name || lockerId || "",
     channels: Array.isArray(locker?.channels) ? locker.channels.map(String) : [],
-    payment_methods: Array.isArray(locker?.payment_methods)
-      ? locker.payment_methods.map((item) => String(item).trim()) //.toUpperCase()
-      : [],
-    active: Boolean(locker?.active),
+    payment_methods: parsePaymentMethodsFromRaw(locker),
+    active: Boolean(locker?.active ?? locker?.active_only ?? true),
     address,
   };
+}
+
+async function fetchGatewayLocker(lockerId, region) {
+  const directUrl = `${GATEWAY_BASE}/lockers/${encodeURIComponent(lockerId)}`;
+  const directRes = await fetch(directUrl);
+  const directData = await directRes.json().catch(() => ({}));
+  if (directRes.ok && directData) {
+    return normalizeLockerItem(directData);
+  }
+
+  const listUrl = `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`;
+  const listRes = await fetch(listUrl);
+  const listData = await listRes.json().catch(() => ({}));
+  if (!listRes.ok) {
+    throw new Error(
+      typeof listData?.detail !== "undefined"
+        ? JSON.stringify(listData.detail, null, 2)
+        : JSON.stringify(listData, null, 2)
+    );
+  }
+
+  const items = parseLockersResponse(listData).map(normalizeLockerItem);
+  return items.find((item) => item.locker_id === lockerId) || null;
+}
+
+async function fetchPickupLocker(lockerId) {
+  const url = `${ORDER_PICKUP_BASE}/lockers/${encodeURIComponent(lockerId)}`;
+  const res = await fetch(url);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return null;
+  return normalizeLockerItem({
+    ...data,
+    locker_id: data?.id || lockerId,
+  });
+}
+
+function enrichLockerWithPaymentMethods(primary, region, ...fallbacks) {
+  if (!primary) return null;
+  let payment_methods = mergeLockerPaymentSources(primary, ...fallbacks);
+  if (!payment_methods.length) {
+    payment_methods = defaultPaymentMethodsForRegion(region);
+  }
+  return { ...primary, payment_methods };
 }
 
 function formatAddress(locker) {
@@ -317,28 +364,21 @@ export default function PublicCheckoutPage() {
       setLockerError("");
 
       try {
-        const res = await fetch(
-          `${GATEWAY_BASE}/lockers?region=${encodeURIComponent(region)}&active_only=true`
+        const gatewayLocker = await fetchGatewayLocker(lockerId, region);
+        const pickupLocker = await fetchPickupLocker(lockerId);
+        const merged = enrichLockerWithPaymentMethods(
+          gatewayLocker || pickupLocker,
+          region,
+          pickupLocker,
+          gatewayLocker
         );
-        const data = await res.json().catch(() => ({}));
 
-        if (!res.ok) {
-          throw new Error(
-            typeof data?.detail !== "undefined"
-              ? JSON.stringify(data.detail, null, 2)
-              : JSON.stringify(data, null, 2)
-          );
-        }
-
-        const items = parseLockersResponse(data).map(normalizeLockerItem);
-        const found = items.find((item) => item.locker_id === lockerId) || null;
-
-        if (!found) {
+        if (!merged) {
           throw new Error(
             JSON.stringify(
               {
-                type: "LOCKER_NOT_FOUND_IN_GATEWAY",
-                message: "Locker não encontrado no gateway para a região selecionada.",
+                type: "LOCKER_NOT_FOUND",
+                message: "Locker não encontrado no gateway nem no order_pickup.",
                 region,
                 locker_id: lockerId,
               },
@@ -348,7 +388,7 @@ export default function PublicCheckoutPage() {
           );
         }
 
-        setLocker(found);
+        setLocker(merged);
       } catch (e) {
         setLockerError(String(e?.message || e));
         setLocker(null);

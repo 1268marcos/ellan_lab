@@ -79,6 +79,34 @@ def _safe_address_from_runtime(item: dict) -> dict:
     }
 
 
+def _default_payment_methods_for_region(region: str) -> list[str]:
+    """Fallback quando runtime ainda não sincronizou payment_methods_json."""
+    r = str(region or "").strip().upper()
+    if r == "PT":
+        return ["MBWAY", "MULTIBANCO_REFERENCE", "CARD"]
+    if r == "ES":
+        return ["CARD", "BIZUM"]
+    return ["PIX", "CARD", "CASH"]
+
+
+def _parse_payment_methods(item: dict) -> list[str]:
+    """Unifica payment_methods do runtime (lista, JSON ou CSV legado)."""
+    pm = item.get("payment_methods")
+    if isinstance(pm, list) and pm:
+        return [str(x).strip() for x in pm if str(x).strip()]
+
+    pmj = item.get("payment_methods_json")
+    if isinstance(pmj, list) and pmj:
+        return [str(x).strip() for x in pmj if str(x).strip()]
+
+    raw = item.get("allowed_payment_methods")
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [part.strip() for part in raw.split(",") if part.strip()]
+    return []
+
+
 def _to_public_summary(item: dict) -> dict:
     locker_id = (
         item.get("locker_id")
@@ -96,10 +124,9 @@ def _to_public_summary(item: dict) -> dict:
         "backend_region": str(item.get("region") or "").strip().upper(),
         "slots": int(item.get("slot_count_total") or item.get("slots_count") or item.get("slots") or 0),
         "channels": list(item.get("allowed_channels") or ["ONLINE", "KIOSK"]),
-        "payment_methods": list(
-            item.get("payment_methods")
-            or item.get("allowed_payment_methods")
-            or []
+        "payment_methods": (
+            _parse_payment_methods(item)
+            or _default_payment_methods_for_region(str(item.get("region") or ""))
         ),
         "pickup_code_length": int(item.get("pickup_code_length") or 6),
         "active": bool(item.get("active", False)),

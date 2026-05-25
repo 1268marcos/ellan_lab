@@ -213,6 +213,20 @@ export default function PublicLoginPage() {
                 Criar conta grátis
               </Link>
             </div>
+
+            <p style={{ margin: "12px 0 0", textAlign: "center", fontSize: 12, color: "#64748b" }}>
+              Equipe OPS / parceiro B2B?{" "}
+              <a
+                href={import.meta.env.VITE_OPS_CONSOLE_URL || "http://localhost:5173/v1/login"}
+                style={{ color: "#059669", fontWeight: 600 }}
+              >
+                Console v1 (API key)
+              </a>
+              {" · "}
+              <Link to="/ops/auth/policy" style={{ color: "#2563eb" }}>
+                Política de autorização
+              </Link>
+            </p>
           </form>
         </section>
 

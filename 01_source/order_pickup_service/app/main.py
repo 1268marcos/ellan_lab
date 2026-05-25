@@ -36,6 +36,7 @@ from app.routers import (
     integration_ops,
     internal,
     kiosk,
+    locker,
     locker_product_configs,
     locker_slots_ops,
     operators,
@@ -163,6 +164,7 @@ app.include_router(product_categories.router)
 app.include_router(catalog_professional.router)
 app.include_router(product_inventory_ops.router)
 app.include_router(operators.router)
+app.include_router(locker.router)
 app.include_router(locker_product_configs.router)
 app.include_router(locker_slots_ops.router)
 app.include_router(runtime_sync.router)

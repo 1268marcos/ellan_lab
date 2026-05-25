@@ -13,6 +13,8 @@ const PR = '/ops/products/admin'
 const PC = '/ops/privacy-compliance/admin'
 const MK = '/ops/marketing/promotions'
 
+const H = '/ops/hardware/admin'
+
 export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   opsGroup('ops', '🛠️', 'OPS', {
     items: [
@@ -26,6 +28,38 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
     items: [
       navItem('/ops/access/user-roles', 'Papéis de acesso'),
       navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)'),
+    ],
+  }),
+  opsGroup('hardwareOps', '🔧', 'Hardware OPS', {
+    hub: navItem(H, 'Dashboard 360°', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub & vendors', [
+        navItem(`${H}?tab=dashboard`, 'Dashboard cross-domain', { newTag: 'Hub' }),
+        navItem(`${H}?tab=vendors`, 'Redes locker e vendors'),
+        navItem(`${H}?tab=ecosystem`, 'Ecossistema mundial'),
+      ], true),
+      section('cross', 'Cross-domain', [
+        navItem(`${H}?tab=marketplace`, 'Marketplace ↔ locker'),
+        navItem(`${H}?tab=payments`, 'Payment Gateway ↔ locker'),
+        navItem(`${H}?tab=carriers`, 'Carriers globais'),
+        navItem(`${H}?tab=channels`, 'Integration Hub · canais', { newTag: 'Hub' }),
+        navItem(`${H}?tab=world`, 'World Ops · certificações', {
+          newTag: 'Pro',
+          keywords: 'webhook DLQ replay dead-letter mirror marketplace certifications corridors SLA',
+        }),
+        navItem(`${H}?tab=references`, 'Refs outros domínios'),
+        navItem(`${H}?tab=links`, 'Locker 360 · cross-domain', { newTag: 'New' }),
+      ]),
+      section('assets', 'Ativos & financeiro', [
+        navItem(`${H}?tab=assets`, 'Ativos hardware'),
+        navItem(`${H}?tab=finance`, 'CAPEX / OPEX'),
+        navItem(`${H}?tab=operators`, 'Operadores de rede'),
+      ]),
+      section('runtime', 'Runtime & ops', [
+        navItem(`${H}?tab=runtime`, 'Runtime MQTT'),
+        navItem(`${H}?tab=topology`, 'Features · slots'),
+        navItem(`${H}?tab=ops`, 'Devices · sync · telemetria'),
+      ]),
     ],
   }),
   paymentsOpsNavGroup,
@@ -204,19 +238,29 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
     ],
   }),
   opsGroup('marketplace', '🏪', 'Marketplace OPS', {
-    hub: navItem(M, 'Visão geral', { newTag: 'Hub' }),
+    hub: navItem(`${M}?tab=overview`, 'Visão geral', { newTag: 'Hub' }),
     sections: [
       section('core', 'Núcleo', [
-        navItem(M, 'Visão geral'),
+        navItem(`${M}?tab=overview`, 'Dashboard KPIs', { newTag: 'Hub' }),
         navItem(`${M}?tab=sellers`, 'Sellers'),
-        navItem(`${M}?tab=channels`, 'Canais e redes'),
-        navItem(`${M}?tab=readiness`, 'Prontidão + Global OPS', { newTag: 'New' }),
+        navItem(`${M}?tab=products`, 'Produtos'),
+        navItem(`${M}?tab=categories`, 'Categorias'),
+        navItem(`${M}?tab=channels`, 'Canais e redes locker'),
+        navItem(`${M}?tab=reviews`, 'Avaliações'),
       ], true),
+      section('integration', 'Integração & Global OPS', [
+        navItem(`${M}?tab=readiness`, 'Prontidão integração', { newTag: 'New' }),
+        navItem(`${M}?tab=readiness`, 'Global OPS · corredores · SLA', {
+          keywords: 'certifications corridors capability webhooks DLQ replay seed',
+        }),
+      ]),
       section('finance', 'Financeiro', [
         navItem(`${M}?tab=settlements`, 'Repasses'),
+        navItem(`${M}?tab=payouts`, 'Contas PIX'),
+        navItem(`${M}?tab=contacts`, 'Contatos'),
+        navItem(`${M}?tab=commissions`, 'Comissões'),
         navItem(`${M}?tab=kyc`, 'KYC / compliance'),
         navItem(`${M}?tab=disputes`, 'Disputas'),
-        navItem(`${M}?tab=commissions`, 'Comissões'),
       ]),
     ],
   }),

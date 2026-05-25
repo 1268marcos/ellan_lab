@@ -17,6 +17,7 @@ import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
+import OpsHardwareAdmin from '../pages/ops/OpsHardwareAdmin'
 const OpsPaymentsAdmin = lazy(() => import('../pages/ops/OpsPaymentsAdmin'))
 import OpsMoneyCambioAdmin from '../pages/ops/OpsMoneyCambioAdmin'
 import OpsFiscalAdmin from '../pages/ops/OpsFiscalAdmin'
@@ -283,6 +284,26 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsPaymentGatewayAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/hardware/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsHardwareAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/hardware/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsHardwareAdmin />
             </OpsOnly>
           </Protected>
         }

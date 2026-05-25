@@ -2,6 +2,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 
+import AuthorizationAccessOverview from "../components/AuthorizationAccessOverview";
 import AuthorizationPolicyPanel from "../components/AuthorizationPolicyPanel";
 import OpsPageTitleHeader from "../components/OpsPageTitleHeader";
 import { fetchPublicAuthorizationPolicy } from "../services/authApi";
@@ -42,9 +43,12 @@ export default function OpsAuthorizationPolicyPage() {
       <header style={{ marginBottom: 14 }}>
         <OpsPageTitleHeader title="OPS — Política de autorização" titleStyle={{ margin: 0 }} />
         <p style={{ marginTop: 8, color: "#475569" }}>
-          Referência operacional única de permissões e regras de acesso.
+          Referência operacional única de permissões e regras de acesso (API) e visão cruzada
+          com o console v1.
         </p>
       </header>
+
+      <AuthorizationAccessOverview />
 
       <AuthorizationPolicyPanel
         title={title}

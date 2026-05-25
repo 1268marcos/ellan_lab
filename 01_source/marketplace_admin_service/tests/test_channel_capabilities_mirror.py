@@ -47,8 +47,10 @@ def test_seed_players_capabilities_mirror_catalog(client):
     inpost = client.get(f"{API}/channel-partners/mcp-inpost").json()
     assert len(inpost["capabilities"]) == len(expected_capabilities_for_partner("mcp-inpost"))
 
-    # Player sem capabilities no catalogo => lista vazia no DB
     shopee = next(p for p in CHANNEL_PLAYERS_CATALOG if p["code"] == "SHOPEE")
-    assert not shopee.get("capabilities")
+    assert len(shopee.get("capabilities") or []) >= 2
     shopee_api = client.get(f"{API}/channel-partners/mcp-shopee").json()
-    assert shopee_api["capabilities"] == []
+    assert len(shopee_api["capabilities"]) >= 2
+
+    dpd = client.get(f"{API}/channel-partners/mcp-dpd").json()
+    assert len(dpd["capabilities"]) >= 4

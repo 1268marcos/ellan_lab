@@ -27,17 +27,55 @@ export default function AuthorizationPolicyPanel({ title, markdown, loading, err
               );
             }
             if (block.type === "table") {
-              return (
-                <pre key={index} style={tableStyle}>
-                  {block.lines.join("\n")}
-                </pre>
-              );
+              return <MarkdownTable key={index} lines={block.lines} />;
             }
             return <p key={index} style={textStyle}>{block.text}</p>;
           })}
         </div>
       ) : null}
     </section>
+  );
+}
+
+function MarkdownTable({ lines }) {
+  const rows = lines
+    .map((line) =>
+      line
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter((cell, idx, arr) => !(idx === 0 && cell === "") && !(idx === arr.length - 1 && cell === ""))
+    )
+    .filter((cells) => cells.length > 0 && !cells.every((c) => /^-+$/.test(c.replace(/:/g, ""))));
+
+  if (!rows.length) return null;
+
+  const [header, ...body] = rows;
+
+  return (
+    <div style={{ overflowX: "auto", marginBottom: 8 }}>
+      <table style={mdTableStyle}>
+        <thead>
+          <tr>
+            {header.map((cell, i) => (
+              <th key={i} style={mdThStyle}>
+                {cell}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri}>
+              {row.map((cell, ci) => (
+                <td key={ci} style={mdTdStyle}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -140,14 +178,24 @@ const errorStyle = {
   color: "#b91c1c",
 };
 
-const tableStyle = {
-  margin: 0,
-  background: "#0f172a",
-  color: "#e2e8f0",
-  padding: 10,
-  borderRadius: 8,
-  overflowX: "auto",
-  fontSize: 12,
-  lineHeight: 1.5,
+const mdTableStyle = {
+  width: "100%",
+  borderCollapse: "collapse",
+  fontSize: 13,
+};
+
+const mdThStyle = {
+  textAlign: "left",
+  padding: "8px 10px",
+  borderBottom: "2px solid #e2e8f0",
+  color: "#475569",
+  background: "#f8fafc",
+};
+
+const mdTdStyle = {
+  padding: "8px 10px",
+  borderBottom: "1px solid #f1f5f9",
+  color: "#334155",
+  verticalAlign: "top",
 };
 

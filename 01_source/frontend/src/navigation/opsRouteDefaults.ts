@@ -5,7 +5,7 @@ export const OPS_ROUTE_DEFAULT_TAB: Record<string, string> = {
   '/ops/fiscal/admin': 'global',
   '/ops/finance/admin': 'networks',
   '/ops/partners/admin': 'onboarding',
-  '/ops/marketplace/admin': 'channels',
+  '/ops/marketplace/admin': 'overview',
   '/ops/ml/admin': 'partners',
   '/ops/rentals/admin': 'networks',
   '/ops/products/admin': 'ecosystem',
@@ -13,6 +13,6 @@ export const OPS_ROUTE_DEFAULT_TAB: Record<string, string> = {
   '/ops/marketing/promotions': 'campaigns',
   '/ops/order-pickup/admin': 'orders',
   '/ops/payment-gateway/admin': 'providers',
-  '/ops/privacy-compliance/admin': 'compliance',
+  '/ops/hardware/admin': 'dashboard',
 }
 

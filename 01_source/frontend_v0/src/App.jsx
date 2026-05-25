@@ -96,6 +96,7 @@ const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
+const OpsHardwareAdminPage = lazy(() => import("./pages/OpsHardwareAdminPage"));
 const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
 const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPage"));
 const OpsFiscalAdminPage = lazy(() => import("./pages/OpsFiscalAdminPage"));
@@ -495,6 +496,122 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
+    },
+    {
+      to: "/ops/hardware/admin?tab=dashboard",
+      label: "Hardware — dashboard 360°",
+      aria: "Visao cross-domain hardware marketplace payment carriers finance",
+      group: "Hardware OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/hardware/admin?tab=vendors",
+      label: "Hardware — redes / vendors",
+      aria: "SwipBox Cleveron Pickup PL webhook API key",
+      group: "Hardware OPS",
+      opsSubGroup: "Hub",
+    },
+    {
+      to: "/ops/hardware/admin?tab=ecosystem",
+      label: "Hardware — ecossistema mundial",
+      aria: "InPost DPD Magalu Mercado Livre Amazon players",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/hardware/admin?tab=marketplace",
+      label: "Hardware — marketplace ↔ locker",
+      aria: "seller_locker_network_links Magalu Mercado Livre",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/hardware/admin?tab=payments",
+      label: "Hardware — payment ↔ locker",
+      aria: "locker payment methods PSP PIX cartao",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/hardware/admin?tab=carriers",
+      label: "Hardware — carriers globais",
+      aria: "InPost DPD DHL USPS Correios",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/hardware/admin?tab=channels",
+      label: "Hardware — integration hub",
+      aria: "food delivery agregadores PUDO channel bindings",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/hardware/admin?tab=world",
+      label: "Hardware — World Ops · certificacoes",
+      aria: "Certificacoes corredores SLA webhook DLQ replay mirror marketplace",
+      group: "Hardware OPS",
+      opsSubGroup: "Professional Ops",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/hardware/admin?tab=references",
+      label: "Hardware — refs outros dominios",
+      aria: "ORDER_PICKUP RUNTIME FINANCE MARKETPLACE",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/hardware/admin?tab=links",
+      label: "Hardware — Locker 360 cross-domain",
+      aria: "Payment gateway order pickup payments finance partner gaps sync",
+      group: "Hardware OPS",
+      opsSubGroup: "Cross-domain",
+      newTag: "New",
+    },
+    {
+      to: "/ops/hardware/admin?tab=assets",
+      label: "Hardware — ativos CAPEX",
+      aria: "ellanlab_hardware_assets depreciacao CAPEX",
+      group: "Hardware OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/hardware/admin?tab=finance",
+      label: "Hardware — CAPEX / OPEX",
+      aria: "locker_capex locker_opex ROI",
+      group: "Hardware OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/hardware/admin?tab=operators",
+      label: "Hardware — operadores de rede",
+      aria: "DPD USPS DHL InPost locker operators",
+      group: "Hardware OPS",
+      opsSubGroup: "Operadores",
+    },
+    {
+      to: "/ops/hardware/admin?tab=runtime",
+      label: "Hardware — runtime MQTT",
+      aria: "runtime_lockers topology mqtt",
+      group: "Hardware OPS",
+      opsSubGroup: "Runtime",
+    },
+    {
+      to: "/ops/hardware/admin?tab=topology",
+      label: "Hardware — features / slots",
+      aria: "runtime_locker_features runtime_locker_slots",
+      group: "Hardware OPS",
+      opsSubGroup: "Runtime",
+    },
+    {
+      to: "/ops/hardware/admin?tab=ops",
+      label: "Hardware — devices e telemetria",
+      aria: "device registry sync queue telemetry",
+      group: "Hardware OPS",
+      opsSubGroup: "Operacoes",
     },
     {
       to: "/ops/payments/admin",
@@ -1133,16 +1250,89 @@ function TopNav() {
       opsSubGroup: "Order Pickup",
     },
     {
-      to: "/ops/marketplace/admin",
+      to: "/ops/marketplace/admin?tab=overview",
       label: "Marketplace — visao geral",
       aria: "Dashboard KPIs, sellers, catalogo, comissoes, repasses, KYC e disputas",
       group: "Marketplace OPS",
       opsSubGroup: "Visao geral",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=sellers",
+      label: "Marketplace — sellers",
+      aria: "Onboarding sellers, status e vinculos",
+      group: "Marketplace OPS",
+      opsSubGroup: "Nucleo",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=products",
+      label: "Marketplace — produtos",
+      aria: "Catalogo SKU marketplace",
+      group: "Marketplace OPS",
+      opsSubGroup: "Nucleo",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=categories",
+      label: "Marketplace — categorias",
+      aria: "Taxonomia categorias marketplace",
+      group: "Marketplace OPS",
+      opsSubGroup: "Nucleo",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=channels",
+      label: "Marketplace — canais e redes locker",
+      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e vinculos seller",
+      group: "Marketplace OPS",
+      opsSubGroup: "Canais",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=reviews",
+      label: "Marketplace — avaliacoes",
+      aria: "Reviews sellers e produtos",
+      group: "Marketplace OPS",
+      opsSubGroup: "Nucleo",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=readiness",
+      label: "Marketplace — prontidao integracao",
+      aria: "Score GO_LIVE/PILOT, incidentes e auditoria de sync",
+      group: "Marketplace OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=readiness",
+      label: "Marketplace — Global OPS (corredores · SLA · webhooks)",
+      aria: "Certificacoes, corredores internacionais, capability webhooks DLQ replay",
+      group: "Marketplace OPS",
+      opsSubGroup: "Global OPS",
+      newTag: "New",
+      opsSearch: "DLQ replay dead-letter seed",
     },
     {
       to: "/ops/marketplace/admin?tab=settlements",
       label: "Marketplace — repasses",
-      aria: "Lotes de liquidacao ao seller e contas PIX",
+      aria: "Lotes de liquidacao ao seller",
+      group: "Marketplace OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=payouts",
+      label: "Marketplace — contas PIX",
+      aria: "Contas de repasse PIX sellers",
+      group: "Marketplace OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=contacts",
+      label: "Marketplace — contatos",
+      aria: "Contatos B2B sellers",
+      group: "Marketplace OPS",
+      opsSubGroup: "Financeiro",
+    },
+    {
+      to: "/ops/marketplace/admin?tab=commissions",
+      label: "Marketplace — comissoes",
+      aria: "Regras de comissao marketplace",
       group: "Marketplace OPS",
       opsSubGroup: "Financeiro",
     },
@@ -1154,26 +1344,11 @@ function TopNav() {
       opsSubGroup: "Compliance",
     },
     {
-      to: "/ops/marketplace/admin?tab=channels",
-      label: "Marketplace — canais e redes locker",
-      aria: "InPost, DHL, Magalu, Mercado Livre, Amazon, DPD, Correios, CTT e vinculos seller",
+      to: "/ops/marketplace/admin?tab=disputes",
+      label: "Marketplace — disputas",
+      aria: "Disputas chargeback marketplace",
       group: "Marketplace OPS",
-      opsSubGroup: "Canais",
-    },
-    {
-      to: "/ops/marketplace/admin?tab=readiness",
-      label: "Marketplace — prontidao integracao",
-      aria: "Score GO_LIVE/PILOT, incidentes e auditoria de sync",
-      group: "Marketplace OPS",
-      opsSubGroup: "Integracao",
-    },
-    {
-      to: "/ops/marketplace/admin?tab=readiness",
-      label: "Marketplace — Global OPS (corredores · SLA)",
-      aria: "Certificacoes, corredores internacionais e espelho partner",
-      group: "Marketplace OPS",
-      opsSubGroup: "Global OPS",
-      newTag: "New1",
+      opsSubGroup: "Compliance",
     },
     {
       to: "/ops/privacy-compliance/admin",
@@ -1980,6 +2155,7 @@ function TopNav() {
     "Visão Geral",
     "Dashboards",
     "Cadastros OPS",
+    "Hardware OPS",
     "Payments OPS",
     "ML OPS",
     "Marketplace OPS",
@@ -3247,6 +3423,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/hardware/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsHardwareAdminPage />)}
                 </OpsRoute>
               }
             />

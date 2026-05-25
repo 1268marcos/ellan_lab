@@ -47,6 +47,9 @@ const orderPickupAdminServiceProxy =
 const marketplaceAdminServiceProxy =
   process.env.MARKETPLACE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8019'
 
+const hardwareAdminServiceProxy =
+  process.env.HARDWARE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8025'
+
 const mlAdminServiceProxy =
   process.env.ML_ADMIN_SERVICE_PROXY ?? 'http://localhost:8021'
 
@@ -88,6 +91,7 @@ function redirectRootToV1() {
 }
 
 export default defineConfig({
+  base: '/v1/',
   cacheDir: path.join(projectDir, '.vite-cache'),
   resolve: {
     alias: {
@@ -142,6 +146,11 @@ export default defineConfig({
         target: marketplaceAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/marketplace-admin/, '/api'),
+      },
+      '/api/hardware-admin': {
+        target: hardwareAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/hardware-admin/, '/api'),
       },
       '/api/ml-admin': {
         target: mlAdminServiceProxy,
