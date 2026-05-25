@@ -18,6 +18,11 @@ const TABS = [
   'overview',
   'intelligence',
   'access-review',
+  'break-glass',
+  'access-requests',
+  'jit-access',
+  'delegations',
+  'entitlements',
   'alerts',
   'compliance',
   'templates',
@@ -46,6 +51,11 @@ const TAB_LABELS: Record<Tab, string> = {
   overview: 'Visão geral',
   intelligence: 'Inteligência OPS',
   'access-review': 'Revisão de acesso',
+  'break-glass': 'Break-glass',
+  'access-requests': 'Pedidos de acesso',
+  'jit-access': 'Acesso JIT',
+  delegations: 'Delegação act-as',
+  entitlements: 'Entitlements remotos',
   alerts: 'Alertas',
   compliance: 'Compliance',
   templates: 'Templates onboarding',
@@ -87,6 +97,25 @@ export default function OpsUsersSecurityAdmin() {
   const [alerts, setAlerts] = useState<Array<{ id: string; title: string; severity: string }>>([])
   const [templates, setTemplates] = useState<Array<{ code: string; name: string }>>([])
   const [campaigns, setCampaigns] = useState<Array<{ id: string; name: string; status: string; pending_items: number }>>([])
+  const [selectedCampaignId, setSelectedCampaignId] = useState('')
+  const [reviewItems, setReviewItems] = useState<
+    Array<{
+      id: string
+      user_id: string
+      subject_type: string
+      subject_label?: string
+      decision?: string | null
+    }>
+  >([])
+  const [breakGlassEvents, setBreakGlassEvents] = useState<
+    Array<{ id: string; user_id: string; reason: string; status: string; expires_at: string; granted_roles: string[] }>
+  >([])
+  const [bgForm, setBgForm] = useState({ user_id: 'usr-suporte', reason: '', duration_hours: 4, role: 'admin_operacao' })
+  const [accessRequests, setAccessRequests] = useState<Array<{ id: string; user_id: string; domain_code: string; status: string; permission_key: string }>>([])
+  const [jitGrants, setJitGrants] = useState<Array<{ id: string; user_id: string; domain_code: string; expires_at: string }>>([])
+  const [delegations, setDelegations] = useState<Array<{ id: string; delegate_user_id: string; target_domain: string; target_entity_id: string }>>([])
+  const [entitlements, setEntitlements] = useState<{ items: unknown[]; domains_synced: number } | null>(null)
+  const REVIEWER_ID = 'usr-admin-ops'
   const [compliance, setCompliance] = useState<{ items: unknown[]; coverage_pct: number } | null>(null)
   const [matrix, setMatrix] = useState<{ users: string[]; domains: string[]; cells: unknown[] } | null>(null)
   const [userForm, setUserForm] = useState({ full_name: '', email: '' })
@@ -111,8 +140,37 @@ export default function OpsUsersSecurityAdmin() {
         const t = await securityAdminApi.listRoleTemplates()
         setTemplates(t.data.items ?? [])
       } else if (tab === 'access-review') {
-        const c = await securityAdminApi.listAccessReviews()
-        setCampaigns(c.data.items ?? [])
+        const [c, u] = await Promise.all([securityAdminApi.listAccessReviews(), partnerAdminApi.listUsers()])
+        const items = c.data.items ?? []
+        setCampaigns(items)
+        setUsers(u.data.users ?? [])
+        const campId = selectedCampaignId || items[0]?.id || ''
+        if (campId) {
+          setSelectedCampaignId(campId)
+          const ri = await securityAdminApi.listAccessReviewItems(campId, true)
+          setReviewItems(ri.data.items ?? [])
+        } else {
+          setReviewItems([])
+        }
+      } else if (tab === 'access-requests') {
+        const ar = await securityAdminApi.listAccessRequests('PENDING')
+        setAccessRequests(ar.data.items ?? [])
+      } else if (tab === 'jit-access') {
+        const j = await securityAdminApi.listJitGrants()
+        setJitGrants(j.data.items ?? [])
+      } else if (tab === 'delegations') {
+        const d = await securityAdminApi.listDelegations()
+        setDelegations(d.data.items ?? [])
+      } else if (tab === 'entitlements') {
+        const e = await securityAdminApi.listEntitlements()
+        setEntitlements(e.data)
+      } else if (tab === 'break-glass') {
+        const [bg, u] = await Promise.all([
+          securityAdminApi.listBreakGlass(true),
+          partnerAdminApi.listUsers(),
+        ])
+        setBreakGlassEvents(bg.data.items ?? [])
+        setUsers(u.data.users ?? [])
       } else if (tab === 'compliance') {
         const c = await securityAdminApi.listCompliance()
         setCompliance(c.data)
@@ -167,11 +225,83 @@ export default function OpsUsersSecurityAdmin() {
     } finally {
       setLoading(false)
     }
-  }, [tab])
+  }, [tab, selectedCampaignId])
 
   useEffect(() => {
     void load()
   }, [load])
+
+  const onSelectCampaign = async (campId: string) => {
+    setSelectedCampaignId(campId)
+    setLoading(true)
+    try {
+      const ri = await securityAdminApi.listAccessReviewItems(campId, true)
+      setReviewItems(ri.data.items ?? [])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Falha ao carregar itens')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onDecideReview = async (itemId: string, decision: 'APPROVE' | 'REVOKE') => {
+    setLoading(true)
+    setError(null)
+    try {
+      await securityAdminApi.decideAccessReviewItem(itemId, {
+        decision,
+        reviewer_id: REVIEWER_ID,
+        notes: decision === 'REVOKE' ? 'Revogado na certificação OPS' : undefined,
+      })
+      setMessage(decision === 'REVOKE' ? 'Acesso revogado' : 'Acesso certificado')
+      if (selectedCampaignId) await onSelectCampaign(selectedCampaignId)
+      const c = await securityAdminApi.listAccessReviews()
+      setCampaigns(c.data.items ?? [])
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Falha na decisão')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onOpenBreakGlass = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!bgForm.reason.trim()) return
+    setLoading(true)
+    setError(null)
+    try {
+      await securityAdminApi.openBreakGlass({
+        user_id: bgForm.user_id,
+        reason: bgForm.reason,
+        granted_roles: [bgForm.role],
+        approved_by: REVIEWER_ID,
+        duration_hours: bgForm.duration_hours,
+      })
+      setMessage('Break-glass aberto')
+      setBgForm((f) => ({ ...f, reason: '' }))
+      const bg = await securityAdminApi.listBreakGlass(true)
+      setBreakGlassEvents(bg.data.items ?? [])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao abrir break-glass')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const onRevokeBreakGlass = async (eventId: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      await securityAdminApi.revokeBreakGlass(eventId, { revoked_by: REVIEWER_ID, reason: 'Encerrado pelo OPS' })
+      setMessage('Break-glass revogado')
+      const bg = await securityAdminApi.listBreakGlass(true)
+      setBreakGlassEvents(bg.data.items ?? [])
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao revogar')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const onCreateUser = async (e: FormEvent) => {
     e.preventDefault()
@@ -281,12 +411,168 @@ export default function OpsUsersSecurityAdmin() {
           </div>
         ))}
 
-      {tab === 'access-review' &&
-        campaigns.map((c) => (
-          <div key={c.id} className="border-b border-slate-800 py-2 text-sm">
-            {c.name} · {c.status} · {c.pending_items} pendentes
+      {tab === 'access-review' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            {campaigns.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => void onSelectCampaign(c.id)}
+                className={`rounded px-3 py-1 text-sm ${
+                  selectedCampaignId === c.id ? 'bg-emerald-700 text-white' : 'bg-slate-800 text-slate-300'
+                }`}
+              >
+                {c.name} ({c.pending_items} pend.)
+              </button>
+            ))}
+          </div>
+          <div className="overflow-x-auto rounded-xl border border-slate-700">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-800/80 text-slate-400">
+                <tr>
+                  <th className="p-2">Utilizador</th>
+                  <th className="p-2">Tipo</th>
+                  <th className="p-2">Sujeito</th>
+                  <th className="p-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviewItems.map((item) => (
+                  <tr key={item.id} className="border-t border-slate-800">
+                    <td className="p-2 font-mono text-xs">{item.user_id}</td>
+                    <td className="p-2">{item.subject_type}</td>
+                    <td className="p-2">{item.subject_label ?? item.subject_id}</td>
+                    <td className="p-2 space-x-2">
+                      <button
+                        type="button"
+                        className="rounded bg-emerald-700 px-2 py-1 text-xs text-white"
+                        onClick={() => void onDecideReview(item.id, 'APPROVE')}
+                        disabled={loading}
+                      >
+                        Aprovar
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded bg-red-700 px-2 py-1 text-xs text-white"
+                        onClick={() => void onDecideReview(item.id, 'REVOKE')}
+                        disabled={loading}
+                        title="Revoga UserRole ou CrossDomainGrant"
+                      >
+                        Revogar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!reviewItems.length && <p className="p-4 text-sm text-slate-500">Nenhum item pendente nesta campanha.</p>}
+          </div>
+        </div>
+      )}
+
+      {tab === 'access-requests' &&
+        accessRequests.map((r) => (
+          <div key={r.id} className="flex gap-2 border-b border-slate-800 py-2 text-sm">
+            <span>
+              {r.user_id} · {r.domain_code} · {r.permission_key}
+            </span>
+            <button type="button" className="rounded bg-emerald-700 px-2 py-1 text-xs text-white" onClick={() => void securityAdminApi.decideAccessRequest(r.id, { decision: 'APPROVE', reviewer_id: REVIEWER_ID }).then(() => load())}>
+              Aprovar
+            </button>
+            <button type="button" className="rounded bg-red-800 px-2 py-1 text-xs text-white" onClick={() => void securityAdminApi.decideAccessRequest(r.id, { decision: 'DENY', reviewer_id: REVIEWER_ID }).then(() => load())}>
+              Negar
+            </button>
           </div>
         ))}
+
+      {tab === 'jit-access' &&
+        jitGrants.map((j) => (
+          <div key={j.id} className="border-b border-slate-800 py-2 text-sm font-mono">
+            {j.user_id} · {j.domain_code} · expira {new Date(j.expires_at).toLocaleString()}
+          </div>
+        ))}
+
+      {tab === 'delegations' &&
+        delegations.map((d) => (
+          <div key={d.id} className="border-b border-slate-800 py-2 text-sm">
+            {d.delegate_user_id} → {d.target_domain}/{d.target_entity_id}
+          </div>
+        ))}
+
+      {tab === 'entitlements' && entitlements && (
+        <p className="text-sm text-slate-400">
+          {entitlements.items.length} entitlements · {entitlements.domains_synced} domínios
+          <button type="button" className="ml-3 rounded bg-slate-700 px-2 py-1 text-xs" onClick={() => void securityAdminApi.syncEntitlements().then(() => load())}>
+            Sincronizar
+          </button>
+        </p>
+      )}
+
+      {tab === 'break-glass' && (
+        <div className="space-y-4">
+          <form onSubmit={onOpenBreakGlass} className="flex flex-wrap gap-2 rounded-xl border border-amber-800/60 bg-amber-950/30 p-4">
+            <select
+              className="ellan-field"
+              value={bgForm.user_id}
+              onChange={(e) => setBgForm({ ...bgForm, user_id: e.target.value })}
+            >
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.full_name} ({u.id})
+                </option>
+              ))}
+            </select>
+            <select
+              className="ellan-field"
+              value={bgForm.role}
+              onChange={(e) => setBgForm({ ...bgForm, role: e.target.value })}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <input
+              className="ellan-field min-w-[200px] flex-1"
+              placeholder="Motivo do incidente (obrigatório)"
+              value={bgForm.reason}
+              onChange={(e) => setBgForm({ ...bgForm, reason: e.target.value })}
+              required
+            />
+            <input
+              type="number"
+              min={1}
+              max={24}
+              className="ellan-field w-20"
+              value={bgForm.duration_hours}
+              onChange={(e) => setBgForm({ ...bgForm, duration_hours: Number(e.target.value) })}
+            />
+            <button type="submit" className="rounded bg-amber-600 px-4 py-2 text-sm text-white" disabled={loading}>
+              Abrir break-glass
+            </button>
+          </form>
+          {breakGlassEvents.map((ev) => (
+            <div key={ev.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 py-2 text-sm">
+              <span>
+                <strong className="font-mono">{ev.user_id}</strong> · {ev.reason} · expira {new Date(ev.expires_at).toLocaleString()}
+                <br />
+                <span className="text-slate-500">roles: {(ev.granted_roles || []).join(', ')}</span>
+              </span>
+              <button
+                type="button"
+                className="rounded bg-slate-700 px-3 py-1 text-xs text-white"
+                onClick={() => void onRevokeBreakGlass(ev.id)}
+                disabled={loading}
+              >
+                Revogar agora
+              </button>
+            </div>
+          ))}
+          {!breakGlassEvents.length && <p className="text-sm text-slate-500">Nenhuma sessão break-glass ativa.</p>}
+        </div>
+      )}
 
       {tab === 'compliance' && compliance && (
         <div className="text-sm text-slate-300">

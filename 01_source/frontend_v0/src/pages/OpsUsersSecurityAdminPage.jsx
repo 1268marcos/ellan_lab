@@ -30,6 +30,7 @@ const BASE = import.meta.env.VITE_PARTNER_ADMIN_BASE_URL || "/api/pa";
 const API = `${BASE}/v1/partner-admin`;
 const SEC = `${API}/security-admin`;
 const VAL = `${SEC}/value`;
+const CROSS = `${SEC}/cross-ops`;
 const PAGE_VERSION = "ops/access/security-admin v0.2-pro";
 const ROLES = ["admin_operacao", "suporte", "auditoria", "usuario_comum", "partner_api", "carrier_ops"];
 
@@ -42,6 +43,11 @@ const TABS = [
   ["taxonomy", "Taxonomia mundial"],
   ["relations", "Relacoes player"],
   ["access-review", "Revisao acesso"],
+  ["break-glass", "Break-glass"],
+  ["access-requests", "Pedidos acesso"],
+  ["jit-access", "Acesso JIT"],
+  ["delegations", "Delegacao act-as"],
+  ["entitlements", "Entitlements"],
   ["alerts", "Alertas"],
   ["compliance", "Compliance"],
   ["templates", "Templates onboarding"],
@@ -62,9 +68,17 @@ const TABS = [
   ["cross-domain", "Links legado"],
 ];
 
-function parseError(payload, fallback = "Falha na API security-admin.") {
-  if (!payload) return fallback;
+function parseError(payload, fallback = "Falha na API security-admin.", status = 0) {
+  if (!payload) {
+    if (status === 502 || status === 503) return `Servico indisponivel (HTTP ${status}). Inicie partner_admin_service na porta 8016.`;
+    if (status >= 500) return `Erro interno (HTTP ${status}). Reinicie o servico e rode POST /api/v1/partner-admin/seed.`;
+    return fallback;
+  }
   if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail.trim();
+  if (Array.isArray(payload?.detail)) {
+    const msg = payload.detail.map((d) => d?.msg || d).filter(Boolean).join("; ");
+    if (msg) return msg;
+  }
   return fallback;
 }
 
@@ -111,7 +125,16 @@ export default function OpsUsersSecurityAdminPage() {
   const [compliance, setCompliance] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [campaigns, setCampaigns] = useState([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState("");
+  const [reviewItems, setReviewItems] = useState([]);
+  const [breakGlassEvents, setBreakGlassEvents] = useState([]);
+  const [accessRequests, setAccessRequests] = useState([]);
+  const [jitGrants, setJitGrants] = useState([]);
+  const [delegations, setDelegations] = useState([]);
+  const [entitlements, setEntitlements] = useState(null);
+  const [bgForm, setBgForm] = useState({ user_id: "usr-suporte", reason: "", duration_hours: 4, role: "admin_operacao" });
   const [matrix, setMatrix] = useState(null);
+  const REVIEWER_ID = "usr-admin-ops";
   const [user360, setUser360] = useState(null);
   const [sessions, setSessions] = useState([]);
   const [deliveries, setDeliveries] = useState([]);
@@ -166,7 +189,7 @@ export default function OpsUsersSecurityAdminPage() {
       if (tab === "overview") {
         const s = await fetch(`${SEC}/summary`, { headers });
         const sj = await s.json().catch(() => ({}));
-        if (!s.ok) throw new Error(parseError(sj));
+        if (!s.ok) throw new Error(parseError(sj, "Falha na API security-admin.", s.status));
         setSummary(sj);
         await loadCore();
         return;
@@ -243,7 +266,59 @@ export default function OpsUsersSecurityAdminPage() {
         const c = await fetch(`${VAL}/access-reviews`, { headers });
         const cj = await c.json().catch(() => ({}));
         if (!c.ok) throw new Error(parseError(cj));
-        setCampaigns(cj.items || []);
+        const items = cj.items || [];
+        setCampaigns(items);
+        await loadCore();
+        const campId = selectedCampaignId || items[0]?.id || "";
+        if (campId) {
+          setSelectedCampaignId(campId);
+          const ri = await fetch(`${VAL}/access-reviews/${campId}/items?pending_only=true`, { headers });
+          const rij = await ri.json().catch(() => ({}));
+          if (!ri.ok) throw new Error(parseError(rij));
+          setReviewItems(rij.items || []);
+        } else {
+          setReviewItems([]);
+        }
+        return;
+      }
+      if (tab === "access-requests") {
+        const ar = await fetch(`${CROSS}/access-requests?status=PENDING`, { headers });
+        const arj = await ar.json().catch(() => ({}));
+        if (!ar.ok) throw new Error(parseError(arj, "Falha na API security-admin.", ar.status));
+        setAccessRequests(arj.items || []);
+        return;
+      }
+      if (tab === "jit-access") {
+        const j = await fetch(`${CROSS}/jit-grants`, { headers });
+        const jj = await j.json().catch(() => ({}));
+        if (!j.ok) throw new Error(parseError(jj, "Falha na API security-admin.", j.status));
+        setJitGrants(jj.items || []);
+        return;
+      }
+      if (tab === "delegations") {
+        const d = await fetch(`${CROSS}/delegations`, { headers });
+        const dj = await d.json().catch(() => ({}));
+        if (!d.ok) throw new Error(parseError(dj, "Falha na API security-admin.", d.status));
+        setDelegations(dj.items || []);
+        return;
+      }
+      if (tab === "entitlements") {
+        const e = await fetch(`${CROSS}/entitlements`, { headers });
+        const ej = await e.json().catch(() => ({}));
+        if (!e.ok) throw new Error(parseError(ej, "Falha na API security-admin.", e.status));
+        setEntitlements(ej);
+        return;
+      }
+      if (tab === "break-glass") {
+        const bg = await fetch(`${VAL}/break-glass?active_only=true`, { headers });
+        const bgj = await bg.json().catch(() => ({}));
+        if (!bg.ok) throw new Error(parseError(bgj, "Falha na API security-admin.", bg.status));
+        setBreakGlassEvents(bgj.items || []);
+        try {
+          await loadCore();
+        } catch {
+          /* formulario break-glass funciona sem lista de users */
+        }
         return;
       }
       if (tab === "alerts") {
@@ -334,7 +409,7 @@ export default function OpsUsersSecurityAdminPage() {
       if (tab === "sessions") {
         const s = await fetch(`${SEC}/sessions`, { headers });
         const sj = await s.json().catch(() => ({}));
-        if (!s.ok) throw new Error(parseError(sj));
+        if (!s.ok) throw new Error(parseError(sj, "Falha na API security-admin.", s.status));
         setSessions(sj.items || []);
         return;
       }
@@ -371,11 +446,101 @@ export default function OpsUsersSecurityAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [token, headers, tab, loadCore]);
+  }, [token, headers, tab, loadCore, selectedCampaignId]);
 
   useEffect(() => {
     void loadTab();
   }, [loadTab]);
+
+  const loadReviewItems = async (campId) => {
+    if (!campId || !token) return;
+    setSelectedCampaignId(campId);
+    const ri = await fetch(`${VAL}/access-reviews/${campId}/items?pending_only=true`, { headers });
+    const rij = await ri.json().catch(() => ({}));
+    if (!ri.ok) throw new Error(parseError(rij));
+    setReviewItems(rij.items || []);
+  };
+
+  const onDecideReview = async (itemId, decision) => {
+    if (!canMutate) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch(`${VAL}/access-reviews/items/${encodeURIComponent(itemId)}/decide`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          decision,
+          reviewer_id: REVIEWER_ID,
+          notes: decision === "REVOKE" ? "Revogado na certificacao OPS" : undefined,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setOk(decision === "REVOKE" ? "Acesso revogado." : "Acesso certificado.");
+      await loadReviewItems(selectedCampaignId);
+      const c = await fetch(`${VAL}/access-reviews`, { headers });
+      const cj = await c.json().catch(() => ({}));
+      if (c.ok) setCampaigns(cj.items || []);
+    } catch (e) {
+      setErr(normalizeNetworkError(e, `${VAL}/access-reviews/items/decide`));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onOpenBreakGlass = async (e) => {
+    e?.preventDefault?.();
+    if (!canMutate || !bgForm.reason.trim()) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch(`${VAL}/break-glass`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          user_id: bgForm.user_id,
+          reason: bgForm.reason,
+          granted_roles: [bgForm.role],
+          approved_by: REVIEWER_ID,
+          duration_hours: bgForm.duration_hours,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setOk("Break-glass aberto.");
+      setBgForm((f) => ({ ...f, reason: "" }));
+      const bg = await fetch(`${VAL}/break-glass?active_only=true`, { headers });
+      const bgj = await bg.json().catch(() => ({}));
+      if (bg.ok) setBreakGlassEvents(bgj.items || []);
+    } catch (err) {
+      setErr(normalizeNetworkError(err, `${VAL}/break-glass`));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRevokeBreakGlass = async (eventId) => {
+    if (!canMutate) return;
+    setLoading(true);
+    try {
+      const r = await fetch(`${VAL}/break-glass/${encodeURIComponent(eventId)}/revoke`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ revoked_by: REVIEWER_ID, reason: "Encerrado pelo OPS" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(parseError(j));
+      setOk("Break-glass revogado.");
+      const bg = await fetch(`${VAL}/break-glass?active_only=true`, { headers });
+      const bgj = await bg.json().catch(() => ({}));
+      if (bg.ok) setBreakGlassEvents(bgj.items || []);
+    } catch (err) {
+      setErr(normalizeNetworkError(err, `${VAL}/break-glass/revoke`));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const onSeed = async () => {
     if (!token || !canMutate) return;
@@ -587,10 +752,154 @@ export default function OpsUsersSecurityAdminPage() {
           (t) => t.code,
         ) : null}
 
-        {tab === "access-review" && campaigns.length ? renderTable(
-          campaigns.map((c) => ({ name: c.name, status: c.status, pending: c.pending_items, due: c.due_at })),
-          ["name", "status", "pending", "due"],
-          (c) => c.id,
+        {tab === "access-review" ? (
+          <section style={opsSanityCardStyle}>
+            <div style={healthLocalFilterRowStyle}>
+              {campaigns.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  style={{
+                    ...buttonGhostStyle,
+                    ...(selectedCampaignId === c.id ? { borderColor: "#10b981", color: "#6ee7b7" } : {}),
+                  }}
+                  onClick={() => void loadReviewItems(c.id).catch((e) => setErr(normalizeNetworkError(e, VAL)))}
+                >
+                  {c.name} ({c.pending_items} pend.)
+                </button>
+              ))}
+            </div>
+            {reviewItems.length ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      {["user", "type", "subject", "acoes"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reviewItems.map((item) => (
+                      <tr key={item.id}>
+                        <td style={tdStyle}>{item.user_id}</td>
+                        <td style={tdStyle}>{item.subject_type}</td>
+                        <td style={tdStyle}>{item.subject_label || item.subject_id}</td>
+                        <td style={tdStyle}>
+                          {canMutate ? (
+                            <>
+                              <button type="button" style={{ ...buttonPrimaryStyle, marginRight: 6, fontSize: 12 }} onClick={() => void onDecideReview(item.id, "APPROVE")} disabled={loading}>Aprovar</button>
+                              <button type="button" style={{ ...buttonGhostStyle, fontSize: 12, color: "#fca5a5" }} onClick={() => void onDecideReview(item.id, "REVOKE")} disabled={loading}>Revogar</button>
+                            </>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={summary24hHintStyle}>Nenhum item pendente nesta campanha.</p>
+            )}
+          </section>
+        ) : null}
+
+        {tab === "access-requests" && accessRequests.length ? (
+          <div style={{ overflowX: "auto" }}>
+            <table style={tableStyle}>
+              <thead><tr>{["user", "domain", "perm", "acoes"].map((h) => <th key={h} style={thStyle}>{h}</th>)}</tr></thead>
+              <tbody>
+                {accessRequests.map((r) => (
+                  <tr key={r.id}>
+                    <td style={tdStyle}>{r.user_id}</td>
+                    <td style={tdStyle}>{r.domain_code}</td>
+                    <td style={tdStyle}>{r.permission_key}</td>
+                    <td style={tdStyle}>
+                      {canMutate ? (
+                        <>
+                          <button type="button" style={{ ...buttonPrimaryStyle, marginRight: 6, fontSize: 12 }} onClick={() => void fetch(`${CROSS}/access-requests/${r.id}/decide`, { method: "POST", headers, body: JSON.stringify({ decision: "APPROVE", reviewer_id: REVIEWER_ID }) }).then(() => loadTab())}>Aprovar</button>
+                          <button type="button" style={{ ...buttonGhostStyle, fontSize: 12 }} onClick={() => void fetch(`${CROSS}/access-requests/${r.id}/decide`, { method: "POST", headers, body: JSON.stringify({ decision: "DENY", reviewer_id: REVIEWER_ID }) }).then(() => loadTab())}>Negar</button>
+                        </>
+                      ) : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {tab === "jit-access" && jitGrants.length ? renderTable(
+          jitGrants.map((j) => ({ user: j.user_id, domain: j.domain_code, exp: j.expires_at })),
+          ["user", "domain", "exp"],
+          (j) => j.user + j.domain,
+        ) : null}
+
+        {tab === "delegations" && delegations.length ? renderTable(
+          delegations.map((d) => ({ user: d.delegate_user_id, domain: d.target_domain, entity: d.target_entity_id })),
+          ["user", "domain", "entity"],
+          (d) => d.user + d.entity,
+        ) : null}
+
+        {tab === "entitlements" && entitlements ? (
+          <p style={summary24hHintStyle}>
+            {entitlements.total ?? entitlements.items?.length ?? 0} entitlements · {entitlements.domains_synced} dominios
+            {canMutate ? <button type="button" style={{ ...buttonGhostStyle, marginLeft: 8 }} onClick={() => void fetch(`${CROSS}/entitlements/sync`, { method: "POST", headers }).then(() => loadTab())}>Sincronizar</button> : null}
+          </p>
+        ) : null}
+
+        {tab === "break-glass" ? (
+          <section style={opsSanityCardStyle}>
+            {canMutate ? (
+              <form onSubmit={onOpenBreakGlass} style={{ ...healthLocalFilterRowStyle, marginBottom: 12 }}>
+                <label style={healthLocalFilterFieldStyle}>usuario
+                  <select value={bgForm.user_id} onChange={(e) => setBgForm({ ...bgForm, user_id: e.target.value })} style={healthLocalFilterInputStyle}>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>{u.full_name || u.id}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={healthLocalFilterFieldStyle}>role
+                  <select value={bgForm.role} onChange={(e) => setBgForm({ ...bgForm, role: e.target.value })} style={healthLocalFilterInputStyle}>
+                    {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </label>
+                <label style={healthLocalFilterFieldStyle}>motivo
+                  <input value={bgForm.reason} onChange={(e) => setBgForm({ ...bgForm, reason: e.target.value })} style={healthLocalFilterInputStyle} required placeholder="incidente P1" />
+                </label>
+                <label style={healthLocalFilterFieldStyle}>horas
+                  <input type="number" min={1} max={24} value={bgForm.duration_hours} onChange={(e) => setBgForm({ ...bgForm, duration_hours: Number(e.target.value) })} style={{ ...healthLocalFilterInputStyle, width: 56 }} />
+                </label>
+                <button type="submit" style={{ ...buttonPrimaryStyle, background: "#d97706" }} disabled={loading}>Abrir break-glass</button>
+              </form>
+            ) : null}
+            {breakGlassEvents.length ? (
+              <div style={{ overflowX: "auto" }}>
+                <table style={tableStyle}>
+                  <thead>
+                    <tr>
+                      {["user", "reason", "expires", "roles", "acoes"].map((h) => <th key={h} style={thStyle}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {breakGlassEvents.map((ev) => (
+                      <tr key={ev.id}>
+                        <td style={tdStyle}>{ev.user_id}</td>
+                        <td style={tdStyle}>{ev.reason}</td>
+                        <td style={tdStyle}>{ev.expires_at}</td>
+                        <td style={tdStyle}>{(ev.granted_roles || []).join(", ")}</td>
+                        <td style={tdStyle}>
+                          {canMutate ? (
+                            <button type="button" style={buttonGhostStyle} onClick={() => void onRevokeBreakGlass(ev.id)} disabled={loading}>Revogar</button>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={summary24hHintStyle}>Nenhuma sessao break-glass ativa.</p>
+            )}
+          </section>
         ) : null}
 
         {tab === "matrix" && matrix ? (

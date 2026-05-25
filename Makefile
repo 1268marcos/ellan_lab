@@ -1,5 +1,5 @@
 # Raiz do Ellan Lab — alvos utilitários para desenvolvimento e CI.
-.PHONY: test-collect test-payment-contract test-order-pickup-admin e2e-payment-p0 e2e-payment-ui
+.PHONY: test-collect test-payment-contract test-order-pickup-admin e2e-payment-p0 e2e-payment-ui migrate-partner-admin-security migrate-partner-admin-security-sqlite
 
 # pytest --collect-only em billing_fiscal_service, order_pickup_service e payment_gateway.
 # Exige .venv + requirements.txt instalados em cada serviço (ver 07_tests/run_backend_test_collect.sh).
@@ -28,3 +28,11 @@ e2e-payment-p0:
 e2e-payment-ui:
 	@chmod +x 07_tests/e2e_payment_ui_playwright.sh
 	@./07_tests/e2e_payment_ui_playwright.sh
+
+migrate-partner-admin-security:
+	@chmod +x 02_docker/postgres_central/ops/apply_partner_admin_security_migrations.sh
+	@./02_docker/postgres_central/ops/apply_partner_admin_security_migrations.sh
+
+migrate-partner-admin-security-sqlite:
+	@chmod +x 01_source/partner_admin_service/scripts/apply_migrations.sh
+	@./01_source/partner_admin_service/scripts/apply_migrations.sh

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from pathlib import Path
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -57,6 +58,43 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _apply_sqlite_compat_migrations(engine)
+    _apply_partner_admin_sql_migrations(engine)
+
+
+def _sql_file_statements(path: Path) -> list[str]:
+    raw = path.read_text(encoding="utf-8")
+    stmts: list[str] = []
+    buf: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("--"):
+            continue
+        buf.append(line)
+        if stripped.endswith(";"):
+            stmt = "\n".join(buf).strip().rstrip(";").strip()
+            buf = []
+            if stmt:
+                stmts.append(stmt)
+    tail = "\n".join(buf).strip()
+    if tail:
+        stmts.append(tail)
+    return stmts
+
+
+def _apply_partner_admin_sql_migrations(eng) -> None:
+    mig_dir = Path(__file__).resolve().parents[2] / "migrations"
+    if not mig_dir.is_dir():
+        return
+    security_files = sorted(
+        p for p in mig_dir.glob("*.sql") if p.name >= "009_security_domain.sql"
+    )
+    with eng.begin() as conn:
+        for mig in security_files:
+            for stmt in _sql_file_statements(mig):
+                try:
+                    conn.execute(text(stmt))
+                except Exception:
+                    pass
 
 
 def _apply_sqlite_compat_migrations(eng) -> None:

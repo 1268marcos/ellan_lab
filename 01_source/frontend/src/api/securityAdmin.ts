@@ -120,8 +120,70 @@ export const securityAdminApi = {
   listAlerts: () => api.get<{ items: Array<{ id: string; title: string; severity: string; status: string }>; open_count: number }>(`${BASE}/security-admin/value/alerts`),
   listCompliance: () => api.get<{ items: unknown[]; coverage_pct: number }>(`${BASE}/security-admin/value/compliance`),
   listRoleTemplates: () => api.get<{ items: Array<{ code: string; name: string; roles: string[]; target_segment?: string }> }>(`${BASE}/security-admin/value/role-templates`),
-  listAccessReviews: () => api.get<{ items: Array<{ id: string; name: string; status: string; pending_items: number }> }>(`${BASE}/security-admin/value/access-reviews`),
+  listAccessReviews: () =>
+    api.get<{
+      items: Array<{
+        id: string
+        name: string
+        status: string
+        pending_items: number
+        approved_items?: number
+        revoked_items?: number
+        due_at?: string
+      }>
+    }>(`${BASE}/security-admin/value/access-reviews`),
+  listAccessReviewItems: (campaignId: string, pendingOnly = true) =>
+    api.get<{
+      items: Array<{
+        id: string
+        campaign_id: string
+        user_id: string
+        subject_type: string
+        subject_id: string
+        subject_label?: string
+        decision?: string | null
+      }>
+    }>(`${BASE}/security-admin/value/access-reviews/${campaignId}/items`, {
+      params: { pending_only: pendingOnly },
+    }),
+  decideAccessReviewItem: (itemId: string, body: { decision: 'APPROVE' | 'REVOKE' | 'ESCALATE'; reviewer_id?: string; notes?: string }) =>
+    api.post(`${BASE}/security-admin/value/access-reviews/items/${itemId}/decide`, body),
+  listBreakGlass: (activeOnly = true) =>
+    api.get<{
+      items: Array<{
+        id: string
+        user_id: string
+        reason: string
+        status: string
+        granted_roles: string[]
+        expires_at: string
+      }>
+    }>(`${BASE}/security-admin/value/break-glass`, { params: { active_only: activeOnly } }),
+  openBreakGlass: (body: {
+    user_id: string
+    reason: string
+    granted_roles?: string[]
+    approved_by?: string
+    duration_hours?: number
+  }) => api.post(`${BASE}/security-admin/value/break-glass`, body),
+  revokeBreakGlass: (eventId: string, body?: { revoked_by?: string; reason?: string }) =>
+    api.post(`${BASE}/security-admin/value/break-glass/${eventId}/revoke`, body ?? {}),
   accessMatrix: () => api.get<{ users: string[]; domains: string[]; cells: unknown[] }>(`${BASE}/security-admin/value/access-matrix`),
+  listAccessRequests: (status?: string) =>
+    api.get<{ items: Array<{ id: string; user_id: string; domain_code: string; status: string; permission_key: string }>; pending_count: number }>(
+      `${BASE}/security-admin/cross-ops/access-requests`,
+      { params: status ? { status } : {} },
+    ),
+  decideAccessRequest: (id: string, body: { decision: 'APPROVE' | 'DENY'; reviewer_id?: string }) =>
+    api.post(`${BASE}/security-admin/cross-ops/access-requests/${id}/decide`, body),
+  listJitGrants: () => api.get<{ items: Array<{ id: string; user_id: string; domain_code: string; expires_at: string }> }>(`${BASE}/security-admin/cross-ops/jit-grants`),
+  listDelegations: () => api.get<{ items: Array<{ id: string; delegate_user_id: string; target_domain: string; target_entity_id: string }> }>(`${BASE}/security-admin/cross-ops/delegations`),
+  syncEntitlements: () => api.post(`${BASE}/security-admin/cross-ops/entitlements/sync`),
+  listEntitlements: () => api.get<{ items: unknown[]; domains_synced: number }>(`${BASE}/security-admin/cross-ops/entitlements`),
+  domainAccessReport: (userId: string) =>
+    api.get<{ user_id: string; roles: string[]; active_grants: unknown[]; pending_requests: number }>(
+      `${BASE}/security-admin/cross-ops/users/${userId}/domain-access-report`,
+    ),
   listUserPlayerAccess: (user_id?: string) =>
     api.get<{ items: UserPlayerAccess[]; total: number }>(`${BASE}/security-admin/user-player-access`, {
       params: user_id ? { user_id } : {},

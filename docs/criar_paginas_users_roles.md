@@ -16,6 +16,18 @@
 10. Realizar Testes
 11. Atualizar Menus (criar novos menus e não apenas itens para agrupar melhor) em http://localhost:5173/v1 e http://localhost:5174/v0
 
+**Menus (v1/v0):** grupo `Users & Security OPS` — seções Hub, Governança & valor, Ecossistema mundial, Identidade, Integração, Cross-domain, Legado (`opsMenuGroups.ts`, `App.jsx`).
+
+**Cross-ops (014):** pedidos de acesso, JIT grants, delegação act-as, sync entitlements, relatório `GET .../users/{id}/domain-access-report` — prefixo `/api/v1/partner-admin/security-admin/cross-ops`.
+
+**Migrações security (009–014):**
+```bash
+make migrate-partner-admin-security-sqlite   # SQLite local (partner_admin.db)
+make migrate-partner-admin-security          # Postgres docker postgres_central
+```
+
+Abas UI: `access-requests`, `jit-access`, `delegations`, `entitlements`.
+
 
 **Referências:** 
 a-) Redes locker / hardware: SwipBox, Cleveron, Pickup (PL), Bloq.it, Quadient, Packeta, Vinted Go

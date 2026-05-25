@@ -20,6 +20,7 @@ from app.schemas.security_value import (
     BreakGlassCreateIn,
     BreakGlassListOut,
     BreakGlassOut,
+    BreakGlassRevokeIn,
     ComplianceListOut,
     RiskScoreListOut,
     RoleTemplateListOut,
@@ -87,6 +88,11 @@ def list_break_glass(active_only: bool = Query(True), db: Session = Depends(get_
 @router.post("/break-glass", response_model=BreakGlassOut, status_code=status.HTTP_201_CREATED)
 def open_break_glass(body: BreakGlassCreateIn, db: Session = Depends(get_db)) -> BreakGlassOut:
     return security_value_service.create_break_glass(db, body)
+
+
+@router.post("/break-glass/{event_id}/revoke", response_model=BreakGlassOut)
+def revoke_break_glass(event_id: str, body: BreakGlassRevokeIn, db: Session = Depends(get_db)) -> BreakGlassOut:
+    return security_value_service.revoke_break_glass(db, event_id, revoked_by=body.revoked_by, reason=body.reason)
 
 
 @router.get("/alerts", response_model=AlertListOut)

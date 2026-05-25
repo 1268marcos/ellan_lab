@@ -53,6 +53,7 @@ from app.schemas.security_value import (
 )
 from app.services import user_role_service
 from app.services.crypto_util import new_id
+from app.schemas.user_role import UserRoleCreateIn
 from app.services.security_locker_players_service import create_user_player_access
 from app.services.security_professional_service import create_cross_domain_grant
 from app.services.security_service import _parse_json, _utcnow, write_audit
@@ -343,23 +344,105 @@ def list_review_items(db: Session, campaign_id: str, pending_only: bool = False)
     return AccessReviewItemListOut(items=[AccessReviewItemOut.model_validate(r) for r in rows], total=len(rows))
 
 
+def _revoke_cross_domain_grant(db: Session, grant_id: str, *, actor_id: str | None = None) -> None:
+    grant = db.get(SecurityCrossDomainGrant, grant_id)
+    if not grant or not grant.is_active:
+        return
+    grant.is_active = False
+    write_audit(
+        db,
+        actor_id=actor_id,
+        action="CROSS_DOMAIN_GRANT_REVOKED",
+        target_type="CrossDomainGrant",
+        target_id=grant.id,
+        new_state={"domain": grant.domain_code, "user_id": grant.user_id},
+    )
+
+
 def decide_review_item(db: Session, item_id: str, body: AccessReviewDecisionIn) -> AccessReviewItemOut:
     row = db.get(SecurityAccessReviewItem, item_id)
     if not row:
         raise HTTPException(status_code=404, detail="review_item_not_found")
+    if row.decision:
+        raise HTTPException(status_code=409, detail="review_item_already_decided")
     row.decision = body.decision
     row.reviewer_id = body.reviewer_id
     row.reviewed_at = _utcnow()
     row.notes = body.notes
-    if body.decision == "REVOKE" and row.subject_type == "UserRole":
-        user_role_service.revoke_user_role(db, row.subject_id)
+    if body.decision == "REVOKE":
+        if row.subject_type == "UserRole":
+            user_role_service.revoke_user_role(db, row.subject_id)
+        elif row.subject_type == "CrossDomainGrant":
+            _revoke_cross_domain_grant(db, row.subject_id, actor_id=body.reviewer_id)
+    write_audit(
+        db,
+        actor_id=body.reviewer_id,
+        action="ACCESS_REVIEW_DECIDED",
+        target_type="AccessReviewItem",
+        target_id=row.id,
+        new_state={"decision": body.decision, "subject_type": row.subject_type},
+    )
     db.commit()
     db.refresh(row)
     return AccessReviewItemOut.model_validate(row)
 
 
+def _grant_break_glass_roles(db: Session, event_id: str, user_id: str, roles: list[str]) -> None:
+    for role_name in roles:
+        try:
+            user_role_service.create_user_role(
+                db,
+                UserRoleCreateIn(user_id=user_id, role=role_name, scope_type="BREAK_GLASS", scope_id=event_id),
+            )
+        except HTTPException as exc:
+            if exc.status_code != status.HTTP_409_CONFLICT:
+                raise
+
+
+def _revoke_break_glass_roles(db: Session, event_id: str) -> int:
+    rows = (
+        db.query(UserRole)
+        .filter(
+            UserRole.scope_type == "BREAK_GLASS",
+            UserRole.scope_id == event_id,
+            UserRole.is_active.is_(True),
+            UserRole.revoked_at.is_(None),
+        )
+        .all()
+    )
+    for row in rows:
+        user_role_service.revoke_user_role(db, row.id)
+    return len(rows)
+
+
+def expire_stale_break_glass(db: Session) -> int:
+    now = _utcnow()
+    expired = 0
+    rows = (
+        db.query(SecurityBreakGlassEvent)
+        .filter(SecurityBreakGlassEvent.status == "ACTIVE", SecurityBreakGlassEvent.expires_at <= now)
+        .all()
+    )
+    for ev in rows:
+        _revoke_break_glass_roles(db, ev.id)
+        ev.status = "EXPIRED"
+        ev.revoked_at = now
+        expired += 1
+    if expired:
+        db.commit()
+    return expired
+
+
 def create_break_glass(db: Session, body: BreakGlassCreateIn) -> BreakGlassOut:
     user_role_service.get_user_or_404(db, body.user_id)
+    expire_stale_break_glass(db)
+    active = (
+        db.query(SecurityBreakGlassEvent)
+        .filter(SecurityBreakGlassEvent.user_id == body.user_id, SecurityBreakGlassEvent.status == "ACTIVE")
+        .first()
+    )
+    if active:
+        raise HTTPException(status_code=409, detail="break_glass_already_active_for_user")
     now = _utcnow()
     ev = SecurityBreakGlassEvent(
         id=new_id(),
@@ -372,6 +455,8 @@ def create_break_glass(db: Session, body: BreakGlassCreateIn) -> BreakGlassOut:
         expires_at=now + timedelta(hours=body.duration_hours),
     )
     db.add(ev)
+    db.flush()
+    _grant_break_glass_roles(db, ev.id, body.user_id, body.granted_roles)
     db.commit()
     db.refresh(ev)
     write_audit(db, actor_id=body.approved_by, action="BREAK_GLASS_OPENED", target_type="User", target_id=body.user_id, new_state={"reason": body.reason, "roles": body.granted_roles})
@@ -386,7 +471,42 @@ def create_break_glass(db: Session, body: BreakGlassCreateIn) -> BreakGlassOut:
     )
 
 
+def revoke_break_glass(db: Session, event_id: str, *, revoked_by: str | None = None, reason: str | None = None) -> BreakGlassOut:
+    ev = db.get(SecurityBreakGlassEvent, event_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail="break_glass_not_found")
+    if ev.status != "ACTIVE":
+        raise HTTPException(status_code=409, detail="break_glass_not_active")
+    now = _utcnow()
+    _revoke_break_glass_roles(db, ev.id)
+    ev.status = "REVOKED"
+    ev.revoked_at = now
+    db.commit()
+    db.refresh(ev)
+    write_audit(
+        db,
+        actor_id=revoked_by,
+        action="BREAK_GLASS_REVOKED",
+        target_type="User",
+        target_id=ev.user_id,
+        new_state={"event_id": ev.id, "reason": reason},
+    )
+    return BreakGlassOut(
+        id=ev.id,
+        user_id=ev.user_id,
+        reason=ev.reason,
+        status=ev.status,
+        granted_roles=_parse_json(ev.granted_roles_json, []),
+        started_at=ev.started_at,
+        expires_at=ev.expires_at,
+    )
+
+
 def list_break_glass(db: Session, active_only: bool = True) -> BreakGlassListOut:
+    try:
+        expire_stale_break_glass(db)
+    except Exception:
+        db.rollback()
     q = db.query(SecurityBreakGlassEvent)
     if active_only:
         q = q.filter(SecurityBreakGlassEvent.status == "ACTIVE")
@@ -591,4 +711,7 @@ def seed_value_layer(db: Session) -> dict[str, int]:
     compute_risk_scores(db)
     counts["alerts_fired"] = evaluate_alert_rules(db)
     db.commit()
+    from app.services.security_cross_ops_service import seed_cross_ops
+
+    counts["cross_ops"] = seed_cross_ops(db)
     return counts

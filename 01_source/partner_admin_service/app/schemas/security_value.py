@@ -141,6 +141,11 @@ class BreakGlassListOut(BaseModel):
     total: int
 
 
+class BreakGlassRevokeIn(BaseModel):
+    revoked_by: Optional[str] = None
+    reason: Optional[str] = None
+
+
 class AlertOut(BaseModel):
     id: str
     rule_id: str

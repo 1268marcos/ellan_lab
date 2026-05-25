@@ -20,6 +20,7 @@ from app.routers import (
     seed,
     tenants,
     security_admin,
+    security_cross_ops,
     security_value,
     user_roles,
     users,
@@ -55,6 +56,7 @@ app.include_router(logistics_partners.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
 app.include_router(user_roles.router, prefix=API_PREFIX)
 app.include_router(security_admin.router, prefix=API_PREFIX)
+app.include_router(security_cross_ops.router, prefix=API_PREFIX)
 app.include_router(security_value.router, prefix=API_PREFIX)
 app.include_router(partner_integrations.router, prefix=API_PREFIX)
 app.include_router(partner_ops.ops_router, prefix=API_PREFIX)

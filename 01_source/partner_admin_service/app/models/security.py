@@ -405,3 +405,72 @@ class SecurityControlMapping(Base):
     control_code = Column(String(48), nullable=False, index=True)
     object_key = Column(String(254), nullable=False)
     coverage_level = Column(String(16), nullable=False, default="PARTIAL")
+
+
+class SecurityAccessRequest(Base):
+    __tablename__ = "security_access_requests"
+
+    id = Column(String(36), primary_key=True)
+    requester_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    domain_code = Column(String(32), nullable=False)
+    entity_type = Column(String(48), nullable=False)
+    entity_id = Column(String(120), nullable=False)
+    entity_label = Column(String(255), nullable=True)
+    permission_key = Column(String(80), nullable=False)
+    justification = Column(String(500), nullable=False)
+    status = Column(String(20), nullable=False, default="PENDING")
+    reviewer_id = Column(String(36), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    review_notes = Column(Text, nullable=True)
+    grant_id = Column(String(36), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class SecurityJitGrant(Base):
+    __tablename__ = "security_jit_grants"
+
+    id = Column(String(36), primary_key=True)
+    user_id = Column(String(36), nullable=False, index=True)
+    domain_code = Column(String(32), nullable=False)
+    entity_type = Column(String(48), nullable=False)
+    entity_id = Column(String(120), nullable=False)
+    permission_key = Column(String(80), nullable=False)
+    grant_id = Column(String(36), nullable=True)
+    reason = Column(String(500), nullable=False)
+    approved_by = Column(String(36), nullable=True)
+    status = Column(String(20), nullable=False, default="ACTIVE")
+    started_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityDelegationSession(Base):
+    __tablename__ = "security_delegation_sessions"
+
+    id = Column(String(36), primary_key=True)
+    delegate_user_id = Column(String(36), nullable=False, index=True)
+    target_domain = Column(String(32), nullable=False)
+    target_entity_type = Column(String(48), nullable=False)
+    target_entity_id = Column(String(120), nullable=False)
+    target_entity_label = Column(String(255), nullable=True)
+    reason = Column(String(500), nullable=False)
+    approved_by = Column(String(36), nullable=True)
+    status = Column(String(20), nullable=False, default="ACTIVE")
+    started_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class SecurityDomainEntitlement(Base):
+    __tablename__ = "security_domain_entitlements"
+
+    id = Column(String(36), primary_key=True)
+    domain_code = Column(String(32), nullable=False, index=True)
+    remote_entity_type = Column(String(48), nullable=False)
+    remote_entity_id = Column(String(120), nullable=False)
+    remote_label = Column(String(255), nullable=True)
+    entitlement_key = Column(String(80), nullable=False)
+    source_service = Column(String(64), nullable=False)
+    synced_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    metadata_json = Column(Text, nullable=False, default="{}")
