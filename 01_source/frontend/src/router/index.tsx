@@ -427,6 +427,20 @@ export default function AppRouter() {
         }
       />
       <Route
+        path="/ops/order/deadlines"
+        element={<Navigate to="/ops/orders/admin?tab=deadlines" replace />}
+      />
+      <Route
+        path="/ops/orders/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsOrderPickupAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
         path="/ops/order-pickup/admin"
         element={
           <Protected>

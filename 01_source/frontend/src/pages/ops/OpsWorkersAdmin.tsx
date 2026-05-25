@@ -264,10 +264,10 @@ export default function OpsWorkersAdmin() {
     <div className="space-y-4 p-4" data-testid="ops-workers-admin-page">
       <div className="flex flex-wrap justify-end gap-2">
         <Link
-          to="/ops/order-pickup/admin"
+          to="/ops/orders/admin?tab=overview"
           className="rounded-lg border border-indigo-500/50 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20"
         >
-          Order Pickup
+          Pedidos OPS
         </Link>
         <Link
           to="/ops/marketplace/admin"

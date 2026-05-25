@@ -1,5 +1,6 @@
 import type { OpsNavGroup } from './opsMenuTypes'
 import { fiscalOpsNavGroup } from './fiscalOpsNav'
+import { ordersOpsNavGroup } from './ordersOpsNav'
 import { cambioOpsNavGroup, moneyOpsNavGroup } from './moneyOpsNav'
 import { navItem, opsGroup, section } from './opsNavHelpers'
 import { paymentsOpsNavGroup } from './paymentsOpsNav'
@@ -186,9 +187,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   moneyOpsNavGroup,
   cambioOpsNavGroup,
   fiscalOpsNavGroup,
-  opsGroup('orderPickup', '📦', 'Order Pickup OPS', {
-    items: [navItem('/ops/order-pickup/admin', 'Cadastro pedidos / integração')],
-  }),
+  ordersOpsNavGroup,
   opsGroup('workersOps', '⚙️', 'Workers PostgreSQL', {
     hub: navItem('/ops/workers/admin', 'Visão geral', { newTag: 'Node' }),
     sections: [
@@ -200,7 +199,9 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem('/ops/workers/admin?tab=dlq', 'Dead letter queue'),
       ], true),
       section('cross', 'Atalhos', [
-        navItem('/ops/order-pickup/admin', 'Order Pickup admin'),
+        navItem('/ops/orders/admin?tab=overview', 'Pedidos OPS · hub'),
+        navItem('/ops/orders/admin?tab=lookup', 'Pedidos OPS · Order 360'),
+        navItem('/ops/orders/admin?tab=integration', 'Pedidos OPS · outbox & health'),
       ]),
     ],
   }),

@@ -7,7 +7,6 @@ from app.core.database import get_db
 from app.schemas.order_ops import (
     DomainOutboxListOut,
     DomainOutboxReplayOut,
-    OrderItemListOut,
     PickupAttemptListOut,
     PickupEventListOut,
     PickupTokenListOut,
@@ -15,17 +14,6 @@ from app.schemas.order_ops import (
 from app.services import order_ops_service
 
 router = APIRouter(tags=["pickup-lifecycle"])
-
-
-@router.get("/order-items", response_model=OrderItemListOut)
-def list_order_items(
-    order_id: str | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=500),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
-) -> OrderItemListOut:
-    items, total = order_ops_service.list_order_items(db, order_id=order_id, limit=limit, offset=offset)
-    return OrderItemListOut(items=items, total=total)
 
 
 @router.get("/pickup-events", response_model=PickupEventListOut)

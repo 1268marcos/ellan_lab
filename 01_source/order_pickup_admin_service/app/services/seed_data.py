@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.models.partner import EcommercePartner, LogisticsPartner
 from app.services.crypto_util import new_id
 from app.services.order_ops_service import seed_demo_order_graph
+from app.services import orders_domain_service
 
 
 def _utcnow() -> datetime:
@@ -54,6 +55,9 @@ def run_seed(db: Session) -> dict[str, int]:
         counts["logistics"] += 1
 
     db.commit()
+    sync_result = orders_domain_service.sync_world_player_catalog(db)
+    counts["channels"] = sync_result["channels_created"] + sync_result["channels_updated"]
+    counts["world_players"] = sync_result
     seed_demo_order_graph(db, partner_id="ec-ops-001")
     counts["orders"] = 1
     return counts

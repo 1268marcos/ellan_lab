@@ -15,8 +15,11 @@ export default function OrderDeadlinesPage() {
     <div style={pageStyle}>
       <section style={cardStyle}>
         <div style={crossShortcutStyle}>
+          <Link to="/ops/orders/admin?tab=deadlines" style={crossShortcutLinkStyle}>
+            Pedidos OPS — deadlines
+          </Link>
           <Link to="/ops/health" style={crossShortcutLinkStyle}>
-            Ir para saúde operacional
+            Saúde operacional
           </Link>
         </div>
         <div style={headerRowStyle}>
@@ -40,11 +43,13 @@ export default function OrderDeadlinesPage() {
             <h3 style={{ margin: 0, fontSize: 14 }}>Listagem</h3>
           </div>
           <p style={{ ...summary24hHintStyle, margin: 0, lineHeight: 1.55 }}>
-            Não existe <code style={{ color: "#e2e8f0" }}>GET /internal/deadlines</code> no <code style={{ color: "#e2e8f0" }}>order_lifecycle_service</code>.
-            Hoje só há <code style={{ color: "#e2e8f0" }}>POST /internal/deadlines</code> e{" "}
-            <code style={{ color: "#e2e8f0" }}>POST /internal/deadlines/cancel</code> em <code style={{ color: "#e2e8f0" }}>app/routers/internal.py</code>.
-            Quando existir um GET de listagem, esta página pode seguir o mesmo padrão das outras telas Order/Pickup (<code style={{ color: "#e2e8f0" }}>olFetch</code>{" "}
-            + tabela rolável).
+            Listagem operacional disponível em{" "}
+            <Link to="/ops/orders/admin?tab=deadlines" style={crossShortcutLinkStyle}>
+              Pedidos OPS → Deadlines
+            </Link>{" "}
+            via <code style={{ color: "#e2e8f0" }}>order-pickup-admin</code> (
+            <code style={{ color: "#e2e8f0" }}>GET /lifecycle-deadlines</code>). O serviço{" "}
+            <code style={{ color: "#e2e8f0" }}>order_lifecycle_service</code> mantém apenas POST internos para criar/cancelar.
           </p>
         </section>
       </section>

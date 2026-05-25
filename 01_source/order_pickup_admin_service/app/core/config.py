@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     service_port: int = Field(default=8018, alias="ORDER_PICKUP_ADMIN_PORT")
     api_key_pepper: str = Field(default="dev-order-pickup-admin-pepper", alias="ORDER_PICKUP_ADMIN_API_KEY_PEPPER")
     seed_on_start: bool = Field(default=True, alias="SEED_ON_START")
+    payments_admin_base_url: str | None = Field(
+        default=None,
+        alias="PAYMENTS_ADMIN_BASE_URL",
+        description="Ex.: http://localhost:8126/api/v1/payments-admin — sync payment_transactions",
+    )
 
 
 @lru_cache

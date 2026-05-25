@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.models.order_ops import (
     CreditRecord,
     DomainEventOutboxRecord,
+    FulfillmentOrder,
+    OmnichannelOrder,
     OrderFulfillmentTracking,
     OrderItemRecord,
     OrderRecord,
@@ -521,7 +523,40 @@ def seed_demo_order_graph(db: Session, *, partner_id: str = "ec-demo-001") -> di
                 updated_at=now,
             )
         )
+    omni_id = "omni-seed-demo-001"
+    if not db.get(OmnichannelOrder, omni_id):
+        db.add(
+            OmnichannelOrder(
+                id=omni_id,
+                order_id=order_id,
+                store_id="store-magalu-demo-01",
+                pickup_type="LOCKER_DELIVERY",
+                status="READY",
+                ready_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    fo_id = "fo-seed-demo-001"
+    if not db.get(FulfillmentOrder, fo_id):
+        db.add(
+            FulfillmentOrder(
+                id=fo_id,
+                order_id=order_id,
+                fulfillment_center_id="fc-sp-001",
+                status="SHIPPED",
+                priority=10,
+                carrier="DHL",
+                tracking_code="JD0146000123456789",
+                shipped_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+        )
+    from app.services.orders_domain_service import seed_extended_order_graph
+
     db.commit()
+    seed_extended_order_graph(db, order_id=order_id, partner_id=partner_id)
     return {
         "order_id": order_id,
         "pickup_id": pickup_id,
