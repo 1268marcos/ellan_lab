@@ -13,6 +13,14 @@ import {
   type LockerPlayer,
   type UserPlayerAccess,
 } from '../../api/securityAdmin'
+import {
+  criticalTableSecurityApi,
+  type CriticalAccessLogRow,
+  type CriticalTablePolicy,
+  type CriticalTableRegistry,
+  type PublicAuditLogRow,
+} from '../../api/criticalTableSecurity'
+import CriticalAppLayerBanner from '../../components/ops/CriticalAppLayerBanner'
 
 const TABS = [
   'overview',
@@ -43,9 +51,21 @@ const TABS = [
   'identity',
   'policy',
   'audit',
+  'critical-tables',
+  'critical-policies',
+  'critical-access-log',
+  'critical-audit-public',
   'cross-domain',
 ] as const
 type Tab = (typeof TABS)[number]
+
+const CRITICAL_TABS: Tab[] = [
+  'critical-tables',
+  'critical-policies',
+  'critical-access-log',
+  'critical-audit-public',
+]
+const MAIN_TABS = TABS.filter((t) => !CRITICAL_TABS.includes(t))
 
 const TAB_LABELS: Record<Tab, string> = {
   overview: 'Visão geral',
@@ -76,6 +96,10 @@ const TAB_LABELS: Record<Tab, string> = {
   identity: 'Identity / SSO',
   policy: 'Policy',
   audit: 'Auditoria',
+  'critical-tables': 'Tabelas críticas',
+  'critical-policies': 'Políticas app',
+  'critical-access-log': 'Log de acesso',
+  'critical-audit-public': 'audit_logs público',
   'cross-domain': 'Links legado',
 }
 
@@ -90,6 +114,10 @@ export default function OpsUsersSecurityAdmin() {
   const [webhooks, setWebhooks] = useState<SecurityWebhook[]>([])
   const [apiKeys, setApiKeys] = useState<SecurityApiKeyMeta[]>([])
   const [audit, setAudit] = useState<AuditLogRow[]>([])
+  const [criticalRegistry, setCriticalRegistry] = useState<CriticalTableRegistry[]>([])
+  const [criticalPolicies, setCriticalPolicies] = useState<CriticalTablePolicy[]>([])
+  const [criticalAccessLog, setCriticalAccessLog] = useState<CriticalAccessLogRow[]>([])
+  const [publicAudit, setPublicAudit] = useState<PublicAuditLogRow[]>([])
   const [links, setLinks] = useState<DomainLink[]>([])
   const [lockerPlayers, setLockerPlayers] = useState<LockerPlayer[]>([])
   const [userPlayerAccess, setUserPlayerAccess] = useState<UserPlayerAccess[]>([])
@@ -209,6 +237,18 @@ export default function OpsUsersSecurityAdmin() {
       } else if (tab === 'audit') {
         const a = await securityAdminApi.listAudit()
         setAudit(a.data.items ?? [])
+      } else if (tab === 'critical-tables') {
+        const r = await criticalTableSecurityApi.listRegistry()
+        setCriticalRegistry(r.data.items ?? [])
+      } else if (tab === 'critical-policies') {
+        const p = await criticalTableSecurityApi.listPolicies()
+        setCriticalPolicies(p.data.items ?? [])
+      } else if (tab === 'critical-access-log') {
+        const l = await criticalTableSecurityApi.listAccessLog({ limit: 120 })
+        setCriticalAccessLog(l.data.items ?? [])
+      } else if (tab === 'critical-audit-public') {
+        const a = await criticalTableSecurityApi.listPublicAuditLogs(120)
+        setPublicAudit(a.data.items ?? [])
       } else if (tab === 'cross-domain') {
         const l = await securityAdminApi.listDomainLinks()
         setLinks(l.data.items ?? [])
@@ -345,17 +385,36 @@ export default function OpsUsersSecurityAdmin() {
           OPS · Users &amp; Roles &amp; Security
         </h1>
         <p className="text-sm text-gray-500 dark:text-slate-400">
-          CRUD usuários, papéis, permissões, webhooks, rotação de API keys e auditoria cross-domain.
+          CRUD usuários, papéis, permissões, webhooks e auditoria. Tabelas{' '}
+          <span className="font-mono text-amber-300/90">users</span>,{' '}
+          <span className="font-mono text-amber-300/90">privacy_consents</span> e{' '}
+          <span className="font-mono text-amber-300/90">audit_logs</span> sem RLS — enforcement na camada de
+          aplicação.
         </p>
       </div>
 
+      {CRITICAL_TABS.includes(tab) ? <CriticalAppLayerBanner /> : null}
+
       <div className="flex flex-wrap gap-1">
-        {TABS.map((t) => (
+        {MAIN_TABS.map((t) => (
           <button
             key={t}
             type="button"
             onClick={() => setTab(t)}
             className={`rounded px-3 py-1.5 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-300'}`}
+          >
+            {TAB_LABELS[t]}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-1 border-t border-slate-700/80 pt-2">
+        <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-amber-400/90">App</span>
+        {CRITICAL_TABS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            className={`rounded px-3 py-1.5 text-sm ${tab === t ? 'bg-amber-600 text-white' : 'bg-slate-800 text-amber-200/80'}`}
           >
             {TAB_LABELS[t]}
           </button>
@@ -752,6 +811,69 @@ export default function OpsUsersSecurityAdmin() {
         audit.map((a) => (
           <div key={a.id} className="border-b border-slate-800 py-1 text-xs font-mono">
             {a.occurred_at} {a.action} {a.target_type}/{a.target_id}
+          </div>
+        ))}
+
+      {tab === 'critical-tables' && (
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+            <tr>
+              <th className="px-3 py-2">Tabela</th>
+              <th className="px-3 py-2">RLS</th>
+              <th className="px-3 py-2">Enforcement</th>
+              <th className="px-3 py-2">Descrição</th>
+            </tr>
+          </thead>
+          <tbody>
+            {criticalRegistry.map((r) => (
+              <tr key={r.table_name} className="border-t dark:border-slate-800">
+                <td className="px-3 py-2 font-mono">{r.table_name}</td>
+                <td className="px-3 py-2">{r.rls_enabled ? 'sim' : 'não'}</td>
+                <td className="px-3 py-2">{r.enforcement_layer}</td>
+                <td className="px-3 py-2 text-slate-400">{r.description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {tab === 'critical-policies' && (
+        <table className="w-full text-left text-sm">
+          <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+            <tr>
+              <th className="px-3 py-2">Tabela</th>
+              <th className="px-3 py-2">Op</th>
+              <th className="px-3 py-2">Role</th>
+              <th className="px-3 py-2">Escopo</th>
+              <th className="px-3 py-2">Permite</th>
+            </tr>
+          </thead>
+          <tbody>
+            {criticalPolicies.map((p) => (
+              <tr key={p.id} className="border-t dark:border-slate-800">
+                <td className="px-3 py-2 font-mono">{p.table_name}</td>
+                <td className="px-3 py-2">{p.operation}</td>
+                <td className="px-3 py-2">{p.role}</td>
+                <td className="px-3 py-2">{p.scope_type}</td>
+                <td className="px-3 py-2">{p.allowed ? '✓' : '✗'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {tab === 'critical-access-log' &&
+        criticalAccessLog.map((row) => (
+          <div key={row.id} className="border-b border-slate-800 py-1 text-xs font-mono">
+            {row.occurred_at} {row.decision} {row.table_name}/{row.operation} · {row.reason}
+          </div>
+        ))}
+
+      {tab === 'critical-audit-public' &&
+        publicAudit.map((a) => (
+          <div key={a.id} className="border-b border-slate-800 py-1 text-xs font-mono">
+            {String(a.occurred_at)} {a.action} {a.target_type}/{a.target_id}{' '}
+            {a.source_service ? `· ${a.source_service}` : ''}
           </div>
         ))}
 

@@ -59,6 +59,9 @@ const privacyComplianceAdminServiceProxy =
 const financeAdminServiceProxy =
   process.env.FINANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8123'
 
+const analyticsServiceProxy =
+  process.env.ANALYTICS_SERVICE_PROXY ?? 'http://localhost:8127'
+
 const fiscalAdminServiceProxy =
   process.env.FISCAL_ADMIN_SERVICE_PROXY ?? 'http://localhost:8024'
 
@@ -166,6 +169,10 @@ export default defineConfig({
         target: financeAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/finance-admin/, '/api'),
+      },
+      '/api/analytics': {
+        target: analyticsServiceProxy,
+        changeOrigin: true,
       },
       '/api/fiscal-admin': {
         target: fiscalAdminServiceProxy,

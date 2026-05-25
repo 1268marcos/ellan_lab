@@ -751,6 +751,77 @@ def _migrate_privacy_consents_regulation_code(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_app_critical_table_security(conn, applied: list[str]) -> None:
+    name = "app_critical_table_security.create_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS app_critical_table_registry (
+            table_name VARCHAR(64) PRIMARY KEY,
+            schema_name VARCHAR(32) NOT NULL DEFAULT 'public',
+            rls_enabled BOOLEAN NOT NULL DEFAULT false,
+            enforcement_layer VARCHAR(24) NOT NULL DEFAULT 'APPLICATION',
+            description VARCHAR(500),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS app_critical_table_policy (
+            id VARCHAR(36) PRIMARY KEY,
+            table_name VARCHAR(64) NOT NULL,
+            operation VARCHAR(16) NOT NULL,
+            role VARCHAR(40) NOT NULL,
+            scope_type VARCHAR(24) NOT NULL DEFAULT 'GLOBAL',
+            allowed BOOLEAN NOT NULL DEFAULT true,
+            field_mask_json TEXT,
+            priority INTEGER NOT NULL DEFAULT 100,
+            is_active BOOLEAN NOT NULL DEFAULT true,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (table_name, operation, role, scope_type)
+        )
+    """))
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS app_critical_table_access_log (
+            id VARCHAR(36) PRIMARY KEY,
+            table_name VARCHAR(64) NOT NULL,
+            operation VARCHAR(16) NOT NULL,
+            actor_id VARCHAR(36),
+            actor_roles_json TEXT,
+            target_user_id VARCHAR(36),
+            row_id VARCHAR(36),
+            decision VARCHAR(16) NOT NULL,
+            reason VARCHAR(128),
+            service_name VARCHAR(64),
+            occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS app_security_class VARCHAR(24) NOT NULL DEFAULT 'PII_CRITICAL'"
+    ))
+    conn.execute(text(
+        "ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS recorded_by_service VARCHAR(64)"
+    ))
+    conn.execute(text(
+        "ALTER TABLE privacy_consents ADD COLUMN IF NOT EXISTS access_policy_version INTEGER NOT NULL DEFAULT 1"
+    ))
+    for stmt in (
+        "INSERT INTO app_critical_table_registry (table_name, description) VALUES ('users', 'APPLICATION') ON CONFLICT DO NOTHING",
+        "INSERT INTO app_critical_table_registry (table_name, description) VALUES ('privacy_consents', 'APPLICATION') ON CONFLICT DO NOTHING",
+        "INSERT INTO app_critical_table_registry (table_name, description) VALUES ('audit_logs', 'APPLICATION') ON CONFLICT DO NOTHING",
+        "INSERT INTO app_critical_table_policy (id, table_name, operation, role, scope_type, allowed, priority) VALUES ('pol-u-ins-sys', 'users', 'INSERT', 'SYSTEM', 'GLOBAL', true, 15) ON CONFLICT DO NOTHING",
+        "INSERT INTO app_critical_table_policy (id, table_name, operation, role, scope_type, allowed, priority) VALUES ('pol-u-sel-self', 'users', 'SELECT', 'usuario_comum', 'SELF', true, 40) ON CONFLICT DO NOTHING",
+        "INSERT INTO app_critical_table_policy (id, table_name, operation, role, scope_type, allowed, priority) VALUES ('pol-u-upd-self', 'users', 'UPDATE', 'usuario_comum', 'SELF', true, 40) ON CONFLICT DO NOTHING",
+    ):
+        try:
+            conn.execute(text(stmt))
+        except Exception:
+            pass
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _migrate_data_deletion_regulation_code(conn, applied: list[str]) -> None:
     name = "data_deletion_requests.add_regulation_code_v1"
     if _migration_applied(conn, name):
@@ -4972,6 +5043,71 @@ def _create_lifecycle_deadlines(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_inventory_sync_queue(conn, applied: list[str]) -> None:
+    name = "inventory_sync_queue.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS inventory_sync_queue (
+            id VARCHAR(36) PRIMARY KEY,
+            product_id VARCHAR(255) NOT NULL,
+            locker_id VARCHAR(64),
+            marketplace VARCHAR(32) NOT NULL,
+            operation VARCHAR(32) NOT NULL DEFAULT 'UPSERT_STOCK',
+            status VARCHAR(32) NOT NULL DEFAULT 'PENDING',
+            quantity_available INTEGER NOT NULL DEFAULT 0,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 5,
+            next_retry_at TIMESTAMPTZ,
+            processing_started_at TIMESTAMPTZ,
+            last_error TEXT,
+            synced_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_inventory_sync_queue_pending "
+        "ON inventory_sync_queue (created_at) WHERE status IN ('PENDING', 'PROCESSING')"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_inventory_sync_queue_marketplace_status "
+        "ON inventory_sync_queue (marketplace, status, next_retry_at)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_worker_dead_letter_queue(conn, applied: list[str]) -> None:
+    name = "worker_dead_letter_queue.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS worker_dead_letter_queue (
+            id VARCHAR(36) PRIMARY KEY,
+            worker_name VARCHAR(64) NOT NULL,
+            source_table VARCHAR(64) NOT NULL,
+            source_id VARCHAR(100) NOT NULL,
+            payload_json TEXT NOT NULL DEFAULT '{}',
+            error_message TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            dead_lettered_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_worker_dlq_worker_created "
+        "ON worker_dead_letter_queue (worker_name, dead_lettered_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_analytics_facts(conn, applied: list[str]) -> None:
     name = "analytics_facts.create_table_v1"
     if _migration_applied(conn, name):
@@ -9034,6 +9170,7 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_privacy_webhook_endpoints,
     _create_privacy_api_keys,
     _migrate_privacy_consents_regulation_code,
+    _create_app_critical_table_security,
     _migrate_data_deletion_regulation_code,
     _create_privacy_extended_tables,
     _create_privacy_ecosystem_tables,
@@ -9178,6 +9315,8 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_domain_events,
     _create_billing_processed_events,
     _create_lifecycle_deadlines,
+    _create_inventory_sync_queue,
+    _create_worker_dead_letter_queue,
     _create_analytics_facts,
     _create_reconciliation_pending,
     _create_ops_action_audit,

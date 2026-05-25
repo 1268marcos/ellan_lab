@@ -5,6 +5,7 @@ import {
   type PrivacyDashboard,
   type PrivacyRegulation,
 } from '../../api/privacyComplianceAdmin'
+import CriticalAppLayerBanner from '../../components/ops/CriticalAppLayerBanner'
 
 type Tab =
   | 'overview'
@@ -19,7 +20,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Visão geral' },
   { id: 'regulations', label: 'Marcos regulatórios' },
   { id: 'policies', label: 'Políticas' },
-  { id: 'consents', label: 'Consentimentos' },
+  { id: 'consents', label: 'Consentimentos (app layer)' },
   { id: 'deletions', label: 'Eliminação de dados' },
   { id: 'subject_requests', label: 'DSAR titulares' },
   { id: 'integrations', label: 'Webhooks e API keys' },
@@ -155,6 +156,7 @@ export default function OpsPrivacyComplianceAdmin() {
       </header>
 
       <div className="ops-toolbar">
+        <Link to="/ops/access/security-admin?tab=critical-policies">Políticas · hub segurança</Link>
         <Link to="/ops/marketplace/admin?tab=kyc">Marketplace KYC</Link>
         <button type="button" onClick={load} disabled={loading}>
           Atualizar
@@ -265,28 +267,44 @@ export default function OpsPrivacyComplianceAdmin() {
       )}
 
       {tab === 'consents' && (
-        <table className="ops-table">
-          <thead>
-            <tr>
-              <th>Marco</th>
-              <th>Tipo</th>
-              <th>Titular</th>
-              <th>Concedido</th>
-            </tr>
-          </thead>
-          <tbody>
-            {(consents as Array<{ id: string; regulation_code: string; consent_type: string; user_id?: string; granted: boolean; revoked_at?: string }>).map(
-              (c) => (
+        <>
+          <CriticalAppLayerBanner tables="privacy_consents" />
+          <table className="ops-table">
+            <thead>
+              <tr>
+                <th>Marco</th>
+                <th>Tipo</th>
+                <th>Titular</th>
+                <th>Concedido</th>
+                <th>Serviço</th>
+                <th>Política v</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                consents as Array<{
+                  id: string
+                  regulation_code: string
+                  consent_type: string
+                  user_id?: string
+                  granted: boolean
+                  revoked_at?: string
+                  recorded_by_service?: string
+                  access_policy_version?: number
+                }>
+              ).map((c) => (
                 <tr key={c.id}>
                   <td>{c.regulation_code}</td>
                   <td>{c.consent_type}</td>
                   <td>{c.user_id ?? '—'}</td>
                   <td>{c.granted && !c.revoked_at ? 'Sim' : 'Não'}</td>
+                  <td className="font-mono text-xs">{c.recorded_by_service ?? '—'}</td>
+                  <td>{c.access_policy_version ?? 1}</td>
                 </tr>
-              ),
-            )}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
 
       {tab === 'deletions' && (

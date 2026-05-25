@@ -42,5 +42,15 @@ def init_db() -> None:
     from app.models import privacy_pro as _privacy_pro  # noqa: F401
     from app.models import privacy_regulatory as _privacy_regulatory  # noqa: F401
     from app.models import privacy_player_legal as _privacy_player_legal  # noqa: F401
+    from app.models import critical_table_security as _critical_table_security  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    from app.services.critical_table_security_service import seed_registry_and_policies
+
+    db = SessionLocal()
+    try:
+        seed_registry_and_policies(db)
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()

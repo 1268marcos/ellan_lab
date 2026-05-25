@@ -3,7 +3,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.critical_table_context import get_actor_context
 from app.core.database import get_db
+from shared.security.critical_table_guard import ActorContext
 from app.schemas.privacy import (
     ApiKeyListOut,
     ApiKeyRotateOut,
@@ -112,6 +114,7 @@ def list_consents(
     user_id: str | None = Query(None),
     limit: int = Query(200, le=500),
     db: Session = Depends(get_db),
+    actor: ActorContext = Depends(get_actor_context),
 ) -> ConsentListOut:
     items = [
         ConsentOut.model_validate(r)
@@ -121,24 +124,38 @@ def list_consents(
             consent_type=consent_type,
             user_id=user_id,
             limit=limit,
+            actor=actor,
         )
     ]
     return ConsentListOut(items=items, total=len(items))
 
 
 @router.post("/consents", response_model=ConsentOut, status_code=status.HTTP_201_CREATED)
-def create_consent(body: ConsentIn, db: Session = Depends(get_db)) -> ConsentOut:
-    return ConsentOut.model_validate(svc.create_consent(db, body))
+def create_consent(
+    body: ConsentIn,
+    db: Session = Depends(get_db),
+    actor: ActorContext = Depends(get_actor_context),
+) -> ConsentOut:
+    return ConsentOut.model_validate(svc.create_consent(db, body, actor=actor))
 
 
 @router.patch("/consents/{consent_id}", response_model=ConsentOut)
-def update_consent(consent_id: str, body: ConsentUpdate, db: Session = Depends(get_db)) -> ConsentOut:
-    return ConsentOut.model_validate(svc.update_consent(db, consent_id, body))
+def update_consent(
+    consent_id: str,
+    body: ConsentUpdate,
+    db: Session = Depends(get_db),
+    actor: ActorContext = Depends(get_actor_context),
+) -> ConsentOut:
+    return ConsentOut.model_validate(svc.update_consent(db, consent_id, body, actor=actor))
 
 
 @router.delete("/consents/{consent_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_consent(consent_id: str, db: Session = Depends(get_db)) -> None:
-    svc.delete_consent(db, consent_id)
+def delete_consent(
+    consent_id: str,
+    db: Session = Depends(get_db),
+    actor: ActorContext = Depends(get_actor_context),
+) -> None:
+    svc.delete_consent(db, consent_id, actor=actor)
 
 
 @router.get("/deletion-requests", response_model=DeletionRequestListOut)

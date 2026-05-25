@@ -65,6 +65,26 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem('/ops/access/security-admin?tab=role-catalog', 'Catálogo de roles'),
         navItem('/ops/access/security-admin?tab=permissions', 'Grupos de permissão'),
       ]),
+      section(
+        'appLayer',
+        'Camada aplicação (sem RLS)',
+        [
+          navItem('/ops/access/security-admin?tab=critical-tables', 'Tabelas críticas · registry', {
+            newTag: 'App',
+            keywords: 'users privacy_consents audit_logs APPLICATION enforcement',
+          }),
+          navItem('/ops/access/security-admin?tab=critical-policies', 'Políticas por role × operação', {
+            newTag: 'App',
+          }),
+          navItem('/ops/access/security-admin?tab=critical-access-log', 'Log de decisões de acesso', {
+            keywords: 'ALLOWED DENIED critical_table',
+          }),
+          navItem('/ops/access/security-admin?tab=critical-audit-public', 'audit_logs público (imutável)', {
+            newTag: 'App',
+          }),
+        ],
+        true,
+      ),
       section('integracao', 'Integração & auditoria', [
         navItem('/ops/access/security-admin?tab=grants', 'Grants cross-domain', { newTag: 'Pro' }),
         navItem('/ops/access/security-admin?tab=webhooks', 'Webhooks OPS'),
@@ -73,7 +93,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem('/ops/access/security-admin?tab=sessions', 'Sessões ativas'),
         navItem('/ops/access/security-admin?tab=identity', 'Identity / SSO (Okta)'),
         navItem('/ops/access/security-admin?tab=policy', 'Policy snapshots'),
-        navItem('/ops/access/security-admin?tab=audit', 'Trilha de auditoria'),
+        navItem('/ops/access/security-admin?tab=audit', 'Trilha security_audit_logs'),
       ]),
       section('cross', 'Cross-domain', [
         navItem('/ops/access/security-admin?tab=cross-domain', 'Vínculos legado'),
@@ -123,6 +143,21 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   fiscalOpsNavGroup,
   opsGroup('orderPickup', '📦', 'Order Pickup OPS', {
     items: [navItem('/ops/order-pickup/admin', 'Cadastro pedidos / integração')],
+  }),
+  opsGroup('workersOps', '⚙️', 'Workers PostgreSQL', {
+    hub: navItem('/ops/workers/admin', 'Visão geral', { newTag: 'Node' }),
+    sections: [
+      section('queues', 'Filas', [
+        navItem('/ops/workers/admin?tab=overview', 'Dashboard filas', { newTag: 'Hub' }),
+        navItem('/ops/workers/admin?tab=domain', 'Domain event outbox'),
+        navItem('/ops/workers/admin?tab=lifecycle', 'Lifecycle deadlines'),
+        navItem('/ops/workers/admin?tab=inventory', 'Inventory sync (Shopee · Magalu · ML)'),
+        navItem('/ops/workers/admin?tab=dlq', 'Dead letter queue'),
+      ], true),
+      section('cross', 'Atalhos', [
+        navItem('/ops/order-pickup/admin', 'Order Pickup admin'),
+      ]),
+    ],
   }),
   opsGroup('mlOps', '🤖', 'ML OPS', {
     hub: navItem(ML, 'Visão geral', { newTag: 'Hub' }),
@@ -226,6 +261,18 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${PC}?tab=data_categories`, 'Categorias de dados'),
         navItem(`${PC}?tab=ropa`, 'ROPA · grafo', { newTag: 'New' }),
       ]),
+      section(
+        'appLayer',
+        'Camada aplicação (sem RLS)',
+        [
+          navItem(`${PC}?tab=consents`, 'Consentimentos · enforcement app', {
+            newTag: 'App',
+            keywords: 'privacy_consents recorded_by_service access_policy_version',
+          }),
+          navItem('/ops/access/security-admin?tab=critical-policies', 'Políticas privacy (hub segurança)'),
+        ],
+        true,
+      ),
       section('rights', 'Titulares & incidentes', [
         navItem(`${PC}?tab=consents`, 'Consentimentos'),
         navItem(`${PC}?tab=deletions`, 'Eliminação'),
@@ -268,6 +315,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${F}?tab=audit`, 'Auditoria'),
         navItem(`${F}?tab=revrec`, 'Rev. receita'),
         navItem(`${F}?tab=jobs`, 'Jobs agendados'),
+        navItem('/ops/analytics/financial', 'Analytics financeiro', { newTag: 'MV' }),
       ], true),
     ],
   }),
@@ -285,6 +333,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${F}?tab=treasury`, 'Créditos e holds'),
         navItem(`${F}?tab=wallet`, 'Wallet'),
         navItem(`${F}?tab=pnl`, 'PnL locker'),
+        navItem('/ops/analytics/financial', 'Analytics financeiro', { newTag: 'MV' }),
         navItem(`${F}?tab=reconciliation`, 'Gaps fiscais'),
       ]),
       section('ops', 'Ops & billing', [
@@ -308,6 +357,9 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${M}?tab=readiness`, 'Prontidão integração', { newTag: 'New' }),
         navItem(`${M}?tab=readiness`, 'Global OPS · corredores · SLA', {
           keywords: 'certifications corridors capability webhooks DLQ replay seed',
+        }),
+        navItem('/ops/workers/admin?tab=inventory', 'Sync estoque (Shopee · Magalu · ML)', {
+          newTag: 'Node',
         }),
       ]),
       section('finance', 'Financeiro', [

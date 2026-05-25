@@ -40,6 +40,8 @@ def client():
     from app.models import partner_capability_webhook as _partner_cap_wh  # noqa: F401
     from app.models import partner_global_ops as _partner_global_ops  # noqa: F401
     from app.models import security as _security  # noqa: F401  # segments, relations, integrations
+    from app.models import critical_table_security as _critical_table_security  # noqa: F401
+    from app.models import audit_log as _audit_log  # noqa: F401
 
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)

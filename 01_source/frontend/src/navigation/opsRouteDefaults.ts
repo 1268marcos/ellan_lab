@@ -10,8 +10,10 @@ export const OPS_ROUTE_DEFAULT_TAB: Record<string, string> = {
   '/ops/rentals/admin': 'networks',
   '/ops/products/admin': 'ecosystem',
   '/ops/privacy-compliance/admin': 'compliance',
+  '/ops/access/security-admin': 'overview',
   '/ops/marketing/promotions': 'campaigns',
   '/ops/order-pickup/admin': 'orders',
+  '/ops/workers/admin': 'overview',
   '/ops/payment-gateway/admin': 'providers',
   '/ops/hardware/admin': 'dashboard',
 }

@@ -29,6 +29,8 @@ import {
 const BASE = import.meta.env.VITE_PARTNER_ADMIN_BASE_URL || "/api/pa";
 const API = `${BASE}/v1/partner-admin`;
 const SEC = `${API}/security-admin`;
+const CRIT = `${API}/critical-table-security`;
+const CRIT_AUDIT = `${API}/critical-audit-logs`;
 const VAL = `${SEC}/value`;
 const CROSS = `${SEC}/cross-ops`;
 const PAGE_VERSION = "ops/access/security-admin v0.2-pro";
@@ -64,7 +66,11 @@ const TABS = [
   ["sessions", "Sessoes"],
   ["identity", "Identity / SSO"],
   ["policy", "Policy snapshots"],
-  ["audit", "Auditoria"],
+  ["critical-tables", "Tabelas criticas"],
+  ["critical-policies", "Politicas app"],
+  ["critical-access-log", "Log acesso"],
+  ["critical-audit-public", "audit_logs publico"],
+  ["audit", "Auditoria (security)"],
   ["cross-domain", "Links legado"],
 ];
 
@@ -107,6 +113,10 @@ export default function OpsUsersSecurityAdminPage() {
   const [webhooks, setWebhooks] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [audit, setAudit] = useState([]);
+  const [criticalRegistry, setCriticalRegistry] = useState([]);
+  const [criticalPolicies, setCriticalPolicies] = useState([]);
+  const [criticalAccessLog, setCriticalAccessLog] = useState([]);
+  const [publicAudit, setPublicAudit] = useState([]);
   const [links, setLinks] = useState([]);
   const [domainCatalog, setDomainCatalog] = useState([]);
   const [domainHealth, setDomainHealth] = useState([]);
@@ -234,6 +244,34 @@ export default function OpsUsersSecurityAdminPage() {
         const aj = await a.json().catch(() => ({}));
         if (!a.ok) throw new Error(parseError(aj));
         setAudit(aj.items || []);
+        return;
+      }
+      if (tab === "critical-tables") {
+        const r = await fetch(`${CRIT}/registry`, { headers });
+        const rj = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(parseError(rj));
+        setCriticalRegistry(rj.items || []);
+        return;
+      }
+      if (tab === "critical-policies") {
+        const p = await fetch(`${CRIT}/policies`, { headers });
+        const pj = await p.json().catch(() => ({}));
+        if (!p.ok) throw new Error(parseError(pj));
+        setCriticalPolicies(pj.items || []);
+        return;
+      }
+      if (tab === "critical-access-log") {
+        const l = await fetch(`${CRIT}/access-log?limit=120`, { headers });
+        const lj = await l.json().catch(() => ({}));
+        if (!l.ok) throw new Error(parseError(lj));
+        setCriticalAccessLog(lj.items || []);
+        return;
+      }
+      if (tab === "critical-audit-public") {
+        const a = await fetch(`${CRIT_AUDIT}?limit=120`, { headers });
+        const aj = await a.json().catch(() => ({}));
+        if (!a.ok) throw new Error(parseError(aj));
+        setPublicAudit(aj.items || []);
         return;
       }
       if (tab === "domains") {
@@ -1108,6 +1146,19 @@ export default function OpsUsersSecurityAdminPage() {
         ) : null}
 
         {tab === "audit" && audit.length ? renderTable(audit.map((a) => ({ action: a.action, target: `${a.target_type}/${a.target_id}`, actor: a.actor_id || "—", at: a.occurred_at })), ["action", "target", "actor", "at"], (a) => a.action + a.at) : null}
+
+        {tab === "critical-tables" && criticalRegistry.length
+          ? renderTable(criticalRegistry.map((r) => ({ table: r.table_name, rls: r.rls_enabled ? "Y" : "N", layer: r.enforcement_layer, desc: r.description || "—" })), ["table", "rls", "layer", "desc"], (r) => r.table)
+          : null}
+        {tab === "critical-policies" && criticalPolicies.length
+          ? renderTable(criticalPolicies.map((p) => ({ table: p.table_name, op: p.operation, role: p.role, scope: p.scope_type, ok: p.allowed ? "Y" : "N" })), ["table", "op", "role", "scope", "ok"], (p) => p.id)
+          : null}
+        {tab === "critical-access-log" && criticalAccessLog.length
+          ? renderTable(criticalAccessLog.map((row) => ({ decision: row.decision, table: row.table_name, op: row.operation, reason: row.reason || "—", at: row.occurred_at })), ["decision", "table", "op", "reason", "at"], (row) => row.id)
+          : null}
+        {tab === "critical-audit-public" && publicAudit.length
+          ? renderTable(publicAudit.map((a) => ({ action: a.action, target: `${a.target_type}/${a.target_id}`, svc: a.source_service || "—", at: a.occurred_at })), ["action", "target", "svc", "at"], (a) => a.id)
+          : null}
 
         {tab === "cross-domain" && links.length ? renderTable(links.map((l) => ({ user: l.user_id, domain: l.domain, entity: `${l.entity_type}/${l.entity_id}`, rel: l.relation })), ["user", "domain", "entity", "rel"], (l) => l.user + l.entity) : null}
       </section>

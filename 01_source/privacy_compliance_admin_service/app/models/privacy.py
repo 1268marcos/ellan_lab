@@ -58,6 +58,8 @@ class PrivacyConsent(Base):
     granted_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    recorded_by_service = Column(String(64), nullable=True)
+    access_policy_version = Column(Integer, nullable=False, default=1)
 
 
 class DataDeletionRequest(Base):

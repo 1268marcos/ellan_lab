@@ -74,6 +74,18 @@ def register_user(
     phone: str | None,
     password: str,
 ) -> User:
+    try:
+        from app.core.critical_table_enforce import enforce_users
+        from shared.security.critical_table_guard import ActorContext
+
+        enforce_users(
+            db,
+            operation="INSERT",
+            actor=ActorContext(service_name="order_pickup_auth", roles=["SYSTEM"]),
+        )
+    except (ImportError, PermissionError):
+        pass
+
     existing = db.query(User).filter(User.email == email.lower().strip()).first()
     if existing:
         raise AuthEmailAlreadyExistsError("email_already_exists")

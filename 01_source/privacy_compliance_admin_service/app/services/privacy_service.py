@@ -34,7 +34,9 @@ from app.schemas.privacy import (
     WebhookOut,
     WebhookUpdate,
 )
+from app.services.critical_table_security_service import enforce
 from app.services.crypto_util import generate_privacy_api_key, new_id, parse_events_json, utcnow
+from shared.security.critical_table_guard import ActorContext
 
 
 def get_regulation_or_404(db: Session, regulation_id: str) -> PrivacyRegulation:
@@ -187,7 +189,10 @@ def list_consents(
     consent_type: str | None = None,
     user_id: str | None = None,
     limit: int = 200,
+    actor: ActorContext | None = None,
 ) -> list[PrivacyConsent]:
+    ctx = actor or ActorContext(roles=["admin_operacao"])
+    enforce(db, table_name="privacy_consents", operation="SELECT", actor=ctx, target_user_id=user_id)
     q = db.query(PrivacyConsent)
     if regulation_code:
         q = q.filter(PrivacyConsent.regulation_code == regulation_code.upper())
@@ -198,7 +203,15 @@ def list_consents(
     return q.order_by(PrivacyConsent.created_at.desc()).limit(limit).all()
 
 
-def create_consent(db: Session, body: ConsentIn) -> PrivacyConsent:
+def create_consent(db: Session, body: ConsentIn, *, actor: ActorContext | None = None) -> PrivacyConsent:
+    ctx = actor or ActorContext(roles=["admin_operacao"])
+    enforce(
+        db,
+        table_name="privacy_consents",
+        operation="INSERT",
+        actor=ctx,
+        target_user_id=body.user_id,
+    )
     get_regulation_by_code_or_404(db, body.regulation_code)
     now = utcnow()
     row = PrivacyConsent(
@@ -215,6 +228,8 @@ def create_consent(db: Session, body: ConsentIn) -> PrivacyConsent:
         granted_at=now,
         revoked_at=None if body.granted else now,
         created_at=now,
+        recorded_by_service=ctx.service_name,
+        access_policy_version=1,
     )
     db.add(row)
     db.commit()
@@ -238,10 +253,21 @@ def create_consent(db: Session, body: ConsentIn) -> PrivacyConsent:
     return row
 
 
-def update_consent(db: Session, consent_id: str, body: ConsentUpdate) -> PrivacyConsent:
+def update_consent(
+    db: Session, consent_id: str, body: ConsentUpdate, *, actor: ActorContext | None = None
+) -> PrivacyConsent:
     row = db.get(PrivacyConsent, consent_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="consent_not_found")
+    ctx = actor or ActorContext(roles=["admin_operacao"])
+    enforce(
+        db,
+        table_name="privacy_consents",
+        operation="UPDATE",
+        actor=ctx,
+        target_user_id=row.user_id,
+        row_id=consent_id,
+    )
     data = body.model_dump(exclude_unset=True)
     if "granted" in data and data["granted"] is False and "revoked_at" not in data:
         row.revoked_at = utcnow()
@@ -254,10 +280,19 @@ def update_consent(db: Session, consent_id: str, body: ConsentUpdate) -> Privacy
     return row
 
 
-def delete_consent(db: Session, consent_id: str) -> None:
+def delete_consent(db: Session, consent_id: str, *, actor: ActorContext | None = None) -> None:
     row = db.get(PrivacyConsent, consent_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="consent_not_found")
+    ctx = actor or ActorContext(roles=["admin_operacao"])
+    enforce(
+        db,
+        table_name="privacy_consents",
+        operation="DELETE",
+        actor=ctx,
+        target_user_id=row.user_id,
+        row_id=consent_id,
+    )
     db.delete(row)
     db.commit()
 

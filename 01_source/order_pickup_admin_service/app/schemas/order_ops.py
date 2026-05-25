@@ -271,3 +271,63 @@ class DomainOutboxReplayOut(BaseModel):
     ok: bool
     replayed: bool
     item: DomainOutboxOut
+
+
+class LifecycleDeadlineOut(BaseModel):
+    id: str
+    deadline_key: str
+    order_id: str
+    deadline_type: str
+    status: str
+    due_at: datetime
+    failure_count: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class LifecycleDeadlineListOut(BaseModel):
+    items: list[LifecycleDeadlineOut]
+    total: int
+
+
+class InventorySyncQueueOut(BaseModel):
+    id: str
+    product_id: str
+    marketplace: str
+    status: str
+    quantity_available: int
+    retry_count: int
+    last_error: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InventorySyncQueueListOut(BaseModel):
+    items: list[InventorySyncQueueOut]
+    total: int
+
+
+class WorkerDlqOut(BaseModel):
+    id: str
+    worker_name: str
+    source_table: str
+    source_id: str
+    error_message: Optional[str] = None
+    attempt_count: int
+    dead_lettered_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class WorkerDlqListOut(BaseModel):
+    items: list[WorkerDlqOut]
+    total: int
+
+
+class WorkerQueueStatsOut(BaseModel):
+    domain_event_outbox: dict[str, int]
+    lifecycle_deadlines: dict[str, int]
+    inventory_sync_queue: dict[str, int]
+    worker_dead_letter_queue: dict[str, int]

@@ -10,14 +10,24 @@ from app.models.user import User
 from app.schemas.security import UserCreateIn, UserUpdateIn
 from app.schemas.user_role import UserOut
 from app.services.crypto_util import new_id
+from app.services.critical_table_security_service import enforce
 from app.services.security_service import write_audit
+from shared.security.critical_table_guard import ActorContext
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def create_user(db: Session, body: UserCreateIn, *, actor_id: str | None = None) -> UserOut:
+def create_user(
+    db: Session,
+    body: UserCreateIn,
+    *,
+    actor_id: str | None = None,
+    actor: ActorContext | None = None,
+) -> UserOut:
+    ctx = actor or ActorContext(actor_id=actor_id, roles=["admin_operacao"])
+    enforce(db, table_name="users", operation="INSERT", actor=ctx)
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="email_exists")
     now = _utcnow()
@@ -47,7 +57,16 @@ def create_user(db: Session, body: UserCreateIn, *, actor_id: str | None = None)
     return UserOut.model_validate(row)
 
 
-def update_user(db: Session, user_id: str, body: UserUpdateIn, *, actor_id: str | None = None) -> UserOut:
+def update_user(
+    db: Session,
+    user_id: str,
+    body: UserUpdateIn,
+    *,
+    actor_id: str | None = None,
+    actor: ActorContext | None = None,
+) -> UserOut:
+    ctx = actor or ActorContext(actor_id=actor_id, roles=["admin_operacao"])
+    enforce(db, table_name="users", operation="UPDATE", actor=ctx, target_user_id=user_id, row_id=user_id)
     row = db.get(User, user_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")
@@ -69,11 +88,25 @@ def update_user(db: Session, user_id: str, body: UserUpdateIn, *, actor_id: str 
     return UserOut.model_validate(row)
 
 
-def deactivate_user(db: Session, user_id: str, *, actor_id: str | None = None) -> UserOut:
-    return update_user(db, user_id, UserUpdateIn(is_active=False), actor_id=actor_id)
+def deactivate_user(
+    db: Session,
+    user_id: str,
+    *,
+    actor_id: str | None = None,
+    actor: ActorContext | None = None,
+) -> UserOut:
+    return update_user(db, user_id, UserUpdateIn(is_active=False), actor_id=actor_id, actor=actor)
 
 
-def delete_user(db: Session, user_id: str, *, actor_id: str | None = None) -> None:
+def delete_user(
+    db: Session,
+    user_id: str,
+    *,
+    actor_id: str | None = None,
+    actor: ActorContext | None = None,
+) -> None:
+    ctx = actor or ActorContext(actor_id=actor_id, roles=["admin_operacao"])
+    enforce(db, table_name="users", operation="DELETE", actor=ctx, target_user_id=user_id, row_id=user_id)
     row = db.get(User, user_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")

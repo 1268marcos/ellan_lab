@@ -19,6 +19,7 @@ from app.routers import (
     pickup_lifecycle,
     pickups,
     seed,
+    workers_ops,
 )
 from app.services.seed_data import run_seed
 
@@ -55,6 +56,7 @@ app.include_router(credits.router, prefix=API_PREFIX)
 app.include_router(integration_outbox.router, prefix=API_PREFIX)
 app.include_router(fulfillment.router, prefix=API_PREFIX)
 app.include_router(pickup_lifecycle.router, prefix=API_PREFIX)
+app.include_router(workers_ops.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 
 

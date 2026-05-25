@@ -626,6 +626,30 @@ services:
       - locker-network
 
   # =========================
+  # POSTGRES WORKERS (Node.js — outbox, lifecycle, inventory sync)
+  # =========================
+  postgres_workers:
+    build:
+      context: ../01_source/postgres_workers
+    container_name: postgres_workers
+    restart: unless-stopped
+    environment:
+      - TZ=UTC
+      - DATABASE_URL=postgresql://admin:admin123@postgres_central:5432/locker_central
+      - WORKER_CRON=*/10 * * * * *
+      - WORKER_BATCH_SIZE=50
+      - DOMAIN_EVENT_MAX_RETRIES=5
+      - LIFECYCLE_RUNTIME_URL=http://runtime_service:8000
+      - LIFECYCLE_RUNTIME_TOKEN=${ORDER_INTERNAL_TOKEN}
+    depends_on:
+      postgres_central:
+        condition: service_healthy
+      order_pickup_service:
+        condition: service_started
+    networks:
+      - locker-network
+
+  # =========================
   # PARTNER WEBHOOK DELIVERY WORKER (P-2)
   # =========================
   partner_webhook_delivery_worker:

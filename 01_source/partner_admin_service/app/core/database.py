@@ -55,10 +55,21 @@ def init_db() -> None:
     from app.models import partner_capability_webhook as _partner_cap_wh  # noqa: F401
     from app.models import partner_global_ops as _partner_global_ops  # noqa: F401
     from app.models import security as _security  # noqa: F401 — registry, segments, relations, integrations
+    from app.models import critical_table_security as _critical_table_security  # noqa: F401
+    from app.models import audit_log as _audit_log  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _apply_sqlite_compat_migrations(engine)
     _apply_partner_admin_sql_migrations(engine)
+    from app.services.critical_table_security_service import seed_registry_and_policies
+
+    db = SessionLocal()
+    try:
+        seed_registry_and_policies(db)
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _sql_file_statements(path: Path) -> list[str]:

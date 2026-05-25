@@ -24,6 +24,8 @@ from app.routers import (
     security_value,
     user_roles,
     users,
+    critical_audit,
+    critical_table_security,
 )
 from app.services.seed_data import run_seed
 
@@ -54,6 +56,8 @@ app.add_middleware(
 app.include_router(ecommerce_partners.router, prefix=API_PREFIX)
 app.include_router(logistics_partners.router, prefix=API_PREFIX)
 app.include_router(users.router, prefix=API_PREFIX)
+app.include_router(critical_audit.router, prefix=API_PREFIX)
+app.include_router(critical_table_security.router, prefix=API_PREFIX)
 app.include_router(user_roles.router, prefix=API_PREFIX)
 app.include_router(security_admin.router, prefix=API_PREFIX)
 app.include_router(security_cross_ops.router, prefix=API_PREFIX)

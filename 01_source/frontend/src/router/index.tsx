@@ -23,8 +23,10 @@ const OpsPaymentsAdmin = lazy(() => import('../pages/ops/OpsPaymentsAdmin'))
 import OpsMoneyCambioAdmin from '../pages/ops/OpsMoneyCambioAdmin'
 import OpsFiscalAdmin from '../pages/ops/OpsFiscalAdmin'
 import OpsOrderPickupAdmin from '../pages/ops/OpsOrderPickupAdmin'
+import OpsWorkersAdmin from '../pages/ops/OpsWorkersAdmin'
 import OpsMarketplaceAdmin from '../pages/ops/OpsMarketplaceAdmin'
 import OpsFinanceAdmin from '../pages/ops/OpsFinanceAdmin'
+import OpsFinancialAnalytics from '../pages/ops/OpsFinancialAnalytics'
 import OpsPrivacyComplianceAdmin from '../pages/ops/OpsPrivacyComplianceAdmin'
 import OpsRentalAdmin from '../pages/ops/OpsRentalAdmin'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
@@ -364,6 +366,16 @@ export default function AppRouter() {
         }
       />
       <Route
+        path="/ops/workers/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsWorkersAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
         path="/ops/marketplace/admin"
         element={
           <Protected>
@@ -379,6 +391,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsFinanceAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/analytics/financial"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsFinancialAnalytics />
             </OpsOnly>
           </Protected>
         }

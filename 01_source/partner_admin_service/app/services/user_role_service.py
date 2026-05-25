@@ -7,19 +7,32 @@ from sqlalchemy.orm import Session
 
 from app.models.user import User, UserRole
 from app.schemas.user_role import UserListOut, UserOut, UserRoleCreateIn, UserRoleOut, UserRoleUpdateIn
+from app.services.critical_table_security_service import enforce
 from app.services.crypto_util import new_id
+from shared.security.critical_table_guard import ActorContext
 
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def list_users(db: Session) -> UserListOut:
+def list_users(db: Session, *, actor: ActorContext | None = None) -> UserListOut:
+    ctx = actor or ActorContext(roles=["admin_operacao"])
+    enforce(db, table_name="users", operation="SELECT", actor=ctx)
     rows = db.query(User).order_by(User.full_name).all()
     return UserListOut(users=[UserOut.model_validate(r) for r in rows], total=len(rows))
 
 
-def get_user_or_404(db: Session, user_id: str) -> User:
+def get_user_or_404(db: Session, user_id: str, *, actor: ActorContext | None = None) -> User:
+    ctx = actor or ActorContext(actor_id=user_id, roles=["admin_operacao"])
+    enforce(
+        db,
+        table_name="users",
+        operation="SELECT",
+        actor=ctx,
+        target_user_id=user_id,
+        row_id=user_id,
+    )
     row = db.get(User, user_id)
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="user_not_found")

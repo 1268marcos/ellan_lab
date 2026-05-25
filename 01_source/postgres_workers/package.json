@@ -1,0 +1,17 @@
+{
+  "name": "postgres-workers",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:local": "DATABASE_URL=postgresql://admin:admin123@127.0.0.1:5435/locker_central node src/index.js",
+    "worker:domain": "node src/workers/domain-event-worker.js",
+    "worker:lifecycle": "node src/workers/lifecycle-worker.js",
+    "worker:inventory": "node src/workers/inventory-sync-worker.js"
+  },
+  "dependencies": {
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1"
+  }
+}

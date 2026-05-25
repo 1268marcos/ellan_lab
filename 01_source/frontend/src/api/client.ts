@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios'
 import { loadAuth } from './auth'
+import { needsOpsActorHeaders, opsActorHeaders } from './opsActorHeaders'
 
 export const api = axios.create({
   baseURL: '/api',
@@ -12,6 +13,10 @@ api.interceptors.request.use((config) => {
     config.headers = config.headers ?? {}
     config.headers['X-API-Key'] = auth.apiKey
     config.headers.Authorization = `Bearer ${auth.token || auth.apiKey}`
+  }
+  const url = String(config.url ?? '')
+  if (needsOpsActorHeaders(url)) {
+    config.headers = { ...opsActorHeaders(), ...(config.headers as Record<string, string>) }
   }
   return config
 })

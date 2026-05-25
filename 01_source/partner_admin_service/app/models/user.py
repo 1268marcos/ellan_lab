@@ -24,6 +24,7 @@ class User(Base):
     phone_verified = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow)
+    app_security_class = Column(String(24), nullable=False, default="PII_CRITICAL")
 
 
 class UserRole(Base):

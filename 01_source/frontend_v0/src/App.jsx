@@ -103,8 +103,10 @@ const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
 const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPage"));
 const OpsFiscalAdminPage = lazy(() => import("./pages/OpsFiscalAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
+const OpsWorkersAdminPage = lazy(() => import("./pages/OpsWorkersAdminPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
 const OpsFinanceAdminPage = lazy(() => import("./pages/OpsFinanceAdminPage"));
+const OpsFinancialAnalyticsPage = lazy(() => import("./pages/OpsFinancialAnalyticsPage"));
 const OpsPrivacyComplianceAdminPage = lazy(() => import("./pages/OpsPrivacyComplianceAdminPage"));
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
@@ -697,8 +699,39 @@ function TopNav() {
       opsSubGroup: "Integracao",
     },
     {
+      to: "/ops/access/security-admin?tab=critical-tables",
+      label: "Tabelas criticas · registry",
+      aria: "users privacy_consents audit_logs sem RLS APPLICATION",
+      group: "Users & Security OPS",
+      opsSubGroup: "Camada aplicacao",
+      newTag: "App",
+    },
+    {
+      to: "/ops/access/security-admin?tab=critical-policies",
+      label: "Politicas role x operacao",
+      aria: "app_critical_table_policy",
+      group: "Users & Security OPS",
+      opsSubGroup: "Camada aplicacao",
+      newTag: "App",
+    },
+    {
+      to: "/ops/access/security-admin?tab=critical-access-log",
+      label: "Log decisoes de acesso",
+      aria: "ALLOWED DENIED app_critical_table_access_log",
+      group: "Users & Security OPS",
+      opsSubGroup: "Camada aplicacao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=critical-audit-public",
+      label: "audit_logs publico",
+      aria: "public.audit_logs imutavel source_service",
+      group: "Users & Security OPS",
+      opsSubGroup: "Camada aplicacao",
+      newTag: "App",
+    },
+    {
       to: "/ops/access/security-admin?tab=audit",
-      label: "Auditoria",
+      label: "Auditoria (security_audit_logs)",
       aria: "security_audit_logs",
       group: "Users & Security OPS",
       opsSubGroup: "Integracao",
@@ -1449,6 +1482,14 @@ function TopNav() {
       opsSubGroup: "PnL",
     },
     {
+      to: "/ops/analytics/financial",
+      label: "Analytics financeiro",
+      aria: "mv_locker_monthly_profitability, v_financial_dashboard e mv_realtime_kpis",
+      group: "Finance OPS",
+      opsSubGroup: "PnL",
+      newTag: "MV",
+    },
+    {
       to: "/ops/finance/admin?tab=reconciliation",
       label: "Finance — gaps fiscais",
       aria: "fiscal_reconciliation_gaps",
@@ -1475,6 +1516,42 @@ function TopNav() {
       aria: "Parceiros pickup, pedidos, outbox, credits e fulfillment",
       group: "Cadastros OPS",
       opsSubGroup: "Order Pickup",
+    },
+    {
+      to: "/ops/workers/admin",
+      label: "Workers PostgreSQL — visao geral",
+      aria: "Node workers domain_event_outbox lifecycle_deadlines inventory_sync_queue DLQ",
+      group: "Cadastros OPS",
+      opsSubGroup: "Workers",
+      newTag: "Node",
+    },
+    {
+      to: "/ops/workers/admin?tab=domain",
+      label: "Workers — domain event outbox",
+      aria: "Webhook parceiros domain_event_outbox PENDING PUBLISHED",
+      group: "Cadastros OPS",
+      opsSubGroup: "Workers",
+    },
+    {
+      to: "/ops/workers/admin?tab=lifecycle",
+      label: "Workers — lifecycle deadlines",
+      aria: "PREPAYMENT_TIMEOUT POSTPAYMENT_EXPIRY PICKUP_TIMEOUT",
+      group: "Cadastros OPS",
+      opsSubGroup: "Workers",
+    },
+    {
+      to: "/ops/workers/admin?tab=inventory",
+      label: "Workers — sync estoque marketplaces",
+      aria: "Shopee Magalu Mercado Livre inventory_sync_queue",
+      group: "Cadastros OPS",
+      opsSubGroup: "Workers",
+    },
+    {
+      to: "/ops/workers/admin?tab=dlq",
+      label: "Workers — dead letter queue",
+      aria: "worker_dead_letter_queue falhas permanentes",
+      group: "Cadastros OPS",
+      opsSubGroup: "Workers",
     },
     {
       to: "/ops/marketplace/admin?tab=overview",
@@ -1525,6 +1602,14 @@ function TopNav() {
       aria: "Score GO_LIVE/PILOT, incidentes e auditoria de sync",
       group: "Marketplace OPS",
       opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/workers/admin?tab=inventory",
+      label: "Marketplace — sync estoque (workers)",
+      aria: "inventory_sync_queue Shopee Magalu Mercado Livre Node worker",
+      group: "Marketplace OPS",
+      opsSubGroup: "Integracao",
+      newTag: "Node",
     },
     {
       to: "/ops/marketplace/admin?tab=readiness",
@@ -1655,6 +1740,21 @@ function TopNav() {
       aria: "Regras de retencao e purge por categoria",
       group: "Privacy & Compliance OPS",
       opsSubGroup: "Processadores",
+    },
+    {
+      to: "/ops/privacy-compliance/admin?tab=consents",
+      label: "Privacy — consentimentos (app layer)",
+      aria: "privacy_consents enforcement APPLICATION recorded_by_service",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Camada aplicacao",
+      newTag: "App",
+    },
+    {
+      to: "/ops/access/security-admin?tab=critical-policies",
+      label: "Privacy — politicas (hub seguranca)",
+      aria: "app_critical_table_policy privacy_consents",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Camada aplicacao",
     },
     {
       to: "/ops/privacy-compliance/admin?tab=consents",
@@ -3710,6 +3810,14 @@ function AppContent() {
               }
             />
             <Route
+              path="/ops/workers/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsWorkersAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
               path="/ops/marketplace/admin"
               element={
                 <OpsRoute>
@@ -3722,6 +3830,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsFinanceAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/analytics/financial"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsFinancialAnalyticsPage />)}
                 </OpsRoute>
               }
             />

@@ -169,6 +169,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/mca/, "/api"),
       },
+      "/api/analytics": {
+        target: process.env.VITE_ANALYTICS_SERVICE_PROXY || "http://localhost:8127",
+        changeOrigin: true,
+      },
     },
   },
 });
