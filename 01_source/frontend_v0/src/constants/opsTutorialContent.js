@@ -119,6 +119,85 @@ export const OPS_TUTORIALS_BY_PATH = {
       },
     ],
   },
+  "/financial": {
+    title: "Tutorial rápido - financial/dashboard",
+    subtitle: "KPIs executivos consolidados (v_financial_dashboard) com tendência e ROI.",
+    sections: [
+      {
+        title: "1) Objetivo da tela",
+        items: [
+          "Visão CFO: receita, lucro e margem MTD/LTM, lockers ativos e % underperforming.",
+          "Acompanhar tendência mensal de receita/lucro e lockers de alta performance.",
+        ],
+      },
+      {
+        title: "2) Fluxo recomendado",
+        items: [
+          "Confirme login OPS (Bearer) — banner amarelo some quando autenticado.",
+          "Revise cards MTD/LTM; use Atualizar ou aguarde auto-refresh (5 min).",
+          "Exporte CSV/PDF para comitê; correlacione underperforming com aba Locker P&L.",
+        ],
+      },
+      {
+        title: "3) Atalhos OPS",
+        items: [
+          "Finance PnL e Settlements no topo; Analytics MV para materialized views legadas.",
+          "Dados cacheados Redis 5 min; views refresh via pg_cron.",
+        ],
+      },
+    ],
+  },
+  "/financial/locker-pnl": {
+    title: "Tutorial rápido - financial/locker-pnl",
+    subtitle: "Rentabilidade mensal por locker (mv_locker_monthly_pnl).",
+    sections: [
+      {
+        title: "1) Objetivo",
+        items: ["Tabela ordenável e heatmap de margem para priorizar lockers críticos."],
+      },
+      {
+        title: "2) Fluxo",
+        items: [
+          "Filtre locker_id e intervalo de meses; clique Filtrar.",
+          "Ordene por margem ou lucro; exporte CSV/PDF para auditoria.",
+        ],
+      },
+    ],
+  },
+  "/financial/expansion": {
+    title: "Tutorial rápido - financial/expansion",
+    subtitle: "Simulação simulate_expansion_scenario_v2 (NPV, IRR, payback).",
+    sections: [
+      {
+        title: "1) Objetivo",
+        items: ["Validar viabilidade de expansão por cidade antes de capex."],
+      },
+      {
+        title: "2) Fluxo",
+        items: [
+          "Ajuste sliders de lockers e ocupação; informe custos em centavos.",
+          "Simular e revisar payback, breakeven occupancy e viability na tabela.",
+        ],
+      },
+    ],
+  },
+  "/financial/partners": {
+    title: "Tutorial rápido - financial/partners",
+    subtitle: "Receita reconhecida e settlement batches por parceiro.",
+    sections: [
+      {
+        title: "1) Objetivo",
+        items: ["Conciliar receita mensal analytics_analytics com repasses partner_settlement_batches."],
+      },
+      {
+        title: "2) Fluxo",
+        items: [
+          "Filtre partner_id opcional; compare receita vs líquido de settlement.",
+          "Exporte evidência CSV/PDF para financeiro B2B.",
+        ],
+      },
+    ],
+  },
   "/ops/updates": {
     title: "Tutorial rápido - ops/updates",
     subtitle: "Registro operacional de mudanças e comunicação de sprint.",

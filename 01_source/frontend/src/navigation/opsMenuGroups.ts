@@ -360,7 +360,19 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${F}?tab=audit`, 'Auditoria'),
         navItem(`${F}?tab=revrec`, 'Rev. receita'),
         navItem(`${F}?tab=jobs`, 'Jobs agendados'),
+        navItem('/financial', 'Dashboard executivo', { newTag: 'CFO' }),
         navItem('/ops/analytics/financial', 'Analytics financeiro', { newTag: 'MV' }),
+      ], true),
+    ],
+  }),
+  opsGroup('financialExecutive', '📈', 'Financial', {
+    hub: navItem('/financial', 'Executive Dashboard', { newTag: 'CFO' }),
+    sections: [
+      section('executive', 'Executivo', [
+        navItem('/financial', 'Executive Dashboard', { newTag: 'CFO' }),
+        navItem('/financial/locker-pnl', 'Locker P&L'),
+        navItem('/financial/expansion', 'Expansion Simulator'),
+        navItem('/financial/partners', 'Partner Settlements'),
       ], true),
     ],
   }),
@@ -378,6 +390,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${F}?tab=treasury`, 'Créditos e holds'),
         navItem(`${F}?tab=wallet`, 'Wallet'),
         navItem(`${F}?tab=pnl`, 'PnL locker'),
+        navItem('/financial', 'Dashboard executivo', { newTag: 'CFO' }),
         navItem('/ops/analytics/financial', 'Analytics financeiro', { newTag: 'MV' }),
         navItem(`${F}?tab=reconciliation`, 'Gaps fiscais'),
       ]),

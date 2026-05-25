@@ -179,6 +179,10 @@ export default defineConfig({
         target: process.env.VITE_ANALYTICS_SERVICE_PROXY || "http://localhost:8127",
         changeOrigin: true,
       },
+      "/api/v1/financial": {
+        target: process.env.VITE_ANALYTICS_SERVICE_PROXY || "http://localhost:8127",
+        changeOrigin: true,
+      },
       "/api/v1/ops": {
         target: process.env.VITE_OPS_LOCKERS_SERVICE_PROXY || "http://localhost:8129",
         changeOrigin: true,

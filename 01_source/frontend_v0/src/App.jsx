@@ -144,6 +144,11 @@ const OpsSlaReportsPage = lazy(() => import("./pages/OpsSlaReportsPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
 const OpsFinanceAdminPage = lazy(() => import("./pages/OpsFinanceAdminPage"));
 const OpsFinancialAnalyticsPage = lazy(() => import("./pages/OpsFinancialAnalyticsPage"));
+const FinancialShell = lazy(() => import("./pages/financial/FinancialShell"));
+const FinancialExecutiveDashboard = lazy(() => import("./pages/financial/ExecutiveDashboard"));
+const FinancialLockerProfitability = lazy(() => import("./pages/financial/LockerProfitability"));
+const FinancialExpansionSimulator = lazy(() => import("./pages/financial/ExpansionSimulator"));
+const FinancialPartnerRevenue = lazy(() => import("./pages/financial/PartnerRevenue"));
 const OpsPrivacyComplianceAdminPage = lazy(() => import("./pages/OpsPrivacyComplianceAdminPage"));
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
@@ -1591,6 +1596,35 @@ function TopNav() {
       aria: "cost_centers e cost_center_monthly",
       group: "Finance OPS",
       opsSubGroup: "PnL",
+    },
+    {
+      to: "/financial",
+      label: "Financial — dashboard executivo",
+      aria: "v_financial_dashboard KPIs executivos",
+      group: "Financial",
+      opsSubGroup: "Executivo",
+      newTag: "CFO",
+    },
+    {
+      to: "/financial/locker-pnl",
+      label: "Financial — P&L locker",
+      aria: "mv_locker_monthly_pnl rentabilidade",
+      group: "Financial",
+      opsSubGroup: "Executivo",
+    },
+    {
+      to: "/financial/expansion",
+      label: "Financial — simulador expansão",
+      aria: "simulate_expansion_scenario_v2",
+      group: "Financial",
+      opsSubGroup: "Executivo",
+    },
+    {
+      to: "/financial/partners",
+      label: "Financial — settlements parceiro",
+      aria: "partner_revenue_monthly e settlement_batches",
+      group: "Financial",
+      opsSubGroup: "Executivo",
     },
     {
       to: "/ops/analytics/financial",
@@ -4052,6 +4086,19 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+            <Route
+              path="/financial"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <FinancialShell />)}
+                </OpsRoute>
+              }
+            >
+              <Route index element={<FinancialExecutiveDashboard />} />
+              <Route path="locker-pnl" element={<FinancialLockerProfitability />} />
+              <Route path="expansion" element={<FinancialExpansionSimulator />} />
+              <Route path="partners" element={<FinancialPartnerRevenue />} />
+            </Route>
             <Route
               path="/ops/privacy-compliance/admin"
               element={

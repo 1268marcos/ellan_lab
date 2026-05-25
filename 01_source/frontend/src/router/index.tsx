@@ -48,6 +48,11 @@ import OpsWorkersAdmin from '../pages/ops/OpsWorkersAdmin'
 import OpsMarketplaceAdmin from '../pages/ops/OpsMarketplaceAdmin'
 import OpsFinanceAdmin from '../pages/ops/OpsFinanceAdmin'
 import OpsFinancialAnalytics from '../pages/ops/OpsFinancialAnalytics'
+import FinancialShell from '../pages/financial/FinancialShell'
+import ExecutiveDashboard from '../pages/financial/ExecutiveDashboard'
+import LockerProfitability from '../pages/financial/LockerProfitability'
+import ExpansionSimulator from '../pages/financial/ExpansionSimulator'
+import PartnerRevenue from '../pages/financial/PartnerRevenue'
 import OpsPrivacyComplianceAdmin from '../pages/ops/OpsPrivacyComplianceAdmin'
 import OpsRentalAdmin from '../pages/ops/OpsRentalAdmin'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
@@ -471,6 +476,21 @@ export default function AppRouter() {
           </Protected>
         }
       />
+      <Route
+        path="/financial"
+        element={
+          <Protected>
+            <OpsOnly>
+              <FinancialShell />
+            </OpsOnly>
+          </Protected>
+        }
+      >
+        <Route index element={<ExecutiveDashboard />} />
+        <Route path="locker-pnl" element={<LockerProfitability />} />
+        <Route path="expansion" element={<ExpansionSimulator />} />
+        <Route path="partners" element={<PartnerRevenue />} />
+      </Route>
       <Route
         path="/ops/privacy-compliance/admin"
         element={

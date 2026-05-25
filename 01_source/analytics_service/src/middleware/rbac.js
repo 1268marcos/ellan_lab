@@ -4,6 +4,8 @@ import { hasPermission, loadUserPermissions } from '../lib/permissions.js'
 import { writeSecurityAudit } from '../lib/audit.js'
 
 const ADMIN_ROLES = new Set([
+  'admin',
+  'ops',
   'admin_operacao',
   'admin.financeiro',
   'admin.operacao',

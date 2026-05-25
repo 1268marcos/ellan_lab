@@ -5,6 +5,7 @@ import { config } from './config.js'
 import { pool } from './lib/db.js'
 import { attachDbClient } from './lib/rls.js'
 import analyticsRouter from './api/routes/analytics.js'
+import financialRouter from './api/routes/financial.js'
 import { monitorRefreshViews } from './db/monitor-refresh.js'
 
 const app = express()
@@ -24,6 +25,7 @@ app.get('/health', (_req, res) => {
 
 app.use(attachDbClient(pool))
 app.use('/api/v1/analytics', analyticsRouter)
+app.use('/api/v1/financial', financialRouter)
 
 async function start() {
   await pool.query('SELECT 1')

@@ -82,6 +82,7 @@ function filterMenuGroups(profile: string | null): OpsNavGroup[] {
           'mlOps',
           'financeOpsGlobal',
           'financeOpsCommercial',
+          'financialExecutive',
           'financeOps',
           'marketplace',
           'marketing',

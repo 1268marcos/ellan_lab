@@ -21,7 +21,11 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
-  jwtSecret: process.env.JWT_SECRET || 'CHANGE_ME_IN_PROD',
+  jwtSecret:
+    process.env.JWT_SECRET ||
+    process.env.PARTNER_JWT_SECRET ||
+    'partner-service-dev-secret',
+  allowOpsActorAuth: process.env.ALLOW_OPS_ACTOR_AUTH !== '0',
   jwtAlg: process.env.JWT_ALG || 'HS256',
   apiKeyPepper: process.env.PARTNER_ADMIN_API_KEY_PEPPER || 'dev-partner-admin-pepper',
   redisUrl: process.env.REDIS_URL || 'redis://127.0.0.1:6379/0',

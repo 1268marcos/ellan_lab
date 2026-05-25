@@ -99,7 +99,16 @@ export function requireApiKeyOrJwt(requiredScope = null) {
     if (String(req.headers['x-api-key'] || '').trim()) {
       return requireApiKey(requiredScope)(req, res, next)
     }
-    const { requireJwtAuth } = await import('./auth.js')
+    const { tryOpsActorAuth, requireJwtAuth } = await import('./auth.js')
+    if (tryOpsActorAuth(req)) {
+      const { buildRLSContext } = await import('../lib/rls.js')
+      await buildRLSContext(req.db, {
+        userId: req.auth.userId,
+        tenantId: req.auth.tenantId,
+        role: req.auth.role,
+      })
+      return next()
+    }
     return requireJwtAuth(req, res, next)
   }
 }

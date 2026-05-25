@@ -109,11 +109,13 @@ router.post('/refresh', requirePermission('analytics.refresh'), async (req, res)
     target === 'all'
       ? [
           'fn_refresh_mv_locker_monthly_profitability',
+          'fn_refresh_mv_locker_monthly_pnl',
           'fn_refresh_mv_realtime_kpis',
           'fn_refresh_financial_dashboard',
         ]
       : {
           'mv_locker_monthly_profitability': ['fn_refresh_mv_locker_monthly_profitability'],
+          mv_locker_monthly_pnl: ['fn_refresh_mv_locker_monthly_pnl'],
           mv_realtime_kpis: ['fn_refresh_mv_realtime_kpis'],
           v_financial_dashboard: ['fn_refresh_financial_dashboard'],
         }[target]
@@ -121,7 +123,8 @@ router.post('/refresh', requirePermission('analytics.refresh'), async (req, res)
   if (!targets) {
     return res.status(400).json({
       error: 'invalid_view',
-      detail: 'Use view=all|mv_locker_monthly_profitability|mv_realtime_kpis|v_financial_dashboard',
+      detail:
+        'Use view=all|mv_locker_monthly_profitability|mv_locker_monthly_pnl|mv_realtime_kpis|v_financial_dashboard',
     })
   }
 

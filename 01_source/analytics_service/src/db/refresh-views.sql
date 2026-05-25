@@ -111,6 +111,33 @@ BEGIN
 END;
 $$;
 
+CREATE OR REPLACE FUNCTION public.fn_refresh_mv_locker_monthly_pnl(
+    p_triggered_by VARCHAR DEFAULT 'pg_cron'
+) RETURNS VOID
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_log_id BIGINT;
+    v_populated BOOLEAN;
+BEGIN
+    v_log_id := public.fn_log_mv_refresh_start('mv_locker_monthly_pnl', p_triggered_by);
+    SELECT relispopulated INTO v_populated
+    FROM pg_class
+    WHERE oid = 'public.mv_locker_monthly_pnl'::regclass;
+    BEGIN
+        IF COALESCE(v_populated, false) THEN
+            REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_pnl;
+        ELSE
+            REFRESH MATERIALIZED VIEW public.mv_locker_monthly_pnl;
+        END IF;
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
+        RAISE;
+    END;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.fn_refresh_financial_dashboard(
     p_triggered_by VARCHAR DEFAULT 'pg_cron'
 ) RETURNS VOID
@@ -125,11 +152,8 @@ BEGIN
     FROM pg_class
     WHERE oid = 'public.mv_locker_monthly_profitability'::regclass;
     BEGIN
-        IF COALESCE(v_populated, false) THEN
-            REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_profitability;
-        ELSE
-            REFRESH MATERIALIZED VIEW public.mv_locker_monthly_profitability;
-        END IF;
+        PERFORM public.fn_refresh_mv_locker_monthly_profitability(p_triggered_by);
+        PERFORM public.fn_refresh_mv_locker_monthly_pnl(p_triggered_by);
         PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
     EXCEPTION WHEN OTHERS THEN
         PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
@@ -156,6 +180,12 @@ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
+DO $$
+BEGIN
+    PERFORM cron.unschedule('refresh_mv_locker_monthly_pnl');
+EXCEPTION WHEN OTHERS THEN NULL;
+END $$;
+
 SELECT cron.schedule(
     'refresh_mv_locker_monthly_profitability',
     '0 * * * *',
@@ -174,7 +204,14 @@ SELECT cron.schedule(
     $$SELECT public.fn_refresh_financial_dashboard('pg_cron')$$
 );
 
+SELECT cron.schedule(
+    'refresh_mv_locker_monthly_pnl',
+    '15 * * * *',
+    $$SELECT public.fn_refresh_mv_locker_monthly_pnl('pg_cron')$$
+);
+
 GRANT SELECT ON public.mv_refresh_log TO admin;
+GRANT EXECUTE ON FUNCTION public.fn_refresh_mv_locker_monthly_pnl(VARCHAR) TO admin;
 GRANT EXECUTE ON FUNCTION public.fn_refresh_mv_locker_monthly_profitability(VARCHAR) TO admin;
 GRANT EXECUTE ON FUNCTION public.fn_refresh_mv_realtime_kpis(VARCHAR) TO admin;
 GRANT EXECUTE ON FUNCTION public.fn_refresh_financial_dashboard(VARCHAR) TO admin;

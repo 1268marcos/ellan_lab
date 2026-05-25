@@ -57,14 +57,52 @@ async function verifySessionToken(db, token) {
   return { userId, tenantId, roles: roles.length ? roles : [primaryRole], primaryRole, authMethod: 'SESSION' }
 }
 
+const OPS_ACTOR_ADMIN_ROLES = new Set([
+  'admin',
+  'ops',
+  'admin_operacao',
+  'admin.financeiro',
+  'admin.operacao',
+  'admin_operacao_global',
+  'super_admin',
+])
+
+function mapPartnerRole(role) {
+  const r = String(role || '').trim().toLowerCase()
+  if (r === 'admin') return 'admin_operacao'
+  if (r === 'ops') return 'admin_operacao'
+  return role
+}
+
 async function hydrateContext(db, base, req) {
   const tenantHint = req.headers['x-tenant-id'] || base.tenantId
   const tenantId = await resolveTenantId(db, base.userId, tenantHint)
-  let roles = base.roles?.length ? base.roles : []
+  let roles = (base.roles || []).map(mapPartnerRole).filter(Boolean)
   if (!roles.length) roles = await resolveUserRoles(db, base.userId)
-  const primaryRole = base.primaryRole || roles[0] || (await resolvePrimaryRole(db, base.userId))
+  const primaryRole = mapPartnerRole(base.primaryRole) || roles[0] || (await resolvePrimaryRole(db, base.userId))
   if (!roles.length) roles = [primaryRole]
   return { ...base, tenantId, roles, primaryRole }
+}
+
+/** Dev/local: confiar em cabeçalhos OPS do frontend quando não há API key (login parceiro v1). */
+export function tryOpsActorAuth(req) {
+  if (!config.allowOpsActorAuth) return false
+  const service = String(req.headers['x-service-name'] || '').toLowerCase()
+  if (!service.includes('ops') && !service.includes('frontend')) return false
+  const actorRoles = String(req.headers['x-actor-roles'] || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  if (!actorRoles.some((r) => OPS_ACTOR_ADMIN_ROLES.has(r))) return false
+  const mapped = actorRoles.map(mapPartnerRole)
+  req.auth = {
+    userId: String(req.headers['x-actor-id'] || 'ops-actor-dev'),
+    tenantId: req.headers['x-tenant-id'] ? String(req.headers['x-tenant-id']) : null,
+    roles: mapped,
+    role: mapped[0] || 'admin_operacao',
+    authMethod: 'OPS_ACTOR',
+  }
+  return true
 }
 
 async function applyAuthContext(req, ctx) {

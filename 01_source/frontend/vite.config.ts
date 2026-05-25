@@ -186,6 +186,10 @@ export default defineConfig({
         target: analyticsServiceProxy,
         changeOrigin: true,
       },
+      '/api/v1/financial': {
+        target: analyticsServiceProxy,
+        changeOrigin: true,
+      },
       '/api/v1/ops': {
         target: opsLockersServiceProxy,
         changeOrigin: true,
