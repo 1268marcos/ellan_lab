@@ -94,9 +94,17 @@ export function requireApiKey(requiredScope = null) {
   }
 }
 
+function parseBearer(req) {
+  const header = String(req.headers.authorization || '')
+  const match = header.match(/^Bearer\s+(.+)$/i)
+  return match ? match[1].trim() : ''
+}
+
 export function requireApiKeyOrJwt(requiredScope = null) {
   return async function combinedAuth(req, res, next) {
-    if (String(req.headers['x-api-key'] || '').trim()) {
+    const bearer = parseBearer(req)
+    // Login v1 envia X-API-Key do parceiro; priorizar Bearer (JWT) para não bater em security_api_keys.
+    if (!bearer && String(req.headers['x-api-key'] || '').trim()) {
       return requireApiKey(requiredScope)(req, res, next)
     }
     const { tryOpsActorAuth, requireJwtAuth } = await import('./auth.js')

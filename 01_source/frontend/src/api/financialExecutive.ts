@@ -68,9 +68,6 @@ finApi.interceptors.request.use((config) => {
   if (bearer) {
     config.headers.Authorization = `Bearer ${bearer}`
   }
-  if (auth?.apiKey) {
-    config.headers['X-API-Key'] = auth.apiKey
-  }
   return config
 })
 

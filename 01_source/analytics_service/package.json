@@ -8,6 +8,7 @@
     "start:local": "PORT=8127 DATABASE_URL=postgresql://admin:admin123@127.0.0.1:5435/locker_central node src/index.js",
     "monitor": "node src/db/monitor-refresh.js",
     "db:refresh-setup": "psql \"$DATABASE_URL\" -f src/db/refresh-views.sql",
+    "db:seed-dev": "node src/db/seed-dev.js",
     "test": "node --test tests/*.test.js"
   },
   "dependencies": {
