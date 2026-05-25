@@ -24,6 +24,17 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
       navItem('/ops/manifests', 'Manifestos'),
     ],
   }),
+  opsGroup('operations', '📡', 'Operations', {
+    hub: navItem('/ops/lockers/map', 'Lockers Map', { newTag: 'Live' }),
+    sections: [
+      section('opsMap', 'Rede & NOC', [
+        navItem('/ops/lockers/map', 'Lockers Map', { newTag: 'Map' }),
+        navItem('/ops/noc-alerts', 'NOC Alerts', { newTag: 'WS' }),
+        navItem('/ops/maintenance', 'Maintenance', { newTag: 'Kanban' }),
+        navItem('/ops/sla-reports', 'SLA Reports'),
+      ], true),
+    ],
+  }),
   opsGroup('cadastros', '📋', 'Cadastros OPS', {
     items: [navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)')],
   }),

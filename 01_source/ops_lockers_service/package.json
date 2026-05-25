@@ -1,0 +1,17 @@
+{
+  "name": "ops-lockers-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "start:local": "PORT=8129 DATABASE_URL=postgresql://admin:admin123@127.0.0.1:5435/locker_central node src/index.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "ws": "^8.18.0"
+  }
+}

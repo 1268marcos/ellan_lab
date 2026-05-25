@@ -136,6 +136,11 @@ const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPa
 const OpsFiscalAdminPage = lazy(() => import("./pages/OpsFiscalAdminPage"));
 const OpsOrderPickupAdminPage = lazy(() => import("./pages/OpsOrderPickupAdminPage"));
 const OpsWorkersAdminPage = lazy(() => import("./pages/OpsWorkersAdminPage"));
+const OpsLockersMapPage = lazy(() => import("./pages/OpsLockersMapPage"));
+const OpsLockerDetailPage = lazy(() => import("./pages/OpsLockerDetailPage"));
+const OpsMaintenanceTicketsPage = lazy(() => import("./pages/OpsMaintenanceTicketsPage"));
+const OpsNocAlertsPage = lazy(() => import("./pages/OpsNocAlertsPage"));
+const OpsSlaReportsPage = lazy(() => import("./pages/OpsSlaReportsPage"));
 const OpsMarketplaceAdminPage = lazy(() => import("./pages/OpsMarketplaceAdminPage"));
 const OpsFinanceAdminPage = lazy(() => import("./pages/OpsFinanceAdminPage"));
 const OpsFinancialAnalyticsPage = lazy(() => import("./pages/OpsFinancialAnalyticsPage"));
@@ -2107,6 +2112,37 @@ function TopNav() {
       group: "Order / Pickup",
     },
     {
+      to: "/ops/lockers/map",
+      label: "Operations — Lockers Map",
+      aria: "Mapa Leaflet com status e telemetria live",
+      group: "Operations",
+      opsSubGroup: "Rede",
+      newTag: "Map",
+    },
+    {
+      to: "/ops/maintenance",
+      label: "Operations — Maintenance",
+      aria: "Kanban de tickets de manutenção",
+      group: "Operations",
+      opsSubGroup: "Manutenção",
+      newTag: "Kanban",
+    },
+    {
+      to: "/ops/noc-alerts",
+      label: "Operations — NOC Alerts",
+      aria: "Feed vw_noc_alerts em tempo real",
+      group: "Operations",
+      opsSubGroup: "NOC",
+      newTag: "WS",
+    },
+    {
+      to: "/ops/sla-reports",
+      label: "Operations — SLA Reports",
+      aria: "Relatório SLA breaches",
+      group: "Operations",
+      opsSubGroup: "SLA",
+    },
+    {
       to: "/ops/lockers/product-configs",
       label: "ops /lockers/product-configs",
       aria: "Regras product_locker_configs por locker (categoria permitida, dimensões, temperatura)",
@@ -2594,6 +2630,7 @@ function TopNav() {
   const opsGroupOrder = [
     "Visão Geral",
     "Dashboards",
+    "Operations",
     "Cadastros OPS",
     "Hardware OPS",
     "Payments OPS",
@@ -3820,10 +3857,10 @@ function AppContent() {
               }
             />
             <Route
-              path="/ops/lockers/product-configs"
+              path="/ops/lockers/map"
               element={
                 <OpsRoute>
-                  <OpsLockerProductConfigPage />
+                  {withBoundary("ops", <OpsLockersMapPage />)}
                 </OpsRoute>
               }
             />
@@ -3832,6 +3869,38 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerCreatePage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/maintenance"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMaintenanceTicketsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/noc-alerts"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsNocAlertsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/sla-reports"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsSlaReportsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/product-configs"
+              element={
+                <OpsRoute>
+                  <OpsLockerProductConfigPage />
                 </OpsRoute>
               }
             />
@@ -4020,6 +4089,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsLockerOperatorsPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/lockers/:id"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsLockerDetailPage />)}
                 </OpsRoute>
               }
             />

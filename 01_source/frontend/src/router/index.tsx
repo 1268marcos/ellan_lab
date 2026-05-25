@@ -12,6 +12,11 @@ import Transactions from '../pages/finance/Transactions'
 import DashboardMetrics from '../pages/analytics/DashboardMetrics'
 import SLOReport from '../pages/analytics/SLOReport'
 import Lockers from '../pages/ops/Lockers'
+import LockersMap from '../pages/ops/lockers/LockersMap'
+import LockerDetail from '../pages/ops/lockers/LockerDetail'
+import MaintenanceTickets from '../pages/ops/lockers/MaintenanceTickets'
+import NOCAlerts from '../pages/ops/lockers/NOCAlerts'
+import SLAReports from '../pages/ops/lockers/SLAReports'
 import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
@@ -258,6 +263,7 @@ export default function AppRouter() {
       />
 
       <Route path="/ops/lockers" element={<Protected><Lockers /></Protected>} />
+      <Route path="/ops/lockers/map" element={<Protected><LockersMap /></Protected>} />
       <Route
         path="/ops/lockers/create"
         element={
@@ -268,6 +274,10 @@ export default function AppRouter() {
           </Protected>
         }
       />
+      <Route path="/ops/lockers/:id" element={<Protected><LockerDetail /></Protected>} />
+      <Route path="/ops/maintenance" element={<Protected><MaintenanceTickets /></Protected>} />
+      <Route path="/ops/noc-alerts" element={<Protected><NOCAlerts /></Protected>} />
+      <Route path="/ops/sla-reports" element={<Protected><SLAReports /></Protected>} />
       <Route path="/ops/manifests" element={<Protected><Manifests /></Protected>} />
       <Route
         path="/ops/partners/admin"

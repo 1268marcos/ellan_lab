@@ -8,7 +8,7 @@ import { integrationsViteProxies } from './integrations-vite-proxy.mjs'
 const projectDir = path.dirname(fileURLToPath(import.meta.url))
 const repoSiblingV0 = path.resolve(projectDir, '../frontend_v0/node_modules')
 
-function xyflowAlias(subpath: string) {
+function moduleAlias(subpath: string) {
   const local = path.resolve(projectDir, 'node_modules', subpath)
   const fromV0 = path.join(repoSiblingV0, subpath)
   try {
@@ -18,6 +18,9 @@ function xyflowAlias(subpath: string) {
     return fromV0
   }
 }
+
+const xyflowAlias = moduleAlias
+const leafletAlias = moduleAlias('leaflet')
 
 /** Docker compose expõe partner_service em :8402; uvicorn local costuma usar :8002. */
 const partnerServiceProxy = process.env.PARTNER_SERVICE_PROXY ?? 'http://localhost:8402'
@@ -63,6 +66,9 @@ const financeAdminServiceProxy =
 const analyticsServiceProxy =
   process.env.ANALYTICS_SERVICE_PROXY ?? 'http://localhost:8127'
 
+const opsLockersServiceProxy =
+  process.env.OPS_LOCKERS_SERVICE_PROXY ?? 'http://localhost:8129'
+
 const fiscalAdminServiceProxy =
   process.env.FISCAL_ADMIN_SERVICE_PROXY ?? 'http://localhost:8024'
 
@@ -101,6 +107,7 @@ export default defineConfig({
     alias: {
       '@xyflow/react': xyflowAlias('@xyflow/react'),
       '@xyflow/system': xyflowAlias('@xyflow/system'),
+      leaflet: leafletAlias,
     },
   },
   plugins: [redirectRootToV1(), react()],
@@ -178,6 +185,15 @@ export default defineConfig({
       '/api/analytics': {
         target: analyticsServiceProxy,
         changeOrigin: true,
+      },
+      '/api/v1/ops': {
+        target: opsLockersServiceProxy,
+        changeOrigin: true,
+      },
+      '/ws/ops': {
+        target: opsLockersServiceProxy,
+        changeOrigin: true,
+        ws: true,
       },
       '/api/fiscal-admin': {
         target: fiscalAdminServiceProxy,
