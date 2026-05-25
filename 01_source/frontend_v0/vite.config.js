@@ -2,6 +2,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { ELLAN_FRONTEND_CSP, ELLAN_FRONTEND_CSP_META } from "./ellan-frontend-csp.mjs";
+import { integrationsViteProxies } from "../frontend/integrations-vite-proxy.mjs";
 
 function ellanCspIndexHtml() {
   const cspMetaRe = /\s*<meta[\s\S]*?http-equiv\s*=\s*["']Content-Security-Policy["'][\s\S]*?\/>/gi;
@@ -69,6 +70,7 @@ export default defineConfig({
     port: 5174,
     strictPort: true,
     proxy: {
+      ...integrationsViteProxies(),
       "/api/sp": {
         target: "http://localhost:8201",
         changeOrigin: true,

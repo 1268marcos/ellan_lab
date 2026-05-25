@@ -111,6 +111,24 @@ const SecurityApiKeysManager = lazy(() =>
   import("./pages/security/SecurityPages").then((m) => ({ default: m.ApiKeysManager })),
 );
 const SecurityWebhookConfig = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.WebhookConfig })));
+const IntegrationsShell = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.IntegrationsShell })),
+);
+const IntegrationsPartnersList = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.PartnersList })),
+);
+const IntegrationsPartnerDetail = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.PartnerDetail })),
+);
+const IntegrationsMarketplaces = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.MarketplaceConnections })),
+);
+const IntegrationsCarriers = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.CarrierRatesManager })),
+);
+const IntegrationsWebhooks = lazy(() =>
+  import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.WebhooksHub })),
+);
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsHardwareAdminPage = lazy(() => import("./pages/OpsHardwareAdminPage"));
 const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
@@ -528,6 +546,35 @@ function TopNav() {
       label: "Security — Webhooks",
       aria: "Configuracao security_webhook_endpoints",
       group: "Security",
+      opsSubGroup: "Webhooks",
+    },
+    {
+      to: "/integrations/partners",
+      label: "Integrations — Partners",
+      aria: "partner_ecosystem_players capabilities health",
+      group: "Integrations",
+      opsSubGroup: "Partners",
+      newTag: "Hub",
+    },
+    {
+      to: "/integrations/marketplaces",
+      label: "Integrations — Marketplaces",
+      aria: "marketplace_channel_partners connections",
+      group: "Integrations",
+      opsSubGroup: "Marketplaces",
+    },
+    {
+      to: "/integrations/carriers",
+      label: "Integrations — Carriers",
+      aria: "logistics_carrier_rates DHL DPD InPost",
+      group: "Integrations",
+      opsSubGroup: "Carriers",
+    },
+    {
+      to: "/integrations/webhooks",
+      label: "Integrations — Webhooks",
+      aria: "HMAC SHA256 webhook test",
+      group: "Integrations",
       opsSubGroup: "Webhooks",
     },
     {
@@ -3820,6 +3867,21 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+            <Route
+              path="/integrations"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <IntegrationsShell />)}
+                </OpsRoute>
+              }
+            >
+              <Route index element={<Navigate to="/integrations/partners" replace />} />
+              <Route path="partners" element={<IntegrationsPartnersList />} />
+              <Route path="partners/:partnerId" element={<IntegrationsPartnerDetail />} />
+              <Route path="marketplaces" element={<IntegrationsMarketplaces />} />
+              <Route path="carriers" element={<IntegrationsCarriers />} />
+              <Route path="webhooks" element={<IntegrationsWebhooks />} />
+            </Route>
             <Route
               path="/security"
               element={

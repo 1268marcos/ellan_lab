@@ -28,6 +28,7 @@ const DEFAULT_OPEN: Record<string, boolean> = {
   marketplace: false,
   privacyCompliance: false,
   usersSecurityOps: true,
+  integrationsOps: true,
   rentalsOps: false,
   marketing: false,
   productsCatalog: false,
@@ -90,6 +91,7 @@ function filterMenuGroups(profile: string | null): OpsNavGroup[] {
           'rentalsOps',
           'privacyCompliance',
           'usersSecurityOps',
+          'integrationsOps',
         ])
         if (opsKeys.has(g.key)) return g
         if (g.key === 'intelligence') return { ...g, items: [], sections: undefined, hub: undefined }

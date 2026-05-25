@@ -26,6 +26,12 @@ import RoleDetail from '../pages/security/RoleDetail'
 import PermissionsMatrix from '../pages/security/PermissionsMatrix'
 import ApiKeysManager from '../pages/security/ApiKeysManager'
 import WebhookConfig from '../pages/security/WebhookConfig'
+import IntegrationsShell from '../pages/integrations/IntegrationsShell'
+import PartnersList from '../pages/integrations/PartnersList'
+import PartnerDetail from '../pages/integrations/PartnerDetail'
+import MarketplaceConnections from '../pages/integrations/MarketplaceConnections'
+import CarrierRatesManager from '../pages/integrations/CarrierRatesManager'
+import WebhooksHub from '../pages/integrations/WebhooksHub'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import OpsHardwareAdmin from '../pages/ops/OpsHardwareAdmin'
@@ -315,6 +321,23 @@ export default function AppRouter() {
         <Route path="permissions" element={<PermissionsMatrix />} />
         <Route path="api-keys" element={<ApiKeysManager />} />
         <Route path="webhooks" element={<WebhookConfig />} />
+      </Route>
+      <Route
+        path="/integrations"
+        element={
+          <Protected>
+            <OpsOnly>
+              <IntegrationsShell />
+            </OpsOnly>
+          </Protected>
+        }
+      >
+        <Route index element={<Navigate to="/integrations/partners" replace />} />
+        <Route path="partners" element={<PartnersList />} />
+        <Route path="partners/:partnerId" element={<PartnerDetail />} />
+        <Route path="marketplaces" element={<MarketplaceConnections />} />
+        <Route path="carriers" element={<CarrierRatesManager />} />
+        <Route path="webhooks" element={<WebhooksHub />} />
       </Route>
       <Route
         path="/ops/tenants/admin"

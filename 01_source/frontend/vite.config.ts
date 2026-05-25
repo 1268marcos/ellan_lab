@@ -3,6 +3,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { integrationsViteProxies } from './integrations-vite-proxy.mjs'
 
 const projectDir = path.dirname(fileURLToPath(import.meta.url))
 const repoSiblingV0 = path.resolve(projectDir, '../frontend_v0/node_modules')
@@ -188,6 +189,7 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/money-cambio-admin/, '/api'),
       },
+      ...integrationsViteProxies(),
       '/api/v1/partners/login': {
         target: orderPickupServiceProxy,
         changeOrigin: true,

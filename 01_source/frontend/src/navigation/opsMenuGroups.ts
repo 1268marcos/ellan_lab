@@ -38,6 +38,23 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
       ]),
     ],
   }),
+  opsGroup('integrationsOps', '🔌', 'Integrations', {
+    hub: navItem('/integrations/partners', 'Partners', { newTag: 'Hub' }),
+    sections: [
+      section('integrationsMain', 'Integrations', [
+        navItem('/integrations/partners', 'Partners', {
+          keywords: 'SwipBox Cleveron InPost DPD DHL Magalu Mercado Livre',
+        }),
+        navItem('/integrations/marketplaces', 'Marketplaces', {
+          keywords: 'Amazon Walmart Shopee Temu TikTok Shop',
+        }),
+        navItem('/integrations/carriers', 'Carriers', {
+          keywords: 'Royal Mail La Poste Colissimo Yodel Swiss Post',
+        }),
+        navItem('/integrations/webhooks', 'Webhooks', { keywords: 'HMAC SHA256 webhook test' }),
+      ]),
+    ],
+  }),
   opsGroup('usersSecurityOps', '🔐', 'Users & Security OPS', {
     hub: navItem('/ops/access/security-admin?tab=overview', 'Hub segurança', { newTag: 'Hub' }),
     sections: [
