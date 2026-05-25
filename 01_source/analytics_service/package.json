@@ -7,12 +7,15 @@
     "start": "node src/index.js",
     "start:local": "PORT=8127 DATABASE_URL=postgresql://admin:admin123@127.0.0.1:5435/locker_central node src/index.js",
     "monitor": "node src/db/monitor-refresh.js",
-    "db:refresh-setup": "psql \"$DATABASE_URL\" -f src/db/refresh-views.sql"
+    "db:refresh-setup": "psql \"$DATABASE_URL\" -f src/db/refresh-views.sql",
+    "test": "node --test tests/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "jose": "^5.9.6",
     "node-cron": "^3.0.3",
-    "pg": "^8.13.1"
+    "pg": "^8.13.1",
+    "redis": "^4.7.0"
   }
 }

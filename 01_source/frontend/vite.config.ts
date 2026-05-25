@@ -130,6 +130,10 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/partner-admin/, '/api'),
       },
+      '/api/v1/security': {
+        target: partnerAdminServiceProxy,
+        changeOrigin: true,
+      },
       '/api/payment-gateway-admin': {
         target: paymentGatewayAdminServiceProxy,
         changeOrigin: true,

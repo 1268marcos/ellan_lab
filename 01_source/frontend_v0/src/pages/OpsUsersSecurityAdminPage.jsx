@@ -34,6 +34,8 @@ const CRIT_AUDIT = `${API}/critical-audit-logs`;
 const VAL = `${SEC}/value`;
 const CROSS = `${SEC}/cross-ops`;
 const PAGE_VERSION = "ops/access/security-admin v0.2-pro";
+const ANALYTICS_API =
+  (import.meta.env.VITE_ANALYTICS_SERVICE_BASE_URL || "/api/analytics") + "/api/v1/analytics";
 const ROLES = ["admin_operacao", "suporte", "auditoria", "usuario_comum", "partner_api", "carrier_ops"];
 
 const TABS = [
@@ -71,6 +73,8 @@ const TABS = [
   ["critical-access-log", "Log acesso"],
   ["critical-audit-public", "audit_logs publico"],
   ["audit", "Auditoria (security)"],
+  ["rls-middleware", "Middleware RLS"],
+  ["rls-session", "Sessao PG"],
   ["cross-domain", "Links legado"],
 ];
 
@@ -117,6 +121,7 @@ export default function OpsUsersSecurityAdminPage() {
   const [criticalPolicies, setCriticalPolicies] = useState([]);
   const [criticalAccessLog, setCriticalAccessLog] = useState([]);
   const [publicAudit, setPublicAudit] = useState([]);
+  const [rlsContext, setRlsContext] = useState(null);
   const [links, setLinks] = useState([]);
   const [domainCatalog, setDomainCatalog] = useState([]);
   const [domainHealth, setDomainHealth] = useState([]);
@@ -244,6 +249,13 @@ export default function OpsUsersSecurityAdminPage() {
         const aj = await a.json().catch(() => ({}));
         if (!a.ok) throw new Error(parseError(aj));
         setAudit(aj.items || []);
+        return;
+      }
+      if (tab === "rls-session") {
+        const ctx = await fetch(`${ANALYTICS_API}/auth/context`, { headers });
+        const cj = await ctx.json().catch(() => ({}));
+        if (!ctx.ok) throw new Error(parseError(cj, "Falha analytics auth/context.", ctx.status));
+        setRlsContext(cj);
         return;
       }
       if (tab === "critical-tables") {
@@ -1146,6 +1158,51 @@ export default function OpsUsersSecurityAdminPage() {
         ) : null}
 
         {tab === "audit" && audit.length ? renderTable(audit.map((a) => ({ action: a.action, target: `${a.target_type}/${a.target_id}`, actor: a.actor_id || "—", at: a.occurred_at })), ["action", "target", "actor", "at"], (a) => a.action + a.at) : null}
+
+        {tab === "rls-middleware" ? (
+          <section style={opsSanityCardStyle}>
+            <p style={summary24hHintStyle}>analytics-service · porta 8127</p>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Arquivo</th>
+                  <th style={thStyle}>Responsabilidade</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={tdStyle}>src/middleware/auth.js</td>
+                  <td style={tdStyle}>Bearer JWT/sessao, SET SESSION, cache Redis 5 min</td>
+                </tr>
+                <tr>
+                  <td style={tdStyle}>src/middleware/api-key.js</td>
+                  <td style={tdStyle}>X-API-Key, security_api_keys, scopes, last_used_at</td>
+                </tr>
+                <tr>
+                  <td style={tdStyle}>src/middleware/rbac.js</td>
+                  <td style={tdStyle}>security_permissions, wildcards lockers.*, cache Redis</td>
+                </tr>
+                <tr>
+                  <td style={tdStyle}>src/lib/rls.js</td>
+                  <td style={tdStyle}>buildRLSContext / clearRLSContext</td>
+                </tr>
+              </tbody>
+            </table>
+            <p style={mutedTextStyle}>Negados gravam security_audit_logs (ACCESS_DENIED).</p>
+            <Link to="/ops/analytics/financial" style={crossShortcutLinkStyle}>
+              Analytics financeiro
+            </Link>
+          </section>
+        ) : null}
+
+        {tab === "rls-session" ? (
+          <section style={opsSanityCardStyle}>
+            <p style={summary24hHintStyle}>GET {ANALYTICS_API}/auth/context</p>
+            <pre style={{ ...apiKeyBannerStyle, overflow: "auto", fontSize: 11 }}>
+              {rlsContext ? JSON.stringify(rlsContext, null, 2) : "Carregue com Atualizar"}
+            </pre>
+          </section>
+        ) : null}
 
         {tab === "critical-tables" && criticalRegistry.length
           ? renderTable(criticalRegistry.map((r) => ({ table: r.table_name, rls: r.rls_enabled ? "Y" : "N", layer: r.enforcement_layer, desc: r.description || "—" })), ["table", "rls", "layer", "desc"], (r) => r.table)

@@ -27,6 +27,17 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   opsGroup('cadastros', '📋', 'Cadastros OPS', {
     items: [navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)')],
   }),
+  opsGroup('securityCrud', '🔐', 'Security', {
+    hub: navItem('/security/users', 'Users & Roles', { newTag: 'CRUD' }),
+    sections: [
+      section('securityMain', 'Security', [
+        navItem('/security/users', 'Users & Roles'),
+        navItem('/security/permissions', 'Permissions'),
+        navItem('/security/api-keys', 'API Keys'),
+        navItem('/security/webhooks', 'Webhooks'),
+      ]),
+    ],
+  }),
   opsGroup('usersSecurityOps', '🔐', 'Users & Security OPS', {
     hub: navItem('/ops/access/security-admin?tab=overview', 'Hub segurança', { newTag: 'Hub' }),
     sections: [
@@ -85,6 +96,12 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         ],
         true,
       ),
+      section('rls', 'Autorização RLS (PostgreSQL)', [
+        navItem('/ops/access/security-admin?tab=rls-middleware', 'Middleware JWT · API Key · RBAC', {
+          newTag: 'RLS',
+        }),
+        navItem('/ops/access/security-admin?tab=rls-session', 'Variáveis de sessão PG', { newTag: 'RLS' }),
+      ]),
       section('integracao', 'Integração & auditoria', [
         navItem('/ops/access/security-admin?tab=grants', 'Grants cross-domain', { newTag: 'Pro' }),
         navItem('/ops/access/security-admin?tab=webhooks', 'Webhooks OPS'),

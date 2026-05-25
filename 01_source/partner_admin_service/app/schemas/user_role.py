@@ -30,6 +30,7 @@ class UserRoleCreateIn(BaseModel):
 
 
 class UserRoleUpdateIn(BaseModel):
+    role: Optional[str] = None
     is_active: Optional[bool] = None
     scope_type: Optional[str] = None
     scope_id: Optional[str] = None

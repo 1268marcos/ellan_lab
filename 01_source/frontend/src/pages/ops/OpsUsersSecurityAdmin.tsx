@@ -1,4 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
+import { loadAuth } from '../../api/auth'
+import { opsActorHeaders } from '../../api/opsActorHeaders'
 import { Link } from 'react-router-dom'
 import { useOpsTabFromUrl } from '../../hooks/useOpsTabFromUrl'
 import { partnerAdminApi, type UserRole, type UserSummary } from '../../api/partnerAdmin'
@@ -55,6 +57,8 @@ const TABS = [
   'critical-policies',
   'critical-access-log',
   'critical-audit-public',
+  'rls-middleware',
+  'rls-session',
   'cross-domain',
 ] as const
 type Tab = (typeof TABS)[number]
@@ -100,6 +104,8 @@ const TAB_LABELS: Record<Tab, string> = {
   'critical-policies': 'Políticas app',
   'critical-access-log': 'Log de acesso',
   'critical-audit-public': 'audit_logs público',
+  'rls-middleware': 'Middleware RLS',
+  'rls-session': 'Sessão PG',
   'cross-domain': 'Links legado',
 }
 
@@ -118,6 +124,7 @@ export default function OpsUsersSecurityAdmin() {
   const [criticalPolicies, setCriticalPolicies] = useState<CriticalTablePolicy[]>([])
   const [criticalAccessLog, setCriticalAccessLog] = useState<CriticalAccessLogRow[]>([])
   const [publicAudit, setPublicAudit] = useState<PublicAuditLogRow[]>([])
+  const [rlsContext, setRlsContext] = useState<Record<string, unknown> | null>(null)
   const [links, setLinks] = useState<DomainLink[]>([])
   const [lockerPlayers, setLockerPlayers] = useState<LockerPlayer[]>([])
   const [userPlayerAccess, setUserPlayerAccess] = useState<UserPlayerAccess[]>([])
@@ -249,6 +256,11 @@ export default function OpsUsersSecurityAdmin() {
       } else if (tab === 'critical-audit-public') {
         const a = await criticalTableSecurityApi.listPublicAuditLogs(120)
         setPublicAudit(a.data.items ?? [])
+      } else if (tab === 'rls-session') {
+        const headers = opsActorHeaders()
+        const res = await fetch('/analytics/v1/analytics/auth/context', { headers })
+        if (!res.ok) throw new Error(`analytics HTTP ${res.status}`)
+        setRlsContext((await res.json()) as Record<string, unknown>)
       } else if (tab === 'cross-domain') {
         const l = await securityAdminApi.listDomainLinks()
         setLinks(l.data.items ?? [])
@@ -876,6 +888,53 @@ export default function OpsUsersSecurityAdmin() {
             {a.source_service ? `· ${a.source_service}` : ''}
           </div>
         ))}
+
+      {tab === 'rls-middleware' && (
+        <div className="space-y-4 rounded-xl border border-indigo-500/30 bg-slate-900/80 p-4 text-sm text-slate-200">
+          <p className="font-medium text-indigo-200">analytics-service · Express middleware</p>
+          <table className="w-full text-left text-xs">
+            <thead className="bg-slate-800 text-[10px] uppercase text-slate-400">
+              <tr>
+                <th className="px-2 py-2">Arquivo</th>
+                <th className="px-2 py-2">Função</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-slate-700">
+                <td className="px-2 py-2 font-mono">src/middleware/auth.js</td>
+                <td className="px-2 py-2">Bearer JWT/sessão · SET SESSION · cache Redis 5 min</td>
+              </tr>
+              <tr className="border-t border-slate-700">
+                <td className="px-2 py-2 font-mono">src/middleware/api-key.js</td>
+                <td className="px-2 py-2">X-API-Key · security_api_keys · scopes · last_used_at</td>
+              </tr>
+              <tr className="border-t border-slate-700">
+                <td className="px-2 py-2 font-mono">src/middleware/rbac.js</td>
+                <td className="px-2 py-2">security_permissions · wildcards lockers.* · cache Redis</td>
+              </tr>
+              <tr className="border-t border-slate-700">
+                <td className="px-2 py-2 font-mono">src/lib/rls.js</td>
+                <td className="px-2 py-2">buildRLSContext / clearRLSContext</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="text-xs text-slate-400">
+            Variáveis: app.current_tenant_id, app.current_user_id, app.user_role. Negados → security_audit_logs.
+          </p>
+          <Link to="/ops/analytics/financial" className="text-indigo-300 hover:underline">
+            Analytics financeiro (consumidor)
+          </Link>
+        </div>
+      )}
+
+      {tab === 'rls-session' && (
+        <div className="rounded-xl border border-slate-700 bg-slate-900/80 p-4">
+          <p className="mb-2 text-sm text-slate-400">GET /api/v1/analytics/auth/context (porta 8127)</p>
+          <pre className="overflow-auto rounded bg-slate-950 p-3 text-xs text-emerald-200">
+            {rlsContext ? JSON.stringify(rlsContext, null, 2) : 'Carregue com Atualizar'}
+          </pre>
+        </div>
+      )}
 
       {tab === 'cross-domain' &&
         links.map((l) => (

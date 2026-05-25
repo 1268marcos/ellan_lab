@@ -13,12 +13,16 @@ export function opsActorHeaders(): Record<string, string> {
   if (auth?.partnerId) {
     headers['X-Actor-Id'] = auth.partnerId
   }
+  if (auth?.token) {
+    headers.Authorization = `Bearer ${auth.token}`
+  }
   return headers
 }
 
 export function needsOpsActorHeaders(url: string): boolean {
   return (
     url.includes('/partner-admin/') ||
+    url.includes('/v1/security') ||
     url.includes('/privacy-compliance-admin/')
   )
 }

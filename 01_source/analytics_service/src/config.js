@@ -21,4 +21,11 @@ export const config = {
     .split(',')
     .map((s) => s.trim())
     .filter(Boolean),
+  jwtSecret: process.env.JWT_SECRET || 'CHANGE_ME_IN_PROD',
+  jwtAlg: process.env.JWT_ALG || 'HS256',
+  apiKeyPepper: process.env.PARTNER_ADMIN_API_KEY_PEPPER || 'dev-partner-admin-pepper',
+  redisUrl: process.env.REDIS_URL || 'redis://127.0.0.1:6379/0',
+  redisEnabled: process.env.REDIS_ENABLED !== '0',
+  sessionCacheTtlSec: Number(process.env.SESSION_CACHE_TTL_SEC || 300),
+  permissionCacheTtlSec: Number(process.env.PERMISSION_CACHE_TTL_SEC || 300),
 }

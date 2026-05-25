@@ -97,6 +97,20 @@ const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
 const OpsUsersSecurityAdminPage = lazy(() => import("./pages/OpsUsersSecurityAdminPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
+const SecurityShell = lazy(() => import("./pages/security/SecurityShell"));
+const SecurityUsersList = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.UsersList })));
+const SecurityUserForm = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.UserForm })));
+const SecurityUserDetail = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.UserDetail })));
+const SecurityRolesList = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.RolesList })));
+const SecurityRoleForm = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.RoleForm })));
+const SecurityRoleDetail = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.RoleDetail })));
+const SecurityPermissionsMatrix = lazy(() =>
+  import("./pages/security/SecurityPages").then((m) => ({ default: m.PermissionsMatrix })),
+);
+const SecurityApiKeysManager = lazy(() =>
+  import("./pages/security/SecurityPages").then((m) => ({ default: m.ApiKeysManager })),
+);
+const SecurityWebhookConfig = lazy(() => import("./pages/security/SecurityPages").then((m) => ({ default: m.WebhookConfig })));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsHardwareAdminPage = lazy(() => import("./pages/OpsHardwareAdminPage"));
 const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
@@ -488,6 +502,35 @@ function TopNav() {
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
     {
+      to: "/security/users",
+      label: "Security — Users & Roles",
+      aria: "CRUD usuarios e papeis admin ops finance support partner",
+      group: "Security",
+      opsSubGroup: "Users & Roles",
+      newTag: "CRUD",
+    },
+    {
+      to: "/security/permissions",
+      label: "Security — Permissions",
+      aria: "Matriz grupos security_permissions",
+      group: "Security",
+      opsSubGroup: "Permissions",
+    },
+    {
+      to: "/security/api-keys",
+      label: "Security — API Keys",
+      aria: "Rotacao security_api_keys",
+      group: "Security",
+      opsSubGroup: "API Keys",
+    },
+    {
+      to: "/security/webhooks",
+      label: "Security — Webhooks",
+      aria: "Configuracao security_webhook_endpoints",
+      group: "Security",
+      opsSubGroup: "Webhooks",
+    },
+    {
       to: "/ops/access/security-admin?tab=overview",
       label: "Users & Security — hub",
       aria: "Usuarios roles permissoes webhooks API keys auditoria",
@@ -690,6 +733,22 @@ function TopNav() {
       aria: "Webhook endpoints rotate secret",
       group: "Users & Security OPS",
       opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=rls-middleware",
+      label: "Middleware RLS (JWT · API Key · RBAC)",
+      aria: "analytics_service middleware auth api-key rbac",
+      group: "Users & Security OPS",
+      opsSubGroup: "Autorizacao RLS",
+      newTag: "RLS",
+    },
+    {
+      to: "/ops/access/security-admin?tab=rls-session",
+      label: "Variaveis sessao PostgreSQL",
+      aria: "app.current_tenant_id app.current_user_id app.user_role",
+      group: "Users & Security OPS",
+      opsSubGroup: "Autorizacao RLS",
+      newTag: "RLS",
     },
     {
       to: "/ops/access/security-admin?tab=api-keys",
@@ -3761,6 +3820,27 @@ function AppContent() {
                 </OpsRoute>
               }
             />
+            <Route
+              path="/security"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <SecurityShell />)}
+                </OpsRoute>
+              }
+            >
+              <Route index element={<Navigate to="/security/users" replace />} />
+              <Route path="users" element={<SecurityUsersList />} />
+              <Route path="users/new" element={<SecurityUserForm />} />
+              <Route path="users/:userId" element={<SecurityUserDetail />} />
+              <Route path="users/:userId/edit" element={<SecurityUserForm />} />
+              <Route path="roles" element={<SecurityRolesList />} />
+              <Route path="roles/new" element={<SecurityRoleForm />} />
+              <Route path="roles/:roleId" element={<SecurityRoleDetail />} />
+              <Route path="roles/:roleId/edit" element={<SecurityRoleForm />} />
+              <Route path="permissions" element={<SecurityPermissionsMatrix />} />
+              <Route path="api-keys" element={<SecurityApiKeysManager />} />
+              <Route path="webhooks" element={<SecurityWebhookConfig />} />
+            </Route>
             <Route
               path="/ops/payment-gateway/admin"
               element={

@@ -26,6 +26,7 @@ from app.routers import (
     users,
     critical_audit,
     critical_table_security,
+    security_api,
 )
 from app.services.seed_data import run_seed
 
@@ -73,6 +74,7 @@ app.include_router(capability_webhooks.router, prefix=API_PREFIX)
 app.include_router(capability_webhooks.ingress_router, prefix=API_PREFIX)
 app.include_router(tenants.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
+app.include_router(security_api.router, prefix="/api/v1")
 
 
 @app.get("/health")

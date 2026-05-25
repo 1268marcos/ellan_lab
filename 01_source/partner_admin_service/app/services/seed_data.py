@@ -77,6 +77,7 @@ def run_seed(db: Session) -> dict[str, int]:
     now = _utcnow()
 
     users_seed = [
+        ("usr-admin", "Admin", "admin@ellanlab.com"),
         ("usr-admin-ops", "Admin Operacao", "admin.operacao@ellanlab.com"),
         ("usr-suporte", "Suporte Ellan", "suporte@ellanlab.com"),
         ("usr-auditoria", "Auditoria Ellan", "auditoria@ellanlab.com"),
@@ -99,6 +100,10 @@ def run_seed(db: Session) -> dict[str, int]:
             counts["users"] += 1
 
     roles_seed = [
+        ("usr-admin", "admin", "GLOBAL", None),
+        ("usr-admin-ops", "ops", "GLOBAL", None),
+        ("usr-suporte", "support", "GLOBAL", None),
+        ("usr-auditoria", "finance", "GLOBAL", None),
         ("usr-admin-ops", "admin_operacao", "GLOBAL", None),
         ("usr-suporte", "suporte", "GLOBAL", None),
         ("usr-auditoria", "auditoria", "GLOBAL", None),

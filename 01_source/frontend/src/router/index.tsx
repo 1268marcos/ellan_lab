@@ -16,6 +16,16 @@ import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
 import OpsUsersSecurityAdmin from '../pages/ops/OpsUsersSecurityAdmin'
+import SecurityShell from '../pages/security/SecurityShell'
+import UsersList from '../pages/security/UsersList'
+import UserForm from '../pages/security/UserForm'
+import UserDetail from '../pages/security/UserDetail'
+import RolesList from '../pages/security/RolesList'
+import RoleForm from '../pages/security/RoleForm'
+import RoleDetail from '../pages/security/RoleDetail'
+import PermissionsMatrix from '../pages/security/PermissionsMatrix'
+import ApiKeysManager from '../pages/security/ApiKeysManager'
+import WebhookConfig from '../pages/security/WebhookConfig'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import OpsHardwareAdmin from '../pages/ops/OpsHardwareAdmin'
@@ -283,6 +293,29 @@ export default function AppRouter() {
           </Protected>
         }
       />
+      <Route
+        path="/security"
+        element={
+          <Protected>
+            <OpsOnly>
+              <SecurityShell />
+            </OpsOnly>
+          </Protected>
+        }
+      >
+        <Route index element={<Navigate to="/security/users" replace />} />
+        <Route path="users" element={<UsersList />} />
+        <Route path="users/new" element={<UserForm />} />
+        <Route path="users/:userId" element={<UserDetail />} />
+        <Route path="users/:userId/edit" element={<UserForm />} />
+        <Route path="roles" element={<RolesList />} />
+        <Route path="roles/new" element={<RoleForm />} />
+        <Route path="roles/:roleId" element={<RoleDetail />} />
+        <Route path="roles/:roleId/edit" element={<RoleForm />} />
+        <Route path="permissions" element={<PermissionsMatrix />} />
+        <Route path="api-keys" element={<ApiKeysManager />} />
+        <Route path="webhooks" element={<WebhookConfig />} />
+      </Route>
       <Route
         path="/ops/tenants/admin"
         element={
