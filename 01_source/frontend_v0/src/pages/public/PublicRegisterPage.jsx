@@ -290,6 +290,10 @@ export default function PublicRegisterPage() {
                   <a href="/privacidade" target="_blank" rel="noopener noreferrer" style={linkStyle}>
                     Política de Privacidade
                   </a>
+                  {" · "}
+                  <a href="/cookies" target="_blank" rel="noopener noreferrer" style={linkStyle}>
+                    Política de Cookies
+                  </a>
                   <span style={requiredStyle} aria-hidden="true">*</span>
                 </span>
               </label>

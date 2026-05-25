@@ -473,6 +473,9 @@ export default function PublicPrivacyPolicyPage() {
           <Link to="/legal/privacy" style={secondaryButtonStyle}>
             Documentos legais completos
           </Link>
+          <Link to="/cookies" style={secondaryButtonStyle}>
+            Política de Cookies
+          </Link>
           <Link to="/termos" style={secondaryButtonStyle}>
             Termos de Uso
           </Link>

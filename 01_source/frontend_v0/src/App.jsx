@@ -32,6 +32,7 @@ const PublicRegionHubPage = lazy(() => import("./pages/public/PublicRegionHubPag
 const PublicNotFoundPage = lazy(() => import("./pages/public/PublicNotFoundPage"));
 const PublicSupportPage = lazy(() => import("./pages/public/PublicSupportPage")); // NOVA IMPORT
 const PublicPrivacyPolicyPage = lazy(() => import("./pages/public/PublicPrivacyPolicyPage"));
+const PublicCookiePolicyPage = lazy(() => import("./pages/public/PublicCookiePolicyPage"));
 const PublicLegalPrivacyDocumentPage = lazy(() => import("./pages/public/PublicLegalPrivacyDocumentPage"));
 const PublicLegalPrivacyIndexPage = lazy(() =>
   import("./pages/public/PublicLegalPrivacyDocumentPage").then((m) => ({ default: m.PublicLegalPrivacyIndexPage })),
@@ -1729,6 +1730,13 @@ function TopNav() {
       opsSubGroup: "Publico",
     },
     {
+      to: "/cookies",
+      label: "Cookies — pagina publica /cookies",
+      aria: "Politica de cookies e centro de preferencias",
+      group: "Privacy & Compliance OPS",
+      opsSubGroup: "Publico",
+    },
+    {
       to: "/legal/privacy/players",
       label: "Privacy — docs por player",
       aria: "Documentos legais Mercado Livre, InPost, DHL, Amazon Hub, iFood, etc.",
@@ -3081,6 +3089,7 @@ function AppContent() {
             <Route path="/comprovante" element={<PublicFiscalSearchPage />} />
             <Route path="/suporte" element={<PublicSupportPage />} /> {/* NOVA ROTA */}
             <Route path="/privacidade" element={<PublicPrivacyPolicyPage />} />
+            <Route path="/cookies" element={<PublicCookiePolicyPage />} />
             <Route path="/legal/privacy" element={<PublicLegalPrivacyIndexPage />} />
             <Route path="/legal/privacy/players" element={<PublicPlayerLegalPrivacyIndexPage />} />
             <Route path="/legal/privacy/player/:playerCode/:version" element={<PublicPlayerLegalPrivacyDocumentPage />} />
@@ -4110,6 +4119,19 @@ function AppContent() {
             onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
           >
             Política de Privacidade
+          </Link>
+          <span aria-hidden="true">|</span>
+          <Link 
+            to="/cookies" 
+            style={{ 
+              textDecoration: 'none',
+              color: 'inherit',
+              transition: 'color var(--transition-base)'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.color = '#667eea'}
+            onMouseLeave={(e) => e.currentTarget.style.color = 'inherit'}
+          >
+            Política de Cookies
           </Link>
           <span aria-hidden="true">|</span>
           <Link 

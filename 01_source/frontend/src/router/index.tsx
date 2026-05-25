@@ -42,6 +42,7 @@ import Reconcile from '../pages/fiscal/Reconcile'
 import Profile from '../pages/settings/Profile'
 import NotFound from '../pages/NotFound'
 import PrivacyPolicy from '../pages/legal/PrivacyPolicy'
+import CookiePolicy from '../pages/legal/CookiePolicy'
 import TermsOfUse from '../pages/legal/TermsOfUse'
 import SupportCenter from '../pages/support/SupportCenter'
 
@@ -106,6 +107,7 @@ export default function AppRouter() {
     <Routes>
       <Route path="/" element={<Landing />} />
       <Route path="/legal/privacy" element={<PrivacyPolicy />} />
+      <Route path="/legal/cookies" element={<CookiePolicy />} />
       <Route path="/legal/terms" element={<TermsOfUse />} />
       <Route path="/support" element={<SupportCenter />} />
       <Route path="/login" element={<Login />} />

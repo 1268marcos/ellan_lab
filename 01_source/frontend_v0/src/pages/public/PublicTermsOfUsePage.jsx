@@ -218,6 +218,9 @@ export default function PublicTermsOfUsePage() {
           <Link to="/privacidade" style={secondaryButtonStyle}>
             🔒 Ver Política de Privacidade
           </Link>
+          <Link to="/cookies" style={secondaryButtonStyle}>
+            🍪 Política de Cookies
+          </Link>
           <Link to="/" style={primaryButtonStyle}>
             ← Voltar para o início
           </Link>

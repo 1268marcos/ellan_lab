@@ -128,6 +128,12 @@ export default function Landing() {
             <span className="px-1 text-slate-400 dark:text-slate-600" aria-hidden>
               |
             </span>
+            <Link to="/legal/cookies" className="hover:underline">
+              Política de Cookies
+            </Link>
+            <span className="px-1 text-slate-400 dark:text-slate-600" aria-hidden>
+              |
+            </span>
             <Link to="/legal/terms" className="hover:underline">
               Termos de Uso
             </Link>

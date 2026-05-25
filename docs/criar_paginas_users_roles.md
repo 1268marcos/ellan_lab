@@ -16,18 +16,6 @@
 10. Realizar Testes
 11. Atualizar Menus (criar novos menus e não apenas itens para agrupar melhor) em http://localhost:5173/v1 e http://localhost:5174/v0
 
-**Menus (v1/v0):** grupo `Users & Security OPS` — seções Hub, Governança & valor, Ecossistema mundial, Identidade, Integração, Cross-domain, Legado (`opsMenuGroups.ts`, `App.jsx`).
-
-**Cross-ops (014):** pedidos de acesso, JIT grants, delegação act-as, sync entitlements, relatório `GET .../users/{id}/domain-access-report` — prefixo `/api/v1/partner-admin/security-admin/cross-ops`.
-
-**Migrações security (009–014):**
-```bash
-make migrate-partner-admin-security-sqlite   # SQLite local (partner_admin.db)
-make migrate-partner-admin-security          # Postgres docker postgres_central
-```
-
-Abas UI: `access-requests`, `jit-access`, `delegations`, `entitlements`.
-
 
 **Referências:** 
 a-) Redes locker / hardware: SwipBox, Cleveron, Pickup (PL), Bloq.it, Quadient, Packeta, Vinted Go
@@ -41,4 +29,23 @@ f-) Agregadores / hubs: Cainiao, Parcel2Go, EasyPost, Shippo, Intelipost, Melhor
 
 
 
+1o. PROMPT
+Codar o pedido em @docs/criar_paginas_users_role.md. Ter como referência @02_docker/complete_schema_20260525_a.sql 
 
+2o. PROMPT
+Buscar criar mais páginas ou seções para  USERS & ROLES & SECURITY (RELACIONAR COM OUTROS DOMÍNIOS) . Se necessário criar tabelas e relações para termos nível profissional/mundial.
+
+3O. PROMPT
+Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar USERS & ROLES & SECURITY (RELACIONAR COM OUTROS DOMÍNIOS) 
+ 
+4o. PROMPT
+Pensar em outros players (redes de locker, carriers globais, Operadores de Rede de Lockers, marketplaces, Redes de Pontos de Coleta, agregadores/hubs, food delivery) que atuam no mercado e como integrar além dos citados. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.
+
+5o. PROMPT
+Desenvolver funcionalidades não previstas para valorizar o projeto. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.
+
+6o. PROMPT
+Atualizar menus com as páginas criadas. Aplicar Migrações
+
+7o. PROMPT
+Codar novas possibilidades dentro do domínio USERS & ROLES & SECURITY (RELACIONAR COM OUTROS DOMÍNIOS)  que não visualizei e deveria ser implementado

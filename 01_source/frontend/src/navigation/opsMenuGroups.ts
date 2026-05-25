@@ -240,6 +240,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${PC}?tab=integrations`, 'Webhooks DLQ'),
         navItem('/legal/privacy/players', 'Docs por player'),
         navItem('/privacidade', 'Página pública'),
+        navItem('/legal/cookies', 'Política de Cookies'),
       ]),
     ],
   }),
