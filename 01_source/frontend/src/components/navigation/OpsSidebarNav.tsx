@@ -7,27 +7,41 @@ type Props = {
   groups: OpsNavGroup[]
   open: Record<string, boolean>
   onToggleGroup: (key: string) => void
+  onExpandAll: (visibleGroups: OpsNavGroup[]) => void
+  onCollapseAll: (visibleGroups: OpsNavGroup[]) => void
+  sectionOpen: Record<string, boolean>
+  onToggleSection: (groupKey: string, sectionKey: string) => void
 }
 
 function navLinkClass(active: boolean) {
   return `block rounded-md px-3 py-2 text-sm ${
     active
-      ? 'bg-indigo-100 text-indigo-700 dark:bg-slate-800 dark:text-indigo-300'
-      : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800'
+      ? 'bg-slate-800 text-indigo-300'
+      : 'text-slate-300 hover:bg-slate-800'
   }`
 }
 
 function hubLinkClass(active: boolean) {
   return `mb-2 block rounded-lg border px-3 py-2.5 text-sm font-medium ${
     active
-      ? 'border-indigo-400 bg-indigo-50 text-indigo-800 dark:border-indigo-500 dark:bg-indigo-950/50 dark:text-indigo-200'
-      : 'border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50/80 dark:border-slate-600 dark:bg-slate-800/60 dark:text-indigo-200 dark:hover:bg-slate-800'
+      ? 'border-indigo-500 bg-indigo-950/50 text-indigo-200'
+      : 'border-slate-600 bg-slate-800/60 text-indigo-200 hover:bg-slate-800'
   }`
 }
 
-export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
+const TOOLBAR_BTN =
+  'flex flex-1 items-center justify-center gap-1 rounded-md border border-slate-600 bg-slate-800/80 px-2 py-1.5 text-[11px] font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40'
+
+export default function OpsSidebarNav({
+  groups,
+  open,
+  onToggleGroup,
+  onExpandAll,
+  onCollapseAll,
+  sectionOpen,
+  onToggleSection,
+}: Props) {
   const [menuQuery, setMenuQuery] = useState('')
-  const [sectionOpen, setSectionOpen] = useState<Record<string, boolean>>({})
 
   const filteredGroups = useMemo(() => {
     const q = menuQuery.trim()
@@ -56,11 +70,6 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
       .filter(Boolean) as OpsNavGroup[]
   }, [groups, menuQuery])
 
-  const toggleSection = (groupKey: string, sectionKey: string) => {
-    const id = `${groupKey}:${sectionKey}`
-    setSectionOpen((s) => ({ ...s, [id]: !(s[id] ?? true) }))
-  }
-
   const isSectionExpanded = (group: OpsNavGroup, sectionKey: string, defaultOpen?: boolean) => {
     const id = `${group.key}:${sectionKey}`
     if (menuQuery.trim()) return true
@@ -69,7 +78,33 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 border-b border-slate-700 bg-slate-900 px-3 py-3">
+      <div className="mb-2 flex gap-1" role="toolbar" aria-label="Controles do menu">
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={() => onExpandAll(filteredGroups)}
+          title="Expandir todos os grupos e seções"
+        >
+          <span aria-hidden className="text-xs leading-none">
+            ⊞
+          </span>
+          Expandir
+        </button>
+        <button
+          type="button"
+          className={TOOLBAR_BTN}
+          onClick={() => onCollapseAll(filteredGroups)}
+          title="Recolher todos os grupos e seções"
+        >
+          <span aria-hidden className="text-xs leading-none">
+            ⊟
+          </span>
+          Recolher
+        </button>
+      </div>
+
       <div className="mb-3">
         <label htmlFor="ops-menu-search" className="sr-only">
           Buscar no menu OPS
@@ -80,41 +115,42 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
           value={menuQuery}
           onChange={(e) => setMenuQuery(e.target.value)}
           placeholder="Buscar telas OPS…"
-          className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500"
+          className="ellan-field w-full"
           autoComplete="off"
           spellCheck={false}
         />
         {menuQuery.trim() ? (
-          <p className="mt-1 text-[11px] text-gray-500 dark:text-slate-400">
+          <p className="mt-1 text-[11px] text-slate-400">
             {filteredGroups.length === 0 ? 'Nenhum resultado' : `${filteredGroups.length} grupo(s)`}
           </p>
         ) : null}
       </div>
+      </div>
 
+      <div className="ellan-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-2">
       {filteredGroups.map((group) => (
-        <div key={group.key} className="mb-2">
+        <div key={group.key} className="mb-1">
           <button
             type="button"
-            className="flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm font-semibold text-gray-700 hover:bg-gray-100 dark:text-slate-200 dark:hover:bg-slate-800"
+            className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm font-semibold text-slate-200 hover:bg-slate-800"
             onClick={() => onToggleGroup(group.key)}
-            aria-expanded={open[group.key]}
+            aria-expanded={Boolean(open[group.key])}
           >
-            <span className="flex items-center gap-2">
-              <span aria-hidden>{group.icon}</span>
-              {group.label}
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="shrink-0 text-base leading-none" aria-hidden>
+                {group.icon}
+              </span>
+              <span className="truncate">{group.label}</span>
             </span>
-            <span className="text-xs text-gray-400" aria-hidden>
+            <span className="shrink-0 text-xs text-slate-500" aria-hidden>
               {open[group.key] ? '▾' : '▸'}
             </span>
           </button>
 
-          {open[group.key] && (
-            <div className="mt-1 pl-2">
+          {open[group.key] ? (
+            <div className="mt-0.5 border-l border-slate-700/80 pl-2">
               {group.hub ? (
-                <OpsNavLink
-                  to={group.hub.to}
-                  className={(active) => hubLinkClass(active)}
-                >
+                <OpsNavLink to={group.hub.to} className={(active) => hubLinkClass(active)}>
                   <span className="flex items-center justify-between gap-2">
                     <span>{group.hub.label}</span>
                     {group.hub.newTag ? (
@@ -129,20 +165,20 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
               {group.sections?.map((section) => {
                 const expanded = isSectionExpanded(group, section.key, section.defaultOpen)
                 return (
-                  <div key={section.key} className="mb-1">
+                  <div key={section.key} className="mb-0.5">
                     <button
                       type="button"
-                      className="flex w-full items-center justify-between rounded px-2 py-1.5 text-left text-[11px] font-bold uppercase tracking-wide text-gray-500 hover:bg-gray-50 dark:text-slate-400 dark:hover:bg-slate-800/80"
-                      onClick={() => toggleSection(group.key, section.key)}
+                      className="flex w-full items-center justify-between rounded px-2 py-1 text-left text-[11px] font-bold uppercase tracking-wide text-slate-400 hover:bg-slate-800/80"
+                      onClick={() => onToggleSection(group.key, section.key)}
                       aria-expanded={expanded}
                     >
-                      {section.label}
-                      <span className="font-normal normal-case tracking-normal text-gray-400">
+                      <span className="truncate">{section.label}</span>
+                      <span className="shrink-0 font-normal normal-case tracking-normal text-slate-500">
                         {expanded ? '▾' : '▸'}
                       </span>
                     </button>
-                    {expanded && (
-                      <div className="space-y-0.5 pl-1">
+                    {expanded ? (
+                      <div className="space-y-0.5 border-l border-slate-800 pl-1">
                         {section.items.map((item) => (
                           <OpsNavLink
                             key={item.to}
@@ -150,7 +186,7 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
                             className={(active) => navLinkClass(active)}
                           >
                             <span className="flex items-center justify-between gap-2">
-                              <span>{item.label}</span>
+                              <span className="truncate">{item.label}</span>
                               {item.newTag ? (
                                 <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                                   {item.newTag}
@@ -160,7 +196,7 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
                           </OpsNavLink>
                         ))}
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )
               })}
@@ -168,7 +204,7 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
               {group.items?.map((item) => (
                 <OpsNavLink key={item.to} to={item.to} className={(active) => navLinkClass(active)}>
                   <span className="flex items-center justify-between gap-2">
-                    <span>{item.label}</span>
+                    <span className="truncate">{item.label}</span>
                     {item.newTag ? (
                       <span className="shrink-0 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                         {item.newTag}
@@ -178,9 +214,10 @@ export default function OpsSidebarNav({ groups, open, onToggleGroup }: Props) {
                 </OpsNavLink>
               ))}
             </div>
-          )}
+          ) : null}
         </div>
       ))}
-    </>
+      </div>
+    </div>
   )
 }

@@ -13,9 +13,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse, Response
 
 from app.core.config import get_settings
-from app.core.database import init_db
+from app.core.database import SessionLocal, init_db
+from app.services.dev_partner_seed import seed_dev_partners
 from app.core.health import health_payload
-from app.routers import auth, compatibility, inventory, lockers, partners, webhooks
+from app.routers import auth, compatibility, inventory, lockers, ops_dashboard, partners, webhooks
 from app.services.rate_limiter import sync_check_and_increment
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    db = SessionLocal()
+    try:
+        seed_dev_partners(db)
+    finally:
+        db.close()
     settings = get_settings()
     app.state.redis_sync = redis.Redis.from_url(settings.redis_url, decode_responses=True)
     try:
@@ -106,6 +112,7 @@ app.include_router(webhooks.router, prefix="/api/v1")
 app.include_router(lockers.router, prefix="/api/v1")
 app.include_router(compatibility.router, prefix="/api/v1")
 app.include_router(auth.router)
+app.include_router(ops_dashboard.router)
 app.include_router(inventory.router)
 
 

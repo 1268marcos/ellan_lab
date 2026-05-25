@@ -78,7 +78,7 @@ export default function Login() {
               onChange={(e) => setPartnerId(e.target.value)}
               required
               className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-2 text-sm text-white"
-              placeholder="00000000-0000-0000-0000-000000000001"
+              placeholder="ellan-ceo-dev-hub-000000000"
             />
           </label>
 

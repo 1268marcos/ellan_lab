@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite:///./hardware_admin.db", alias="DATABASE_URL")
     service_port: int = Field(default=8025, alias="HARDWARE_ADMIN_PORT")
     marketplace_admin_url: str = Field(
-        default="http://localhost:8019",
+        default="http://localhost:8119",
         alias="MARKETPLACE_ADMIN_URL",
     )
     payment_gateway_admin_url: str = Field(

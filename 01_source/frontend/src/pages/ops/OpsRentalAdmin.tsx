@@ -353,13 +353,13 @@ export default function OpsRentalAdmin() {
           <button
             key={t.id}
             type="button"
-            className={`rounded px-3 py-1 text-sm ${tab === t.id ? 'bg-blue-600 text-white' : 'bg-slate-200'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t.id ? 'bg-blue-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
             onClick={() => setTabUrl(t.id)}
           >
             {t.label}
           </button>
         ))}
-        <button type="button" className="rounded bg-slate-200 px-3 py-1 text-sm" onClick={() => void load()} disabled={loading}>
+        <button type="button" className="ellan-btn-outline" onClick={() => void load()} disabled={loading}>
           Atualizar
         </button>
         <button type="button" className="rounded bg-blue-700 px-3 py-1 text-sm text-white" onClick={() => void onSeed()} disabled={loading}>
@@ -422,21 +422,21 @@ export default function OpsRentalAdmin() {
         <section className="space-y-3">
           <form className="flex flex-wrap gap-2" onSubmit={onCreatePlan}>
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Nome"
               value={planForm.name}
               onChange={(e) => setPlanForm((f) => ({ ...f, name: e.target.value }))}
               required
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="locker_id"
               value={planForm.locker_id}
               onChange={(e) => setPlanForm((f) => ({ ...f, locker_id: e.target.value }))}
             />
             <input
               type="number"
-              className="w-28 rounded border px-2 py-1 text-sm"
+              className="w-28 ellan-field"
               value={planForm.amount_cents}
               onChange={(e) => setPlanForm((f) => ({ ...f, amount_cents: Number(e.target.value) }))}
             />
@@ -471,21 +471,21 @@ export default function OpsRentalAdmin() {
         <section className="space-y-3">
           <form className="flex flex-wrap items-end gap-2" onSubmit={onCreateContract}>
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="locker_id"
               value={contractForm.locker_id}
               onChange={(e) => setContractForm((f) => ({ ...f, locker_id: e.target.value }))}
               required
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="slot_label"
               value={contractForm.slot_label}
               onChange={(e) => setContractForm((f) => ({ ...f, slot_label: e.target.value }))}
               required
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Locatário"
               value={contractForm.renter_name}
               onChange={(e) => setContractForm((f) => ({ ...f, renter_name: e.target.value }))}
@@ -509,7 +509,7 @@ export default function OpsRentalAdmin() {
             {contractForm.content_insurance ? (
               <input
                 type="number"
-                className="w-36 rounded border px-2 py-1 text-sm"
+                className="w-36 ellan-field"
                 placeholder="Valor declarado (centavos)"
                 value={contractForm.declared_value_cents}
                 onChange={(e) =>
@@ -635,13 +635,13 @@ export default function OpsRentalAdmin() {
         <section className="space-y-4">
           <div className="flex flex-wrap gap-2">
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={webhookTenant}
               onChange={(e) => setWebhookTenant(e.target.value)}
               placeholder="tenant_id"
             />
             <input
-              className="min-w-[240px] flex-1 rounded border px-2 py-1 text-sm"
+              className="min-w-[240px] flex-1 ellan-field"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
             />

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
         alias="PARTNER_ADMIN_BASE_URL",
     )
     marketplace_admin_base_url: str = Field(
-        default="http://localhost:8019/api/v1/marketplace-admin",
+        default="http://localhost:8119/api/v1/marketplace-admin",
         alias="MARKETPLACE_ADMIN_BASE_URL",
     )
     webhook_dispatch_timeout_sec: float = Field(default=5.0, alias="PRIVACY_WEBHOOK_TIMEOUT_SEC")

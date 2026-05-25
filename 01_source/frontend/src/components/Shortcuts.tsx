@@ -45,7 +45,7 @@ export default function Shortcuts() {
         <div
           key={hint.key}
           title={`${hint.key} - ${hint.label}`}
-          className="rounded-md border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600 shadow dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          className="rounded-md border border-slate-600 bg-slate-900 px-2 py-1 text-xs text-slate-300 shadow"
         >
           <span className="font-semibold">{hint.key}</span> {hint.label}
         </div>

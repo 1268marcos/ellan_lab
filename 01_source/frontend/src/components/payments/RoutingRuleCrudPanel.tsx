@@ -117,7 +117,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.rule_code}
             onChange={(e) => setForm({ ...form, rule_code: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
             disabled={!!editingId}
             placeholder="BR-PIX-LOCKER"
           />
@@ -127,7 +127,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.country_code}
             onChange={(e) => setForm({ ...form, country_code: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
             maxLength={2}
           />
         </label>
@@ -136,7 +136,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.payment_method}
             onChange={(e) => setForm({ ...form, payment_method: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs">
@@ -144,7 +144,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.sales_channel}
             onChange={(e) => setForm({ ...form, sales_channel: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
             placeholder="MARKETPLACE"
           />
         </label>
@@ -153,7 +153,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.primary_player_code}
             onChange={(e) => setForm({ ...form, primary_player_code: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs">
@@ -161,7 +161,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.fallback_player_code}
             onChange={(e) => setForm({ ...form, fallback_player_code: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs">
@@ -170,7 +170,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
             type="number"
             value={form.priority}
             onChange={(e) => setForm({ ...form, priority: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs flex items-end gap-2 pb-1">
@@ -186,7 +186,7 @@ export default function RoutingRuleCrudPanel({ rows, onSaved, onMessage, onError
           <input
             value={form.rationale}
             onChange={(e) => setForm({ ...form, rationale: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
       </div>

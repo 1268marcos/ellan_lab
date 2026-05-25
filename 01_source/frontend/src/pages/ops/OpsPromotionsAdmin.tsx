@@ -346,21 +346,21 @@ export default function OpsPromotionsAdmin() {
             className="grid gap-2 rounded-lg border border-slate-700/50 bg-slate-900/30 p-3 md:grid-cols-5"
           >
             <input
-              className="rounded border px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-950"
+              className="ellan-field"
               placeholder="Código"
               required
               value={campForm.code}
               onChange={(e) => setCampForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
             />
             <input
-              className="rounded border px-2 py-1.5 text-sm md:col-span-2 dark:border-slate-600 dark:bg-slate-950"
+              className="ellan-field md:col-span-2"
               placeholder="Nome da campanha"
               required
               value={campForm.name}
               onChange={(e) => setCampForm((f) => ({ ...f, name: e.target.value }))}
             />
             <select
-              className="rounded border px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-950"
+              className="ellan-field"
               value={campForm.channel_family}
               onChange={(e) => setCampForm((f) => ({ ...f, channel_family: e.target.value }))}
             >

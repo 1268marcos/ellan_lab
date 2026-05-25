@@ -452,10 +452,10 @@ export default function OpsMoneyCambioAdmin() {
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void load()} className="rounded-lg border px-3 py-2 text-sm">
+        <button type="button" onClick={() => void load()} className="ellan-btn-outline">
           Atualizar
         </button>
-        <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+        <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
           Seed
         </button>
       </div>
@@ -466,13 +466,13 @@ export default function OpsMoneyCambioAdmin() {
             placeholder="BRL"
             value={currencyForm.code}
             onChange={(e) => setCurrencyForm((f) => ({ ...f, code: e.target.value }))}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           />
           <input
             placeholder="Nome"
             value={currencyForm.name}
             onChange={(e) => setCurrencyForm((f) => ({ ...f, name: e.target.value }))}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           />
           <button type="submit" className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
             Criar moeda
@@ -486,7 +486,7 @@ export default function OpsMoneyCambioAdmin() {
             placeholder="PIX"
             value={methodForm.code}
             onChange={(e) => setMethodForm((f) => ({ ...f, code: e.target.value }))}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           />
           <button type="submit" className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
             Criar método
@@ -499,17 +499,17 @@ export default function OpsMoneyCambioAdmin() {
           <input
             value={fxForm.base_currency}
             onChange={(e) => setFxForm((f) => ({ ...f, base_currency: e.target.value }))}
-            className="w-16 rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="w-16 ellan-field dark:bg-slate-900"
           />
           <input
             value={fxForm.quote_currency}
             onChange={(e) => setFxForm((f) => ({ ...f, quote_currency: e.target.value }))}
-            className="w-16 rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="w-16 ellan-field dark:bg-slate-900"
           />
           <input
             value={fxForm.rate}
             onChange={(e) => setFxForm((f) => ({ ...f, rate: e.target.value }))}
-            className="w-20 rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="w-20 ellan-field dark:bg-slate-900"
           />
           <button type="button" onClick={() => void onUpsertFx()} className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
             Gravar taxa
@@ -522,12 +522,12 @@ export default function OpsMoneyCambioAdmin() {
           <input
             value={pricingForm.amount_cents}
             onChange={(e) => setPricingForm((f) => ({ ...f, amount_cents: e.target.value }))}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           />
           <input
             value={pricingForm.player_code}
             onChange={(e) => setPricingForm((f) => ({ ...f, player_code: e.target.value }))}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           />
           <button type="button" onClick={() => void onPricingPreview()} className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
             Simular cotação
@@ -539,7 +539,7 @@ export default function OpsMoneyCambioAdmin() {
         <select
           value={playerSegmentFilter}
           onChange={(e) => setPlayerSegmentFilter(e.target.value)}
-          className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+          className="ellan-field dark:bg-slate-900"
         >
           <option value="">Todos os segmentos</option>
           {ecosystemSegments.map((s) => (

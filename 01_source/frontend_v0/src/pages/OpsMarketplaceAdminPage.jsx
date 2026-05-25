@@ -57,7 +57,7 @@ function normalizeNetworkError(err, endpoint) {
   if (!raw) return "Falha de comunicacao com a API.";
   const lower = raw.toLowerCase();
   if (lower.includes("failed to fetch") || lower.includes("networkerror")) {
-    return `Falha de conexao (${endpoint}). Verifique proxy ${BASE} (porta 8019).`;
+    return `Falha de conexao (${endpoint}). Verifique proxy ${BASE} (porta 8119 no host Docker).`;
   }
   return raw;
 }

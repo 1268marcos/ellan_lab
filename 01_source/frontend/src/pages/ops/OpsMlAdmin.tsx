@@ -52,8 +52,8 @@ const TAB_KEYS: Tab[] = [
   'feedback',
 ]
 
-const inputCls = 'rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800'
-const cardCls = 'rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900'
+const inputCls = 'ellan-field dark:border-slate-600 dark:bg-slate-800'
+const cardCls = 'rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900'
 
 function activeModelVersion(models: MlModelMetadata[]) {
   return models.find((m) => m.status === 'ACTIVE')?.model_version ?? ''
@@ -628,7 +628,7 @@ export default function OpsMlAdmin() {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="rounded border px-3 py-2 text-sm dark:border-slate-600"
+            className="ellan-btn-outline"
           >
             Atualizar
           </button>
@@ -806,7 +806,7 @@ export default function OpsMlAdmin() {
                 )
               })}
             </select>
-            <button type="button" onClick={() => void onPromoteRegistry()} className="rounded border px-3 py-1 text-sm dark:border-slate-600">
+            <button type="button" onClick={() => void onPromoteRegistry()} className="ellan-btn-outline">
               Promover PRODUCTION
             </button>
           </div>

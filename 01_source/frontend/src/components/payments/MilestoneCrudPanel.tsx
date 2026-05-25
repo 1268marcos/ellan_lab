@@ -105,7 +105,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
           <input
             value={form.player_code}
             onChange={(e) => setForm({ ...form, player_code: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
             disabled={!!editingId}
           />
         </label>
@@ -114,7 +114,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
           <select
             value={form.phase}
             onChange={(e) => setForm({ ...form, phase: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           >
             {PHASES.map((p) => (
               <option key={p} value={p}>
@@ -128,7 +128,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
           <select
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -142,7 +142,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
           <input
             value={form.title}
             onChange={(e) => setForm({ ...form, title: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs">
@@ -150,7 +150,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
           <input
             value={form.owner_team}
             onChange={(e) => setForm({ ...form, owner_team: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
         <label className="text-xs">
@@ -159,7 +159,7 @@ export default function MilestoneCrudPanel({ rows, onSaved, onMessage, onError }
             type="date"
             value={form.target_date}
             onChange={(e) => setForm({ ...form, target_date: e.target.value })}
-            className="mt-0.5 w-full rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-0.5 w-full ellan-field"
           />
         </label>
       </div>

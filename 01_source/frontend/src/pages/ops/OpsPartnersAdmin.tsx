@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { chipClass } from '../../components/ops/OpsMarketingUi'
 import { useSearchParams } from 'react-router-dom'
 import {
   partnerAdminApi,
@@ -399,7 +400,7 @@ export default function OpsPartnersAdmin() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -418,19 +419,17 @@ export default function OpsPartnersAdmin() {
             key={t.key}
             type="button"
             onClick={() => setTabAndUrl(t.key)}
-            className={`rounded px-3 py-1 text-sm ${
-              tab === t.key ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100 dark:text-slate-300 dark:hover:bg-slate-800'
-            }`}
+            className={chipClass(tab === t.key)}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-3 dark:border-slate-700 dark:bg-slate-900">
         <label className="text-xs text-gray-500">Parceiro</label>
         <select
-          className="rounded border px-2 py-1 text-sm"
+          className="ellan-field"
           value={selectedId}
           onChange={(e) => {
             const opt = partnerOptions.find((p) => p.id === e.target.value)
@@ -445,7 +444,7 @@ export default function OpsPartnersAdmin() {
             </option>
           ))}
         </select>
-        <select className="rounded border px-2 py-1 text-sm" value={partnerType} onChange={(e) => setPartnerType(e.target.value)}>
+        <select className="ellan-field" value={partnerType} onChange={(e) => setPartnerType(e.target.value)}>
           <option value="ECOMMERCE">ECOMMERCE</option>
           <option value="LOGISTICS">LOGISTICS</option>
         </select>
@@ -461,7 +460,7 @@ export default function OpsPartnersAdmin() {
       )}
 
       {tab === 'overview' && (p360 || dashboard) && (
-        <section className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4">
+        <section className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4">
           {p360 ? (
             <>
               <Kpi label="Onboarding" value={`${p360.onboarding_progress_pct}%`} />
@@ -486,7 +485,7 @@ export default function OpsPartnersAdmin() {
       )}
 
       {tab === 'onboarding' && (
-        <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <p className="mb-3 text-sm text-gray-500">Progresso: {onboardingPct}%</p>
           <ul className="space-y-2 text-sm">
             {onboarding.map((m) => (
@@ -511,10 +510,10 @@ export default function OpsPartnersAdmin() {
 
       {tab === 'ecommerce' && (
         <>
-          <form onSubmit={onSubmitEc} className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
-            <input className="rounded border px-2 py-1 text-sm md:col-span-2" placeholder="ID (opcional)" value={ecForm.id} onChange={(e) => setEcForm((f) => ({ ...f, id: e.target.value }))} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Nome" required value={ecForm.name} onChange={(e) => setEcForm((f) => ({ ...f, name: e.target.value }))} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Código" required value={ecForm.code} onChange={(e) => setEcForm((f) => ({ ...f, code: e.target.value }))} />
+          <form onSubmit={onSubmitEc} className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+            <input className="ellan-field md:col-span-2" placeholder="ID (opcional)" value={ecForm.id} onChange={(e) => setEcForm((f) => ({ ...f, id: e.target.value }))} />
+            <input className="ellan-field" placeholder="Nome" required value={ecForm.name} onChange={(e) => setEcForm((f) => ({ ...f, name: e.target.value }))} />
+            <input className="ellan-field" placeholder="Código" required value={ecForm.code} onChange={(e) => setEcForm((f) => ({ ...f, code: e.target.value }))} />
             <button type="submit" className="rounded bg-emerald-600 px-4 py-2 text-sm text-white md:col-span-2">
               Criar e-commerce
             </button>
@@ -525,10 +524,10 @@ export default function OpsPartnersAdmin() {
 
       {tab === 'logistics' && (
         <>
-          <form onSubmit={onSubmitLg} className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
-            <input className="rounded border px-2 py-1 text-sm md:col-span-2" placeholder="ID (opcional)" value={lgForm.id} onChange={(e) => setLgForm((f) => ({ ...f, id: e.target.value }))} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Nome" required value={lgForm.name} onChange={(e) => setLgForm((f) => ({ ...f, name: e.target.value }))} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Código" required value={lgForm.code} onChange={(e) => setLgForm((f) => ({ ...f, code: e.target.value }))} />
+          <form onSubmit={onSubmitLg} className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+            <input className="ellan-field md:col-span-2" placeholder="ID (opcional)" value={lgForm.id} onChange={(e) => setLgForm((f) => ({ ...f, id: e.target.value }))} />
+            <input className="ellan-field" placeholder="Nome" required value={lgForm.name} onChange={(e) => setLgForm((f) => ({ ...f, name: e.target.value }))} />
+            <input className="ellan-field" placeholder="Código" required value={lgForm.code} onChange={(e) => setLgForm((f) => ({ ...f, code: e.target.value }))} />
             <button type="submit" className="rounded bg-emerald-600 px-4 py-2 text-sm text-white md:col-span-2">
               Criar logística
             </button>
@@ -538,11 +537,11 @@ export default function OpsPartnersAdmin() {
       )}
 
       {tab === 'integrations' && (
-        <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="mb-2 text-lg font-medium">Webhook e API key</h2>
           <div className="flex flex-wrap gap-2">
-            <input className="min-w-[14rem] flex-1 rounded border px-2 py-1 text-sm" placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Secret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
+            <input className="min-w-[14rem] flex-1 ellan-field" placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
+            <input className="ellan-field" placeholder="Secret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
             <button type="button" onClick={() => void onWebhook()} className="rounded bg-slate-700 px-3 py-1 text-sm text-white">
               Webhook
             </button>
@@ -554,10 +553,10 @@ export default function OpsPartnersAdmin() {
       )}
 
       {tab === 'contacts' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="space-y-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap gap-2">
-            <input className="rounded border px-2 py-1 text-sm" placeholder="Nome" value={contactName} onChange={(e) => setContactName(e.target.value)} />
-            <input className="rounded border px-2 py-1 text-sm" placeholder="E-mail" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+            <input className="ellan-field" placeholder="Nome" value={contactName} onChange={(e) => setContactName(e.target.value)} />
+            <input className="ellan-field" placeholder="E-mail" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
             <button type="button" onClick={() => void onCreateContact()} className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
               Adicionar contato
             </button>
@@ -573,7 +572,7 @@ export default function OpsPartnersAdmin() {
       )}
 
       {tab === 'settlements' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="space-y-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <button type="button" onClick={() => void onGenerateSettlement()} className="rounded bg-teal-600 px-3 py-1 text-sm text-white">
             Gerar settlement (demo)
           </button>
@@ -681,7 +680,7 @@ export default function OpsPartnersAdmin() {
           <p className="text-sm text-gray-500">
             Catálogo alinhado a Marketplace OPS e ML Admin. Vínculos do partner selecionado abaixo.
           </p>
-          <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+          <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase text-gray-500">
@@ -716,7 +715,7 @@ export default function OpsPartnersAdmin() {
             ))}
           </ul>
           <h3 className="text-sm font-semibold">Vínculos — {selectedId}</h3>
-          <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+          <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="text-xs uppercase text-gray-500">
@@ -810,7 +809,7 @@ export default function OpsPartnersAdmin() {
             </button>
             <button
               type="button"
-              className="rounded border px-3 py-1 text-sm dark:border-slate-600"
+              className="ellan-btn-outline"
               onClick={async () => {
                 const dlq = await partnerAdminApi.listCapabilityDeliveries({ status: 'DEAD_LETTER' })
                 setDeadLetterDeliveries(dlq.data.items ?? [])
@@ -833,7 +832,7 @@ export default function OpsPartnersAdmin() {
             </button>
           </div>
           {deadLetterDeliveries.length > 0 ? (
-            <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+            <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
               <table className="w-full text-left text-sm">
                 <thead>
                   <tr className="text-xs uppercase text-gray-500">
@@ -922,7 +921,7 @@ function PartnerTable({ items }: { items: Array<{ id: string; code: string; name
 
 function JsonList({ title, items }: { title: string; items: unknown[] }) {
   return (
-    <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+    <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
       <h2 className="mb-2 text-lg font-medium">{title}</h2>
       <pre className="max-h-64 overflow-auto rounded bg-gray-50 p-2 text-xs dark:bg-slate-950">
         {JSON.stringify(items, null, 2)}

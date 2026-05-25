@@ -66,7 +66,7 @@ export default function Landing() {
   const [openModuleId, setOpenModuleId] = useState<string | null>(null)
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.22),transparent)] px-6 py-12 dark:from-slate-900 dark:to-slate-950 dark:bg-slate-950">
+    <div className="ellan-page min-h-screen bg-[radial-gradient(ellipse_120%_80%_at_50%_-20%,rgba(99,102,241,0.22),transparent)] bg-slate-950 px-6 py-12">
       <div className="mx-auto max-w-5xl">
         <header className="flex flex-col gap-6 border-b border-slate-200/80 pb-10 dark:border-slate-700/80 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-4">

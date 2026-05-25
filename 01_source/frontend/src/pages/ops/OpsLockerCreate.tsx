@@ -162,7 +162,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm md:col-span-2">
           <span className="text-gray-600 dark:text-slate-400">ID</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 font-mono text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field font-mono dark:border-slate-600 dark:bg-slate-800"
             value={form.id}
             onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
             placeholder="PR-CAPITAL-SANTAFELICIDADE-LK-001"
@@ -172,7 +172,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm md:col-span-2">
           <span className="text-gray-600 dark:text-slate-400">Nome exibicao</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={form.display_name}
             onChange={(e) => setForm((f) => ({ ...f, display_name: e.target.value }))}
             required
@@ -181,7 +181,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm">
           <span className="text-gray-600 dark:text-slate-400">Regiao</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={form.region}
             onChange={(e) => setForm((f) => ({ ...f, region: e.target.value }))}
             required
@@ -190,7 +190,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm">
           <span className="text-gray-600 dark:text-slate-400">Operador</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={form.operator_id ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, operator_id: e.target.value }))}
           />
@@ -198,7 +198,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm">
           <span className="text-gray-600 dark:text-slate-400">Cidade</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={form.city}
             onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
             required
@@ -207,7 +207,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm">
           <span className="text-gray-600 dark:text-slate-400">UF</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={form.state}
             onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
             required
@@ -216,7 +216,7 @@ export default function OpsLockerCreate() {
         <label className="block text-sm md:col-span-2">
           <span className="text-gray-600 dark:text-slate-400">Copiar product_configs de</span>
           <input
-            className="mt-1 w-full rounded border px-2 py-1 font-mono text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="mt-1 w-full ellan-field font-mono dark:border-slate-600 dark:bg-slate-800"
             value={form.copy_product_configs_from ?? ''}
             onChange={(e) => setForm((f) => ({ ...f, copy_product_configs_from: e.target.value }))}
           />
@@ -245,7 +245,7 @@ export default function OpsLockerCreate() {
       <section className="rounded-xl border border-gray-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-lg font-medium">Bulk (JSON array)</h2>
         <textarea
-          className="min-h-32 w-full rounded border px-2 py-1 font-mono text-xs dark:border-slate-600 dark:bg-slate-800"
+          className="min-h-32 w-full ellan-field font-mono text-xs"
           value={bulkJson}
           onChange={(e) => setBulkJson(e.target.value)}
           placeholder={'[{"id":"LK-002","display_name":"…","region":"SP","city":"Osasco","state":"SP"}]'}
@@ -263,7 +263,7 @@ export default function OpsLockerCreate() {
         <h2 className="mb-2 text-lg font-medium">Webhook e API key</h2>
         <div className="flex flex-wrap gap-2">
           <select
-            className="rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="ellan-field dark:border-slate-600 dark:bg-slate-800"
             value={selectedId}
             onChange={(e) => setSelectedId(e.target.value)}
           >
@@ -275,13 +275,13 @@ export default function OpsLockerCreate() {
             ))}
           </select>
           <input
-            className="min-w-[16rem] flex-1 rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="min-w-[16rem] flex-1 ellan-field dark:border-slate-600 dark:bg-slate-800"
             placeholder="Webhook URL"
             value={webhookUrl}
             onChange={(e) => setWebhookUrl(e.target.value)}
           />
           <input
-            className="rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800"
+            className="ellan-field dark:border-slate-600 dark:bg-slate-800"
             placeholder="Secret (opcional)"
             value={webhookSecret}
             onChange={(e) => setWebhookSecret(e.target.value)}

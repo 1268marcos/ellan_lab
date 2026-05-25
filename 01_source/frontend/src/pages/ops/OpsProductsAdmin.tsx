@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { chipClass } from '../../components/ops/OpsMarketingUi'
 import {
   orderPickupProductsApi,
   type CategoryTaxonomy,
@@ -40,15 +41,7 @@ const inp =
 
 function TabButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded px-3 py-1.5 text-sm ${
-        active
-          ? 'bg-indigo-600 text-white'
-          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-slate-800 dark:text-slate-200'
-      }`}
-    >
+    <button type="button" onClick={onClick} className={chipClass(active)}>
       {label}
     </button>
   )
@@ -120,7 +113,7 @@ function TaxonomyPanel() {
         <button type="button" className="rounded bg-indigo-600 px-3 py-1 text-sm text-white" onClick={() => void load()}>
           Atualizar
         </button>
-        <button type="button" className="rounded border px-3 py-1 text-sm dark:border-slate-600" onClick={() => void onSeed()}>
+        <button type="button" className="ellan-btn-outline" onClick={() => void onSeed()}>
           Seed profissional
         </button>
       </div>
@@ -373,20 +366,20 @@ export default function OpsProductsAdmin() {
                 key={t.key}
                 type="button"
                 onClick={() => setTab(t.key)}
-                className="rounded-lg border p-4 text-left hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
+                className="rounded-lg border border-slate-600/70 bg-slate-900/80 p-4 text-left text-slate-100 hover:bg-slate-800 border-slate-600/70 bg-slate-900/80"
               >
                 <span className="font-medium">{t.label}</span>
               </button>
             ))}
             <Link
               to="/ops/products/assets"
-              className="rounded-lg border p-4 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-600/70 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800 border-slate-600/70 bg-slate-900/80"
             >
               <span className="font-medium">Mídia & barcodes</span>
             </Link>
             <Link
               to="/ops/products/pricing-rules"
-              className="rounded-lg border p-4 hover:bg-gray-50 dark:border-slate-700 dark:hover:bg-slate-800"
+              className="rounded-lg border border-slate-600/70 bg-slate-900/80 p-4 text-slate-100 hover:bg-slate-800 border-slate-600/70 bg-slate-900/80"
             >
               <span className="font-medium">Regras de preço (pricing_rules)</span>
             </Link>

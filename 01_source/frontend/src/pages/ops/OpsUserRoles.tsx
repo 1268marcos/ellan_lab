@@ -81,8 +81,8 @@ export default function OpsUserRoles() {
       {message && <p className="text-sm text-emerald-600">{message}</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      <form onSubmit={onSubmit} className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <select className="rounded border px-2 py-1 text-sm" value={userId} onChange={(e) => setUserId(e.target.value)} required>
+      <form onSubmit={onSubmit} className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+        <select className="ellan-field" value={userId} onChange={(e) => setUserId(e.target.value)} required>
           <option value="">Usuário</option>
           {users.map((u) => (
             <option key={u.id} value={u.id}>
@@ -90,14 +90,14 @@ export default function OpsUserRoles() {
             </option>
           ))}
         </select>
-        <select className="rounded border px-2 py-1 text-sm" value={role} onChange={(e) => setRole(e.target.value)}>
+        <select className="ellan-field" value={role} onChange={(e) => setRole(e.target.value)}>
           {ROLES.map((r) => (
             <option key={r} value={r}>
               {r}
             </option>
           ))}
         </select>
-        <input className="rounded border px-2 py-1 text-sm" value={scopeType} onChange={(e) => setScopeType(e.target.value)} placeholder="scope_type" />
+        <input className="ellan-field" value={scopeType} onChange={(e) => setScopeType(e.target.value)} placeholder="scope_type" />
         <button type="submit" className="rounded bg-emerald-600 px-4 py-2 text-sm text-white">
           Conceder role
         </button>

@@ -130,7 +130,7 @@ export default function OpsTenantsAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -153,7 +153,7 @@ export default function OpsTenantsAdmin() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
           >
             {t === 'tenants' ? 'Tenants' : t === 'domains' ? 'Domínios' : 'Parceiros'}
           </button>
@@ -161,7 +161,7 @@ export default function OpsTenantsAdmin() {
       </div>
 
       <select
-        className="rounded border px-2 py-1 text-sm"
+        className="ellan-field"
         value={selectedTenant}
         onChange={(e) => {
           setSelectedTenant(e.target.value)
@@ -177,10 +177,10 @@ export default function OpsTenantsAdmin() {
       </select>
 
       {tab === 'tenants' && (
-        <form onSubmit={onCreateTenant} className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
-          <input className="rounded border px-2 py-1 text-sm" placeholder="tenant_id" required value={tenantForm.tenant_id} onChange={(e) => setTenantForm((f) => ({ ...f, tenant_id: e.target.value }))} />
-          <input className="rounded border px-2 py-1 text-sm" placeholder="CNPJ" required value={tenantForm.cnpj} onChange={(e) => setTenantForm((f) => ({ ...f, cnpj: e.target.value }))} />
-          <input className="rounded border px-2 py-1 text-sm md:col-span-2" placeholder="Razão social" required value={tenantForm.razao_social} onChange={(e) => setTenantForm((f) => ({ ...f, razao_social: e.target.value }))} />
+        <form onSubmit={onCreateTenant} className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+          <input className="ellan-field" placeholder="tenant_id" required value={tenantForm.tenant_id} onChange={(e) => setTenantForm((f) => ({ ...f, tenant_id: e.target.value }))} />
+          <input className="ellan-field" placeholder="CNPJ" required value={tenantForm.cnpj} onChange={(e) => setTenantForm((f) => ({ ...f, cnpj: e.target.value }))} />
+          <input className="ellan-field md:col-span-2" placeholder="Razão social" required value={tenantForm.razao_social} onChange={(e) => setTenantForm((f) => ({ ...f, razao_social: e.target.value }))} />
           <button type="submit" className="rounded bg-emerald-600 px-4 py-2 text-sm text-white md:col-span-2">
             Criar tenant
           </button>
@@ -189,7 +189,7 @@ export default function OpsTenantsAdmin() {
 
       {tab === 'domains' && (
         <div className="flex flex-wrap gap-2">
-          <input className="rounded border px-2 py-1 text-sm" placeholder="domínio" value={domainInput} onChange={(e) => setDomainInput(e.target.value)} />
+          <input className="ellan-field" placeholder="domínio" value={domainInput} onChange={(e) => setDomainInput(e.target.value)} />
           <button type="button" onClick={() => void onAddDomain()} className="rounded bg-slate-700 px-3 py-1 text-sm text-white">
             Adicionar
           </button>
@@ -198,7 +198,7 @@ export default function OpsTenantsAdmin() {
 
       {tab === 'links' && (
         <div className="flex flex-wrap gap-2">
-          <select className="rounded border px-2 py-1 text-sm" value={linkPartnerId} onChange={(e) => setLinkPartnerId(e.target.value)}>
+          <select className="ellan-field" value={linkPartnerId} onChange={(e) => setLinkPartnerId(e.target.value)}>
             <option value="">Parceiro e-commerce</option>
             {ecPartners.map((p) => (
               <option key={p.id} value={p.id}>

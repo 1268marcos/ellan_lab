@@ -372,6 +372,7 @@ services:
     environment:
       - TZ=UTC
       - REDIS_URL=redis://redis_central:6379/0
+      - INVENTORY_DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
     volumes:
       - ../01_source/partner_service:/app
     depends_on:
@@ -714,16 +715,18 @@ services:
   # =========================
   marketplace_admin_service:
     build:
-      context: ../01_source/marketplace_admin_service
-      dockerfile: Dockerfile
+      context: ../01_source
+      dockerfile: marketplace_admin_service/Dockerfile
     container_name: marketplace_admin_service
     restart: unless-stopped
     ports:
-      - "8019:8019"
+      # Host 8119 evita conflito com uvicorn/compose antigo na 8019 (container continua em 8019)
+      - "${MARKETPLACE_ADMIN_HOST_PORT:-8119}:8019"
     environment:
       - TZ=UTC
       - DATABASE_URL=postgresql+psycopg2://admin:admin123@postgres_central:5432/locker_central
       - MARKETPLACE_ADMIN_PORT=8019
+      - WEBHOOK_INGRESS_BASE_URL=http://host.docker.internal:${MARKETPLACE_ADMIN_HOST_PORT:-8119}/api/v1/marketplace-admin/webhooks/ingress
       - SEED_ON_START=false
       - WEBHOOK_DISPATCH_ENABLED=false
     depends_on:

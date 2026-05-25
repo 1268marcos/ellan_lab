@@ -10,7 +10,7 @@ Schemas Pydantic para API de Lockers.
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator, validator
 
 
 # ==================== SLOT CONFIG ====================
@@ -129,6 +129,20 @@ class LockerResponseSchema(BaseModel):
     allowed_product_categories: List[Dict[str, Any]]
     created_at: datetime
     updated_at: datetime
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_locker_model(cls, value):
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return value
+
+    @field_validator("allowed_channels", "allowed_payment_methods", mode="before")
+    @classmethod
+    def _split_csv_fields(cls, value):
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        return value
 
     class Config:
         from_attributes = True

@@ -135,7 +135,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api\/opa/, "/api"),
       },
       "/api/mka": {
-        target: "http://localhost:8019",
+        target: process.env.VITE_MARKETPLACE_ADMIN_SERVICE_PROXY || "http://localhost:8119",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/mka/, "/api"),
       },

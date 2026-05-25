@@ -102,7 +102,7 @@ type IntegrationHub = {
 }
 
 const inp =
-  'rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
+  'ellan-field dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100'
 
 function formatBrl(cents: number | null | undefined) {
   const n = Number(cents)
@@ -767,7 +767,7 @@ export default function OpsMarketplaceAdmin() {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="rounded border px-3 py-2 text-sm dark:border-slate-600"
+            className="ellan-btn-outline"
           >
             {loading ? 'Atualizando…' : 'Listar'}
           </button>
@@ -775,7 +775,7 @@ export default function OpsMarketplaceAdmin() {
             type="button"
             onClick={() => void onSeed()}
             disabled={loading}
-            className="rounded border px-3 py-2 text-sm dark:border-slate-600"
+            className="ellan-btn-outline"
           >
             Seed
           </button>
@@ -804,7 +804,7 @@ export default function OpsMarketplaceAdmin() {
         </p>
       )}
 
-      <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
         <h2 className="mb-2 text-sm font-medium">Seller em foco</h2>
         <select className={inp} value={selectedId} onChange={(e) => setSelectedId(e.target.value)}>
           <option value="">— selecione —</option>
@@ -841,7 +841,7 @@ export default function OpsMarketplaceAdmin() {
       {tab === 'sellers' && (
         <form
           onSubmit={onCreateSeller}
-          className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3 lg:grid-cols-5"
+          className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3 lg:grid-cols-5"
         >
           <input className={inp} placeholder="Razão social" required value={sellerForm.legal_name} onChange={(e) => setSellerForm((f) => ({ ...f, legal_name: e.target.value }))} />
           <input className={inp} placeholder="Nome fantasia" value={sellerForm.trade_name} onChange={(e) => setSellerForm((f) => ({ ...f, trade_name: e.target.value }))} />
@@ -865,7 +865,7 @@ export default function OpsMarketplaceAdmin() {
       {tab === 'products' && (
         <form
           onSubmit={onCreateProduct}
-          className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4"
+          className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4"
         >
           <input className={inp} placeholder="LOCKER-DEMO-01" required value={productForm.locker_id} onChange={(e) => setProductForm((f) => ({ ...f, locker_id: e.target.value }))} />
           <input className={inp} placeholder="product_id" required value={productForm.product_id} onChange={(e) => setProductForm((f) => ({ ...f, product_id: e.target.value }))} />
@@ -878,7 +878,7 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'categories' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input className={inp} placeholder="code" value={categoryForm.code} onChange={(e) => setCategoryForm((f) => ({ ...f, code: e.target.value }))} />
           <input className={inp} placeholder="name" value={categoryForm.name} onChange={(e) => setCategoryForm((f) => ({ ...f, name: e.target.value }))} />
           <select className={inp} value={categoryLinkCategoryId} onChange={(e) => setCategoryLinkCategoryId(e.target.value)}>
@@ -892,14 +892,14 @@ export default function OpsMarketplaceAdmin() {
           <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateCategory()} disabled={!categoryForm.code || !categoryForm.name}>
             Criar categoria
           </button>
-          <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onLinkCategory()} disabled={!selectedId || !categoryLinkCategoryId}>
+          <button type="button" className="ellan-btn-outline" onClick={() => void onLinkCategory()} disabled={!selectedId || !categoryLinkCategoryId}>
             Vincular ao seller
           </button>
         </div>
       )}
 
       {tab === 'channels' && (
-        <div className="space-y-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="space-y-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap gap-2">
             <select className={inp} value={channelParentGroup} onChange={(e) => setChannelParentGroup(e.target.value)}>
               <option value="">parent_group — todos</option>
@@ -932,7 +932,7 @@ export default function OpsMarketplaceAdmin() {
             <button type="button" className="rounded bg-indigo-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateChannelListing()} disabled={!selectedId || !listingChannelId}>
               Vincular canal (listing)
             </button>
-            <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onCreateLockerNetwork()} disabled={!selectedId || !networkChannelId}>
+            <button type="button" className="ellan-btn-outline" onClick={() => void onCreateLockerNetwork()} disabled={!selectedId || !networkChannelId}>
               Vincular rede locker
             </button>
           </div>
@@ -940,7 +940,7 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'contacts' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input className={inp} placeholder="name" value={contactForm.name} onChange={(e) => setContactForm((f) => ({ ...f, name: e.target.value }))} />
           <input className={inp} placeholder="email" value={contactForm.email} onChange={(e) => setContactForm((f) => ({ ...f, email: e.target.value }))} />
           <select className={inp} value={contactForm.contact_type} onChange={(e) => setContactForm((f) => ({ ...f, contact_type: e.target.value }))}>
@@ -955,7 +955,7 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'payouts' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input className={inp} placeholder="holder_name" value={payoutForm.holder_name} onChange={(e) => setPayoutForm((f) => ({ ...f, holder_name: e.target.value }))} />
           <input className={inp} placeholder="pix_key" value={payoutForm.pix_key} onChange={(e) => setPayoutForm((f) => ({ ...f, pix_key: e.target.value }))} />
           <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreatePayout()} disabled={!selectedId || !payoutForm.holder_name}>
@@ -965,7 +965,7 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'settlements' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <select className={inp} value={selectedBatchId} onChange={(e) => setSelectedBatchId(e.target.value)}>
             <option value="">batch_id</option>
             {settlementBatches.map((b) => (
@@ -977,14 +977,14 @@ export default function OpsMarketplaceAdmin() {
           <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateSettlement()} disabled={!selectedId}>
             Gerar lote de repasse
           </button>
-          <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onMarkBatchPaid()} disabled={!selectedBatchId}>
+          <button type="button" className="ellan-btn-outline" onClick={() => void onMarkBatchPaid()} disabled={!selectedBatchId}>
             Marcar lote PAID
           </button>
         </div>
       )}
 
       {tab === 'kyc' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <select className={inp} value={kycForm.doc_type} onChange={(e) => setKycForm((f) => ({ ...f, doc_type: e.target.value }))}>
             <option value="CNPJ_CARD">CNPJ_CARD</option>
             <option value="ID">ID</option>
@@ -1003,14 +1003,14 @@ export default function OpsMarketplaceAdmin() {
           <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateKyc()} disabled={!selectedId}>
             Registrar documento
           </button>
-          <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onApproveKyc()} disabled={!selectedKycId}>
+          <button type="button" className="ellan-btn-outline" onClick={() => void onApproveKyc()} disabled={!selectedKycId}>
             Aprovar KYC
           </button>
         </div>
       )}
 
       {tab === 'disputes' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input className={inp} placeholder="commission_id" value={disputeForm.commission_id} onChange={(e) => setDisputeForm((f) => ({ ...f, commission_id: e.target.value }))} />
           <input className={inp} placeholder="reason" value={disputeForm.reason} onChange={(e) => setDisputeForm((f) => ({ ...f, reason: e.target.value }))} />
           <select className={inp} value={selectedDisputeId} onChange={(e) => setSelectedDisputeId(e.target.value)}>
@@ -1024,14 +1024,14 @@ export default function OpsMarketplaceAdmin() {
           <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateDispute()} disabled={!selectedId || !disputeForm.commission_id || !disputeForm.reason}>
             Abrir disputa
           </button>
-          <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onResolveDispute()} disabled={!selectedDisputeId}>
+          <button type="button" className="ellan-btn-outline" onClick={() => void onResolveDispute()} disabled={!selectedDisputeId}>
             Resolver disputa
           </button>
         </div>
       )}
 
       {tab === 'commissions' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <select className={inp} value={selectedCommissionId} onChange={(e) => setSelectedCommissionId(e.target.value)}>
             <option value="">commission_id (PENDING)</option>
             {pendingCommissions.map((c) => (
@@ -1040,7 +1040,7 @@ export default function OpsMarketplaceAdmin() {
               </option>
             ))}
           </select>
-          <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onSettleCommission()} disabled={!selectedCommissionId}>
+          <button type="button" className="ellan-btn-outline" onClick={() => void onSettleCommission()} disabled={!selectedCommissionId}>
             Liquidar comissão
           </button>
         </div>
@@ -1052,7 +1052,7 @@ export default function OpsMarketplaceAdmin() {
             <button type="button" className="rounded bg-indigo-600 px-3 py-2 text-sm text-white" onClick={() => void onRecomputeReadiness()} disabled={loading}>
               Recalcular prontidão
             </button>
-            <button type="button" className="rounded border px-3 py-2 text-sm dark:border-slate-600" onClick={() => void onSimulateInpostDrop()} disabled={loading}>
+            <button type="button" className="ellan-btn-outline" onClick={() => void onSimulateInpostDrop()} disabled={loading}>
               Simular queda INPOST (demo)
             </button>
             <button
@@ -1079,7 +1079,7 @@ export default function OpsMarketplaceAdmin() {
             </button>
             <button
               type="button"
-              className="rounded border px-3 py-2 text-sm dark:border-slate-600"
+              className="ellan-btn-outline"
               onClick={() =>
                 void run(
                   () => marketplaceAdminApi.replayDeadLetterBatch(25).then((r) => undefined),
@@ -1118,7 +1118,7 @@ export default function OpsMarketplaceAdmin() {
                 ['Com blockers', integrationHub.partners_with_blockers],
                 ...Object.entries(integrationHub.bands || {}).map(([k, v]) => [`Faixa ${k}`, v]),
               ].map(([label, val]) => (
-                <div key={String(label)} className="rounded-xl border bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                <div key={String(label)} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-3 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-xs text-gray-500">{label}</p>
                   <p className="text-lg font-semibold">{String(val)}</p>
                 </div>
@@ -1126,7 +1126,7 @@ export default function OpsMarketplaceAdmin() {
             </div>
           )}
 
-          <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-medium">Prontidão por player ({readinessRows.length})</h3>
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
@@ -1152,7 +1152,7 @@ export default function OpsMarketplaceAdmin() {
             </table>
           </section>
 
-          <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-medium">Alertas ({readinessAlerts.length})</h3>
             <table className="w-full text-left text-sm">
               <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
@@ -1189,7 +1189,7 @@ export default function OpsMarketplaceAdmin() {
             </table>
           </section>
 
-          <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h3 className="mb-2 text-sm font-medium">Webhooks de capacidade</h3>
             <div className="mb-3 flex flex-wrap gap-2">
               <select className={inp} value={capWebhookPartnerId} onChange={(e) => setCapWebhookPartnerId(e.target.value)}>
@@ -1236,7 +1236,7 @@ export default function OpsMarketplaceAdmin() {
           </section>
 
           {integrationIncidents.length > 0 && (
-            <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
               <h3 className="mb-2 text-sm font-medium">Incidentes ({integrationIncidents.length})</h3>
               <table className="w-full text-left text-sm">
                 <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
@@ -1284,7 +1284,7 @@ export default function OpsMarketplaceAdmin() {
               ['Listings canal', dashboard.seller_channel_listings],
               ['Redes locker', dashboard.locker_network_links],
             ].map(([label, value]) => (
-              <div key={String(label)} className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <div key={String(label)} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
                 <p className="text-xs text-gray-500">{label}</p>
                 <p className="text-2xl font-semibold">{value}</p>
               </div>
@@ -1299,7 +1299,7 @@ export default function OpsMarketplaceAdmin() {
                 ['Alertas abertos', integrationHub.open_readiness_alerts],
                 ['GO_LIVE top', integrationHub.top_go_live?.[0]?.partner_code ?? '—'],
               ].map(([label, val]) => (
-                <div key={String(label)} className="rounded-xl border bg-white p-3 dark:border-slate-700 dark:bg-slate-900">
+                <div key={String(label)} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-3 dark:border-slate-700 dark:bg-slate-900">
                   <p className="text-xs text-gray-500">{label}</p>
                   <p className="text-lg font-semibold">{String(val)}</p>
                 </div>
@@ -1310,12 +1310,12 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab !== 'overview' && (
-        <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <h2 className="mb-2 text-lg font-medium">Webhook e API key (seller)</h2>
           <div className="flex flex-wrap gap-2">
             <input className={`min-w-[14rem] flex-1 ${inp}`} placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
             <input className={inp} placeholder="Secret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
-            <button type="button" onClick={() => void onWebhook()} className="rounded border px-3 py-2 text-sm dark:border-slate-600" disabled={!selectedId || !webhookUrl}>
+            <button type="button" onClick={() => void onWebhook()} className="ellan-btn-outline" disabled={!selectedId || !webhookUrl}>
               Salvar webhook
             </button>
             <button type="button" onClick={() => void onRotateKey()} className="rounded bg-amber-600 px-3 py-2 text-sm text-white" disabled={!selectedId}>

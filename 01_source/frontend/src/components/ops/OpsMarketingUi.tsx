@@ -1,4 +1,25 @@
 import type { ReactNode } from 'react'
+import {
+  BTN_OUTLINE,
+  BTN_OUTLINE_SM,
+  CHIP_ACTIVE,
+  CHIP_IDLE,
+  ELLAN_INPUT,
+  ELLAN_LABEL,
+  ELLAN_SELECT,
+  ELLAN_TEXTAREA,
+} from '../../styles/formClasses'
+
+export {
+  BTN_OUTLINE,
+  BTN_OUTLINE_SM,
+  CHIP_ACTIVE,
+  CHIP_IDLE,
+  ELLAN_INPUT,
+  ELLAN_LABEL,
+  ELLAN_SELECT,
+  ELLAN_TEXTAREA,
+}
 
 export function formatMoney(cents: number | null | undefined, currency = 'BRL') {
   const n = Number(cents)
@@ -87,9 +108,10 @@ export function OpsWorkspaceCard({ title, hint, children }: { title: string; hin
   )
 }
 
-export const TAB_BTN_ACTIVE = 'rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm'
+export const TAB_BTN_ACTIVE =
+  'rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-indigo-500'
 export const TAB_BTN_IDLE =
-  'rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:border-slate-500 dark:border-slate-600'
+  'rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-700'
 
 export function TabButton({
   active,
@@ -107,8 +129,22 @@ export function TabButton({
   )
 }
 
-export const BTN_PRIMARY = 'rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50'
-export const BTN_GHOST =
-  'rounded-lg border border-slate-600 px-3 py-2 text-sm text-slate-200 hover:bg-slate-800/50 disabled:opacity-50 dark:border-slate-600'
+export const BTN_PRIMARY =
+  'rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50'
+export const BTN_GHOST = BTN_OUTLINE
+export const BTN_SECONDARY =
+  'rounded-lg border border-slate-600 bg-slate-700 px-3 py-2 text-sm font-medium text-slate-100 hover:bg-slate-600 disabled:opacity-50'
+export const BTN_SUCCESS =
+  'rounded-lg bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:opacity-50'
+export const BTN_WARNING =
+  'rounded-lg bg-amber-600 px-3 py-2 text-sm font-medium text-white hover:bg-amber-500 disabled:opacity-50'
+export const BTN_DANGER =
+  'rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50'
+export const BTN_INFO =
+  'rounded-lg bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:opacity-50'
 export const BTN_SHORTCUT =
-  'rounded-lg border border-slate-600 px-3 py-2 text-sm text-indigo-300 hover:border-indigo-500/50 dark:border-slate-600'
+  'rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm font-medium text-indigo-300 hover:border-indigo-500/50 hover:bg-slate-700'
+
+export function chipClass(active: boolean) {
+  return active ? CHIP_ACTIVE : CHIP_IDLE
+}

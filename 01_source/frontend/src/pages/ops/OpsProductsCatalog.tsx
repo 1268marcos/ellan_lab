@@ -324,7 +324,7 @@ export default function OpsProductsCatalog() {
           type="button"
           disabled={offset <= 0 || loading}
           onClick={() => setOffset((o) => Math.max(0, o - limit))}
-          className="rounded border px-2 py-1 dark:border-slate-600"
+          className="ellan-field"
         >
           Anterior
         </button>
@@ -335,7 +335,7 @@ export default function OpsProductsCatalog() {
           type="button"
           disabled={offset + limit >= total || loading}
           onClick={() => setOffset((o) => o + limit)}
-          className="rounded border px-2 py-1 dark:border-slate-600"
+          className="ellan-field"
         >
           Próxima
         </button>
@@ -354,7 +354,7 @@ export default function OpsProductsCatalog() {
               <button type="button" onClick={() => void onSavePrice()} className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
                 Salvar
               </button>
-              <button type="button" onClick={() => setPriceEdit(null)} className="rounded border px-3 py-1 text-sm">
+              <button type="button" onClick={() => setPriceEdit(null)} className="ellan-btn-outline">
                 Cancelar
               </button>
             </div>

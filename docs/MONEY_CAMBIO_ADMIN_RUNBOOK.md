@@ -6,7 +6,7 @@
 |------:|---------|
 | 8017 | payment-gateway-admin |
 | 8018 | order-pickup-admin |
-| 8019 | marketplace-admin |
+| **8119** (host) → 8019 (container) | marketplace-admin |
 | 8021 | ml-admin |
 | 8022 | privacy-compliance-admin |
 | **8123** | **finance-admin** |
@@ -14,6 +14,22 @@
 | **8125** | **money-cambio-admin** |
 
 Proxies frontend: v0 `/api/mca` → 8125 · v1 `/api/money-cambio-admin` → 8125
+
+### `Address already in use` na 8019 (marketplace-admin)
+
+O Compose publica o serviço no **host 8119** (mapeamento `8119:8019`) para não colidir com uvicorn local ou container antigo na 8019.
+
+```bash
+# liberar 8019 se ainda houver processo local
+fuser -k 8019/tcp 2>/dev/null || true
+docker rm -f marketplace_admin_service 2>/dev/null || true
+
+cd ~/ellan_lab/02_docker
+docker compose up -d marketplace_admin_service
+curl http://localhost:8119/api/v1/marketplace-admin/health
+```
+
+Variável opcional em `02_docker/.env`: `MARKETPLACE_ADMIN_HOST_PORT=8119`
 
 ### `Address already in use` na 8125
 

@@ -478,7 +478,7 @@ export default function OpsFiscalAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -506,7 +506,7 @@ export default function OpsFiscalAdmin() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
           >
             {tabLabels[t]}
           </button>
@@ -514,12 +514,12 @@ export default function OpsFiscalAdmin() {
       </div>
 
       {tab === 'intelligence' && (
-        <section className="space-y-4 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="space-y-4 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void onAnalyzeIntelligence()} className="rounded bg-indigo-600 px-3 py-1 text-sm text-white">
               Scan inteligência fiscal
             </button>
-            <button type="button" onClick={() => void onRecomputeReadiness()} className="rounded border px-3 py-1 text-sm">
+            <button type="button" onClick={() => void onRecomputeReadiness()} className="ellan-btn-outline">
               Recalcular readiness
             </button>
           </div>
@@ -527,9 +527,9 @@ export default function OpsFiscalAdmin() {
             <div>
               <h3 className="mb-2 text-sm font-medium">Registrar contingência SEFAZ</h3>
               <div className="flex flex-wrap gap-2">
-                <input className="rounded border px-2 py-1 text-sm" value={contingencyForm.country} onChange={(e) => setContingencyForm((f) => ({ ...f, country: e.target.value }))} placeholder="País" />
-                <input className="rounded border px-2 py-1 text-sm" value={contingencyForm.contingency_mode} onChange={(e) => setContingencyForm((f) => ({ ...f, contingency_mode: e.target.value }))} placeholder="Modo (SVC-AN/EPEC)" />
-                <input className="min-w-[12rem] flex-1 rounded border px-2 py-1 text-sm" value={contingencyForm.reason} onChange={(e) => setContingencyForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Motivo" />
+                <input className="ellan-field" value={contingencyForm.country} onChange={(e) => setContingencyForm((f) => ({ ...f, country: e.target.value }))} placeholder="País" />
+                <input className="ellan-field" value={contingencyForm.contingency_mode} onChange={(e) => setContingencyForm((f) => ({ ...f, contingency_mode: e.target.value }))} placeholder="Modo (SVC-AN/EPEC)" />
+                <input className="min-w-[12rem] flex-1 ellan-field" value={contingencyForm.reason} onChange={(e) => setContingencyForm((f) => ({ ...f, reason: e.target.value }))} placeholder="Motivo" />
                 <button type="button" onClick={() => void onRegisterContingency()} className="rounded bg-amber-600 px-3 py-1 text-sm text-white">
                   Registrar
                 </button>
@@ -555,7 +555,7 @@ export default function OpsFiscalAdmin() {
       )}
 
       {tab === 'gaps' && (
-        <section className="space-y-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="space-y-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <p className="text-sm text-gray-600 dark:text-slate-400">
             Workbench unificado: gaps do catálogo fiscal (admin) + emissão real (
             <code className="text-xs">billing_fiscal_service</code>).
@@ -564,7 +564,7 @@ export default function OpsFiscalAdmin() {
             <label className="text-xs text-gray-500">
               Status
               <select
-                className="ml-1 rounded border px-2 py-1 text-sm"
+                className="ml-1 ellan-field"
                 value={gapStatusFilter}
                 onChange={(e) => setGapStatusFilter(e.target.value)}
               >
@@ -609,15 +609,15 @@ export default function OpsFiscalAdmin() {
 
       {tab === 'readiness' && (
         <div className="mb-2">
-          <button type="button" onClick={() => void onRecomputeReadiness()} className="rounded border px-3 py-1 text-sm">
+          <button type="button" onClick={() => void onRecomputeReadiness()} className="ellan-btn-outline">
             Recalcular readiness (A–D)
           </button>
         </div>
       )}
 
       {tab === 'classification' && (
-        <section className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-          <input className="rounded border px-2 py-1 text-sm" value={classifySku} onChange={(e) => setClassifySku(e.target.value)} placeholder="SKU para classificar" />
+        <section className="mb-4 flex flex-wrap items-end gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <input className="ellan-field" value={classifySku} onChange={(e) => setClassifySku(e.target.value)} placeholder="SKU para classificar" />
           <button type="button" onClick={() => void onClassifySku()} className="rounded bg-slate-700 px-3 py-1 text-sm text-white">
             Testar NCM/CFOP
           </button>
@@ -653,24 +653,24 @@ export default function OpsFiscalAdmin() {
         <>
           <form
             onSubmit={onCreateIssuer}
-            className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4"
+            className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-4"
           >
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Nome emissor"
               required
               value={issuerForm.name}
               onChange={(e) => setIssuerForm((f) => ({ ...f, name: e.target.value }))}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Código"
               required
               value={issuerForm.code}
               onChange={(e) => setIssuerForm((f) => ({ ...f, code: e.target.value }))}
             />
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={issuerForm.issuer_type}
               onChange={(e) => setIssuerForm((f) => ({ ...f, issuer_type: e.target.value }))}
             >
@@ -682,11 +682,11 @@ export default function OpsFiscalAdmin() {
               Criar emissor
             </button>
           </form>
-          <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h2 className="mb-2 text-lg font-medium">Webhook e API key</h2>
             <div className="flex flex-wrap gap-2">
               <select
-                className="rounded border px-2 py-1 text-sm"
+                className="ellan-field"
                 value={selectedIssuer}
                 onChange={(e) => setSelectedIssuer(e.target.value)}
               >
@@ -698,13 +698,13 @@ export default function OpsFiscalAdmin() {
                 ))}
               </select>
               <input
-                className="min-w-[14rem] flex-1 rounded border px-2 py-1 text-sm"
+                className="min-w-[14rem] flex-1 ellan-field"
                 placeholder="Webhook URL"
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
               />
               <input
-                className="rounded border px-2 py-1 text-sm"
+                className="ellan-field"
                 placeholder="Secret"
                 value={webhookSecret}
                 onChange={(e) => setWebhookSecret(e.target.value)}
@@ -720,7 +720,7 @@ export default function OpsFiscalAdmin() {
         </>
       )}
 
-      <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+      <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b text-left text-gray-500">

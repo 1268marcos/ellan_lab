@@ -96,7 +96,7 @@ export default function Catalog() {
           value={partnerId}
           onChange={(e) => setPartnerId(e.target.value.trim())}
           onBlur={() => void load()}
-          className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 font-mono text-sm text-white"
+          className="ellan-field mt-1 w-full font-mono"
         />
       </label>
 
@@ -142,21 +142,21 @@ export default function Catalog() {
           placeholder="partner_sku"
           value={form.partner_sku}
           onChange={(e) => setForm((f) => ({ ...f, partner_sku: e.target.value }))}
-          className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+          className="ellan-field"
         />
         <input
           required
           placeholder="name"
           value={form.name}
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-          className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+          className="ellan-field"
         />
         <input
           required
           placeholder="category_id"
           value={form.category_id}
           onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}
-          className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+          className="ellan-field"
         />
         <input
           required
@@ -165,7 +165,7 @@ export default function Catalog() {
           placeholder="price_cents"
           value={form.price_cents}
           onChange={(e) => setForm((f) => ({ ...f, price_cents: e.target.value }))}
-          className="rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+          className="ellan-field"
         />
         <button
           type="submit"

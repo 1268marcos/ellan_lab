@@ -1,6 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { financeAdminApi, type FinancePartner, type LockerNetworkPlayer } from '../../api/financeAdmin'
+import { chipClass } from '../../components/ops/OpsMarketingUi'
 
 type Tab =
   | 'intelligence'
@@ -907,7 +908,7 @@ export default function OpsFinanceAdmin() {
 
       <header>
         <h1 className="text-xl font-semibold">OPS — Finance Admin (global)</h1>
-        <p className="text-sm text-gray-600">
+        <p className="text-sm text-slate-400">
           Billing B2B, settlements, treasury, PnL por locker, gaps fiscais e monitoramento de webhooks — porta 8123.
         </p>
       </header>
@@ -917,7 +918,7 @@ export default function OpsFinanceAdmin() {
           <button
             key={t.key}
             type="button"
-            className={`rounded px-2 py-1 text-xs ${tab === t.key ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+            className={chipClass(tab === t.key)}
             onClick={() => setTab(t.key)}
           >
             {t.label}
@@ -965,13 +966,13 @@ export default function OpsFinanceAdmin() {
 
       {tab === 'networks' ? (
         <div className="space-y-2">
-          <div className="rounded border border-indigo-200 bg-indigo-50/80 px-3 py-2 text-sm dark:border-indigo-800 dark:bg-indigo-950/40">
-            <div className="mb-1 font-medium text-indigo-900 dark:text-indigo-200">
+          <div className="rounded-lg border border-indigo-500/40 bg-indigo-950/50 px-3 py-2 text-sm text-indigo-100">
+            <div className="mb-1 font-medium text-indigo-200">
               Players prioritários (world-priority-index)
             </div>
             <div className="flex flex-wrap gap-1.5">
               {worldPriorityIndex.length === 0 ? (
-                <span className="text-xs text-gray-500">Execute Sync catálogo para carregar o índice.</span>
+                <span className="text-xs text-slate-400">Execute Sync catálogo para carregar o índice.</span>
               ) : (
                 worldPriorityIndex.map((p) => {
                   const inCatalog = networkCatalog.some((n) => n.code === p.code)
@@ -980,12 +981,12 @@ export default function OpsFinanceAdmin() {
                       key={p.code}
                       type="button"
                       title={`${p.segment} · ${p.countries.join(', ')}`}
-                      className={`rounded px-2 py-0.5 text-xs ${
-                        selectedNetworkCode === p.code
-                          ? 'ring-2 ring-white'
-                          : ''
+                      className={`rounded px-2 py-0.5 text-xs font-medium ${
+                        selectedNetworkCode === p.code ? 'ring-2 ring-indigo-400' : ''
                       } ${
-                        inCatalog ? 'bg-indigo-600 text-white' : 'bg-amber-100 text-amber-900'
+                        inCatalog
+                          ? 'bg-indigo-600 text-white'
+                          : 'border border-amber-500/50 bg-amber-950/60 text-amber-200'
                       }`}
                       onClick={() => void loadIntegrationGuide(p.code)}
                     >
@@ -998,7 +999,7 @@ export default function OpsFinanceAdmin() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 items-center text-sm">
-            <span className="text-gray-600">Grupo:</span>
+            <span className="text-slate-400">Grupo:</span>
             {[
               '',
               'LOCKER_NETWORK',
@@ -1013,13 +1014,13 @@ export default function OpsFinanceAdmin() {
               <button
                 key={g || 'all'}
                 type="button"
-                className={`rounded px-2 py-0.5 text-xs ${networkFilter === g ? 'bg-indigo-600 text-white' : 'bg-gray-200'}`}
+                className={chipClass(networkFilter === g)}
                 onClick={() => setNetworkFilter(g)}
               >
                 {g || 'Todos'} {g && networkStats[g] != null ? `(${networkStats[g]})` : ''}
               </button>
             ))}
-            <span className="text-xs text-gray-500 ml-2">
+            <span className="ml-2 text-xs text-slate-500">
               {ecosystemMatrix
                 ? `${ecosystemMatrix.total_players} players · ${ecosystemMatrix.total_relations} relações · ${ecosystemMatrix.total_aliases} aliases`
                 : '90+ players mundiais'}
@@ -1030,7 +1031,7 @@ export default function OpsFinanceAdmin() {
       ) : null}
 
       {tab === 'networks' && integrationGuide ? (
-        <div className="rounded border border-slate-300 bg-white p-4 text-sm shadow-sm dark:border-slate-600 dark:bg-slate-900">
+        <div className="ellan-panel text-sm">
           <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
             <div>
               <h3 className="font-semibold text-base">
@@ -1132,13 +1133,13 @@ export default function OpsFinanceAdmin() {
         <>
           <form className="flex flex-wrap gap-2" onSubmit={onCreatePartner}>
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="code"
               value={partnerForm.code}
               onChange={(e) => setPartnerForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="nome"
               value={partnerForm.name}
               onChange={(e) => setPartnerForm((f) => ({ ...f, name: e.target.value }))}
@@ -1148,7 +1149,7 @@ export default function OpsFinanceAdmin() {
             </button>
           </form>
           <div className="flex flex-wrap gap-2 items-center text-sm">
-            <select className="rounded border px-2 py-1" value={selectedPartner} onChange={(e) => setSelectedPartner(e.target.value)}>
+            <select className="ellan-field" value={selectedPartner} onChange={(e) => setSelectedPartner(e.target.value)}>
               <option value="">Parceiro webhook/key</option>
               {partners.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1156,7 +1157,7 @@ export default function OpsFinanceAdmin() {
                 </option>
               ))}
             </select>
-            <input className="rounded border px-2 py-1" placeholder="webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
+            <input className="ellan-field" placeholder="webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
             <button type="button" className="rounded bg-slate-600 px-2 py-1 text-white" onClick={() => void onWebhook()}>
               Webhook
             </button>

@@ -346,7 +346,7 @@ export default function OpsProductCategories() {
             <button type="submit" disabled={loading} className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white">
               Salvar
             </button>
-            <button type="button" onClick={() => setForm(null)} className="rounded border px-3 py-1.5 text-sm dark:border-slate-600">
+            <button type="button" onClick={() => setForm(null)} className="ellan-btn-outline">
               Cancelar
             </button>
           </div>

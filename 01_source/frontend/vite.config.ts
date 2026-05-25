@@ -45,7 +45,7 @@ const orderPickupAdminServiceProxy =
   process.env.ORDER_PICKUP_ADMIN_SERVICE_PROXY ?? 'http://localhost:8018'
 
 const marketplaceAdminServiceProxy =
-  process.env.MARKETPLACE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8019'
+  process.env.MARKETPLACE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8119'
 
 const hardwareAdminServiceProxy =
   process.env.HARDWARE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8025'
@@ -176,6 +176,10 @@ export default defineConfig({
         target: moneyCambioAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/money-cambio-admin/, '/api'),
+      },
+      '/api/v1/partners/login': {
+        target: orderPickupServiceProxy,
+        changeOrigin: true,
       },
       '/api/op': {
         target: orderPickupServiceProxy,

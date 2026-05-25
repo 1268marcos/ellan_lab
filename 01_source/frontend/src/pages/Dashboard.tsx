@@ -45,9 +45,9 @@ export default function Dashboard() {
         const manifests = (manifestsRes.data ?? []) as Manifest[]
         const sla = (slaRes.data ?? {}) as SLAMetrics
 
-        const lockers = lockersRaw.map((lk: Locker) => ({
+        const lockers = (Array.isArray(lockersRaw) ? lockersRaw : []).map((lk: Locker) => ({
           ...lk,
-          occupancy: lk.occupancy > 1 ? lk.occupancy / 100 : lk.occupancy,
+          occupancy: Number(lk.occupancy) > 1 ? Number(lk.occupancy) / 100 : Number(lk.occupancy),
         }))
         const lockersAtivos = lockers.filter((lk) => lk.status === 'active').length
         const pickupsHoje = manifests.length
@@ -59,7 +59,7 @@ export default function Dashboard() {
             lockersAtivos,
             pickupsHoje,
             slaPercent,
-            lockers: lockers.length ? lockers : MOCK.lockers,
+            lockers: lockers.length ? lockers.slice(0, 16) : MOCK.lockers,
           })
         }
       } catch {

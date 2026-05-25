@@ -6,10 +6,8 @@ import hmac
 import json
 import os
 import time
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,8 +17,17 @@ router = APIRouter(tags=["auth"])
 
 
 class LoginRequest(BaseModel):
-    partner_id: UUID
-    api_key: str
+    partner_id: str = Field(min_length=1, max_length=64)
+    api_key: str = Field(min_length=8, max_length=256)
+
+
+def _infer_role(partner_id: str) -> str:
+    pid = str(partner_id or "").lower()
+    if "ceo" in pid or "admin" in pid:
+        return "admin"
+    if "coo" in pid or "ops" in pid:
+        return "ops"
+    return "partner"
 
 
 class PartnerPayload(BaseModel):
@@ -53,7 +60,8 @@ def _hash_api_key(raw: str) -> str:
 
 @router.post("/v1/login", response_model=LoginResponse, status_code=status.HTTP_200_OK)
 def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
-    partner = db.query(Partner).filter(Partner.id == str(body.partner_id)).first()
+    partner_id = str(body.partner_id).strip()
+    partner = db.query(Partner).filter(Partner.id == partner_id).first()
     if not partner:
         raise HTTPException(status_code=401, detail="invalid credentials")
 
@@ -71,6 +79,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
         raise HTTPException(status_code=401, detail="invalid credentials")
 
     now = int(time.time())
+    role = _infer_role(partner.id)
     secret = os.getenv("PARTNER_JWT_SECRET", "partner-service-dev-secret")
     exp_seconds = int(os.getenv("PARTNER_JWT_EXP_SECONDS", "3600"))
     token = _encode_jwt(
@@ -78,7 +87,7 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
             "sub": partner.id,
             "partner_id": partner.id,
             "name": partner.name,
-            "role": "partner",
+            "role": role,
             "iat": now,
             "exp": now + exp_seconds,
         },
@@ -86,5 +95,5 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse:
     )
     return LoginResponse(
         token=token,
-        partner=PartnerPayload(id=partner.id, name=partner.name, role="partner"),
+        partner=PartnerPayload(id=partner.id, name=partner.name, role=role),
     )

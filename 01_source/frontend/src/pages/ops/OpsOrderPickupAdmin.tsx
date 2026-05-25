@@ -326,7 +326,7 @@ export default function OpsOrderPickupAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -361,7 +361,7 @@ export default function OpsOrderPickupAdmin() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
           >
             {label}
           </button>
@@ -369,33 +369,33 @@ export default function OpsOrderPickupAdmin() {
       </div>
 
       {tab === 'partners' && (
-        <section className="space-y-4 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <section className="space-y-4 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setPartnerSubTab('ecommerce')}
-              className={`rounded px-3 py-1 text-sm ${partnerSubTab === 'ecommerce' ? 'bg-indigo-600 text-white' : 'border'}`}
+              className={`rounded px-3 py-1 text-sm ${partnerSubTab === 'ecommerce' ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
             >
               E-commerce
             </button>
             <button
               type="button"
               onClick={() => setPartnerSubTab('logistics')}
-              className={`rounded px-3 py-1 text-sm ${partnerSubTab === 'logistics' ? 'bg-indigo-600 text-white' : 'border'}`}
+              className={`rounded px-3 py-1 text-sm ${partnerSubTab === 'logistics' ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
             >
               Logística
             </button>
           </div>
           <form onSubmit={onCreatePartner} className="grid gap-3 md:grid-cols-3">
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Nome"
               required
               value={partnerForm.name}
               onChange={(e) => setPartnerForm((f) => ({ ...f, name: e.target.value }))}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Código"
               required
               value={partnerForm.code}
@@ -407,7 +407,7 @@ export default function OpsOrderPickupAdmin() {
           </form>
           <div className="flex flex-wrap gap-2">
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={partnerType}
               onChange={(e) => setPartnerType(e.target.value)}
             >
@@ -415,7 +415,7 @@ export default function OpsOrderPickupAdmin() {
               <option value="LOGISTICS">LOGISTICS</option>
             </select>
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={selectedId}
               onChange={(e) => setSelectedId(e.target.value)}
             >
@@ -427,7 +427,7 @@ export default function OpsOrderPickupAdmin() {
               ))}
             </select>
             <input
-              className="min-w-[14rem] flex-1 rounded border px-2 py-1 text-sm"
+              className="min-w-[14rem] flex-1 ellan-field"
               placeholder="Webhook URL"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
@@ -443,21 +443,21 @@ export default function OpsOrderPickupAdmin() {
       )}
 
       {tab === 'orders' && (
-        <form onSubmit={onCreateOrder} className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <form onSubmit={onCreateOrder} className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input
             type="number"
-            className="w-32 rounded border px-2 py-1 text-sm"
+            className="w-32 ellan-field"
             value={orderForm.amount_cents}
             onChange={(e) => setOrderForm((f) => ({ ...f, amount_cents: Number(e.target.value) }))}
           />
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="ecommerce_partner_id"
             value={orderForm.ecommerce_partner_id}
             onChange={(e) => setOrderForm((f) => ({ ...f, ecommerce_partner_id: e.target.value }))}
           />
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="totem_id"
             value={orderForm.totem_id}
             onChange={(e) => setOrderForm((f) => ({ ...f, totem_id: e.target.value }))}
@@ -469,22 +469,22 @@ export default function OpsOrderPickupAdmin() {
       )}
 
       {tab === 'credits' && (
-        <form onSubmit={onCreateCredit} className="flex flex-wrap gap-2 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <form onSubmit={onCreateCredit} className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="order_id"
             value={creditForm.order_id}
             onChange={(e) => setCreditForm((f) => ({ ...f, order_id: e.target.value }))}
           />
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="user_id"
             value={creditForm.user_id}
             onChange={(e) => setCreditForm((f) => ({ ...f, user_id: e.target.value }))}
           />
           <input
             type="number"
-            className="w-28 rounded border px-2 py-1 text-sm"
+            className="w-28 ellan-field"
             value={creditForm.amount_cents}
             onChange={(e) => setCreditForm((f) => ({ ...f, amount_cents: Number(e.target.value) }))}
           />
@@ -495,7 +495,7 @@ export default function OpsOrderPickupAdmin() {
       )}
 
       {tableRows.length > 0 ? (
-        <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+        <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
           <table className="w-full text-left text-sm">
             <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
               <tr>

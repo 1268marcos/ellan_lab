@@ -36,7 +36,7 @@ export function CompatibilityChecker({ partnerId }: { partnerId: string }) {
           <input
             value={sku}
             onChange={(e) => setSku(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            className="ellan-field mt-1 w-full"
             placeholder="SKU parceiro"
           />
         </label>
@@ -45,7 +45,7 @@ export function CompatibilityChecker({ partnerId }: { partnerId: string }) {
           <input
             value={lockerId}
             onChange={(e) => setLockerId(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-sm text-white"
+            className="ellan-field mt-1 w-full"
             placeholder="BR-XXX-LK-001"
           />
         </label>

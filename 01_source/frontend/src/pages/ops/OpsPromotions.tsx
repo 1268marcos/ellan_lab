@@ -358,7 +358,7 @@ export default function OpsPromotions({ embedded = false }: Props) {
     }
   }
 
-  const inputCls = 'rounded border px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-950'
+  const inputCls = 'ellan-field'
   const labelCls = 'grid gap-1 text-xs text-slate-400'
 
   const content = (
@@ -459,7 +459,7 @@ export default function OpsPromotions({ embedded = false }: Props) {
       </div>
 
       {showCreate && (
-        <form onSubmit={onCreate} className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+        <form onSubmit={onCreate} className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
           <input className={inputCls} placeholder="Código" value={formCode} onChange={(e) => setFormCode(e.target.value)} />
           <input className={inputCls} placeholder="Nome *" required value={formName} onChange={(e) => setFormName(e.target.value)} />
           <select className={inputCls} value={formType} onChange={(e) => setFormType(e.target.value as (typeof PROMO_TYPES)[number])}>

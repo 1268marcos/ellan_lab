@@ -330,10 +330,10 @@ export default function OpsPaymentsAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed mundial
           </button>
-          <button type="button" onClick={() => void load()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void load()} className="ellan-btn-outline">
             {loading ? '…' : 'Atualizar'}
           </button>
         </div>
@@ -440,7 +440,7 @@ export default function OpsPaymentsAdmin() {
           <input
             value={orderFilter}
             onChange={(e) => setOrderFilter(e.target.value)}
-            className="mt-1 w-full max-w-md rounded border px-2 py-1 dark:bg-slate-900"
+            className="mt-1 w-full max-w-md ellan-field"
           />
         </label>
       ) : null}
@@ -541,7 +541,7 @@ export default function OpsPaymentsAdmin() {
           <select
             value={selectedWebhook}
             onChange={(e) => setSelectedWebhook(e.target.value)}
-            className="rounded border px-2 py-1 text-sm dark:bg-slate-900"
+            className="ellan-field dark:bg-slate-900"
           >
             <option value="">endpoint —</option>
             {(rows as { id: string; partner_type: string }[]).map((w) => (
@@ -550,7 +550,7 @@ export default function OpsPaymentsAdmin() {
               </option>
             ))}
           </select>
-          <button type="button" onClick={() => void onRotateSecret()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onRotateSecret()} className="ellan-btn-outline">
             Rotacionar secret
           </button>
           {lastSecret ? <code className="text-xs">{lastSecret}</code> : null}

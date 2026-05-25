@@ -105,10 +105,10 @@ export default function OpsProductsEcosystem() {
         <button type="button" className="rounded bg-indigo-600 px-3 py-1.5 text-sm text-white" onClick={() => void load()}>
           Atualizar
         </button>
-        <button type="button" className="rounded border px-3 py-1.5 text-sm dark:border-slate-600" onClick={() => void onSeed()}>
+        <button type="button" className="ellan-btn-outline" onClick={() => void onSeed()}>
           Seed global players
         </button>
-        <button type="button" className="rounded border px-3 py-1.5 text-sm dark:border-slate-600" onClick={() => void onSync()}>
+        <button type="button" className="ellan-btn-outline" onClick={() => void onSync()}>
           Sync parceiros B2B
         </button>
       </div>
@@ -143,19 +143,19 @@ export default function OpsProductsEcosystem() {
         <h2 className="mb-2 text-sm font-semibold">Nova elegibilidade categoria × player</h2>
         <form onSubmit={(e) => void onElig(e)} className="flex flex-wrap gap-2 items-end">
           <input
-            className="rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900"
+            className="ellan-field dark:border-slate-600 dark:bg-slate-900"
             placeholder="category_id"
             value={form.category_id}
             onChange={(e) => setForm({ ...form, category_id: e.target.value })}
           />
           <input
-            className="rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900"
+            className="ellan-field dark:border-slate-600 dark:bg-slate-900"
             placeholder="player_code"
             value={form.player_code}
             onChange={(e) => setForm({ ...form, player_code: e.target.value })}
           />
           <select
-            className="rounded border px-2 py-1 text-sm dark:border-slate-600 dark:bg-slate-900"
+            className="ellan-field dark:border-slate-600 dark:bg-slate-900"
             value={form.eligibility}
             onChange={(e) => setForm({ ...form, eligibility: e.target.value })}
           >

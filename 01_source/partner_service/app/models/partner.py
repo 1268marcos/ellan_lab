@@ -16,7 +16,7 @@ def _utcnow() -> datetime:
 class Partner(Base):
     __tablename__ = "partners"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(String(64), primary_key=True, default=lambda: str(uuid.uuid4()))
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     partner_type: Mapped[str] = mapped_column(String(64), nullable=False, default="ECOMMERCE")
     legal_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -44,7 +44,7 @@ class PartnerApiKey(Base):
     __tablename__ = "partner_api_keys"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    partner_id: Mapped[str] = mapped_column(String(36), ForeignKey("partners.id"), nullable=False, index=True)
+    partner_id: Mapped[str] = mapped_column(String(64), ForeignKey("partners.id"), nullable=False, index=True)
     key_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -57,7 +57,7 @@ class PartnerServiceArea(Base):
     __tablename__ = "partner_service_areas"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    partner_id: Mapped[str] = mapped_column(String(36), ForeignKey("partners.id"), nullable=False, index=True)
+    partner_id: Mapped[str] = mapped_column(String(64), ForeignKey("partners.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     geojson: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -68,7 +68,7 @@ class PartnerSettlementBatch(Base):
     __tablename__ = "partner_settlement_batches"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    partner_id: Mapped[str] = mapped_column(String(36), ForeignKey("partners.id"), nullable=False, index=True)
+    partner_id: Mapped[str] = mapped_column(String(64), ForeignKey("partners.id"), nullable=False, index=True)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     period_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="OPEN")
@@ -81,7 +81,7 @@ class PartnerPerformanceMetric(Base):
     __tablename__ = "partner_performance_metrics"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    partner_id: Mapped[str] = mapped_column(String(36), ForeignKey("partners.id"), nullable=False, index=True)
+    partner_id: Mapped[str] = mapped_column(String(64), ForeignKey("partners.id"), nullable=False, index=True)
     metric_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deliveries_ok: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deliveries_fail: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

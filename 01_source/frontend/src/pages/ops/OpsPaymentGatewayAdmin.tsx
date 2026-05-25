@@ -146,7 +146,7 @@ export default function OpsPaymentGatewayAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -174,7 +174,7 @@ export default function OpsPaymentGatewayAdmin() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
           >
             {t === 'catalog' ? 'Catálogo' : t === 'providers' ? 'PSP / Parceiros' : 'Operações'}
           </button>
@@ -182,16 +182,16 @@ export default function OpsPaymentGatewayAdmin() {
       </div>
 
       {tab === 'catalog' && (
-        <form onSubmit={onCreateMethod} className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+        <form onSubmit={onCreateMethod} className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="Código (ex. PIX)"
             required
             value={methodCode}
             onChange={(e) => setMethodCode(e.target.value)}
           />
           <input
-            className="rounded border px-2 py-1 text-sm"
+            className="ellan-field"
             placeholder="Nome"
             required
             value={methodName}
@@ -207,24 +207,24 @@ export default function OpsPaymentGatewayAdmin() {
         <>
           <form
             onSubmit={onCreateProvider}
-            className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3"
+            className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3"
           >
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Nome PSP"
               required
               value={providerForm.name}
               onChange={(e) => setProviderForm((f) => ({ ...f, name: e.target.value }))}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Código"
               required
               value={providerForm.code}
               onChange={(e) => setProviderForm((f) => ({ ...f, code: e.target.value }))}
             />
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={providerForm.provider_type}
               onChange={(e) => setProviderForm((f) => ({ ...f, provider_type: e.target.value }))}
             >
@@ -236,11 +236,11 @@ export default function OpsPaymentGatewayAdmin() {
               Criar PSP
             </button>
           </form>
-          <section className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
             <h2 className="mb-2 text-lg font-medium">Webhook e API key</h2>
             <div className="flex flex-wrap gap-2">
               <select
-                className="rounded border px-2 py-1 text-sm"
+                className="ellan-field"
                 value={selectedProvider}
                 onChange={(e) => setSelectedProvider(e.target.value)}
               >
@@ -252,13 +252,13 @@ export default function OpsPaymentGatewayAdmin() {
                 ))}
               </select>
               <input
-                className="min-w-[14rem] flex-1 rounded border px-2 py-1 text-sm"
+                className="min-w-[14rem] flex-1 ellan-field"
                 placeholder="Webhook URL"
                 value={webhookUrl}
                 onChange={(e) => setWebhookUrl(e.target.value)}
               />
               <input
-                className="rounded border px-2 py-1 text-sm"
+                className="ellan-field"
                 placeholder="Secret"
                 value={webhookSecret}
                 onChange={(e) => setWebhookSecret(e.target.value)}
@@ -276,7 +276,7 @@ export default function OpsPaymentGatewayAdmin() {
 
       {tab === 'ops' && (
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onPurgeIdem()} className="rounded border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onPurgeIdem()} className="ellan-btn-outline">
             Purgar idempotência expirada
           </button>
         </div>

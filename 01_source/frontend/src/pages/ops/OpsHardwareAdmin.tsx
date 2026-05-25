@@ -469,7 +469,7 @@ export default function OpsHardwareAdmin() {
           </p>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => void onSeed()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeed()} className="ellan-btn-outline">
             Seed
           </button>
           <button
@@ -488,21 +488,21 @@ export default function OpsHardwareAdmin() {
                 setLoading(false)
               }
             }}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className="ellan-btn-outline"
           >
             Seed domain-full
           </button>
           <button
             type="button"
             onClick={() => void onSyncMarketplaceMirror()}
-            className="rounded-lg border px-3 py-2 text-sm"
+            className="ellan-btn-outline"
           >
             Sync marketplace mirror
           </button>
-          <button type="button" onClick={() => void onMirrorCerts()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onMirrorCerts()} className="ellan-btn-outline">
             Mirror certs (MKT)
           </button>
-          <button type="button" onClick={() => void onSeedDlq()} className="rounded-lg border px-3 py-2 text-sm">
+          <button type="button" onClick={() => void onSeedDlq()} className="ellan-btn-outline">
             Seed DLQ demo
           </button>
           <button
@@ -538,7 +538,7 @@ export default function OpsHardwareAdmin() {
               ['Audit log', professionalOps.audit_log_entries],
             ] as const
           ).map(([label, value]) => (
-            <div key={label} className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <div key={label} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs uppercase text-gray-400">{label}</p>
               <p className="text-2xl font-semibold">{String(value ?? 0)}</p>
             </div>
@@ -562,7 +562,7 @@ export default function OpsHardwareAdmin() {
               ['Channel bindings', integrationHub.locker_channel_bindings],
             ] as const
           ).map(([label, value]) => (
-            <div key={label} className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <div key={label} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs uppercase text-gray-400">{label}</p>
               <p className="text-2xl font-semibold">{value}</p>
             </div>
@@ -584,7 +584,7 @@ export default function OpsHardwareAdmin() {
               ['Sync pending', dashboard.sync_pending],
             ] as const
           ).map(([label, value]) => (
-            <div key={label} className="rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <div key={label} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
               <p className="text-xs uppercase text-gray-400">{label}</p>
               <p className="text-2xl font-semibold">{value}</p>
             </div>
@@ -598,7 +598,7 @@ export default function OpsHardwareAdmin() {
             key={t}
             type="button"
             onClick={() => setTab(t)}
-            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border'}`}
+            className={`rounded px-3 py-1 text-sm ${tab === t ? 'bg-indigo-600 text-white' : 'border border-slate-600 bg-slate-800 text-slate-200 hover:bg-slate-700'}`}
           >
             {TAB_LABELS[t]}
           </button>
@@ -606,7 +606,7 @@ export default function OpsHardwareAdmin() {
       </div>
 
       {tab === 'links' && (
-        <div className="space-y-4 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <div className="space-y-4 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <p className="text-sm text-gray-500 dark:text-slate-400">
             Visão 360° do locker agregando Payment Gateway, Order Pickup, Payments, Finance e Partner — com verificação
             de refs e scan de gaps cross-domain.
@@ -615,35 +615,35 @@ export default function OpsHardwareAdmin() {
             <label className="text-sm">
               Locker ID
               <input
-                className="ml-2 rounded border px-2 py-1 font-mono text-sm dark:border-slate-600 dark:bg-slate-800"
+                className="ml-2 ellan-field font-mono dark:border-slate-600 dark:bg-slate-800"
                 value={linkLockerId}
                 onChange={(e) => setLinkLockerId(e.target.value)}
               />
             </label>
-            <button type="button" onClick={() => void onLoadLocker360()} className="rounded border px-3 py-1 text-sm">
+            <button type="button" onClick={() => void onLoadLocker360()} className="ellan-btn-outline">
               Locker 360
             </button>
-            <button type="button" onClick={() => void onScanGaps()} className="rounded border px-3 py-1 text-sm">
+            <button type="button" onClick={() => void onScanGaps()} className="ellan-btn-outline">
               Scan gaps
             </button>
-            <button type="button" onClick={() => void onVerifyDomainRefs()} className="rounded border px-3 py-1 text-sm">
+            <button type="button" onClick={() => void onVerifyDomainRefs()} className="ellan-btn-outline">
               Verificar refs
             </button>
             <button
               type="button"
               onClick={() => void onSyncPaymentsFromGateway(true)}
-              className="rounded border px-3 py-1 text-sm"
+              className="ellan-btn-outline"
             >
               Dry-run payment sync
             </button>
             <button
               type="button"
               onClick={() => void onSyncPaymentsFromGateway(false)}
-              className="rounded border px-3 py-1 text-sm"
+              className="ellan-btn-outline"
             >
               Sync payment gateway
             </button>
-            <button type="button" onClick={() => void onAlignPartnerEcosystem()} className="rounded border px-3 py-1 text-sm">
+            <button type="button" onClick={() => void onAlignPartnerEcosystem()} className="ellan-btn-outline">
               Align partner ecosystem
             </button>
             <button
@@ -662,7 +662,7 @@ export default function OpsHardwareAdmin() {
                   setLoading(false)
                 }
               }}
-              className="rounded border px-3 py-1 text-sm"
+              className="ellan-btn-outline"
             >
               Mirror MKT channel partners
             </button>
@@ -682,7 +682,7 @@ export default function OpsHardwareAdmin() {
                   setLoading(false)
                 }
               }}
-              className="rounded border px-3 py-1 text-sm"
+              className="ellan-btn-outline"
             >
               Runtime pull
             </button>
@@ -701,7 +701,7 @@ export default function OpsHardwareAdmin() {
                   setLoading(false)
                 }
               }}
-              className="rounded border px-3 py-1 text-sm"
+              className="ellan-btn-outline"
             >
               Runtime push
             </button>
@@ -718,17 +718,17 @@ export default function OpsHardwareAdmin() {
         <>
           <form
             onSubmit={onCreateVendor}
-            className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3"
+            className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-3"
           >
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Nome (ex. SwipBox)"
               required
               value={vendorForm.name}
               onChange={(e) => setVendorForm({ ...vendorForm, name: e.target.value })}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Código"
               required
               value={vendorForm.code}
@@ -738,9 +738,9 @@ export default function OpsHardwareAdmin() {
               Criar vendor
             </button>
           </form>
-          <div className="grid gap-3 rounded-xl border bg-white p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
+          <div className="grid gap-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900 md:grid-cols-2">
             <select
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               value={selectedVendor}
               onChange={(e) => setSelectedVendor(e.target.value)}
             >
@@ -752,22 +752,22 @@ export default function OpsHardwareAdmin() {
               ))}
             </select>
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Webhook URL"
               value={webhookUrl}
               onChange={(e) => setWebhookUrl(e.target.value)}
             />
             <input
-              className="rounded border px-2 py-1 text-sm"
+              className="ellan-field"
               placeholder="Webhook secret"
               value={webhookSecret}
               onChange={(e) => setWebhookSecret(e.target.value)}
             />
             <div className="flex gap-2">
-              <button type="button" onClick={() => void onWebhook()} className="rounded border px-3 py-1 text-sm">
+              <button type="button" onClick={() => void onWebhook()} className="ellan-btn-outline">
                 Salvar webhook
               </button>
-              <button type="button" onClick={() => void onRotateKey()} className="rounded border px-3 py-1 text-sm">
+              <button type="button" onClick={() => void onRotateKey()} className="ellan-btn-outline">
                 Rotacionar API key
               </button>
             </div>
@@ -776,7 +776,7 @@ export default function OpsHardwareAdmin() {
       )}
 
       {tab !== 'dashboard' && (
-        <div className="overflow-x-auto rounded-xl border bg-white dark:border-slate-700 dark:bg-slate-900">
+        <div className="overflow-x-auto rounded-xl border border-slate-600/70 bg-slate-900/90 dark:border-slate-700 dark:bg-slate-900">
           <table className="min-w-full text-left text-sm">
             <thead className="border-b bg-gray-50 dark:bg-slate-800">
               <tr>
