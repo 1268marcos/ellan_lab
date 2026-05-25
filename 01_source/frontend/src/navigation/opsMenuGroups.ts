@@ -26,8 +26,54 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   }),
   opsGroup('cadastros', '📋', 'Cadastros OPS', {
     items: [
-      navItem('/ops/access/user-roles', 'Papéis de acesso'),
+      navItem('/ops/access/user-roles', 'Papéis de acesso (legado)'),
       navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)'),
+    ],
+  }),
+  opsGroup('usersSecurityOps', '🔐', 'Users & Security OPS', {
+    hub: navItem('/ops/access/security-admin', 'Hub segurança', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Identidade', [
+        navItem('/ops/access/security-admin?tab=overview', 'Visão geral', { newTag: 'Hub' }),
+        navItem('/ops/access/security-admin?tab=intelligence', 'Inteligência OPS', { newTag: 'Pro' }),
+        navItem('/ops/access/security-admin?tab=access-review', 'Certificação de acesso'),
+        navItem('/ops/access/security-admin?tab=alerts', 'Alertas segurança'),
+        navItem('/ops/access/security-admin?tab=compliance', 'LGPD · SOC2 · PCI'),
+        navItem('/ops/access/security-admin?tab=templates', 'Templates onboarding'),
+        navItem('/ops/access/security-admin?tab=matrix', 'Matriz usuário×domínio'),
+        navItem('/ops/access/security-admin?tab=domains', 'Domínios OPS · health'),
+        navItem('/ops/access/security-admin?tab=ecosystem', 'Mapa ecossistema mundial'),
+        navItem('/ops/access/security-admin?tab=locker-players', 'Players locker mundial', {
+          newTag: 'Pro',
+          keywords: 'InPost DHL Magalu Mercado Livre Amazon DPD Correios CTT Worten',
+        }),
+        navItem('/ops/access/security-admin?tab=taxonomy', 'Taxonomia mundial', {
+          keywords: 'segmento food delivery PUDO agregador carrier',
+        }),
+        navItem('/ops/access/security-admin?tab=relations', 'Relações player↔player', { newTag: 'Pro' }),
+        navItem('/ops/access/security-admin?tab=users', 'Usuários'),
+        navItem('/ops/access/security-admin?tab=user-360', 'Usuário 360°', { newTag: 'Pro' }),
+        navItem('/ops/access/security-admin?tab=roles', 'Papéis (user_roles)'),
+        navItem('/ops/access/security-admin?tab=role-catalog', 'Catálogo de roles'),
+        navItem('/ops/access/security-admin?tab=permissions', 'Grupos de permissão'),
+      ], true),
+      section('integracao', 'Integração & auditoria', [
+        navItem('/ops/access/security-admin?tab=grants', 'Grants cross-domain', { newTag: 'Pro' }),
+        navItem('/ops/access/security-admin?tab=webhooks', 'Webhooks OPS'),
+        navItem('/ops/access/security-admin?tab=deliveries', 'Entregas webhook'),
+        navItem('/ops/access/security-admin?tab=api-keys', 'API keys · rotação'),
+        navItem('/ops/access/security-admin?tab=sessions', 'Sessões ativas'),
+        navItem('/ops/access/security-admin?tab=identity', 'Identity / SSO (Okta)'),
+        navItem('/ops/access/security-admin?tab=policy', 'Policy snapshots'),
+        navItem('/ops/access/security-admin?tab=audit', 'Trilha de auditoria'),
+      ]),
+      section('cross', 'Cross-domain', [
+        navItem('/ops/access/security-admin?tab=cross-domain', 'Vínculos legado'),
+        navItem('/ops/partners/admin', 'Parceiros (InPost, DPD…)'),
+        navItem('/ops/marketplace/admin', 'Marketplace (Magalu, ML…)'),
+        navItem('/ops/hardware/admin', 'Hardware (SwipBox, InPost)'),
+        navItem('/ops/payment-gateway/admin', 'Payment Gateway'),
+      ]),
     ],
   }),
   opsGroup('hardwareOps', '🔧', 'Hardware OPS', {

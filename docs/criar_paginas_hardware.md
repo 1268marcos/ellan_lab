@@ -28,3 +28,24 @@ f-) Agregadores / hubs: Cainiao, Parcel2Go, EasyPost, Shippo, Intelipost, Melhor
 **Restrições:** Sem explicação, sem raciocínio, sem diff. Apenas código + comandos + resultado.
 
 
+
+1O. PROMPT
+Codar o pedido em @docs/criar_paginas_HARDWARE.md. Ter como referência @02_docker/complete_schema_20260524_a.sql 
+
+2o. PROMPT
+Buscar criar mais páginas ou seções para  HARDWARE (RELACIONAR COM OUTROS DOMÍNIOS) . Se necessário criar tabelas e relações para termos nível profissional/mundial.
+
+3O. PROMPT
+Considerar InPost, DHL, Magalu, MercadoLivre, Amazon, DPD, Correios, CTT, WORTEN, EL CORTE INGLES entre outros players do segmento de LOCKERS em nível mundial para rever e para complementar HARDWARE (RELACIONAR COM OUTROS DOMÍNIOS) 
+ 
+4o. PROMPT
+Pensar em outros players (redes de locker, carriers globais, Operadores de Rede de Lockers, marketplaces, Redes de Pontos de Coleta, agregadores/hubs, food delivery) que atuam no mercado e como integrar além dos citados. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.
+
+5o. PROMPT
+Desenvolver funcionalidades não previstas para valorizar o projeto. Se necessário criar tabelas e relações para termos o projeto em nível profissional/mundial.
+
+6o. PROMPT
+Atualizar menus com as páginas criadas.
+
+7o. PROMPT
+Codar novas possibilidades dentro do domínio PAYMENT (RELACIONAR COM OUTROS DOMÍNIOS)  que não visualizei e deveria ser implementado

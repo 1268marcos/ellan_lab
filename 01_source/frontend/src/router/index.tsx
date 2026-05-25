@@ -15,6 +15,7 @@ import Lockers from '../pages/ops/Lockers'
 import OpsLockerCreate from '../pages/ops/OpsLockerCreate'
 import OpsPartnersAdmin from '../pages/ops/OpsPartnersAdmin'
 import OpsUserRoles from '../pages/ops/OpsUserRoles'
+import OpsUsersSecurityAdmin from '../pages/ops/OpsUsersSecurityAdmin'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
 import OpsHardwareAdmin from '../pages/ops/OpsHardwareAdmin'
@@ -264,6 +265,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsUserRoles />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/access/security-admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsUsersSecurityAdmin />
             </OpsOnly>
           </Protected>
         }

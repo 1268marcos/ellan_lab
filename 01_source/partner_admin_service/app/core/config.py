@@ -22,6 +22,15 @@ class Settings(BaseSettings):
         default="https://httpbin.org/post",
         alias="WEBHOOK_SANDBOX_FALLBACK_URL",
     )
+    domain_http_timeout_seconds: float = Field(default=8.0, alias="DOMAIN_HTTP_TIMEOUT_SECONDS")
+    payment_gateway_admin_url: str = Field(default="http://localhost:8017", alias="PAYMENT_GATEWAY_ADMIN_URL")
+    marketplace_admin_url: str = Field(default="http://localhost:8119", alias="MARKETPLACE_ADMIN_URL")
+    hardware_admin_url: str = Field(default="http://localhost:8025", alias="HARDWARE_ADMIN_URL")
+    order_pickup_admin_url: str = Field(default="http://localhost:8018", alias="ORDER_PICKUP_ADMIN_URL")
+    finance_admin_url: str = Field(default="http://localhost:8120", alias="FINANCE_ADMIN_URL")
+    payments_admin_url: str = Field(default="http://localhost:8126", alias="PAYMENTS_ADMIN_URL")
+    ml_admin_url: str = Field(default="http://localhost:8021", alias="ML_ADMIN_URL")
+    partner_admin_base_url: str = Field(default="http://localhost:8016", alias="PARTNER_ADMIN_BASE_URL")
 
 
 @lru_cache

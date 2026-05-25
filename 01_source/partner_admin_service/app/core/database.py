@@ -53,6 +53,7 @@ def init_db() -> None:
     from app.models import partner_ecosystem_professional as _partner_ecosystem_pro  # noqa: F401
     from app.models import partner_capability_webhook as _partner_cap_wh  # noqa: F401
     from app.models import partner_global_ops as _partner_global_ops  # noqa: F401
+    from app.models import security as _security  # noqa: F401 — registry, segments, relations, integrations
 
     Base.metadata.create_all(bind=engine)
     _apply_sqlite_compat_migrations(engine)

@@ -94,6 +94,7 @@ const OpsLockerOperatorsPage = lazy(() => import("./pages/OpsLockerOperatorsPage
 const OpsLockerCreatePage = lazy(() => import("./pages/OpsLockerCreatePage"));
 const OpsPartnersAdminPage = lazy(() => import("./pages/OpsPartnersAdminPage"));
 const OpsUserRolesPage = lazy(() => import("./pages/OpsUserRolesPage"));
+const OpsUsersSecurityAdminPage = lazy(() => import("./pages/OpsUsersSecurityAdminPage"));
 const OpsTenantsAdminPage = lazy(() => import("./pages/OpsTenantsAdminPage"));
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
 const OpsHardwareAdminPage = lazy(() => import("./pages/OpsHardwareAdminPage"));
@@ -484,11 +485,200 @@ function TopNav() {
     { to: "/ops/reconciliation", label: "ops /reconciliation", aria: "Reconciliação operacional por order_id", group: "Dashboards" },
     { to: "/ops/updates", label: "ops /updates", aria: "Historico de acrescimos operacionais", group: "Dashboards" },
     {
+      to: "/ops/access/security-admin?tab=overview",
+      label: "Users & Security — hub",
+      aria: "Usuarios roles permissoes webhooks API keys auditoria",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/access/security-admin?tab=domains",
+      label: "Dominios OPS · health",
+      aria: "PARTNER MARKETPLACE PAYMENT HARDWARE health probe",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+    },
+    {
+      to: "/ops/access/security-admin?tab=intelligence",
+      label: "Inteligencia OPS",
+      aria: "Postura risco alertas recomendacoes",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=access-review",
+      label: "Revisao de acesso",
+      aria: "Campanha certificacao SOC2",
+      group: "Users & Security OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/access/security-admin?tab=alerts",
+      label: "Alertas",
+      aria: "API key stale break-glass risk",
+      group: "Users & Security OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/access/security-admin?tab=compliance",
+      label: "Compliance",
+      aria: "LGPD GDPR SOC2 PCI mappings",
+      group: "Users & Security OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/access/security-admin?tab=templates",
+      label: "Templates onboarding",
+      aria: "Carrier marketplace food delivery locker admin",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+    },
+    {
+      to: "/ops/access/security-admin?tab=matrix",
+      label: "Matriz acesso",
+      aria: "Usuario dominio grants heatmap",
+      group: "Users & Security OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
+      to: "/ops/access/security-admin?tab=taxonomy",
+      label: "Taxonomia mundial",
+      aria: "Segmentos locker carrier marketplace food delivery PUDO agregador",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+    },
+    {
+      to: "/ops/access/security-admin?tab=relations",
+      label: "Relacoes player",
+      aria: "MercadoLivre InPost iFood agregadores carriers",
+      group: "Users & Security OPS",
+      opsSubGroup: "Cross-domain",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=locker-players",
+      label: "Players locker mundial",
+      aria: "InPost DHL Magalu Mercado Livre Amazon DPD Correios CTT Worten El Corte Ingles",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=ecosystem",
+      label: "Mapa ecossistema mundial",
+      aria: "InPost DPD Magalu Mercado Livre entidades cross-domain",
+      group: "Users & Security OPS",
+      opsSubGroup: "Hub",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=user-360",
+      label: "Usuario 360",
+      aria: "Visao unificada roles grants sessoes dominios",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=role-catalog",
+      label: "Catalogo de roles",
+      aria: "admin_operacao suporte carrier_ops partner_api",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+    },
+    {
+      to: "/ops/access/security-admin?tab=grants",
+      label: "Grants cross-domain",
+      aria: "security_cross_domain_grants permissoes por entidade",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/access/security-admin?tab=deliveries",
+      label: "Entregas webhook",
+      aria: "security_webhook_deliveries status tentativas",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=sessions",
+      label: "Sessoes ativas",
+      aria: "security_user_sessions SSO API key",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=identity",
+      label: "Identity / SSO",
+      aria: "Okta Azure AD Google Workspace",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=policy",
+      label: "Policy snapshots",
+      aria: "RBAC versioning compliance",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=users",
+      label: "Usuarios",
+      aria: "CRUD public.users",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+    },
+    {
+      to: "/ops/access/security-admin?tab=roles",
+      label: "Papeis (user_roles)",
+      aria: "Concessao e revogacao de roles",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+    },
+    {
+      to: "/ops/access/security-admin?tab=permissions",
+      label: "Grupos de permissao",
+      aria: "security_permission_groups memberships",
+      group: "Users & Security OPS",
+      opsSubGroup: "Identidade",
+    },
+    {
+      to: "/ops/access/security-admin?tab=webhooks",
+      label: "Webhooks OPS",
+      aria: "Webhook endpoints rotate secret",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=api-keys",
+      label: "API keys · rotacao",
+      aria: "security_api_keys rotate",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=audit",
+      label: "Auditoria",
+      aria: "security_audit_logs",
+      group: "Users & Security OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/access/security-admin?tab=cross-domain",
+      label: "Vinculos cross-domain",
+      aria: "user_domain_links partner marketplace locker",
+      group: "Users & Security OPS",
+      opsSubGroup: "Cross-domain",
+    },
+    {
       to: "/ops/access/user-roles",
-      label: "Papeis de acesso (user_roles)",
-      aria: "Gerenciar tabela user_roles e associacoes",
-      group: "Cadastros OPS",
-      opsSubGroup: "Acesso",
+      label: "Papeis (legado)",
+      aria: "Tela legada user_roles",
+      group: "Users & Security OPS",
+      opsSubGroup: "Legado",
     },
     {
       to: "/ops/payment-gateway/admin",
@@ -3407,6 +3597,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsUserRolesPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/access/security-admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsUsersSecurityAdminPage />)}
                 </OpsRoute>
               }
             />

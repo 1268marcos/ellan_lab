@@ -19,6 +19,7 @@ from app.models.partner_extended import (
 )
 from app.services.crypto_util import hash_secret
 from app.services.partner_extended_service import ensure_onboarding
+from app.services.security_service import seed_security_domain
 from app.models.partner_domain import (
     PartnerBillingCycle,
     PartnerBillingPlan,
@@ -71,6 +72,7 @@ def run_seed(db: Session) -> dict[str, int]:
         "market_presence": 0,
         "capability_webhooks": 0,
         "capability_webhooks_mirrored": 0,
+        "security": {},
     }
     now = _utcnow()
 
@@ -585,6 +587,8 @@ def run_seed(db: Session) -> dict[str, int]:
     wh = mirror_webhooks_from_capabilities(db)
     counts["capability_webhooks"] = wh.get("total", 0)
     counts["capability_webhooks_mirrored"] = wh.get("mirrored_from_marketplace", 0)
+
+    counts["security"] = seed_security_domain(db)
 
     db.commit()
     return counts
