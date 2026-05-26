@@ -52,12 +52,15 @@ from app.routers import (
     products,
     rentals_ops,
     runtime_sync,
+    subscriptions_ops,
     v1_ops,
 )
 
 from app.routers.public_auth import router as public_auth_router
 from app.routers.public_catalog import router as public_catalog_router
 from app.routers.public_me import router as public_me_router
+from app.routers.subscriptions_public import router as subscriptions_public_router
+from app.routers.subscriptions_partner_api import router as subscriptions_partner_api_router
 from app.routers.public_orders import router as public_orders_router
 from app.routers.public_pickup import router as public_pickup_router
 from app.routers.public_fiscal import router as public_fiscal_router
@@ -190,11 +193,23 @@ app.include_router(
         Depends(_ensure_rental_schema_dep),
     ],
 )
+app.include_router(
+    subscriptions_ops.router,
+    prefix="/v1/subscriptions-admin",
+    dependencies=[Depends(require_user_roles(allowed_roles={"admin_operacao"}))],
+)
+app.include_router(
+    subscriptions_ops.router,
+    prefix="/internal/subscriptions",
+    dependencies=[Depends(require_internal_token)],
+)
 app.include_router(dev_admin.router)
 app.include_router(dev_base_catalog.router)
 app.include_router(public_auth_router)
 app.include_router(public_catalog_router)
 app.include_router(public_me_router)
+app.include_router(subscriptions_public_router)
+app.include_router(subscriptions_partner_api_router)
 app.include_router(public_orders_router)
 app.include_router(public_pickup_router)
 app.include_router(public_fiscal_router)

@@ -154,6 +154,7 @@ const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsRentalAdminPage = lazy(() => import("./pages/OpsRentalAdminPage"));
+const OpsSubscriptionsAdminPage = lazy(() => import("./pages/OpsSubscriptionsAdminPage"));
 const OpsProductBundlesPage = lazy(() => import("./pages/OpsProductBundlesPage"));
 const OpsProductsAdminRedirect = lazy(() => import("./pages/OpsProductsAdminRedirect"));
 const OpsPromotionsPage = lazy(() => import("./pages/OpsPromotionsPage"));
@@ -2580,6 +2581,129 @@ function TopNav() {
       opsSubGroup: "Financeiro",
       newTag: "New",
     },
+    {
+      to: "/ops/subscriptions/admin",
+      label: "ops /subscriptions/admin",
+      aria: "Hub OPS assinaturas B2C — planos, MRR, benefícios",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Hub & analytics",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=analytics",
+      label: "ops /subscriptions/analytics",
+      aria: "Tendências MRR por plano",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Hub & analytics",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=ecosystem",
+      label: "ops /subscriptions/ecosystem",
+      aria: "Players mundiais por tier de assinatura",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Hub & analytics",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=plans",
+      label: "ops /subscriptions/plans",
+      aria: "Planos subscription_plans BASIC PREMIUM PRO ENTERPRISE",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Planos & catálogo",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=entitlements",
+      label: "ops /subscriptions/entitlements",
+      aria: "Entitlements plano x player mundial",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Planos & catálogo",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=partners",
+      label: "ops /subscriptions/partners",
+      aria: "Programas parceiros subscription_partner_programs",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Planos & catálogo",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=subscriptions",
+      label: "ops /subscriptions/active",
+      aria: "Assinaturas customer_subscriptions Magalu InPost DHL 360",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Operação",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=benefits",
+      label: "ops /subscriptions/benefits",
+      aria: "Uso de benefícios subscription_benefits_usage",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Operação",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=billing",
+      label: "ops /subscriptions/billing",
+      aria: "Faturas subscription_invoices",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Operação",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=events",
+      label: "ops /subscriptions/events",
+      aria: "Eventos subscription_events",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Operação",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=dunning",
+      label: "ops /subscriptions/dunning",
+      aria: "Casos dunning inadimplência",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Operação",
+      newTag: "P1",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=integrations",
+      label: "ops /subscriptions/integrations",
+      aria: "Webhooks e rotação API keys assinaturas",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Integrações",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=deliveries",
+      label: "ops /subscriptions/deliveries",
+      aria: "Log entregas webhook",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Integrações",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=relations",
+      label: "ops /subscriptions/relations",
+      aria: "Relações player a player subscription_player_relations",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Integrações",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=food_delivery",
+      label: "ops /subscriptions/food-delivery",
+      aria: "Handoffs iFood Rappi Uber Eats",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Integrações",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=premium",
+      label: "ops /subscriptions/premium",
+      aria: "Health churn referrals gifts loyalty experiments renewals",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Growth",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/subscriptions/admin?tab=global",
+      label: "ops /subscriptions/global",
+      aria: "Preços regionais add-ons SLA settlements LGPD retenção",
+      group: "Assinaturas OPS",
+      opsSubGroup: "Growth",
+      newTag: "World",
+    },
     { to: "/ops/logistics/dashboard", label: "ops /logistics/dashboard", aria: "Dashboard OPS de Logistics", group: "Logística" },
     { to: "/ops/logistics/manifests", label: "ops /logistics/manifests", aria: "Operacao OPS de manifestos L3/D2", group: "Logística" },
     { to: "/ops/logistics/manifests-overview", label: "ops /logistics/manifests-overview", aria: "Overview OPS de manifestos L3/D3", group: "Logística" },
@@ -2896,6 +3020,7 @@ function TopNav() {
     "Lockers",
     "Inteligência",
     "Rentals OPS",
+    "Assinaturas OPS",
     "Runtime",
     "Logística",
     "Logística / Inventário",
@@ -4379,6 +4504,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsRentalAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/subscriptions/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsSubscriptionsAdminPage />)}
                 </OpsRoute>
               }
             />

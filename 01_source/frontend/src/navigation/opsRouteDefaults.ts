@@ -8,6 +8,7 @@ export const OPS_ROUTE_DEFAULT_TAB: Record<string, string> = {
   '/ops/marketplace/admin': 'overview',
   '/ops/ml/admin': 'partners',
   '/ops/rentals/admin': 'networks',
+  '/ops/subscriptions/admin': 'overview',
   '/ops/products/admin': 'ecosystem',
   '/ops/privacy-compliance/admin': 'compliance',
   '/ops/access/security-admin': 'overview',

@@ -13,6 +13,7 @@ const R = '/ops/rentals/admin'
 const PR = '/ops/products/admin'
 const PC = '/ops/privacy-compliance/admin'
 const MK = '/ops/marketing/promotions'
+const SUB = '/ops/subscriptions/admin'
 
 const H = '/ops/hardware/admin'
 
@@ -445,6 +446,83 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem('/ops/products/pricing-fiscal', 'Pricing & fiscal lab'),
         navItem(`${PR}?tab=bundles`, 'Bundles'),
         navItem('/ops/products/pricing-rules', 'Regras de preço'),
+      ]),
+    ],
+  }),
+  opsGroup('subscriptions', '💳', 'Assinaturas', {
+    hub: navItem(SUB, 'Hub Assinaturas', { newTag: 'Hub' }),
+    sections: [
+      section('subHub', 'Hub & analytics', [
+        navItem(SUB, 'Visão geral & MRR', { newTag: 'Hub' }),
+        navItem(`${SUB}?tab=analytics`, 'Analytics & tendências MRR', {
+          keywords: 'MRR ARR churn trends metrics',
+        }),
+        navItem(`${SUB}?tab=ecosystem`, 'Ecossistema mundial', {
+          keywords:
+            'InPost DHL Magalu Mercado Livre Amazon DPD Correios CTT Worten El Corte Inglés SwipBox Packeta sync',
+        }),
+      ], true),
+      section('subCatalog', 'Planos & catálogo', [
+        navItem(`${SUB}?tab=plans`, 'Planos BASIC · PREMIUM · PRO · ENTERPRISE', {
+          keywords: 'subscription_plans pricing tier',
+        }),
+        navItem(`${SUB}?tab=entitlements`, 'Entitlements por player', {
+          keywords: 'subscription_plan_entitlements locker marketplace',
+        }),
+        navItem(`${SUB}?tab=partners`, 'Programas parceiros B2B', {
+          keywords: 'Magalu Mercado Livre InPost DHL marketplace carrier KYB revenue share',
+        }),
+      ]),
+      section('subOps', 'Operação & assinantes', [
+        navItem(`${SUB}?tab=subscriptions`, 'Assinaturas ativas · 360°', {
+          keywords: 'customer_subscriptions trial cancel renew subscriber detail 360',
+        }),
+        navItem(`${SUB}?tab=benefits`, 'Uso de benefícios', {
+          keywords: 'FREE_SHIPPING PRIORITY_SHELF subscription_benefits_usage',
+        }),
+        navItem(`${SUB}?tab=billing`, 'Faturamento & invoices', {
+          keywords: 'subscription_invoices mark-paid generate',
+        }),
+        navItem(`${SUB}?tab=events`, 'Eventos de lifecycle', {
+          keywords: 'subscription_events created renewed cancelled',
+        }),
+        navItem(`${SUB}?tab=dunning`, 'Dunning & inadimplência', {
+          newTag: 'P1',
+          keywords: 'PAST_DUE subscription_dunning_cases resolve',
+        }),
+      ]),
+      section('subIntegrations', 'Integrações & rede', [
+        navItem(`${SUB}?tab=integrations`, 'Webhooks & API keys', {
+          keywords: 'webhook HMAC rotate api key sub_ partner',
+        }),
+        navItem(`${SUB}?tab=deliveries`, 'Entregas webhook', {
+          newTag: 'Log',
+          keywords: 'subscription_webhook_deliveries simulate delivery',
+        }),
+        navItem(`${SUB}?tab=relations`, 'Relações player↔player', {
+          newTag: 'Pro',
+          keywords: 'subscription_player_relations FOOD_HANDOFF integration',
+        }),
+        navItem(`${SUB}?tab=food_delivery`, 'Food delivery handoffs', {
+          keywords: 'iFood Rappi Uber Eats Glovo Deliveroo DoorDash subscription_food_delivery_handoffs',
+        }),
+      ]),
+      section('subGrowth', 'Growth & retenção', [
+        navItem(`${SUB}?tab=premium`, 'Premium · health & referrals', {
+          newTag: 'Pro',
+          keywords:
+            'health churn referral gift loyalty experiment renewal benefit-check compare-matrix at-risk',
+        }),
+        navItem(`${SUB}?tab=global`, 'Global · preços & compliance', {
+          newTag: 'World',
+          keywords:
+            'regional pricing addon pause SLA settlement LGPD consent retention BR PT EU UK US ENTERPRISE',
+        }),
+        navItem(`${SUB}?tab=efficiency`, 'Eficiência · inbox & cupons', {
+          newTag: 'Smart',
+          keywords:
+            'promo code plan change upgrade matrix automation family usage meter ops inbox proration',
+        }),
       ]),
     ],
   }),

@@ -55,6 +55,9 @@ import ExpansionSimulator from '../pages/financial/ExpansionSimulator'
 import PartnerRevenue from '../pages/financial/PartnerRevenue'
 import OpsPrivacyComplianceAdmin from '../pages/ops/OpsPrivacyComplianceAdmin'
 import OpsRentalAdmin from '../pages/ops/OpsRentalAdmin'
+import OpsSubscriptionsAdmin from '../pages/ops/OpsSubscriptionsAdmin'
+import SubscriptionCheckout from '../pages/SubscriptionCheckout'
+import OpsSubscriptionDetail from '../pages/ops/OpsSubscriptionDetail'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
 import OpsProductsAdmin from '../pages/ops/OpsProductsAdmin'
 import OpsProductsCatalog from '../pages/ops/OpsProductsCatalog'
@@ -521,6 +524,34 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsRentalAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/assinatura"
+        element={
+          <Protected>
+            <SubscriptionCheckout />
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/subscriptions/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsSubscriptionsAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/subscriptions/subscribers/:subscriptionId"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsSubscriptionDetail />
             </OpsOnly>
           </Protected>
         }

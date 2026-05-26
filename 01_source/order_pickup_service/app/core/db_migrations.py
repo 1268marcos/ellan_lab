@@ -5393,6 +5393,901 @@ def _create_subscription_benefits_usage(conn, applied: list[str]) -> None:
     applied.append(name)
 
 
+def _create_subscription_usage(conn, applied: list[str]) -> None:
+    name = "subscription_usage.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_usage (
+            id              BIGSERIAL PRIMARY KEY,
+            subscription_id VARCHAR(36) REFERENCES customer_subscriptions(id),
+            usage_month     DATE,
+            orders_count    INTEGER DEFAULT 0,
+            free_shipping_used INTEGER DEFAULT 0,
+            savings_cents   INTEGER DEFAULT 0
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_usage_sub ON subscription_usage (subscription_id, usage_month)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_webhook_endpoints(conn, applied: list[str]) -> None:
+    name = "subscription_webhook_endpoints.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_webhook_endpoints (
+            id           VARCHAR(36) PRIMARY KEY,
+            partner_code VARCHAR(64) NOT NULL,
+            url          VARCHAR(500) NOT NULL,
+            secret_hash  VARCHAR(128) NOT NULL,
+            secret_key   VARCHAR(256),
+            events_json  TEXT NOT NULL DEFAULT '["subscription.created"]',
+            active       BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_subscription_webhook_partner ON subscription_webhook_endpoints (partner_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_api_keys(conn, applied: list[str]) -> None:
+    name = "subscription_api_keys.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_api_keys (
+            id           VARCHAR(36) PRIMARY KEY,
+            partner_code VARCHAR(64) NOT NULL,
+            key_prefix   VARCHAR(16) NOT NULL,
+            key_hash     VARCHAR(128) NOT NULL,
+            label        VARCHAR(64),
+            scopes_json  TEXT NOT NULL DEFAULT '[]',
+            expires_at   TIMESTAMPTZ,
+            last_used_at TIMESTAMPTZ,
+            revoked_at   TIMESTAMPTZ,
+            created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_api_keys_partner ON subscription_api_keys (partner_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _alter_customer_subscriptions_partner_code(conn, applied: list[str]) -> None:
+    name = "customer_subscriptions.add_partner_code_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        ALTER TABLE customer_subscriptions
+        ADD COLUMN IF NOT EXISTS partner_code VARCHAR(64)
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_customer_subscriptions_partner ON customer_subscriptions (partner_code, status)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_events(conn, applied: list[str]) -> None:
+    name = "subscription_events.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_events (
+            id              VARCHAR(36) PRIMARY KEY,
+            subscription_id VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            event_type      VARCHAR(64) NOT NULL,
+            actor_id        VARCHAR(64),
+            payload_json    TEXT NOT NULL DEFAULT '{}',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_events_sub ON subscription_events (subscription_id, created_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_invoices(conn, applied: list[str]) -> None:
+    name = "subscription_invoices.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_invoices (
+            id              VARCHAR(36) PRIMARY KEY,
+            subscription_id VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            period_start    TIMESTAMPTZ NOT NULL,
+            period_end      TIMESTAMPTZ NOT NULL,
+            amount_cents    INTEGER NOT NULL,
+            currency        VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            status          VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            payment_ref     VARCHAR(128),
+            paid_at         TIMESTAMPTZ,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_invoices_sub ON subscription_invoices (subscription_id, period_start DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_plan_entitlements(conn, applied: list[str]) -> None:
+    name = "subscription_plan_entitlements.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_plan_entitlements (
+            id              VARCHAR(36) PRIMARY KEY,
+            plan_code       VARCHAR(20) NOT NULL,
+            player_code     VARCHAR(64) NOT NULL,
+            player_name     VARCHAR(128) NOT NULL,
+            player_type     VARCHAR(32) NOT NULL DEFAULT 'MARKETPLACE',
+            region_codes_json TEXT NOT NULL DEFAULT '[]',
+            enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+            priority_level  INTEGER NOT NULL DEFAULT 0,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (plan_code, player_code)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_partner_programs(conn, applied: list[str]) -> None:
+    name = "subscription_partner_programs.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_partner_programs (
+            id                  VARCHAR(36) PRIMARY KEY,
+            partner_code        VARCHAR(64) NOT NULL UNIQUE,
+            partner_name        VARCHAR(128) NOT NULL,
+            partner_type        VARCHAR(32) NOT NULL DEFAULT 'MARKETPLACE',
+            default_plan_code   VARCHAR(20),
+            revenue_share_pct   NUMERIC(5,2) DEFAULT 0,
+            countries_json      TEXT NOT NULL DEFAULT '[]',
+            kyb_status          VARCHAR(20) NOT NULL DEFAULT 'APPROVED',
+            webhook_enabled     BOOLEAN NOT NULL DEFAULT TRUE,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_webhook_deliveries(conn, applied: list[str]) -> None:
+    name = "subscription_webhook_deliveries.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_webhook_deliveries (
+            id              VARCHAR(36) PRIMARY KEY,
+            endpoint_id     VARCHAR(36) NOT NULL REFERENCES subscription_webhook_endpoints(id),
+            subscription_id VARCHAR(36),
+            event_type      VARCHAR(64) NOT NULL,
+            http_status     INTEGER,
+            attempt_no      INTEGER NOT NULL DEFAULT 1,
+            error_message   TEXT,
+            payload_json    TEXT NOT NULL DEFAULT '{}',
+            delivered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_wh_del_endpoint ON subscription_webhook_deliveries (endpoint_id, delivered_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_dunning_cases(conn, applied: list[str]) -> None:
+    name = "subscription_dunning_cases.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_dunning_cases (
+            id              VARCHAR(36) PRIMARY KEY,
+            subscription_id VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            stage           VARCHAR(16) NOT NULL DEFAULT 'D+1',
+            status          VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            amount_due_cents INTEGER NOT NULL DEFAULT 0,
+            opened_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            resolved_at     TIMESTAMPTZ,
+            resolution_note TEXT,
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_subscription_dunning_sub ON subscription_dunning_cases (subscription_id, status)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_ecosystem_players(conn, applied: list[str]) -> None:
+    name = "subscription_ecosystem_players.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_ecosystem_players (
+            code                VARCHAR(64) PRIMARY KEY,
+            name                VARCHAR(128) NOT NULL,
+            player_type         VARCHAR(32) NOT NULL,
+            segment             VARCHAR(32) NOT NULL,
+            regions_json        TEXT NOT NULL DEFAULT '[]',
+            default_plan_code   VARCHAR(20),
+            revenue_share_pct   NUMERIC(5,2) DEFAULT 0,
+            integration_modes_json TEXT NOT NULL DEFAULT '[]',
+            supports_lockers    BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_pudo       BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_food       BOOLEAN NOT NULL DEFAULT FALSE,
+            supports_marketplace BOOLEAN NOT NULL DEFAULT FALSE,
+            priority_flag       BOOLEAN NOT NULL DEFAULT FALSE,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            metadata_json       TEXT NOT NULL DEFAULT '{}',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_eco_players_segment ON subscription_ecosystem_players (segment, active)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_player_relations(conn, applied: list[str]) -> None:
+    name = "subscription_player_relations.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_player_relations (
+            id                  VARCHAR(36) PRIMARY KEY,
+            from_player_code    VARCHAR(64) NOT NULL,
+            to_player_code      VARCHAR(64) NOT NULL,
+            relation_type       VARCHAR(32) NOT NULL,
+            integration_mode    VARCHAR(16) NOT NULL DEFAULT 'API',
+            min_plan_code       VARCHAR(20),
+            notes               TEXT,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (from_player_code, to_player_code, relation_type)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_player_rel_from ON subscription_player_relations (from_player_code)"
+    ))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_player_rel_type ON subscription_player_relations (relation_type)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_integration_channels(conn, applied: list[str]) -> None:
+    name = "subscription_integration_channels.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_integration_channels (
+            id                  VARCHAR(36) PRIMARY KEY,
+            player_code         VARCHAR(64) NOT NULL,
+            channel_kind        VARCHAR(16) NOT NULL,
+            direction           VARCHAR(8) NOT NULL DEFAULT 'OUTBOUND',
+            auth_type           VARCHAR(16) NOT NULL DEFAULT 'API_KEY',
+            base_url_template   VARCHAR(500),
+            webhook_events_json TEXT NOT NULL DEFAULT '[]',
+            config_json         TEXT NOT NULL DEFAULT '{}',
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_integ_ch_player ON subscription_integration_channels (player_code, active)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_food_delivery_handoffs(conn, applied: list[str]) -> None:
+    name = "subscription_food_delivery_handoffs.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_food_delivery_handoffs (
+            id                  VARCHAR(36) PRIMARY KEY,
+            food_platform_code  VARCHAR(64) NOT NULL,
+            pickup_player_code  VARCHAR(64) NOT NULL,
+            handoff_type        VARCHAR(16) NOT NULL DEFAULT 'PUDO',
+            sla_minutes         INTEGER NOT NULL DEFAULT 45,
+            min_plan_code       VARCHAR(20) NOT NULL DEFAULT 'PREMIUM',
+            integration_mode    VARCHAR(16) NOT NULL DEFAULT 'WEBHOOK',
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (food_platform_code, pickup_player_code, handoff_type)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_food_handoff_platform ON subscription_food_delivery_handoffs (food_platform_code)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_health_snapshots(conn, applied: list[str]) -> None:
+    name = "subscription_health_snapshots.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_health_snapshots (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            health_score        INTEGER NOT NULL DEFAULT 50,
+            churn_risk          VARCHAR(16) NOT NULL DEFAULT 'LOW',
+            factors_json        TEXT NOT NULL DEFAULT '{}',
+            computed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_health_sub ON subscription_health_snapshots (subscription_id, computed_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_referrals(conn, applied: list[str]) -> None:
+    name = "subscription_referrals.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_referrals (
+            id                  VARCHAR(36) PRIMARY KEY,
+            referrer_user_id    VARCHAR(36) NOT NULL,
+            referred_user_id    VARCHAR(36),
+            referral_code       VARCHAR(32) NOT NULL UNIQUE,
+            reward_cents        INTEGER NOT NULL DEFAULT 500,
+            status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            converted_at        TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_gift_codes(conn, applied: list[str]) -> None:
+    name = "subscription_gift_codes.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_gift_codes (
+            id                  VARCHAR(36) PRIMARY KEY,
+            gift_code           VARCHAR(24) NOT NULL UNIQUE,
+            purchaser_user_id   VARCHAR(36) NOT NULL,
+            recipient_email     VARCHAR(128),
+            plan_code           VARCHAR(20) NOT NULL,
+            months              INTEGER NOT NULL DEFAULT 1,
+            status              VARCHAR(20) NOT NULL DEFAULT 'ISSUED',
+            redeemed_by_user_id VARCHAR(36),
+            redeemed_at         TIMESTAMPTZ,
+            expires_at          TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_loyalty_ledger(conn, applied: list[str]) -> None:
+    name = "subscription_loyalty_ledger.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_loyalty_ledger (
+            id                  VARCHAR(36) PRIMARY KEY,
+            user_id             VARCHAR(36) NOT NULL,
+            subscription_id     VARCHAR(36),
+            points_delta        INTEGER NOT NULL,
+            reason              VARCHAR(64) NOT NULL,
+            balance_after       INTEGER NOT NULL DEFAULT 0,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_loyalty_user ON subscription_loyalty_ledger (user_id, created_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_price_experiments(conn, applied: list[str]) -> None:
+    name = "subscription_price_experiments.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_price_experiments (
+            id                  VARCHAR(36) PRIMARY KEY,
+            experiment_code     VARCHAR(32) NOT NULL,
+            plan_code           VARCHAR(20) NOT NULL,
+            variant             VARCHAR(16) NOT NULL,
+            monthly_fee_cents   INTEGER NOT NULL,
+            traffic_pct         INTEGER NOT NULL DEFAULT 50,
+            conversions         INTEGER NOT NULL DEFAULT 0,
+            impressions         INTEGER NOT NULL DEFAULT 0,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (experiment_code, variant)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_renewal_queue(conn, applied: list[str]) -> None:
+    name = "subscription_renewal_queue.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_renewal_queue (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            scheduled_at        TIMESTAMPTZ NOT NULL,
+            status              VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+            attempt_count       INTEGER NOT NULL DEFAULT 0,
+            last_error          TEXT,
+            executed_at         TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_renewal_sched ON subscription_renewal_queue (status, scheduled_at)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_churn_alerts(conn, applied: list[str]) -> None:
+    name = "subscription_churn_alerts.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_churn_alerts (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            alert_type          VARCHAR(32) NOT NULL,
+            severity            VARCHAR(16) NOT NULL DEFAULT 'MEDIUM',
+            message             TEXT NOT NULL,
+            resolved_at         TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_churn_sub ON subscription_churn_alerts (subscription_id, resolved_at)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_regional_prices(conn, applied: list[str]) -> None:
+    name = "subscription_regional_prices.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_regional_prices (
+            id                  VARCHAR(36) PRIMARY KEY,
+            plan_code           VARCHAR(20) NOT NULL,
+            region_code         VARCHAR(8) NOT NULL,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            monthly_fee_cents   INTEGER NOT NULL,
+            yearly_fee_cents    INTEGER,
+            tax_inclusive       BOOLEAN NOT NULL DEFAULT TRUE,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (plan_code, region_code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_regional_plan ON subscription_regional_prices (plan_code, active)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_plan_addons(conn, applied: list[str]) -> None:
+    name = "subscription_plan_addons.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_plan_addons (
+            id                  VARCHAR(36) PRIMARY KEY,
+            code                VARCHAR(32) NOT NULL UNIQUE,
+            name                VARCHAR(128) NOT NULL,
+            addon_type          VARCHAR(32) NOT NULL,
+            description         TEXT,
+            monthly_fee_cents   INTEGER NOT NULL DEFAULT 0,
+            min_plan_code       VARCHAR(20),
+            regions_json        TEXT NOT NULL DEFAULT '[]',
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            metadata_json       TEXT NOT NULL DEFAULT '{}',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_active_addons(conn, applied: list[str]) -> None:
+    name = "subscription_active_addons.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_active_addons (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            addon_code          VARCHAR(32) NOT NULL,
+            status              VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            monthly_fee_cents   INTEGER NOT NULL DEFAULT 0,
+            started_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            ended_at            TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (subscription_id, addon_code)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_active_addons_sub ON subscription_active_addons (subscription_id, status)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_pause_periods(conn, applied: list[str]) -> None:
+    name = "subscription_pause_periods.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_pause_periods (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            pause_start         TIMESTAMPTZ NOT NULL,
+            pause_end           TIMESTAMPTZ,
+            reason              VARCHAR(64) NOT NULL DEFAULT 'USER_REQUEST',
+            status              VARCHAR(20) NOT NULL DEFAULT 'SCHEDULED',
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_pause_sub ON subscription_pause_periods (subscription_id, status)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_sla_targets(conn, applied: list[str]) -> None:
+    name = "subscription_sla_targets.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_sla_targets (
+            id                  VARCHAR(36) PRIMARY KEY,
+            plan_code           VARCHAR(20) NOT NULL,
+            region_code         VARCHAR(8),
+            metric_code         VARCHAR(32) NOT NULL,
+            target_value        NUMERIC(12, 4) NOT NULL,
+            unit                VARCHAR(16) NOT NULL DEFAULT 'PCT',
+            description         TEXT,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (plan_code, region_code, metric_code)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_partner_settlements(conn, applied: list[str]) -> None:
+    name = "subscription_partner_settlements.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_partner_settlements (
+            id                  VARCHAR(36) PRIMARY KEY,
+            partner_code        VARCHAR(64) NOT NULL,
+            period_month        VARCHAR(7) NOT NULL,
+            subscription_count  INTEGER NOT NULL DEFAULT 0,
+            gross_cents         INTEGER NOT NULL DEFAULT 0,
+            share_pct           NUMERIC(6, 3) NOT NULL DEFAULT 0,
+            net_cents           INTEGER NOT NULL DEFAULT 0,
+            currency            VARCHAR(8) NOT NULL DEFAULT 'BRL',
+            status              VARCHAR(20) NOT NULL DEFAULT 'OPEN',
+            paid_at             TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (partner_code, period_month)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_settlement_partner ON subscription_partner_settlements (partner_code, period_month DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_retention_offers(conn, applied: list[str]) -> None:
+    name = "subscription_retention_offers.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_retention_offers (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            offer_code          VARCHAR(32) NOT NULL,
+            discount_pct        NUMERIC(5, 2) NOT NULL DEFAULT 0,
+            bonus_months        INTEGER NOT NULL DEFAULT 0,
+            valid_until         TIMESTAMPTZ NOT NULL,
+            status              VARCHAR(20) NOT NULL DEFAULT 'OFFERED',
+            accepted_at         TIMESTAMPTZ,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_retention_sub ON subscription_retention_offers (subscription_id, status)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_consent_records(conn, applied: list[str]) -> None:
+    name = "subscription_consent_records.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_consent_records (
+            id                  VARCHAR(36) PRIMARY KEY,
+            user_id             VARCHAR(36) NOT NULL,
+            consent_type        VARCHAR(32) NOT NULL,
+            policy_version      VARCHAR(16) NOT NULL,
+            locale              VARCHAR(8) NOT NULL DEFAULT 'pt-BR',
+            accepted_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            ip_hash             VARCHAR(64),
+            metadata_json       TEXT NOT NULL DEFAULT '{}',
+            UNIQUE (user_id, consent_type, policy_version)
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_consent_user ON subscription_consent_records (user_id, accepted_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_promo_codes(conn, applied: list[str]) -> None:
+    name = "subscription_promo_codes.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_promo_codes (
+            id                  VARCHAR(36) PRIMARY KEY,
+            code                VARCHAR(32) NOT NULL UNIQUE,
+            description         TEXT,
+            discount_pct        NUMERIC(5, 2) NOT NULL DEFAULT 0,
+            discount_cents      INTEGER NOT NULL DEFAULT 0,
+            bonus_months        INTEGER NOT NULL DEFAULT 0,
+            eligible_plans_json TEXT NOT NULL DEFAULT '[]',
+            max_redemptions     INTEGER,
+            redemption_count    INTEGER NOT NULL DEFAULT 0,
+            partner_code        VARCHAR(64),
+            valid_from          TIMESTAMPTZ,
+            valid_until         TIMESTAMPTZ,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_promo_redemptions(conn, applied: list[str]) -> None:
+    name = "subscription_promo_redemptions.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_promo_redemptions (
+            id                  VARCHAR(36) PRIMARY KEY,
+            promo_code_id       VARCHAR(36) NOT NULL REFERENCES subscription_promo_codes(id),
+            user_id             VARCHAR(36) NOT NULL,
+            subscription_id     VARCHAR(36) REFERENCES customer_subscriptions(id),
+            discount_applied_cents INTEGER NOT NULL DEFAULT 0,
+            redeemed_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (promo_code_id, user_id)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_plan_changes(conn, applied: list[str]) -> None:
+    name = "subscription_plan_changes.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_plan_changes (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            from_plan_code      VARCHAR(20) NOT NULL,
+            to_plan_code        VARCHAR(20) NOT NULL,
+            change_type         VARCHAR(16) NOT NULL,
+            proration_cents     INTEGER NOT NULL DEFAULT 0,
+            effective_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            actor_id            VARCHAR(64),
+            notes               TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+    conn.execute(text(
+        "CREATE INDEX IF NOT EXISTS ix_sub_plan_chg_sub ON subscription_plan_changes (subscription_id, created_at DESC)"
+    ))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_usage_meters(conn, applied: list[str]) -> None:
+    name = "subscription_usage_meters.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_usage_meters (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            meter_code          VARCHAR(32) NOT NULL,
+            period_month        VARCHAR(7) NOT NULL,
+            quantity            INTEGER NOT NULL DEFAULT 0,
+            included_quantity   INTEGER,
+            overage_cents       INTEGER NOT NULL DEFAULT 0,
+            recorded_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            UNIQUE (subscription_id, meter_code, period_month)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_automation_rules(conn, applied: list[str]) -> None:
+    name = "subscription_automation_rules.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_automation_rules (
+            id                  VARCHAR(36) PRIMARY KEY,
+            rule_code           VARCHAR(32) NOT NULL UNIQUE,
+            name                VARCHAR(128) NOT NULL,
+            trigger_event       VARCHAR(64) NOT NULL,
+            action_type         VARCHAR(32) NOT NULL,
+            config_json         TEXT NOT NULL DEFAULT '{}',
+            priority            INTEGER NOT NULL DEFAULT 100,
+            active              BOOLEAN NOT NULL DEFAULT TRUE,
+            last_run_at         TIMESTAMPTZ,
+            run_count           INTEGER NOT NULL DEFAULT 0,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
+def _create_subscription_family_members(conn, applied: list[str]) -> None:
+    name = "subscription_family_members.create_table_v1"
+    if _migration_applied(conn, name):
+        return
+
+    conn.execute(text("""
+        CREATE TABLE IF NOT EXISTS subscription_family_members (
+            id                  VARCHAR(36) PRIMARY KEY,
+            subscription_id     VARCHAR(36) NOT NULL REFERENCES customer_subscriptions(id),
+            member_user_id      VARCHAR(36) NOT NULL,
+            role                VARCHAR(16) NOT NULL DEFAULT 'MEMBER',
+            status              VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+            invited_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            joined_at           TIMESTAMPTZ,
+            UNIQUE (subscription_id, member_user_id)
+        )
+    """))
+
+    _mark_migration(conn, name)
+    applied.append(name)
+
+
 def _create_marketplace_sellers(conn, applied: list[str]) -> None:
     name = "marketplace_sellers.create_table_v1"
     if _migration_applied(conn, name):
@@ -9329,6 +10224,41 @@ _POSTGRES_MIGRATION_STEPS = [
     _create_subscription_plans,
     _create_customer_subscriptions,
     _create_subscription_benefits_usage,
+    _create_subscription_usage,
+    _create_subscription_webhook_endpoints,
+    _create_subscription_api_keys,
+    _alter_customer_subscriptions_partner_code,
+    _create_subscription_events,
+    _create_subscription_invoices,
+    _create_subscription_plan_entitlements,
+    _create_subscription_partner_programs,
+    _create_subscription_webhook_deliveries,
+    _create_subscription_dunning_cases,
+    _create_subscription_ecosystem_players,
+    _create_subscription_player_relations,
+    _create_subscription_integration_channels,
+    _create_subscription_food_delivery_handoffs,
+    _create_subscription_health_snapshots,
+    _create_subscription_referrals,
+    _create_subscription_gift_codes,
+    _create_subscription_loyalty_ledger,
+    _create_subscription_price_experiments,
+    _create_subscription_renewal_queue,
+    _create_subscription_churn_alerts,
+    _create_subscription_regional_prices,
+    _create_subscription_plan_addons,
+    _create_subscription_active_addons,
+    _create_subscription_pause_periods,
+    _create_subscription_sla_targets,
+    _create_subscription_partner_settlements,
+    _create_subscription_retention_offers,
+    _create_subscription_consent_records,
+    _create_subscription_promo_codes,
+    _create_subscription_promo_redemptions,
+    _create_subscription_plan_changes,
+    _create_subscription_usage_meters,
+    _create_subscription_automation_rules,
+    _create_subscription_family_members,
     _create_marketplace_sellers,
     _create_seller_products,
     _create_marketplace_commissions,
