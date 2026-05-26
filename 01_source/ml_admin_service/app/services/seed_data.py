@@ -278,5 +278,10 @@ def run_seed(db: Session) -> dict[str, int]:
     counts["network_players"] = net_seed.get("inserted", 0) + net_seed.get("updated", 0)
     counts["network_profiles"] = net_seed.get("profiles_created", 0)
 
+    from app.services import ml_efficiency_service
+
+    eff = ml_efficiency_service.seed_efficiency(db)
+    counts.update({f"efficiency_{k}": v for k, v in eff.items()})
+
     db.commit()
     return counts

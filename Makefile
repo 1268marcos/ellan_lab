@@ -1,5 +1,5 @@
 # Raiz do Ellan Lab — alvos utilitários para desenvolvimento e CI.
-.PHONY: test-collect test-payment-contract test-order-pickup-admin e2e-payment-p0 e2e-payment-ui migrate-partner-admin-security migrate-partner-admin-security-sqlite
+.PHONY: test-collect test-payment-contract test-order-pickup-admin test-analytics-bi-admin e2e-payment-p0 e2e-payment-ui migrate-partner-admin-security migrate-partner-admin-security-sqlite
 
 # pytest --collect-only em billing_fiscal_service, order_pickup_service e payment_gateway.
 # Exige .venv + requirements.txt instalados em cada serviço (ver 07_tests/run_backend_test_collect.sh).
@@ -14,6 +14,9 @@ test-payment-contract:
 
 test-order-pickup-admin:
 	cd 01_source/order_pickup_admin_service && PYTHONPATH=. SEED_ON_START=false .venv/bin/pytest tests/ -q
+
+test-analytics-bi-admin:
+	cd 01_source/analytics_bi_admin_service && PYTHONPATH=. SEED_ON_START=false .venv/bin/pytest tests/ -q
 
 # E2E pagamento (P2): POST /orders (dev bypass) → gateway /gateway/payment/create → payment-confirm.
 # E2E_CREATE_ORDER_VIA=seed: allocate + psql seed (legado). E2E_SKIP_GATEWAY=1 omite o gateway.

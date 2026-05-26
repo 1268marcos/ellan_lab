@@ -155,6 +155,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/mla/, "/api"),
       },
+      "/api/bia": {
+        target: process.env.VITE_ANALYTICS_BI_ADMIN_SERVICE_PROXY || "http://localhost:8026",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/bia/, "/api"),
+      },
       "/api/pca": {
         target: "http://localhost:8022",
         changeOrigin: true,

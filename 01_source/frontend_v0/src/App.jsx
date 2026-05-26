@@ -151,6 +151,7 @@ const FinancialExpansionSimulator = lazy(() => import("./pages/financial/Expansi
 const FinancialPartnerRevenue = lazy(() => import("./pages/financial/PartnerRevenue"));
 const OpsPrivacyComplianceAdminPage = lazy(() => import("./pages/OpsPrivacyComplianceAdminPage"));
 const OpsMlAdminPage = lazy(() => import("./pages/OpsMlAdminPage"));
+const OpsBiAnalyticsAdminPage = lazy(() => import("./pages/OpsBiAnalyticsAdminPage"));
 const OpsRentalContractsPage = lazy(() => import("./pages/OpsRentalContractsPage"));
 const OpsRentalPlansPage = lazy(() => import("./pages/OpsRentalPlansPage"));
 const OpsRentalAdminPage = lazy(() => import("./pages/OpsRentalAdminPage"));
@@ -2265,6 +2266,153 @@ function TopNav() {
       opsSubGroup: "Publico",
     },
     {
+      to: "/ops/bi-analytics/admin",
+      label: "BI — visao geral",
+      aria: "Hub BI Analytics facts marts KPIs players mundial",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Visao geral",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=facts",
+      label: "BI — analytics facts",
+      aria: "CRUD analytics_facts order lifecycle",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Dados",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=marts",
+      label: "BI — marts financeiros",
+      aria: "company_mrr_trend locker_pnl partner_revenue_monthly",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Dados",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=players",
+      label: "BI — players mundial",
+      aria: "InPost DHL Magalu Mercado Livre Amazon DPD Correios",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Ecossistema",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=partners",
+      label: "BI — parceiros webhook API key",
+      aria: "bi_data_partners rotacao API key",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=webhooks",
+      label: "BI — webhooks capability",
+      aria: "bi_capability_webhooks mart refresh",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=intelligence",
+      label: "BI — ops intelligence",
+      aria: "KPIs readiness go-live alertas marts",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Inteligencia",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=readiness",
+      label: "BI — prontidao dados",
+      aria: "Score por player InPost DHL Magalu band GO_LIVE",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Inteligencia",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=refresh",
+      label: "BI — refresh marts",
+      aria: "company_mrr_trend locker_pnl jobs ETL",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Dados",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=lineage",
+      label: "BI — data lineage",
+      aria: "analytics_facts dbt pipeline ml_features",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Dados",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=alerts",
+      label: "BI — alertas KPI",
+      aria: "threshold LOCKER_FILL_RATE WARNING",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Monitoramento",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=taxonomy",
+      label: "BI — taxonomia mundial",
+      aria: "segmento carrier marketplace food delivery presenca mercado",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Ecossistema",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=audit",
+      label: "BI — auditoria OPS",
+      aria: "mart refresh export audit log",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=integration",
+      label: "BI — hub integracao",
+      aria: "ml-admin analytics-service health matrix",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=kpis",
+      label: "BI — definicoes KPI",
+      aria: "bi_kpi_definitions threshold metric",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Monitoramento",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=reports",
+      label: "BI — catalogo relatorios",
+      aria: "bi_report_catalog scheduled exports",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Monitoramento",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=exports",
+      label: "BI — export jobs",
+      aria: "bi_export_jobs PARTNER_REVENUE_MONTHLY dataset",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Dados",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=efficiency",
+      label: "BI — eficiencia OPS",
+      aria: "data quality anomalies scheduled exports pipeline sync bookmarks",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Eficiencia",
+    },
+    {
+      to: "/ops/analytics/financial",
+      label: "BI — analytics financeiro (MV)",
+      aria: "mv_locker_monthly_profitability v_financial_dashboard",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Cross",
+    },
+    {
+      to: "/ops/ml/admin",
+      label: "BI — atalho ML OPS",
+      aria: "Hub machine learning parceiros modelos predicoes",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Cross",
+    },
+    {
+      to: "/intelligence/dashboard",
+      label: "BI — inteligencia preditiva",
+      aria: "Dashboard ML preditivo ocupacao saude locker",
+      group: "BI & Analytics OPS",
+      opsSubGroup: "Cross",
+    },
+    {
       to: "/ops/ml/admin",
       label: "ML — visao geral",
       aria: "Dashboard KPIs ML, parceiros de dados, modelos e feedback",
@@ -2368,6 +2516,34 @@ function TopNav() {
       aria: "Trilha promote/rollback de modelos",
       group: "ML OPS",
       opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/ml/admin?tab=grants",
+      label: "ML — grants cross-domain",
+      aria: "ml_cross_domain_grants marketplace finance bi",
+      group: "ML OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/ml/admin?tab=efficiency",
+      label: "ML — eficiencia OPS",
+      aria: "inference usage freshness breaches recommendations scorecard",
+      group: "ML OPS",
+      opsSubGroup: "Eficiencia",
+    },
+    {
+      to: "/ops/bi-analytics/admin",
+      label: "ML — atalho BI & Analytics",
+      aria: "Hub BI facts marts players mundial",
+      group: "ML OPS",
+      opsSubGroup: "Cross",
+    },
+    {
+      to: "/ops/bi-analytics/admin?tab=players",
+      label: "ML — players Tier-1 (BI)",
+      aria: "InPost DHL Magalu Mercado Livre Amazon DPD Correios CTT Worten",
+      group: "ML OPS",
+      opsSubGroup: "Cross",
     },
     {
       to: "/ops/order/executive-summary",
@@ -3060,6 +3236,7 @@ function TopNav() {
     "Cadastros OPS",
     "Hardware OPS",
     "Payments OPS",
+    "BI & Analytics OPS",
     "ML OPS",
     "Marketplace OPS",
     "Money OPS",
@@ -4513,6 +4690,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsMlAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/bi-analytics/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsBiAnalyticsAdminPage />)}
                 </OpsRoute>
               }
             />

@@ -228,4 +228,19 @@ export const mlAdminApi = {
   createAlertRule: (body: Record<string, unknown>) => api.post(`${BASE}/ml-alert-rules`, body),
   listGrants: () => api.get<{ items: unknown[]; total: number }>(`${BASE}/ml-partner-access-grants`),
   createGrant: (body: Record<string, unknown>) => api.post(`${BASE}/ml-partner-access-grants`, body),
+
+  efficiencyScorecard: () => api.get<Record<string, unknown>>(`${BASE}/efficiency/scorecard`),
+  listInferenceUsage: (days = 7) =>
+    api.get<{ usage: unknown[]; total: number }>(`${BASE}/efficiency/inference-usage`, { params: { days } }),
+  listFreshnessBreaches: (status?: string) =>
+    api.get<{ breaches: unknown[]; total: number }>(`${BASE}/efficiency/freshness-breaches`, {
+      params: status ? { status } : undefined,
+    }),
+  listRecommendations: (status?: string) =>
+    api.get<{ recommendations: unknown[]; total: number }>(`${BASE}/efficiency/recommendations`, {
+      params: status ? { status } : undefined,
+    }),
+  generateRecommendations: () => api.post(`${BASE}/efficiency/recommendations/generate`),
+  dismissRecommendation: (recId: string) =>
+    api.post(`${BASE}/efficiency/recommendations/${encodeURIComponent(recId)}/dismiss`),
 }

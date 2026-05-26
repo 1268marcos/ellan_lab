@@ -41,6 +41,9 @@ def init_db() -> None:
     from app.models import bi_partners as _bi_partners  # noqa: F401
     from app.models import bi_players as _bi_players  # noqa: F401
     from app.models import bi_webhooks as _bi_webhooks  # noqa: F401
+    from app.models import bi_ops as _bi_ops  # noqa: F401
+    from app.models import bi_integrations as _bi_integrations  # noqa: F401
+    from app.models import bi_efficiency as _bi_efficiency  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _ensure_analytics_schema(engine)

@@ -43,6 +43,7 @@ def init_db() -> None:
     from app.models import ml_readiness as _ml_readiness  # noqa: F401
     from app.models import ml_network as _ml_network  # noqa: F401
     from app.models import partner as _partner  # noqa: F401
+    from app.models import ml_efficiency as _ml_efficiency  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
     _apply_sqlite_compat_migrations(engine)

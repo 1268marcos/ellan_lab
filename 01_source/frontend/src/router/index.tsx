@@ -59,6 +59,7 @@ import OpsSubscriptionsAdmin from '../pages/ops/OpsSubscriptionsAdmin'
 import SubscriptionCheckout from '../pages/SubscriptionCheckout'
 import OpsSubscriptionDetail from '../pages/ops/OpsSubscriptionDetail'
 import OpsMlAdmin from '../pages/ops/OpsMlAdmin'
+import OpsBiAnalyticsAdmin from '../pages/ops/OpsBiAnalyticsAdmin'
 import OpsProductsAdmin from '../pages/ops/OpsProductsAdmin'
 import OpsProductsCatalog from '../pages/ops/OpsProductsCatalog'
 import OpsProductCategories from '../pages/ops/OpsProductCategories'
@@ -562,6 +563,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsMlAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/bi-analytics/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsBiAnalyticsAdmin />
             </OpsOnly>
           </Protected>
         }

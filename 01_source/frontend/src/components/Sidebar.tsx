@@ -12,6 +12,7 @@ const DEFAULT_OPEN: Record<string, boolean> = {
   paymentsOps: true,
   orderPickup: true,
   workersOps: true,
+  biAnalyticsOps: true,
   rentalsOps: true,
   privacyCompliance: false,
   moneyOps: true,

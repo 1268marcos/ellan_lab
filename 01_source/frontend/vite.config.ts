@@ -57,6 +57,9 @@ const hardwareAdminServiceProxy =
 const mlAdminServiceProxy =
   process.env.ML_ADMIN_SERVICE_PROXY ?? 'http://localhost:8021'
 
+const analyticsBiAdminServiceProxy =
+  process.env.ANALYTICS_BI_ADMIN_SERVICE_PROXY ?? 'http://localhost:8026'
+
 const privacyComplianceAdminServiceProxy =
   process.env.PRIVACY_COMPLIANCE_ADMIN_SERVICE_PROXY ?? 'http://localhost:8022'
 
@@ -171,6 +174,11 @@ export default defineConfig({
         target: mlAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/ml-admin/, '/api'),
+      },
+      '/api/bia': {
+        target: analyticsBiAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/bia/, '/api'),
       },
       '/api/privacy-compliance-admin': {
         target: privacyComplianceAdminServiceProxy,

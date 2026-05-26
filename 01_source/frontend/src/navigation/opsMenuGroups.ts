@@ -9,6 +9,7 @@ const P = '/ops/partners/admin'
 const F = '/ops/finance/admin'
 const M = '/ops/marketplace/admin'
 const ML = '/ops/ml/admin'
+const BI = '/ops/bi-analytics/admin'
 const R = '/ops/rentals/admin'
 const PR = '/ops/products/admin'
 const PC = '/ops/privacy-compliance/admin'
@@ -65,6 +66,12 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
           keywords: 'Royal Mail La Poste Colissimo Yodel Swiss Post',
         }),
         navItem('/integrations/webhooks', 'Webhooks', { keywords: 'HMAC SHA256 webhook test' }),
+      ]),
+      section('biMl', 'BI · Analytics · ML', [
+        navItem(BI, 'BI & Analytics OPS', { newTag: 'Hub' }),
+        navItem(`${BI}?tab=players`, 'Players locker mundial'),
+        navItem(ML, 'ML OPS', { newTag: 'Hub' }),
+        navItem(`${ML}?tab=networks`, 'Redes locker ML'),
       ]),
     ],
   }),
@@ -206,6 +213,47 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
       ]),
     ],
   }),
+  opsGroup('biAnalyticsOps', '📊', 'BI & Analytics OPS', {
+    hub: navItem(BI, 'Hub BI/Analytics', { newTag: 'Hub' }),
+    sections: [
+      section('hub', 'Hub & inteligência', [
+        navItem(BI, 'Visão geral', { newTag: 'Hub' }),
+        navItem(`${BI}?tab=intelligence`, 'Ops intelligence', { newTag: 'Pro' }),
+        navItem(`${BI}?tab=readiness`, 'Prontidão dados', { newTag: 'New' }),
+      ], true),
+      section('data', 'Dados & marts', [
+        navItem(`${BI}?tab=facts`, 'Analytics facts', { keywords: 'order_channel payload occurred_at' }),
+        navItem(`${BI}?tab=marts`, 'Marts financeiros', {
+          keywords: 'MRR locker_pnl partner_revenue_monthly company_mrr_trend',
+        }),
+        navItem(`${BI}?tab=refresh`, 'Refresh marts', { newTag: 'ETL' }),
+        navItem(`${BI}?tab=lineage`, 'Data lineage'),
+        navItem(`${BI}?tab=alerts`, 'Alertas KPI'),
+      ]),
+      section('ecosystem', 'Ecossistema mundial', [
+        navItem(`${BI}?tab=players`, 'Players locker mundial', {
+          keywords:
+            'InPost DHL Magalu MercadoLivre Mercado Livre Amazon DPD Correios CTT Worten El Corte Ingles tier1',
+        }),
+        navItem(`${BI}?tab=taxonomy`, 'Taxonomia & presença mercado', { newTag: 'Global' }),
+        navItem(`${BI}?tab=webhooks`, 'Webhooks capability'),
+        navItem(`${BI}?tab=partners`, 'Parceiros BI · API keys'),
+        navItem(`${BI}?tab=audit`, 'Auditoria OPS'),
+      ]),
+      section('monitoring', 'Monitoramento', [
+        navItem(`${BI}?tab=kpis`, 'Definições KPI'),
+        navItem(`${BI}?tab=reports`, 'Catálogo relatórios'),
+        navItem(`${BI}?tab=exports`, 'Export jobs', { newTag: 'ETL' }),
+        navItem(`${BI}?tab=efficiency`, 'Eficiência OPS', { newTag: 'Smart' }),
+      ]),
+      section('cross', 'Integração ML & Finance', [
+        navItem(`${BI}?tab=integration`, 'Hub domínios unificados'),
+        navItem('/ops/ml/admin', 'ML OPS'),
+        navItem('/ops/analytics/financial', 'Analytics financeiro (MV)'),
+        navItem('/intelligence/dashboard', 'Inteligência preditiva'),
+      ]),
+    ],
+  }),
   opsGroup('mlOps', '🤖', 'ML OPS', {
     hub: navItem(ML, 'Visão geral', { newTag: 'Hub' }),
     sections: [
@@ -213,6 +261,7 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
       section('data', 'Dados & modelos', [
         navItem(`${ML}?tab=partners`, 'Parceiros de dados'),
         navItem(`${ML}?tab=networks`, 'Redes locker mundiais'),
+        navItem(`${ML}?tab=readiness`, 'Prontidão integração', { newTag: 'New' }),
         navItem(`${ML}?tab=models`, 'Modelos e versões'),
         navItem(`${ML}?tab=features`, 'Features diárias'),
         navItem(`${ML}?tab=catalog`, 'Catálogo features'),
@@ -226,6 +275,14 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${ML}?tab=drift`, 'Drift / PSI'),
         navItem(`${ML}?tab=governance`, 'SLO e alertas'),
         navItem(`${ML}?tab=deployments`, 'Deployments'),
+        navItem(`${ML}?tab=grants`, 'Grants cross-domain', { newTag: 'Pro' }),
+        navItem(`${ML}?tab=efficiency`, 'Eficiência ML', { newTag: 'Smart' }),
+      ]),
+      section('cross', 'BI & Analytics', [
+        navItem(BI, 'BI · Analytics · ML hub', { newTag: 'New' }),
+        navItem(`${BI}?tab=players`, 'Players Tier-1 (InPost DHL ML…)', {
+          keywords: 'Worten El Corte Ingles Correios CTT',
+        }),
       ]),
     ],
   }),
@@ -575,13 +632,24 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
     ],
   }),
   opsGroup('intelligence', '🧠', 'Inteligência', {
-    items: [
-      navItem('/partners/catalog', 'Catálogo'),
-      navItem('/partners/webhooks', 'Webhooks'),
-      navItem('/intelligence/compatibility', 'Compatibilidade'),
-      navItem('/intelligence/predictive-health', 'Saúde preditiva'),
-      navItem('/intelligence/occupancy-forecast', 'Previsão ocupação'),
-      navItem('/intelligence/feedback-insights', 'Insights feedback'),
+    hub: navItem('/intelligence/dashboard', 'Dashboard preditivo', { newTag: 'ML' }),
+    sections: [
+      section('intel', 'Predição', [
+        navItem('/intelligence/dashboard', 'Dashboard preditivo'),
+        navItem('/intelligence/compatibility', 'Compatibilidade'),
+        navItem('/intelligence/predictive-health', 'Saúde preditiva'),
+        navItem('/intelligence/occupancy-forecast', 'Previsão ocupação'),
+        navItem('/intelligence/feedback-insights', 'Insights feedback'),
+      ], true),
+      section('intelOps', 'OPS BI · ML', [
+        navItem(BI, 'BI & Analytics OPS'),
+        navItem(ML, 'ML OPS'),
+        navItem('/ops/analytics/financial', 'Analytics financeiro (MV)'),
+      ]),
+      section('intelPartners', 'Parceiros', [
+        navItem('/partners/catalog', 'Catálogo'),
+        navItem('/partners/webhooks', 'Webhooks'),
+      ]),
     ],
   }),
   opsGroup('runtime', '⚙️', 'Runtime / Operacional', {

@@ -32,6 +32,7 @@ type Tab =
   | 'deployments'
   | 'grants'
   | 'feedback'
+  | 'efficiency'
 
 const TAB_KEYS: Tab[] = [
   'overview',
@@ -50,6 +51,7 @@ const TAB_KEYS: Tab[] = [
   'deployments',
   'grants',
   'feedback',
+  'efficiency',
 ]
 
 const inputCls = 'ellan-field dark:border-slate-600 dark:bg-slate-800'
@@ -126,6 +128,10 @@ export default function OpsMlAdmin() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [mlEfficiency, setMlEfficiency] = useState<Record<string, unknown> | null>(null)
+  const [inferenceUsage, setInferenceUsage] = useState<unknown[]>([])
+  const [freshnessBreaches, setFreshnessBreaches] = useState<unknown[]>([])
+  const [mlRecommendations, setMlRecommendations] = useState<unknown[]>([])
 
   const useCaseLabel = (id: string) => useCases.find((u) => u.id === id)?.code ?? id
 
@@ -137,6 +143,27 @@ export default function OpsMlAdmin() {
       setSearchParams({ tab: next }, { replace: true })
     }
   }
+
+  const loadMlEfficiency = useCallback(async () => {
+    try {
+      const [sc, usage, breaches, recs] = await Promise.all([
+        mlAdminApi.efficiencyScorecard(),
+        mlAdminApi.listInferenceUsage(7),
+        mlAdminApi.listFreshnessBreaches('OPEN'),
+        mlAdminApi.listRecommendations('OPEN'),
+      ])
+      setMlEfficiency(sc.data)
+      setInferenceUsage(usage.data.usage ?? [])
+      setFreshnessBreaches(breaches.data.breaches ?? [])
+      setMlRecommendations(recs.data.recommendations ?? [])
+    } catch {
+      /* optional */
+    }
+  }, [])
+
+  useEffect(() => {
+    if (tab === 'efficiency') void loadMlEfficiency()
+  }, [tab, loadMlEfficiency])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -594,10 +621,11 @@ export default function OpsMlAdmin() {
     { key: 'deployments', label: 'Deployments' },
     { key: 'grants', label: 'Acesso parceiro' },
     { key: 'feedback', label: 'Feedback' },
+    { key: 'efficiency', label: 'Eficiência' },
   ]
 
   const useCaseTabs: Tab[] = ['registry', 'training', 'catalog', 'drift', 'governance', 'grants']
-  const showDataTable = tab !== 'overview' && tab !== 'readiness'
+  const showDataTable = tab !== 'overview' && tab !== 'readiness' && tab !== 'efficiency'
 
   const useCaseSelect = (
     <select
@@ -1312,6 +1340,46 @@ export default function OpsMlAdmin() {
               })}
           </tbody>
         </table>
+      )}
+
+      {tab === 'efficiency' && (
+        <div className="space-y-4">
+          <div className={`${cardCls} flex flex-wrap items-center gap-3`}>
+            <span className="text-2xl font-bold text-indigo-600 dark:text-indigo-300">
+              {String(mlEfficiency?.efficiency_score ?? '—')}
+            </span>
+            <span className="text-sm text-gray-500">ML efficiency score</span>
+            <button
+              type="button"
+              className="ellan-btn-secondary"
+              onClick={() => {
+                void mlAdminApi.generateRecommendations().then(() => loadMlEfficiency())
+              }}
+            >
+              Gerar recomendações
+            </button>
+            <button type="button" className="ellan-btn-secondary" onClick={() => void loadMlEfficiency()}>
+              Atualizar
+            </button>
+          </div>
+          <div className={cardCls}>
+            <pre className="text-xs">{JSON.stringify(mlEfficiency, null, 2)}</pre>
+          </div>
+          <div className={`${cardCls} grid gap-4 md:grid-cols-2`}>
+            <section>
+              <h2 className="mb-2 font-medium">Inferência 7d</h2>
+              <pre className="max-h-48 overflow-auto text-xs">{JSON.stringify(inferenceUsage, null, 2)}</pre>
+            </section>
+            <section>
+              <h2 className="mb-2 font-medium">Freshness breaches</h2>
+              <pre className="max-h-48 overflow-auto text-xs">{JSON.stringify(freshnessBreaches, null, 2)}</pre>
+            </section>
+            <section className="md:col-span-2">
+              <h2 className="mb-2 font-medium">Recomendações OPS</h2>
+              <pre className="max-h-64 overflow-auto text-xs">{JSON.stringify(mlRecommendations, null, 2)}</pre>
+            </section>
+          </div>
+        </div>
       )}
 
       {tab === 'readiness' && mlReadiness.length > 0 && (

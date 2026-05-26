@@ -14,6 +14,7 @@ from app.routers import (
     ml_feedback,
     ml_model_metadata,
     ml_network_players,
+    ml_efficiency,
     ml_readiness,
     ml_ops,
     ml_predictions,
@@ -53,6 +54,7 @@ app.include_router(ml_feedback.router, prefix=API_PREFIX)
 app.include_router(ml_ops.router, prefix=API_PREFIX)
 app.include_router(ml_network_players.router, prefix=API_PREFIX)
 app.include_router(ml_readiness.router, prefix=API_PREFIX)
+app.include_router(ml_efficiency.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
 
 

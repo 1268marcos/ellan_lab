@@ -70,8 +70,14 @@ class BiReportCatalogIn(BaseModel):
     tags: list[str] = Field(default_factory=lambda: ["ops", "locker"])
 
 
-class BiReportCatalogOut(BiReportCatalogIn):
+class BiReportCatalogOut(BaseModel):
     id: str
+    code: str
+    name: str
+    report_type: str
+    metabase_dashboard_id: str | None = None
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
     active: bool
     created_at: datetime
 
@@ -96,6 +102,14 @@ class BiDashboardOut(BaseModel):
     partner_revenue_rows: int
     capability_webhooks: int
     open_marts_months: int
+    readiness_rows: int = 0
+    readiness_go_live: int = 0
+    readiness_avg_score: float = 0
+    open_kpi_alerts: int = 0
+    mart_jobs_pending: int = 0
+    lineage_edges: int = 0
+    market_presence_rows: int = 0
+    export_jobs_24h: int = 0
 
 
 class CompanyMrrTrendOut(BaseModel):

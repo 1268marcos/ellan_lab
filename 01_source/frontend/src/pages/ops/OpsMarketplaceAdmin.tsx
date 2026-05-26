@@ -406,7 +406,7 @@ export default function OpsMarketplaceAdmin() {
         marketplaceAdminApi.listPartnerApiHealth(true).catch(() => ({ data: { snapshots: [] } })),
         selectedId
           ? marketplaceAdminApi.listSellerPromotions(selectedId).catch(() => ({ data: { campaigns: [] } }))
-          : Promise.resolve({ data: { campaigns: [] } })),
+          : Promise.resolve({ data: { campaigns: [] } }),
         selectedId
           ? marketplaceAdminApi.getSellerOperationsSummary(selectedId).catch(() => ({ data: null }))
           : Promise.resolve({ data: null }),

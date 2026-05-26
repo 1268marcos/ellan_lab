@@ -426,6 +426,7 @@ def seed_professional_layer(db: Session) -> dict[str, int]:
         ("ORDER_PICKUP", "Order Pickup", "Pedidos manifestos pickup", "/ops/order-pickup/admin", "/api/v1/order-pickup-admin/health", 50, '["BR"]'),
         ("FINANCE", "Finance", "CAPEX OPEX repasses", "/ops/finance/admin", "/api/v1/finance-admin/health", 60, '["BR"]'),
         ("ML", "ML OPS", "Predição fraude LTV", "/ops/ml/admin", "/api/v1/ml-admin/health", 70, '["GLOBAL"]'),
+        ("BI_ANALYTICS", "BI & Analytics", "Facts marts KPIs InPost DHL Magalu", "/ops/bi-analytics/admin", "/api/v1/analytics-bi-admin/health", 72, '["GLOBAL"]'),
         ("TENANT", "Tenants", "Multi-tenant fiscal domínios", "/ops/tenants/admin", None, 80, '["BR"]'),
         ("CARRIER", "Carriers", "DHL DPD Correios CTT USPS Royal Mail Colissimo", None, None, 90, '["GLOBAL"]'),
     ]
