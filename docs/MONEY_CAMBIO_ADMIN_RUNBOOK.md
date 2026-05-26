@@ -6,6 +6,7 @@
 |------:|---------|
 | 8017 | payment-gateway-admin |
 | 8018 | order-pickup-admin |
+| **8028** | **capability-admin** |
 | **8119** (host) → 8019 (container) | marketplace-admin |
 | 8021 | ml-admin |
 | 8022 | privacy-compliance-admin |
@@ -14,6 +15,8 @@
 | **8125** | **money-cambio-admin** |
 
 Proxies frontend: v0 `/api/mca` → 8125 · v1 `/api/money-cambio-admin` → 8125
+
+Capability admin: v1 `/api/capability-admin` → 8028 · v0 `/api/cap` → 8028
 
 ### `Address already in use` na 8019 (marketplace-admin)
 

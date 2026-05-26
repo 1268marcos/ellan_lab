@@ -39,6 +39,7 @@ import CarrierRatesManager from '../pages/integrations/CarrierRatesManager'
 import WebhooksHub from '../pages/integrations/WebhooksHub'
 import OpsTenantsAdmin from '../pages/ops/OpsTenantsAdmin'
 import OpsPaymentGatewayAdmin from '../pages/ops/OpsPaymentGatewayAdmin'
+import OpsCapabilityAdmin from '../pages/ops/OpsCapabilityAdmin'
 import OpsHardwareAdmin from '../pages/ops/OpsHardwareAdmin'
 const OpsPaymentsAdmin = lazy(() => import('../pages/ops/OpsPaymentsAdmin'))
 import OpsMoneyCambioAdmin from '../pages/ops/OpsMoneyCambioAdmin'
@@ -374,6 +375,16 @@ export default function AppRouter() {
           <Protected>
             <OpsOnly>
               <OpsPaymentGatewayAdmin />
+            </OpsOnly>
+          </Protected>
+        }
+      />
+      <Route
+        path="/ops/capability/admin"
+        element={
+          <Protected>
+            <OpsOnly>
+              <OpsCapabilityAdmin />
             </OpsOnly>
           </Protected>
         }

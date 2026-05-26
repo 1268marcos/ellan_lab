@@ -42,6 +42,9 @@ const partnerAdminServiceProxy =
 const paymentGatewayAdminServiceProxy =
   process.env.PAYMENT_GATEWAY_ADMIN_SERVICE_PROXY ?? 'http://localhost:8017'
 
+const capabilityAdminServiceProxy =
+  process.env.CAPABILITY_ADMIN_SERVICE_PROXY ?? 'http://localhost:8028'
+
 const paymentsAdminServiceProxy =
   process.env.PAYMENTS_ADMIN_SERVICE_PROXY ?? 'http://localhost:8126'
 
@@ -149,6 +152,11 @@ export default defineConfig({
         target: paymentGatewayAdminServiceProxy,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/payment-gateway-admin/, '/api'),
+      },
+      '/api/capability-admin': {
+        target: capabilityAdminServiceProxy,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/capability-admin/, '/api'),
       },
       '/api/payments-admin': {
         target: paymentsAdminServiceProxy,

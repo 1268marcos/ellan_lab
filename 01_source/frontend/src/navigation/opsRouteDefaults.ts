@@ -20,6 +20,7 @@ export const OPS_ROUTE_DEFAULT_TAB: Record<string, string> = {
   '/ops/order-pickup/admin': 'overview',
   '/ops/workers/admin': 'overview',
   '/ops/payment-gateway/admin': 'providers',
+  '/ops/capability/admin': 'overview',
   '/ops/hardware/admin': 'dashboard',
 }
 

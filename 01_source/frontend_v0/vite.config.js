@@ -130,6 +130,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/pga/, "/api"),
       },
+      "/api/cap": {
+        target: process.env.VITE_CAPABILITY_ADMIN_SERVICE_PROXY || "http://localhost:8028",
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/cap/, "/api"),
+      },
       "/api/pya": {
         target: "http://localhost:8126",
         changeOrigin: true,

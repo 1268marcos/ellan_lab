@@ -130,6 +130,7 @@ const IntegrationsWebhooks = lazy(() =>
   import("./pages/integrations/IntegrationsPages").then((m) => ({ default: m.WebhooksHub })),
 );
 const OpsPaymentGatewayAdminPage = lazy(() => import("./pages/OpsPaymentGatewayAdminPage"));
+const OpsCapabilityAdminPage = lazy(() => import("./pages/OpsCapabilityAdminPage"));
 const OpsHardwareAdminPage = lazy(() => import("./pages/OpsHardwareAdminPage"));
 const OpsPaymentsAdminPage = lazy(() => import("./pages/OpsPaymentsAdminPage"));
 const OpsMoneyCambioAdminPage = lazy(() => import("./pages/OpsMoneyCambioAdminPage"));
@@ -874,6 +875,170 @@ function TopNav() {
       aria: "Metodos de pagamento, PSP, webhook, API key, device registry e risk",
       group: "Cadastros OPS",
       opsSubGroup: "Payment Gateway",
+    },
+    {
+      to: "/ops/capability/admin",
+      label: "Capability — visao geral",
+      aria: "Dashboard KPIs capability-admin porta 8028",
+      group: "Capability OPS",
+      opsSubGroup: "Hub",
+      newTag: "Hub",
+    },
+    {
+      to: "/ops/capability/admin?tab=profiles",
+      label: "Capability — perfis",
+      aria: "Perfis region canal contexto pagamento",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=channels",
+      label: "Capability — canais e contextos",
+      aria: "Canais kiosk online partner e contextos",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=regions",
+      label: "Capability — regioes e moeda",
+      aria: "Regioes SP PT UK DE e moeda default",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=catalogs",
+      label: "Capability — catalogos pagamento",
+      aria: "Metodos interfaces wallet providers",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=geo",
+      label: "Capability — geo e lockers",
+      aria: "Paises provincias locker locations",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=composition",
+      label: "Capability — composicao perfil",
+      aria: "Acoes metodos constraints",
+      group: "Capability OPS",
+      opsSubGroup: "Configuracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=webhooks",
+      label: "Capability — webhooks e API keys",
+      aria: "Webhook config rotacao API key por perfil",
+      group: "Capability OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=deliveries",
+      label: "Capability — entregas DLQ",
+      aria: "Webhook deliveries dead letter replay",
+      group: "Capability OPS",
+      opsSubGroup: "Integracao",
+    },
+    {
+      to: "/ops/capability/admin?tab=audit",
+      label: "Capability — auditoria",
+      aria: "Audit log mudancas capability",
+      group: "Capability OPS",
+      opsSubGroup: "Governanca",
+    },
+    {
+      to: "/ops/capability/admin?tab=matrix",
+      label: "Capability — matriz cobertura",
+      aria: "Matriz regiao canal contexto perfil",
+      group: "Capability OPS",
+      opsSubGroup: "Matriz e ecossistema",
+    },
+    {
+      to: "/ops/capability/admin?tab=ecosystem",
+      label: "Capability — players mundiais",
+      aria: "Segmentos players bindings InPost DHL Magalu",
+      group: "Capability OPS",
+      opsSubGroup: "Matriz e ecossistema",
+    },
+    {
+      to: "/ops/capability/admin?tab=ecosystem&view=locker",
+      label: "Capability — locker world",
+      aria: "InPost DHL DPD Magalu MercadoLivre Amazon Correios CTT Worten El Corte Ingles",
+      group: "Capability OPS",
+      opsSubGroup: "Matriz e ecossistema",
+    },
+    {
+      to: "/ops/capability/admin?tab=tools",
+      label: "Capability — ferramentas OPS",
+      aria: "Resolver perfil simular fluxo templates jobs clone",
+      group: "Capability OPS",
+      opsSubGroup: "Ferramentas OPS",
+      newTag: "Novo",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence",
+      label: "Capability — world report",
+      aria: "Relatorio mundial readiness insights corredores",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+      newTag: "Pro",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence&view=readiness",
+      label: "Capability — readiness",
+      aria: "Score e grade por perfil capability",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence&view=insights",
+      label: "Capability — insights",
+      aria: "Insights abertos gaps matriz locker",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence&view=recommendations",
+      label: "Capability — recomendacoes",
+      aria: "Recomendacoes automaticas capability",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence&view=corridors",
+      label: "Capability — corredores",
+      aria: "Corredores regionais BR PT DE UK",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+    },
+    {
+      to: "/ops/capability/admin?tab=intelligence&view=flags",
+      label: "Capability — feature flags",
+      aria: "Flags LOCKER_WORLD_PRESET MATRIX_STRICT_MODE",
+      group: "Capability OPS",
+      opsSubGroup: "Inteligencia OPS",
+    },
+    {
+      to: "/ops/payment-gateway/admin",
+      label: "Payment Gateway — catalogo PSP",
+      aria: "PSP metodos pagamento capability cross-link",
+      group: "Capability OPS",
+      opsSubGroup: "Integracoes cruzadas",
+    },
+    {
+      to: "/ops/partners/admin?tab=capability_webhooks",
+      label: "Partners — webhooks capability",
+      aria: "Partner capability webhooks DLQ",
+      group: "Capability OPS",
+      opsSubGroup: "Integracoes cruzadas",
+    },
+    {
+      to: "/integrations/partners",
+      label: "Integrations hub",
+      aria: "Hub integracoes parceiros",
+      group: "Capability OPS",
+      opsSubGroup: "Integracoes cruzadas",
     },
     {
       to: "/ops/hardware/admin?tab=dashboard",
@@ -3234,6 +3399,7 @@ function TopNav() {
     "Dashboards",
     "Operations",
     "Cadastros OPS",
+    "Capability OPS",
     "Hardware OPS",
     "Payments OPS",
     "BI & Analytics OPS",
@@ -4581,6 +4747,14 @@ function AppContent() {
               element={
                 <OpsRoute>
                   {withBoundary("ops", <OpsPaymentGatewayAdminPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/capability/admin"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsCapabilityAdminPage />)}
                 </OpsRoute>
               }
             />

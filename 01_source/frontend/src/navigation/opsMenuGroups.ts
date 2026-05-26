@@ -39,7 +39,56 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
     ],
   }),
   opsGroup('cadastros', '📋', 'Cadastros OPS', {
-    items: [navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)')],
+    items: [
+      navItem('/ops/payment-gateway/admin', 'Payment Gateway (PSP)'),
+      navItem('/ops/capability/admin', 'Capability (config)', { newTag: 'Hub' }),
+    ],
+  }),
+  opsGroup('capabilityOps', '⚡', 'Capability OPS', {
+    hub: navItem('/ops/capability/admin', 'Hub Capability', { newTag: 'Hub' }),
+    sections: [
+      section('capHub', 'Configuração de capacidade', [
+        navItem('/ops/capability/admin', 'Visão geral', { newTag: 'Hub' }),
+        navItem('/ops/capability/admin?tab=profiles', 'Perfis region×canal'),
+        navItem('/ops/capability/admin?tab=channels', 'Canais & contextos'),
+        navItem('/ops/capability/admin?tab=regions', 'Regiões & moeda'),
+        navItem('/ops/capability/admin?tab=catalogs', 'Catálogos pagamento'),
+        navItem('/ops/capability/admin?tab=geo', 'País · província · locker'),
+        navItem('/ops/capability/admin?tab=composition', 'Ações · métodos · constraints'),
+        navItem('/ops/capability/admin?tab=webhooks', 'Webhook & API keys', {
+          keywords: 'InPost DHL DPD Magalu MercadoLivre Amazon Correios CTT Worten',
+        }),
+        navItem('/ops/capability/admin?tab=deliveries', 'Entregas · DLQ replay'),
+        navItem('/ops/capability/admin?tab=audit', 'Auditoria mudanças'),
+      ], true),
+      section('capMatrixEco', 'Matriz & ecossistema mundial', [
+        navItem('/ops/capability/admin?tab=matrix', 'Matriz cobertura', { newTag: 'Pro' }),
+        navItem('/ops/capability/admin?tab=ecosystem', 'Players & segmentos', {
+          keywords: 'InPost DHL DPD Magalu MercadoLivre Amazon Correios CTT Worten El Corte Ingles',
+        }),
+        navItem('/ops/capability/admin?tab=ecosystem&view=locker', 'Locker world (InPost DHL…)', {
+          keywords: 'locker-presence packstation parcel locker Correios CTT',
+        }),
+      ]),
+      section('capTools', 'Ferramentas OPS', [
+        navItem('/ops/capability/admin?tab=tools', 'Resolver · simular · templates', { newTag: 'Novo' }),
+      ]),
+      section('capIntelligence', 'Inteligência OPS', [
+        navItem('/ops/capability/admin?tab=intelligence', 'World report', { newTag: 'Pro' }),
+        navItem('/ops/capability/admin?tab=intelligence&view=readiness', 'Readiness por perfil'),
+        navItem('/ops/capability/admin?tab=intelligence&view=insights', 'Insights abertos'),
+        navItem('/ops/capability/admin?tab=intelligence&view=recommendations', 'Recomendações'),
+        navItem('/ops/capability/admin?tab=intelligence&view=corridors', 'Corredores regionais'),
+        navItem('/ops/capability/admin?tab=intelligence&view=flags', 'Feature flags'),
+      ]),
+      section('capIntegrations', 'Integrações cruzadas', [
+        navItem('/ops/partners/admin?tab=capability_webhooks', 'Partner webhooks'),
+        navItem(`${M}?tab=webhooks`, 'Marketplace webhooks'),
+        navItem(`${ML}?tab=capabilities`, 'ML rede locker'),
+        navItem('/ops/payment-gateway/admin', 'Payment Gateway'),
+        navItem('/integrations/partners', 'Integrations hub'),
+      ]),
+    ],
   }),
   opsGroup('securityCrud', '🔐', 'Security', {
     hub: navItem('/security/users', 'Users & Roles', { newTag: 'CRUD' }),
