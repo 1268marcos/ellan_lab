@@ -12,11 +12,16 @@ from app.routers import (
     commissions,
     extended,
     integration_hub,
+    ops_intelligence,
+    player_ecosystem,
+    seller_operations,
     seed,
     seller_integrations,
     seller_products,
+    seller_professional,
     seller_reviews,
     sellers,
+    webhook_ingress,
 )
 from app.services.seed_data import run_seed
 
@@ -49,9 +54,14 @@ app.include_router(seller_products.router, prefix=API_PREFIX)
 app.include_router(commissions.router, prefix=API_PREFIX)
 app.include_router(seller_reviews.router, prefix=API_PREFIX)
 app.include_router(seller_integrations.router, prefix=API_PREFIX)
+app.include_router(seller_professional.router, prefix=API_PREFIX)
 app.include_router(extended.router, prefix=API_PREFIX)
+app.include_router(player_ecosystem.router, prefix=API_PREFIX)
+app.include_router(ops_intelligence.router, prefix=API_PREFIX)
+app.include_router(seller_operations.router, prefix=API_PREFIX)
 app.include_router(integration_hub.router, prefix=API_PREFIX)
 app.include_router(seed.router, prefix=API_PREFIX)
+app.include_router(webhook_ingress.router, prefix=API_PREFIX)
 
 
 @app.get("/health")

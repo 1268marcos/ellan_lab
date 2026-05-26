@@ -25,6 +25,15 @@ type Tab =
   | 'reviews'
   | 'kyc'
   | 'disputes'
+  | 'integrations'
+  | 'audit'
+  | 'tiers'
+  | 'compliance'
+  | 'performance'
+  | 'agreements'
+  | 'risk'
+  | 'intelligence'
+  | 'operations'
 
 const TAB_KEYS: Tab[] = [
   'overview',
@@ -40,6 +49,15 @@ const TAB_KEYS: Tab[] = [
   'reviews',
   'kyc',
   'disputes',
+  'integrations',
+  'audit',
+  'tiers',
+  'compliance',
+  'performance',
+  'agreements',
+  'risk',
+  'intelligence',
+  'operations',
 ]
 
 const tabs: { key: Tab; label: string }[] = [
@@ -56,6 +74,15 @@ const tabs: { key: Tab; label: string }[] = [
   { key: 'reviews', label: 'Avaliações' },
   { key: 'kyc', label: 'KYC' },
   { key: 'disputes', label: 'Disputas' },
+  { key: 'integrations', label: 'Webhooks & API keys' },
+  { key: 'audit', label: 'Auditoria sync' },
+  { key: 'tiers', label: 'Programas & tiers' },
+  { key: 'compliance', label: 'Compliance fiscal' },
+  { key: 'performance', label: 'Performance' },
+  { key: 'agreements', label: 'Contratos' },
+  { key: 'risk', label: 'Risco' },
+  { key: 'intelligence', label: 'Ops intelligence' },
+  { key: 'operations', label: 'Operações seller' },
 ]
 
 type ChannelPartner = {
@@ -199,6 +226,48 @@ export default function OpsMarketplaceAdmin() {
   const [webhookUrl, setWebhookUrl] = useState('')
   const [webhookSecret, setWebhookSecret] = useState('')
   const [lastApiKey, setLastApiKey] = useState('')
+  const [sellerApiKeys, setSellerApiKeys] = useState<{ id: string; key_prefix: string; revoked_at?: string }[]>([])
+  const [sellerWebhookConfig, setSellerWebhookConfig] = useState<{ url?: string; events_json?: string; active?: boolean } | null>(null)
+  const [settlementItems, setSettlementItems] = useState<{ id: string; order_id: string; net_to_seller_cents: number }[]>([])
+  const [syncAuditRows, setSyncAuditRows] = useState<{ id: string; event_type: string; summary: string; created_at: string }[]>([])
+  const [commissionPreview, setCommissionPreview] = useState<Record<string, number> | null>(null)
+  const [previewPriceCents, setPreviewPriceCents] = useState('4990')
+  const [profSummary, setProfSummary] = useState<Record<string, number | string | null> | null>(null)
+  const [tierDefs, setTierDefs] = useState<{ code: string; name: string; min_gmv_cents: number }[]>([])
+  const [tierEnrollments, setTierEnrollments] = useState<{ id: string; tier_code: string; status: string; effective_from: string }[]>([])
+  const [complianceProfiles, setComplianceProfiles] = useState<{ id: string; country: string; tax_regime: string; fiscal_status: string; ioss_number?: string }[]>([])
+  const [performanceRows, setPerformanceRows] = useState<{ id: string; month: string; gmv_cents: number; order_count: number; on_time_pickup_pct?: number }[]>([])
+  const [agreements, setAgreements] = useState<{ id: string; agreement_type: string; version: string; status: string }[]>([])
+  const [riskAssessments, setRiskAssessments] = useState<{ id: string; risk_score: number; risk_band: string; assessed_at: string }[]>([])
+  const [tierEnrollCode, setTierEnrollCode] = useState('GROWTH')
+  const [complianceForm, setComplianceForm] = useState({ country: 'PT', tax_regime: 'NORMAL', vat_number: '', ioss_number: '' })
+  const [riskScore, setRiskScore] = useState('50')
+  const [worldPriorityPlayers, setWorldPriorityPlayers] = useState<
+    { code: string; role: string; readiness_band?: string; score_total?: number; in_catalog?: boolean }[]
+  >([])
+  const [sellerCoverage, setSellerCoverage] = useState<{
+    coverage_pct?: number
+    coverage_complete_count?: number
+    players?: { partner_code: string; has_marketplace_listing: boolean; has_locker_network: boolean; coverage_complete: boolean }[]
+  } | null>(null)
+  const [opsIntelSummary, setOpsIntelSummary] = useState<Record<string, number> | null>(null)
+  const [opsPlaybooks, setOpsPlaybooks] = useState<{ code: string; name: string; severity: string; trigger_type: string; steps: { action: string }[] }[]>([])
+  const [sellerHealth, setSellerHealth] = useState<{ health_score: number; health_band: string; factors: string[] } | null>(null)
+  const [channelQuotas, setChannelQuotas] = useState<{ partner_code?: string; quota_status: string; utilization_skus_pct: number; utilization_orders_pct: number }[]>([])
+  const [catalogSyncJobs, setCatalogSyncJobs] = useState<{ id: string; partner_code?: string; job_type: string; status: string; items_ok: number; items_failed: number }[]>([])
+  const [crossBorderProfiles, setCrossBorderProfiles] = useState<{ corridor_code: string; customs_scheme: string; status: string; dest_country: string }[]>([])
+  const [partnerApiHealth, setPartnerApiHealth] = useState<{ partner_code: string; health_status: string; availability_pct: number; p95_latency_ms: number }[]>([])
+  const [sellerPromotions, setSellerPromotions] = useState<{ campaign_code: string; name: string; status: string; discount_pct?: number }[]>([])
+  const [opsSummary, setOpsSummary] = useState<Record<string, unknown> | null>(null)
+  const [onboardingTasks, setOnboardingTasks] = useState<{ id: string; task_code: string; title: string; status: string; category: string }[]>([])
+  const [onboardingProgress, setOnboardingProgress] = useState(0)
+  const [skuMaps, setSkuMaps] = useState<{ partner_code?: string; internal_sku: string; channel_sku: string }[]>([])
+  const [pricingRules, setPricingRules] = useState<{ name: string; rule_type: string; partner_code?: string }[]>([])
+  const [returnPolicies, setReturnPolicies] = useState<{ policy_code: string; return_window_days: number }[]>([])
+  const [notifSubs, setNotifSubs] = useState<{ event_type: string; channel: string; destination: string }[]>([])
+  const [invAllocations, setInvAllocations] = useState<{ partner_code?: string; allocated_qty: number; available_qty: number }[]>([])
+  const [fulfillmentPrefs, setFulfillmentPrefs] = useState<Record<string, unknown> | null>(null)
+  const [pricingPreview, setPricingPreview] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -255,6 +324,34 @@ export default function OpsMarketplaceAdmin() {
         hub,
         alerts,
         hooks,
+        auditLog,
+        apiKeysRes,
+        webhookRes,
+        profSum,
+        tiersDef,
+        tiersEnr,
+        compProf,
+        perfRows,
+        agrRows,
+        riskRows,
+        worldPlayers,
+        sellerCov,
+        opsSum,
+        opsPb,
+        opsHealth,
+        opsQuotas,
+        opsJobs,
+        opsXb,
+        opsApiH,
+        opsPromo,
+        sopSum,
+        sopOnb,
+        sopSku,
+        sopPrice,
+        sopRet,
+        sopNotif,
+        sopAlloc,
+        sopFulfill,
       ] = await Promise.all([
         marketplaceAdminApi.getDashboard(),
         marketplaceAdminApi.listSellers(),
@@ -278,6 +375,62 @@ export default function OpsMarketplaceAdmin() {
         marketplaceAdminApi.integrationHubSummary(),
         marketplaceAdminApi.listReadinessAlerts(false),
         marketplaceAdminApi.listCapabilityWebhooks(),
+        marketplaceAdminApi.listSyncAuditLog(40),
+        selectedId
+          ? marketplaceAdminApi.listApiKeys(selectedId).catch(() => ({ data: { keys: [] as { id: string; key_prefix: string; revoked_at?: string }[] } }))
+          : Promise.resolve({ data: { keys: [] as { id: string; key_prefix: string; revoked_at?: string }[] } }),
+        selectedId
+          ? marketplaceAdminApi.getSellerWebhook(selectedId).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
+        marketplaceAdminApi.sellerProfessionalSummary(selectedId || undefined),
+        marketplaceAdminApi.listTierDefinitions(),
+        marketplaceAdminApi.listTierEnrollments(selectedId || undefined),
+        marketplaceAdminApi.listComplianceProfiles(selectedId || undefined),
+        marketplaceAdminApi.listPerformanceMonthly(selectedId || undefined),
+        marketplaceAdminApi.listAgreements(selectedId || undefined),
+        marketplaceAdminApi.listRiskAssessments(selectedId || undefined),
+        marketplaceAdminApi.listWorldPriorityPlayers(),
+        selectedId ? marketplaceAdminApi.getSellerPlayerCoverage(selectedId) : Promise.resolve({ data: null }),
+        marketplaceAdminApi.getOpsIntelligenceSummary().catch(() => ({ data: null })),
+        marketplaceAdminApi.listOpsPlaybooks().catch(() => ({ data: { playbooks: [] } })),
+        selectedId
+          ? marketplaceAdminApi.listSellerHealth(selectedId).catch(() => ({ data: { snapshots: [] } }))
+          : Promise.resolve({ data: { snapshots: [] } }),
+        selectedId
+          ? marketplaceAdminApi.listSellerChannelQuotas(selectedId).catch(() => ({ data: { quotas: [] } }))
+          : Promise.resolve({ data: { quotas: [] } }),
+        marketplaceAdminApi.listCatalogSyncJobs(selectedId ? { seller_id: selectedId } : undefined).catch(() => ({ data: { jobs: [] } })),
+        selectedId
+          ? marketplaceAdminApi.listCrossBorderProfiles(selectedId).catch(() => ({ data: { profiles: [] } }))
+          : Promise.resolve({ data: { profiles: [] } }),
+        marketplaceAdminApi.listPartnerApiHealth(true).catch(() => ({ data: { snapshots: [] } })),
+        selectedId
+          ? marketplaceAdminApi.listSellerPromotions(selectedId).catch(() => ({ data: { campaigns: [] } }))
+          : Promise.resolve({ data: { campaigns: [] } })),
+        selectedId
+          ? marketplaceAdminApi.getSellerOperationsSummary(selectedId).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
+        selectedId
+          ? marketplaceAdminApi.listOnboardingTasks(selectedId).catch(() => ({ data: { tasks: [], progress_pct: 0 } }))
+          : Promise.resolve({ data: { tasks: [], progress_pct: 0 } }),
+        selectedId
+          ? marketplaceAdminApi.listChannelSkuMaps(selectedId).catch(() => ({ data: { maps: [] } }))
+          : Promise.resolve({ data: { maps: [] } }),
+        selectedId
+          ? marketplaceAdminApi.listSellerPricingRules(selectedId).catch(() => ({ data: { rules: [] } }))
+          : Promise.resolve({ data: { rules: [] } }),
+        selectedId
+          ? marketplaceAdminApi.listReturnPolicies(selectedId).catch(() => ({ data: { policies: [] } }))
+          : Promise.resolve({ data: { policies: [] } }),
+        selectedId
+          ? marketplaceAdminApi.listNotificationSubscriptions(selectedId).catch(() => ({ data: { subscriptions: [] } }))
+          : Promise.resolve({ data: { subscriptions: [] } }),
+        selectedId
+          ? marketplaceAdminApi.listInventoryAllocations(selectedId).catch(() => ({ data: { allocations: [] } }))
+          : Promise.resolve({ data: { allocations: [] } }),
+        selectedId
+          ? marketplaceAdminApi.getFulfillmentPreferences(selectedId).catch(() => ({ data: null }))
+          : Promise.resolve({ data: null }),
       ])
       const sellerList = s.data.sellers ?? []
       setDashboard(dash.data)
@@ -304,6 +457,38 @@ export default function OpsMarketplaceAdmin() {
       setIntegrationHub(hub.data as IntegrationHub)
       setReadinessAlerts((alerts.data.items ?? []) as Record<string, unknown>[])
       setCapabilityWebhooks((hooks.data.items ?? []) as Record<string, unknown>[])
+      setSyncAuditRows((auditLog.data.items ?? []) as typeof syncAuditRows)
+      setSellerApiKeys(apiKeysRes.data.keys ?? [])
+      const wh = webhookRes.data as { url?: string; events_json?: string; active?: boolean } | null
+      setSellerWebhookConfig(wh)
+      if (wh?.url) setWebhookUrl(wh.url)
+      setProfSummary(profSum.data as Record<string, number | string | null>)
+      setTierDefs((tiersDef.data.tiers ?? []) as typeof tierDefs)
+      setTierEnrollments((tiersEnr.data.enrollments ?? []) as typeof tierEnrollments)
+      setComplianceProfiles((compProf.data.profiles ?? []) as typeof complianceProfiles)
+      setPerformanceRows((perfRows.data.rows ?? []) as typeof performanceRows)
+      setAgreements((agrRows.data.agreements ?? []) as typeof agreements)
+      setRiskAssessments((riskRows.data.assessments ?? []) as typeof riskAssessments)
+      setWorldPriorityPlayers((worldPlayers.data.players ?? []) as typeof worldPriorityPlayers)
+      setSellerCoverage(sellerCov.data as typeof sellerCoverage)
+      setOpsIntelSummary((opsSum.data as Record<string, number>) ?? null)
+      setOpsPlaybooks((opsPb.data.playbooks ?? []) as typeof opsPlaybooks)
+      const healthSnap = (opsHealth.data.snapshots ?? [])[0] as { health_score: number; health_band: string; factors?: string[] } | undefined
+      setSellerHealth(healthSnap ? { health_score: Number(healthSnap.health_score), health_band: healthSnap.health_band, factors: healthSnap.factors ?? [] } : null)
+      setChannelQuotas((opsQuotas.data.quotas ?? []) as typeof channelQuotas)
+      setCatalogSyncJobs((opsJobs.data.jobs ?? []) as typeof catalogSyncJobs)
+      setCrossBorderProfiles((opsXb.data.profiles ?? []) as typeof crossBorderProfiles)
+      setPartnerApiHealth((opsApiH.data.snapshots ?? []) as typeof partnerApiHealth)
+      setSellerPromotions((opsPromo.data.campaigns ?? []) as typeof sellerPromotions)
+      setOpsSummary((sopSum.data as Record<string, unknown>) ?? null)
+      setOnboardingTasks((sopOnb.data.tasks ?? []) as typeof onboardingTasks)
+      setOnboardingProgress(Number(sopOnb.data.progress_pct ?? 0))
+      setSkuMaps((sopSku.data.maps ?? []) as typeof skuMaps)
+      setPricingRules((sopPrice.data.rules ?? []) as typeof pricingRules)
+      setReturnPolicies((sopRet.data.policies ?? []) as typeof returnPolicies)
+      setNotifSubs((sopNotif.data.subscriptions ?? []) as typeof notifSubs)
+      setInvAllocations((sopAlloc.data.allocations ?? []) as typeof invAllocations)
+      setFulfillmentPrefs((sopFulfill.data as Record<string, unknown>) ?? null)
       setSelectedId((prev) => prev || sellerList[0]?.id || '')
       const pending = commList.filter((x) => x.status === 'PENDING')
       setSelectedCommissionId((prev) => prev || pending[0]?.id || '')
@@ -326,6 +511,16 @@ export default function OpsMarketplaceAdmin() {
     if (q && TAB_KEYS.includes(q)) setTab(q)
     else if (!q) setTab('overview')
   }, [searchParams])
+
+  useEffect(() => {
+    if (!selectedBatchId || tab !== 'settlements') {
+      setSettlementItems([])
+      return
+    }
+    void marketplaceAdminApi.listSettlementItems(selectedBatchId).then((r) => {
+      setSettlementItems(r.data.items ?? [])
+    })
+  }, [selectedBatchId, tab])
 
   const run = async (fn: () => Promise<void>, okMsg: string) => {
     setLoading(true)
@@ -418,6 +613,7 @@ export default function OpsMarketplaceAdmin() {
         events: ['order.created', 'commission.settled'],
       })
       setMessage('Webhook salvo.')
+      await load()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha no webhook')
     } finally {
@@ -787,6 +983,14 @@ export default function OpsMarketplaceAdmin() {
           >
             Sync catálogo players
           </button>
+          <button
+            type="button"
+            onClick={() => run(() => marketplaceAdminApi.seedSellerProfessional().then(() => undefined), 'Seller professional seed aplicado.')}
+            disabled={loading}
+            className="rounded bg-sky-600 px-3 py-2 text-sm text-white"
+          >
+            Seed tiers & compliance
+          </button>
         </div>
       </header>
 
@@ -899,6 +1103,62 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'channels' && (
+        <div className="space-y-3">
+          <section className="rounded-xl border border-indigo-500/40 bg-indigo-950/30 p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-medium">Players mundiais (locker + marketplace)</h2>
+              {sellerCoverage ? (
+                <span className="text-sm text-indigo-200">
+                  Cobertura seller: {sellerCoverage.coverage_complete_count}/{sellerCoverage.players?.length ?? 0} (
+                  {sellerCoverage.coverage_pct}%)
+                </span>
+              ) : null}
+              <button
+                type="button"
+                className="ellan-btn-outline text-xs"
+                disabled={!selectedId}
+                onClick={() =>
+                  void run(
+                    () => marketplaceAdminApi.seedPriorityPlayerLinks(selectedId).then(() => undefined),
+                    'Vínculos prioritários aplicados.',
+                  )
+                }
+              >
+                Seed vínculos InPost · DHL · ML…
+              </button>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-left text-xs">
+                <thead>
+                  <tr className="text-gray-500">
+                    <th className="px-2 py-1">Player</th>
+                    <th className="px-2 py-1">Papel</th>
+                    <th className="px-2 py-1">Prontidão</th>
+                    <th className="px-2 py-1">Listing</th>
+                    <th className="px-2 py-1">Rede locker</th>
+                    <th className="px-2 py-1">OK</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(sellerCoverage?.players ?? worldPriorityPlayers.map((w) => ({ partner_code: w.code, has_marketplace_listing: false, has_locker_network: false, coverage_complete: false }))).map((row) => {
+                    const meta = worldPriorityPlayers.find((w) => w.code === row.partner_code)
+                    return (
+                      <tr key={row.partner_code} className="border-t border-slate-700">
+                        <td className="px-2 py-1 font-mono">{row.partner_code}</td>
+                        <td className="px-2 py-1">{meta?.role ?? '—'}</td>
+                        <td className="px-2 py-1">
+                          {meta?.readiness_band ?? '—'} {meta?.score_total != null ? `(${meta.score_total})` : ''}
+                        </td>
+                        <td className="px-2 py-1">{row.has_marketplace_listing ? '✓' : '—'}</td>
+                        <td className="px-2 py-1">{row.has_locker_network ? '✓' : '—'}</td>
+                        <td className="px-2 py-1">{row.coverage_complete ? '✓' : '○'}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </section>
         <div className="space-y-3 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
           <div className="flex flex-wrap gap-2">
             <select className={inp} value={channelParentGroup} onChange={(e) => setChannelParentGroup(e.target.value)}>
@@ -937,6 +1197,7 @@ export default function OpsMarketplaceAdmin() {
             </button>
           </div>
         </div>
+        </div>
       )}
 
       {tab === 'contacts' && (
@@ -965,21 +1226,41 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'settlements' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
-          <select className={inp} value={selectedBatchId} onChange={(e) => setSelectedBatchId(e.target.value)}>
-            <option value="">batch_id</option>
-            {settlementBatches.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.id.slice(0, 12)} · {b.status} · {formatBrl(b.net_payout_cents)}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateSettlement()} disabled={!selectedId}>
-            Gerar lote de repasse
-          </button>
-          <button type="button" className="ellan-btn-outline" onClick={() => void onMarkBatchPaid()} disabled={!selectedBatchId}>
-            Marcar lote PAID
-          </button>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <select className={inp} value={selectedBatchId} onChange={(e) => setSelectedBatchId(e.target.value)}>
+              <option value="">batch_id</option>
+              {settlementBatches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.id.slice(0, 12)} · {b.status} · {formatBrl(b.net_payout_cents)}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="rounded bg-emerald-600 px-3 py-2 text-sm text-white" onClick={() => void onCreateSettlement()} disabled={!selectedId}>
+              Gerar lote de repasse
+            </button>
+            <button type="button" className="ellan-btn-outline" onClick={() => void onMarkBatchPaid()} disabled={!selectedBatchId}>
+              Marcar lote PAID
+            </button>
+          </div>
+          {selectedBatchId && settlementItems.length > 0 ? (
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+                <tr>
+                  <th className="px-3 py-2">Pedido</th>
+                  <th className="px-3 py-2">Líquido seller</th>
+                </tr>
+              </thead>
+              <tbody>
+                {settlementItems.map((it) => (
+                  <tr key={it.id} className="border-t dark:border-slate-800">
+                    <td className="px-3 py-2 font-mono text-xs">{it.order_id}</td>
+                    <td className="px-3 py-2">{formatBrl(it.net_to_seller_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
         </div>
       )}
 
@@ -1031,18 +1312,42 @@ export default function OpsMarketplaceAdmin() {
       )}
 
       {tab === 'commissions' && (
-        <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
-          <select className={inp} value={selectedCommissionId} onChange={(e) => setSelectedCommissionId(e.target.value)}>
-            <option value="">commission_id (PENDING)</option>
-            {pendingCommissions.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.order_id} · {formatBrl(c.commission_amount_cents)}
-              </option>
-            ))}
-          </select>
-          <button type="button" className="ellan-btn-outline" onClick={() => void onSettleCommission()} disabled={!selectedCommissionId}>
-            Liquidar comissão
-          </button>
+        <div className="space-y-3">
+          <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <input className={inp} placeholder="price_cents" value={previewPriceCents} onChange={(e) => setPreviewPriceCents(e.target.value)} />
+            <button
+              type="button"
+              className="ellan-btn-outline"
+              onClick={() => {
+                const pct = selectedSeller?.commission_pct ?? '5'
+                void marketplaceAdminApi
+                  .commissionNetPreview(Number(previewPriceCents) || 0, pct)
+                  .then((r) => setCommissionPreview(r.data as Record<string, number>))
+                  .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Preview falhou'))
+              }}
+            >
+              fn_calculate_seller_net
+            </button>
+            {commissionPreview ? (
+              <p className="w-full text-sm text-gray-400">
+                comissão {formatBrl(commissionPreview.commission_cents)} · Ellan {formatBrl(commissionPreview.ellan_fee_cents)} ·
+                gateway {formatBrl(commissionPreview.gateway_fee_cents)} · líquido {formatBrl(commissionPreview.net_cents)}
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2 rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <select className={inp} value={selectedCommissionId} onChange={(e) => setSelectedCommissionId(e.target.value)}>
+              <option value="">commission_id (PENDING)</option>
+              {pendingCommissions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.order_id} · {formatBrl(c.commission_amount_cents)}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="ellan-btn-outline" onClick={() => void onSettleCommission()} disabled={!selectedCommissionId}>
+              Liquidar comissão
+            </button>
+          </div>
         </div>
       )}
 
@@ -1283,6 +1588,14 @@ export default function OpsMarketplaceAdmin() {
               ['Incidentes abertos', dashboard.integration_open_incidents],
               ['Listings canal', dashboard.seller_channel_listings],
               ['Redes locker', dashboard.locker_network_links],
+              ...(profSummary
+                ? [
+                    ['Tier ativo', profSummary.tier_enrollments_active],
+                    ['Compliance verificado', profSummary.compliance_profiles_verified],
+                    ['Contratos assinados', profSummary.agreements_signed],
+                    ['Risco', profSummary.latest_risk_band ?? '—'],
+                  ]
+                : []),
             ].map(([label, value]) => (
               <div key={String(label)} className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
                 <p className="text-xs text-gray-500">{label}</p>
@@ -1309,19 +1622,531 @@ export default function OpsMarketplaceAdmin() {
         </div>
       )}
 
-      {tab !== 'overview' && (
-        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
-          <h2 className="mb-2 text-lg font-medium">Webhook e API key (seller)</h2>
-          <div className="flex flex-wrap gap-2">
-            <input className={`min-w-[14rem] flex-1 ${inp}`} placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
-            <input className={inp} placeholder="Secret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
-            <button type="button" onClick={() => void onWebhook()} className="ellan-btn-outline" disabled={!selectedId || !webhookUrl}>
-              Salvar webhook
-            </button>
-            <button type="button" onClick={() => void onRotateKey()} className="rounded bg-amber-600 px-3 py-2 text-sm text-white" disabled={!selectedId}>
+      {tab === 'integrations' && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-2 text-lg font-medium">Webhook do seller</h2>
+            {sellerWebhookConfig?.url ? (
+              <p className="mb-2 text-xs text-gray-500">
+                Ativo: {String(sellerWebhookConfig.active)} · eventos: {sellerWebhookConfig.events_json}
+              </p>
+            ) : (
+              <p className="mb-2 text-xs text-gray-500">Nenhum webhook configurado.</p>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <input className={`min-w-[14rem] flex-1 ${inp}`} placeholder="Webhook URL" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} />
+              <input className={inp} placeholder="Secret" value={webhookSecret} onChange={(e) => setWebhookSecret(e.target.value)} />
+              <button type="button" onClick={() => void onWebhook()} className="ellan-btn-outline" disabled={!selectedId || !webhookUrl}>
+                Salvar webhook
+              </button>
+            </div>
+          </section>
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-2 text-lg font-medium">API keys</h2>
+            <button type="button" onClick={() => void onRotateKey()} className="mb-3 rounded bg-amber-600 px-3 py-2 text-sm text-white" disabled={!selectedId}>
               Rotacionar API key
             </button>
+            <ul className="space-y-1 text-sm">
+              {sellerApiKeys.length === 0 ? (
+                <li className="text-gray-500">Nenhuma chave registrada.</li>
+              ) : (
+                sellerApiKeys.map((k) => (
+                  <li key={k.id} className="font-mono text-xs">
+                    {k.key_prefix}… {k.revoked_at ? '(revogada)' : '(ativa)'}
+                  </li>
+                ))
+              )}
+            </ul>
+          </section>
+        </div>
+      )}
+
+      {tab === 'tiers' && (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-2 text-lg font-medium">Catálogo de tiers (STARTER · GROWTH · ENTERPRISE)</h2>
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+                <tr>
+                  <th className="px-3 py-2">Código</th>
+                  <th className="px-3 py-2">Nome</th>
+                  <th className="px-3 py-2">GMV mín.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tierDefs.map((t) => (
+                  <tr key={t.code} className="border-t dark:border-slate-800">
+                    <td className="px-3 py-2 font-mono text-xs">{t.code}</td>
+                    <td className="px-3 py-2">{t.name}</td>
+                    <td className="px-3 py-2">{formatBrl(t.min_gmv_cents)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-2 text-sm font-medium">Matrícula do seller</h2>
+            <div className="flex flex-wrap gap-2">
+              <select className={inp} value={tierEnrollCode} onChange={(e) => setTierEnrollCode(e.target.value)}>
+                {tierDefs.map((t) => (
+                  <option key={t.code} value={t.code}>
+                    {t.code}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="ellan-btn-outline"
+                disabled={!selectedId}
+                onClick={() =>
+                  void run(async () => {
+                    const today = new Date().toISOString().slice(0, 10)
+                    await marketplaceAdminApi.createTierEnrollment({
+                      seller_id: selectedId,
+                      tier_code: tierEnrollCode,
+                      effective_from: today,
+                    })
+                  }, 'Tier vinculado.')
+                }
+              >
+                Vincular tier
+              </button>
+            </div>
+            <ul className="mt-3 space-y-1 text-sm">
+              {tierEnrollments.map((e) => (
+                <li key={e.id}>
+                  {e.tier_code} · {e.status} · desde {e.effective_from}
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      )}
+
+      {tab === 'compliance' && (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+            <h2 className="mb-2 text-lg font-medium">Perfis fiscais multi-país (BR · EU · IOSS)</h2>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <input className={inp} placeholder="PAís (PT, ES, BR)" value={complianceForm.country} onChange={(e) => setComplianceForm((f) => ({ ...f, country: e.target.value.toUpperCase() }))} />
+              <input className={inp} placeholder="tax_regime" value={complianceForm.tax_regime} onChange={(e) => setComplianceForm((f) => ({ ...f, tax_regime: e.target.value }))} />
+              <input className={inp} placeholder="VAT" value={complianceForm.vat_number} onChange={(e) => setComplianceForm((f) => ({ ...f, vat_number: e.target.value }))} />
+              <input className={inp} placeholder="IOSS" value={complianceForm.ioss_number} onChange={(e) => setComplianceForm((f) => ({ ...f, ioss_number: e.target.value }))} />
+              <button
+                type="button"
+                className="rounded bg-emerald-600 px-3 py-2 text-sm text-white"
+                disabled={!selectedId}
+                onClick={() =>
+                  void run(
+                    () =>
+                      marketplaceAdminApi
+                        .createComplianceProfile({ seller_id: selectedId, ...complianceForm, cross_border_enabled: complianceForm.country !== 'BR' })
+                        .then(() => undefined),
+                    'Perfil fiscal criado.',
+                  )
+                }
+              >
+                Adicionar país
+              </button>
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+                <tr>
+                  <th className="px-3 py-2">País</th>
+                  <th className="px-3 py-2">Regime</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">IOSS/VAT</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {complianceProfiles.map((p) => (
+                  <tr key={p.id} className="border-t dark:border-slate-800">
+                    <td className="px-3 py-2">{p.country}</td>
+                    <td className="px-3 py-2">{p.tax_regime}</td>
+                    <td className="px-3 py-2">{p.fiscal_status}</td>
+                    <td className="px-3 py-2 text-xs">{p.ioss_number || '—'}</td>
+                    <td className="px-3 py-2">
+                      {p.fiscal_status !== 'VERIFIED' && (
+                        <button
+                          type="button"
+                          className="text-indigo-600 hover:underline"
+                          onClick={() =>
+                            void run(
+                              () => marketplaceAdminApi.updateComplianceProfile(p.id, { fiscal_status: 'VERIFIED' }).then(() => undefined),
+                              'Perfil verificado.',
+                            )
+                          }
+                        >
+                          Verificar
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        </div>
+      )}
+
+      {tab === 'performance' && (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-2 text-lg font-medium">KPIs mensais (GMV · OTD · defeitos)</h2>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+              <tr>
+                <th className="px-3 py-2">Mês</th>
+                <th className="px-3 py-2">GMV</th>
+                <th className="px-3 py-2">Pedidos</th>
+                <th className="px-3 py-2">OTD %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {performanceRows.map((r) => (
+                <tr key={r.id} className="border-t dark:border-slate-800">
+                  <td className="px-3 py-2">{r.month}</td>
+                  <td className="px-3 py-2">{formatBrl(r.gmv_cents)}</td>
+                  <td className="px-3 py-2">{r.order_count}</td>
+                  <td className="px-3 py-2">{r.on_time_pickup_pct ?? '—'}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {tab === 'agreements' && (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-2 text-lg font-medium">Contratos & DPA (marketplace / dados)</h2>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+              <tr>
+                <th className="px-3 py-2">Tipo</th>
+                <th className="px-3 py-2">Versão</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {agreements.map((a) => (
+                <tr key={a.id} className="border-t dark:border-slate-800">
+                  <td className="px-3 py-2">{a.agreement_type}</td>
+                  <td className="px-3 py-2">{a.version}</td>
+                  <td className="px-3 py-2">{a.status}</td>
+                  <td className="px-3 py-2">
+                    {a.status !== 'SIGNED' && (
+                      <button
+                        type="button"
+                        className="text-indigo-600 hover:underline"
+                        onClick={() =>
+                          void run(
+                            () => marketplaceAdminApi.updateAgreement(a.id, { status: 'SIGNED' }).then(() => undefined),
+                            'Contrato assinado.',
+                          )
+                        }
+                      >
+                        Assinar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {tab === 'operations' && (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-violet-500/40 bg-violet-950/20 p-4">
+            <div className="mb-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="ellan-btn-outline text-xs"
+                onClick={() =>
+                  void run(
+                    () => marketplaceAdminApi.seedSellerOperations(selectedId || 'mk-seller-demo-001').then(() => undefined),
+                    'Operações seller seed.',
+                  )
+                }
+              >
+                Seed operações
+              </button>
+              <button
+                type="button"
+                className="ellan-btn-outline text-xs"
+                disabled={!selectedId}
+                onClick={() =>
+                  void run(async () => {
+                    const r = await marketplaceAdminApi.getPricingPreview(selectedId, {
+                      internal_sku: 'DEMO-001',
+                      base_price_cents: Number(previewPriceCents) || 4990,
+                      channel_partner_id: 'mcp-meli',
+                    })
+                    setPricingPreview(r.data)
+                  }, 'Preview preço calculado.')
+                }
+              >
+                Preview preço ML
+              </button>
+            </div>
+            {opsSummary ? (
+              <p className="text-sm">
+                Onboarding {String(opsSummary.onboarding_progress_pct)}% · SKU maps {String(opsSummary.sku_maps)} ·
+                Alocações {String(opsSummary.inventory_allocations)}
+              </p>
+            ) : null}
+            <p className="text-sm text-violet-200">Progresso onboarding: {onboardingProgress}%</p>
+            {pricingPreview ? (
+              <p className="text-xs text-gray-400">
+                Preview: {String(pricingPreview.base_price_cents)} → {String(pricingPreview.final_price_cents)} (
+                {(pricingPreview.rules_applied as string[])?.join(', ')})
+              </p>
+            ) : null}
+          </section>
+          <section className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-700 p-3">
+              <h3 className="mb-2 text-sm font-medium">Onboarding</h3>
+              <ul className="space-y-1 text-xs">
+                {onboardingTasks.map((t) => (
+                  <li key={t.id} className="flex justify-between gap-2">
+                    <span>{t.title}</span>
+                    <span className={t.status === 'COMPLETED' ? 'text-emerald-400' : 'text-amber-400'}>{t.status}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="rounded-xl border border-slate-700 p-3">
+              <h3 className="mb-2 text-sm font-medium">SKU por canal</h3>
+              {skuMaps.map((m) => (
+                <div key={`${m.partner_code}-${m.internal_sku}`} className="text-xs font-mono">
+                  {m.partner_code}: {m.internal_sku} → {m.channel_sku}
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-slate-700 p-3">
+              <h3 className="mb-2 text-sm font-medium">Regras de preço</h3>
+              {pricingRules.map((r) => (
+                <div key={r.name} className="text-xs">
+                  {r.rule_type} — {r.name} {r.partner_code ? `(${r.partner_code})` : ''}
+                </div>
+              ))}
+            </div>
+            <div className="rounded-xl border border-slate-700 p-3">
+              <h3 className="mb-2 text-sm font-medium">Devoluções · notificações · stock</h3>
+              {returnPolicies.map((p) => (
+                <div key={p.policy_code} className="text-xs">
+                  {p.policy_code} — {p.return_window_days}d
+                </div>
+              ))}
+              {notifSubs.map((n) => (
+                <div key={n.event_type} className="text-xs">
+                  {n.event_type} via {n.channel}
+                </div>
+              ))}
+              {invAllocations.map((a) => (
+                <div key={a.partner_code} className="text-xs">
+                  {a.partner_code}: disp {a.available_qty} / {a.allocated_qty}
+                </div>
+              ))}
+              {fulfillmentPrefs ? (
+                <p className="mt-2 text-xs">Fulfillment: {String(fulfillmentPrefs.handoff_mode)}</p>
+              ) : null}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === 'intelligence' && (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-cyan-500/40 bg-cyan-950/20 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-medium">Ops intelligence</h2>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="ellan-btn-outline text-xs"
+                  onClick={() => void run(() => marketplaceAdminApi.seedOpsIntelligence().then(() => undefined), 'Ops intelligence seed.')}
+                >
+                  Seed intelligence
+                </button>
+                <button
+                  type="button"
+                  className="ellan-btn-outline text-xs"
+                  disabled={!selectedId}
+                  onClick={() =>
+                    void run(
+                      () => marketplaceAdminApi.computeSellerHealth(selectedId).then(() => load()),
+                      'Health score atualizado.',
+                    )
+                  }
+                >
+                  Recalcular health
+                </button>
+              </div>
+            </div>
+            {opsIntelSummary ? (
+              <div className="mb-3 grid grid-cols-2 gap-2 text-sm md:grid-cols-3">
+                <div>Playbooks: {opsIntelSummary.playbooks_total}</div>
+                <div>API degradada: {opsIntelSummary.api_health_degraded}</div>
+                <div>Promo ativas: {opsIntelSummary.active_promotions}</div>
+                <div>Sync running: {opsIntelSummary.sync_jobs_running}</div>
+                <div>Cross-border: {opsIntelSummary.cross_border_profiles}</div>
+              </div>
+            ) : null}
+            {sellerHealth ? (
+              <p className="text-sm text-cyan-200">
+                Health {sellerHealth.health_score} ({sellerHealth.health_band}) — {sellerHealth.factors.join(', ') || 'sem alertas'}
+              </p>
+            ) : (
+              <p className="text-sm text-gray-500">Selecione seller e recalcule health.</p>
+            )}
+          </section>
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4">
+            <h3 className="mb-2 font-medium">Quotas por canal</h3>
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-gray-500">
+                  <th className="px-2 py-1">Canal</th>
+                  <th className="px-2 py-1">Status</th>
+                  <th className="px-2 py-1">SKU %</th>
+                  <th className="px-2 py-1">Pedidos %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {channelQuotas.map((q) => (
+                  <tr key={q.partner_code} className="border-t border-slate-700">
+                    <td className="px-2 py-1 font-mono">{q.partner_code}</td>
+                    <td className="px-2 py-1">{q.quota_status}</td>
+                    <td className="px-2 py-1">{q.utilization_skus_pct}%</td>
+                    <td className="px-2 py-1">{q.utilization_orders_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4">
+            <h3 className="mb-2 font-medium">Playbooks ops</h3>
+            <ul className="space-y-2 text-xs">
+              {opsPlaybooks.map((p) => (
+                <li key={p.code} className="rounded border border-slate-700 p-2">
+                  <span className="font-mono text-amber-300">{p.code}</span> — {p.name} ({p.severity})
+                </li>
+              ))}
+            </ul>
+          </section>
+          <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4">
+            <h3 className="mb-2 font-medium">Cross-border · sync · promo · API health</h3>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <h4 className="text-xs text-gray-500">Cross-border</h4>
+                {crossBorderProfiles.map((x) => (
+                  <div key={x.corridor_code} className="text-xs">
+                    {x.corridor_code} — {x.customs_scheme} ({x.status})
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 className="text-xs text-gray-500">Sync jobs</h4>
+                {catalogSyncJobs.map((j) => (
+                  <div key={j.id} className="text-xs">
+                    {j.partner_code} {j.job_type} {j.status} ok={j.items_ok} fail={j.items_failed}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 className="text-xs text-gray-500">Promoções</h4>
+                {sellerPromotions.map((p) => (
+                  <div key={p.campaign_code} className="text-xs">
+                    {p.campaign_code} — {p.name} ({p.status})
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 className="text-xs text-gray-500">API degradada</h4>
+                {partnerApiHealth.map((h) => (
+                  <div key={h.partner_code} className="text-xs">
+                    {h.partner_code} {h.health_status} avail={h.availability_pct}% p95={h.p95_latency_ms}ms
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {tab === 'risk' && (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-2 text-lg font-medium">Avaliação de risco (fraude · chargeback · KYC)</h2>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <input className={inp} placeholder="risk_score 0-100" value={riskScore} onChange={(e) => setRiskScore(e.target.value)} />
+            <button
+              type="button"
+              className="rounded bg-amber-600 px-3 py-2 text-sm text-white"
+              disabled={!selectedId}
+              onClick={() => {
+                const score = Number(riskScore) || 50
+                const band = score >= 70 ? 'HIGH' : score >= 40 ? 'MEDIUM' : 'LOW'
+                void run(
+                  () =>
+                    marketplaceAdminApi
+                      .createRiskAssessment({
+                        seller_id: selectedId,
+                        risk_score: score,
+                        risk_band: band,
+                        factors_json: '[]',
+                      })
+                      .then(() => undefined),
+                  'Avaliação registrada.',
+                )
+              }}
+            >
+              Registrar avaliação
+            </button>
           </div>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+              <tr>
+                <th className="px-3 py-2">Quando</th>
+                <th className="px-3 py-2">Score</th>
+                <th className="px-3 py-2">Faixa</th>
+              </tr>
+            </thead>
+            <tbody>
+              {riskAssessments.map((r) => (
+                <tr key={r.id} className="border-t dark:border-slate-800">
+                  <td className="px-3 py-2 text-xs">{r.assessed_at}</td>
+                  <td className="px-3 py-2">{r.risk_score}</td>
+                  <td className="px-3 py-2">{r.risk_band}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {tab === 'audit' && (
+        <section className="rounded-xl border border-slate-600/70 bg-slate-900/90 p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-2 text-lg font-medium">marketplace_sync_audit_log</h2>
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50 text-xs uppercase dark:bg-slate-800">
+              <tr>
+                <th className="px-3 py-2">Quando</th>
+                <th className="px-3 py-2">Evento</th>
+                <th className="px-3 py-2">Resumo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {syncAuditRows.map((row) => (
+                <tr key={row.id} className="border-t dark:border-slate-800">
+                  <td className="px-3 py-2 text-xs">{row.created_at}</td>
+                  <td className="px-3 py-2 font-mono text-xs">{row.event_type}</td>
+                  <td className="px-3 py-2">{row.summary}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </section>
       )}
 

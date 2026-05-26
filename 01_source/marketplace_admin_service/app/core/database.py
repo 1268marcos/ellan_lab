@@ -47,6 +47,10 @@ def init_db() -> None:
     from app.models import marketplace_alerts_webhooks as _marketplace_alerts_webhooks  # noqa: F401
     from app.models import marketplace_integration as _marketplace_integration  # noqa: F401
     from app.models import marketplace_global_ops as _marketplace_global_ops  # noqa: F401
+    from app.models import marketplace_ops_intelligence as _marketplace_ops_intelligence  # noqa: F401
+    from app.models import marketplace_seller_operations as _marketplace_seller_operations  # noqa: F401
+    from app.models import marketplace_player_ecosystem as _marketplace_player_ecosystem  # noqa: F401
+    from app.models import seller_professional as _seller_professional  # noqa: F401
     from app.models import webhook as _webhook  # noqa: F401
 
     Base.metadata.create_all(bind=engine)

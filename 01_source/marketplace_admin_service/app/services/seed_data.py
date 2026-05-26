@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.models.marketplace import MarketplaceCommission, MarketplaceSeller, SellerProduct, SellerReview
@@ -15,6 +16,8 @@ from app.models.marketplace_extended import (
     SellerLockerNetworkLink,
     SellerPayoutAccount,
 )
+from app.models.webhook import SellerWebhookEndpoint
+from app.services.crypto_util import hash_secret
 from app.services.crypto_util import new_id
 from app.services import integration_readiness_service
 from app.services.extended_service import seed_channel_players
@@ -22,6 +25,27 @@ from app.services.extended_service import seed_channel_players
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _table_has_row(db: Session, table: str, column: str, value: str) -> bool:
+    """Evita FK violation no Postgres central; em SQLite de teste tabelas podem faltar."""
+    bind = db.get_bind()
+    tables = set(inspect(bind).get_table_names())
+    if table not in tables:
+        return bind.dialect.name == "sqlite"
+    row = db.execute(
+        text(f"SELECT 1 FROM {table} WHERE {column} = :v LIMIT 1"),
+        {"v": value},
+    ).first()
+    return row is not None
+
+
+def _order_exists(db: Session, order_id: str) -> bool:
+    return _table_has_row(db, "orders", "id", order_id)
+
+
+def _locker_exists(db: Session, locker_id: str) -> bool:
+    return _table_has_row(db, "lockers", "id", locker_id)
 
 
 def run_seed(db: Session) -> dict[str, int]:
@@ -41,6 +65,10 @@ def run_seed(db: Session) -> dict[str, int]:
         "integration_incidents": 0,
         "channel_listings": 0,
         "locker_network_links": 0,
+        "settlement_batches": 0,
+        "settlement_items": 0,
+        "disputes": 0,
+        "seller_webhooks": 0,
     }
     now = _utcnow()
 
@@ -85,7 +113,10 @@ def run_seed(db: Session) -> dict[str, int]:
         )
         counts["sellers"] += 1
 
-    if not db.query(SellerProduct).filter(SellerProduct.id == "mk-prod-demo-001").first():
+    if (
+        _locker_exists(db, "LOCKER-DEMO-01")
+        and not db.query(SellerProduct).filter(SellerProduct.id == "mk-prod-demo-001").first()
+    ):
         db.add(
             SellerProduct(
                 id="mk-prod-demo-001",
@@ -103,7 +134,10 @@ def run_seed(db: Session) -> dict[str, int]:
         )
         counts["products"] += 1
 
-    if not db.query(MarketplaceCommission).filter(MarketplaceCommission.id == "mk-comm-demo-001").first():
+    if (
+        _order_exists(db, "ord-demo-mk-001")
+        and not db.query(MarketplaceCommission).filter(MarketplaceCommission.id == "mk-comm-demo-001").first()
+    ):
         db.add(
             MarketplaceCommission(
                 id="mk-comm-demo-001",
@@ -120,7 +154,10 @@ def run_seed(db: Session) -> dict[str, int]:
         )
         counts["commissions"] += 1
 
-    if not db.query(SellerReview).filter(SellerReview.id == "mk-review-demo-001").first():
+    if (
+        _order_exists(db, "ord-demo-mk-001")
+        and not db.query(SellerReview).filter(SellerReview.id == "mk-review-demo-001").first()
+    ):
         db.add(
             SellerReview(
                 id="mk-review-demo-001",
@@ -137,7 +174,7 @@ def run_seed(db: Session) -> dict[str, int]:
         )
         counts["reviews"] += 1
 
-    if not db.get(MarketplaceCommission, "mk-comm-demo-002"):
+    if _order_exists(db, "ord-demo-mk-002") and not db.get(MarketplaceCommission, "mk-comm-demo-002"):
         db.add(
             MarketplaceCommission(
                 id="mk-comm-demo-002",
@@ -254,51 +291,54 @@ def run_seed(db: Session) -> dict[str, int]:
     counts["channel_players"] = cp_sync.get("inserted", 0) + cp_sync.get("updated", 0)
     counts["channel_capabilities"] = cp_sync.get("capabilities_db_enabled", 0)
     counts["integration_readiness"] = cp_sync.get("readiness_upserted", 0)
-    integration_readiness_service.seed_demo_incidents(db)
     counts["integration_incidents"] = integration_readiness_service.seed_demo_incidents(db)
     from app.services import readiness_alert_service
 
     counts["capability_webhooks"] = readiness_alert_service.seed_demo_capability_webhooks(db)
 
-    listings_seed = [
-        ("mk-list-meli", "mk-seller-demo-001", "mcp-meli", "ML-STORE-DEMO-001"),
-        ("mk-list-magalu", "mk-seller-demo-001", "mcp-magalu", "MAGALU-STORE-001"),
-        ("mk-list-amazon", "mk-seller-demo-001", "mcp-amazon-br", "AMZ-BR-SELLER-001"),
-    ]
-    for lid, sid, cpid, store in listings_seed:
-        if not db.get(SellerChannelListing, lid):
-            db.add(
-                SellerChannelListing(
-                    id=lid,
-                    seller_id=sid,
-                    channel_partner_id=cpid,
-                    external_store_id=store,
-                    listing_status="ACTIVE",
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            counts["channel_listings"] += 1
+    from app.services import player_ecosystem_service
+    from app.services import seller_player_coverage_service
 
-    network_seed = [
-        ("mk-net-inpost", "mk-seller-demo-001", "mcp-inpost", "LOCKER-DEMO-01", 10),
-        ("mk-net-correios", "mk-seller-demo-001", "mcp-correios", None, 20),
-        ("mk-net-ctt", "mk-seller-demo-001", "mcp-ctt", None, 30),
-    ]
-    for nid, sid, cpid, locker, prio in network_seed:
-        if not db.query(SellerLockerNetworkLink).filter(SellerLockerNetworkLink.id == nid).first():
-            db.add(
-                SellerLockerNetworkLink(
-                    id=nid,
-                    seller_id=sid,
-                    channel_partner_id=cpid,
-                    locker_id=locker,
-                    priority=prio,
-                    active=True,
-                    created_at=now,
-                )
+    eco = player_ecosystem_service.seed_player_ecosystem(db)
+    counts["player_ecosystem"] = sum(eco.values())
+
+    from app.services import ops_intelligence_service
+
+    ops = ops_intelligence_service.seed_ops_intelligence(db)
+    counts["ops_intelligence"] = sum(ops.values())
+
+    from app.services import seller_operations_service
+
+    sop = seller_operations_service.seed_seller_operations(db)
+    counts["seller_operations"] = sum(sop.values())
+
+    link_counts = seller_player_coverage_service.seed_priority_player_links(db, "mk-seller-demo-001")
+    counts["channel_listings"] += link_counts.get("listings", 0)
+    counts["locker_network_links"] += link_counts.get("locker_networks", 0)
+
+    if not db.get(SellerWebhookEndpoint, "mk-wh-demo-001"):
+        secret = "whsec_mk_seller_demo"
+        db.add(
+            SellerWebhookEndpoint(
+                id="mk-wh-demo-001",
+                seller_id="mk-seller-demo-001",
+                url="https://demo-store.ellanlab.example/hooks/marketplace",
+                secret_hash=hash_secret(secret),
+                secret_key=secret,
+                events_json='["order.created","commission.settled"]',
+                api_version="v1",
+                active=True,
+                created_at=now,
+                updated_at=now,
             )
-            counts["locker_network_links"] += 1
+        )
+        counts["seller_webhooks"] += 1
+
+    from app.services import seller_professional_service
+
+    prof = seller_professional_service.seed_seller_professional_demo(db)
+    counts["seller_professional"] = sum(prof.values())
+    seller_professional_service.seed_tier_definitions(db)
 
     db.commit()
     return counts

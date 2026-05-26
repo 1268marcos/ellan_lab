@@ -193,8 +193,13 @@ def list_incidents(db: Session, *, open_only: bool = True) -> list[MarketplaceIn
 def seed_demo_incidents(db: Session) -> int:
     demos = [
         ("mcp-inpost", "INPOST", "WARNING", "API_DEGRADED", "Latencia elevada API ShipX (EU)", "OPEN"),
+        ("mcp-dhl", "DHL", "INFO", "API_DEGRADED", "Packstation API — throttling horario pico EU", "OPEN"),
+        ("mcp-dpd", "DPD", "WARNING", "WEBHOOK_MISS", "Webhook delivery_status com falhas 5xx Iberia", "OPEN"),
         ("mcp-correios", "CORREIOS", "CRITICAL", "CERT_EXPIRY", "Certificado mTLS proximo do vencimento", "OPEN"),
+        ("mcp-ctt", "CTT", "INFO", "RATE_LIMIT", "CTT Now inventory sync — quota reduzida", "OPEN"),
         ("mcp-meli", "MERCADOLIVRE", "INFO", "RATE_LIMIT", "Quota OAuth seller temporariamente reduzida", "OPEN"),
+        ("mcp-magalu", "MAGALU", "WARNING", "API_DEGRADED", "Magalu Open API — latencia catalogo", "OPEN"),
+        ("mcp-worten", "WORTEN", "INFO", "RATE_LIMIT", "Worten seller API — limite diario atingido", "OPEN"),
     ]
     n = 0
     for pid, code, sev, itype, title, status in demos:

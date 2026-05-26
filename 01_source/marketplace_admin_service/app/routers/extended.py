@@ -41,8 +41,12 @@ from app.schemas.marketplace_extended import (
     SettlementBatchUpdateIn,
     SettlementItemListOut,
     SettlementItemOut,
+    PriorityWorldPlayersOut,
+    PriorityWorldPlayerOut,
+    SellerPlayerCoverageOut,
 )
 from app.services import extended_service
+from app.services import seller_player_coverage_service
 
 router = APIRouter(tags=["marketplace-extended"])
 
@@ -241,3 +245,30 @@ def create_dispute(body: DisputeCreateIn, db: Session = Depends(get_db)) -> Disp
 @router.patch("/seller-commission-disputes/{dispute_id}", response_model=DisputeOut)
 def resolve_dispute(dispute_id: str, body: DisputeUpdateIn, db: Session = Depends(get_db)) -> DisputeOut:
     return DisputeOut.model_validate(extended_service.resolve_dispute(db, dispute_id, body))
+
+
+@router.get("/priority-players/world-locker-marketplace", response_model=PriorityWorldPlayersOut)
+def world_priority_players(db: Session = Depends(get_db)) -> PriorityWorldPlayersOut:
+    rows = seller_player_coverage_service.world_priority_players_catalog(db)
+    out = [PriorityWorldPlayerOut.model_validate(r) for r in rows]
+    return PriorityWorldPlayersOut(players=out, total=len(out))
+
+
+@router.get("/priority-players/extended-world", response_model=PriorityWorldPlayersOut)
+def extended_world_players(db: Session = Depends(get_db)) -> PriorityWorldPlayersOut:
+    rows = seller_player_coverage_service.extended_world_players_catalog(db)
+    out = [PriorityWorldPlayerOut.model_validate(r) for r in rows]
+    return PriorityWorldPlayersOut(players=out, total=len(out))
+
+
+@router.post("/priority-players/seed-seller-links")
+@router.post("/channel-partners/seed-seller-priority-links")
+def seed_priority_seller_links(
+    seller_id: str = "mk-seller-demo-001", db: Session = Depends(get_db)
+) -> dict:
+    return seller_player_coverage_service.seed_priority_player_links(db, seller_id=seller_id)
+
+
+@router.get("/sellers/{seller_id}/player-coverage", response_model=SellerPlayerCoverageOut)
+def get_seller_player_coverage(seller_id: str, db: Session = Depends(get_db)) -> SellerPlayerCoverageOut:
+    return SellerPlayerCoverageOut.model_validate(seller_player_coverage_service.seller_player_coverage(db, seller_id))

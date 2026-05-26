@@ -140,6 +140,15 @@ class CommissionListOut(BaseModel):
     total: int
 
 
+class CommissionNetPreviewOut(BaseModel):
+    price_cents: int
+    commission_pct: Decimal
+    commission_cents: int
+    ellan_fee_cents: int
+    gateway_fee_cents: int
+    net_cents: int
+
+
 class SellerReviewCreateIn(BaseModel):
     seller_id: str
     order_id: str

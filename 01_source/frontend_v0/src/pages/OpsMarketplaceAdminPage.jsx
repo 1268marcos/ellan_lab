@@ -44,11 +44,28 @@ const TAB_ITEMS = [
   { id: "reviews", label: "Avaliacoes" },
   { id: "kyc", label: "KYC" },
   { id: "disputes", label: "Disputas" },
+  { id: "integrations", label: "Webhooks e API keys" },
+  { id: "audit", label: "Auditoria sync" },
+  { id: "tiers", label: "Tiers" },
+  { id: "compliance", label: "Compliance fiscal" },
+  { id: "performance", label: "Performance" },
+  { id: "agreements", label: "Contratos" },
+  { id: "risk", label: "Risco" },
+  { id: "intelligence", label: "Ops intelligence" },
+  { id: "operations", label: "Operacoes seller" },
 ];
 
-function parseError(payload, fallback = "Falha na API marketplace-admin.") {
-  if (!payload) return fallback;
+function parseError(payload, fallback = "Falha na API marketplace-admin.", status) {
+  if (!payload) {
+    if (status === 404) return `${fallback} Rota nao encontrada — reconstrua marketplace_admin_service (porta 8119).`;
+    if (status === 500) return `${fallback} Erro interno (ex.: FK orders no Postgres). Rode Sync catalogo e Seed novamente apos rebuild.`;
+    return fallback;
+  }
   if (typeof payload?.detail === "string" && payload.detail.trim()) return payload.detail.trim();
+  if (Array.isArray(payload?.detail)) {
+    const msg = payload.detail.map((d) => d?.msg || JSON.stringify(d)).join("; ");
+    if (msg.trim()) return msg;
+  }
   return fallback;
 }
 
@@ -124,6 +141,24 @@ export default function OpsMarketplaceAdminPage() {
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [lastApiKey, setLastApiKey] = useState("");
+  const [sellerApiKeys, setSellerApiKeys] = useState([]);
+  const [sellerWebhookConfig, setSellerWebhookConfig] = useState(null);
+  const [syncAuditRows, setSyncAuditRows] = useState([]);
+  const [tierDefs, setTierDefs] = useState([]);
+  const [tierEnrollments, setTierEnrollments] = useState([]);
+  const [complianceProfiles, setComplianceProfiles] = useState([]);
+  const [performanceRows, setPerformanceRows] = useState([]);
+  const [agreements, setAgreements] = useState([]);
+  const [riskAssessments, setRiskAssessments] = useState([]);
+  const [sellerCoverage, setSellerCoverage] = useState(null);
+  const [worldPlayers, setWorldPlayers] = useState([]);
+  const [opsIntelSummary, setOpsIntelSummary] = useState(null);
+  const [opsPlaybooks, setOpsPlaybooks] = useState([]);
+  const [sellerHealth, setSellerHealth] = useState(null);
+  const [channelQuotas, setChannelQuotas] = useState([]);
+  const [opsSummary, setOpsSummary] = useState(null);
+  const [onboardingTasks, setOnboardingTasks] = useState([]);
+  const [skuMaps, setSkuMaps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
   const [ok, setOk] = useState("");
@@ -171,7 +206,7 @@ export default function OpsMarketplaceAdminPage() {
     setOk("");
     try {
       const sellerQ = selectedId ? `?seller_id=${encodeURIComponent(selectedId)}` : "";
-      const [dash, s, p, c, r, cats, links, cont, pay, batches, kyc, disp, chp, chl, lnk, rd, inc, hub] = await Promise.all([
+      const [dash, s, p, c, r, cats, links, cont, pay, batches, kyc, disp, chp, chl, lnk, rd, inc, hub, audit, keys, wh, tiersDef, tiersEnr, compProf, perfRows, agrRows, riskRows, worldP, sellerCov, opsSum, opsPb, opsHl, opsQt, sopSum, sopOnb, sopSku] = await Promise.all([
         fetch(`${API}/dashboard`, { headers }),
         fetch(`${API}/sellers`, { headers }),
         fetch(`${API}/seller-products${sellerQ}`, { headers }),
@@ -193,6 +228,40 @@ export default function OpsMarketplaceAdminPage() {
         fetch(`${API}/integration-readiness?limit=120`, { headers }),
         fetch(`${API}/integration-incidents`, { headers }),
         fetch(`${API}/integration-hub/summary`, { headers }),
+        fetch(`${API}/sync-audit-log?limit=40`, { headers }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/api-keys`, { headers })
+          : Promise.resolve({ ok: true, json: async () => ({ keys: [] }) }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/webhook`, { headers })
+          : Promise.resolve({ ok: false, json: async () => null }),
+        fetch(`${API}/seller-tier-definitions`, { headers }),
+        fetch(`${API}/seller-tier-enrollments${sellerQ}`, { headers }),
+        fetch(`${API}/seller-compliance-profiles${sellerQ}`, { headers }),
+        fetch(`${API}/seller-performance-monthly${sellerQ}`, { headers }),
+        fetch(`${API}/seller-agreements${sellerQ}`, { headers }),
+        fetch(`${API}/seller-risk-assessments${sellerQ}`, { headers }),
+        fetch(`${API}/priority-players/world-locker-marketplace`, { headers }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/player-coverage`, { headers })
+          : Promise.resolve({ ok: true, json: async () => null }),
+        fetch(`${API}/ops-intelligence/summary`, { headers }),
+        fetch(`${API}/ops-intelligence/playbooks`, { headers }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/health`, { headers })
+          : Promise.resolve({ ok: true, json: async () => ({ snapshots: [] }) }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/channel-quotas`, { headers })
+          : Promise.resolve({ ok: true, json: async () => ({ quotas: [] }) }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/operations-summary`, { headers })
+          : Promise.resolve({ ok: true, json: async () => null }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/onboarding-tasks`, { headers })
+          : Promise.resolve({ ok: true, json: async () => ({ tasks: [] }) }),
+        selectedId
+          ? fetch(`${API}/sellers/${encodeURIComponent(selectedId)}/channel-sku-maps`, { headers })
+          : Promise.resolve({ ok: true, json: async () => ({ maps: [] }) }),
       ]);
       const dashJ = await dash.json().catch(() => ({}));
       const sj = await s.json().catch(() => ({}));
@@ -224,6 +293,33 @@ export default function OpsMarketplaceAdminPage() {
       setReadinessRows((await rd.json().catch(() => ({}))).items || []);
       setIntegrationIncidents((await inc.json().catch(() => ({}))).items || []);
       if (hub.ok) setIntegrationHub(await hub.json().catch(() => null));
+      setSyncAuditRows((await audit.json().catch(() => ({}))).items || []);
+      const keysJ = await keys.json().catch(() => ({}));
+      setSellerApiKeys(keysJ.keys || []);
+      if (wh.ok) {
+        const whJ = await wh.json().catch(() => null);
+        setSellerWebhookConfig(whJ);
+        if (whJ?.url) setWebhookUrl(whJ.url);
+      } else {
+        setSellerWebhookConfig(null);
+      }
+      setTierDefs((await tiersDef.json().catch(() => ({}))).tiers || []);
+      setTierEnrollments((await tiersEnr.json().catch(() => ({}))).enrollments || []);
+      setComplianceProfiles((await compProf.json().catch(() => ({}))).profiles || []);
+      setPerformanceRows((await perfRows.json().catch(() => ({}))).rows || []);
+      setAgreements((await agrRows.json().catch(() => ({}))).agreements || []);
+      setRiskAssessments((await riskRows.json().catch(() => ({}))).assessments || []);
+      setWorldPlayers((await worldP.json().catch(() => ({}))).players || []);
+      if (sellerCov.ok) setSellerCoverage(await sellerCov.json().catch(() => null));
+      else setSellerCoverage(null);
+      if (opsSum.ok) setOpsIntelSummary(await opsSum.json().catch(() => null));
+      setOpsPlaybooks((await opsPb.json().catch(() => ({}))).playbooks || []);
+      const hl = await opsHl.json().catch(() => ({}));
+      setSellerHealth((hl.snapshots || [])[0] || null);
+      setChannelQuotas((await opsQt.json().catch(() => ({}))).quotas || []);
+      if (sopSum.ok) setOpsSummary(await sopSum.json().catch(() => null));
+      setOnboardingTasks((await sopOnb.json().catch(() => ({}))).tasks || []);
+      setSkuMaps((await sopSku.json().catch(() => ({}))).maps || []);
       setSelectedId((prev) => prev || sellerList[0]?.id || "");
       const pending = (cj.commissions || []).filter((x) => x.status === "PENDING");
       setSelectedCommissionId((prev) => prev || pending[0]?.id || "");
@@ -259,7 +355,7 @@ export default function OpsMarketplaceAdminPage() {
     try {
       const r = await fetch(`${API}/seed`, { method: "POST", headers });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(parseError(j));
+      if (!r.ok) throw new Error(parseError(j, "Falha na API marketplace-admin.", r.status));
       setOk("Seed aplicado (sellers demo, produto, comissao e avaliacao).");
       await load();
     } catch (e) {
@@ -598,6 +694,46 @@ export default function OpsMarketplaceAdminPage() {
     }
   };
 
+  const onSeedPriorityLinks = async () => {
+    if (!token || !canMutate || !selectedId) return;
+    setLoading(true);
+    setErr("");
+    const endpoints = [
+      `${API}/priority-players/seed-seller-links?seller_id=${encodeURIComponent(selectedId)}`,
+      `${API}/channel-partners/seed-seller-priority-links?seller_id=${encodeURIComponent(selectedId)}`,
+    ];
+    try {
+      let lastStatus = 0;
+      let lastBody = {};
+      for (const url of endpoints) {
+        const r = await fetch(url, { method: "POST", headers });
+        lastStatus = r.status;
+        lastBody = await r.json().catch(() => ({}));
+        if (r.ok) {
+          setOk(
+            `Vinculos prioritarios: ${lastBody.listings ?? 0} listings, ${lastBody.locker_networks ?? 0} redes locker.`,
+          );
+          await load();
+          return;
+        }
+        if (r.status !== 404) break;
+      }
+      if (lastStatus === 404) {
+        const r = await fetch(`${API}/seed`, { method: "POST", headers });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(parseError(j, "Falha na API marketplace-admin.", r.status));
+        setOk("Seed completo aplicado (inclui vinculos prioritarios).");
+        await load();
+        return;
+      }
+      throw new Error(parseError(lastBody, "Falha na API marketplace-admin.", lastStatus));
+    } catch (e) {
+      setErr(normalizeNetworkError(e, endpoints[0]));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onSeedChannelPlayers = async () => {
     if (!token || !canMutate) return;
     setLoading(true);
@@ -605,7 +741,7 @@ export default function OpsMarketplaceAdminPage() {
     try {
       const r = await fetch(`${API}/channel-partners/seed-players`, { method: "POST", headers });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(parseError(j));
+      if (!r.ok) throw new Error(parseError(j, "Falha na API marketplace-admin.", r.status));
       setOk(
         `Catalogo sincronizado: +${j.inserted ?? 0} novos, ${j.updated ?? 0} atualizados, ${j.capabilities ?? 0} capacidades novas.`,
       );
@@ -1207,6 +1343,14 @@ export default function OpsMarketplaceAdminPage() {
             </p>
           ) : null}
 
+          {tab === "channels" && sellerCoverage ? (
+            <p style={okBannerStyle}>
+              Cobertura mundial (InPost, DHL, Magalu, ML, Amazon, DPD, Correios, CTT, Worten, ECI):{" "}
+              {sellerCoverage.coverage_complete_count}/{sellerCoverage.priority_players_total} —{" "}
+              {sellerCoverage.coverage_pct}%
+            </p>
+          ) : null}
+
           {tab === "channels" ? (
             <div style={healthLocalFilterRowStyle}>
               <label style={healthLocalFilterFieldStyle}>
@@ -1249,6 +1393,16 @@ export default function OpsMarketplaceAdminPage() {
                 <button type="button" style={buttonGhostStyle} onClick={() => void onSeedChannelPlayers()} disabled={loading}>
                   Sync catalogo players
                 </button>
+                {tab === "channels" ? (
+                  <button
+                    type="button"
+                    style={buttonGhostStyle}
+                    onClick={() => void onSeedPriorityLinks()}
+                    disabled={loading || !selectedId}
+                  >
+                    Seed vinculos InPost · DHL · ML…
+                  </button>
+                ) : null}
                 {tab === "sellers" ? (
                   <>
                     <button
@@ -1416,7 +1570,7 @@ export default function OpsMarketplaceAdminPage() {
           </div>
         </section>
 
-        {tab !== "overview" ? (
+        {tab === "integrations" ? (
         <section style={opsSanityCardStyle}>
           <div style={summary24hHeaderStyle}>
             <h3 style={{ margin: 0, fontSize: 14 }}>Webhook e API key (seller)</h3>
@@ -1460,7 +1614,187 @@ export default function OpsMarketplaceAdminPage() {
               API key: <code>{lastApiKey}</code>
             </p>
           ) : null}
+          <ul style={{ marginTop: 12, fontSize: 12, color: "#94a3b8" }}>
+            {(sellerApiKeys || []).map((k) => (
+              <li key={k.id}>
+                {k.key_prefix}… {k.revoked_at ? "(revogada)" : "(ativa)"}
+              </li>
+            ))}
+          </ul>
+          {sellerWebhookConfig?.url ? (
+            <p style={summary24hHintStyle}>Webhook ativo: {sellerWebhookConfig.url}</p>
+          ) : null}
         </section>
+        ) : null}
+
+        {tab === "tiers" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Tiers e matriculas</h3>
+            <p style={summary24hHintStyle}>{tierDefs.length} definicoes · {tierEnrollments.length} matriculas</p>
+            <ul style={{ fontSize: 12, color: "#94a3b8" }}>
+              {tierEnrollments.map((e) => (
+                <li key={e.id}>{e.tier_code} — {e.status}</li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {tab === "compliance" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Compliance fiscal multi-pais</h3>
+            <table style={tableStyle}>
+              <tbody>
+                {complianceProfiles.map((p) => (
+                  <tr key={p.id}>
+                    <td style={tdStyle}>{p.country}</td>
+                    <td style={tdStyle}>{p.fiscal_status}</td>
+                    <td style={tdStyle}>{p.ioss_number || p.vat_number || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
+        {tab === "performance" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Performance mensal</h3>
+            {performanceRows.map((r) => (
+              <p key={r.id} style={summary24hHintStyle}>
+                {r.month}: GMV {formatBrl(r.gmv_cents)} · {r.order_count} pedidos
+              </p>
+            ))}
+          </section>
+        ) : null}
+
+        {tab === "agreements" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Contratos</h3>
+            <ul style={{ fontSize: 12 }}>
+              {agreements.map((a) => (
+                <li key={a.id}>
+                  {a.agreement_type} v{a.version} — {a.status}
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        {tab === "operations" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Operacoes seller</h3>
+            {canMutate ? (
+              <button
+                type="button"
+                style={buttonGhostStyle}
+                onClick={async () => {
+                  await fetch(`${API}/seller-operations/seed`, { method: "POST", headers });
+                  await load();
+                }}
+              >
+                Seed operacoes
+              </button>
+            ) : null}
+            {opsSummary ? (
+              <p style={summary24hHintStyle}>
+                Onboarding {opsSummary.onboarding_progress_pct}% · SKU {opsSummary.sku_maps}
+              </p>
+            ) : null}
+            <ul style={{ fontSize: 12 }}>
+              {onboardingTasks.map((t) => (
+                <li key={t.id}>
+                  {t.title} — {t.status}
+                </li>
+              ))}
+            </ul>
+            {skuMaps.map((m) => (
+              <p key={m.channel_sku} style={summary24hHintStyle}>
+                {m.partner_code}: {m.internal_sku} → {m.channel_sku}
+              </p>
+            ))}
+          </section>
+        ) : null}
+
+        {tab === "intelligence" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Ops intelligence</h3>
+            {canMutate ? (
+              <button
+                type="button"
+                style={buttonGhostStyle}
+                onClick={async () => {
+                  await fetch(`${API}/ops-intelligence/seed`, { method: "POST", headers });
+                  await load();
+                }}
+              >
+                Seed intelligence
+              </button>
+            ) : null}
+            {opsIntelSummary ? (
+              <p style={summary24hHintStyle}>
+                Playbooks {opsIntelSummary.playbooks_total} · API degradada {opsIntelSummary.api_health_degraded} · Cross-border{" "}
+                {opsIntelSummary.cross_border_profiles}
+              </p>
+            ) : null}
+            {sellerHealth ? (
+              <p style={summary24hHintStyle}>
+                Health {sellerHealth.health_score} ({sellerHealth.health_band})
+              </p>
+            ) : null}
+            <ul style={{ fontSize: 12 }}>
+              {opsPlaybooks.map((p) => (
+                <li key={p.code}>
+                  {p.code} — {p.name}
+                </li>
+              ))}
+            </ul>
+            <table style={tableStyle}>
+              <tbody>
+                {channelQuotas.map((q) => (
+                  <tr key={q.partner_code}>
+                    <td style={tdStyle}>{q.partner_code}</td>
+                    <td style={tdStyle}>{q.quota_status}</td>
+                    <td style={tdStyle}>{q.utilization_skus_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
+        {tab === "risk" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>Risco</h3>
+            {riskAssessments.map((r) => (
+              <p key={r.id} style={summary24hHintStyle}>
+                {r.risk_band} ({r.risk_score}) — {r.assessed_at}
+              </p>
+            ))}
+          </section>
+        ) : null}
+
+        {tab === "audit" ? (
+          <section style={opsSanityCardStyle}>
+            <h3 style={{ margin: 0, fontSize: 14 }}>marketplace_sync_audit_log</h3>
+            <table style={tableStyle}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Quando</th>
+                  <th style={thStyle}>Evento</th>
+                  <th style={thStyle}>Resumo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {syncAuditRows.map((row) => (
+                  <tr key={row.id}>
+                    <td style={tdStyle}>{row.created_at}</td>
+                    <td style={tdStyle}>{row.event_type}</td>
+                    <td style={tdStyle}>{row.summary}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
         ) : null}
 
         {err ? (

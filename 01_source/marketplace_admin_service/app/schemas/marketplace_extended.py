@@ -544,6 +544,53 @@ class CapabilityWebhookDeliveryMktOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PriorityWorldPlayerOut(BaseModel):
+    partner_id: str
+    code: str
+    role: str
+    regions: list[str]
+    listing: bool
+    locker_network: bool
+    notes: str
+    in_catalog: bool = False
+    partner_active: bool = False
+    supports_lockers: bool = False
+    supports_marketplace: bool = False
+    readiness_band: Optional[str] = None
+    score_total: Optional[float] = None
+
+
+class PriorityWorldPlayersOut(BaseModel):
+    players: list[PriorityWorldPlayerOut]
+    total: int
+
+
+class SellerPlayerCoverageRowOut(BaseModel):
+    partner_code: str
+    partner_id: str
+    role: str
+    regions: list[str]
+    notes: str
+    has_marketplace_listing: bool
+    listing_status: Optional[str] = None
+    external_store_id: Optional[str] = None
+    has_locker_network: bool
+    locker_id: Optional[str] = None
+    network_priority: Optional[int] = None
+    partner_active: bool
+    expected_listing: bool
+    expected_locker_network: bool
+    coverage_complete: bool
+
+
+class SellerPlayerCoverageOut(BaseModel):
+    seller_id: str
+    priority_players_total: int
+    coverage_complete_count: int
+    coverage_pct: float
+    players: list[SellerPlayerCoverageRowOut]
+
+
 class MarketplaceGlobalOpsSummaryOut(BaseModel):
     certifications: int
     certifications_valid: int

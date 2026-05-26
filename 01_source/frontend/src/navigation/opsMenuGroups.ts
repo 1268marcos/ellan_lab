@@ -410,7 +410,9 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${M}?tab=sellers`, 'Sellers'),
         navItem(`${M}?tab=products`, 'Produtos'),
         navItem(`${M}?tab=categories`, 'Categorias'),
-        navItem(`${M}?tab=channels`, 'Canais e redes locker'),
+        navItem(`${M}?tab=channels`, 'Canais e redes locker', {
+          keywords: 'InPost DHL Magalu Mercado Livre Amazon DPD Correios CTT Worten El Corte Ingles coverage',
+        }),
         navItem(`${M}?tab=reviews`, 'Avaliações'),
       ], true),
       section('integration', 'Integração & Global OPS', [
@@ -429,6 +431,25 @@ export const OPS_MENU_GROUPS: OpsNavGroup[] = [
         navItem(`${M}?tab=commissions`, 'Comissões'),
         navItem(`${M}?tab=kyc`, 'KYC / compliance'),
         navItem(`${M}?tab=disputes`, 'Disputas'),
+      ]),
+      section('sellerIntegrations', 'Seller · integrações', [
+        navItem(`${M}?tab=integrations`, 'Webhooks & API keys', {
+          keywords: 'seller_webhook_endpoints seller_api_keys rotate HMAC',
+        }),
+        navItem(`${M}?tab=audit`, 'Auditoria sync', {
+          keywords: 'marketplace_sync_audit_log readiness channel',
+        }),
+      ]),
+      section('sellerProfessional', 'Seller · programa global', [
+        navItem(`${M}?tab=tiers`, 'Programas & tiers', {
+          keywords: 'STARTER GROWTH ENTERPRISE Magalu Mercado Livre commission',
+        }),
+        navItem(`${M}?tab=compliance`, 'Compliance fiscal', {
+          keywords: 'IOSS VAT OSS BR PT ES cross-border fiscal',
+        }),
+        navItem(`${M}?tab=performance`, 'Performance mensal', { keywords: 'GMV OTD defect chargeback' }),
+        navItem(`${M}?tab=agreements`, 'Contratos & DPA', { keywords: 'MARKETPLACE_TERMS DATA_PROCESSING signed' }),
+        navItem(`${M}?tab=risk`, 'Risco & fraude', { keywords: 'risk_score LOW MEDIUM HIGH KYC' }),
       ]),
     ],
   }),
