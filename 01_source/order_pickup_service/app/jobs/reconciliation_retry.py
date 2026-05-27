@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.db import SessionLocal
 from app.models.order import Order
 from app.services.order_reconciliation_service import (
+    compensation_steps_for_reason,
+    pending_step_succeeded,
     reconcile_order_compensation,
     resolve_latest_allocation,
     resolve_latest_pickup,
@@ -55,17 +57,45 @@ def _safe_record_worker_audit(
         audit_db.close()
 
 
+def _retry_payload_patch(*, reason: str, result, attempt_count: int) -> dict:
+    return {
+        "last_retry_reason": str(reason or "").strip().lower(),
+        "last_retry_attempt_count": int(attempt_count or 0),
+        "compensation_result": result.to_payload_dict(),
+    }
+
+
+def _target_step_error(*, reason: str, result) -> str | None:
+    reason_norm = str(reason or "").strip().lower()
+    if reason_norm == "slot_release_failed":
+        return result.slot_release_error
+    if reason_norm == "credit_restore_failed":
+        return result.credit_restore_error
+    return result.slot_release_error or result.credit_restore_error
+
+
 def run_reconciliation_retry_once(
     db: Session,
     *,
     batch_size: int = 25,
 ) -> int:
+    """
+    Processa pendências de reconciliação com retentativa seletiva por passo.
+
+    Cada linha em ``reconciliation_pending`` representa um passo falho
+    (``slot_release_failed`` ou ``credit_restore_failed``). O worker reexecuta
+    apenas o passo alvo; se ele tiver sucesso, a pendência vai para DONE mesmo
+    que o outro passo tenha falhado em outra linha ou execução anterior.
+    Detalhes de cada tentativa são gravados em ``payload_json``.
+    """
     rows = claim_reconciliation_pending_batch(db, batch_size=batch_size)
     if not rows:
         return 0
 
     processed = 0
     for row in rows:
+        reason = str(row.reason or "").strip().lower()
+        attempt_count = int(row.attempt_count or 0)
         try:
             order = db.get(Order, row.order_id)
             if not order:
@@ -73,6 +103,7 @@ def run_reconciliation_retry_once(
 
             allocation = resolve_latest_allocation(db, order=order)
             pickup = resolve_latest_pickup(db, order=order)
+            run_slot_release, run_credit_restore = compensation_steps_for_reason(reason)
             result = reconcile_order_compensation(
                 db=db,
                 order=order,
@@ -80,32 +111,83 @@ def run_reconciliation_retry_once(
                 pickup=pickup,
                 cancel_reason="async_reconciliation_retry",
                 record_pending_on_failure=False,
+                run_slot_release=run_slot_release,
+                run_credit_restore=run_credit_restore,
+            )
+            payload_patch = _retry_payload_patch(
+                reason=reason,
+                result=result,
+                attempt_count=attempt_count,
             )
 
-            has_error = bool(result.slot_release_error or result.credit_restore_error)
-            if has_error:
-                error_message = result.slot_release_error or result.credit_restore_error or "unknown_error"
-                raise RuntimeError(str(error_message))
+            if pending_step_succeeded(reason=reason, result=result):
+                db.commit()
+                mark_reconciliation_pending_done(
+                    db,
+                    pending_id=row.id,
+                    payload_patch=payload_patch,
+                )
+                processed += 1
+                _safe_record_worker_audit(
+                    action="SYSTEM_RECON_RETRY_PROCESS",
+                    result="SUCCESS",
+                    correlation_id=f"recon-worker-{row.id}",
+                    order_id=row.order_id,
+                    details={
+                        "pending_id": row.id,
+                        "attempt_count": attempt_count,
+                        "reason": reason,
+                        "compensation_result": result.to_payload_dict(),
+                    },
+                )
+                logger.info(
+                    "reconciliation_retry_done pending_id=%s order_id=%s reason=%s",
+                    row.id,
+                    row.order_id,
+                    reason,
+                )
+                continue
 
-            mark_reconciliation_pending_done(db, pending_id=row.id)
-            processed += 1
+            step_error = _target_step_error(reason=reason, result=result) or "step_failed"
+            db.rollback()
+            mark_reconciliation_pending_failed(
+                db,
+                pending_id=row.id,
+                error_message=str(step_error),
+                payload_patch=payload_patch,
+            )
             _safe_record_worker_audit(
                 action="SYSTEM_RECON_RETRY_PROCESS",
-                result="SUCCESS",
+                result="ERROR",
                 correlation_id=f"recon-worker-{row.id}",
                 order_id=row.order_id,
+                error_message=str(step_error),
                 details={
                     "pending_id": row.id,
-                    "attempt_count": int(row.attempt_count or 0),
+                    "attempt_count": attempt_count + 1,
+                    "reason": reason,
+                    "compensation_result": result.to_payload_dict(),
                 },
             )
-            logger.info(
-                "reconciliation_retry_done pending_id=%s order_id=%s",
+            logger.warning(
+                "reconciliation_retry_failed pending_id=%s order_id=%s reason=%s error=%s",
                 row.id,
                 row.order_id,
+                reason,
+                step_error,
             )
         except Exception as exc:
-            mark_reconciliation_pending_failed(db, pending_id=row.id, error_message=str(exc))
+            db.rollback()
+            mark_reconciliation_pending_failed(
+                db,
+                pending_id=row.id,
+                error_message=str(exc),
+                payload_patch={
+                    "last_retry_reason": reason,
+                    "last_retry_attempt_count": attempt_count + 1,
+                    "last_retry_exception": str(exc),
+                },
+            )
             _safe_record_worker_audit(
                 action="SYSTEM_RECON_RETRY_PROCESS",
                 result="ERROR",
@@ -114,7 +196,8 @@ def run_reconciliation_retry_once(
                 error_message=str(exc),
                 details={
                     "pending_id": row.id,
-                    "attempt_count": int((row.attempt_count or 0) + 1),
+                    "attempt_count": attempt_count + 1,
+                    "reason": reason,
                 },
             )
             logger.warning(

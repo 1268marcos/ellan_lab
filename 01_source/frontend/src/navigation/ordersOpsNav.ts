@@ -10,6 +10,18 @@ export const ordersOpsNavGroup = opsGroup('ordersOps', '📦', 'Pedidos OPS', {
   }),
   sections: [
     section(
+      'monitoring',
+      'Monitoramento order_pickup',
+      [
+        navItem('/ops', 'Hub monitoramento OPS', {
+          newTag: 'Live',
+          keywords: 'credits reconciliation runtime deadlocks order_pickup monitoring',
+        }),
+        navItem('/ops/monitoring', 'Créditos · reconciliação · runtime'),
+      ],
+      true,
+    ),
+    section(
       'hub',
       'Hub & visão',
       [

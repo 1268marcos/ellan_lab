@@ -90,6 +90,9 @@ class Settings(BaseSettings):
         alias="LOGISTICS_SERVICE_BASE_URL",
     )
     catalog_redis_url: str = Field(default="redis://localhost:6379/0", alias="CATALOG_REDIS_URL")
+    # Opcional: health check `check_redis_connection()` só executa ping quando definido.
+    redis_url: Optional[str] = Field(default=None, alias="REDIS_URL")
+    # Em produção, configure CATALOG_REDIS_URL (ex.: redis://host:6379/0) para rate limit distribuído entre réplicas do serviço.
     catalog_stream_key: str = Field(default="catalog:events", alias="CATALOG_STREAM_KEY")
     catalog_consumer_group: str = Field(default="order_pickup", alias="CATALOG_CONSUMER_GROUP")
 

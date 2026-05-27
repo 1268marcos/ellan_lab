@@ -14,7 +14,7 @@ export default function OpsRouteHelpButton() {
   const location = useLocation();
   const { token, user } = useAuth();
   const routePath = String(location.pathname || "");
-  if (!routePath.startsWith("/ops/")) return null;
+  if (routePath !== "/ops" && !routePath.startsWith("/ops/")) return null;
 
   const tutorial = resolveOpsTutorial(routePath, null) as ResolvedTutorial;
   const userEmail =

@@ -42,7 +42,10 @@ from app.schemas.pickup import (
     TotemRedeemManualIn,
     TotemRedeemOut,
 )
+from app.core.logging_utils import bind_endpoint_context
+from app.core.structured_logging import get_logger
 from app.services import backend_client
+from app.services.rate_limit_service import get_manual_redeem_rate_limiter
 
 from app.services.pickup_event_publisher import (
     publish_pickup_door_opened,
@@ -57,7 +60,7 @@ from app.core.datetime_utils import to_iso_utc
 
 router = APIRouter(tags=["pickup"])
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 QR_ROTATE_SEC = settings.qr_rotate_sec
 QR_PAYLOAD_VERSION = settings.pickup_qr_payload_version
@@ -66,13 +69,6 @@ APP_ENV = str(settings.app_env or settings.node_env or "dev").strip().lower()
 
 _QR_SECRET_RAW = str(settings.pickup_qr_secret or "").strip()
 _DEV_FALLBACK_QR_SECRET = "dev-secreto-mudar"
-
-MANUAL_REDEEM_MAX_ATTEMPTS = settings.manual_redeem_max_attempts
-MANUAL_REDEEM_WINDOW_SEC = settings.manual_redeem_window_sec
-MANUAL_REDEEM_BLOCK_SEC = settings.manual_redeem_block_sec
-
-_manual_redeem_attempts = {}
-
 
 #=============== HELPERS =================
 def _utcnow() -> datetime:
@@ -244,48 +240,29 @@ def _manual_redeem_key(region: str, manual_code: str, request: Request) -> str:
 
 def _check_manual_redeem_block(region: str, manual_code: str, request: Request) -> None:
     key = _manual_redeem_key(region, manual_code, request)
-    now = int(_utcnow().timestamp())
-    entry = _manual_redeem_attempts.get(key)
-
-    if not entry:
-        return
-
-    blocked_until = entry.get("blocked_until")
-    if blocked_until and now < blocked_until:
-        retry_after = blocked_until - now
+    allowed, retry_after_sec = get_manual_redeem_rate_limiter().is_allowed(key)
+    if not allowed:
         raise HTTPException(
             status_code=429,
             detail={
                 "type": "TOO_MANY_MANUAL_CODE_ATTEMPTS",
                 "message": "too many invalid manual code attempts; try again later",
                 "retryable": True,
-                "retry_after_sec": retry_after,
+                "retry_after_sec": max(int(retry_after_sec), 1),
             },
         )
 
 
 def _register_manual_redeem_failure(region: str, manual_code: str, request: Request) -> None:
-    key = _manual_redeem_key(region, manual_code, request)
-    now = int(_utcnow().timestamp())
-    entry = _manual_redeem_attempts.get(key, {"fails": [], "blocked_until": None})
-
-    fails = [ts for ts in entry.get("fails", []) if now - ts <= MANUAL_REDEEM_WINDOW_SEC]
-    fails.append(now)
-
-    blocked_until = None
-    if len(fails) >= MANUAL_REDEEM_MAX_ATTEMPTS:
-        blocked_until = now + MANUAL_REDEEM_BLOCK_SEC
-
-    _manual_redeem_attempts[key] = {
-        "fails": fails,
-        "blocked_until": blocked_until,
-    }
+    get_manual_redeem_rate_limiter().record_failure(
+        _manual_redeem_key(region, manual_code, request)
+    )
 
 
 def _clear_manual_redeem_failures(region: str, manual_code: str, request: Request) -> None:
-    key = _manual_redeem_key(region, manual_code, request)
-    if key in _manual_redeem_attempts:
-        del _manual_redeem_attempts[key]
+    get_manual_redeem_rate_limiter().clear(
+        _manual_redeem_key(region, manual_code, request)
+    )
 
 
 def _generate_manual_code() -> str:
@@ -983,6 +960,7 @@ def totem_redeem(payload: TotemRedeemIn, db: Session = Depends(get_db)):
 
 
 @router.post("/totem/pickups/redeem-manual", response_model=TotemRedeemOut)
+@bind_endpoint_context(operation="totem_redeem_manual", order_id_param=None)
 def totem_redeem_manual(
     payload: TotemRedeemManualIn,
     request: Request,

@@ -135,7 +135,20 @@ def claim_reconciliation_pending_batch(
     return rows
 
 
-def mark_reconciliation_pending_done(db: Session, *, pending_id: str) -> None:
+def _merge_payload_json(row: ReconciliationPending, payload_patch: dict | None) -> None:
+    if not payload_patch:
+        return
+    base = dict(row.payload_json or {})
+    base.update(payload_patch)
+    row.payload_json = base
+
+
+def mark_reconciliation_pending_done(
+    db: Session,
+    *,
+    pending_id: str,
+    payload_patch: dict | None = None,
+) -> None:
     row = db.query(ReconciliationPending).filter(ReconciliationPending.id == pending_id).first()
     if not row:
         return
@@ -146,6 +159,7 @@ def mark_reconciliation_pending_done(db: Session, *, pending_id: str) -> None:
     row.next_retry_at = None
     row.last_error = None
     row.updated_at = now
+    _merge_payload_json(row, payload_patch)
     db.commit()
 
 
@@ -154,6 +168,7 @@ def mark_reconciliation_pending_failed(
     *,
     pending_id: str,
     error_message: str,
+    payload_patch: dict | None = None,
 ) -> None:
     row = db.query(ReconciliationPending).filter(ReconciliationPending.id == pending_id).first()
     if not row:
@@ -163,6 +178,7 @@ def mark_reconciliation_pending_failed(
     row.last_error = str(error_message or "")[:4000]
     row.processing_started_at = None
     row.updated_at = now
+    _merge_payload_json(row, payload_patch)
 
     if int(row.attempt_count or 0) >= int(row.max_attempts or DEFAULT_MAX_ATTEMPTS):
         row.status = "FAILED_FINAL"

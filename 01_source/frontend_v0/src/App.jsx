@@ -13,6 +13,7 @@ import {
   clearRuntimeGeoScopeTenantOverride,
   getRuntimeGeoScopeTenantOverride,
 } from "./utils/lockerGeoFilter";
+import OpsMonitoringDashboardPage from "./pages/OpsMonitoringDashboardPage";
 
 // Lazy loading para performance
 const PublicLandingPage = lazy(() => import("./pages/public/PublicLandingPage"));
@@ -505,6 +506,18 @@ function TopNav() {
       label: "ops /kiosk-touch-models",
       aria: "Protótipos navegáveis KIOSK touch v1 (Sprint 1)",
       group: "Visão Geral",
+    },
+    {
+      to: "/ops",
+      label: "ops / (monitoramento)",
+      aria: "Hub monitoramento OPS — créditos, reconciliação e runtime",
+      group: "Dashboards",
+    },
+    {
+      to: "/ops/monitoring",
+      label: "ops /monitoring",
+      aria: "Dashboard monitoramento order_pickup (detalhe)",
+      group: "Dashboards",
     },
     { to: "/ops/health", label: "ops /health", aria: "Saúde operacional e alertas", group: "Dashboards" },
     { to: "/ops/runtime/health", label: "ops /runtime/health", aria: "Health do backend runtime (8200)", group: "Runtime" },
@@ -4071,6 +4084,7 @@ function clusterOpsLinksBySubGroup(links) {
 function AppContent() {
   const location = useLocation();
   const path = String(location.pathname || "").toLowerCase();
+  const isOpsMainContent = location.pathname.startsWith("/ops");
 
   const logBoundaryError = (domain) => (error, errorInfo) => {
     reportUiErrorTelemetry({
@@ -4090,7 +4104,7 @@ function AppContent() {
   return (
     <div className="app-container">
       <TopNav />
-      <div id="main-content">
+      <div id="main-content" className={isOpsMainContent ? "ops-theme-shell" : undefined}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<PublicLandingPage />} />
@@ -4378,6 +4392,23 @@ function AppContent() {
                   <FiscalPageLayout>
                     <FiscalIncidentResponsePage />
                   </FiscalPageLayout>
+                </OpsRoute>
+              }
+            />
+            <Route path="/ops/" element={<Navigate to="/ops" replace />} />
+            <Route
+              path="/ops"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMonitoringDashboardPage />)}
+                </OpsRoute>
+              }
+            />
+            <Route
+              path="/ops/monitoring"
+              element={
+                <OpsRoute>
+                  {withBoundary("ops", <OpsMonitoringDashboardPage />)}
                 </OpsRoute>
               }
             />

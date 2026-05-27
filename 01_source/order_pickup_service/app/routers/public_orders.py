@@ -44,6 +44,8 @@ from app.core.auth_dep import (
     get_current_verified_public_user,
 )
 from app.core.db import get_db
+from app.core.logging_utils import bind_endpoint_context
+from app.core.structured_logging import get_logger
 from app.services.fiscal_resolve import FiscalReadable, resolve_fiscal_for_order
 from app.models.order import Order, OrderStatus, PaymentMethod, OrderChannel
 from app.models.user import User
@@ -78,7 +80,7 @@ from app.services import backend_client
 
 
 # Configuração de logging
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/public/orders", tags=["public-orders"])
 INVOICE_MANUAL_ALLOWED_ROLES = {"admin_operacao", "suporte", "auditoria"}
@@ -1356,6 +1358,7 @@ class PublicOrderCreateResponse(BaseModel):
 # ==================== Endpoints ====================
 
 @router.post("/", response_model=PublicOrderCreateResponse)
+@bind_endpoint_context(operation="public_order_create", order_id_param=None)
 def create_public_order(
     payload: PublicCreateOrderRequest,
     request: Request,
@@ -1758,6 +1761,7 @@ def generate_public_order_invoice_now(
 
 
 @router.post("/{order_id}/cancel")
+@bind_endpoint_context(operation="public_order_cancel", order_id_param="order_id")
 def cancel_public_order(
     order_id: str,
     current_user: User = Depends(get_current_user),

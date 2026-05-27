@@ -20,7 +20,9 @@ const H = '/ops/hardware/admin'
 
 export const OPS_MENU_GROUPS: OpsNavGroup[] = [
   opsGroup('ops', '🛠️', 'OPS', {
+    hub: navItem('/ops', 'Monitoramento OPS', { newTag: 'Live' }),
     items: [
+      navItem('/ops', 'Monitoramento OPS', { newTag: 'Hub' }),
       navItem('/dashboard', 'Dashboard'),
       navItem('/ops/lockers', 'Lockers'),
       navItem('/ops/lockers/create', 'Criar lockers'),

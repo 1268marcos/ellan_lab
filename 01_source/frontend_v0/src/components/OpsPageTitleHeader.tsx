@@ -5,6 +5,7 @@ import OpsRouteHelpButton from "./OpsRouteHelpButton";
 
 interface OpsPageTitleHeaderProps {
   title: ReactNode;
+  subtitle?: string;
   versionLabel?: string;
   versionTo?: string;
   versionTitle?: string;
@@ -16,6 +17,7 @@ interface OpsPageTitleHeaderProps {
 
 export default function OpsPageTitleHeader({
   title,
+  subtitle = "",
   versionLabel = "",
   versionTo = "",
   versionTitle = "",
@@ -26,7 +28,12 @@ export default function OpsPageTitleHeader({
   const versionBadgeMerged = { ...defaultVersionBadgeStyle, ...versionBadgeOverride };
   return (
     <div style={{ ...baseContainerStyle, ...containerStyle }}>
-      <h1 style={{ ...baseTitleStyle, ...titleStyle }}>{title}</h1>
+      <div style={{ width: "100%" }}>
+        <h1 style={{ ...baseTitleStyle, ...titleStyle }}>{title}</h1>
+        {subtitle ? (
+          <p style={{ margin: "4px 0 0", fontSize: 14, color: "#94a3b8", fontWeight: 400 }}>{subtitle}</p>
+        ) : null}
+      </div>
       {versionLabel ? (
         versionTo ? (
           <Link to={versionTo} style={versionBadgeMerged} title={versionTitle || "Abrir política de versionamento"}>

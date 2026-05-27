@@ -1,15 +1,16 @@
 # 01_source/order_pickup_service/app/main.py
 import asyncio
-import logging
 import os
 import time
 import uuid
-from collections import defaultdict, deque
+from collections import deque
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.core.structured_logging import configure_structured_logging, get_logger
+from app.middleware.request_logging import RequestLoggingMiddleware
 from app.middleware.shadow_mode import ShadowModeMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -34,6 +35,7 @@ from app.routers import (
     dev_admin,
     dev_base_catalog,
     integration_ops,
+    ops_monitoring,
     internal,
     kiosk,
     locker,
@@ -68,8 +70,8 @@ from app.routers.public_fiscal import router as public_fiscal_router
 from app.routers.payment_capabilities import router as payment_capabilities_router
 
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("order_pickup_service")
+configure_structured_logging()
+logger = get_logger("order_pickup_service")
 _dev_error_events: deque[dict] = deque(maxlen=300)
 _ui_error_events: deque[dict] = deque(maxlen=500)
 
@@ -120,30 +122,6 @@ def _record_ui_error_event(
     )
 
 
-class _PublicRouteRateLimiter:
-    """Simple in-memory limiter for public endpoints."""
-
-    def __init__(self, max_requests: int, window_seconds: int):
-        self.max_requests = max(1, int(max_requests))
-        self.window_seconds = max(1, int(window_seconds))
-        self._events: dict[str, deque[float]] = defaultdict(deque)
-
-    def allow(self, key: str, now_ts: float) -> bool:
-        events = self._events[key]
-        window_start = now_ts - self.window_seconds
-        while events and events[0] < window_start:
-            events.popleft()
-        if len(events) >= self.max_requests:
-            return False
-        events.append(now_ts)
-        return True
-
-
-_public_rate_limiter = _PublicRouteRateLimiter(
-    max_requests=settings.public_rate_limit_requests,
-    window_seconds=settings.public_rate_limit_window_sec,
-)
-
 app = FastAPI(
     title="ELLAN Order Pickup Service",
     version=get_version(),
@@ -151,6 +129,10 @@ app = FastAPI(
 )
 
 
+app.add_middleware(
+    RequestLoggingMiddleware,
+    record_dev_error_event=_record_dev_error_event,
+)
 app.add_middleware(ShadowModeMiddleware)
 
 # Routers principais
@@ -175,6 +157,7 @@ app.include_router(pricing_fiscal.router)
 app.include_router(promotions_admin.router)
 app.include_router(pricing_rules.router)
 app.include_router(integration_ops.router)
+app.include_router(ops_monitoring.router)
 app.include_router(internal.router)
 def _ensure_rental_schema_dep(db=Depends(get_db)):
     ensure_rental_schema(db)
@@ -220,50 +203,6 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(internal_health_router, tags=["Internal"])
 
 app.include_router(payment_capabilities_router)
-
-
-@app.middleware("http")
-async def tracing_and_rate_limit_middleware(request: Request, call_next):
-    trace_id = request.headers.get("X-Trace-Id") or str(uuid.uuid4())
-    request.state.trace_id = trace_id
-    started = time.time()
-
-    path = str(request.url.path or "")
-    if path.startswith("/public/"):
-        client_ip = request.client.host if request.client else "unknown"
-        rate_key = f"{client_ip}:{path}"
-        if not _public_rate_limiter.allow(rate_key, started):
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "service": "order_pickup_service",
-                    "result": "error",
-                    "error": {"type": "RATE_LIMIT_EXCEEDED", "message": "Too many requests"},
-                    "trace_id": trace_id,
-                },
-                headers={"X-Trace-Id": trace_id},
-            )
-
-    response = await call_next(request)
-    elapsed_ms = int((time.time() - started) * 1000)
-    response.headers["X-Trace-Id"] = trace_id
-    logger.info(
-        "request_completed method=%s path=%s status=%s elapsed_ms=%s trace_id=%s",
-        request.method,
-        path,
-        response.status_code,
-        elapsed_ms,
-        trace_id,
-    )
-    if int(response.status_code) >= 400:
-        _record_dev_error_event(
-            level="HTTP_ERROR",
-            status_code=int(response.status_code),
-            path=path,
-            method=request.method,
-            trace_id=trace_id,
-        )
-    return response
 
 
 @app.get("/internal/dev/errors")
@@ -630,19 +569,24 @@ async def integration_order_events_outbox_loop():
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    trace_id = getattr(request.state, "trace_id", None) or str(uuid.uuid4())
+    correlation_id = (
+        getattr(request.state, "correlation_id", None)
+        or getattr(request.state, "trace_id", None)
+        or str(uuid.uuid4())
+    )
     logger.exception(
-        "unhandled_exception path=%s trace_id=%s error_type=%s",
-        str(request.url.path),
-        trace_id,
-        exc.__class__.__name__,
+        "unhandled_exception_handler",
+        http_path=str(request.url.path),
+        correlation_id=correlation_id,
+        error_type=exc.__class__.__name__,
+        error_message=str(exc)[:500],
     )
     _record_dev_error_event(
         level="UNHANDLED_EXCEPTION",
         status_code=500,
         path=str(request.url.path),
         method=request.method,
-        trace_id=trace_id,
+        trace_id=correlation_id,
         error_type=exc.__class__.__name__,
         message=str(exc)[:300],
     )
@@ -655,7 +599,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             "severity": "HIGH",
             "severity_code": "GATEWAY_UNHANDLED_EXCEPTION",
             "timestamp": time.time(),
-            "trace_id": trace_id,
+            "correlation_id": correlation_id,
+            "trace_id": correlation_id,
         },
-        headers={"X-Trace-Id": trace_id},
+        headers={
+            "X-Correlation-Id": correlation_id,
+            "X-Trace-Id": correlation_id,
+        },
     )

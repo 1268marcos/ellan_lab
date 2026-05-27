@@ -3,10 +3,12 @@
 export const pageStyle = {
   width: "100%",
   maxWidth: "none",
+  minHeight: "100%",
   padding: 24,
   boxSizing: "border-box",
   color: "#f5f7fa",
   fontFamily: "system-ui, sans-serif",
+  background: "var(--ops-page-bg, #0b1020)",
 };
 
 export const cardStyle = {

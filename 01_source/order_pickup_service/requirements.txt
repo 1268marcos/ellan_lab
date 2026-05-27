@@ -14,3 +14,6 @@ qrcode[pil]
 cryptography==41.0.7
 pytest
 httpx
+redis>=5.0.0
+fakeredis>=2.23.0
+structlog>=24.4.0

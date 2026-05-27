@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_dev import get_current_user_or_dev
 from app.core.db import get_db
+from app.core.logging_utils import bind_endpoint_context
 from app.models.allocation import Allocation
 from app.models.order import Order, OrderChannel, OrderStatus
 from app.models.pickup import Pickup
@@ -90,6 +91,7 @@ def resolve_operational_status(order: Order, allocation: Allocation | None) -> s
 
 
 @router.post("", response_model=OrderOut)
+@bind_endpoint_context(operation="order_create", order_id_param=None)
 def create_order(
     payload: CreateOrderIn,
     db: Session = Depends(get_db),

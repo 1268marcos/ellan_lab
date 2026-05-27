@@ -90,8 +90,42 @@ def select_checkout_credit_candidate(
     order_amount_cents: int,
     requested_credit_id: str | None = None,
     now: datetime | None = None,
-    lock_for_update: bool = False,
+    lock_for_update: bool = True,
 ) -> Credit | None:
+    """
+    Seleciona um crédito elegível para desconto no checkout.
+
+    Critérios (todos obrigatórios):
+    - ``user_id`` do titular;
+    - ``status == AVAILABLE``, não expirado, sem ``used_at`` / ``revoked_at``;
+    - ``amount_cents <= order_amount_cents - 1`` (pedido permanece com valor mínimo de 1).
+
+    Ordenação: menor ``expires_at`` primeiro, depois ``created_at`` (FIFO dentro da
+    mesma validade).
+
+    Locking (padrão ``lock_for_update=True``):
+    Emite ``SELECT ... FOR UPDATE SKIP LOCKED`` via ``Query.with_for_update(skip_locked=True)``.
+    A linha retornada fica bloqueada até o fim da transação; linhas já locked por outro
+    checkout são ignoradas (sem fila de espera). Preview somente-leitura deve passar
+    ``lock_for_update=False``.
+
+    Args:
+        db: Sessão SQLAlchemy (deve estar dentro de uma transação quando há lock).
+        user_id: Usuário dono da carteira; ``None`` retorna ``None``.
+        order_amount_cents: Valor base do pedido antes do desconto.
+        requested_credit_id: Se informado, restringe àquele crédito; caso contrário
+            escolhe o primeiro elegível na ordenação acima.
+        now: Referência temporal para expiração; padrão UTC agora.
+        lock_for_update: ``True`` (padrão) aplica ``FOR UPDATE SKIP LOCKED``; ``False``
+            para leitura sem bloqueio (ex.: endpoint de preview).
+
+    Returns:
+        Instância ``Credit`` elegível, ou ``None`` se não houver candidato (ou se o
+        candidato estiver bloqueado por outro checkout concorrente).
+
+    Note:
+        Em SQLite (dev/test), ``FOR UPDATE SKIP LOCKED`` pode ser ignorado pelo driver.
+    """
     if not user_id:
         return None
 
@@ -119,7 +153,9 @@ def select_checkout_credit_candidate(
         query = query.filter(Credit.id == requested_credit_id)
 
     if lock_for_update:
-        query = query.with_for_update()
+        # SELECT ... FOR UPDATE SKIP LOCKED (Postgres): pessimistic lock sem esperar
+        # linhas já reservadas por outro checkout na mesma transação.
+        query = query.with_for_update(skip_locked=True)
 
     return query.first()
 
@@ -188,6 +224,11 @@ def apply_credit_for_checkout(
         )
 
     ref = now or _utc_now()
+    # Estratégia de locking no checkout (mesma transação que cria o pedido):
+    # 1) SELECT ... FOR UPDATE SKIP LOCKED — reserva a linha do crédito sem bloquear
+    #    checkouts concorrentes em fila; quem perde o lock recebe None.
+    # 2) UPDATE ORM (status USED + flush) — visível para o próximo SELECT na sessão.
+    # 3) commit do caller — libera o lock; outras transações não reutilizam o crédito.
     credit = select_checkout_credit_candidate(
         db=db,
         user_id=user_id,

@@ -34,6 +34,8 @@
   --nav-sp-bg: linear-gradient(135deg, rgba(0,155,58,0.9), rgba(254,221,0,0.9), rgba(0,39,118,0.9));
   --nav-pt-bg: linear-gradient(135deg, rgba(0,102,0,0.9), rgba(206,17,38,0.9));
   --nav-ops-bg: linear-gradient(135deg, rgba(138,35,35,0.95), rgba(70,10,10,0.95));
+  --ops-page-bg: radial-gradient(circle at top right, rgba(138, 35, 35, 0.16), rgba(2, 6, 23, 0) 48%), #0b1020;
+  --ops-page-text: #f5f7fa;
   --fiscal-accent: #6366f1;
   --fiscal-accent-2: #22d3ee;
   --fiscal-surface: rgba(15, 23, 42, 0.96);
@@ -1043,6 +1045,28 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
+}
+
+/* Shell escuro para rotas /ops/* (monitoramento, CRUD, dashboards) */
+.ops-theme-shell {
+  background: var(--ops-page-bg);
+  min-height: 100%;
+  width: 100%;
+  flex: 1;
+  color: var(--ops-page-text);
+}
+
+.ops-theme-shell .page-loader {
+  min-height: 50vh;
+}
+
+.ops-theme-shell .loader-text {
+  color: #94a3b8;
+}
+
+.ops-theme-shell .loader-spinner {
+  border-color: rgba(148, 163, 184, 0.35);
+  border-top-color: #60a5fa;
 }
 
 .fiscal-theme-content {
