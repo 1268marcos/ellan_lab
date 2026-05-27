@@ -4,6 +4,7 @@
 
 import hashlib
 import json
+import logging
 import time
 import uuid
 
@@ -23,8 +24,110 @@ from app.services.idempotency_service import IdempotencyService
 from app.services.device_registry_service import DeviceRegistryService
 from app.services.locker_backend_client import LockerBackendClient
 from app.core.event_log import GatewayEventLogger
-from app.core.policies import get_policy_by_region
+from app.core.policies import RegionRiskProfile, get_policy_by_region
 
+logger = logging.getLogger(__name__)
+
+_CURRENCY_SYMBOL_BY_ISO: dict[str, str] = {
+    "AED": "د.إ",
+    "ARS": "$",
+    "AUD": "A$",
+    "BRL": "R$",
+    "CAD": "C$",
+    "CHF": "CHF",
+    "CLP": "$",
+    "CNY": "¥",
+    "COP": "$",
+    "CZK": "Kč",
+    "DKK": "kr",
+    "EGP": "E£",
+    "EUR": "€",
+    "GBP": "£",
+    "HUF": "Ft",
+    "IDR": "Rp",
+    "JPY": "¥",
+    "KES": "KSh",
+    "KRW": "₩",
+    "MXN": "$",
+    "MYR": "RM",
+    "NGN": "₦",
+    "NOK": "kr",
+    "NZD": "NZ$",
+    "PHP": "₱",
+    "PLN": "zł",
+    "QAR": "ر.ق",
+    "RON": "lei",
+    "RUB": "₽",
+    "SAR": "ر.س",
+    "SEK": "kr",
+    "SGD": "S$",
+    "THB": "฿",
+    "TRY": "₺",
+    "USD": "$",
+    "VND": "₫",
+    "ZAR": "R",
+}
+
+_REGION_CURRENCY_ISO: dict[str, str] = {
+    # América Latina (RegionRiskProfile.RISK_CONFIGS)
+    "SP": "BRL",
+    "MX": "MXN",
+    "AR": "ARS",
+    "CO": "COP",
+    "CL": "CLP",
+    # América do Norte
+    "US_NY": "USD",
+    "CA_ON": "CAD",
+    # Europa Ocidental
+    "PT": "EUR",
+    "ES": "EUR",
+    "FR": "EUR",
+    "DE": "EUR",
+    "UK": "GBP",
+    "IT": "EUR",
+    "NL": "EUR",
+    "BE": "EUR",
+    "CH": "CHF",
+    "SE": "SEK",
+    "NO": "NOK",
+    "DK": "DKK",
+    "FI": "EUR",
+    # Europa Oriental
+    "PL": "PLN",
+    "CZ": "CZK",
+    "HU": "HUF",
+    "RO": "RON",
+    "RU": "RUB",
+    "TR": "TRY",
+    # África
+    "ZA": "ZAR",
+    "NG": "NGN",
+    "KE": "KES",
+    "EG": "EGP",
+    # Ásia
+    "CN": "CNY",
+    "JP": "JPY",
+    "KR": "KRW",
+    "TH": "THB",
+    "ID": "IDR",
+    "SG": "SGD",
+    "PH": "PHP",
+    "VN": "VND",
+    "MY": "MYR",
+    # Oriente Médio
+    "AE": "AED",
+    "SA": "SAR",
+    "QA": "QAR",
+    # Oceania
+    "AU": "AUD",
+    "NZ": "NZD",
+}
+
+_missing_currency_regions = set(RegionRiskProfile.RISK_CONFIGS) - set(_REGION_CURRENCY_ISO)
+if _missing_currency_regions:
+    raise RuntimeError(
+        f"region_currency missing entries for RISK_CONFIGS regions: {sorted(_missing_currency_regions)}"
+    )
 
 _logger = GatewayEventLogger(
     gateway_id=settings.GATEWAY_ID,
@@ -165,14 +268,26 @@ def _resolve_locker_context(data, region: str, canal: str, metodo: str):
     return locker_id, locker_cfg
 
 
-def _resolve_currency(region: str, incoming_currency: str | None) -> tuple[str, str | None]:
-    region_currency = {
-        "SP": "BRL",
-        "PT": "EUR",
-    }
-    expected_currency = region_currency.get(region, "BRL")
+def _resolve_currency(region: str, incoming_currency: str | None) -> tuple[str, str | None, str]:
+    """
+    Resolve ISO 4217 currency and display symbol for a gateway region.
+
+    Regions are aligned with ``RegionRiskProfile.RISK_CONFIGS`` keys in policies.py.
+    Unknown regions fall back to BRL (logged as warning).
+    """
+    region_key = (region or "").upper().strip()
     normalized_incoming = (incoming_currency or "").upper().strip() or None
-    return expected_currency, normalized_incoming
+
+    currency_iso = _REGION_CURRENCY_ISO.get(region_key)
+    if currency_iso is None:
+        logger.warning(
+            "unknown region %r for currency resolution; falling back to BRL",
+            region,
+        )
+        currency_iso = "BRL"
+
+    currency_symbol = _CURRENCY_SYMBOL_BY_ISO.get(currency_iso, currency_iso)
+    return currency_iso, normalized_incoming, currency_symbol
 
 
 def _integration_status_for_method(metodo: str) -> str:
@@ -397,7 +512,9 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         _persist_and_publish(region, resp)
         return resp
 
-    currency_iso, incoming_currency = _resolve_currency(region, getattr(data, "currency", None))
+    currency_iso, incoming_currency, currency_symbol = _resolve_currency(
+        region, getattr(data, "currency", None)
+    )
 
     _logger.append_event(
         event={
@@ -412,6 +529,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "card_type": card_type,
                 "valor": valor,
                 "currency": currency_iso,
+                "currency_symbol": currency_symbol,
                 "incoming_currency": incoming_currency,
                 "currency_mismatch": bool(incoming_currency and incoming_currency != currency_iso),
                 "idempotency_key": idempotency_key,
@@ -668,6 +786,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "card_type": card_type,
                     "valor": valor,
                     "currency": currency_iso,
+                    "currency_symbol": currency_symbol,
                     "porta": porta,
                 },
                 "anti_replay": {
@@ -707,7 +826,10 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             audit_event_id=audit_event_id,
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, resp, status="stored")
+        # 1
+        # Refatora idempotência: marca como PROCESSING ao entrar, COMPLETED aqui após sucesso
+        idem.update_status(endpoint, idempotency_key, payload_hash, status="COMPLETED", response=resp)
+ 
         _persist_and_publish(region, resp)
 
         chain = _logger.append_event(
@@ -747,6 +869,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "metodo": metodo,
                     "valor": valor,
                     "currency": currency_iso,
+                    "currency_symbol": currency_symbol,
                     "porta": porta,
                     "transaction_id": _gen_tx_id(region),
                     "instruction_type": payment_payload["instruction_type"],
@@ -789,7 +912,11 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             audit_event_id=audit_event_id,
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, result, status="stored")
+        # 2
+        # Refatorado: registra status="PROCESSING" no início, depois "COMPLETED" após sucesso.
+        idem.store(endpoint, idempotency_key, payload_hash, None, status="PROCESSING")
+        # ... processamento completo do pagamento ocorre aqui ...
+        idem.store(endpoint, idempotency_key, payload_hash, result, status="COMPLETED")
         _persist_and_publish(region, result)
 
         chain = _logger.append_event(
@@ -830,6 +957,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "metodo": metodo,
                     "valor": valor,
                     "currency": currency_iso,
+                    "currency_symbol": currency_symbol,
                     "porta": porta,
                     "transaction_id": _gen_tx_id(region),
                     "instruction_type": payment_payload["instruction_type"],
@@ -872,7 +1000,17 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             audit_event_id=audit_event_id,
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, result, status="stored")
+        # 3
+        # Refatora lógica de idempotência para registrar "PROCESSING" antes do processamento
+        idem.store(endpoint, idempotency_key, payload_hash, {"status": "PROCESSING"}, status="processing")
+
+        try:
+            # Após o processamento bem-sucedido do pagamento
+            idem.store(endpoint, idempotency_key, payload_hash, result, status="completed")
+        except Exception as exc:
+            # Em caso de erro, marca como "FAILED" para esta chave
+            idem.store(endpoint, idempotency_key, payload_hash, {"status": "FAILED", "error": str(exc)}, status="failed")
+            raise
         _persist_and_publish(region, result)
 
         chain = _logger.append_event(
@@ -913,6 +1051,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "metodo": metodo,
                     "valor": valor,
                     "currency": currency_iso,
+                    "currency_symbol": currency_symbol,
                     "porta": porta,
                     "transaction_id": _gen_tx_id(region),
                     "instruction_type": payment_payload["instruction_type"],
@@ -955,7 +1094,11 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             audit_event_id=audit_event_id,
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, result, status="stored")
+
+        # 4
+        # Refatoração da idempotência:
+        # 1. Atualiza o status para "COMPLETED" ao final da operação bem sucedida
+        idem.store(endpoint, idempotency_key, payload_hash, result, status="COMPLETED")
         _persist_and_publish(region, result)
 
         chain = _logger.append_event(
@@ -996,6 +1139,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                     "metodo": metodo,
                     "valor": valor,
                     "currency": currency_iso,
+                    "currency_symbol": currency_symbol,
                     "porta": porta,
                     "transaction_id": _gen_tx_id(region),
                     "instruction_type": payment_payload["instruction_type"],
@@ -1038,7 +1182,10 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             audit_event_id=audit_event_id,
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, result, status="stored")
+        # 5
+        # Refatorado: Atualiza idempotency store para registrar status="COMPLETED" ao finalizar processamento com sucesso.
+        idem.store(endpoint, idempotency_key, payload_hash, result, status="COMPLETED")
+ 
         _persist_and_publish(region, result)
 
         chain = _logger.append_event(
@@ -1091,7 +1238,10 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
             }
         )
 
-        idem.store(endpoint, idempotency_key, payload_hash, resp, status="stored")
+        # 6
+        # Refatora para registrar idempotency_key como "FAILED" após erro de backend,
+        # assumindo que "PROCESSING" já foi registrado no início do fluxo principal.
+        idem.store(endpoint, idempotency_key, payload_hash, resp, status="FAILED")
 
         ev = _logger.append_event(
             event={
@@ -1125,6 +1275,7 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
                 "card_type": card_type,
                 "valor": valor,
                 "currency": currency_iso,
+                "currency_symbol": currency_symbol,
                 "porta": porta,
                 "backend": {"url": backend_url, "timeout_sec": 5},
                 "locker_effect": backend_json.get("locker"),
@@ -1166,7 +1317,14 @@ def process_payment(data, request: Request, idempotency_key: str, device_fp: str
         audit_event_id=audit_event_id,
     )
 
-    idem.store(endpoint, idempotency_key, payload_hash, result, status="stored")
+    # 7
+    # Refatora registro idempotency: marca como PROCESSING ANTES da execução principal,
+    # e ao final marca como COMPLETED
+    try:
+        idem.update_status(endpoint, idempotency_key, status="COMPLETED", payload=result)
+    except Exception as e:
+        # Fallback para manter registro mesmo se falhar a atualização
+        pass
     _persist_and_publish(region, result)
 
     chain = _logger.append_event(

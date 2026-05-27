@@ -2,7 +2,7 @@
 
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from app.integrations.payments.base.contracts import CancelPaymentCommand
 from app.integrations.payments.mercadopago.client import MercadoPagoClient
 from app.integrations.payments.stripe.client import StripeClient
@@ -55,47 +55,70 @@ class TestMercadoPagoCancellation:
 
 
 class TestStripeCancellation:
-    
-    def test_cancel_uncaptured_payment(self):
+
+    @pytest.mark.asyncio
+    async def test_cancel_uncaptured_payment(self):
         """Testa cancelamento de PaymentIntent não capturado"""
-        stripe_mock = Mock()
-        stripe_mock.PaymentIntent.retrieve.return_value.status = "requires_capture"
-        stripe_mock.PaymentIntent.cancel.return_value.id = "pi_123"
-        stripe_mock.PaymentIntent.cancel.return_value.status = "canceled"
-        
-        with patch('stripe.PaymentIntent', stripe_mock.PaymentIntent):
+        payment_intent = Mock()
+        payment_intent.status = "requires_capture"
+        cancelled_intent = Mock()
+        cancelled_intent.id = "pi_123"
+        cancelled_intent.status = "canceled"
+
+        with (
+            patch(
+                "app.integrations.payments.stripe.client.stripe.PaymentIntent.retrieve_async",
+                new_callable=AsyncMock,
+                return_value=payment_intent,
+            ),
+            patch(
+                "app.integrations.payments.stripe.client.stripe.PaymentIntent.cancel_async",
+                new_callable=AsyncMock,
+                return_value=cancelled_intent,
+            ) as mock_cancel,
+        ):
             client = StripeClient(secret_key="test_key", account_region="US")
             command = CancelPaymentCommand(
                 provider_payment_id="pi_123",
-                reason="user_requested"
+                reason="user_requested",
             )
-            
-            result = client.cancel_payment(command)
-            
+
+            result = await client.cancel_payment(command)
+
             assert result.status == "CANCELLED"
-            stripe_mock.PaymentIntent.cancel.assert_called_once()
-    
-    def test_refund_succeeded_payment(self):
+            mock_cancel.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_refund_succeeded_payment(self):
         """Testa refund de pagamento já capturado"""
-        stripe_mock = Mock()
         payment_intent = Mock()
         payment_intent.status = "succeeded"
-        stripe_mock.PaymentIntent.retrieve.return_value = payment_intent
-        
+
         refund_mock = Mock()
+        refund_mock.id = "re_123"
         refund_mock.status = "succeeded"
+        refund_mock.created = 1_700_000_000
         refund_mock.payment_intent = "pi_123"
-        stripe_mock.Refund.create.return_value = refund_mock
-        
-        with patch('stripe.PaymentIntent', stripe_mock.PaymentIntent):
-            with patch('stripe.Refund', stripe_mock.Refund):
-                client = StripeClient(secret_key="test_key", account_region="US")
-                command = CancelPaymentCommand(
-                    provider_payment_id="pi_123",
-                    reason="user_requested"
-                )
-                
-                result = client.cancel_payment(command)
-                
-                assert result.status == "REFUNDED"
-                stripe_mock.Refund.create.assert_called_once()
+
+        with (
+            patch(
+                "app.integrations.payments.stripe.client.stripe.PaymentIntent.retrieve_async",
+                new_callable=AsyncMock,
+                return_value=payment_intent,
+            ),
+            patch(
+                "app.integrations.payments.stripe.client.stripe.Refund.create_async",
+                new_callable=AsyncMock,
+                return_value=refund_mock,
+            ) as mock_refund,
+        ):
+            client = StripeClient(secret_key="test_key", account_region="US")
+            command = CancelPaymentCommand(
+                provider_payment_id="pi_123",
+                reason="user_requested",
+            )
+
+            result = await client.cancel_payment(command)
+
+            assert result.status == "REFUNDED"
+            mock_refund.assert_awaited_once()

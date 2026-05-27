@@ -95,39 +95,103 @@ class AntifraudResult:
 
 # ==================== Cache e Armazenamento ====================
 
+import redis
+import json
+from datetime import datetime, timezone, timedelta
+from typing import Any, Dict, Optional
+
+from app.core.config import settings
+
 class AntifraudCache:
-    """Cache para dados antifraude (Redis-like interface)"""
-    
+    """
+    Cache para dados antifraude, usando Redis (com fallback para memória).
+    Interface compatível: set, get, delete, increment.
+    Serializa valores complexos com json.
+    TTL configurável por método (default 3600s).
+    """
     def __init__(self):
-        self._cache: Dict[str, Any] = {}
-        self._expiry: Dict[str, datetime] = {}
-    
+        try:
+            self._redis = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=getattr(settings, "REDIS_DB", 0),
+                decode_responses=True,
+                socket_timeout=1,
+            )
+            # Testa conexão mínima
+            self._redis.ping()
+            self._ok = True
+        except Exception:
+            self._ok = False
+        self._memory_cache: Dict[str, Any] = {}
+        self._memory_expiry: Dict[str, datetime] = {}
+
     def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> None:
-        """Armazena valor com TTL"""
-        self._cache[key] = value
-        self._expiry[key] = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+        """Armazena valor com TTL (serializa json)."""
+        try:
+            if self._ok:
+                val = json.dumps(value)
+                self._redis.setex(key, ttl_seconds, val)
+                return
+        except Exception:
+            self._ok = False  # degrade
+        # fallback em memória
+        self._memory_cache[key] = value
+        self._memory_expiry[key] = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
 
     def get(self, key: str) -> Optional[Any]:
-        """Recupera valor se não expirou"""
-        if key in self._cache:
-            if datetime.now(timezone.utc) < self._expiry[key]:
-                return self._cache[key]
+        """Recupera valor se não expirado/deserializa."""
+        # Tenta Redis
+        if self._ok:
+            try:
+                raw = self._redis.get(key)
+                if raw is not None:
+                    try:
+                        return json.loads(raw)
+                    except Exception:
+                        return raw
+                return None
+            except Exception:
+                self._ok = False  # degrade fallback
+        # fallback em memória
+        if key in self._memory_cache:
+            if datetime.now(timezone.utc) < self._memory_expiry.get(key, datetime.min.replace(tzinfo=timezone.utc)):
+                return self._memory_cache[key]
             else:
                 self.delete(key)
         return None
-    
+
     def delete(self, key: str) -> None:
-        """Remove valor do cache"""
-        self._cache.pop(key, None)
-        self._expiry.pop(key, None)
-    
+        """Remove valor do cache."""
+        try:
+            if self._ok:
+                self._redis.delete(key)
+        except Exception:
+            self._ok = False
+        self._memory_cache.pop(key, None)
+        self._memory_expiry.pop(key, None)
+
     def increment(self, key: str, delta: int = 1, ttl_seconds: int = 300) -> int:
-        """Incrementa contador"""
+        """
+        Incrementa contador. Se não existir, começa em delta.
+        TTL (resetado a cada incremento). No fallback, tipo inteiro.
+        """
+        # Redis path
+        try:
+            if self._ok:
+                # Redis INCR não aceita TTL no comando - workaround:
+                pipe = self._redis.pipeline()
+                pipe.incrby(key, delta)
+                pipe.expire(key, ttl_seconds)
+                new_value, _ = pipe.execute()
+                return int(new_value)
+        except Exception:
+            self._ok = False
+        # fallback memória
         current = self.get(key) or 0
-        new_value = current + delta
+        new_value = int(current) + delta
         self.set(key, new_value, ttl_seconds)
         return new_value
-
 
 # Instância global do cache
 _antifraud_cache = AntifraudCache()

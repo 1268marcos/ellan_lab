@@ -1,6 +1,8 @@
 # 01_source/payment_gateway/app/main.py
 # 12/04/2026 - uso de datetime
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -17,14 +19,21 @@ from app.routers.risk import router as risk_router
 from app.routers.audit_log import router as audit_log_router
 from app.routers.audit_snapshot import router as audit_snapshot_router
 from app.routers.lockers import router as lockers_router
+from app.routers.lockers import runtime_http_client_lifespan
 
 from app.core.datetime_utils import to_iso_utc
 
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    async with runtime_http_client_lifespan(_app):
+        yield
 
 
 app = FastAPI(
     title="ELLAN Payment Gateway (01_source/payment_gateway/app/main.py)",
     version="1.0.1",
+    lifespan=lifespan,
 )
 logger = logging.getLogger("payment_gateway")
 

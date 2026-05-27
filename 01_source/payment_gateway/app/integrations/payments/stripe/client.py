@@ -1,7 +1,11 @@
 # 01_source/payment_gateway/app/integrations/payments/stripe/client.py
 
-import stripe
 from datetime import datetime, timezone
+from typing import Any
+
+import stripe
+from stripe import InvalidRequestError, PaymentIntent, Refund, StripeError
+
 from app.integrations.payments.base.contracts import (
     CreatePaymentCommand,
     PaymentResult,
@@ -36,43 +40,41 @@ class StripeClient:
         - PaymentIntents capturados: Refund via Refund.create()
         """
         try:
-            # Obter PaymentIntent
-            payment_intent = stripe.PaymentIntent.retrieve(command.provider_payment_id)
-            
+            payment_intent: PaymentIntent = await stripe.PaymentIntent.retrieve_async(
+                command.provider_payment_id
+            )
+
             if payment_intent.status == "requires_capture":
-                # Cancelar PaymentIntent não capturado
-                cancelled_intent = stripe.PaymentIntent.cancel(
+                cancelled_intent: PaymentIntent = await stripe.PaymentIntent.cancel_async(
                     command.provider_payment_id,
-                    cancellation_reason=self._map_cancel_reason(command.reason)
+                    cancellation_reason=self._map_cancel_reason(command.reason),
                 )
-                
+
                 return CancelPaymentResult(
                     success=True,
                     provider=self.provider_name,
                     refund_id=cancelled_intent.id,
                     status="CANCELLED",
-                    processed_at=datetime.now(timezone.utc)
+                    processed_at=datetime.now(timezone.utc),
                 )
-                
+
             elif payment_intent.status == "succeeded":
-                # Criar refund para pagamento capturado
-                refund_params = {
+                refund_params: dict[str, Any] = {
                     "payment_intent": command.provider_payment_id,
-                    "reason": self._map_refund_reason(command.reason)
+                    "reason": self._map_refund_reason(command.reason),
                 }
-                
+
                 if command.amount:
-                    # Converter para centavos
                     refund_params["amount"] = int(command.amount * 100)
-                
-                refund = stripe.Refund.create(**refund_params)
-                
+
+                refund: Refund = await stripe.Refund.create_async(**refund_params)
+
                 return CancelPaymentResult(
                     success=True,
                     provider=self.provider_name,
                     refund_id=refund.id,
                     status="REFUNDED",
-                    processed_at=datetime.fromtimestamp(refund.created)
+                    processed_at=datetime.fromtimestamp(refund.created),
                 )
                 
             elif payment_intent.status in ["canceled", "refunded"]:
@@ -93,23 +95,23 @@ class StripeClient:
                     error=f"Cannot cancel payment with status: {payment_intent.status}"
                 )
                 
-        except stripe.error.InvalidRequestError as e:
+        except InvalidRequestError as e:
             return CancelPaymentResult(
                 success=False,
                 provider=self.provider_name,
                 refund_id="",
                 status="FAILED",
-                error=f"Invalid request: {str(e)}"
+                error=f"Invalid request: {e!s}",
             )
-        except stripe.error.StripeError as e:
+        except StripeError as e:
             return CancelPaymentResult(
                 success=False,
                 provider=self.provider_name,
                 refund_id="",
                 status="FAILED",
-                error=f"Stripe API error: {str(e)}"
+                error=f"Stripe API error: {e!s}",
             )
-    
+
     def _map_cancel_reason(self, reason: str) -> str:
         """Mapeia razão do cancelamento para Stripe"""
         mapping = {

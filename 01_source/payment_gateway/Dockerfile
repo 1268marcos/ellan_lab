@@ -1,4 +1,16 @@
-FROM python:3.11-slim
+# payment_gateway — imagem multi-stage (base compartilhada + dev / produção)
+#
+# Produção (padrão — sem --reload):
+#   docker build -t payment_gateway:latest .
+#   docker build --target production -t payment_gateway:latest .
+#
+# Desenvolvimento (hot-reload com --reload):
+#   docker build --target dev -t payment_gateway:dev .
+#   docker build --target dev --build-arg ENVIRONMENT=dev -t payment_gateway:dev .
+#
+# Compose / CI: use --target production ou --target dev conforme o ambiente.
+
+FROM python:3.11-slim AS base
 
 WORKDIR /app
 
@@ -17,9 +29,24 @@ COPY app app
 # Criar diretórios necessários
 RUN mkdir -p /data/sqlite/gateway /logs /backups
 
-# EXPOSE a porta
 EXPOSE 8000
 
-# CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-# Comando para rodar a aplicação
+# ---------------------------------------------------------------------------
+# Desenvolvimento: uvicorn com --reload
+# ---------------------------------------------------------------------------
+FROM base AS dev
+
+ARG ENVIRONMENT=dev
+ENV ENVIRONMENT=${ENVIRONMENT}
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+# ---------------------------------------------------------------------------
+# Produção (stage final / padrão): uvicorn sem --reload
+# ---------------------------------------------------------------------------
+FROM base AS production
+
+ARG ENVIRONMENT=production
+ENV ENVIRONMENT=${ENVIRONMENT}
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

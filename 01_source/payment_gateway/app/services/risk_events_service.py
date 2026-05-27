@@ -7,6 +7,16 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from app.services.sqlite_service import SQLiteService
 
+# Paginação interna para agregação de reason codes em janelas muito grandes.
+_FORENSICS_REASONS_PAGE_SIZE = 5000
+
+_DECISION_BUCKET_SQL = """
+    CASE
+        WHEN UPPER(decision) IN ('ALLOW', 'CHALLENGE', 'BLOCK') THEN UPPER(decision)
+        ELSE 'UNKNOWN'
+    END
+"""
+
 
 class RiskEventsService:
     def __init__(self, sqlite: SQLiteService):
@@ -374,6 +384,98 @@ class RiskEventsService:
             "reasons_parse_ok": ok,
         }
 
+    def _forensics_top_reasons(
+        self,
+        conn: Any,
+        start_epoch: int,
+        end_epoch: int,
+        *,
+        total_events: int,
+    ) -> List[Dict[str, Union[str, int]]]:
+        """
+        Top reason codes via json_each; fallback paginado se a query SQL falhar.
+        """
+        try:
+            rows = conn.execute(
+                f"""
+                SELECT
+                  COALESCE(json_extract(je.value, '$.code'), 'UNKNOWN') AS code,
+                  COUNT(*) AS cnt
+                FROM risk_events AS re
+                INNER JOIN json_each(re.reasons_json) AS je
+                  ON json_valid(re.reasons_json)
+                 AND json_type(re.reasons_json) = 'array'
+                 AND json_type(je.value) = 'object'
+                WHERE re.created_at BETWEEN ? AND ?
+                GROUP BY code
+                ORDER BY cnt DESC, code ASC
+                LIMIT 10
+                """,
+                (start_epoch, end_epoch),
+            ).fetchall()
+            return [{"code": r["code"], "count": int(r["cnt"])} for r in rows]
+        except Exception:
+            return self._forensics_top_reasons_paginated(
+                conn, start_epoch, end_epoch, total_events=total_events
+            )
+
+    def _forensics_top_reasons_paginated(
+        self,
+        conn: Any,
+        start_epoch: int,
+        end_epoch: int,
+        *,
+        total_events: int,
+    ) -> List[Dict[str, Union[str, int]]]:
+        reason_counts: Dict[str, int] = {}
+        offset = 0
+        while offset < total_events:
+            rows = conn.execute(
+                """
+                SELECT reasons_json
+                FROM risk_events
+                WHERE created_at BETWEEN ? AND ?
+                ORDER BY created_at ASC, id ASC
+                LIMIT ? OFFSET ?
+                """,
+                (start_epoch, end_epoch, _FORENSICS_REASONS_PAGE_SIZE, offset),
+            ).fetchall()
+            if not rows:
+                break
+            for r in rows:
+                reasons, ok = self._parse_reasons(r["reasons_json"])
+                if not ok:
+                    continue
+                for item in reasons:
+                    code = item.get("code") or "UNKNOWN"
+                    reason_counts[code] = reason_counts.get(code, 0) + 1
+            if len(rows) < _FORENSICS_REASONS_PAGE_SIZE:
+                break
+            offset += _FORENSICS_REASONS_PAGE_SIZE
+
+        return [
+            {"code": code, "count": count}
+            for code, count in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        ]
+
+    def _compact_event_from_row(self, r: Any) -> Dict[str, Any]:
+        return self._compact_event(
+            {
+                "id": r["id"],
+                "request_id": r["request_id"],
+                "event_type": r["event_type"],
+                "decision": (r["decision"] or "").upper(),
+                "score": int(r["score"]) if r["score"] is not None else 0,
+                "policy_id": r["policy_id"],
+                "region": r["region"],
+                "locker_id": r["locker_id"],
+                "porta": int(r["porta"]) if r["porta"] is not None else None,
+                "created_at": int(r["created_at"]) if r["created_at"] is not None else None,
+                "reasons_json": r["reasons_json"],
+                "audit_event_id": r["audit_event_id"],
+            }
+        )
+
     def forensics_between(self, start_epoch: int, end_epoch: int) -> Dict[str, Any]:
         """
         Retorna:
@@ -381,83 +483,132 @@ class RiskEventsService:
           - policy_ids_used (com contagem)
           - integrity (parse errors)
           - events_sample (amostra por decisão)
-        """
-        events = self.list_between(start_epoch, end_epoch)
 
-        # Decisions
+        Agregações e amostras são calculadas no SQLite (sem carregar todos os eventos).
+        """
+        window_params = (start_epoch, end_epoch)
         decisions_count = {"ALLOW": 0, "CHALLENGE": 0, "BLOCK": 0, "UNKNOWN": 0}
 
-        # Policies
-        policy_counts: Dict[str, int] = {}
+        with self.sqlite.session() as conn:
+            total_row = conn.execute(
+                """
+                SELECT COUNT(*) AS total
+                FROM risk_events
+                WHERE created_at BETWEEN ? AND ?
+                """,
+                window_params,
+            ).fetchone()
+            total_events = int(total_row["total"] or 0) if total_row else 0
 
-        # Reasons (todas)
-        reason_counts: Dict[str, int] = {}
+            for row in conn.execute(
+                f"""
+                SELECT {_DECISION_BUCKET_SQL} AS decision_bucket, COUNT(*) AS cnt
+                FROM risk_events
+                WHERE created_at BETWEEN ? AND ?
+                GROUP BY decision_bucket
+                """,
+                window_params,
+            ).fetchall():
+                decisions_count[row["decision_bucket"]] = int(row["cnt"])
 
-        # Integrity
-        reasons_parse_ok = 0
-        reasons_parse_fail = 0
+            policy_ids_used = [
+                {"policy_id": r["policy_id"], "count": int(r["cnt"])}
+                for r in conn.execute(
+                    """
+                    SELECT COALESCE(policy_id, 'UNKNOWN_POLICY') AS policy_id, COUNT(*) AS cnt
+                    FROM risk_events
+                    WHERE created_at BETWEEN ? AND ?
+                    GROUP BY policy_id
+                    ORDER BY cnt DESC, policy_id ASC
+                    """,
+                    window_params,
+                ).fetchall()
+            ]
 
-        # Samples buckets
-        by_decision: Dict[str, List[Dict[str, Any]]] = {"ALLOW": [], "CHALLENGE": [], "BLOCK": [], "UNKNOWN": []}
+            integ_row = conn.execute(
+                """
+                SELECT
+                  SUM(
+                    CASE
+                      WHEN json_valid(reasons_json) AND json_type(reasons_json) = 'array'
+                      THEN 1 ELSE 0
+                    END
+                  ) AS ok,
+                  SUM(
+                    CASE
+                      WHEN NOT (json_valid(reasons_json) AND json_type(reasons_json) = 'array')
+                      THEN 1 ELSE 0
+                    END
+                  ) AS fail
+                FROM risk_events
+                WHERE created_at BETWEEN ? AND ?
+                """,
+                window_params,
+            ).fetchone()
+            reasons_parse_ok = int(integ_row["ok"] or 0) if integ_row else 0
+            reasons_parse_fail = int(integ_row["fail"] or 0) if integ_row else 0
 
-        for ev in events:
-            d = (ev.get("decision") or "UNKNOWN").upper()
-            if d not in decisions_count:
-                d = "UNKNOWN"
-            decisions_count[d] += 1
+            top_reasons = self._forensics_top_reasons(
+                conn, start_epoch, end_epoch, total_events=total_events
+            )
 
-            # policy count
-            pid = ev.get("policy_id") or "UNKNOWN_POLICY"
-            policy_counts[pid] = policy_counts.get(pid, 0) + 1
+            # Amostra: até 3 por decisão (1º, penúltimo, último) via window functions.
+            sample_rows = conn.execute(
+                f"""
+                WITH windowed AS (
+                  SELECT
+                    id,
+                    request_id,
+                    event_type,
+                    decision,
+                    score,
+                    policy_id,
+                    region,
+                    locker_id,
+                    porta,
+                    created_at,
+                    reasons_json,
+                    audit_event_id,
+                    {_DECISION_BUCKET_SQL} AS decision_bucket,
+                    ROW_NUMBER() OVER (
+                      PARTITION BY {_DECISION_BUCKET_SQL}
+                      ORDER BY created_at ASC, id ASC
+                    ) AS rn,
+                    COUNT(*) OVER (
+                      PARTITION BY {_DECISION_BUCKET_SQL}
+                    ) AS bucket_cnt
+                  FROM risk_events
+                  WHERE created_at BETWEEN ? AND ?
+                )
+                SELECT *
+                FROM windowed
+                WHERE bucket_cnt <= 3
+                   OR rn = 1
+                   OR rn = bucket_cnt - 1
+                   OR rn = bucket_cnt
+                ORDER BY decision_bucket ASC, created_at ASC, id ASC
+                """,
+                window_params,
+            ).fetchall()
 
-            # reasons
-            reasons, ok = self._parse_reasons(ev.get("reasons_json") or "[]")
-            if ok:
-                reasons_parse_ok += 1
-            else:
-                reasons_parse_fail += 1
+        events_sample: Dict[str, List[Dict[str, Any]]] = {
+            "ALLOW": [],
+            "CHALLENGE": [],
+            "BLOCK": [],
+            "UNKNOWN": [],
+        }
+        for r in sample_rows:
+            bucket = r["decision_bucket"]
+            if bucket in events_sample:
+                events_sample[bucket].append(self._compact_event_from_row(r))
 
-            for item in reasons:
-                code = item.get("code") or "UNKNOWN"
-                reason_counts[code] = reason_counts.get(code, 0) + 1
-
-            # sample bucket (compact)
-            by_decision[d].append(self._compact_event(ev))
-
-        # top reasons
-        top_reasons = [
-            {"code": code, "count": count}
-            for code, count in sorted(reason_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-        ]
-
-        # policy ids used
-        policy_ids_used = [
-            {"policy_id": pid, "count": c}
-            for pid, c in sorted(policy_counts.items(), key=lambda x: x[1], reverse=True)
-        ]
-
-        total_events = len(events)
         integrity = {
             "total_events": total_events,
             "reasons_json_parse": {
-                "ok": int(reasons_parse_ok),
-                "fail": int(reasons_parse_fail),
+                "ok": reasons_parse_ok,
+                "fail": reasons_parse_fail,
                 "fail_rate": (float(reasons_parse_fail) / float(total_events)) if total_events else 0.0,
             },
-        }
-
-        # sample: pega 3 de cada decisão (prioriza começo e fim do dia)
-        def pick_samples(items: List[Dict[str, Any]], n: int = 3) -> List[Dict[str, Any]]:
-            if len(items) <= n:
-                return items
-            # 2 do fim + 1 do começo (bom pra ver mudança ao longo do dia)
-            return [items[0], items[-2], items[-1]]
-
-        events_sample = {
-            "ALLOW": pick_samples(by_decision["ALLOW"], 3),
-            "CHALLENGE": pick_samples(by_decision["CHALLENGE"], 3),
-            "BLOCK": pick_samples(by_decision["BLOCK"], 3),
-            "UNKNOWN": pick_samples(by_decision["UNKNOWN"], 3),
         }
 
         return {

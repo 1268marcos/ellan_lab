@@ -8,6 +8,7 @@ import os
 import time
 from typing import Literal, Any, Dict, Optional
 
+from app.core.file_lock import ExclusiveFileLock, FileLockTimeout
 from app.core.hashing import sha256_prefixed, canonical_json
 
 
@@ -37,6 +38,10 @@ def _ensure_dir(path: str) -> None:
     folder = os.path.dirname(path)
     if folder and not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
+
+
+_LOCK_TIMEOUT_SEC = 5.0
+_LOCK_MAX_ATTEMPTS = 3
 
 
 class GatewayEventLogger:
@@ -83,25 +88,74 @@ class GatewayEventLogger:
         path = self._path_for_day(ymd)
         _ensure_dir(path)
 
-        prev_hash = self._read_last_hash(path)
+        prev_hash: Optional[str] = None
+        computed: str = ""
+        line: Dict[str, Any] = {}
 
-        payload = {
-            "gateway_id": self.gateway_id,
-            "ts": _epoch(),
-            "event": event,
-            "prev_hash": prev_hash,
-        }
+        last_err: Optional[BaseException] = None
+        for attempt in range(_LOCK_MAX_ATTEMPTS):
+            if attempt > 0:
+                time.sleep(2**attempt * 0.1)
+            try:
+                with open(path, "a+b") as f, ExclusiveFileLock(
+                    f, timeout_sec=_LOCK_TIMEOUT_SEC
+                ):
+                    try:
+                        f.seek(0, os.SEEK_END)
+                        size = f.tell()
+                        if size == 0:
+                            prev_hash = None
+                        else:
+                            offset = min(4096, size)
+                            f.seek(-offset, os.SEEK_END)
+                            tail = f.read().decode("utf-8", errors="ignore")
+                            lines = [ln for ln in tail.splitlines() if ln.strip()]
+                            if not lines:
+                                prev_hash = None
+                            else:
+                                prev_hash = json.loads(lines[-1]).get("hash")
+                    except Exception:
+                        prev_hash = None
 
-        computed = sha256_prefixed(self.log_hash_salt + "::" + canonical_json(payload))
+                    payload = {
+                        "gateway_id": self.gateway_id,
+                        "ts": _epoch(),
+                        "event": event,
+                        "prev_hash": prev_hash,
+                    }
 
-        line = {
-            **payload,
-            "hash": computed,
-            "salt_fingerprint": self.salt_fingerprint(),
-        }
+                    computed = sha256_prefixed(
+                        self.log_hash_salt + "::" + canonical_json(payload)
+                    )
 
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(line, ensure_ascii=False, separators=(",", ":"), sort_keys=True) + "\n")
+                    line = {
+                        **payload,
+                        "hash": computed,
+                        "salt_fingerprint": self.salt_fingerprint(),
+                    }
+
+                    f.seek(0, os.SEEK_END)
+                    f.write(
+                        (
+                            json.dumps(
+                                line,
+                                ensure_ascii=False,
+                                separators=(",", ":"),
+                                sort_keys=True,
+                            )
+                            + "\n"
+                        ).encode("utf-8")
+                    )
+                    f.flush()
+                last_err = None
+                break
+            except FileLockTimeout as e:
+                last_err = e
+
+        if last_err is not None:
+            raise RuntimeError(
+                f"could not acquire exclusive lock on {path} after {_LOCK_MAX_ATTEMPTS} attempts"
+            ) from last_err
 
         return {
             "ok": True,

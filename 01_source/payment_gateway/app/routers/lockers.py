@@ -5,16 +5,33 @@
 from __future__ import annotations
 
 import os
+from contextlib import asynccontextmanager
+from typing import AsyncIterator
 
-import requests
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 router = APIRouter(prefix="/lockers", tags=["lockers"])
 
-
 LOCKER_RUNTIME_INTERNAL = (
     os.getenv("LOCKER_RUNTIME_INTERNAL", "http://backend_runtime:8000").rstrip("/")
 )
+
+_runtime_http_client = httpx.AsyncClient(timeout=5.0)
+
+
+@asynccontextmanager
+async def runtime_http_client_lifespan(_app) -> AsyncIterator[None]:
+    yield
+    await _runtime_http_client.aclose()
+
+
+def _runtime_request_headers() -> dict[str, str]:
+    internal_token = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
+    headers: dict[str, str] = {}
+    if internal_token:
+        headers["X-Internal-Token"] = internal_token
+    return headers
 
 
 def _normalize_region(region: str | None) -> str | None:
@@ -134,24 +151,25 @@ def _to_public_summary(item: dict) -> dict:
     }
 
 
-def _fetch_runtime_lockers() -> list[dict]:
+async def _fetch_runtime_lockers() -> list[dict]:
     url = f"{LOCKER_RUNTIME_INTERNAL}/internal/runtime/lockers"
-
-    internal_token = os.getenv("INTERNAL_SERVICE_TOKEN", "").strip()
-
-    headers = {}
-    if internal_token:
-        headers["X-Internal-Token"] = internal_token
+    headers = _runtime_request_headers()
 
     try:
-        response = requests.get(
-            url,
-            headers=headers,
-            timeout=5,
-        )
+        response = await _runtime_http_client.get(url, headers=headers)
         response.raise_for_status()
         payload = response.json()
-    except requests.RequestException as exc:
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "type": "RUNTIME_LOCKERS_UNAVAILABLE",
+                "message": "Falha ao consultar lockers no backend_runtime.",
+                "runtime_url": url,
+                "status_code": exc.response.status_code,
+            },
+        ) from exc
+    except httpx.RequestError as exc:
         raise HTTPException(
             status_code=502,
             detail={
@@ -174,7 +192,7 @@ def _fetch_runtime_lockers() -> list[dict]:
 
 
 @router.get("")
-def list_lockers(
+async def list_lockers(
     region: str | None = Query(default=None),
     active_only: bool = Query(default=False),
 ):
@@ -183,7 +201,7 @@ def list_lockers(
     """
 
     normalized_region = _normalize_region(region)
-    items = _fetch_runtime_lockers()
+    items = await _fetch_runtime_lockers()
 
     normalized_items = [_to_public_summary(item) for item in items]
     normalized_items = [item for item in normalized_items if item["locker_id"]]
@@ -220,7 +238,7 @@ def list_lockers(
 
 
 @router.get("/{locker_id}")
-def get_locker(locker_id: str):
+async def get_locker(locker_id: str):
     """
     Retorna um locker específico a partir do backend_runtime.
     """
@@ -234,7 +252,7 @@ def get_locker(locker_id: str):
             },
         )
 
-    items = _fetch_runtime_lockers()
+    items = await _fetch_runtime_lockers()
     normalized_items = [_to_public_summary(item) for item in items]
 
     found = next(
