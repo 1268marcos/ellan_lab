@@ -2,6 +2,306 @@ from __future__ import annotations
 
 import base64
 import json
+import threading
+from fastapi import Request, Response
+from fastapi import status
+from fastapi.responses import JSONResponse
+from typing import Dict
+import time
+from fastapi import APIRouter, Body
+from fastapi.responses import JSONResponse
+from uuid import uuid4
+
+from app.services.invoice_service import ensure_and_process_invoice
+from app.models.invoice_model import Invoice
+from app.services.fiscal_provider_contract import build_issue_payload
+from app.core.db.session import SessionLocal
+
+router = APIRouter()
+
+
+def _validate_fiscal_response(invoice: Invoice, *, country: str) -> dict:
+    """
+    Valida a resposta fiscal do provider stub.
+    Retorna {"ok": True, "summary": {...}} ou {"ok": False, "error": "..."}
+    """
+    # Validação básica de sucesso do fluxo fiscal e campos essenciais
+    resp = {}
+    status = str(invoice.status or "").upper()
+
+    required_fields = ["invoice_number", "access_key"]
+    summary = {
+        "status": status,
+        "invoice_number": getattr(invoice, "invoice_number", None),
+        "access_key": getattr(invoice, "access_key", None),
+        "country": getattr(invoice, "country", country),
+    }
+
+    missing = [f for f in required_fields if not getattr(invoice, f, None)]
+    if status != "ISSUED":
+        return {
+            "ok": False,
+            "error": f"Invoice status não é ISSUED: {status}",
+            "invoice_summary": summary,
+        }
+    if missing:
+        return {
+            "ok": False,
+            "error": f"Campos obrigatórios ausentes: {missing}",
+            "invoice_summary": summary,
+        }
+
+    return {
+        "ok": True,
+        "invoice_summary": summary,
+    }
+
+
+@router.post("/admin/fiscal/smoke-test")
+def smoke_test_fiscal_endpoint(body: dict = Body(...)):
+    """
+    Executa um fluxo completo de smoke test fiscal:
+    - Recebe order_id (opcional) ou gera
+    - Cria e processa invoice em modo stub
+    - Valida a resposta fiscal processada
+    """
+    steps = []
+    order_id = body.get("order_id") or f"smoke-test-{uuid4().hex[:12]}"
+    db = SessionLocal()
+    invoice = None
+    try:
+        # 1. Criação da Invoice
+        payload_json = {"stub_scenario": "AUTHORIZE_SUCCESS"}
+        try:
+            invoice = ensure_and_process_invoice(
+                db=db,
+                order_id=order_id,
+                allow_missing_paid_event=True,
+                payload_json=payload_json,
+            )
+            steps.append({"step": "create_invoice", "status": "ok"})
+        except Exception as e:
+            steps.append({"step": "create_invoice", "status": "error", "detail": str(e)})
+            return JSONResponse(
+                status_code=500,
+                content={"ok": False, "error": "Falha ao criar invoice", "steps": steps},
+            )
+
+        # 2. Processamento fiscal direto (não aguarda worker)
+        try:
+            # Já está processado (ensure_and_process_invoice processa synchronamente)
+            if not invoice or not invoice.id:
+                raise ValueError("Invoice não retornada corretamente")
+            steps.append({"step": "process_fiscal", "status": "ok"})
+        except Exception as e:
+            steps.append({"step": "process_fiscal", "status": "error", "detail": str(e)})
+            return JSONResponse(
+                status_code=500,
+                content={"ok": False, "error": "Falha no processamento fiscal", "steps": steps},
+            )
+
+        # 3. Validação do resultado fiscal
+        val = _validate_fiscal_response(invoice, country="BR")
+        if val.get("ok"):
+            steps.append({"step": "validate_response", "status": "ok"})
+            result = {
+                "ok": True,
+                "order_id": order_id,
+                "invoice_id": invoice.id,
+                "steps": steps,
+                "invoice_summary": val.get("invoice_summary"),
+            }
+            return JSONResponse(content=result)
+        else:
+            steps.append({"step": "validate_response", "status": "error", "detail": val.get("error")})
+            result = {
+                "ok": False,
+                "order_id": order_id,
+                "invoice_id": invoice.id if invoice else None,
+                "steps": steps,
+                "invoice_summary": val.get("invoice_summary"),
+                "error": val.get("error"),
+            }
+            return JSONResponse(status_code=422, content=result)
+
+    finally:
+        db.close()
+
+
+# ===
+# Como testar:
+# Executar via curl:
+#
+# curl -X POST http://localhost:8000/admin/fiscal/smoke-test -H "Content-Type: application/json" -d '{}'
+#
+# Para especificar order_id:
+# curl -X POST http://localhost:8000/admin/fiscal/smoke-test -H "Content-Type: application/json" -d '{"order_id":"foo123"}'
+#
+# Resposta de sucesso:
+# {
+#   "ok": true,
+#   "order_id": "...",
+#   "invoice_id": "...",
+#   "steps": [
+#     {"step": "create_invoice", "status": "ok"},
+#     {"step": "process_fiscal", "status": "ok"},
+#     {"step": "validate_response", "status": "ok"}
+#   ],
+#   "invoice_summary": {
+#     "status": "ISSUED",
+#     "invoice_number": "...",
+#     "access_key": "...",
+#     "country": "BR"
+#   }
+# }
+#
+# Se qualquer etapa falhar, "ok": false e haverá detalhes em steps e error.
+
+# Estrutura para manter métricas em memória dos stubs
+# Nota: Para produção, use Prometheus, Redis, Elasticsearch etc.
+class StubMetricsInMemoryStore:
+    """
+    Armazena agregações por provider e operação das últimas 60 minutos em memória.
+    """
+    WINDOW_SEC = 60 * 60  # 60 minutos
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        # Lista de eventos [(timestamp, provider, operation, scenario, latency_ms, is_error)]
+        self.events: list = []
+
+    def record(self, provider: str, operation: str, scenario: str, latency_ms: float, is_error: bool):
+        now = time.time()
+        with self.lock:
+            self.events.append((
+                now,
+                provider,
+                operation,
+                scenario,
+                latency_ms,
+                is_error,
+            ))
+            # Limpar eventos antigos (rolling window)
+            min_ts = now - self.WINDOW_SEC
+            # Deleta do início da lista até o primeiro "vivo"
+            idx = 0
+            for tup in self.events:
+                if tup[0] >= min_ts:
+                    break
+                idx += 1
+            if idx > 0:
+                self.events = self.events[idx:]
+
+    def get_last_hour_aggregated(self):
+        now = time.time()
+        min_ts = now - self.WINDOW_SEC
+        ops_summary = {}  # provider -> op -> count
+        scenario_summary = {}
+        latency_sums = {}
+        latency_counts = {}
+        errors = {}
+        total = {}
+
+        with self.lock:
+            for ev in self.events:
+                ts, provider, operation, scenario, latency_ms, is_error = ev
+                if ts < min_ts:
+                    continue
+                # stub_operations_last_hour
+                if provider not in ops_summary:
+                    ops_summary[provider] = {}
+                if operation not in ops_summary[provider]:
+                    ops_summary[provider][operation] = 0
+                ops_summary[provider][operation] += 1
+
+                # stub_scenarios_used
+                if scenario not in scenario_summary:
+                    scenario_summary[scenario] = 0
+                scenario_summary[scenario] += 1
+
+                # latency
+                if provider not in latency_sums:
+                    latency_sums[provider] = 0.0
+                    latency_counts[provider] = 0
+                latency_sums[provider] += float(latency_ms)
+                latency_counts[provider] += 1
+
+                # error rates
+                if provider not in errors:
+                    errors[provider] = 0
+                    total[provider] = 0
+                if is_error:
+                    errors[provider] += 1
+                total[provider] += 1
+
+        # Calcular médias
+        avg_latency = {
+            prov: int(latency_sums[prov] / latency_counts[prov])
+            if latency_counts[prov] > 0 else 0
+            for prov in latency_sums
+        }
+        error_rates = {
+            prov: round(100 * errors[prov] / total[prov], 1)
+            if total[prov] > 0 else 0.0
+            for prov in errors
+        }
+        # Garantir chaves padrão (exibir 0 se provider sem evento)
+        all_providers = {"sefaz_sp", "at_pt", "aeat_es"}
+        for prov in all_providers:
+            ops_summary.setdefault(prov, {"issue": 0, "cancel": 0, "cce": 0})
+            avg_latency.setdefault(prov, 0)
+            error_rates.setdefault(prov, 0.0)
+        # Assegurar todos os ops existem
+        for prov in all_providers:
+            for op in ("issue", "cancel", "cce"):
+                ops_summary[prov].setdefault(op, 0)
+
+        return {
+            "stub_operations_last_hour": ops_summary,
+            "stub_scenarios_used": scenario_summary,
+            "average_latency_ms": avg_latency,
+            "error_rate_percent": error_rates,
+        }
+
+stub_metrics_store = StubMetricsInMemoryStore()
+
+def record_stub_metric(provider: str, operation: str, scenario: str, latency_ms: float, is_error: bool):
+    """
+    Função auxiliar para ser chamada pelos stubs para registrar métricas.
+    """
+    stub_metrics_store.record(provider, operation, scenario, latency_ms, is_error)
+
+from app.api.dependencies_internal import validate_internal_token
+
+from fastapi import APIRouter, Depends
+
+router = APIRouter()
+
+@router.get("/admin/fiscal/stubs/dashboard", response_class=JSONResponse, tags=["admin"])
+async def get_fiscal_stubs_dashboard(
+    internal_token: str = Depends(validate_internal_token),
+):
+    """
+    Dashboard de métricas de uso dos stubs fiscais (última hora).
+    Protegido por X-Internal-Token.
+    """
+    payload = stub_metrics_store.get_last_hour_aggregated()
+    return JSONResponse(content=payload)
+
+# Instruções de uso/teste:
+# 1. Para registrar métricas (utilização em cada stub):
+#    Exemplo de uso em um stub fiscal:
+#      from app.api.routes_admin_fiscal import record_stub_metric
+#      record_stub_metric(
+#          provider="sefaz_sp", operation="issue", scenario="AUTHORIZE_SUCCESS",
+#          latency_ms=43, is_error=False
+#      )
+#    (o mesmo para at_pt, aeat_es e demais operações/cenários)
+#
+# 2. Para consultar:
+#    curl -H "X-Internal-Token: <token>" http://localhost:8020/admin/fiscal/stubs/dashboard
+#
+#    - <token> deve ser igual ao settings.internal_token do serviço.
 import logging
 import uuid
 from datetime import datetime, timedelta, timezone

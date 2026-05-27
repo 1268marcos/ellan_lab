@@ -1,6 +1,9 @@
 # 01_source/backend/billing_fiscal_service/app/services/at_pt_service.py
 # (stub) PT - Autoridade Tributária
 from __future__ import annotations
+import logging
+
+logger = logging.getLogger(__name__)
 
 import uuid
 from datetime import datetime, timezone

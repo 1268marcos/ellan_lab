@@ -11,6 +11,122 @@ from app.services.sefaz_svrs_batch_stub_service import (
     submit_svrs_issue_batch_stub,
 )
 
+import random
+
+def _simulate_stub_scenario(stub_scenario: str, invoice_id: str, payload: dict | None = None, attempts: int = 1) -> dict[str, Any]:
+    """
+    Simula diferentes cenários de stub para testes.
+    stub_scenario pode ser:
+      - 'intermittent': falha aleatória (default 30% das vezes; configurável via 'intermittent_rate')
+      - 'slow_response': delay artificial de 2-5 segundos (configurável via 'slow_delay_sec')
+      - 'partial_success': retorna sucesso mas omite campos opcionais
+      - 'rate_limit_then_success': retorna erro 429 (fail_attempts_before_success vezes), depois sucesso
+
+    O comportamento é tornável determinístico por teste usando random.seed(invoice_id).
+    Parâmetros podem ser passados via payload:
+        - intermittent_rate: float (0.0 a 1.0, default 0.3)
+        - slow_delay_sec: float (default random entre 2.0 e 5.0)
+        - fail_attempts_before_success: int (rate_limit_then_success; default 2)
+    """
+    payload = payload or {}
+    # Determinismo por invoice_id (ou order_id)
+    random.seed(str(invoice_id))
+    result = {}
+
+    if stub_scenario == "intermittent":
+        rate = float(payload.get("intermittent_rate", 0.3))
+        val = random.random()
+        if val < rate:
+            return {
+                "success": False,
+                "error": {
+                    "code": "PROVIDER_SIM_INTERMITTENT",
+                    "message": f"Intermittent failure (rate={rate:.2f}, random={val:.2f})",
+                    "retryable": True
+                }
+            }
+        else:
+            return {"success": True, "status": "ok", "note": "intermittent passed"}
+
+    elif stub_scenario == "slow_response":
+        min_delay = 2.0
+        max_delay = 5.0
+        delay_sec = float(payload.get("slow_delay_sec", random.uniform(min_delay, max_delay)))
+        time.sleep(delay_sec)
+        return {"success": True, "status": "ok", "delay_sec": delay_sec}
+
+    elif stub_scenario == "partial_success":
+        base_resp = {
+            "success": True,
+            "invoice_number": f"99999{str(invoice_id)[-3:]}",
+            "fiscal_code": f"ABC{str(invoice_id)[-5:]}",
+            "extra_field_1": "should be omitted",
+            "extra_field_2": "should be omitted",
+            "optional_note": "This field is optional",
+        }
+        # Omite campos opcionais/extra
+        del base_resp["extra_field_1"]
+        del base_resp["extra_field_2"]
+        base_resp.pop("optional_note", None)
+        return base_resp
+
+    elif stub_scenario == "rate_limit_then_success":
+        fail_count = max(1, int(payload.get("fail_attempts_before_success", 2)))
+        # Para determinismo, gerar o mesmo "sequência de falha" por invoice_id e attempts:
+        seq = [429] * fail_count + [200] * 10
+        # attempts começa em 1, seq é 0-indexed
+        idx = int(attempts) - 1
+        status = seq[idx] if idx < len(seq) else 200
+        if status == 429:
+            return {
+                "success": False,
+                "error": {
+                    "code": "PROVIDER_RATE_LIMITED",
+                    "message": f"Stub rate limited (429): attempt {attempts} of {fail_count}",
+                    "retryable": True
+                }
+            }
+        else:
+            return {"success": True, "status": "ok", "attempt": attempts, "note": "rate limited passed"}
+
+    else:
+        return {
+            "success": False,
+            "error": {
+                "code": "PROVIDER_STUB_SCENARIO_UNKNOWN",
+                "message": f"Unknown stub_scenario: {stub_scenario}",
+                "retryable": False
+            }
+        }
+
+
+# Exemplos de payload para cada cenário:
+#
+# 1. Intermittent:
+#    {"stub_scenario": "intermittent", "intermittent_rate": 0.5}
+#
+# 2. Slow response:
+#    {"stub_scenario": "slow_response", "slow_delay_sec": 3.2}
+#
+# 3. Partial success:
+#    {"stub_scenario": "partial_success"}
+#
+# 4. Rate limit then success (3 tentativas):
+#    {"stub_scenario": "rate_limit_then_success", "fail_attempts_before_success": 3}
+#
+# Para testar via endpoint:
+# POST /admin/fiscal/providers/stub/svrs/smoke-issue/{order_id}
+# Envie no payload JSON, por exemplo:
+#   {
+#     "stub_scenario": "intermittent",
+#     "intermittent_rate": 0.4
+#   }
+# Ou:
+#   {
+#     "stub_scenario": "rate_limit_then_success",
+#     "fail_attempts_before_success": 2
+#   }
+# E observe a resposta variando por tentativas e invoice_id especificado.
 
 class RealProviderClientError(Exception):
     def __init__(self, *, code: str, message: str, retryable: bool, attempts: int):

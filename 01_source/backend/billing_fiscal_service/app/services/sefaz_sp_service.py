@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import uuid
+import logging
+from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 from datetime import datetime, timezone
 
 from app.core.config import settings

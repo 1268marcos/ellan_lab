@@ -1,6 +1,44 @@
 # 01_source/backend/biling_fiscal_service/app/services/invoice_orchestrator.py
 # Arquivo preserva o endpoint manual como fallback, mas agora ele usa o mesmo mecanismo de lock/processamento dos workers.
 # 11/04/2026 - aplicação de patch de: raise Valuerror(str(exc)) para: raise OrderPickupClientError(str(exc))
+def ensure_invoice_for_order(session: Session, order_id: str) -> Invoice:
+    """
+    Garante (atomicamente) que uma Invoice existe para o order_id (idempotente):
+    - Busca a invoice existente ou cria+processa uma nova, se ainda não existir.
+    - Sempre retorna a Invoice pronta (ou lança erro se não possível).
+    """
+    normalized_order_id = order_id.strip().lower()
+    try:
+        snapshot = get_order_snapshot_for_invoice(normalized_order_id)
+    except OrderPickupClientError as exc:
+        logger.warning(
+            "order_pickup_fetch_failed",
+            extra={"order_id": normalized_order_id, "error": str(exc)}
+        )
+        raise ValueError(
+            f"Falha ao buscar snapshot fiscal para order_id={normalized_order_id}: {exc}"
+        ) from exc
+
+    invoice = claim_and_process_invoice_by_id(session, normalized_order_id, order_snapshot=snapshot)
+    return invoice
+    Garante (atomicamente) que uma Invoice existe para o order_id (idempotente):
+    - Busca a invoice existente ou cria+processa uma nova, se ainda não existir.
+    - Sempre retorna a Invoice pronta (ou lança erro se não possível).
+    """
+    normalized_order_id = order_id.strip().lower()
+    try:
+        snapshot = get_order_snapshot_for_invoice(normalized_order_id)
+    except OrderPickupClientError as exc:
+        logger.warning(
+            "order_pickup_fetch_failed",
+            extra={"order_id": normalized_order_id, "error": str(exc)}
+        )
+        raise ValueError(
+            f"Falha ao buscar snapshot fiscal para order_id={normalized_order_id}: {exc}"
+        ) from exc
+
+    invoice = claim_and_process_invoice_by_id(session, normalized_order_id, order_snapshot=snapshot)
+    return invoice
 
 from __future__ import annotations
 

@@ -1,6 +1,89 @@
 """Gate de dados do destinatário antes de emissão em provedor real (F-3 / domínio usuário fiscal)."""
 
 from __future__ import annotations
+def build_test_consumer_profile(*, country: str, complete: bool = True) -> dict:
+    """
+    Utilitário para gerar payloads de perfil fiscal do consumidor para testes.
+
+    Args:
+        country (str): Código do país ("BR" ou "PT").
+        complete (bool): Se True, retorna todos os campos obrigatórios preenchidos.
+                         Se False, retorna um payload mínimo/vazio para testar falhas.
+
+    Returns:
+        dict: Payload de perfil fiscal conforme solicitado.
+
+    Raises:
+        ValueError: Se o país não for reconhecido.
+    """
+    normalized_country = str(country or "").strip().upper()
+    if normalized_country not in {"BR", "PT"}:
+        raise ValueError(f"País fiscal não suportado para testes: {country!r}")
+
+    if not complete:
+        # Payload vazio/minimalista para testar rejeição/falha do gate
+        return {
+            "fiscal_data_consent": False,
+            "tax_country": normalized_country,
+            # Demais campos propositalmente ausentes ou inválidos
+        }
+
+    if normalized_country == "BR":
+        doc_type, doc_value = "CPF", "12345678901"
+        addr_state = "SP"
+        addr_postal = "01001-000"
+        addr_country = "BR"
+    else:  # PT
+        doc_type, doc_value = "NIF", "123456789"
+        addr_state = None  # Portugal não exige estado
+        addr_postal = "1000-001"
+        addr_country = "PT"
+
+    profile = {
+        "fiscal_data_consent": True,
+        "tax_country": normalized_country,
+        "tax_document_type": doc_type,
+        "tax_document_value": doc_value,
+        "fiscal_email": "cliente+test@exemplo.com",
+        "fiscal_address_line1": "Av. Teste, 100",
+        "fiscal_address_city": "Cidade Teste",
+        "fiscal_address_state": addr_state,
+        "fiscal_address_postal_code": addr_postal,
+        "fiscal_address_country": addr_country,
+    }
+    # Remover None para campos não aplicáveis
+    return {k: v for k, v in profile.items() if v is not None}
+
+# Exemplos de uso em testes unitários:
+
+def test_build_test_consumer_profile_br_complete():
+    p = build_test_consumer_profile(country="BR", complete=True)
+    assert p["tax_country"] == "BR"
+    assert p["tax_document_type"] == "CPF"
+    assert len(p["tax_document_value"]) == 11
+    assert p["fiscal_email"] == "cliente+test@exemplo.com"
+
+def test_build_test_consumer_profile_pt_incomplete():
+    p = build_test_consumer_profile(country="PT", complete=False)
+    assert p["tax_country"] == "PT"
+    assert not p["fiscal_data_consent"]
+    assert "tax_document_value" not in p
+
+def test_invalid_country_raises():
+    import pytest
+    with pytest.raises(ValueError):
+        build_test_consumer_profile(country="ES")
+
+# Como injetar no order_snapshot para testes de integração:
+# 
+# order_snapshot = {
+#     "order": {
+#         # ... outros campos ...
+#         "consumer_profile": build_test_consumer_profile(country="BR", complete=True)
+#     }
+# }
+# 
+# Exemplo: invoice = claim_and_process_invoice_by_id(session, order_id, order_snapshot=order_snapshot)
 
 from typing import Any
 
