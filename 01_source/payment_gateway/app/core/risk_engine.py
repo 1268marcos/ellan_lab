@@ -7,7 +7,7 @@
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import math
 import hashlib
 import os
@@ -960,7 +960,7 @@ def evaluate_risk(
                 "risk_multiplier": 1.0,
             },
             "policy": policy,
-            "evaluation_timestamp": datetime.utcnow().isoformat(),
+            "evaluation_timestamp": datetime.now(timezone.utc).isoformat(),
             "card_type": card_type or None,
             "bin": (bin_number[:6] if bin_number else None),
             "issuer": issuer or None,
@@ -1190,7 +1190,7 @@ def evaluate_risk(
             "risk_multiplier": multiplier,
         },
         "policy": policy,
-        "evaluation_timestamp": datetime.utcnow().isoformat(),
+        "evaluation_timestamp": datetime.now(timezone.utc).isoformat(),
         "card_type": card_type or None,
         "bin": (bin_number[:6] if bin_number else None),
         "issuer": issuer or None,

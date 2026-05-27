@@ -650,7 +650,7 @@ def _finalize_kiosk_payment(
         pickup.locker_id = allocation.locker_id
         pickup.slot = allocation.slot
         pickup.region = order.region
-        pickup.ready_at = pickup.ready_at or datetime.utcnow()
+        pickup.ready_at = pickup.ready_at or datetime.now(timezone.utc)
         pickup.touch()
     else:
         pickup = Pickup(
@@ -663,7 +663,7 @@ def _finalize_kiosk_payment(
             slot=allocation.slot,
             status=PickupStatus.ACTIVE,
             lifecycle_stage=PickupLifecycleStage.READY_FOR_PICKUP,
-            ready_at=datetime.utcnow(),
+            ready_at=datetime.now(timezone.utc),
         )
         db.add(pickup)
         db.flush()

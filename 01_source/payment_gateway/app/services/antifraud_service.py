@@ -6,7 +6,7 @@
 from typing import Any, Dict, Optional, List, Tuple
 from enum import Enum
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import logging
@@ -105,12 +105,12 @@ class AntifraudCache:
     def set(self, key: str, value: Any, ttl_seconds: int = 3600) -> None:
         """Armazena valor com TTL"""
         self._cache[key] = value
-        self._expiry[key] = datetime.utcnow() + timedelta(seconds=ttl_seconds)
-    
+        self._expiry[key] = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+
     def get(self, key: str) -> Optional[Any]:
         """Recupera valor se não expirou"""
         if key in self._cache:
-            if datetime.utcnow() < self._expiry[key]:
+            if datetime.now(timezone.utc) < self._expiry[key]:
                 return self._cache[key]
             else:
                 self.delete(key)
@@ -275,7 +275,7 @@ def _check_behavioral_patterns(
             ))
     
     # Verifica horário incomum
-    current_hour = datetime.utcnow().hour
+    current_hour = datetime.now(timezone.utc).hour
     unusual_hours = {0, 1, 2, 3, 4, 5}  # Madrugada
     
     if current_hour in unusual_hours and amount > 100:
@@ -468,7 +468,7 @@ def check_antifraud(
     metodo_v = (metodo or "").strip()
     
     # Gera identificadores
-    transaction_id = _generate_transaction_id(regiao_u, locker_id or "unknown", datetime.utcnow())
+    transaction_id = _generate_transaction_id(regiao_u, locker_id or "unknown", datetime.now(timezone.utc))
     device_fingerprint = _get_device_fingerprint(device_hash, ip_hash, user_agent)
     
     # Registra início da análise
@@ -578,7 +578,7 @@ def check_antifraud(
             "additional_risk": additional_risk,
             "device_fingerprint": device_fingerprint[:8],
             "risk_engine_decision": risk_decision,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
     )
     

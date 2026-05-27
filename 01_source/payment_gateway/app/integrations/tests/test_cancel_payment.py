@@ -4,7 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from app.main import app
-
+from datetime import datetime, timezone
+ 
 client = TestClient(app)
 
 
@@ -20,7 +21,7 @@ def test_cancel_payment_success():
     mock_result.success = True
     mock_result.refund_id = "re_123"
     mock_result.status = "REFUNDED"
-    mock_result.processed_at = datetime.utcnow()
+    mock_result.processed_at = datetime.now(timezone.utc)
     
     with patch('app.routers.payment.RiskEventsService.get_event_by_order_id', new_callable=AsyncMock) as mock_get:
         mock_get.return_value = mock_event

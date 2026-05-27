@@ -12,7 +12,7 @@ import re
 import uuid
 from typing import Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
 from requests import HTTPError
@@ -976,7 +976,7 @@ def create_order_core(
     if card_type_value is not None and hasattr(order, "card_type"):
         setattr(order, "card_type", card_type_value)
 
-    payment_timeout_at = datetime.utcnow() + timedelta(seconds=alloc_ttl_sec)
+    payment_timeout_at = datetime.now(timezone.utc)  + timedelta(seconds=alloc_ttl_sec)
 
     try:
         db.add(order)

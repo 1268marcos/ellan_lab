@@ -1,7 +1,7 @@
 # 01_source/payment_gateway/app/integrations/payments/stripe/client.py
 
 import stripe
-from datetime import datetime
+from datetime import datetime, timezone
 from app.integrations.payments.base.contracts import (
     CreatePaymentCommand,
     PaymentResult,
@@ -51,7 +51,7 @@ class StripeClient:
                     provider=self.provider_name,
                     refund_id=cancelled_intent.id,
                     status="CANCELLED",
-                    processed_at=datetime.utcnow()
+                    processed_at=datetime.now(timezone.utc)
                 )
                 
             elif payment_intent.status == "succeeded":

@@ -8,7 +8,7 @@ import time
 import uuid
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.models.gateway_response_model import HealthResponse
 from app.routers.payment import router as payment_router
@@ -69,8 +69,8 @@ async def health():
     return {
         "status": "gateway_ok",
         "service": "payment_gateway",
-        "version": "1.0.1",
-        "timestamp": datetime.utcnow().isoformat(),  # Adicionar timestamp
+        "version": "1.0.2",
+        "timestamp": datetime.now(timezone.utc).isoformat(),  # Adicionar timestamp
     }
 
 

@@ -1,7 +1,7 @@
 # 01_source/payment_gateway/app/integrations/payments/mercadopago/client.py
 
 import httpx
-from datetime import datetime
+from datetime import datetime, timezone
 from app.integrations.payments.base.contracts import (
     CreatePaymentCommand,
     PaymentResult,
@@ -76,7 +76,7 @@ class MercadoPagoClient:
                         provider=self.provider_name,
                         refund_id=command.provider_payment_id,
                         status="CANCELLED",
-                        processed_at=datetime.utcnow()
+                        processed_at=datetime.now(timezone.utc)
                     )
                     
                 elif payment_status == "approved":
@@ -103,7 +103,7 @@ class MercadoPagoClient:
                         provider=self.provider_name,
                         refund_id=refund_data_response.get("id", command.provider_payment_id),
                         status="REFUNDED",
-                        processed_at=datetime.utcnow()
+                        processed_at=datetime.now(timezone.utc)
                     )
                     
                 else:

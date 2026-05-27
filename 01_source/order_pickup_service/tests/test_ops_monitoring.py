@@ -135,7 +135,7 @@ def test_fetch_reconciliation_lag_distribution(monitoring_db):
 
 
 def test_fetch_runtime_deadlocks_stuck_allocation(monitoring_db):
-    old = datetime.utcnow() - timedelta(hours=3)
+    old = datetime.now(timezone.utc) - timedelta(hours=3)
     monitoring_db.execute(
         text(
             """

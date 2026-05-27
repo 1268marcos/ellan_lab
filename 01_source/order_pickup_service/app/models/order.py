@@ -656,7 +656,7 @@ class Order(Base):
     def create_idempotency_key(cls, prefix: str, identifier: str) -> str:
         """Gera chave de idempotência"""
         import hashlib
-        raw = f"{prefix}:{identifier}:{datetime.utcnow().date()}"
+        raw = f"{prefix}:{identifier}:{ datetime.now(timezone.utc).date()}"
         return hashlib.sha256(raw.encode()).hexdigest()[:32]
     
 """
