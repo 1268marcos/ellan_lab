@@ -1369,6 +1369,46 @@ COMMENT ON FUNCTION public.fn_locker_occupancy(p_locker_id character varying) IS
 
 
 --
+-- Name: fn_log_mv_refresh_finish(bigint, character varying, text); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_log_mv_refresh_finish(p_log_id bigint, p_status character varying, p_error_message text DEFAULT NULL::text) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+    UPDATE public.mv_refresh_log
+    SET status = p_status,
+        finished_at = now(),
+        duration_ms = EXTRACT(EPOCH FROM (now() - started_at)) * 1000,
+        error_message = p_error_message
+    WHERE id = p_log_id;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_log_mv_refresh_finish(p_log_id bigint, p_status character varying, p_error_message text) OWNER TO admin;
+
+--
+-- Name: fn_log_mv_refresh_start(character varying, character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_log_mv_refresh_start(p_view_name character varying, p_triggered_by character varying DEFAULT 'pg_cron'::character varying) RETURNS bigint
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_id BIGINT;
+BEGIN
+    INSERT INTO public.mv_refresh_log (view_name, status, triggered_by)
+    VALUES (p_view_name, 'SUCCESS', COALESCE(p_triggered_by, 'pg_cron'))
+    RETURNING id INTO v_id;
+    RETURN v_id;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_log_mv_refresh_start(p_view_name character varying, p_triggered_by character varying) OWNER TO admin;
+
+--
 -- Name: fn_mrr(date); Type: FUNCTION; Schema: public; Owner: admin
 --
 
@@ -1466,6 +1506,131 @@ ALTER FUNCTION public.fn_recommend_products(p_user_id character varying, p_locke
 
 COMMENT ON FUNCTION public.fn_recommend_products(p_user_id character varying, p_locker_id character varying, p_limit integer) IS 'Retorna recomendações de produtos para um usuário/locker';
 
+
+--
+-- Name: fn_refresh_financial_dashboard(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_refresh_financial_dashboard(p_triggered_by character varying DEFAULT 'pg_cron'::character varying) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_log_id BIGINT;
+    v_populated BOOLEAN;
+BEGIN
+    v_log_id := public.fn_log_mv_refresh_start('v_financial_dashboard', p_triggered_by);
+    SELECT relispopulated INTO v_populated
+    FROM pg_class
+    WHERE oid = 'public.mv_locker_monthly_profitability'::regclass;
+    BEGIN
+        PERFORM public.fn_refresh_mv_locker_monthly_profitability(p_triggered_by);
+        PERFORM public.fn_refresh_mv_locker_monthly_pnl(p_triggered_by);
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
+        RAISE;
+    END;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_refresh_financial_dashboard(p_triggered_by character varying) OWNER TO admin;
+
+--
+-- Name: fn_refresh_mv_locker_monthly_pnl(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_refresh_mv_locker_monthly_pnl(p_triggered_by character varying DEFAULT 'pg_cron'::character varying) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_log_id BIGINT;
+    v_populated BOOLEAN;
+BEGIN
+    v_log_id := public.fn_log_mv_refresh_start('mv_locker_monthly_pnl', p_triggered_by);
+    SELECT relispopulated INTO v_populated
+    FROM pg_class
+    WHERE oid = 'public.mv_locker_monthly_pnl'::regclass;
+    BEGIN
+        IF COALESCE(v_populated, false) THEN
+            REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_pnl;
+        ELSE
+            REFRESH MATERIALIZED VIEW public.mv_locker_monthly_pnl;
+        END IF;
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
+        RAISE;
+    END;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_refresh_mv_locker_monthly_pnl(p_triggered_by character varying) OWNER TO admin;
+
+--
+-- Name: fn_refresh_mv_locker_monthly_profitability(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_refresh_mv_locker_monthly_profitability(p_triggered_by character varying DEFAULT 'pg_cron'::character varying) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_log_id BIGINT;
+    v_populated BOOLEAN;
+BEGIN
+    v_log_id := public.fn_log_mv_refresh_start('mv_locker_monthly_profitability', p_triggered_by);
+    SELECT relispopulated INTO v_populated
+    FROM pg_class
+    WHERE oid = 'public.mv_locker_monthly_profitability'::regclass;
+    BEGIN
+        IF COALESCE(v_populated, false) THEN
+            REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_locker_monthly_profitability;
+        ELSE
+            REFRESH MATERIALIZED VIEW public.mv_locker_monthly_profitability;
+        END IF;
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
+        RAISE;
+    END;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_refresh_mv_locker_monthly_profitability(p_triggered_by character varying) OWNER TO admin;
+
+--
+-- Name: fn_refresh_mv_realtime_kpis(character varying); Type: FUNCTION; Schema: public; Owner: admin
+--
+
+CREATE FUNCTION public.fn_refresh_mv_realtime_kpis(p_triggered_by character varying DEFAULT 'pg_cron'::character varying) RETURNS void
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+    v_log_id BIGINT;
+    v_populated BOOLEAN;
+BEGIN
+    v_log_id := public.fn_log_mv_refresh_start('mv_realtime_kpis', p_triggered_by);
+    SELECT relispopulated INTO v_populated
+    FROM pg_class
+    WHERE oid = 'public.mv_realtime_kpis'::regclass;
+    BEGIN
+        IF COALESCE(v_populated, false) THEN
+            REFRESH MATERIALIZED VIEW CONCURRENTLY public.mv_realtime_kpis;
+        ELSE
+            REFRESH MATERIALIZED VIEW public.mv_realtime_kpis;
+        END IF;
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'SUCCESS');
+    EXCEPTION WHEN OTHERS THEN
+        PERFORM public.fn_log_mv_refresh_finish(v_log_id, 'FAILED', SQLERRM);
+        RAISE;
+    END;
+END;
+$$;
+
+
+ALTER FUNCTION public.fn_refresh_mv_realtime_kpis(p_triggered_by character varying) OWNER TO admin;
 
 --
 -- Name: fn_refresh_realtime_kpis(); Type: FUNCTION; Schema: public; Owner: admin
@@ -3340,6 +3505,187 @@ ALTER TABLE public.auth_sessions_id_seq OWNER TO admin;
 
 ALTER SEQUENCE public.auth_sessions_id_seq OWNED BY public.auth_sessions.id;
 
+
+--
+-- Name: bi_data_lineage_edges; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_data_lineage_edges (
+    id character varying(36) NOT NULL,
+    source_object character varying(120) NOT NULL,
+    target_object character varying(120) NOT NULL,
+    transform_type character varying(32) DEFAULT 'DBT_MODEL'::character varying NOT NULL,
+    owner_team character varying(64) DEFAULT 'data-platform'::character varying NOT NULL,
+    notes text,
+    active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_data_lineage_edges OWNER TO admin;
+
+--
+-- Name: bi_data_readiness_snapshots; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_data_readiness_snapshots (
+    id character varying(36) NOT NULL,
+    network_player_code character varying(48) NOT NULL,
+    segment_code character varying(32) DEFAULT 'LOCKER_NETWORK'::character varying NOT NULL,
+    score_total numeric(5,2) DEFAULT 0 NOT NULL,
+    score_data_quality numeric(5,2) DEFAULT 0 NOT NULL,
+    score_mart_freshness numeric(5,2) DEFAULT 0 NOT NULL,
+    score_api_coverage numeric(5,2) DEFAULT 0 NOT NULL,
+    readiness_band character varying(16) DEFAULT 'PLANNED'::character varying NOT NULL,
+    blockers_json text DEFAULT '[]'::text NOT NULL,
+    factors_json text DEFAULT '{}'::text NOT NULL,
+    computed_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_data_readiness_snapshots OWNER TO admin;
+
+--
+-- Name: bi_export_jobs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_export_jobs (
+    id character varying(36) NOT NULL,
+    partner_id character varying(36),
+    export_format character varying(16) DEFAULT 'CSV'::character varying NOT NULL,
+    dataset_code character varying(48) NOT NULL,
+    status character varying(20) DEFAULT 'QUEUED'::character varying NOT NULL,
+    file_url character varying(500),
+    row_count bigint,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    completed_at timestamp with time zone
+);
+
+
+ALTER TABLE public.bi_export_jobs OWNER TO admin;
+
+--
+-- Name: bi_kpi_alert_events; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_kpi_alert_events (
+    id character varying(36) NOT NULL,
+    rule_id character varying(36) NOT NULL,
+    kpi_code character varying(48) NOT NULL,
+    observed_value numeric(18,4) NOT NULL,
+    status character varying(20) DEFAULT 'OPEN'::character varying NOT NULL,
+    network_player_code character varying(48),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone
+);
+
+
+ALTER TABLE public.bi_kpi_alert_events OWNER TO admin;
+
+--
+-- Name: bi_kpi_alert_rules; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_kpi_alert_rules (
+    id character varying(36) NOT NULL,
+    kpi_code character varying(48) NOT NULL,
+    comparator character varying(8) DEFAULT 'LT'::character varying NOT NULL,
+    threshold_value numeric(18,4) NOT NULL,
+    severity character varying(16) DEFAULT 'WARNING'::character varying NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_kpi_alert_rules OWNER TO admin;
+
+--
+-- Name: bi_mart_refresh_jobs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_mart_refresh_jobs (
+    id character varying(36) NOT NULL,
+    mart_name character varying(64) NOT NULL,
+    target_schema character varying(64) DEFAULT 'analytics_analytics'::character varying NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    rows_affected bigint,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    error_message text,
+    triggered_by character varying(64),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_mart_refresh_jobs OWNER TO admin;
+
+--
+-- Name: bi_ops_audit_log; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_ops_audit_log (
+    id character varying(36) NOT NULL,
+    event_type character varying(40) NOT NULL,
+    entity_type character varying(32) NOT NULL,
+    entity_id character varying(48),
+    summary character varying(255) NOT NULL,
+    payload_json text DEFAULT '{}'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_ops_audit_log OWNER TO admin;
+
+--
+-- Name: bi_player_market_presence; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_player_market_presence (
+    id character varying(36) NOT NULL,
+    network_player_code character varying(48) NOT NULL,
+    country_code character varying(2) NOT NULL,
+    region_code character varying(20),
+    locker_count_est integer,
+    parcel_volume_est_monthly bigint,
+    market_share_pct numeric(6,3),
+    active boolean DEFAULT true NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.bi_player_market_presence OWNER TO admin;
+
+--
+-- Name: bi_player_segment_taxonomy; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_player_segment_taxonomy (
+    code character varying(32) NOT NULL,
+    label character varying(120) NOT NULL,
+    description text,
+    sort_order integer DEFAULT 100 NOT NULL,
+    active boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.bi_player_segment_taxonomy OWNER TO admin;
+
+--
+-- Name: bi_unified_domain_links; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.bi_unified_domain_links (
+    id character varying(36) NOT NULL,
+    domain_code character varying(24) NOT NULL,
+    label character varying(120) NOT NULL,
+    admin_route character varying(255),
+    health_path character varying(255),
+    sort_order integer DEFAULT 100 NOT NULL,
+    active boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.bi_unified_domain_links OWNER TO admin;
 
 --
 -- Name: billing_processed_events; Type: TABLE; Schema: public; Owner: admin
@@ -6263,6 +6609,34 @@ CREATE TABLE public.inventory_reservations (
 ALTER TABLE public.inventory_reservations OWNER TO admin;
 
 --
+-- Name: inventory_sync_queue; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.inventory_sync_queue (
+    id character varying(36) NOT NULL,
+    product_id character varying(255) NOT NULL,
+    locker_id character varying(64),
+    marketplace character varying(32) NOT NULL,
+    operation character varying(32) DEFAULT 'UPSERT_STOCK'::character varying NOT NULL,
+    status character varying(32) DEFAULT 'PENDING'::character varying NOT NULL,
+    quantity_available integer DEFAULT 0 NOT NULL,
+    payload_json text DEFAULT '{}'::text NOT NULL,
+    retry_count integer DEFAULT 0 NOT NULL,
+    max_retries integer DEFAULT 5 NOT NULL,
+    next_retry_at timestamp with time zone,
+    processing_started_at timestamp with time zone,
+    last_error text,
+    synced_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_isq_marketplace CHECK (((marketplace)::text = ANY ((ARRAY['SHOPEE'::character varying, 'MAGALU'::character varying, 'MERCADO_LIVRE'::character varying])::text[]))),
+    CONSTRAINT ck_isq_status CHECK (((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PROCESSING'::character varying, 'SYNCED'::character varying, 'FAILED'::character varying, 'DEAD_LETTER'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.inventory_sync_queue OWNER TO admin;
+
+--
 -- Name: invoice_delivery_log; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -6619,6 +6993,29 @@ COMMENT ON COLUMN public.locker_capex_details.connectivity_setup_cents IS 'Custo
 
 COMMENT ON COLUMN public.locker_capex_details.go_live_cost_cents IS 'Custos de testes, documentação e go-live';
 
+
+--
+-- Name: locker_maintenance_tickets; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.locker_maintenance_tickets (
+    id character varying(36) DEFAULT (gen_random_uuid())::text NOT NULL,
+    locker_id character varying(36) NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    status character varying(32) DEFAULT 'OPEN'::character varying NOT NULL,
+    priority character varying(16) DEFAULT 'MEDIUM'::character varying NOT NULL,
+    assigned_to character varying(100),
+    created_by character varying(100),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    resolved_at timestamp with time zone,
+    CONSTRAINT ck_lmt_priority CHECK (((priority)::text = ANY ((ARRAY['LOW'::character varying, 'MEDIUM'::character varying, 'HIGH'::character varying, 'CRITICAL'::character varying])::text[]))),
+    CONSTRAINT ck_lmt_status CHECK (((status)::text = ANY ((ARRAY['OPEN'::character varying, 'IN_PROGRESS'::character varying, 'WAITING_PARTS'::character varying, 'RESOLVED'::character varying, 'CANCELLED'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.locker_maintenance_tickets OWNER TO admin;
 
 --
 -- Name: locker_operators; Type: TABLE; Schema: public; Owner: admin
@@ -7407,6 +7804,21 @@ CREATE TABLE public.marketplace_channel_capabilities (
 ALTER TABLE public.marketplace_channel_capabilities OWNER TO admin;
 
 --
+-- Name: marketplace_channel_partner_segments; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_channel_partner_segments (
+    id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    segment_code character varying(32) NOT NULL,
+    is_primary boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_channel_partner_segments OWNER TO admin;
+
+--
 -- Name: marketplace_channel_partners; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -7483,6 +7895,23 @@ CREATE TABLE public.marketplace_corridor_player_steps (
 ALTER TABLE public.marketplace_corridor_player_steps OWNER TO admin;
 
 --
+-- Name: marketplace_corridor_players; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_corridor_players (
+    id character varying(36) NOT NULL,
+    corridor_code character varying(48) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    player_role_in_corridor character varying(32) NOT NULL,
+    priority integer NOT NULL,
+    active boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_corridor_players OWNER TO admin;
+
+--
 -- Name: marketplace_corridor_sla; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -7503,6 +7932,25 @@ CREATE TABLE public.marketplace_corridor_sla (
 
 
 ALTER TABLE public.marketplace_corridor_sla OWNER TO admin;
+
+--
+-- Name: marketplace_corridors; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_corridors (
+    code character varying(48) NOT NULL,
+    name character varying(128) NOT NULL,
+    origin_country character varying(2) NOT NULL,
+    destination_country character varying(2) NOT NULL,
+    corridor_type character varying(24) NOT NULL,
+    currency character varying(8) NOT NULL,
+    active boolean NOT NULL,
+    notes text,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_corridors OWNER TO admin;
 
 --
 -- Name: marketplace_global_corridors; Type: TABLE; Schema: public; Owner: admin
@@ -7574,6 +8022,45 @@ CREATE TABLE public.marketplace_integration_readiness (
 ALTER TABLE public.marketplace_integration_readiness OWNER TO admin;
 
 --
+-- Name: marketplace_ops_playbooks; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_ops_playbooks (
+    id character varying(36) NOT NULL,
+    code character varying(48) NOT NULL,
+    name character varying(160) NOT NULL,
+    trigger_type character varying(32) NOT NULL,
+    severity character varying(16) NOT NULL,
+    steps_json text NOT NULL,
+    owner_team character varying(64),
+    active boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_ops_playbooks OWNER TO admin;
+
+--
+-- Name: marketplace_partner_api_health; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_partner_api_health (
+    id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    partner_code character varying(48) NOT NULL,
+    measured_at timestamp with time zone NOT NULL,
+    availability_pct numeric(5,2) NOT NULL,
+    p95_latency_ms integer NOT NULL,
+    error_rate_pct numeric(5,2) NOT NULL,
+    rate_limit_hits integer NOT NULL,
+    health_status character varying(16) NOT NULL,
+    notes text
+);
+
+
+ALTER TABLE public.marketplace_partner_api_health OWNER TO admin;
+
+--
 -- Name: marketplace_player_certifications; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -7596,6 +8083,42 @@ CREATE TABLE public.marketplace_player_certifications (
 
 
 ALTER TABLE public.marketplace_player_certifications OWNER TO admin;
+
+--
+-- Name: marketplace_player_relationships; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_player_relationships (
+    id character varying(36) NOT NULL,
+    from_partner_id character varying(36) NOT NULL,
+    to_partner_id character varying(36) NOT NULL,
+    relationship_type character varying(32) NOT NULL,
+    corridor_code character varying(48),
+    notes text,
+    active boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_player_relationships OWNER TO admin;
+
+--
+-- Name: marketplace_player_segments; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.marketplace_player_segments (
+    code character varying(32) NOT NULL,
+    name character varying(128) NOT NULL,
+    parent_group character varying(32) NOT NULL,
+    description text,
+    default_integration_mode character varying(32) NOT NULL,
+    sort_order integer NOT NULL,
+    active boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.marketplace_player_segments OWNER TO admin;
 
 --
 -- Name: marketplace_readiness_alerts; Type: TABLE; Schema: public; Owner: admin
@@ -9399,6 +9922,47 @@ ALTER TABLE public.mv_realtime_kpis OWNER TO admin;
 --
 
 COMMENT ON MATERIALIZED VIEW public.mv_realtime_kpis IS 'KPIs em tempo real para dashboard executivo';
+
+
+--
+-- Name: mv_refresh_log; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.mv_refresh_log (
+    id bigint NOT NULL,
+    view_name character varying(120) NOT NULL,
+    status character varying(20) NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    finished_at timestamp with time zone,
+    duration_ms integer,
+    error_message text,
+    triggered_by character varying(60) DEFAULT 'pg_cron'::character varying NOT NULL,
+    metadata jsonb DEFAULT '{}'::jsonb NOT NULL,
+    CONSTRAINT mv_refresh_log_status_check CHECK (((status)::text = ANY ((ARRAY['SUCCESS'::character varying, 'FAILED'::character varying, 'ALERT'::character varying])::text[])))
+);
+
+
+ALTER TABLE public.mv_refresh_log OWNER TO admin;
+
+--
+-- Name: mv_refresh_log_id_seq; Type: SEQUENCE; Schema: public; Owner: admin
+--
+
+CREATE SEQUENCE public.mv_refresh_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.mv_refresh_log_id_seq OWNER TO admin;
+
+--
+-- Name: mv_refresh_log_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: admin
+--
+
+ALTER SEQUENCE public.mv_refresh_log_id_seq OWNED BY public.mv_refresh_log.id;
 
 
 --
@@ -14117,6 +14681,612 @@ ALTER TABLE public.secret ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY (
 
 
 --
+-- Name: security_access_requests; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_access_requests (
+    id character varying(36) NOT NULL,
+    requester_id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    domain_code character varying(32) NOT NULL,
+    entity_type character varying(48) NOT NULL,
+    entity_id character varying(120) NOT NULL,
+    entity_label character varying(255),
+    permission_key character varying(80) NOT NULL,
+    justification character varying(500) NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    reviewer_id character varying(36),
+    reviewed_at timestamp with time zone,
+    review_notes text,
+    grant_id character varying(36),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_access_requests OWNER TO admin;
+
+--
+-- Name: security_access_review_campaigns; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_access_review_campaigns (
+    id character varying(36) NOT NULL,
+    name character varying(128) NOT NULL,
+    status character varying(20) DEFAULT 'DRAFT'::character varying NOT NULL,
+    due_at timestamp with time zone NOT NULL,
+    scope_json text DEFAULT '{}'::text NOT NULL,
+    created_by character varying(36),
+    completed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_access_review_campaigns OWNER TO admin;
+
+--
+-- Name: security_access_review_items; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_access_review_items (
+    id character varying(36) NOT NULL,
+    campaign_id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    subject_type character varying(32) NOT NULL,
+    subject_id character varying(120) NOT NULL,
+    subject_label character varying(255),
+    decision character varying(20),
+    reviewer_id character varying(36),
+    reviewed_at timestamp with time zone,
+    notes text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_access_review_items OWNER TO admin;
+
+--
+-- Name: security_alert_rules; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_alert_rules (
+    id character varying(36) NOT NULL,
+    code character varying(48) NOT NULL,
+    name character varying(128) NOT NULL,
+    condition_type character varying(40) NOT NULL,
+    threshold_json text DEFAULT '{}'::text NOT NULL,
+    severity character varying(16) DEFAULT 'MEDIUM'::character varying NOT NULL,
+    notify_channels_json text DEFAULT '["OPS_CONSOLE"]'::text NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_alert_rules OWNER TO admin;
+
+--
+-- Name: security_alerts; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_alerts (
+    id character varying(36) NOT NULL,
+    rule_id character varying(36) NOT NULL,
+    title character varying(255) NOT NULL,
+    detail text,
+    entity_type character varying(32),
+    entity_id character varying(120),
+    severity character varying(16) NOT NULL,
+    status character varying(20) DEFAULT 'OPEN'::character varying NOT NULL,
+    acknowledged_by character varying(36),
+    acknowledged_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_alerts OWNER TO admin;
+
+--
+-- Name: security_api_keys; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_api_keys (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    key_prefix character varying(16) NOT NULL,
+    key_hash character varying(128) NOT NULL,
+    label character varying(64),
+    scopes_json text DEFAULT '[]'::text NOT NULL,
+    expires_at timestamp with time zone,
+    last_used_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    created_by character varying(36),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_api_keys OWNER TO admin;
+
+--
+-- Name: security_audit_logs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_audit_logs (
+    id character varying(36) NOT NULL,
+    actor_id character varying(36),
+    actor_role character varying(40),
+    action character varying(80) NOT NULL,
+    target_type character varying(40) NOT NULL,
+    target_id character varying(36) NOT NULL,
+    old_state_json text,
+    new_state_json text,
+    ip_address character varying(64),
+    user_agent text,
+    occurred_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_audit_logs OWNER TO admin;
+
+--
+-- Name: security_break_glass_events; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_break_glass_events (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    reason character varying(500) NOT NULL,
+    granted_roles_json text DEFAULT '[]'::text NOT NULL,
+    approved_by character varying(36),
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    audit_ref character varying(36)
+);
+
+
+ALTER TABLE public.security_break_glass_events OWNER TO admin;
+
+--
+-- Name: security_compliance_controls; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_compliance_controls (
+    code character varying(48) NOT NULL,
+    framework character varying(32) NOT NULL,
+    title character varying(255) NOT NULL,
+    description text,
+    domain character varying(32),
+    is_active boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.security_compliance_controls OWNER TO admin;
+
+--
+-- Name: security_control_mappings; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_control_mappings (
+    id character varying(36) NOT NULL,
+    control_code character varying(48) NOT NULL,
+    object_key character varying(254) NOT NULL,
+    coverage_level character varying(16) DEFAULT 'PARTIAL'::character varying NOT NULL
+);
+
+
+ALTER TABLE public.security_control_mappings OWNER TO admin;
+
+--
+-- Name: security_cross_domain_grants; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_cross_domain_grants (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    domain_code character varying(32) NOT NULL,
+    entity_type character varying(48) NOT NULL,
+    entity_id character varying(120) NOT NULL,
+    entity_label character varying(255),
+    permission_key character varying(80) NOT NULL,
+    scope_type character varying(40) DEFAULT 'ENTITY'::character varying NOT NULL,
+    granted_by character varying(36),
+    expires_at timestamp with time zone,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_cross_domain_grants OWNER TO admin;
+
+--
+-- Name: security_delegation_sessions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_delegation_sessions (
+    id character varying(36) NOT NULL,
+    delegate_user_id character varying(36) NOT NULL,
+    target_domain character varying(32) NOT NULL,
+    target_entity_type character varying(48) NOT NULL,
+    target_entity_id character varying(120) NOT NULL,
+    target_entity_label character varying(255),
+    reason character varying(500) NOT NULL,
+    approved_by character varying(36),
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    ended_at timestamp with time zone
+);
+
+
+ALTER TABLE public.security_delegation_sessions OWNER TO admin;
+
+--
+-- Name: security_domain_catalog; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_domain_catalog (
+    code character varying(32) NOT NULL,
+    label character varying(128) NOT NULL,
+    description character varying(500),
+    admin_route character varying(255),
+    health_path character varying(255),
+    sort_order integer DEFAULT 100 NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    regions_json text DEFAULT '[]'::text,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_domain_catalog OWNER TO admin;
+
+--
+-- Name: security_domain_entitlements; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_domain_entitlements (
+    id character varying(36) NOT NULL,
+    domain_code character varying(32) NOT NULL,
+    remote_entity_type character varying(48) NOT NULL,
+    remote_entity_id character varying(120) NOT NULL,
+    remote_label character varying(255),
+    entitlement_key character varying(80) NOT NULL,
+    source_service character varying(64) NOT NULL,
+    synced_at timestamp with time zone DEFAULT now() NOT NULL,
+    metadata_json text DEFAULT '{}'::text NOT NULL
+);
+
+
+ALTER TABLE public.security_domain_entitlements OWNER TO admin;
+
+--
+-- Name: security_identity_providers; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_identity_providers (
+    code character varying(32) NOT NULL,
+    name character varying(128) NOT NULL,
+    provider_type character varying(32) NOT NULL,
+    issuer_url character varying(500),
+    client_id_ref character varying(255),
+    allowed_domains_json text DEFAULT '[]'::text,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_identity_providers OWNER TO admin;
+
+--
+-- Name: security_jit_grants; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_jit_grants (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    domain_code character varying(32) NOT NULL,
+    entity_type character varying(48) NOT NULL,
+    entity_id character varying(120) NOT NULL,
+    permission_key character varying(80) NOT NULL,
+    grant_id character varying(36),
+    reason character varying(500) NOT NULL,
+    approved_by character varying(36),
+    status character varying(20) DEFAULT 'ACTIVE'::character varying NOT NULL,
+    started_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone
+);
+
+
+ALTER TABLE public.security_jit_grants OWNER TO admin;
+
+--
+-- Name: security_locker_player_registry; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_locker_player_registry (
+    player_code character varying(48) NOT NULL,
+    name character varying(160) NOT NULL,
+    segment character varying(32) NOT NULL,
+    primary_domain character varying(32) NOT NULL,
+    related_domains_json text DEFAULT '[]'::text NOT NULL,
+    default_permission_keys_json text DEFAULT '[]'::text NOT NULL,
+    regions_json text DEFAULT '[]'::text NOT NULL,
+    global_tier character varying(20) DEFAULT 'REGIONAL'::character varying NOT NULL,
+    ecosystem_player_id character varying(36),
+    locker_operator_ref character varying(48),
+    is_active boolean DEFAULT true NOT NULL,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    parent_group character varying(40),
+    integration_modes_json text DEFAULT '[]'::text,
+    external_refs_json text DEFAULT '{}'::text
+);
+
+
+ALTER TABLE public.security_locker_player_registry OWNER TO admin;
+
+--
+-- Name: security_permission_groups; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_permission_groups (
+    id character varying(36) NOT NULL,
+    name character varying(255) NOT NULL,
+    description character varying(500),
+    is_system boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_permission_groups OWNER TO admin;
+
+--
+-- Name: security_permission_memberships; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_permission_memberships (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    group_id character varying(36) NOT NULL,
+    is_group_manager boolean DEFAULT false NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_permission_memberships OWNER TO admin;
+
+--
+-- Name: security_permissions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_permissions (
+    id character varying(36) NOT NULL,
+    group_id character varying(36) NOT NULL,
+    object_key character varying(254) NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_permissions OWNER TO admin;
+
+--
+-- Name: security_player_integrations; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_player_integrations (
+    id character varying(36) NOT NULL,
+    player_code character varying(48) NOT NULL,
+    channel_type character varying(32) NOT NULL,
+    direction character varying(16) DEFAULT 'BIDIRECTIONAL'::character varying NOT NULL,
+    target_domain character varying(32) NOT NULL,
+    capability_key character varying(64) NOT NULL,
+    is_required boolean DEFAULT false NOT NULL,
+    is_active boolean DEFAULT true NOT NULL,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_player_integrations OWNER TO admin;
+
+--
+-- Name: security_player_relations; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_player_relations (
+    id character varying(36) NOT NULL,
+    from_player_code character varying(48) NOT NULL,
+    to_player_code character varying(48) NOT NULL,
+    relation_type character varying(40) NOT NULL,
+    strength character varying(16) DEFAULT 'PRIMARY'::character varying NOT NULL,
+    notes character varying(500),
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_player_relations OWNER TO admin;
+
+--
+-- Name: security_player_segments; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_player_segments (
+    code character varying(32) NOT NULL,
+    label character varying(128) NOT NULL,
+    description character varying(500),
+    primary_domain character varying(32) NOT NULL,
+    sort_order integer DEFAULT 100 NOT NULL,
+    icon_key character varying(32),
+    is_active boolean DEFAULT true NOT NULL
+);
+
+
+ALTER TABLE public.security_player_segments OWNER TO admin;
+
+--
+-- Name: security_policy_snapshots; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_policy_snapshots (
+    id character varying(36) NOT NULL,
+    version_label character varying(64) NOT NULL,
+    policy_kind character varying(32) DEFAULT 'RBAC'::character varying NOT NULL,
+    snapshot_json text NOT NULL,
+    created_by character varying(36),
+    remark text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_policy_snapshots OWNER TO admin;
+
+--
+-- Name: security_risk_scores; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_risk_scores (
+    id character varying(36) NOT NULL,
+    entity_type character varying(32) NOT NULL,
+    entity_id character varying(120) NOT NULL,
+    score numeric(5,2) NOT NULL,
+    risk_tier character varying(16) NOT NULL,
+    factors_json text DEFAULT '[]'::text NOT NULL,
+    computed_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone
+);
+
+
+ALTER TABLE public.security_risk_scores OWNER TO admin;
+
+--
+-- Name: security_role_catalog; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_role_catalog (
+    code character varying(40) NOT NULL,
+    label character varying(128) NOT NULL,
+    description character varying(500),
+    default_scope_type character varying(40) DEFAULT 'GLOBAL'::character varying,
+    allowed_domains_json text DEFAULT '[]'::text,
+    is_system boolean DEFAULT true NOT NULL,
+    sort_order integer DEFAULT 100 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_role_catalog OWNER TO admin;
+
+--
+-- Name: security_role_templates; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_role_templates (
+    id character varying(36) NOT NULL,
+    code character varying(48) NOT NULL,
+    name character varying(128) NOT NULL,
+    description character varying(500),
+    roles_json text DEFAULT '[]'::text NOT NULL,
+    permission_groups_json text DEFAULT '[]'::text NOT NULL,
+    default_players_json text DEFAULT '[]'::text NOT NULL,
+    target_segment character varying(32),
+    is_active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_role_templates OWNER TO admin;
+
+--
+-- Name: security_user_player_access; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_user_player_access (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    player_code character varying(48) NOT NULL,
+    access_role character varying(40) NOT NULL,
+    scope_type character varying(40) DEFAULT 'NETWORK'::character varying NOT NULL,
+    granted_by character varying(36),
+    is_active boolean DEFAULT true NOT NULL,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_user_player_access OWNER TO admin;
+
+--
+-- Name: security_user_sessions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_user_sessions (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    session_token_hash character varying(255) NOT NULL,
+    user_agent character varying(500),
+    ip_address character varying(64),
+    auth_method character varying(32) DEFAULT 'API_KEY'::character varying,
+    identity_provider_code character varying(32),
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    expires_at timestamp with time zone NOT NULL,
+    revoked_at timestamp with time zone,
+    last_seen_at timestamp with time zone
+);
+
+
+ALTER TABLE public.security_user_sessions OWNER TO admin;
+
+--
+-- Name: security_webhook_deliveries; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_webhook_deliveries (
+    id character varying(36) NOT NULL,
+    endpoint_id character varying(36) NOT NULL,
+    event_name character varying(100) NOT NULL,
+    aggregate_type character varying(50),
+    aggregate_id character varying(36),
+    payload_json text NOT NULL,
+    status character varying(20) DEFAULT 'PENDING'::character varying NOT NULL,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    last_status_code integer,
+    last_response_body text,
+    next_attempt_at timestamp with time zone,
+    delivered_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_webhook_deliveries OWNER TO admin;
+
+--
+-- Name: security_webhook_endpoints; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.security_webhook_endpoints (
+    id character varying(36) NOT NULL,
+    owner_type character varying(20) DEFAULT 'PLATFORM'::character varying NOT NULL,
+    owner_id character varying(36),
+    url character varying(500) NOT NULL,
+    events_json text DEFAULT '["*"]'::text NOT NULL,
+    secret_hash character varying(128) NOT NULL,
+    secret_prefix character varying(16),
+    signing_algo character varying(20) DEFAULT 'HMAC_SHA256'::character varying NOT NULL,
+    active boolean DEFAULT true NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.security_webhook_endpoints OWNER TO admin;
+
+--
 -- Name: segment; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -14154,6 +15324,26 @@ ALTER TABLE public.segment ALTER COLUMN id ADD GENERATED BY DEFAULT AS IDENTITY 
 
 
 --
+-- Name: seller_agreements; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_agreements (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    agreement_type character varying(32) NOT NULL,
+    version character varying(16) NOT NULL,
+    status character varying(20) NOT NULL,
+    document_ref character varying(255),
+    signed_at timestamp with time zone,
+    expires_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_agreements OWNER TO admin;
+
+--
 -- Name: seller_api_keys; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -14173,6 +15363,28 @@ CREATE TABLE public.seller_api_keys (
 
 
 ALTER TABLE public.seller_api_keys OWNER TO admin;
+
+--
+-- Name: seller_catalog_sync_jobs; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_catalog_sync_jobs (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    job_type character varying(32) NOT NULL,
+    status character varying(20) NOT NULL,
+    items_total integer NOT NULL,
+    items_ok integer NOT NULL,
+    items_failed integer NOT NULL,
+    started_at timestamp with time zone,
+    finished_at timestamp with time zone,
+    error_summary text,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_catalog_sync_jobs OWNER TO admin;
 
 --
 -- Name: seller_category_links; Type: TABLE; Schema: public; Owner: admin
@@ -14208,6 +15420,48 @@ CREATE TABLE public.seller_channel_listings (
 ALTER TABLE public.seller_channel_listings OWNER TO admin;
 
 --
+-- Name: seller_channel_quotas; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_channel_quotas (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    max_active_skus integer NOT NULL,
+    max_orders_per_day integer NOT NULL,
+    max_lockers_linked integer NOT NULL,
+    current_skus integer NOT NULL,
+    current_orders_today integer NOT NULL,
+    quota_status character varying(20) NOT NULL,
+    reset_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_channel_quotas OWNER TO admin;
+
+--
+-- Name: seller_channel_sku_maps; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_channel_sku_maps (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    internal_sku character varying(64) NOT NULL,
+    channel_sku character varying(128) NOT NULL,
+    seller_product_id character varying(36),
+    active boolean NOT NULL,
+    last_synced_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_channel_sku_maps OWNER TO admin;
+
+--
 -- Name: seller_commission_disputes; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -14227,6 +15481,29 @@ CREATE TABLE public.seller_commission_disputes (
 ALTER TABLE public.seller_commission_disputes OWNER TO admin;
 
 --
+-- Name: seller_compliance_profiles; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_compliance_profiles (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    country character varying(2) NOT NULL,
+    tax_regime character varying(32) NOT NULL,
+    tax_id character varying(32),
+    vat_number character varying(32),
+    ioss_number character varying(32),
+    fiscal_status character varying(20) NOT NULL,
+    cross_border_enabled boolean NOT NULL,
+    notes text,
+    verified_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_compliance_profiles OWNER TO admin;
+
+--
 -- Name: seller_contacts; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -14244,6 +15521,90 @@ CREATE TABLE public.seller_contacts (
 
 
 ALTER TABLE public.seller_contacts OWNER TO admin;
+
+--
+-- Name: seller_cross_border_profiles; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_cross_border_profiles (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    corridor_code character varying(48) NOT NULL,
+    customs_scheme character varying(32) NOT NULL,
+    ioss_number character varying(64),
+    vat_number character varying(64),
+    eori_number character varying(64),
+    origin_country character varying(2) NOT NULL,
+    dest_country character varying(2) NOT NULL,
+    status character varying(20) NOT NULL,
+    verified_at timestamp with time zone,
+    notes text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_cross_border_profiles OWNER TO admin;
+
+--
+-- Name: seller_fulfillment_preferences; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_fulfillment_preferences (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    default_locker_id character varying(36),
+    split_shipments_allowed boolean NOT NULL,
+    max_packages_per_order integer NOT NULL,
+    prefer_nearest_locker boolean NOT NULL,
+    handoff_mode character varying(24) NOT NULL,
+    packaging_notes text,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_fulfillment_preferences OWNER TO admin;
+
+--
+-- Name: seller_health_snapshots; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_health_snapshots (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    snapshot_date date NOT NULL,
+    health_score numeric(5,2) NOT NULL,
+    health_band character varying(16) NOT NULL,
+    coverage_pct numeric(5,2) NOT NULL,
+    readiness_avg numeric(5,2) NOT NULL,
+    open_incidents integer NOT NULL,
+    kyc_status character varying(20),
+    risk_level character varying(16),
+    factors_json text NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_health_snapshots OWNER TO admin;
+
+--
+-- Name: seller_inventory_allocations; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_inventory_allocations (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    seller_product_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    locker_id character varying(36),
+    allocated_qty integer NOT NULL,
+    reserved_qty integer NOT NULL,
+    available_qty integer NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_inventory_allocations OWNER TO admin;
 
 --
 -- Name: seller_kyc_documents; Type: TABLE; Schema: public; Owner: admin
@@ -14282,6 +15643,46 @@ CREATE TABLE public.seller_locker_network_links (
 ALTER TABLE public.seller_locker_network_links OWNER TO admin;
 
 --
+-- Name: seller_notification_subscriptions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_notification_subscriptions (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    event_type character varying(48) NOT NULL,
+    channel character varying(24) NOT NULL,
+    destination character varying(255) NOT NULL,
+    active boolean NOT NULL,
+    locale character varying(8) NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_notification_subscriptions OWNER TO admin;
+
+--
+-- Name: seller_onboarding_tasks; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_onboarding_tasks (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    task_code character varying(48) NOT NULL,
+    title character varying(160) NOT NULL,
+    category character varying(32) NOT NULL,
+    status character varying(20) NOT NULL,
+    required boolean NOT NULL,
+    sort_order integer NOT NULL,
+    completed_at timestamp with time zone,
+    completed_by character varying(64),
+    notes text,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_onboarding_tasks OWNER TO admin;
+
+--
 -- Name: seller_payout_accounts; Type: TABLE; Schema: public; Owner: admin
 --
 
@@ -14304,6 +15705,117 @@ CREATE TABLE public.seller_payout_accounts (
 
 
 ALTER TABLE public.seller_payout_accounts OWNER TO admin;
+
+--
+-- Name: seller_performance_monthly; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_performance_monthly (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    month date NOT NULL,
+    gmv_cents bigint NOT NULL,
+    order_count integer NOT NULL,
+    avg_rating numeric(3,2),
+    defect_rate_pct numeric(5,2) NOT NULL,
+    on_time_pickup_pct numeric(5,2) NOT NULL,
+    chargeback_count integer NOT NULL,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_performance_monthly OWNER TO admin;
+
+--
+-- Name: seller_player_integration_plans; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_player_integration_plans (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    integration_path character varying(32) NOT NULL,
+    status character varying(20) NOT NULL,
+    target_go_live date,
+    primary_capability character varying(40),
+    via_partner_id character varying(36),
+    corridor_code character varying(48),
+    notes text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_player_integration_plans OWNER TO admin;
+
+--
+-- Name: seller_pricing_rules; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_pricing_rules (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36),
+    rule_type character varying(32) NOT NULL,
+    name character varying(128) NOT NULL,
+    min_price_cents integer,
+    max_discount_pct numeric(5,2),
+    markup_pct numeric(5,2),
+    currency character varying(8) NOT NULL,
+    priority integer NOT NULL,
+    active boolean NOT NULL,
+    valid_from timestamp with time zone,
+    valid_until timestamp with time zone,
+    conditions_json text NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_pricing_rules OWNER TO admin;
+
+--
+-- Name: seller_promotion_campaigns; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_promotion_campaigns (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36) NOT NULL,
+    campaign_code character varying(64) NOT NULL,
+    name character varying(160) NOT NULL,
+    discount_pct numeric(5,2),
+    starts_at timestamp with time zone NOT NULL,
+    ends_at timestamp with time zone NOT NULL,
+    status character varying(20) NOT NULL,
+    budget_cents bigint NOT NULL,
+    spent_cents bigint NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_promotion_campaigns OWNER TO admin;
+
+--
+-- Name: seller_return_policies; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_return_policies (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    channel_partner_id character varying(36),
+    policy_code character varying(48) NOT NULL,
+    return_window_days integer NOT NULL,
+    restocking_fee_pct numeric(5,2) NOT NULL,
+    accepts_locker_return boolean NOT NULL,
+    rma_required boolean NOT NULL,
+    status character varying(20) NOT NULL,
+    notes text,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_return_policies OWNER TO admin;
 
 --
 -- Name: seller_reviews; Type: TABLE; Schema: public; Owner: admin
@@ -14334,6 +15846,24 @@ ALTER TABLE public.seller_reviews OWNER TO admin;
 
 COMMENT ON TABLE public.seller_reviews IS 'Avaliações dos compradores sobre os sellers';
 
+
+--
+-- Name: seller_risk_assessments; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_risk_assessments (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    risk_score integer NOT NULL,
+    risk_band character varying(16) NOT NULL,
+    factors_json text NOT NULL,
+    assessed_at timestamp with time zone NOT NULL,
+    next_review_at timestamp with time zone,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_risk_assessments OWNER TO admin;
 
 --
 -- Name: seller_settlement_batches; Type: TABLE; Schema: public; Owner: admin
@@ -14375,6 +15905,44 @@ CREATE TABLE public.seller_settlement_items (
 
 
 ALTER TABLE public.seller_settlement_items OWNER TO admin;
+
+--
+-- Name: seller_tier_definitions; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_tier_definitions (
+    code character varying(32) NOT NULL,
+    name character varying(128) NOT NULL,
+    min_gmv_cents bigint NOT NULL,
+    max_commission_pct numeric(5,2) NOT NULL,
+    monthly_fee_cents bigint NOT NULL,
+    benefits_json text NOT NULL,
+    sort_order integer NOT NULL,
+    active boolean NOT NULL,
+    created_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_tier_definitions OWNER TO admin;
+
+--
+-- Name: seller_tier_enrollments; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.seller_tier_enrollments (
+    id character varying(36) NOT NULL,
+    seller_id character varying(36) NOT NULL,
+    tier_code character varying(32) NOT NULL,
+    status character varying(20) NOT NULL,
+    effective_from date NOT NULL,
+    effective_to date,
+    notes text,
+    created_at timestamp with time zone NOT NULL,
+    updated_at timestamp with time zone NOT NULL
+);
+
+
+ALTER TABLE public.seller_tier_enrollments OWNER TO admin;
 
 --
 -- Name: seller_webhook_endpoints; Type: TABLE; Schema: public; Owner: admin
@@ -14837,6 +16405,25 @@ CREATE TABLE public.ui_error_events (
 
 
 ALTER TABLE public.ui_error_events OWNER TO admin;
+
+--
+-- Name: user_domain_links; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.user_domain_links (
+    id character varying(36) NOT NULL,
+    user_id character varying(36) NOT NULL,
+    domain character varying(32) NOT NULL,
+    entity_type character varying(32) NOT NULL,
+    entity_id character varying(36) NOT NULL,
+    relation character varying(32) DEFAULT 'MEMBER'::character varying NOT NULL,
+    is_primary boolean DEFAULT false NOT NULL,
+    metadata_json text DEFAULT '{}'::text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.user_domain_links OWNER TO admin;
 
 --
 -- Name: user_roles; Type: TABLE; Schema: public; Owner: admin
@@ -16629,6 +18216,25 @@ CREATE TABLE public.webhook_endpoints (
 ALTER TABLE public.webhook_endpoints OWNER TO admin;
 
 --
+-- Name: worker_dead_letter_queue; Type: TABLE; Schema: public; Owner: admin
+--
+
+CREATE TABLE public.worker_dead_letter_queue (
+    id character varying(36) NOT NULL,
+    worker_name character varying(64) NOT NULL,
+    source_table character varying(64) NOT NULL,
+    source_id character varying(100) NOT NULL,
+    payload_json text DEFAULT '{}'::text NOT NULL,
+    error_message text,
+    attempt_count integer DEFAULT 0 NOT NULL,
+    dead_lettered_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+ALTER TABLE public.worker_dead_letter_queue OWNER TO admin;
+
+--
 -- Name: orders_2025_06; Type: TABLE ATTACH; Schema: public; Owner: admin
 --
 
@@ -17105,6 +18711,13 @@ ALTER TABLE ONLY public.money_wallet_country_matrix ALTER COLUMN id SET DEFAULT 
 
 
 --
+-- Name: mv_refresh_log id; Type: DEFAULT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.mv_refresh_log ALTER COLUMN id SET DEFAULT nextval('public.mv_refresh_log_id_seq'::regclass);
+
+
+--
 -- Name: notification_logs id; Type: DEFAULT; Schema: public; Owner: admin
 --
 
@@ -17334,6 +18947,86 @@ ALTER TABLE ONLY public.audit_logs
 
 ALTER TABLE ONLY public.auth_sessions
     ADD CONSTRAINT auth_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_data_lineage_edges bi_data_lineage_edges_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_data_lineage_edges
+    ADD CONSTRAINT bi_data_lineage_edges_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_data_readiness_snapshots bi_data_readiness_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_data_readiness_snapshots
+    ADD CONSTRAINT bi_data_readiness_snapshots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_export_jobs bi_export_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_export_jobs
+    ADD CONSTRAINT bi_export_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_kpi_alert_events bi_kpi_alert_events_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_kpi_alert_events
+    ADD CONSTRAINT bi_kpi_alert_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_kpi_alert_rules bi_kpi_alert_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_kpi_alert_rules
+    ADD CONSTRAINT bi_kpi_alert_rules_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_mart_refresh_jobs bi_mart_refresh_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_mart_refresh_jobs
+    ADD CONSTRAINT bi_mart_refresh_jobs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_ops_audit_log bi_ops_audit_log_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_ops_audit_log
+    ADD CONSTRAINT bi_ops_audit_log_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_player_market_presence bi_player_market_presence_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_player_market_presence
+    ADD CONSTRAINT bi_player_market_presence_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: bi_player_segment_taxonomy bi_player_segment_taxonomy_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_player_segment_taxonomy
+    ADD CONSTRAINT bi_player_segment_taxonomy_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: bi_unified_domain_links bi_unified_domain_links_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_unified_domain_links
+    ADD CONSTRAINT bi_unified_domain_links_pkey PRIMARY KEY (id);
 
 
 --
@@ -18313,6 +20006,14 @@ ALTER TABLE ONLY public.inventory_reservations
 
 
 --
+-- Name: inventory_sync_queue inventory_sync_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.inventory_sync_queue
+    ADD CONSTRAINT inventory_sync_queue_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: invoice_delivery_log invoice_delivery_log_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18398,6 +20099,14 @@ ALTER TABLE ONLY public.locker_capex_details
 
 ALTER TABLE ONLY public.locker_capex
     ADD CONSTRAINT locker_capex_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: locker_maintenance_tickets locker_maintenance_tickets_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.locker_maintenance_tickets
+    ADD CONSTRAINT locker_maintenance_tickets_pkey PRIMARY KEY (id);
 
 
 --
@@ -18657,6 +20366,14 @@ ALTER TABLE ONLY public.marketplace_channel_capabilities
 
 
 --
+-- Name: marketplace_channel_partner_segments marketplace_channel_partner_segments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_channel_partner_segments
+    ADD CONSTRAINT marketplace_channel_partner_segments_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: marketplace_channel_partners marketplace_channel_partners_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18697,6 +20414,14 @@ ALTER TABLE ONLY public.marketplace_corridor_player_steps
 
 
 --
+-- Name: marketplace_corridor_players marketplace_corridor_players_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_corridor_players
+    ADD CONSTRAINT marketplace_corridor_players_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: marketplace_corridor_sla marketplace_corridor_sla_corridor_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18710,6 +20435,14 @@ ALTER TABLE ONLY public.marketplace_corridor_sla
 
 ALTER TABLE ONLY public.marketplace_corridor_sla
     ADD CONSTRAINT marketplace_corridor_sla_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_corridors marketplace_corridors_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_corridors
+    ADD CONSTRAINT marketplace_corridors_pkey PRIMARY KEY (code);
 
 
 --
@@ -18745,6 +20478,30 @@ ALTER TABLE ONLY public.marketplace_integration_readiness
 
 
 --
+-- Name: marketplace_ops_playbooks marketplace_ops_playbooks_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_ops_playbooks
+    ADD CONSTRAINT marketplace_ops_playbooks_code_key UNIQUE (code);
+
+
+--
+-- Name: marketplace_ops_playbooks marketplace_ops_playbooks_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_ops_playbooks
+    ADD CONSTRAINT marketplace_ops_playbooks_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_partner_api_health marketplace_partner_api_health_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_partner_api_health
+    ADD CONSTRAINT marketplace_partner_api_health_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: marketplace_player_certifications marketplace_player_certificat_channel_partner_id_certificat_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -18758,6 +20515,22 @@ ALTER TABLE ONLY public.marketplace_player_certifications
 
 ALTER TABLE ONLY public.marketplace_player_certifications
     ADD CONSTRAINT marketplace_player_certifications_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_player_relationships marketplace_player_relationships_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_player_relationships
+    ADD CONSTRAINT marketplace_player_relationships_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: marketplace_player_segments marketplace_player_segments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.marketplace_player_segments
+    ADD CONSTRAINT marketplace_player_segments_pkey PRIMARY KEY (code);
 
 
 --
@@ -19062,6 +20835,14 @@ ALTER TABLE ONLY public.money_settlement_schedule
 
 ALTER TABLE ONLY public.money_wallet_country_matrix
     ADD CONSTRAINT money_wallet_country_matrix_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: mv_refresh_log mv_refresh_log_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.mv_refresh_log
+    ADD CONSTRAINT mv_refresh_log_pkey PRIMARY KEY (id);
 
 
 --
@@ -20265,6 +22046,342 @@ ALTER TABLE ONLY public.secret
 
 
 --
+-- Name: security_access_requests security_access_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_access_requests
+    ADD CONSTRAINT security_access_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_access_review_campaigns security_access_review_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_access_review_campaigns
+    ADD CONSTRAINT security_access_review_campaigns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_access_review_items security_access_review_items_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_access_review_items
+    ADD CONSTRAINT security_access_review_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_alert_rules security_alert_rules_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_alert_rules
+    ADD CONSTRAINT security_alert_rules_code_key UNIQUE (code);
+
+
+--
+-- Name: security_alert_rules security_alert_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_alert_rules
+    ADD CONSTRAINT security_alert_rules_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_alerts security_alerts_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_alerts
+    ADD CONSTRAINT security_alerts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_api_keys security_api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_api_keys
+    ADD CONSTRAINT security_api_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_audit_logs security_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_audit_logs
+    ADD CONSTRAINT security_audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_break_glass_events security_break_glass_events_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_break_glass_events
+    ADD CONSTRAINT security_break_glass_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_compliance_controls security_compliance_controls_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_compliance_controls
+    ADD CONSTRAINT security_compliance_controls_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: security_control_mappings security_control_mappings_control_code_object_key_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_control_mappings
+    ADD CONSTRAINT security_control_mappings_control_code_object_key_key UNIQUE (control_code, object_key);
+
+
+--
+-- Name: security_control_mappings security_control_mappings_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_control_mappings
+    ADD CONSTRAINT security_control_mappings_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_cross_domain_grants security_cross_domain_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_cross_domain_grants
+    ADD CONSTRAINT security_cross_domain_grants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_cross_domain_grants security_cross_domain_grants_user_id_domain_code_entity_typ_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_cross_domain_grants
+    ADD CONSTRAINT security_cross_domain_grants_user_id_domain_code_entity_typ_key UNIQUE (user_id, domain_code, entity_type, entity_id, permission_key);
+
+
+--
+-- Name: security_delegation_sessions security_delegation_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_delegation_sessions
+    ADD CONSTRAINT security_delegation_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_domain_catalog security_domain_catalog_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_domain_catalog
+    ADD CONSTRAINT security_domain_catalog_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: security_domain_entitlements security_domain_entitlements_domain_code_remote_entity_type_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_domain_entitlements
+    ADD CONSTRAINT security_domain_entitlements_domain_code_remote_entity_type_key UNIQUE (domain_code, remote_entity_type, remote_entity_id, entitlement_key);
+
+
+--
+-- Name: security_domain_entitlements security_domain_entitlements_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_domain_entitlements
+    ADD CONSTRAINT security_domain_entitlements_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_identity_providers security_identity_providers_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_identity_providers
+    ADD CONSTRAINT security_identity_providers_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: security_jit_grants security_jit_grants_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_jit_grants
+    ADD CONSTRAINT security_jit_grants_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_locker_player_registry security_locker_player_registry_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_locker_player_registry
+    ADD CONSTRAINT security_locker_player_registry_pkey PRIMARY KEY (player_code);
+
+
+--
+-- Name: security_permission_groups security_permission_groups_name_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_groups
+    ADD CONSTRAINT security_permission_groups_name_key UNIQUE (name);
+
+
+--
+-- Name: security_permission_groups security_permission_groups_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_groups
+    ADD CONSTRAINT security_permission_groups_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_permission_memberships security_permission_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_memberships
+    ADD CONSTRAINT security_permission_memberships_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_permission_memberships security_permission_memberships_user_id_group_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_memberships
+    ADD CONSTRAINT security_permission_memberships_user_id_group_id_key UNIQUE (user_id, group_id);
+
+
+--
+-- Name: security_permissions security_permissions_group_id_object_key_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permissions
+    ADD CONSTRAINT security_permissions_group_id_object_key_key UNIQUE (group_id, object_key);
+
+
+--
+-- Name: security_permissions security_permissions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permissions
+    ADD CONSTRAINT security_permissions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_player_integrations security_player_integrations_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_player_integrations
+    ADD CONSTRAINT security_player_integrations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_player_relations security_player_relations_from_player_code_to_player_code_r_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_player_relations
+    ADD CONSTRAINT security_player_relations_from_player_code_to_player_code_r_key UNIQUE (from_player_code, to_player_code, relation_type);
+
+
+--
+-- Name: security_player_relations security_player_relations_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_player_relations
+    ADD CONSTRAINT security_player_relations_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_player_segments security_player_segments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_player_segments
+    ADD CONSTRAINT security_player_segments_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: security_policy_snapshots security_policy_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_policy_snapshots
+    ADD CONSTRAINT security_policy_snapshots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_risk_scores security_risk_scores_entity_type_entity_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_risk_scores
+    ADD CONSTRAINT security_risk_scores_entity_type_entity_id_key UNIQUE (entity_type, entity_id);
+
+
+--
+-- Name: security_risk_scores security_risk_scores_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_risk_scores
+    ADD CONSTRAINT security_risk_scores_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_role_catalog security_role_catalog_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_role_catalog
+    ADD CONSTRAINT security_role_catalog_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: security_role_templates security_role_templates_code_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_role_templates
+    ADD CONSTRAINT security_role_templates_code_key UNIQUE (code);
+
+
+--
+-- Name: security_role_templates security_role_templates_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_role_templates
+    ADD CONSTRAINT security_role_templates_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_user_player_access security_user_player_access_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_player_access
+    ADD CONSTRAINT security_user_player_access_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_user_player_access security_user_player_access_user_id_player_code_access_role_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_player_access
+    ADD CONSTRAINT security_user_player_access_user_id_player_code_access_role_key UNIQUE (user_id, player_code, access_role);
+
+
+--
+-- Name: security_user_sessions security_user_sessions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_sessions
+    ADD CONSTRAINT security_user_sessions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_webhook_deliveries security_webhook_deliveries_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_webhook_deliveries
+    ADD CONSTRAINT security_webhook_deliveries_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: security_webhook_endpoints security_webhook_endpoints_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_webhook_endpoints
+    ADD CONSTRAINT security_webhook_endpoints_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: segment segment_entity_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -20281,11 +22398,27 @@ ALTER TABLE ONLY public.segment
 
 
 --
+-- Name: seller_agreements seller_agreements_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_agreements
+    ADD CONSTRAINT seller_agreements_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seller_api_keys seller_api_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.seller_api_keys
     ADD CONSTRAINT seller_api_keys_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_catalog_sync_jobs seller_catalog_sync_jobs_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_catalog_sync_jobs
+    ADD CONSTRAINT seller_catalog_sync_jobs_pkey PRIMARY KEY (id);
 
 
 --
@@ -20305,6 +22438,22 @@ ALTER TABLE ONLY public.seller_channel_listings
 
 
 --
+-- Name: seller_channel_quotas seller_channel_quotas_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_channel_quotas
+    ADD CONSTRAINT seller_channel_quotas_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_channel_sku_maps seller_channel_sku_maps_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_channel_sku_maps
+    ADD CONSTRAINT seller_channel_sku_maps_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seller_commission_disputes seller_commission_disputes_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -20313,11 +22462,59 @@ ALTER TABLE ONLY public.seller_commission_disputes
 
 
 --
+-- Name: seller_compliance_profiles seller_compliance_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_compliance_profiles
+    ADD CONSTRAINT seller_compliance_profiles_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seller_contacts seller_contacts_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.seller_contacts
     ADD CONSTRAINT seller_contacts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_cross_border_profiles seller_cross_border_profiles_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_cross_border_profiles
+    ADD CONSTRAINT seller_cross_border_profiles_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_fulfillment_preferences seller_fulfillment_preferences_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_fulfillment_preferences
+    ADD CONSTRAINT seller_fulfillment_preferences_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_fulfillment_preferences seller_fulfillment_preferences_seller_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_fulfillment_preferences
+    ADD CONSTRAINT seller_fulfillment_preferences_seller_id_key UNIQUE (seller_id);
+
+
+--
+-- Name: seller_health_snapshots seller_health_snapshots_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_health_snapshots
+    ADD CONSTRAINT seller_health_snapshots_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_inventory_allocations seller_inventory_allocations_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_inventory_allocations
+    ADD CONSTRAINT seller_inventory_allocations_pkey PRIMARY KEY (id);
 
 
 --
@@ -20337,11 +22534,51 @@ ALTER TABLE ONLY public.seller_locker_network_links
 
 
 --
+-- Name: seller_notification_subscriptions seller_notification_subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_notification_subscriptions
+    ADD CONSTRAINT seller_notification_subscriptions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_onboarding_tasks seller_onboarding_tasks_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_onboarding_tasks
+    ADD CONSTRAINT seller_onboarding_tasks_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seller_payout_accounts seller_payout_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.seller_payout_accounts
     ADD CONSTRAINT seller_payout_accounts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_performance_monthly seller_performance_monthly_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_performance_monthly
+    ADD CONSTRAINT seller_performance_monthly_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_player_integration_plans seller_player_integration_plans_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_player_integration_plans
+    ADD CONSTRAINT seller_player_integration_plans_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_pricing_rules seller_pricing_rules_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_pricing_rules
+    ADD CONSTRAINT seller_pricing_rules_pkey PRIMARY KEY (id);
 
 
 --
@@ -20353,11 +22590,35 @@ ALTER TABLE ONLY public.seller_products
 
 
 --
+-- Name: seller_promotion_campaigns seller_promotion_campaigns_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_promotion_campaigns
+    ADD CONSTRAINT seller_promotion_campaigns_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_return_policies seller_return_policies_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_return_policies
+    ADD CONSTRAINT seller_return_policies_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: seller_reviews seller_reviews_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
 ALTER TABLE ONLY public.seller_reviews
     ADD CONSTRAINT seller_reviews_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_risk_assessments seller_risk_assessments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_risk_assessments
+    ADD CONSTRAINT seller_risk_assessments_pkey PRIMARY KEY (id);
 
 
 --
@@ -20374,6 +22635,22 @@ ALTER TABLE ONLY public.seller_settlement_batches
 
 ALTER TABLE ONLY public.seller_settlement_items
     ADD CONSTRAINT seller_settlement_items_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: seller_tier_definitions seller_tier_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_tier_definitions
+    ADD CONSTRAINT seller_tier_definitions_pkey PRIMARY KEY (code);
+
+
+--
+-- Name: seller_tier_enrollments seller_tier_enrollments_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.seller_tier_enrollments
+    ADD CONSTRAINT seller_tier_enrollments_pkey PRIMARY KEY (id);
 
 
 --
@@ -20654,6 +22931,14 @@ ALTER TABLE ONLY public.permissions_group
 
 ALTER TABLE ONLY public.analytics_facts
     ADD CONSTRAINT uq_analytics_facts_fact_key UNIQUE (fact_key);
+
+
+--
+-- Name: bi_data_readiness_snapshots uq_bi_readiness_player; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_data_readiness_snapshots
+    ADD CONSTRAINT uq_bi_readiness_player UNIQUE (network_player_code);
 
 
 --
@@ -20945,6 +23230,22 @@ ALTER TABLE ONLY public.store_inventory
 
 
 --
+-- Name: user_domain_links user_domain_links_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_domain_links
+    ADD CONSTRAINT user_domain_links_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: user_domain_links user_domain_links_user_id_domain_entity_type_entity_id_key; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_domain_links
+    ADD CONSTRAINT user_domain_links_user_id_domain_entity_type_entity_id_key UNIQUE (user_id, domain, entity_type, entity_id);
+
+
+--
 -- Name: user_roles user_roles_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -21070,6 +23371,14 @@ ALTER TABLE ONLY public.webhook_deliveries
 
 ALTER TABLE ONLY public.webhook_endpoints
     ADD CONSTRAINT webhook_endpoints_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: worker_dead_letter_queue worker_dead_letter_queue_pkey; Type: CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.worker_dead_letter_queue
+    ADD CONSTRAINT worker_dead_letter_queue_pkey PRIMARY KEY (id);
 
 
 --
@@ -23617,6 +25926,41 @@ CREATE INDEX ix_auth_sessions_user_id ON public.auth_sessions USING btree (user_
 
 
 --
+-- Name: ix_bi_kpi_alert_open; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_bi_kpi_alert_open ON public.bi_kpi_alert_events USING btree (status, created_at DESC);
+
+
+--
+-- Name: ix_bi_market_presence_player; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_bi_market_presence_player ON public.bi_player_market_presence USING btree (network_player_code, country_code);
+
+
+--
+-- Name: ix_bi_mart_refresh_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_bi_mart_refresh_status ON public.bi_mart_refresh_jobs USING btree (status, created_at DESC);
+
+
+--
+-- Name: ix_bi_ops_audit_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_bi_ops_audit_created ON public.bi_ops_audit_log USING btree (created_at DESC);
+
+
+--
+-- Name: ix_bi_readiness_band; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_bi_readiness_band ON public.bi_data_readiness_snapshots USING btree (readiness_band, score_total DESC);
+
+
+--
 -- Name: ix_billing_processed_events_order_id; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -24464,6 +26808,20 @@ CREATE INDEX ix_inbound_status ON public.inbound_deliveries USING btree (status)
 
 
 --
+-- Name: ix_inventory_sync_queue_marketplace_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inventory_sync_queue_marketplace_status ON public.inventory_sync_queue USING btree (marketplace, status, next_retry_at);
+
+
+--
+-- Name: ix_inventory_sync_queue_pending; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_inventory_sync_queue_pending ON public.inventory_sync_queue USING btree (created_at) WHERE ((status)::text = ANY ((ARRAY['PENDING'::character varying, 'PROCESSING'::character varying])::text[]));
+
+
+--
 -- Name: ix_invoice_country_status; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -24608,6 +26966,20 @@ CREATE INDEX ix_lifecycle_deadlines_due_at_status ON public.lifecycle_deadlines 
 --
 
 CREATE INDEX ix_lifecycle_deadlines_order_id ON public.lifecycle_deadlines USING btree (order_id);
+
+
+--
+-- Name: ix_lmt_locker_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_lmt_locker_status ON public.locker_maintenance_tickets USING btree (locker_id, status);
+
+
+--
+-- Name: ix_lmt_updated; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_lmt_updated ON public.locker_maintenance_tickets USING btree (updated_at DESC);
 
 
 --
@@ -24807,10 +27179,52 @@ CREATE INDEX ix_lus_status_date ON public.locker_utilization_snapshots USING btr
 
 
 --
+-- Name: ix_marketplace_channel_partner_segments_channel_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_channel_partner_segments_channel_partner_id ON public.marketplace_channel_partner_segments USING btree (channel_partner_id);
+
+
+--
+-- Name: ix_marketplace_channel_partner_segments_segment_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_channel_partner_segments_segment_code ON public.marketplace_channel_partner_segments USING btree (segment_code);
+
+
+--
 -- Name: ix_marketplace_commissions_order; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_marketplace_commissions_order ON public.marketplace_commissions USING btree (order_id, status);
+
+
+--
+-- Name: ix_marketplace_corridor_players_corridor_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_corridor_players_corridor_code ON public.marketplace_corridor_players USING btree (corridor_code);
+
+
+--
+-- Name: ix_marketplace_partner_api_health_channel_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_partner_api_health_channel_partner_id ON public.marketplace_partner_api_health USING btree (channel_partner_id);
+
+
+--
+-- Name: ix_marketplace_player_relationships_from_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_player_relationships_from_partner_id ON public.marketplace_player_relationships USING btree (from_partner_id);
+
+
+--
+-- Name: ix_marketplace_player_relationships_to_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_marketplace_player_relationships_to_partner_id ON public.marketplace_player_relationships USING btree (to_partner_id);
 
 
 --
@@ -25154,6 +27568,20 @@ CREATE INDEX ix_mv_profitability_month ON public.mv_locker_monthly_profitability
 --
 
 CREATE INDEX ix_mv_profitability_net_profit ON public.mv_locker_monthly_profitability USING btree (net_profit_cents DESC);
+
+
+--
+-- Name: ix_mv_refresh_log_status_started; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_mv_refresh_log_status_started ON public.mv_refresh_log USING btree (status, started_at DESC);
+
+
+--
+-- Name: ix_mv_refresh_log_view_started; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_mv_refresh_log_view_started ON public.mv_refresh_log USING btree (view_name, started_at DESC);
 
 
 --
@@ -26410,6 +28838,132 @@ CREATE INDEX ix_runtime_sync_queue_status ON public.runtime_sync_queue USING btr
 
 
 --
+-- Name: ix_sec_access_req_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_access_req_status ON public.security_access_requests USING btree (status, created_at DESC);
+
+
+--
+-- Name: ix_sec_alerts_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_alerts_status ON public.security_alerts USING btree (status, severity, created_at DESC);
+
+
+--
+-- Name: ix_sec_api_keys_user; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_api_keys_user ON public.security_api_keys USING btree (user_id, revoked_at);
+
+
+--
+-- Name: ix_sec_audit_actor_time; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_audit_actor_time ON public.security_audit_logs USING btree (actor_id, occurred_at DESC);
+
+
+--
+-- Name: ix_sec_delegation_active; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_delegation_active ON public.security_delegation_sessions USING btree (delegate_user_id, status);
+
+
+--
+-- Name: ix_sec_grants_user_domain; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_grants_user_domain ON public.security_cross_domain_grants USING btree (user_id, domain_code);
+
+
+--
+-- Name: ix_sec_jit_grants_user; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_jit_grants_user ON public.security_jit_grants USING btree (user_id, status, expires_at);
+
+
+--
+-- Name: ix_sec_locker_player_tier; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_locker_player_tier ON public.security_locker_player_registry USING btree (global_tier, segment);
+
+
+--
+-- Name: ix_sec_player_int_player; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_player_int_player ON public.security_player_integrations USING btree (player_code, is_active);
+
+
+--
+-- Name: ix_sec_player_rel_from; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_player_rel_from ON public.security_player_relations USING btree (from_player_code);
+
+
+--
+-- Name: ix_sec_player_rel_to; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_player_rel_to ON public.security_player_relations USING btree (to_player_code);
+
+
+--
+-- Name: ix_sec_review_campaign_status; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_review_campaign_status ON public.security_access_review_campaigns USING btree (status, due_at);
+
+
+--
+-- Name: ix_sec_risk_tier; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_risk_tier ON public.security_risk_scores USING btree (risk_tier, score DESC);
+
+
+--
+-- Name: ix_sec_sessions_user; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_sessions_user ON public.security_user_sessions USING btree (user_id, revoked_at);
+
+
+--
+-- Name: ix_sec_user_player_user; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_user_player_user ON public.security_user_player_access USING btree (user_id, is_active);
+
+
+--
+-- Name: ix_sec_wh_del_endpoint; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_sec_wh_del_endpoint ON public.security_webhook_deliveries USING btree (endpoint_id, created_at DESC);
+
+
+--
+-- Name: ix_seller_agreements_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_agreements_seller_id ON public.seller_agreements USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_catalog_sync_jobs_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_catalog_sync_jobs_seller_id ON public.seller_catalog_sync_jobs USING btree (seller_id);
+
+
+--
 -- Name: ix_seller_category_links_seller; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -26424,6 +28978,34 @@ CREATE INDEX ix_seller_channel_listings_seller ON public.seller_channel_listings
 
 
 --
+-- Name: ix_seller_channel_quotas_channel_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_channel_quotas_channel_partner_id ON public.seller_channel_quotas USING btree (channel_partner_id);
+
+
+--
+-- Name: ix_seller_channel_quotas_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_channel_quotas_seller_id ON public.seller_channel_quotas USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_channel_sku_maps_channel_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_channel_sku_maps_channel_partner_id ON public.seller_channel_sku_maps USING btree (channel_partner_id);
+
+
+--
+-- Name: ix_seller_channel_sku_maps_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_channel_sku_maps_seller_id ON public.seller_channel_sku_maps USING btree (seller_id);
+
+
+--
 -- Name: ix_seller_commission_disputes_status; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -26431,10 +29013,38 @@ CREATE INDEX ix_seller_commission_disputes_status ON public.seller_commission_di
 
 
 --
+-- Name: ix_seller_compliance_profiles_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_compliance_profiles_seller_id ON public.seller_compliance_profiles USING btree (seller_id);
+
+
+--
 -- Name: ix_seller_contacts_seller; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_seller_contacts_seller ON public.seller_contacts USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_cross_border_profiles_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_cross_border_profiles_seller_id ON public.seller_cross_border_profiles USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_health_snapshots_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_health_snapshots_seller_id ON public.seller_health_snapshots USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_inventory_allocations_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_inventory_allocations_seller_id ON public.seller_inventory_allocations USING btree (seller_id);
 
 
 --
@@ -26452,10 +29062,52 @@ CREATE INDEX ix_seller_locker_network_seller ON public.seller_locker_network_lin
 
 
 --
+-- Name: ix_seller_notification_subscriptions_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_notification_subscriptions_seller_id ON public.seller_notification_subscriptions USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_onboarding_tasks_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_onboarding_tasks_seller_id ON public.seller_onboarding_tasks USING btree (seller_id);
+
+
+--
 -- Name: ix_seller_payout_accounts_seller; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_seller_payout_accounts_seller ON public.seller_payout_accounts USING btree (seller_id, is_default);
+
+
+--
+-- Name: ix_seller_performance_monthly_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_performance_monthly_seller_id ON public.seller_performance_monthly USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_player_integration_plans_channel_partner_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_player_integration_plans_channel_partner_id ON public.seller_player_integration_plans USING btree (channel_partner_id);
+
+
+--
+-- Name: ix_seller_player_integration_plans_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_player_integration_plans_seller_id ON public.seller_player_integration_plans USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_pricing_rules_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_pricing_rules_seller_id ON public.seller_pricing_rules USING btree (seller_id);
 
 
 --
@@ -26480,10 +29132,31 @@ CREATE INDEX ix_seller_products_seller ON public.seller_products USING btree (se
 
 
 --
+-- Name: ix_seller_promotion_campaigns_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_promotion_campaigns_seller_id ON public.seller_promotion_campaigns USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_return_policies_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_return_policies_seller_id ON public.seller_return_policies USING btree (seller_id);
+
+
+--
 -- Name: ix_seller_reviews_seller; Type: INDEX; Schema: public; Owner: admin
 --
 
 CREATE INDEX ix_seller_reviews_seller ON public.seller_reviews USING btree (seller_id, rating);
+
+
+--
+-- Name: ix_seller_risk_assessments_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_risk_assessments_seller_id ON public.seller_risk_assessments USING btree (seller_id);
 
 
 --
@@ -26498,6 +29171,20 @@ CREATE INDEX ix_seller_settlement_batches_seller ON public.seller_settlement_bat
 --
 
 CREATE INDEX ix_seller_settlement_items_batch ON public.seller_settlement_items USING btree (batch_id);
+
+
+--
+-- Name: ix_seller_tier_enrollments_seller_id; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_tier_enrollments_seller_id ON public.seller_tier_enrollments USING btree (seller_id);
+
+
+--
+-- Name: ix_seller_tier_enrollments_tier_code; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_seller_tier_enrollments_tier_code ON public.seller_tier_enrollments USING btree (tier_code);
 
 
 --
@@ -26627,6 +29314,20 @@ CREATE INDEX ix_webhook_ep_partner ON public.webhook_endpoints USING btree (part
 
 
 --
+-- Name: ix_worker_dlq_source; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_worker_dlq_source ON public.worker_dead_letter_queue USING btree (source_table, source_id);
+
+
+--
+-- Name: ix_worker_dlq_worker_created; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE INDEX ix_worker_dlq_worker_created ON public.worker_dead_letter_queue USING btree (worker_name, dead_lettered_at DESC);
+
+
+--
 -- Name: ix_wt_order; Type: INDEX; Schema: public; Owner: admin
 --
 
@@ -26666,6 +29367,13 @@ CREATE UNIQUE INDEX uq_locker_category ON public.product_locker_configs USING bt
 --
 
 CREATE UNIQUE INDEX uq_ml_features_daily_mv_locker_date ON public.ml_features_daily_mv USING btree (locker_id, feature_date);
+
+
+--
+-- Name: uq_mv_realtime_kpis_snapshot; Type: INDEX; Schema: public; Owner: admin
+--
+
+CREATE UNIQUE INDEX uq_mv_realtime_kpis_snapshot ON public.mv_realtime_kpis USING btree (snapshot_time);
 
 
 --
@@ -27180,6 +29888,14 @@ ALTER TABLE ONLY public.audit_logs
 
 ALTER TABLE ONLY public.auth_sessions
     ADD CONSTRAINT auth_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: bi_kpi_alert_events bi_kpi_alert_events_rule_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.bi_kpi_alert_events
+    ADD CONSTRAINT bi_kpi_alert_events_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.bi_kpi_alert_rules(id) ON DELETE CASCADE;
 
 
 --
@@ -29063,6 +31779,102 @@ ALTER TABLE ONLY public.saved_payment_methods
 
 
 --
+-- Name: security_access_review_items security_access_review_items_campaign_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_access_review_items
+    ADD CONSTRAINT security_access_review_items_campaign_id_fkey FOREIGN KEY (campaign_id) REFERENCES public.security_access_review_campaigns(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_alerts security_alerts_rule_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_alerts
+    ADD CONSTRAINT security_alerts_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES public.security_alert_rules(id);
+
+
+--
+-- Name: security_api_keys security_api_keys_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_api_keys
+    ADD CONSTRAINT security_api_keys_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_control_mappings security_control_mappings_control_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_control_mappings
+    ADD CONSTRAINT security_control_mappings_control_code_fkey FOREIGN KEY (control_code) REFERENCES public.security_compliance_controls(code) ON DELETE CASCADE;
+
+
+--
+-- Name: security_cross_domain_grants security_cross_domain_grants_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_cross_domain_grants
+    ADD CONSTRAINT security_cross_domain_grants_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_permission_memberships security_permission_memberships_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_memberships
+    ADD CONSTRAINT security_permission_memberships_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.security_permission_groups(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_permission_memberships security_permission_memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permission_memberships
+    ADD CONSTRAINT security_permission_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_permissions security_permissions_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_permissions
+    ADD CONSTRAINT security_permissions_group_id_fkey FOREIGN KEY (group_id) REFERENCES public.security_permission_groups(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_user_player_access security_user_player_access_player_code_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_player_access
+    ADD CONSTRAINT security_user_player_access_player_code_fkey FOREIGN KEY (player_code) REFERENCES public.security_locker_player_registry(player_code) ON DELETE CASCADE;
+
+
+--
+-- Name: security_user_player_access security_user_player_access_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_player_access
+    ADD CONSTRAINT security_user_player_access_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_user_sessions security_user_sessions_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_user_sessions
+    ADD CONSTRAINT security_user_sessions_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
+-- Name: security_webhook_deliveries security_webhook_deliveries_endpoint_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.security_webhook_deliveries
+    ADD CONSTRAINT security_webhook_deliveries_endpoint_id_fkey FOREIGN KEY (endpoint_id) REFERENCES public.security_webhook_endpoints(id) ON DELETE CASCADE;
+
+
+--
 -- Name: seller_products seller_products_locker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
 --
 
@@ -29124,6 +31936,14 @@ ALTER TABLE ONLY public.sla_breach_events
 
 ALTER TABLE ONLY public.store_inventory
     ADD CONSTRAINT store_inventory_store_id_fkey FOREIGN KEY (store_id) REFERENCES public.partner_stores(id);
+
+
+--
+-- Name: user_domain_links user_domain_links_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: admin
+--
+
+ALTER TABLE ONLY public.user_domain_links
+    ADD CONSTRAINT user_domain_links_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
