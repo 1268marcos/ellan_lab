@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
@@ -10,6 +11,16 @@ from sqlalchemy.orm import Session
 from app.models.lifecycle import AnalyticsFact, DomainEvent
 
 from app.core.datetime_utils import to_iso_utc
+
+logger = logging.getLogger(__name__)
+
+# Ordem lógica esperada do fluxo de pickup (timestamps não decrescentes).
+PICKUP_EVENT_LOGICAL_ORDER: tuple[str, ...] = (
+    "pickup.created",
+    "pickup.ready_for_pickup",
+    "pickup.door_opened",
+    "pickup.redeemed",
+)
 
 
 
@@ -88,6 +99,131 @@ def _load_pickup_event_map(db: Session, *, pickup_id: str) -> dict[str, DomainEv
     return event_map
 
 
+def _pickup_audit_context(
+    event_map: dict[str, DomainEvent],
+    *,
+    pickup_id: str,
+    order_id: str,
+) -> dict:
+    timeline = []
+    for event_name in PICKUP_EVENT_LOGICAL_ORDER:
+        event = event_map.get(event_name)
+        if event is None:
+            continue
+        timeline.append(
+            {
+                "event_name": event_name,
+                "occurred_at": to_iso_utc(event.occurred_at),
+                "event_key": event.event_key,
+            }
+        )
+    return {
+        "pickup_id": pickup_id,
+        "order_id": order_id,
+        "timeline": timeline,
+    }
+
+
+def _event_order_violations(event_map: dict[str, DomainEvent]) -> list[dict]:
+    """
+    Detecta inversões de timestamp entre eventos presentes na ordem lógica esperada.
+    Eventos ausentes no meio do fluxo são ignorados (ex.: só created + redeemed).
+    """
+    timeline: list[tuple[str, datetime]] = []
+    for event_name in PICKUP_EVENT_LOGICAL_ORDER:
+        event = event_map.get(event_name)
+        if event is None:
+            continue
+        occurred_at = _as_utc(event.occurred_at)
+        if occurred_at is None:
+            continue
+        timeline.append((event_name, occurred_at))
+
+    violations: list[dict] = []
+    for idx in range(len(timeline) - 1):
+        earlier_name, earlier_at = timeline[idx]
+        later_name, later_at = timeline[idx + 1]
+        if earlier_at > later_at:
+            violations.append(
+                {
+                    "type": "timestamp_inversion",
+                    "earlier_event": earlier_name,
+                    "earlier_at": to_iso_utc(earlier_at),
+                    "later_event": later_name,
+                    "later_at": to_iso_utc(later_at),
+                    "delta_seconds": round((later_at - earlier_at).total_seconds(), 3),
+                }
+            )
+    return violations
+
+
+def _validate_event_order(
+    event_map: dict[str, DomainEvent],
+    *,
+    violations: list[dict] | None = None,
+) -> bool:
+    issues = violations if violations is not None else _event_order_violations(event_map)
+    if not issues:
+        return True
+
+    sample_event = next(iter(event_map.values()), None)
+    pickup_id = getattr(sample_event, "aggregate_id", None) if sample_event else None
+    order_id = None
+    if sample_event and sample_event.payload:
+        order_id = sample_event.payload.get("order_id")
+
+    logger.warning(
+        "pickup_event_order_invalid",
+        extra={
+            "pickup_analytics_audit": "event_order_violation",
+            "metric": "event_order_violations",
+            "pickup_id": pickup_id,
+            "order_id": order_id,
+            "violations": issues,
+            "expected_order": list(PICKUP_EVENT_LOGICAL_ORDER),
+            **_pickup_audit_context(
+                event_map,
+                pickup_id=str(pickup_id or ""),
+                order_id=str(order_id or ""),
+            ),
+        },
+    )
+    return False
+
+
+def _record_event_order_violation_metric(
+    db: Session,
+    *,
+    pickup_id: str,
+    order_id: str,
+    order_channel: str | None,
+    region_code: str | None,
+    slot_id: str | None,
+    event_map: dict[str, DomainEvent],
+    violations: list[dict],
+    base_payload: dict,
+    occurred_at: datetime,
+) -> None:
+    _insert_fact_if_missing(
+        db,
+        fact_key=f"pickup_event_order_violation:{pickup_id}",
+        fact_name="pickup_event_order_violation",
+        order_id=order_id,
+        order_channel=order_channel,
+        region_code=region_code,
+        slot_id=slot_id,
+        occurred_at=occurred_at,
+        payload={
+            **base_payload,
+            "pickup_id": pickup_id,
+            "metric": "event_order_violations",
+            "violations": violations,
+            "expected_order": list(PICKUP_EVENT_LOGICAL_ORDER),
+            **_pickup_audit_context(event_map, pickup_id=pickup_id, order_id=order_id),
+        },
+    )
+
+
 def project_pickup_event_facts(
     db: Session,
     *,
@@ -153,6 +289,32 @@ def project_pickup_event_facts(
         )
 
     event_map = _load_pickup_event_map(db, pickup_id=pickup_id)
+
+    violations = _event_order_violations(event_map)
+    if not _validate_event_order(event_map, violations=violations):
+        _record_event_order_violation_metric(
+            db,
+            pickup_id=pickup_id,
+            order_id=order_id,
+            order_channel=channel,
+            region_code=region,
+            slot_id=slot,
+            event_map=event_map,
+            violations=violations,
+            base_payload=base_payload,
+            occurred_at=event.occurred_at,
+        )
+        logger.info(
+            "pickup_sla_projection_skipped",
+            extra={
+                "pickup_analytics_audit": "sla_skipped_invalid_event_order",
+                "pickup_id": pickup_id,
+                "order_id": order_id,
+                "reason": "event_order_invalid",
+                "violations_count": len(violations),
+            },
+        )
+        return
 
     created_at = getattr(event_map.get("pickup.created"), "occurred_at", None)
     ready_at = getattr(event_map.get("pickup.ready_for_pickup"), "occurred_at", None)

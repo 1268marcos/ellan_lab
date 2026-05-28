@@ -11,6 +11,7 @@ import logging
 from app.core.config import settings
 from app.core.db import init_db
 from app.core.logging import configure_logging
+from app.services.pickup_health_service import configure_health_score_weights
 from app.routers.health import router as health_router
 from app.routers.internal import router as internal_router
 from app.routers.partner import router as partner_router
@@ -43,6 +44,7 @@ def _resolve_cors_origins() -> list[str]:
 def on_startup() -> None:
     if not _is_dev_env() and str(settings.internal_token or "").strip() == "dev-internal-token":
         raise RuntimeError("INTERNAL_TOKEN default não permitido fora de dev/local.")
+    configure_health_score_weights(settings)
     init_db()
 
 

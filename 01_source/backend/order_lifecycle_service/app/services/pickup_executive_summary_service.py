@@ -4,10 +4,10 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import Numeric, func
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, Session
 
-from app.models.core_order import CoreOrder
 from app.models.lifecycle import AnalyticsFact
+from app.utils.scope_by_partner import apply_partner_filter
 from app.schemas.analytics_executive_summary import (
     ExecutiveActionItem,
     ExecutiveSummaryItem,
@@ -25,6 +25,7 @@ def _utc_now() -> datetime:
 
 
 def _apply_filters(
+    db: Session,
     query: Query,
     *,
     start_at: datetime | None,
@@ -69,14 +70,7 @@ def _apply_filters(
     if site_id:
         query = query.filter(AnalyticsFact.payload["site_id"].astext == site_id)
 
-    if ecommerce_partner_id:
-        query = (
-            query.join(CoreOrder, CoreOrder.id == AnalyticsFact.order_id).filter(
-                CoreOrder.ecommerce_partner_id == ecommerce_partner_id
-            )
-        )
-
-    return query
+    return apply_partner_filter(db, query, ecommerce_partner_id)
 
 
 def _dimension_expr(dimension: str):
@@ -115,7 +109,7 @@ def _grouped_stddev_minutes(
         AnalyticsFact.fact_name == fact_name,
     )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     query = query.group_by(dim)
 
     result: dict[str | None, float | None] = {}

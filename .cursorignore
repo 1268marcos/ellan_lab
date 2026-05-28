@@ -1,0 +1,15 @@
+01_source/*/node_modules/
+01_source/*/dist/
+01_source/*/.venv/
+01_source/*/__pycache__/
+01_source/*/*.pyc
+03_data/postgres_*/
+03_data/redis_*/
+04_logs/
+06_exports/
+07_tests/test-results/
+*.sql
+*.pkl
+*.rdb
+.env*
+secrets/

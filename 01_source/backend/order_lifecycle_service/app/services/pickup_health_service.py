@@ -2,23 +2,100 @@
 # Deverá ser uma camada acima do executive summary (presente em intenal.py)
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from math import isnan
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings
 from app.models.lifecycle import AnalyticsFact
 from app.services.pickup_ranking_service import build_pickup_ranking
 from app.utils.scope_by_partner import apply_partner_filter
 
+logger = logging.getLogger(__name__)
 
-WEIGHTS = {
+HEALTH_SCORE_WEIGHT_KEYS = ("efficiency", "reliability", "risk", "trend")
+WEIGHT_SUM_TOLERANCE = 0.01
+
+DEFAULT_HEALTH_SCORE_WEIGHTS: dict[str, float] = {
     "efficiency": 0.40,
     "reliability": 0.20,
     "risk": 0.25,
     "trend": 0.15,
 }
+
+_HEALTH_SCORE_WEIGHTS: dict[str, float] = dict(DEFAULT_HEALTH_SCORE_WEIGHTS)
+
+
+def validate_health_score_weights(weights: dict[str, float]) -> None:
+    missing = set(HEALTH_SCORE_WEIGHT_KEYS) - set(weights.keys())
+    extra = set(weights.keys()) - set(HEALTH_SCORE_WEIGHT_KEYS)
+    if missing or extra:
+        raise ValueError(
+            "health_score_weights must define exactly "
+            f"{', '.join(HEALTH_SCORE_WEIGHT_KEYS)}; "
+            f"missing={sorted(missing)} extra={sorted(extra)}"
+        )
+
+    for key, value in weights.items():
+        if not 0.0 <= value <= 1.0:
+            raise ValueError(f"health_score_weights[{key}] must be between 0.0 and 1.0, got {value}")
+
+    total = sum(weights.values())
+    if abs(total - 1.0) > WEIGHT_SUM_TOLERANCE:
+        raise ValueError(
+            f"health_score_weights must sum to ~1.0 (±{WEIGHT_SUM_TOLERANCE}), got {total:.4f}"
+        )
+
+
+def load_weights(config: Settings) -> dict[str, float]:
+    weights: dict[str, float] = {}
+    raw = str(config.health_score_weights or "").strip()
+    if not raw:
+        raise ValueError("health_score_weights is empty")
+
+    for item in raw.split(","):
+        part = item.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError(f"invalid health_score_weights entry: {part!r}")
+        key, value = part.split("=", 1)
+        weights[key.strip()] = float(value.strip())
+
+    validate_health_score_weights(weights)
+    return weights
+
+
+def configure_health_score_weights(config: Settings) -> dict[str, float]:
+    """Carrega pesos do settings na startup; usa defaults se configuração inválida."""
+    global _HEALTH_SCORE_WEIGHTS
+    try:
+        loaded = load_weights(config)
+    except (ValueError, TypeError) as exc:
+        logger.warning(
+            "health_score_weights_invalid_using_defaults",
+            extra={
+                "configured": config.health_score_weights,
+                "defaults": DEFAULT_HEALTH_SCORE_WEIGHTS,
+                "error": str(exc),
+            },
+        )
+        _HEALTH_SCORE_WEIGHTS = dict(DEFAULT_HEALTH_SCORE_WEIGHTS)
+        return _HEALTH_SCORE_WEIGHTS
+
+    _HEALTH_SCORE_WEIGHTS = loaded
+    logger.info(
+        "health_score_weights_loaded",
+        extra={"weights": _HEALTH_SCORE_WEIGHTS},
+    )
+    return _HEALTH_SCORE_WEIGHTS
+
+
+def get_health_score_weights() -> dict[str, float]:
+    return dict(_HEALTH_SCORE_WEIGHTS)
 
 
 ENTITY_DIMENSION_MAP = {
@@ -224,11 +301,12 @@ def compute_health(signals: Dict[str, Any]) -> Dict[str, Any]:
     risk = compute_risk_score(signals)
     trend = compute_trend_score(signals)
 
+    weights = get_health_score_weights()
     score = (
-        efficiency * WEIGHTS["efficiency"]
-        + reliability * WEIGHTS["reliability"]
-        + (100.0 - risk) * WEIGHTS["risk"]
-        + trend * WEIGHTS["trend"]
+        efficiency * weights["efficiency"]
+        + reliability * weights["reliability"]
+        + (100.0 - risk) * weights["risk"]
+        + trend * weights["trend"]
     )
 
     score = round(_clamp(score), 2)

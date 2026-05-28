@@ -9,6 +9,7 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
+        populate_by_name=True,
     )
 
     service_name: str = Field(default="order_lifecycle_service", alias="SERVICE_NAME")
@@ -30,6 +31,11 @@ class Settings(BaseSettings):
 
     prepayment_timeout_seconds: int = Field(default=90, alias="PREPAYMENT_TIMEOUT_SECONDS")
     worker_poll_interval_seconds: int = Field(default=5, alias="WORKER_POLL_INTERVAL_SECONDS")
+
+    health_score_weights: str = Field(
+        default="efficiency=0.40,reliability=0.20,risk=0.25,trend=0.15",
+        alias="HEALTH_SCORE_WEIGHTS",
+    )
 
     @property
     def database_url(self) -> str:

@@ -9,8 +9,8 @@ from typing import Any
 from sqlalchemy import Numeric, func
 from sqlalchemy.orm import Query, Session
 
-from app.models.core_order import CoreOrder
 from app.models.lifecycle import AnalyticsFact
+from app.utils.scope_by_partner import apply_partner_filter
 from app.schemas.analytics_breakdown import (
     PickupBreakdownItem,
     PickupBreakdownResponse,
@@ -32,6 +32,7 @@ _ALLOWED_DIMENSIONS = {
 
 
 def _apply_filters(
+    db: Session,
     query: Query,
     *,
     start_at: datetime | None,
@@ -76,14 +77,7 @@ def _apply_filters(
     if site_id:
         query = query.filter(AnalyticsFact.payload["site_id"].astext == site_id)
 
-    if ecommerce_partner_id:
-        query = (
-            query.join(CoreOrder, CoreOrder.id == AnalyticsFact.order_id).filter(
-                CoreOrder.ecommerce_partner_id == ecommerce_partner_id
-            )
-        )
-
-    return query
+    return apply_partner_filter(db, query, ecommerce_partner_id)
 
 
 def _dimension_expr(dimension: str):
@@ -117,7 +111,7 @@ def _grouped_terminal_counts(db: Session, *, dimension: str, terminal_state: str
         AnalyticsFact.payload["terminal_state"].astext == terminal_state,
     )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     query = query.group_by(dim)
 
     return {row.dimension_value: int(row.count_value) for row in query.all()}
@@ -133,7 +127,7 @@ def _grouped_avg_minutes(db: Session, *, dimension: str, fact_name: str, **filte
         AnalyticsFact.fact_name == fact_name,
     )
 
-    query = _apply_filters(query, **filters)
+    query = _apply_filters(db, query, **filters)
     query = query.group_by(dim)
 
     result: dict[str | None, float | None] = {}

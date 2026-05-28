@@ -216,32 +216,54 @@ def _invalidate_active_pickup_tokens(db: Session, pickup_id: str, now: datetime)
         },
     )
     return int(result.rowcount or 0)
+"""
+Alembic migration: add unique constraint (index) on credits (order_id, source_type='PICKUP_EXPIRATION')
+Revision ID: add_unique_constraint_credits_order_source
+"""
+
+from alembic import op
+
+# revision identifiers, used by Alembic.
+revision = 'add_unique_constraint_credits_order_source'
+down_revision = None  # Atualize conforme necessário (set to last/current revision id)
+branch_labels = None
+depends_on = None
+
+INDEX_NAME = "ux_credits_order_source"
+
+def upgrade() -> None:
+    # Cria o índice único de forma concorrente para (order_id, source_type) onde source_type='PICKUP_EXPIRATION'
+    op.execute(
+        f"""
+        CREATE UNIQUE INDEX CONCURRENTLY {INDEX_NAME}
+          ON public.credits (order_id, source_type)
+          WHERE source_type = 'PICKUP_EXPIRATION';
+        """
+    )
+
+def downgrade() -> None:
+    # Remove o índice criado acima de forma concorrente
+    op.execute(
+        f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME};"
+    )
 
 
-def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
-    existing = db.execute(
+def _fetch_pickup_expiration_credit(db: Session, order_id: str) -> dict | None:
+    return db.execute(
         text(
             """
             SELECT id, amount_cents, status, expires_at
             FROM public.credits
             WHERE order_id = :order_id
+              AND source_type = 'PICKUP_EXPIRATION'
             LIMIT 1
             """
         ),
-        {"order_id": order_row["id"]},
+        {"order_id": order_id},
     ).mappings().first()
 
-    if existing:
-        return {
-            "created": False,
-            "exists": True,
-            "credit_id": existing["id"],
-            "amount_cents": int(existing["amount_cents"] or 0),
-            "status": existing["status"],
-            "expires_at": existing["expires_at"],
-            "reason": "already_exists",
-        }
 
+def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
     user_id = order_row.get("user_id")
     amount_cents = int(order_row.get("amount_cents") or 0)
 
@@ -268,10 +290,12 @@ def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
             "reason": "invalid_credit_amount",
         }
 
+    order_id = order_row["id"]
     credit_id = str(uuid4())
     expires_at = now + timedelta(days=30)
+    source_type = "PICKUP_EXPIRATION"
 
-    db.execute(
+    insert_result = db.execute(
         text(
             """
             INSERT INTO public.credits (
@@ -303,30 +327,56 @@ def _ensure_credit_50(db: Session, *, order_row: dict, now: datetime) -> dict:
                 :source_reason,
                 :notes
             )
+            ON CONFLICT (order_id, source_type)
+            WHERE source_type = 'PICKUP_EXPIRATION'
+            DO NOTHING
             """
         ),
         {
             "id": credit_id,
             "user_id": user_id,
-            "order_id": order_row["id"],
+            "order_id": order_id,
             "amount_cents": credit_amount_cents,
             "created_at": now,
             "updated_at": now,
             "expires_at": expires_at,
-            "source_type": "PICKUP_EXPIRATION",
+            "source_type": source_type,
             "source_reason": "pickup_not_redeemed_before_deadline",
             "notes": "Crédito automático de 50% por expiração de retirada.",
         },
     )
 
+    if int(insert_result.rowcount or 0) == 1:
+        return {
+            "created": True,
+            "exists": False,
+            "credit_id": credit_id,
+            "amount_cents": credit_amount_cents,
+            "status": "AVAILABLE",
+            "expires_at": expires_at,
+            "reason": "created",
+        }
+
+    existing = _fetch_pickup_expiration_credit(db, order_id)
+    if existing:
+        return {
+            "created": False,
+            "exists": True,
+            "credit_id": existing["id"],
+            "amount_cents": int(existing["amount_cents"] or 0),
+            "status": existing["status"],
+            "expires_at": existing["expires_at"],
+            "reason": "already_exists",
+        }
+
     return {
-        "created": True,
+        "created": False,
         "exists": False,
-        "credit_id": credit_id,
-        "amount_cents": credit_amount_cents,
-        "status": "AVAILABLE",
-        "expires_at": expires_at,
-        "reason": "created",
+        "credit_id": None,
+        "amount_cents": 0,
+        "status": None,
+        "expires_at": None,
+        "reason": "insert_conflict_unresolved",
     }
 
 
@@ -385,6 +435,11 @@ def _apply_runtime_release(
     slot: int | None,
     allocation_id: str | None,
 ) -> dict:
+    """
+    Compensação saga: libera allocation no runtime antes de marcar slot AVAILABLE.
+    Se o release falhar, o slot não é alterado (estado local já commitado permanece
+    consistente com allocation ainda reservada no runtime até retry).
+    """
     runtime = RuntimeClient()
 
     result = {
@@ -395,26 +450,62 @@ def _apply_runtime_release(
         "runtime_error": None,
     }
 
+    log_order_id = allocation_id or "unknown"
+    runtime_ctx = {
+        "region_code": region_code,
+        "locker_id": locker_id,
+        "slot": int(slot) if slot is not None else None,
+        "allocation_id": allocation_id,
+    }
+
     if not region_code:
         result["runtime_error"] = "missing_region_code"
         return result
 
+    def _log_runtime_failure(*, step: str, exc: RuntimeClientError) -> None:
+        result["runtime_error"] = str(exc)
+        _log_pickup_timeout_error(
+            logger,
+            step=step,
+            order_id=log_order_id,
+            error=exc,
+            extra={**runtime_ctx, **result},
+        )
+
     try:
+        if allocation_id:
+            result["runtime_release_attempted"] = True
+            _log_pickup_timeout_step(
+                logger,
+                step="runtime_release_start",
+                order_id=log_order_id,
+                extra=runtime_ctx,
+            )
+
+            release_response = runtime.locker_release(
+                region=region_code,
+                allocation_id=allocation_id,
+                locker_id=locker_id,
+            )
+
+            result["runtime_release_ok"] = True
+            _log_pickup_timeout_step(
+                logger,
+                step="runtime_release_ok",
+                order_id=log_order_id,
+                extra={**runtime_ctx, "runtime_response": release_response},
+            )
+
         if slot is not None:
             result["runtime_set_state_attempted"] = True
             _log_pickup_timeout_step(
                 logger,
                 step="runtime_set_state_start",
-                order_id=allocation_id or "unknown",
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "slot": int(slot),
-                    "target_state": "AVAILABLE",
-                },
+                order_id=log_order_id,
+                extra={**runtime_ctx, "target_state": "AVAILABLE"},
             )
 
-            runtime_response = runtime.locker_set_state(
+            set_state_response = runtime.locker_set_state(
                 region=region_code,
                 slot=int(slot),
                 state="AVAILABLE",
@@ -422,69 +513,22 @@ def _apply_runtime_release(
             )
 
             result["runtime_set_state_ok"] = True
-
             _log_pickup_timeout_step(
                 logger,
                 step="runtime_set_state_ok",
-                order_id=allocation_id or "unknown",
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "slot": int(slot),
-                    "runtime_response": runtime_response,
-                },
-            )
-
-        if allocation_id:
-            result["runtime_release_attempted"] = True
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_release_start",
-                order_id=allocation_id,
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "allocation_id": allocation_id,
-                },
-            )
-
-            runtime_response = runtime.locker_release(
-                region=region_code,
-                allocation_id=allocation_id,
-                locker_id=locker_id,
-            )
-
-            result["runtime_release_ok"] = True
-
-            _log_pickup_timeout_step(
-                logger,
-                step="runtime_release_ok",
-                order_id=allocation_id,
-                extra={
-                    "region_code": region_code,
-                    "locker_id": locker_id,
-                    "allocation_id": allocation_id,
-                    "runtime_response": runtime_response,
-                },
+                order_id=log_order_id,
+                extra={**runtime_ctx, "runtime_response": set_state_response},
             )
 
         return result
 
     except RuntimeClientError as exc:
-        result["runtime_error"] = str(exc)
-        _log_pickup_timeout_error(
-            logger,
-            step="runtime_release_failed",
-            order_id=allocation_id or "unknown",
-            error=exc,
-            extra={
-                "region_code": region_code,
-                "locker_id": locker_id,
-                "slot": slot,
-                "allocation_id": allocation_id,
-                **result,
-            },
-        )
+        if result["runtime_release_attempted"] and not result["runtime_release_ok"]:
+            _log_runtime_failure(step="runtime_release_failed", exc=exc)
+        elif result["runtime_set_state_attempted"] and not result["runtime_set_state_ok"]:
+            _log_runtime_failure(step="runtime_set_state_failed", exc=exc)
+        else:
+            _log_runtime_failure(step="runtime_release_failed", exc=exc)
         raise
 
 

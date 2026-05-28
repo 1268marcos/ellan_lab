@@ -1,0 +1,50 @@
+# 🧠 ELLAN LAB — Monorepo Cursor Rules
+
+## 📦 Contexto Global
+- **Arquitetura:** Strangler Fig + DDD + Event-Driven
+- **Stack:** FastAPI · SQLAlchemy async · PostgreSQL · Redis/Kafka · Pydantic v2 · pytest
+- **Estrutura:** Monorepo em `01_source/`. Cada serviço é independente. `shared/` e `shared_kernel/` para código comum.
+
+## 👑 Ownership (NUNCA violar)
+- `OPS monolith` = orchestrator only. Nunca persistir dados de catálogo/parceiro/wallet/inventário como master.
+- `catalog-service` = owner de SKU/preço/atributos.
+- `inventory-service` = owner de estoque físico por locker.
+- `partner-service` = owner de CRUD de parceiros + webhooks.
+- `wallet-service` = owner de créditos/carteira.
+- `notification-service` = owner de delivery (OPS apenas enfileira).
+- `logistics-service` = owner de manifest/SLA.
+
+## 🚦 Feature Flags (app/core/config.py)
+| Flag | Default | Status |
+|------|---------|--------|
+| `USE_CATALOG_SERVICE` | `True` | ✅ Canary estável |
+| `USE_INVENTORY_SERVICE` | `True` | ✅ Canary estável |
+| `USE_PARTNER_SERVICE` | `False` | 🚧 Em desenvolvimento |
+| `USE_WALLET_SERVICE` | `True` | ✅ Canary estável |
+| `USE_LOGISTICS_SERVICE` | `True` | ✅ Canary estável |
+| `SHADOW_MODE_ENABLED` | `True` | ✅ Ativo para rollback rápido |
+
+## ✅ Padrões Obrigatórios
+1. **Shadow mode** ANTES de habilitar qualquer feature flag.
+2. Todo novo serviço precisa de `GET /health/ready` + `GET /health/live`.
+3. Consumidores Kafka: **idempotência + DLQ** obrigatórios.
+4. Reservas de inventário usam **optimistic locking**.
+5. Prefixo de tabelas: `catalog_`, `partner_`, `inventory_`, `wallet_`, `logistics_`.
+6. **Rollback** = flip de feature flag < 1 min. Gatilho: error rate > 0.5% / 5 min.
+
+## 🚫 Anti-Patterns — NUNCA FAZER
+- OPS owning product/partner/credit data como source of truth.
+- Remover código do monolith sem feature flag + canary estável.
+- Criar novo serviço sem health probes.
+- Kafka consumer sem DLQ.
+- Usar `datetime.utcnow()` (depreciado). Use `datetime.now(timezone.utc)` ou `app.core.datetime_utils.utc_now()`.
+- Chamar I/O síncrono (`requests`, SDK síncrono) em rotas `async`. Use `httpx.AsyncClient` ou `asyncio.to_thread()`.
+- Armazenar idempotência apenas após sucesso. Registre antes ou use transações atômicas.
+
+## 📝 Exemplos Práticos (Como Fazer)
+### 🔹 Health Probe Padrão
+```python
+@router.get("/health/ready")
+def health_ready(db: Session = Depends(get_db)):
+    db.execute(text("SELECT 1"))
+    return {"status": "ready", "database": "ok"}

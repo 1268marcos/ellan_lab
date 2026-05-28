@@ -4,6 +4,55 @@ from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+"""
+Migração para adicionar uma FOREIGN KEY de analytics_facts.order_id → orders.id,
+com verificação prévia de registros órfãos e comentários sobre política ON DELETE.
+
+ATENÇÃO: Execute a query de órfãos antes da migração para identificar dados inconsistentes!
+
+Exemplo (substitua <schema> caso necessário):
+
+    SELECT af.*
+    FROM analytics_facts af
+    LEFT JOIN orders o ON af.order_id = o.id
+    WHERE o.id IS NULL;
+
+Avalie o que fazer com registros órfãos (excluir/lidar manualmente) ANTES de criar a FK.
+
+Opções de ON DELETE:
+    - CASCADE: Ao deletar um order, apaga os analytics_facts relacionados. (+ automatiza limpeza, - cuidado: pode apagar dados úteis de analytics)
+    - SET NULL: Ao deletar um order, order_id nos fatos vai para NULL. (+ preserva fato, - order_id deixa de ser obrigatório; pode afetar consultas)
+    - RESTRICT/NO ACTION: Impede deletar se houver fatos. (+ evita perda, - pode travar exclusões legítimas)
+Adapte conforme política de negócio. Aqui sugerimos CASCADE.
+"""
+
+from alembic import op
+import sqlalchemy as sa
+
+def upgrade():
+    # --- 1. (Opcional/documentação) Exemplo de consulta SQL para achar órfãos (execute manualmente antes/após):
+    # SELECT af.* FROM analytics_facts af LEFT JOIN orders o ON af.order_id = o.id WHERE o.id IS NULL;
+
+    # --- 2. (Recomenda-se corrigir órfãos caso exista, via script/manual; a migração pode falhar se houver!)
+    # Exemplo de deleção de órfãos (execute manualmente após avaliação!):
+    # DELETE FROM analytics_facts WHERE order_id NOT IN (SELECT id FROM orders);
+
+    # --- 3. Criação da constraint com ON DELETE CASCADE:
+    op.create_foreign_key(
+        "fk_analytics_order",
+        "analytics_facts",
+        "orders",
+        ["order_id"],
+        ["id"],
+        ondelete="CASCADE"
+    )
+
+    # --- 4. (Opcional): Validar constraint separadamente (Postgres padrão já valida):
+    # op.execute("ALTER TABLE analytics_facts VALIDATE CONSTRAINT fk_analytics_order;")
+
+
+def downgrade():
+    op.drop_constraint("fk_analytics_order", "analytics_facts", type_="foreignkey")
 
 revision = "0001_init_order_lifecycle"
 down_revision = None
