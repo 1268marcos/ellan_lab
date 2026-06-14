@@ -16,7 +16,10 @@ from app.schemas.orders import OnlineRegion
 from app.services.wallet_credits import (
     checkout_wallet_currency_matches_order,
     get_user_wallet_currency,
+    load_order_currencies_by_id,
+    resolve_credit_currency,
     select_checkout_credit_candidate,
+    summarize_credits_by_currency,
 )
 
 router = APIRouter(prefix="/public/me", tags=["public-me"])
@@ -30,6 +33,7 @@ class PublicCreditItemOut(BaseModel):
     id: str
     order_id: str | None = None
     amount_cents: int
+    currency: str
     status: str
     created_at: str | None = None
     expires_at: str | None = None
@@ -47,6 +51,8 @@ class PublicCreditsSummaryOut(BaseModel):
     available_count: int
     expiring_soon_count: int
     currency: str | None = None
+    balances_by_currency: dict[str, int] = {}
+    available_by_currency: dict[str, int] = {}
 
 
 class PublicCreditsListOut(BaseModel):
@@ -84,7 +90,10 @@ def list_my_credits(
 
     credits = (
         db.query(Credit)
-        .filter(Credit.user_id == current_user.id)
+        .filter(
+            Credit.user_id == current_user.id,
+            Credit.deleted_at.is_(None),
+        )
         .order_by(
             case((Credit.status == CreditStatus.AVAILABLE, 0), else_=1),
             Credit.expires_at.asc(),
@@ -93,10 +102,17 @@ def list_my_credits(
         .all()
     )
 
-    available_credits = [c for c in credits if c.is_available_now(now=now)]
-    available_balance_cents = sum(int(c.amount_cents or 0) for c in available_credits)
+    wallet_currency = get_user_wallet_currency(db, user_id=current_user.id)
+    order_ids = [c.order_id for c in credits if c.order_id]
+    order_currencies = load_order_currencies_by_id(db, order_ids)
+    currency_summary = summarize_credits_by_currency(
+        credits,
+        order_currencies=order_currencies,
+        wallet_currency=wallet_currency,
+        now=now,
+    )
 
-    expiring_soon_count = 0
+    expiring_soon_count = currency_summary.display_expiring_soon_count
     items: list[PublicCreditItemOut] = []
     for credit in credits:
         expires_at = credit.expires_at
@@ -110,15 +126,18 @@ def list_my_credits(
             days_to_expiration = max(delta.days, 0) if delta.total_seconds() >= 0 else 0
 
         is_available_now = credit.is_available_now(now=now)
-        if is_available_now and expires_at_utc is not None:
-            if 0 <= (expires_at_utc - now).total_seconds() <= (7 * 24 * 60 * 60):
-                expiring_soon_count += 1
+        credit_currency = resolve_credit_currency(
+            credit,
+            order_currency=order_currencies.get(credit.order_id or ""),
+            wallet_currency=wallet_currency,
+        )
 
         items.append(
             PublicCreditItemOut(
                 id=credit.id,
                 order_id=credit.order_id,
                 amount_cents=int(credit.amount_cents or 0),
+                currency=credit_currency,
                 status=getattr(credit.status, "value", str(credit.status)),
                 created_at=to_iso_utc(credit.created_at),
                 expires_at=to_iso_utc(credit.expires_at),
@@ -132,14 +151,14 @@ def list_my_credits(
             )
         )
 
-    wallet_currency = get_user_wallet_currency(db, user_id=current_user.id)
-
     return PublicCreditsListOut(
         summary=PublicCreditsSummaryOut(
-            available_balance_cents=available_balance_cents,
-            available_count=len(available_credits),
+            available_balance_cents=currency_summary.display_available_balance_cents,
+            available_count=currency_summary.display_available_count,
             expiring_soon_count=expiring_soon_count,
-            currency=wallet_currency,
+            currency=currency_summary.display_currency,
+            balances_by_currency=currency_summary.balances_by_currency,
+            available_by_currency=currency_summary.available_by_currency,
         ),
         items=items,
     )
@@ -193,6 +212,8 @@ def preview_checkout_credit(
         db=db,
         user_id=current_user.id,
         order_amount_cents=base_amount,
+        order_currency=order_currency,
+        wallet_currency=wallet_currency,
         requested_credit_id=credit_id,
         lock_for_update=False,
     )
@@ -205,11 +226,17 @@ def preview_checkout_credit(
             discount_cents=0,
             final_amount_cents=base_amount,
             credit_id=None,
-            currency=wallet_currency,
+            currency=order_currency,
             order_currency=order_currency,
             wallet_currency=wallet_currency,
         )
 
+    order_currencies = load_order_currencies_by_id(db, [credit.order_id] if credit.order_id else [])
+    applied_currency = resolve_credit_currency(
+        credit,
+        order_currency=order_currencies.get(credit.order_id or ""),
+        wallet_currency=wallet_currency,
+    )
     discount_cents = int(credit.amount_cents or 0)
     final_amount_cents = max(base_amount - discount_cents, 1)
     return PublicCreditCheckoutPreviewOut(
@@ -220,7 +247,7 @@ def preview_checkout_credit(
         discount_cents=discount_cents,
         final_amount_cents=final_amount_cents,
         credit_id=credit.id,
-        currency=wallet_currency or order_currency,
+        currency=applied_currency,
         order_currency=order_currency,
         wallet_currency=wallet_currency,
     )
